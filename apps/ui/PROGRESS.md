@@ -4,7 +4,7 @@
 
 **2026-07-24 — Full rebuild on the regenerated v1 contract.** The console now covers the real
 backend surface end to end: CFO overview, events ledger + pricing receipts + past-limit reports,
-customer workbench (economics, usage, wallet/grants/budget, markup, price-book assignment,
+customer workbench (economics, usage, wallet/grants/customer spend pool, markup, price-book assignment,
 subscription lifecycle), pricing books + atomic publish + markup, tenant billing operations,
 subscriptions plans + Stripe sync, referrals (program/referrers/attribution/payouts), webhooks
 (configs, deliveries, two-secret rotation), developers (return-once API keys, sandbox, test-event

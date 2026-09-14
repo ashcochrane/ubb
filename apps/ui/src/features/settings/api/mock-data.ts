@@ -406,14 +406,18 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "mem-mia",
     actor_kind: "member",
     actor_display: "mia@acme.ai",
-    action: "budget.updated",
-    resource_type: "budget_config",
-    resource_id: "budget-tenant",
+    // The registry's action for declaring a pool (`governance.yaml`), on the
+    // workspace default: the backend records the tenant as the resource and
+    // the scope in the metadata (`put_tenant_customer_spend_pool`).
+    action: "customer_spend_pool.set",
+    resource_type: "customer_spend_pool",
+    resource_id: "acme-workspace",
     correlation_id: "corr-63f7",
     metadata: {
+      scope: "tenant",
       cap_micros: 2_000_000_000,
       enforce_mode: "alert_only",
-      alert_levels: [50, 80, 100],
+      hard_stop_pct: 120,
     },
   },
   {

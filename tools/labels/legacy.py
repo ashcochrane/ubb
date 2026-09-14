@@ -95,17 +95,18 @@ MAP_CONSTRUCTOR = "legacyLabelMap"
 #: never notice. An export that is not here and is not a map or a humanising
 #: renderer is a FAULT — the gate refuses to guess.
 #:
-#: The nineteen value lists and three types are pinned BY NAME rather than
+#: The twenty value lists and three types are pinned BY NAME rather than
 #: matched by shape. A rule saying "an `as const` array is a value list, and a
-#: value list is G2's subject" would be true of these twenty-two and false of
-#: the twenty-third somebody adds, and nothing would say so. #371 added three
+#: value list is G2's subject" would be true of these twenty-three and false of
+#: the twenty-fourth somebody adds, and nothing would say so. #371 added three
 #: of them in one commit and each one had to be classified by hand, which is
 #: the gate working rather than the gate being in the way. (Thirteen and
 #: sixteen until #425 held `usage_event_kind` by reference, fourteen and
 #: seventeen until #454 held `ceiling_status` and `trigger_source`, sixteen
 #: and nineteen until #463 held `affordability_reason`, seventeen and twenty
-#: until #466 held `control_family` and `reason_code`; the counts are re-taken
-#: from the map below each time rather than incremented.)
+#: until #466 held `control_family` and `reason_code`, nineteen and twenty-two
+#: until #468 held `spend_pool_enforce_mode`; the counts are re-taken from the
+#: map below each time rather than incremented.)
 _VALUE_SET = ("a canonical value set the console still restates. Not this "
               "gate's subject: G2 and G3 ask whether a consumer holds a value "
               "BY REFERENCE, and this file already has their ledger entries")
@@ -135,6 +136,7 @@ DECLARED_NON_LABEL_EXPORTS = {
     "RATE_STRUCTURES": _BY_REFERENCE,
     "REASON_CODES": _BY_REFERENCE,
     "ROLES": _VALUE_SET,
+    "SPEND_POOL_ENFORCE_MODES": _BY_REFERENCE,
     "TASK_STATUSES": _BY_REFERENCE,
     "TRIGGER_SOURCES": _BY_REFERENCE,
     "USAGE_EVENT_KINDS": _BY_REFERENCE,

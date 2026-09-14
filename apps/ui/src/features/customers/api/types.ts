@@ -32,7 +32,7 @@ export type CreateCustomerRequest = PlatformSchemas["CreateCustomerRequest"];
 export type CustomerResponse = PlatformSchemas["CustomerResponse"];
 
 // ---------------------------------------------------------------------------
-// Billing (wallet, grants, budget, profile)
+// Billing (wallet, grants, customer spend pool, wallet policy)
 
 export type BalanceResponse = BillingSchemas["BalanceResponse"];
 export type WalletTransactionOut = BillingSchemas["WalletTransactionOut"];
@@ -46,9 +46,9 @@ export type CreditRequest = BillingSchemas["CreditRequest"];
 export type DebitRequest = BillingSchemas["DebitRequest"];
 export type DebitCreditResponse = BillingSchemas["DebitCreditResponse"];
 export type AffordabilityResponse = BillingSchemas["AffordabilityResponse"];
-export type BudgetConfigIn = BillingSchemas["CustomerSpendPoolIn"];
-export type BudgetConfigOut = BillingSchemas["CustomerSpendPoolOut"];
-export type BudgetStatusOut = BillingSchemas["CustomerSpendPoolStatusOut"];
+export type CustomerSpendPoolIn = BillingSchemas["CustomerSpendPoolIn"];
+export type CustomerSpendPoolOut = BillingSchemas["CustomerSpendPoolOut"];
+export type CustomerSpendPoolStatusOut = BillingSchemas["CustomerSpendPoolStatusOut"];
 export type CustomerBillingProfileIn = BillingSchemas["CustomerBillingProfileIn"];
 export type CustomerBillingProfileOut = BillingSchemas["CustomerBillingProfileOut"];
 export type ConfigureAutoTopUpRequest = BillingSchemas["ConfigureAutoTopUpRequest"];

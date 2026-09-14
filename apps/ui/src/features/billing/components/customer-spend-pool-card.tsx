@@ -1,3 +1,15 @@
+// The workspace's Customer Spend Pool default on the Billing page (#468;
+// slice 6 §4, §18): the pool for every seat that declares none of its own,
+// and for no business — the card says whose it is in words, because one
+// configured number must never be read as a line at two altitudes.
+//
+// The declaration is the only thing here. A default has no pair of its own
+// to read: where one customer's known charges stand against it is that
+// customer's Billing tab's, and the pool's alert levels announce themselves
+// through the webhook catalogue rather than through anything this card
+// draws. The mode is the registry's closed pair held by reference, worded by
+// the catalogue through `@/lib/spend-pool`.
+
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { X } from "lucide-react";
@@ -9,39 +21,33 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { FormField } from "@/components/shared/form-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SpendPoolEnforceModeSelect } from "@/components/shared/spend-pool-enforce-mode-select";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { toastSuccess } from "@/lib/mutations";
+import { ENFORCE_MODE_HINT, SEAT_DEFAULT_LEVEL } from "@/lib/spend-pool";
 
-import { useSaveTenantBudget, useTenantBudget } from "../api/queries";
-import type { BudgetConfig } from "../api/types";
+import { useSaveTenantCustomerSpendPool, useTenantCustomerSpendPool } from "../api/queries";
+import type { CustomerSpendPool } from "../api/types";
 import {
-  budgetFormSchema,
-  budgetFormToPayload,
-  budgetToFormValues,
-  type BudgetFormValues,
-} from "../lib/billing-forms";
+  customerSpendPoolFormSchema,
+  customerSpendPoolFormToPayload,
+  customerSpendPoolToFormValues,
+  type CustomerSpendPoolFormValues,
+} from "../lib/customer-spend-pool-form";
 import { SectionCard } from "./section-card";
 
-export function BudgetCard() {
-  const query = useTenantBudget();
+export const SEAT_DEFAULT_POOL_TITLE = "Customer spend pool default";
+
+export function CustomerSpendPoolCard() {
+  const query = useTenantCustomerSpendPool();
   const isAdmin = useHasRole("admin");
 
   return (
-    <SectionCard
-      title="Workspace budget"
-      description="A monthly cap on total usage spend across all customers, with alerts on the way up."
-    >
+    <SectionCard title={SEAT_DEFAULT_POOL_TITLE} description={SEAT_DEFAULT_LEVEL}>
       {query.isLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-9 w-full max-w-sm" />
@@ -51,19 +57,25 @@ export function BudgetCard() {
       ) : query.isError ? (
         <ErrorCard error={query.error} onRetry={() => void query.refetch()} />
       ) : query.data ? (
-        <BudgetForm initial={query.data} isAdmin={isAdmin} />
+        <SeatDefaultPoolForm initial={query.data} isAdmin={isAdmin} />
       ) : null}
     </SectionCard>
   );
 }
 
-function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: boolean }) {
+function SeatDefaultPoolForm({
+  initial,
+  isAdmin,
+}: {
+  initial: CustomerSpendPool;
+  isAdmin: boolean;
+}) {
   const currency = useTenantCurrency();
-  const mutation = useSaveTenantBudget();
+  const mutation = useSaveTenantCustomerSpendPool();
   const [newLevel, setNewLevel] = useState("");
-  const form = useForm<BudgetFormValues>({
-    resolver: zodResolver(budgetFormSchema),
-    defaultValues: budgetToFormValues(initial),
+  const form = useForm<CustomerSpendPoolFormValues>({
+    resolver: zodResolver(customerSpendPoolFormSchema),
+    defaultValues: customerSpendPoolToFormValues(initial),
   });
   const alertLevels = form.watch("alert_levels");
 
@@ -78,11 +90,11 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
     setNewLevel("");
   };
 
-  const onSubmit = (values: BudgetFormValues) => {
-    mutation.mutate(budgetFormToPayload(values), {
+  const onSubmit = (values: CustomerSpendPoolFormValues) => {
+    mutation.mutate(customerSpendPoolFormToPayload(values), {
       onSuccess: (saved) => {
-        toastSuccess("Budget saved");
-        form.reset(budgetToFormValues(saved));
+        toastSuccess("Customer spend pool default saved");
+        form.reset(customerSpendPoolToFormValues(saved));
       },
     });
   };
@@ -93,40 +105,34 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
         <FormField
           label={`Monthly cap (${currency.toUpperCase()})`}
           error={form.formState.errors.cap?.message}
-          hint="Total usage spend allowed per calendar month."
+          hint="The charges one seat may accrue per calendar month. An amount of nothing declares no default."
         >
           {(id) => (
             <Input id={id} type="number" min={0} step="0.01" inputMode="decimal" {...form.register("cap")} />
           )}
         </FormField>
 
-        <FormField
-          label="When the cap is reached"
-          hint="Alert only sends alerts. Blocking refuses new work once spending passes the cap."
-        >
+        <FormField label="Mode" hint={ENFORCE_MODE_HINT}>
           {(id) => (
             <Controller
               control={form.control}
               name="enforce_mode"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
-                  <SelectTrigger id={id} className="w-full" disabled={!isAdmin}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="alert_only">Alert only</SelectItem>
-                    <SelectItem value="blocking">Blocking — refuse new work</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SpendPoolEnforceModeSelect
+                  id={id}
+                  value={field.value}
+                  onValueChange={(mode) => field.onChange(mode)}
+                  disabled={!isAdmin}
+                />
               )}
             />
           )}
         </FormField>
 
         <FormField
-          label="Hard stop (% of cap)"
+          label="Stop line (% of cap)"
           error={form.formState.errors.hard_stop_pct?.message}
-          hint="Spending stops outright at this percentage of the cap — 120 means 120% of the cap. 1–1000."
+          hint="Where a blocking pool stops, as a percentage of the cap — 120 means 120% of it. 1–1000."
         >
           {(id) => (
             <Input id={id} type="number" min={1} max={1000} step={1} inputMode="numeric" {...form.register("hard_stop_pct")} />
@@ -135,7 +141,7 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
 
         <FormField
           label="Alert levels (% of cap)"
-          hint="Get an alert as spend reaches each percentage of the cap."
+          hint="Announced as the known charges reach each percentage of the cap."
         >
           {(id) => (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -197,8 +203,9 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
                 <span className="text-[13px]">
                   <span className="font-medium text-text-primary">Fail closed</span>
                   <span className="mt-0.5 block text-[12px] text-text-secondary">
-                    If UBB can't read the budget state, deny new work instead of allowing it.
-                    Safer against overspend, but an internal outage would pause your customers
+                    If UBB can't read where a seat's charges stand against the pool,
+                    refuse new starts instead of allowing them. Safer against
+                    overspend, but an internal outage would pause your customers
                     — leave off unless overspending is worse than downtime for you.
                   </span>
                 </span>
@@ -211,11 +218,11 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">
           <Button type="submit" disabled={!isAdmin || mutation.isPending}>
-            {mutation.isPending ? "Working…" : "Save budget"}
+            {mutation.isPending ? "Working…" : "Save default pool"}
           </Button>
         </DisabledHint>
         <p className="text-[11px] text-text-muted">
-          Saving writes the whole budget — every field above is submitted exactly as shown.
+          Saving writes the whole declaration — every field above is submitted exactly as shown.
         </p>
       </div>
       {mutation.isError && (
@@ -223,7 +230,7 @@ function BudgetForm({ initial, isAdmin }: { initial: BudgetConfig; isAdmin: bool
       )}
       {!isAdmin && (
         <p className="mt-2 text-[11px] text-text-muted">
-          Changing the budget needs the Admin role — you can still review it.
+          Changing the default needs the Admin role — you can still review it.
         </p>
       )}
     </form>

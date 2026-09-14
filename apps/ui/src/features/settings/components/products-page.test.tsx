@@ -26,7 +26,7 @@ const productWords = labelMap(TENANT_PRODUCT_LABEL_KEYS);
  * to the registry without someone writing the row this test then demands. */
 const DESCRIPTION_OF = {
   metering: /Usage events, pricing, analytics/,
-  billing: /Wallets, credit grants, budgets/,
+  billing: /Wallets, credit grants, customer spend pools/,
   referrals: /Referral programs, attribution/,
 } as const satisfies Record<TenantProduct, RegExp>;
 

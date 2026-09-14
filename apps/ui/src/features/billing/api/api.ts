@@ -5,8 +5,8 @@ import { billingApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 
 import type {
-  BudgetConfig,
-  BudgetConfigIn,
+  CustomerSpendPool,
+  CustomerSpendPoolIn,
   CreditRequest,
   DebitCreditResponse,
   DebitRequest,
@@ -27,12 +27,12 @@ export async function getRevenueAnalytics(range: {
   );
 }
 
-export async function getTenantBudget(): Promise<BudgetConfig> {
+export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {
   return unwrap(await billingApi.GET("/customer-spend-pool"));
 }
 
 /** PUT /billing/customer-spend-pool is a FULL upsert — always send every field. */
-export async function putTenantBudget(body: BudgetConfigIn): Promise<BudgetConfig> {
+export async function putTenantCustomerSpendPool(body: CustomerSpendPoolIn): Promise<CustomerSpendPool> {
   return unwrap(await billingApi.PUT("/customer-spend-pool", { body }));
 }
 

@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isPostpaid } from "@/hooks/use-tenant-config";
+import { WALLET_POLICY_TITLE } from "@/lib/control-family";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useUpdateTenantConfig } from "../api/queries";
@@ -19,10 +20,15 @@ import {
   type SpendControlValues,
 } from "../lib/settings";
 
+/** What the workspace's floors are — console copy beside the family's word (#468; slice 6 §5). */
+const WALLET_POLICY_DESCRIPTION =
+  "The workspace's default floors — a start is judged on a customer's balance less what is reserved for work already started, against these unless the customer has floors of their own.";
+
 /**
- * The two balance floors. Values are entered in currency units and PATCHed
- * as integer micros — only changed fields are sent, and clearing a clearable
- * field sends an explicit null (omitted fields are preserved server-side).
+ * The two balance floors, under Wallet policy's words. Values are entered in
+ * currency units and PATCHed as integer micros — only changed fields are
+ * sent, and clearing a clearable field sends an explicit null (omitted
+ * fields are preserved server-side).
  *
  * THE DEFAULT CEILING LEFT THIS FORM (#453, slice 6 §2, §18). A ceiling on a
  * unit of work is a kernel setting, not a billing knob (#141 §7): the
@@ -58,20 +64,30 @@ export function SpendLimitsForm({
     });
   };
 
+  const heading = (
+    <div>
+      <p className="text-sm font-medium">{WALLET_POLICY_TITLE}</p>
+      <p className="max-w-sm text-[13px] text-muted-foreground">{WALLET_POLICY_DESCRIPTION}</p>
+    </div>
+  );
+
   if (postpaid) {
     // Both floors are wallet floors, and postpaid usage never touches the
     // wallet — so there is nothing here to edit, and a form with no fields
     // would be a Save button for nothing.
     return (
-      <Alert>
-        <Info />
-        <AlertDescription>
-          The allowed-overdraft and wind-down floors aren't used under
-          postpaid billing — usage drawdown skips the wallet entirely, so the
-          spend gate never checks a balance floor. Each customer's monthly
-          budget is the live spend control instead.
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-3">
+        {heading}
+        <Alert>
+          <Info />
+          <AlertDescription>
+            The allowed-overdraft and wind-down floors aren't used under
+            postpaid billing — usage drawdown skips the wallet entirely, so the
+            spend gate never checks a balance floor. Each customer's spend pool
+            is the control that applies instead.
+          </AlertDescription>
+        </Alert>
+      </div>
     );
   }
 
@@ -81,6 +97,7 @@ export function SpendLimitsForm({
       className="space-y-4"
       noValidate
     >
+      {heading}
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField
           label={`Allowed overdraft (${currency})`}

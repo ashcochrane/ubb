@@ -1,18 +1,24 @@
 // Mock fixtures — one coherent story, July 2026.
 //
 // acme-corp     — business customer with two pooled seats, active subscription,
-//                 grants, budget, recurring revenue profile; healthy margin.
+//                 grants, a blocking pool crossed in July, recurring revenue
+//                 profile; healthy margin.
 // luna-labs     — individual on a negative balance (floor stop episodes),
 //                 negative margin, no subscription, no revenue profile.
 // nova-ai       — individual pinned to metered_only; usage tracked at cost.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
-import { completeTotal, incompleteTotal } from "@/lib/economic-scenarios";
+import {
+  completePriceTotal,
+  completeTotal,
+  incompletePriceTotal,
+  incompleteTotal,
+  type PriceTotalScenario,
+} from "@/lib/economic-scenarios";
 
 import type {
   BalanceResponse,
-  BudgetConfigOut,
-  BudgetStatusOut,
+  CustomerSpendPoolOut,
   BusinessMarginOut,
   CustomerBillingProfileOut,
   CustomerMarginListRow,
@@ -563,42 +569,55 @@ export const MOCK_GRANTS: Record<string, GrantOut[]> = {
   ],
 };
 
-export const MOCK_BUDGETS: Record<string, BudgetConfigOut> = {
+/**
+ * The pools declared on a customer. acme-corp's is BLOCKING and crossed in
+ * July — the story the spend-controls feature's Stops and breaches tells,
+ * whose mock restates the same terms (`POOL_STATUS_ACME`); the two features
+ * cannot share a fixture, so a change to one owes the same change to the
+ * other. Nobody else declares one, so the seats and the individuals take the
+ * workspace default below and the pair says so.
+ */
+export const MOCK_CUSTOMER_SPEND_POOLS: Record<string, CustomerSpendPoolOut> = {
   [CUS_ACME]: {
     cap_micros: 500_000_000,
-    enforce_mode: "alert_only",
+    enforce_mode: "blocking",
     hard_stop_pct: 100,
     alert_levels: [50, 80, 100],
     fail_closed: false,
   },
 };
 
-export const MOCK_BUDGET_STATUS: Record<string, BudgetStatusOut> = {
-  // The status read's basis is the durable pair; every figure beside it is
-  // over the KNOWN charges (a whole percent, floored) and null where no pool
-  // is declared (#456, slice 6 §13).
-  [CUS_ACME]: {
-    period: "2026-07",
-    cap_micros: 500_000_000,
-    enforce_mode: "alert_only",
-    known_period_charges_micros: 231_400_000,
-    unresolved_posting_count: 0,
-    used_percentage: 46,
-    remaining_micros: 268_600_000,
-    highest_threshold_reached: null,
-    blocking_occurred: false,
-  },
-  [CUS_LUNA]: {
-    period: "2026-07",
-    cap_micros: 0,
-    enforce_mode: "alert_only",
-    known_period_charges_micros: 55_900_000,
-    unresolved_posting_count: 0,
-    used_percentage: null,
-    remaining_micros: null,
-    highest_threshold_reached: null,
-    blocking_occurred: false,
-  },
+/**
+ * The workspace default for seats, as the billing feature's mock declares it
+ * (its `SEAT_DEFAULT_POOL`, restated here because a feature may not import
+ * another feature's mock). It reaches a seat or an individual with no pool
+ * of their own, never a business (`resolve_config_for`, slice 6 §4).
+ */
+export const MOCK_SEAT_DEFAULT_POOL: CustomerSpendPoolOut = {
+  cap_micros: 2_500_000_000,
+  enforce_mode: "alert_only",
+  hard_stop_pct: 120,
+  alert_levels: [50, 80, 100],
+  fail_closed: false,
+};
+
+/** The period every pool's pair is read for. */
+export const MOCK_POOL_PERIOD = "2026-07";
+
+/**
+ * The durable basis per customer for July — the known period charges beside
+ * the count of postings whose revenue UBB could not resolve — from which the
+ * mock composes each pair (`spendPoolAssessment`). acme-corp's is a FLOOR:
+ * one posting unpriced, the known figure past the pool. The seats' figures
+ * are their July usage revenue in the margin story above; nova-ai is tracked
+ * at cost, so nothing is known against a pool for it.
+ */
+export const MOCK_POOL_CHARGES: Record<string, PriceTotalScenario> = {
+  [CUS_ACME]: incompletePriceTotal(517_500_000, 1),
+  [CUS_LUNA]: completePriceTotal(41_200_000),
+  [CUS_NOVA]: completePriceTotal(0),
+  [CUS_SEAT_ENG]: completePriceTotal(120_400_000),
+  [CUS_SEAT_RES]: completePriceTotal(61_800_000),
 };
 
 // Floor wire semantics: min_balance_micros = allowed overdraft MAGNITUDE

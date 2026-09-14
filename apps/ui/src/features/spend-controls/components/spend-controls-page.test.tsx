@@ -9,6 +9,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
+import { POOL_PAIR_TITLE } from "@/lib/spend-pool";
 
 import { CUSTOMER_ACME, CUSTOMER_LUNA } from "../api/mock-data";
 import { NO_EPISODES_FOR } from "../lib/families";
@@ -16,7 +17,7 @@ import type { SpendControlsSearch } from "../lib/search";
 import { renderWithProviders } from "../test-utils";
 import { CONFIGURES_NOTHING, SpendControlsPage } from "./spend-controls-page";
 import { STOPS_AND_BREACHES_TITLE } from "./stops-and-breaches";
-import { POOL_PAIR_TITLE, UTILISATION_AND_HEADROOM_TITLE } from "./utilisation-and-headroom";
+import { UTILISATION_AND_HEADROOM_TITLE } from "./utilisation-and-headroom";
 
 function renderTab(search: SpendControlsSearch = {}) {
   const onSearchChange = vi.fn();

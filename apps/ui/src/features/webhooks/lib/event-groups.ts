@@ -29,7 +29,7 @@
 //
 // `"*"` is NOT part of any group — it is the separate "All events" toggle.
 
-import { labelMap } from "@/lib/localisation";
+import { controlFamilyLabel } from "@/lib/control-family";
 import {
   CONTROL_FAMILY_LABEL_KEYS,
   WEBHOOK_EVENT_TYPE_VALUES,
@@ -44,9 +44,6 @@ type OwnerOf<T> = T extends `${infer Owner}.${string}` ? Owner : never;
 
 /** Every namespace the catalogue uses: resources and control families. */
 export type EventOwner = OwnerOf<WebhookEventType>;
-
-/** A control family's word, from the catalogue. */
-const controlFamilyLabel = labelMap(CONTROL_FAMILY_LABEL_KEYS);
 
 /**
  * Headings for the resource owners — console-owned copy, total over the

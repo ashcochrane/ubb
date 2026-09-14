@@ -47,9 +47,9 @@ import {
   SOFT_FLOOR_MARKER,
   STILL_OPEN,
 } from "../lib/episodes";
-import { controlFamilyLabel } from "../lib/families";
 import { ItemisedEventsTable } from "./itemised-events";
-import { Reading, Unknown } from "./reading";
+import { Reading, Unknown } from "@/components/shared/reading";
+import { controlFamilyLabel } from "@/lib/control-family";
 
 function CustomerLink({ customerId }: { customerId: string }) {
   return (

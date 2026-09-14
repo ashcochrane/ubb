@@ -1,33 +1,19 @@
-// The four spend controls as this feature names and explains them (#466;
-// slice 6 §18).
+// The four spend controls as this feature explains them (#466; slice 6 §18):
+// what each family means for the person reading a report, and why one of the
+// four never has an episode — the one thing neither the registry nor the
+// catalogue may hold (ADR-0008 §4.5).
 //
-// Identity lives in `@/lib/vocabulary` (generated from `domain-vocabulary/`),
-// expression in `@/locales` reached through `@/lib/localisation`. This module
-// is where the two meet for `control_family` — the `@/lib/products` shape —
-// plus the one thing neither of them may hold: what each family means for the
-// person reading a report, and why one of the four never has an episode.
-//
-// THIS IS THE PAYMENT OF `g2-console-control_family` AND
-// `g6-map-past-limit-family-label` TOGETHER, in the shape #424 established:
-// the hand-written map in `@/lib/labels` is deleted (it worded three
-// report-local spellings of a family of four); that file holds the value list
-// by reference, because the registry names it the console's consumer; the
-// words have been in the catalogue under `control_family.*` since the concept
-// was coined; and `controlFamilyLabel` below is the binding. A value list and
-// the words for it cannot honestly move apart, which is why the two entries
-// die in one commit.
-//
-// THE BINDING SITS IN THIS FEATURE'S `lib/` because Stops and breaches is the
-// one component that renders a family word — on its own tab and, injected by
-// the customer route, on the customer's Usage tab (the same component, not a
-// second reader). It moves to `@/lib/` the day another feature renders the
-// word, as `@/lib/pricing-mode` did in #425.
+// THE WORDS THEMSELVES ARE `@/lib/control-family`'s. `g2-console-
+// control_family` and `g6-map-past-limit-family-label` were paid together
+// in #466, in the shape #424 established — the hand-written map in
+// `@/lib/labels` deleted, that file holding the value list by reference, the
+// words in the catalogue under `control_family.*`, and `controlFamilyLabel`
+// the binding — and the binding sat HERE while Stops and breaches was the one
+// component rendering a family word. It moved to `@/lib/` in #468, the day
+// the customer's Billing tab and the settings floors form headed their
+// sections with two of the four, as this header said it would.
 
-import { labelMap } from "@/lib/localisation";
-import { CONTROL_FAMILY_LABEL_KEYS, type ControlFamily } from "@/lib/vocabulary";
-
-/** The catalogue's words for a family; the raw token for an unfamiliar one. */
-export const controlFamilyLabel = labelMap(CONTROL_FAMILY_LABEL_KEYS);
+import type { ControlFamily } from "@/lib/vocabulary";
 
 /**
  * What each family bounds, in a sentence — console-owned copy (ADR-0008 §4.5),

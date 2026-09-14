@@ -14,6 +14,7 @@ import {
   measurementsNotApplicable,
   priceNotApplicable,
   prunedMeasurements,
+  spendPoolAssessment,
   unknownCost,
   unknownPrice,
   waivedPrice,
@@ -553,5 +554,108 @@ describe("the ceiling assessment", () => {
         "unresolved_event_count",
       ]);
     }
+  });
+});
+
+describe("the pool's status pair", () => {
+  // The numbers are checked against the kernel's own arithmetic
+  // (`core/crossing.py::spend_pool_assessment`): a whole percent rounded
+  // DOWN over the KNOWN figure, headroom never below zero, the highest alert
+  // level the known figure is at or over, and the start gate's compare only
+  // under a blocking pool at or over its stop line.
+  const declared = {
+    period: "2026-07",
+    cap_micros: 500_000_000,
+    hard_stop_pct: 100,
+    alert_levels: [50, 80, 100],
+  } as const;
+
+  it("carries the pair as it was handed, and the assessment over the known figure", () => {
+    const scenario = spendPoolAssessment({
+      ...declared,
+      enforce_mode: "alert_only",
+      known: completePriceTotal(231_400_000),
+    });
+
+    expect(scenario.known_period_charges_micros).toBe(231_400_000);
+    expect(scenario.unresolved_posting_count).toBe(0);
+    expect(scenario.used_percentage).toBe(46); // 46.28, rounded down
+    expect(scenario.remaining_micros).toBe(268_600_000);
+    expect(scenario.highest_threshold_reached).toBeNull();
+    expect(scenario.blocking_occurred).toBe(false);
+  });
+
+  it("says a pool with no amount is no pool: three nulls and false, never a zero share", () => {
+    const scenario = spendPoolAssessment({
+      ...declared,
+      cap_micros: 0,
+      enforce_mode: "blocking",
+      known: incompletePriceTotal(55_900_000, 1),
+    });
+
+    expect(scenario.used_percentage).toBeNull();
+    expect(scenario.remaining_micros).toBeNull();
+    expect(scenario.highest_threshold_reached).toBeNull();
+    expect(scenario.blocking_occurred).toBe(false);
+    // The pair still travels: the charges are real whether or not a pool bounds them.
+    expect(scenario.known_period_charges_micros).toBe(55_900_000);
+    expect(scenario.unresolved_posting_count).toBe(1);
+  });
+
+  it("refuses starts only under a blocking pool at or over its stop line", () => {
+    const crossed = spendPoolAssessment({
+      ...declared,
+      enforce_mode: "blocking",
+      known: incompletePriceTotal(517_500_000, 1),
+    });
+    expect(crossed.used_percentage).toBe(103);
+    expect(crossed.remaining_micros).toBe(0);
+    expect(crossed.highest_threshold_reached).toBe(100);
+    expect(crossed.blocking_occurred).toBe(true);
+
+    // `>=`: the line is reached rather than exceeded (the kernel's compare).
+    const atTheLine = spendPoolAssessment({
+      ...declared,
+      enforce_mode: "blocking",
+      known: completePriceTotal(500_000_000),
+    });
+    expect(atTheLine.blocking_occurred).toBe(true);
+
+    // The same charges under an alerting pool refuse nothing.
+    const alerting = spendPoolAssessment({
+      ...declared,
+      enforce_mode: "alert_only",
+      known: incompletePriceTotal(517_500_000, 1),
+    });
+    expect(alerting.highest_threshold_reached).toBe(100);
+    expect(alerting.blocking_occurred).toBe(false);
+
+    // A stop line above the pool: past the pool but short of the line, no refusal yet.
+    const lineAbove = spendPoolAssessment({
+      ...declared,
+      hard_stop_pct: 120,
+      enforce_mode: "blocking",
+      known: completePriceTotal(517_500_000),
+    });
+    expect(lineAbove.blocking_occurred).toBe(false);
+  });
+
+  it("composes exactly the nine fields the status route publishes", () => {
+    const scenario = spendPoolAssessment({
+      ...declared,
+      enforce_mode: "alert_only",
+      known: completePriceTotal(0),
+    });
+    expect(Object.keys(scenario).sort()).toEqual([
+      "blocking_occurred",
+      "cap_micros",
+      "enforce_mode",
+      "highest_threshold_reached",
+      "known_period_charges_micros",
+      "period",
+      "remaining_micros",
+      "unresolved_posting_count",
+      "used_percentage",
+    ]);
   });
 });

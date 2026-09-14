@@ -555,26 +555,12 @@ entries:
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
 
-  - id: g7-console-budget
-    gate: G7
-    site: console::budget
-    expected: control_family
-    found: 21 files
-    owner_slice: slice_6
-    reason: >-
-      A retired spend-control family name. #150's four families —
-      Ceiling, Customer Spend Pool, Wallet policy, Admission control —
-      replace one word that named all of them at once, and slice 6
-      builds them. 24 → 23 in #456, the contract stage (§20 step 2): the
-      billing feature's API module spelled the word only in the two route
-      paths a generated type gave it, and those moved with the routes.
-      23 → 22 in #463: the customers feature's affordability dialog stopped
-      listing the word among the checks it runs, when its copy was rewritten
-      for the four families. 22 → 21 in #464: the legacy adapter's
-      hand-held event list, which spelled the threshold webhook's old name,
-      became the generated set held by reference; the generated snapshot
-      renders the successor. The two features' own file names, locals, copy
-      and fixtures are the console ticket's (#468).
+  # `g7-console-budget` WAS HERE AND IS PAID (#468, slice 6, the console
+  # stage of §20 with the catalogue's #464 already landed): the two features'
+  # file names, locals, copy and fixtures took the family's noun, the
+  # settings audit fixture took the registry's action, the last test naming
+  # the retired namespace derives the group keys from the generated set
+  # instead, and the sweep reports the word in no console file.
 
   # ⚠ `card_type` REACHED ZERO ON THE CONSOLE IN #372 and its entry is deleted.
   # Two files: the pricing feature's form schemas, whose note said which field
@@ -969,16 +955,12 @@ entries:
   # would let one file be converted while another was added. So the debt is
   # recorded rather than the check weakened, and it is paid by the same act as
   # the console entries above: rename the file, and the pinned path follows.
-  - id: g7-repo-budget
-    gate: G7
-    site: repo::budget
-    expected: control_family
-    found: 1 files
-    owner_slice: slice_6
-    reason: >-
-      `features/customers/components/budget-section.tsx` is named after the
-      retired family word, and #210's importer ratchet pins its path. Slice 6
-      builds #150's four families and renames the surface; the pin follows it.
+  # `g7-repo-budget` WAS HERE AND IS PAID (#468): its one file was the importer
+  # pin in `tests/contracts/test_label_catalogue.py`, which named the customer
+  # pool section's old path; the section is renamed and no longer reaches the
+  # adapter, so the pin's line went with it and the sweep finds the word on
+  # the repo surface nowhere. The fold (#469) forecast this entry as its own;
+  # the sweep is the judge, and it died here.
 
   - id: g7-repo-meter_only
     gate: G7
@@ -1372,8 +1354,9 @@ entries:
 
   # g2-console-control_family WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
   # holds `CONTROL_FAMILIES = CONTROL_FAMILY_VALUES` by reference; the words
-  # are bound in `features/spend-controls/lib/families.ts` off the
-  # catalogue, and the family map's entry left with this one.
+  # were bound in `features/spend-controls/lib/families.ts` off the
+  # catalogue (moved to `@/lib/control-family` in #468, the day a second
+  # feature rendered the word), and the family map's entry left with this one.
 
   - id: g2-console-customer_billing_mode
     gate: G2
@@ -1434,17 +1417,9 @@ entries:
   # at all (§27's third shape, the same one `g2-backend-pricing_mode` had),
   # and the console's first sight of it is already the migrated shape.
 
-  - id: g2-console-spend_pool_enforce_mode
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::spend_pool_enforce_mode
-    expected: spend_pool_enforce_mode
-    found: 0 of 2 values
-    owner_slice: slice_6
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. A Pool refuses starts and stops a customer but
-      kills nothing (#150). Slice 6 rebuilds it.
+  # `g2-console-spend_pool_enforce_mode` WAS HERE AND IS PAID (#468): the
+  # adapter holds `SPEND_POOL_ENFORCE_MODES` by reference from the generated
+  # vocabulary, and the words are bound in `@/lib/spend-pool`.
 
   - id: g2-console-tenant_posture
     gate: G2
@@ -1799,18 +1774,11 @@ entries:
       domain slice's subject contains it. Owned by the cutover, where the
       ledger reaches zero; pulling it earlier is the ratchet's one free move.
 
-  - id: g6-map-budget-enforce-mode-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::budgetEnforceModeLabel
-    expected: spend_pool_enforce_mode
-    owner_slice: slice_6
-    reason: >-
-      `budgetEnforceModeLabel` hand-writes the wording for how a spend pool is
-      enforced, and falls back to `humanize` for anything it does not
-      recognise. It becomes `labelMap(SPEND_POOL_ENFORCE_MODE_LABEL_KEYS)` in
-      the slice that rebuilds that vocabulary — the same slice the concept's
-      own value-list entry names, because a value list and the words for it
-      cannot honestly move apart.
+  # `g6-map-budget-enforce-mode-label` WAS HERE AND IS PAID (#468): the map
+  # is deleted and the concept renders through
+  # `labelMap(SPEND_POOL_ENFORCE_MODE_LABEL_KEYS)` in `@/lib/spend-pool`, on
+  # the customer's Billing tab, the Billing page's default card and the
+  # Utilisation and headroom report. The set is closed: no unknown branch.
 
   - id: g6-map-dimension-label
     gate: G6
@@ -1912,7 +1880,8 @@ entries:
   # `pastLimitFamilyLabel` IS DELETED IN #466 and this entry with it. It
   # became `labelMap(CONTROL_FAMILY_LABEL_KEYS)` in
   # `features/spend-controls/lib/families.ts` — bound where Stops and
-  # breaches renders the family — and the catalogue already carried all four
+  # breaches renders the family, and moved to `@/lib/control-family` in #468
+  # when other features rendered it — and the catalogue already carried all four
   # words, so nothing was written in English to pay this off. The old map
   # worded three report-local spellings of a family of four.
 

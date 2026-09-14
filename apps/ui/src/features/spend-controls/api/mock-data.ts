@@ -36,14 +36,14 @@ import {
   incompleteTotal,
   knownCost,
   knownPrice,
+  spendPoolAssessment,
   unknownCost,
   unknownPrice,
   type CeilingAssessmentScenario,
   type CustomerPriceScenario,
-  type PriceTotalScenario,
   type SupplierCostScenario,
 } from "@/lib/economic-scenarios";
-import type { ReasonCodeKnown, SpendPoolEnforceMode } from "@/lib/vocabulary";
+import type { ReasonCodeKnown } from "@/lib/vocabulary";
 
 import type {
   CeilingEpisodeRow,
@@ -558,72 +558,19 @@ export function utilisationReport(
   };
 }
 
-interface PoolSeed {
-  readonly period: string;
-  readonly cap_micros: number;
-  readonly enforce_mode: SpendPoolEnforceMode;
-  readonly hard_stop_pct: number;
-  readonly alert_levels: readonly number[];
-  /** The durable basis: the resolved period charges, a floor wherever the count beside them is not zero. */
-  readonly known: PriceTotalScenario;
-}
-
-/**
- * A pool's status pair, composed the way the kernel composes it
- * (`core.crossing.spend_pool_assessment`) over a known total that may be a
- * floor: whole percent rounded down, headroom never below zero, the highest
- * alert level the known figure is at or over, and whether the start gate's
- * own compare holds — only under a blocking pool, at or over its stop line
- * (`spend_pool_stop_line`: the pool times its stop percentage, rounded
- * down). A pool with no amount is no pool — three nulls and false — as the
- * kernel answers it, though the route never publishes one on this report.
- * Composed rather than typed beside the pair, for the reason `itemised`
- * gives: a fixture must not say a pool is untouched while its own charges
- * say it crossed.
- */
-export function poolStatus(seed: PoolSeed): CustomerSpendPoolStatus {
-  const known = seed.known.micros;
-  const basis = {
-    period: seed.period,
-    cap_micros: seed.cap_micros,
-    enforce_mode: seed.enforce_mode,
-    known_period_charges_micros: known,
-    unresolved_posting_count: seed.known.unpriced_event_count,
-  };
-  if (seed.cap_micros <= 0) {
-    return {
-      ...basis,
-      used_percentage: null,
-      remaining_micros: null,
-      highest_threshold_reached: null,
-      blocking_occurred: false,
-    };
-  }
-  const reached = seed.alert_levels.filter(
-    (level) => known >= Math.floor((seed.cap_micros * level) / 100),
-  );
-  const stopLine = Math.floor((seed.cap_micros * seed.hard_stop_pct) / 100);
-  return {
-    ...basis,
-    used_percentage: Math.floor((known * 100) / seed.cap_micros),
-    remaining_micros: Math.max(seed.cap_micros - known, 0),
-    highest_threshold_reached: reached.length === 0 ? null : Math.max(...reached),
-    blocking_occurred: seed.enforce_mode === "blocking" && known >= stopLine,
-  };
-}
-
 /**
  * acme-corp's pool for July as the crossing above left it: the known period
  * charges past the pool, with the one posting whose price UBB could not
  * resolve making the pair a floor, and new starts refused.
  *
- * ⚠ THE CUSTOMERS FEATURE'S MOCK TELLS THIS POOL DIFFERENTLY — alert-only,
- * under half used, nothing refused — on the customer's Billing tab. The two
- * stories diverged when #466 wrote the crossing this pair follows, and the
- * Billing tab's pool card is rebuilt under the family's name in #468, which
- * is where the two can be made one. Stated, not reconciled here.
+ * THE CUSTOMERS FEATURE'S MOCK TELLS THIS POOL THE SAME WAY since #468: its
+ * `MOCK_POOL_CHARGES` restates these terms for acme-corp — blocking, the
+ * same known figure, the same unpriced posting — so the customer's Billing
+ * tab and this report agree on one July. The two features cannot share a
+ * fixture (the console's imports only flow down), so each spells the terms
+ * and names the other; a change to one owes the same change to the other.
  */
-export const POOL_STATUS_ACME: CustomerSpendPoolStatus = poolStatus({
+export const POOL_STATUS_ACME: CustomerSpendPoolStatus = spendPoolAssessment({
   period: "2026-07",
   cap_micros: 500_000_000,
   enforce_mode: "blocking",

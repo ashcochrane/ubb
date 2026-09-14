@@ -16,12 +16,14 @@ function renderPage(search: { start_date?: string; end_date?: string } = {}) {
 }
 
 describe("BillingPage", () => {
-  it("renders revenue, budget, and usage invoices from mock data", async () => {
+  it("renders revenue, the seat-default pool, and usage invoices from mock data", async () => {
     renderPage();
 
     // Section headings.
     expect(await screen.findByText("Revenue")).toBeInTheDocument();
-    expect(screen.getByText("Workspace budget")).toBeInTheDocument();
+    expect(screen.getByText("Customer spend pool default")).toBeInTheDocument();
+    // The default is the seats' alone, and the card says so in words (slice 6 §4).
+    expect(screen.getByText(/It reaches seats only: a business with no pool of its own has none/)).toBeInTheDocument();
     expect(screen.getByText("Customer usage invoices")).toBeInTheDocument();
     expect(screen.getByText("Manual ledger adjustments")).toBeInTheDocument();
 
@@ -29,7 +31,7 @@ describe("BillingPage", () => {
     expect((await screen.findAllByText("Provider cost")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Markup").length).toBeGreaterThan(0);
 
-    // Budget form prefilled from GET (cap 2,500 USD → "2500").
+    // The pool form prefilled from GET (cap 2,500 USD → "2500").
     const capInput = await screen.findByLabelText(/Monthly cap/);
     expect(capInput).toHaveValue(2500);
 

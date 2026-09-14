@@ -211,6 +211,26 @@ describe("the scenario module is wired to something that renders", () => {
     );
   });
 
+  // The pool's status pair, by name (#468; spec §18): the customers feature's
+  // mock and the spend-controls feature's mock compose the SAME pool from the
+  // same composer, and each feature's rendering test assembles its own. Two
+  // features cannot share a fixture, so this is what says their stories are
+  // one composition rather than two hand-typed pairs that happen to agree.
+  it("composes the pool assessment for both features that render it", () => {
+    const where = CONSUMERS.filter((consumer) =>
+      consumer.source.includes("spendPoolAssessment("),
+    ).map((consumer) => consumer.path);
+
+    expect(where).toEqual(
+      expect.arrayContaining([
+        "/src/features/customers/api/mock.ts",
+        "/src/features/customers/components/customer-spend-pool-section.test.tsx",
+        "/src/features/spend-controls/api/mock-data.ts",
+        "/src/features/spend-controls/components/utilisation-and-headroom.test.tsx",
+      ]),
+    );
+  });
+
   // Every price status has a composer, and every composer is reached.
   //
   // The MAP is hand-written — there is no mechanical route from a value to the

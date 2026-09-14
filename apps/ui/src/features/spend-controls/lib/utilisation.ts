@@ -18,22 +18,17 @@
 // where no unit contributes, and a null renders as an absence, never as zero
 // (#155 §9.2).
 //
-// THE POOL AND THE WALLET ANSWER DIFFERENT QUESTIONS (#151 §11.3; spec §4),
-// and the pool's pair renders here beside a sentence saying so, because a
-// reader who sees a pool at its line and a balance that could pay for a
-// hundred more starts has been shown two true things about two different
-// bounds.
+// THE POOL'S PAIR IS READ THROUGH `@/lib/spend-pool`. Its readers and the
+// sentence keeping it apart from the wallet's affordability were written
+// here in #467 and moved down a layer in #468, the day the customer's
+// Billing tab became the second feature to render them; what stays here is
+// the Ceiling's alone.
 
 import { readCeiling, type CeilingReading } from "@/lib/ceiling";
 import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
 import { readTotal, type TotalReading } from "@/lib/total-reading";
-import type { SpendPoolEnforceMode } from "@/lib/vocabulary";
 
-import type {
-  CeilingUtilisationRow,
-  CustomerSpendPoolStatus,
-  UtilisationAndHeadroom,
-} from "../api/types";
+import type { CeilingUtilisationRow, UtilisationAndHeadroom } from "../api/types";
 
 // ---------------------------------------------------------------------------
 // One row
@@ -108,53 +103,6 @@ export function describeShare(
 }
 
 // ---------------------------------------------------------------------------
-// The pool's status pair
-
-/** The customer's known period charges, beside how many postings the figure could not price. */
-export function readPoolCharges(pool: CustomerSpendPoolStatus): TotalReading {
-  return readTotal(pool.known_period_charges_micros, pool.unresolved_posting_count);
-}
-
-/** Whether the pool's pair is a floor: the known charges left a posting unpriced. */
-function poolPairIsFloor(pool: CustomerSpendPoolStatus): boolean {
-  return pool.unresolved_posting_count > 0;
-}
-
-/** The share of the pool the known charges have used — a floor wherever the pair is. */
-export function describePoolUtilisation(pool: CustomerSpendPoolStatus): string | null {
-  if (pool.used_percentage === null) return null;
-  return shareAtLeast(pool.used_percentage, poolPairIsFloor(pool));
-}
-
-/**
- * The headroom left under the pool — a most wherever the pair is a floor.
- * A zero past the line is SETTLED: the kernel clamps the headroom at
- * nothing, and a posting it could not price can only lower a figure that
- * is already at its floor, so it renders as the zero it is, not as a most.
- */
-export function describePoolHeadroom(pool: CustomerSpendPoolStatus, currency: string): string | null {
-  if (pool.remaining_micros === null) return null;
-  const most = poolPairIsFloor(pool) && pool.remaining_micros > 0;
-  return amountAtMost(pool.remaining_micros, currency, most);
-}
-
-/**
- * What the pool's posture means for a start — console-owned copy beside
- * the pair, total over the generated type so a mode the registry adds and
- * this has no sentence for fails `tsc`. Said in words rather than as the
- * mode's own label because the reader's question is not "which mode" but
- * "why was nothing refused": an alert-only pool past its line refuses
- * nothing, and a blocking pool short of its line has not yet. (The mode's
- * catalogue word is bound on the customer's Billing tab, #468.)
- */
-export const POOL_POSTURE = {
-  alert_only:
-    "This pool alerts and never stops: however far the charges go past it, no start is refused by it.",
-  blocking:
-    "This pool stops: at or over its stop line, new starts are refused and active work is stopped.",
-} as const satisfies Record<SpendPoolEnforceMode, string>;
-
-// ---------------------------------------------------------------------------
 // The console's sentences beside the figures — copy, not catalogue content
 // (ADR-0008 §4.5).
 
@@ -172,9 +120,3 @@ export const NOT_APPLICABLE_MEANS =
 
 export const NO_COMPLETED_WORK =
   "No unit of work completed in this window, so there is nothing to measure against a ceiling.";
-
-export const STARTS_REFUSED =
-  "The known charges are at or over the pool's stop line, so new starts for this customer are being refused.";
-
-export const POOL_AND_WALLET_DIFFER =
-  "The pool answers a different question from the wallet's affordability. The pool asks how much of one period's charges a customer has used against the bound declared for them; affordability asks whether their balance, less what is reserved, can pay for the next start. A large balance beside a small pool is coherent.";

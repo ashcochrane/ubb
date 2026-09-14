@@ -47,12 +47,22 @@ import {
   explainCeiling,
 } from "@/lib/ceiling";
 import { formatDate, formatMicros, shortId } from "@/lib/format";
-import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
+import { Absent, Reading } from "@/components/shared/reading";
+import { tenantDefinedLabel } from "@/lib/localisation";
+import {
+  describePoolHeadroom,
+  describePoolUtilisation,
+  POOL_AND_WALLET_DIFFER,
+  POOL_PAIR_TITLE,
+  POOL_POSTURE,
+  readPoolCharges,
+  STARTS_REFUSED,
+  type CustomerSpendPoolStatus,
+} from "@/lib/spend-pool";
 
 import { useUtilisationAndHeadroom } from "../api/queries";
 import type {
   CeilingUtilisationRow,
-  CustomerSpendPoolStatus,
   UtilisationAndHeadroom as UtilisationAndHeadroomReport,
   UtilisationAndHeadroomFilters,
 } from "../api/types";
@@ -62,29 +72,16 @@ import {
   containedUnit,
   describeAverageHeadroom,
   describeAverageUtilisation,
-  describePoolHeadroom,
-  describePoolUtilisation,
   describeShare,
   INDETERMINATE_HAS_NO_OTHER_HOME,
   NO_COMPLETED_WORK,
   NOT_APPLICABLE_MEANS,
-  POOL_AND_WALLET_DIFFER,
-  POOL_POSTURE,
   REACHED_MEANS,
   readKnownCost,
-  readPoolCharges,
   readUnitCeiling,
-  STARTS_REFUSED,
 } from "../lib/utilisation";
-import { Reading } from "./reading";
 
 export const UTILISATION_AND_HEADROOM_TITLE = "Utilisation and headroom";
-export const POOL_PAIR_TITLE = "Customer spend pool";
-
-/** A figure the wire left null, rendered as the absence it is. */
-function Absent() {
-  return <span className="text-text-muted">{ABSENT_LABEL}</span>;
-}
 
 function Aggregate({
   report,
@@ -155,8 +152,9 @@ function Aggregate({
 
 /**
  * The pool's status pair for the customer the filter names, as words —
- * the same pair the customer's Billing tab draws, without the meter — and
- * the sentence that keeps it apart from the wallet's affordability.
+ * the same pair the customer's Billing tab renders, read through the same
+ * module — and the sentence that keeps it apart from the wallet's
+ * affordability.
  */
 function PoolPair({ pool, currency }: { pool: CustomerSpendPoolStatus; currency: string }) {
   const used = describePoolUtilisation(pool);

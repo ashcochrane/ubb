@@ -1,8 +1,10 @@
-// Pure helpers + zod schemas for the billing feature's forms.
+// Pure helpers + zod schemas for the billing feature's forms. The seat-default
+// pool's form is `./customer-spend-pool-form` (#468, split out before anything
+// here was renamed — spec §20).
 
 import { z } from "zod";
 
-import type { BudgetConfig, BudgetConfigIn, PostpaidConfig, PostpaidConfigIn } from "../api/types";
+import type { PostpaidConfig, PostpaidConfigIn } from "../api/types";
 
 // ---------------------------------------------------------------------------
 // Money conversion — inputs are typed in currency units, the API takes micros.
@@ -16,7 +18,7 @@ export function currencyToMicros(value: string): number {
 
 /**
  * 2_500_000_000 → "2500", 2_500_500 → "2.5005" (for prefilling currency
- * inputs). Full precision, never rounded: the budget PUT is a FULL upsert,
+ * inputs). Full precision, never rounded: the pool PUT is a FULL upsert,
  * so an untouched prefill must round-trip through currencyToMicros to the
  * exact stored micros.
  */
@@ -24,7 +26,7 @@ export function microsToCurrencyInput(micros: number): string {
   return (micros / 1_000_000).toString();
 }
 
-const currencyAmountField = (opts: { min: number }) =>
+export const currencyAmountField = (opts: { min: number }) =>
   z
     .string()
     .min(1, "Required")
@@ -32,56 +34,6 @@ const currencyAmountField = (opts: { min: number }) =>
     .refine((v) => Number(v) >= opts.min, `Must be at least ${opts.min}`)
     // The API caps amount_micros at 999,999,999,999 (≈ 999,999 currency units).
     .refine((v) => currencyToMicros(v) <= 999_999_999_999, "Amount is too large");
-
-// ---------------------------------------------------------------------------
-// Tenant budget — PUT is a FULL upsert.
-
-export const budgetFormSchema = z.object({
-  cap: currencyAmountField({ min: 0 }),
-  enforce_mode: z.enum(["alert_only", "blocking"]),
-  hard_stop_pct: z
-    .string()
-    .min(1, "Required")
-    .refine((v) => /^\d+$/.test(v), "Whole number")
-    .refine((v) => Number(v) >= 1 && Number(v) <= 1000, "Between 1 and 1000"),
-  alert_levels: z.array(z.number().int().min(1).max(1000)),
-  fail_closed: z.boolean(),
-});
-
-export type BudgetFormValues = z.infer<typeof budgetFormSchema>;
-
-/**
- * `CustomerSpendPoolOut.enforce_mode` is the registry's closed pair since #456
- * (the contract publishes the two-value enum on the read as on the write), so
- * the generated type already narrows it. This guard survives until the console
- * ticket rebuilds the pool form on the shared open-set rule: a stored value
- * outside the pair falls back to the non-blocking mode rather than silently
- * editing a config as more restrictive than it is.
- */
-function narrowEnforceMode(value: string): "alert_only" | "blocking" {
-  return value === "blocking" ? "blocking" : "alert_only";
-}
-
-export function budgetToFormValues(budget: BudgetConfig): BudgetFormValues {
-  return {
-    cap: microsToCurrencyInput(budget.cap_micros),
-    enforce_mode: narrowEnforceMode(budget.enforce_mode),
-    hard_stop_pct: String(budget.hard_stop_pct),
-    alert_levels: [...budget.alert_levels].sort((a, b) => a - b),
-    fail_closed: budget.fail_closed,
-  };
-}
-
-/** Full-upsert body: every field is always present. */
-export function budgetFormToPayload(values: BudgetFormValues): BudgetConfigIn {
-  return {
-    cap_micros: currencyToMicros(values.cap),
-    enforce_mode: values.enforce_mode,
-    hard_stop_pct: Number(values.hard_stop_pct),
-    alert_levels: values.alert_levels,
-    fail_closed: values.fail_closed,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Postpaid config — PUT is PARTIAL: omitted preserves, explicit "" clears.

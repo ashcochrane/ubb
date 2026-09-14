@@ -20,9 +20,9 @@ import type { DateRange } from "@/lib/date-range";
 
 import {
   type BalanceResponse,
-  type BudgetConfigIn,
-  type BudgetConfigOut,
-  type BudgetStatusOut,
+  type CustomerSpendPoolIn,
+  type CustomerSpendPoolOut,
+  type CustomerSpendPoolStatusOut,
   type ConfigureAutoTopUpRequest,
   type CreateCustomerRequest,
   type CreateGrantRequest,
@@ -274,9 +274,9 @@ export async function voidGrant(customerId: string, grantId: string): Promise<Gr
 }
 
 // ---------------------------------------------------------------------------
-// Billing — budget, profile, auto top-up
+// Billing — customer spend pool, wallet policy, auto top-up
 
-export async function getCustomerBudget(customerId: string): Promise<BudgetConfigOut> {
+export async function getCustomerSpendPool(customerId: string): Promise<CustomerSpendPoolOut> {
   return unwrap(
     await billingApi.GET("/customers/{customer_id}/customer-spend-pool", {
       params: { path: { customer_id: customerId } },
@@ -285,10 +285,10 @@ export async function getCustomerBudget(customerId: string): Promise<BudgetConfi
 }
 
 /** PUT is a FULL upsert — always send every field (defaults apply to omissions). */
-export async function putCustomerBudget(
+export async function putCustomerSpendPool(
   customerId: string,
-  body: BudgetConfigIn,
-): Promise<BudgetConfigOut> {
+  body: CustomerSpendPoolIn,
+): Promise<CustomerSpendPoolOut> {
   return unwrap(
     await billingApi.PUT("/customers/{customer_id}/customer-spend-pool", {
       params: { path: { customer_id: customerId } },
@@ -297,7 +297,7 @@ export async function putCustomerBudget(
   );
 }
 
-export async function getBudgetStatus(customerId: string): Promise<BudgetStatusOut> {
+export async function getCustomerSpendPoolStatus(customerId: string): Promise<CustomerSpendPoolStatusOut> {
   return unwrap(
     await billingApi.GET("/customers/{customer_id}/customer-spend-pool/status", {
       params: { path: { customer_id: customerId } },

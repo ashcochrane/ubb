@@ -4,8 +4,8 @@
 import type { BillingSchemas } from "@/api/types";
 
 export type RevenueAnalyticsResponse = BillingSchemas["RevenueAnalyticsResponse"];
-export type BudgetConfig = BillingSchemas["CustomerSpendPoolOut"];
-export type BudgetConfigIn = BillingSchemas["CustomerSpendPoolIn"];
+export type CustomerSpendPool = BillingSchemas["CustomerSpendPoolOut"];
+export type CustomerSpendPoolIn = BillingSchemas["CustomerSpendPoolIn"];
 export type TenantUsageInvoice = BillingSchemas["TenantUsageInvoiceOut"];
 export type TenantUsageInvoicePage = BillingSchemas["TenantUsageInvoiceListResponse"];
 export type PostpaidConfig = BillingSchemas["PostpaidConfigOut"];

@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+import { SPEND_POOL_ENFORCE_MODE_VALUES } from "@/lib/vocabulary";
+
 const isFiniteNumber = (value: string) => Number.isFinite(Number(value));
 
 /** Required money amount, strictly positive (currency units). */
@@ -118,9 +120,10 @@ export const grantSchema = z
   });
 export type GrantForm = z.infer<typeof grantSchema>;
 
-export const budgetSchema = z.object({
+/** The pool's declaration; the mode is the registry's closed pair, held by reference. */
+export const customerSpendPoolSchema = z.object({
   cap: nonNegativeMoney,
-  enforce_mode: z.enum(["alert_only", "blocking"]),
+  enforce_mode: z.enum(SPEND_POOL_ENFORCE_MODE_VALUES),
   hard_stop_pct: z
     .string()
     .trim()
@@ -132,7 +135,7 @@ export const budgetSchema = z.object({
   alert_levels: z.string(),
   fail_closed: z.boolean(),
 });
-export type BudgetForm = z.infer<typeof budgetSchema>;
+export type CustomerSpendPoolForm = z.infer<typeof customerSpendPoolSchema>;
 
 /**
  * Billing-profile floors, entered as RAW WIRE VALUES (contract semantics):

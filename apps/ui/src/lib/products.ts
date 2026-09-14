@@ -42,6 +42,6 @@ export const productLabel = labelMap(TENANT_PRODUCT_LABEL_KEYS);
  */
 export const PRODUCT_DESCRIPTIONS = {
   metering: "Usage events, pricing, analytics, and the audit trail.",
-  billing: "Wallets, credit grants, budgets, invoices, and spend control.",
+  billing: "Wallets, credit grants, customer spend pools, invoices, and spend control.",
   referrals: "Referral programs, attribution, rewards, and payouts.",
 } as const satisfies Record<TenantProduct, string>;
