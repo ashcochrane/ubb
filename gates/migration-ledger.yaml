@@ -416,9 +416,10 @@ entries:
       spelled it three times in a "mode split" paragraph that #459 had
       falsified (a blocking pool now stops work in every mode), and the
       rewritten entry says "a tenant that does not bill through UBB"
-      where it needs the posture at all — slice 6 may reduce this count
-      and may not raise it (§20). The platform glossary's tenant entry
-      still lists the mode by name and stays counted.
+      where it needs the posture at all — a slice may reduce another
+      slice's count and may not raise it (§20). Slice 6 has landed and
+      left it at 14. The platform glossary's tenant entry still lists
+      the mode by name and stays counted.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and

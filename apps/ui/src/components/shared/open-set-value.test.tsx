@@ -1,12 +1,15 @@
 // The console's rule for an open set, proved on `trigger_source` (#454; slice
 // 6 §18; Testing Decisions claim 15).
 //
-// WHY THE PROOF IS HERE AND NOT ON A PAGE. The ticket puts `trigger_source`
-// "where the run page says how a unit ended", and the contract cannot serve
-// that: the field travels on the four terminal webhook payloads
-// (`task.killed`, `task.expired` and their contained-work twins) and on
-// nothing the console reads — `TaskDetailOut` publishes no stop cause, and
-// the deliveries read (`WebhookDeliveryResponse`) publishes no payload body.
+// WHY THE PROOF IS HERE AND NOT ON THE RUN PAGE. The ticket puts
+// `trigger_source` "where the run page says how a unit ended", and the
+// contract still cannot serve THAT page. When this module was written the
+// field travelled on the four terminal webhook payloads (`task.killed`,
+// `task.expired` and their contained-work twins) and on nothing the console
+// read; #465 then put it on `CeilingEpisodeRow`, so Stops and breaches renders
+// it through this component. The run page is still not served:
+// `TaskDetailOut` publishes no stop cause, and the deliveries read
+// (`WebhookDeliveryResponse`) publishes no payload body.
 // The #425 precedent applies: the assertion is delivered where the subject
 // CAN render, and the gap is named. This component is where the rule lives,
 // so this is where it is proved; the values themselves are held by reference
