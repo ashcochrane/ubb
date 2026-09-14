@@ -106,7 +106,8 @@ PRICING_MODE_CHOICES = [
 #
 # THIS IS NOT `reason_code`, AND THE TWO MUST NEVER BE TIDIED TOGETHER. That
 # one answers why work was STOPPED, it is open, and it is UBB-PRODUCED —
-# `apps/platform/work/reasons.py` is its consumer and slice 6 owns it. This one
+# `apps/platform/work/reasons.py` is its consumer and slice 6 settled its seven
+# known values (#457). This one
 # answers why the caller could not deliver, it is closed, and it is
 # CALLER-SUPPLIED. `parent_closed` below and `reasons.PARENT_KILLED` are two
 # concepts for two actors, not a near-miss: the first is what a tenant declares

@@ -125,17 +125,25 @@ route's items, against the single-call body they mirror:
   there is nothing to report.
 - Envelope counters: `accepted`/`rejected`.
 
-Verdict words come from the same registry (`verdicts` section):
-`ingest_rejections` reference problem codes; `reason_codes`, `stop_scopes`,
-and `affordability_reasons` are the vocabularies of the spend-control surface
+Verdict words come from the same published document as the problem codes —
+`openapi/error-codes.json`, its `verdicts` section: `ingest_rejections`
+reference problem codes; `reason_codes`, `stop_scopes`, and
+`affordability_reasons` are the vocabularies of the spend-control surface
 (`apps/platform/work/reasons.py`, `RiskService`, the kernel's admission
-check). `reason_codes` is a mirror of the reason module — the registry's
-seven known `reason_code` values plus the one UBB-produced verdict that is not
-a bound (`task_not_active`) — and `affordability_reasons` is a mirror of the
-registry's `affordability_reason` (the nine known values, produced by constant
-on both sides of the product boundary; the affordability read and the start's
-refusal both answer from it). `api/v1/tests/test_problem_contract.py` pins
-both lists to `core.vocabulary`, so neither mirror can drift (#457, #463).
+check). **The verdicts block is a MIRROR that nothing generates**, so it is
+pinned rather than derived: `reason_codes` mirrors the reason module — the
+registry's seven known `reason_code` values plus the one UBB-produced verdict
+that is not a bound (`task_not_active`) — and `affordability_reasons` mirrors
+the registry's `affordability_reason` (the nine known values, produced by
+constant on both sides of the product boundary; the affordability read and
+the start's refusal both answer from it). The two pins are
+`api/v1/tests/test_problem_contract.py`'s
+`test_the_reason_codes_are_the_registrys_seven_plus_the_one_verdict` (#457)
+and `test_the_affordability_reasons_are_the_registrys_nine` (#463), both
+holding the block to `core.vocabulary` by set equality, so neither mirror can
+drift. Any change to `reasons.ALL_REASONS` or to the registry's
+`affordability_reason` known values opens that file, and the pin says so
+before the console does.
 
 ## Idempotency is a domain concept
 

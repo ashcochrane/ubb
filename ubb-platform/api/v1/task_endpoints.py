@@ -21,7 +21,8 @@ metering-only tenant could not begin work at all and a billing tenant got a
 product wall, a money-shaped admission check and the registration of a unit
 of work fused into one call. That flag is retired here rather than redirected — the clean break is
 available exactly once — and what survives of that call is its read-only half,
-the advisory answer, which stays where it is and is slice 6's to rebuild.
+the advisory answer, which #463 rebuilt as the affordability question at the
+path #154 §3.4 decided, a read at the Read floor (`billing_endpoints.py`).
 
 ⚠ **The move is available exactly once.** ADR-0007 §3 is explicit that a name is
 not broken a second time to repair the first break, so a lifecycle left under

@@ -78,8 +78,10 @@ refused at its floor.
 
 The creation path this replaces — a flag on the billing-gated advisory affordability call — is
 **retired, not redirected**. The advisory call survives as the read-only half it always also was.
-Its replacement name, and the advisory affordability endpoint #141 §3's last row describes, are
-**slice 6's** (#188) and this ADR does not name them.
+Its replacement name, and the advisory affordability endpoint #141 §3's last row describes, were
+**slice 6's** (#188) and this ADR did not name them when it was written; #463 built the read at
+the path #154 §3.4 decided (`GET /billing/customers/{id}/affordability`, at the Read floor,
+registering nothing), and ADR-0014 records it.
 
 ### 2. The registry lives at `/api/v1/task-types`, and the gate came with it
 
@@ -105,7 +107,7 @@ of #141 §3 and §4 as kept:
 | Start, read, list and close at `/api/v1/tasks`, with no product gate | **kept** — built by #409 and #410; a fifth call, the contained-work list, joined them in #413 on the same footing | §1 |
 | The task analytics report stays behind `/metering/`, gated on `metering` | **kept** | §3 |
 | The kind-of-work registry stays at `/metering/task-types` | **superseded** — `/api/v1/task-types`, still gated on `metering`, still Admin to write | §2, and the two facts in Context |
-| The read-only half of the old check becomes `GET /billing/customers/{id}/affordability` | **not built by slice 5**; slice 6's, with the creation path's replacement name | hand-forward on #188 |
+| The read-only half of the old check becomes `GET /billing/customers/{id}/affordability` | **not built by slice 5**; built by slice 6 (#463) at that path, as a read at the Read floor | ADR-0014 |
 
 **The public path says `task-types`; the console says *kinds of work*.** That is not an
 inconsistency. It is ADR-0008 §4's identity/expression split working as designed: the contract
@@ -143,9 +145,9 @@ in Context so a reader need not open it to know which row moved.
 - **Two floors on one concept, deliberately.** Starting and closing a unit of work are the head and
   the tail of usage ingestion and sit on the Write floor beside `POST /metering/usage`; declaring a
   kind of work is Admin. `ubb-platform/api/v1/tests/test_role_floors.py` holds the carve for both.
-- **What #141 named and slice 5 did not build is still owed, and is named here so its absence is
-  not read as a decision**: the advisory affordability endpoint and the replacement name for the
-  retired creation path (slice 6, #188). One more thing sat on the same call and was nobody's
-  when this was written — the prepaid reservation #139 wanted the start to take; slice 6 §5 ruled
-  it in and #461 built it, in the same transaction as the start and released on every terminal
-  path.
+- **What #141 named and slice 5 did not build was still owed when this was written, and was named
+  here so its absence was not read as a decision**: the advisory affordability endpoint and the
+  replacement name for the retired creation path. Slice 6 paid both (#463; ADR-0014 §1). One more
+  thing sat on the same call and was nobody's when this was written — the prepaid reservation
+  #139 wanted the start to take; slice 6 §5 ruled it in and #461 built it, in the same transaction
+  as the start and released on every terminal path (ADR-0014 §4).

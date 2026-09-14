@@ -88,22 +88,27 @@ queries take an explicit `basis`.
 
 **Stop context**:
 The immutable, system-owned array a posting carries when it landed past a stop — one entry per
-limit (`task_limit` / `subtask_limit` / `customer_wide_stop` / `suspended` / `task_not_active`),
-each naming the scope, the trip time, the stop episode (customer scope), and whether the event
-*tipped* the limit (`arrived_after: false`) or arrived after it. Written once at record, inside the
-recording transaction; never from the tenant's own metadata. Soft-floor crossings never mark events.
+control that held the work, each naming the **Stop reason** under the array's `limit` key (the
+unit's own ceiling, `task_cogs_ceiling`, at either altitude — `stop_scope` carries which; the
+customer-wide stop that opened an episode, in the ledger line's own word, `customer_spend_pool` or
+`hard_floor`, one entry per open line since #458; `suspended` for an owner suspended with no open
+episode; `task_not_active` for a late event on terminal work), the scope, the trip time, the stop
+episode (customer scope), and whether the event *tipped* the line (`arrived_after: false`) or
+arrived after it. Written once at record, inside the recording transaction; never from the
+tenant's own metadata. Soft-floor crossings never mark events.
 (`apps/metering/usage/services/stop_context.py`)
 _Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row;
-a value's meaning can be renamed later (`customer_floor` → `customer_wide_stop`,
-billing-surface-correctness task 1) but the historical row itself never changes, so a reader keyed
-on a single current string will silently under-count older events — key on scope/intent, not on an
-allow-listed literal.
+a value's meaning can be renamed later (`customer_floor` → the customer-wide stop's word,
+billing-surface-correctness task 1; the mechanism-named spellings → the bound's own word, #457's
+migration `work/0026` rewrote the unit rows but a posting's array is immutable) so the historical
+row itself never changes, and a reader keyed on a single current string will silently under-count
+older events — key on scope/intent, not on an allow-listed literal.
 
 Note: `stop_context` used to carry a unit-scoped `crossed_floor_snapshot` verdict too — a per-task
 copy of the tenant's wallet-floor default, raced against the task's own frozen balance snapshot.
 Deleted (billing-surface-correctness, task 1): it was blind to mid-task top-ups and independent of
 the customer's real floor. Do not reintroduce a unit-scoped floor check in
-`apps/metering/usage/services/stop_context.py` — the durable drawdown lane's `customer_wide_stop`
+`apps/metering/usage/services/stop_context.py` — the durable drawdown lane's `hard_floor`
 customer-scope tag is the one correct signal for a wallet-wide fact; see **Task floor snapshot
 (removed)** in `apps/platform/CONTEXT.md` for the full reasoning.
 

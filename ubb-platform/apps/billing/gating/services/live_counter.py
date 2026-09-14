@@ -249,8 +249,9 @@ class LiveCounter:
         # amount to debit, which is not the same as an amount that happens to be
         # zero. The counter this maintains races a spend limit, so what it must
         # never do is invent a figure for a posting whose price is unknown —
-        # under-counting is the direction that under-fires, and the ceilings
-        # that read this are slice 6's.
+        # under-counting is the direction that under-fires, and the lines
+        # that read this (the hard floor's and the pool's, #459) fire on the
+        # known figure and never on an invented one.
         if billed_cost_micros is None:
             return None
         if not enforcing(tenant) or billed_cost_micros <= 0:

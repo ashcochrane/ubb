@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,868 of 2,295 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,869 of 2,296 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2199,6 +2199,27 @@ measurement_key:
     # entries left -- the enforce-mode value list and its map, and the family
     # word's console and repo seats -- and the sweep's site count fell
     # 40 -> 38.
+    #
+    # 2026-09-14, #469 (the living documents take the slice's outcomes):
+    # 1,868 of 2,295 -> 1,869 of 2,296 tracked files (`units` 44 files / 122
+    # occurrences, unmoved on the first take AND after the review pass, which
+    # rewrote sentences in six of the files and added no file -- a documents ticket writes
+    # more prose than any other, and the prose that held is "a unit of
+    # work", "one unit of work", "per unit and then across every unit",
+    # "contained work" and "the minor unit"). One tracked file arrived,
+    # swept: ADR-0014, the slice's one ADR, in `docs/adr/`. No other file
+    # arrived or left -- the three glossaries, the two conventions,
+    # ADR-0011 and four docstrings were rewritten in place, and a rewrite
+    # moves neither denominator. No migration, so `historical-migrations`
+    # stays at 260 and the exclusion at 427; no code change beyond
+    # docstrings, so the contract is byte-identical and nothing generated
+    # moved. Four ledger entries left -- the backend seats of the retired
+    # family word and of the three mechanism-named stop words, whose last
+    # backend sites were the glossaries the fold rewrote (the index
+    # forecast exactly these four) -- and one entry was decremented, the
+    # metering-only posture word's backend seat, 15 -> 14, because the
+    # billing glossary's rewritten pool entry no longer needs the posture by
+    # name. The sweep's site count fell 38 -> 34.
 
     - term: units
       retired_as: >-
