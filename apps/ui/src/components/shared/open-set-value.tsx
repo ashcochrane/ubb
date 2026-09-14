@@ -36,10 +36,11 @@
 // on `CeilingEpisodeRow`, on the episode row this console reads. It still does
 // not reach the unit read: `TaskDetailOut` carries no stop cause
 // (`outcome_reason` is the caller's declared verdict, a different closed
-// concept), and `WebhookDeliveryResponse` carries no payload body. So the run
-// page's "How it ended" section does not render a field the unit read does not
-// publish. A later contract change putting the stop cause on the unit read is
-// nobody's yet; the test header names it as a residual.
+// concept), and `WebhookDeliveryResponse` carries no payload body. So the value
+// is held by reference in the legacy adapter, the rule is proved for it in this
+// component's test, and the run page's "How it ended" section does not render a
+// field the unit read does not publish. A later contract change putting the stop
+// cause on the unit read is nobody's yet; the test header names it as a residual.
 
 import { Badge } from "@/components/ui/badge";
 import { resolveLabel } from "@/lib/localisation";

@@ -129,17 +129,21 @@
 # G6 34→28, G7 80→25, G8 5→0, G9 1→1.
 #
 # The flip turned nothing red, so all twenty-three controls were mutation-checked
-# again, and the method needed no addition for the second flip running. The four
-# real-git controls were RELABELLED rather than reverted, as #375 taught; where
-# the fault was a missing field, a bad type, an uninstalled gate, a shared
-# identifier or an unreadable ref the removal took out that cause and nothing
-# else. ALL TWENTY-THREE failed without their cause, and every failure was read
-# rather than counted: twelve `DID NOT RAISE GatesInvalid`, ten an empty fault
-# set against the code they assert, one `assert not True` on a comparison holding
-# nothing. None went red for a reason the removal introduced — each real-git
-# control failed on an empty set, `set() == {'ledger_grew'}` three times and
-# `set() == {'base_unreadable'}` once — no control was vacuous, none had a second
-# cause, and none needed repair. The twin mutates the `UNLANDED_SLICE` sentinel,
+# again, and the method needed no addition. Wherever the fault was an ENTRY the
+# removal RELABELLED it rather than reverting it, as #375 taught — three of the
+# four real-git controls among them. Where it was a missing field, a bad type, an
+# uninstalled gate, a shared identifier or an unreadable ref, the removal took out
+# that cause and nothing else; the fourth real-git control is the unreadable-ref
+# one, whose base was swapped for the ref its own premise has just established as
+# resolvable. ALL TWENTY-THREE failed without their cause, and every failure was
+# read rather than counted: twelve `DID NOT RAISE GatesInvalid`, ten an empty
+# fault set against the code they assert — `{'ledger_grew'}` SIX times, and one
+# each of `{'authorisation_count_wrong'}`, `{'authorisation_inert'}`,
+# `{'debt_deferred'}` and `{'base_unreadable'}` — and one `assert not True` on a
+# comparison holding nothing. None went red for a reason the removal introduced:
+# each real-git control failed on an EMPTY set, `{'ledger_grew'}` three times and
+# `{'base_unreadable'}` once. No control was vacuous, none had a second cause,
+# and none needed repair. The twin mutates the `UNLANDED_SLICE` sentinel,
 # which is slice 8 and which this flip does not name, so it is untouched by
 # construction for the second flip running.
 #

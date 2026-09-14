@@ -16,10 +16,10 @@ to the map that moved it rather than to a literal that would agree with both
 until one of them moved (#370's rule for a module written after a rename).
 
 ⚠ AND EVERY REASON IS ASSERTED BY CONSTANT IDENTITY. The routing rule turns on
-values belonging to a vocabulary this module does not own — slice 6 settled its
-seven (#457) — so a case naming one as a string would be this module spelling
-another product's word and would go stale silently the day its owner renames
-it, which is precisely what happened to the silence
+values belonging to a vocabulary this module does not own — `work/reasons.py`
+holds the seven, which slice 6 settled (#457) — so a case naming one as a string
+would be this module spelling another module's word and would go stale silently
+the day that module renames it, which is precisely what happened to the silence
 window's stop once already (#412), and is why `REAPER_REASONS` has three
 members rather than two.
 
