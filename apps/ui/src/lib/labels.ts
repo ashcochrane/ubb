@@ -383,10 +383,10 @@ export const CEILING_STATUSES = CEILING_STATUS_VALUES;
 // (ADR-0003), so the generated list is `_KNOWN_VALUES` and a value outside it
 // is legal on the wire — the console's rule for such a value is set in
 // `components/shared/open-set-value.tsx` and proved there on these keys. No
-// map, no binding beyond that helper: no read this console makes publishes
-// the field today (it travels on the terminal webhook payloads only), and
-// the words are in the catalogue under `trigger_source.*` for the surface
-// that first does.
+// map, no binding beyond that helper. When this line was written no read this
+// console makes published the field; #465 put it on `CeilingEpisodeRow`, and
+// the Stops and breaches episode card renders it through that helper under the
+// catalogue's `trigger_source.*` words. The unit read still does not carry it.
 export const TRIGGER_SOURCES = TRIGGER_SOURCE_KNOWN_VALUES;
 
 // Why an affordability question was answered no — the registry's nine KNOWN

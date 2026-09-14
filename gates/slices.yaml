@@ -108,6 +108,60 @@
 # the `UNLANDED_SLICE` sentinel rather than any slice this flip names, is
 # untouched by construction. This flip added nothing to the method; it is the
 # first the method survived unchanged.
+#
+# Slice 6's flip (#471) is the fifth a slice makes in its own last ticket, and
+# the first whose forecast was exactly right. Nothing was owed: all 89 of its
+# ledger entries had died in the commits that made them false, no manifest row
+# ever named it, and `unlanded[0]` moved from slice 6 to slice 7 with no control
+# re-pointed.
+#
+# The census was walked by IDENTITY over `git rev-list`, nineteen commits of
+# which thirteen moved the ledger, and it ended at 73 — the ticket's forecast to
+# the entry AND to the gate. That is not the norm and it is not an improvement in
+# forecasting: #427 was wrong by a twin because that twin was slice 6's, paid
+# early inside slice 5's range, and a coupling reaching ACROSS the forecast is
+# what makes a forecast wrong. None was available here. §19 counted both halves
+# of every coupling as this slice's own — the seven G4 contract entries sit
+# inside the 89 beside the backend entries that force them — so every coupling
+# that fired, fired within the forecast. Nothing was born, no owner moved, and
+# no entry this slice did not own died. The per-gate shape is the baseline less
+# slice 6's share at every gate and nowhere else: G2 22→12, G3 6→0, G4 14→7,
+# G6 34→28, G7 80→25, G8 5→0, G9 1→1.
+#
+# The flip turned nothing red, so all twenty-three controls were mutation-checked
+# again, and the method needed no addition for the second flip running. The four
+# real-git controls were RELABELLED rather than reverted, as #375 taught; where
+# the fault was a missing field, a bad type, an uninstalled gate, a shared
+# identifier or an unreadable ref the removal took out that cause and nothing
+# else. ALL TWENTY-THREE failed without their cause, and every failure was read
+# rather than counted: twelve `DID NOT RAISE GatesInvalid`, ten an empty fault
+# set against the code they assert, one `assert not True` on a comparison holding
+# nothing. None went red for a reason the removal introduced — each real-git
+# control failed on an empty set, `set() == {'ledger_grew'}` three times and
+# `set() == {'base_unreadable'}` once — no control was vacuous, none had a second
+# cause, and none needed repair. The twin mutates the `UNLANDED_SLICE` sentinel,
+# which is slice 8 and which this flip does not name, so it is untouched by
+# construction for the second flip running.
+#
+# THE AUTHORING-DIRECTION BREAKS ARE NAMED HERE AND DELIBERATELY NOT FILED.
+# `oasdiff --baseline e54259e1` reports 37 breaks, 19 of them already covered and
+# EIGHTEEN with no committed entry. All eighteen sit on surfaces that post-date
+# `api-v1-launch`, checked against the tag's own document rather than assumed:
+# none of `/api/v1/tasks`, `/api/v1/tasks/{task_id}`,
+# `/api/v1/tasks/{task_id}/subtasks`, `/api/v1/task-types` or
+# `/api/v1/metering/analytics/tasks` is among the 98 paths it published, and the
+# four terminal channels are not among its 35 webhooks — it carries the two the
+# split replaced. So filing them would be eighteen inert lines, and an inert
+# entry turns the cumulative gate red. They are: THIRTEEN from the ceiling
+# rename (#453) — the ceiling field off the start's request and its response (2),
+# off the unit read and the contained work inside it (2), off the list of work
+# and the list of contained work (2), the kind registry's default rung off its
+# read and both halves of its write (3), and the pinned ceiling off all four
+# terminal payloads (4); FOUR from `control_family`
+# arriving as a required property on those same four payloads (#458); and ONE
+# from the reached count leaving the task analytics row (#465). The cumulative
+# gate — the only gate a green local board says nothing about — was run locally
+# with the pinned binary and is green at 101 breaks, 101 reviewed.
 
 version: 1
 
@@ -152,7 +206,7 @@ slices:
     issue: 188
     title: Spend control
     order: 6
-    landed: false
+    landed: true
 
   slice_7:
     issue: 189

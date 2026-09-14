@@ -22,24 +22,24 @@
 // copy (ADR-0008 §4.5), not a label key: no concept declares "unrecognised"
 // as a value.
 //
-// ⚠ ONE COPY. Slice 6's three open concepts are the first the console pays,
-// and this is the helper all three render through — `trigger_source` here,
-// `affordability_reason` and `reason_code` when their surfaces land (spec
-// §18, tickets 12 and 15). A second rendering of the rule in a feature is a
-// defect, because two copies drift and the day one of them humanises is the
-// day ADR-0008 §4.3 is reversed by accident.
+// ⚠ ONE COPY. Slice 6's three open concepts are the first the console paid,
+// and this is the helper all three render through — `trigger_source` on the
+// Stops and breaches episode row, `affordability_reason` in the affordability
+// answer (#463) and `reason_code` wherever a stop is shown (#466). All three
+// surfaces landed inside slice 6. A second rendering of the rule in a feature
+// is a defect, because two copies drift and the day one of them humanises is
+// the day ADR-0008 §4.3 is reversed by accident.
 //
-// THE FIRST BINDING HAS NO WIRE SURFACE YET, AND THAT IS STATED RATHER THAN
-// PAPERED OVER. `trigger_source` — the mechanism that applied a stop —
-// travels on the four terminal webhook payloads and on nothing this console
-// reads: `TaskDetailOut` carries no stop cause (`outcome_reason` is the
-// caller's declared verdict, a different closed concept), and
-// `WebhookDeliveryResponse` carries no payload body. So the value is held by
-// reference in the legacy adapter, the rule is proved for it in this
-// component's test, and the run page's "How it ended" section does not
-// render a field the unit read does not publish. A later contract change
-// putting the stop cause on the unit read is nobody's yet; the test header
-// names it as a residual.
+// THE FIRST BINDING REACHES ONE READ AND NOT THE UNIT READ, AND THAT IS STATED
+// RATHER THAN PAPERED OVER. `trigger_source` — the mechanism that applied a
+// stop — travels on the four terminal webhook payloads and, since #465 put it
+// on `CeilingEpisodeRow`, on the episode row this console reads. It still does
+// not reach the unit read: `TaskDetailOut` carries no stop cause
+// (`outcome_reason` is the caller's declared verdict, a different closed
+// concept), and `WebhookDeliveryResponse` carries no payload body. So the run
+// page's "How it ended" section does not render a field the unit read does not
+// publish. A later contract change putting the stop cause on the unit read is
+// nobody's yet; the test header names it as a residual.
 
 import { Badge } from "@/components/ui/badge";
 import { resolveLabel } from "@/lib/localisation";
