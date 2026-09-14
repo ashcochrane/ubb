@@ -1,8 +1,9 @@
 """Task 5: pins the two-level spend-pool resolution so it stops being folklore.
 
 There are two month-to-date spend counters, deliberately not merged (see the
-billing glossary's "Live counter" entry and its entry for the pool — still under
-the pool's retired name until the fold, #470, rewrites it), and since #459
+billing glossary's "Live counter" and "Customer spend pool" entries — the
+second was still under the pool's retired name when this was written, and the
+fold, #469, rewrote it), and since #459
 they are the pool's TWO DECLARED LEVELS (slice 6 §4):
 
   ``ubb:spend_pool:{seat}:{YYYY-MM}``     -- SEAT-keyed. Drives the start-gate,

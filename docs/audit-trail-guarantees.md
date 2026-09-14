@@ -24,7 +24,7 @@ committed change always leaves one. Coverage spans:
 - **Governance / config** — tenant config (including `enforcement_mode`), Pricing Books and cost
   books, every change to a book (a publish is declared, published or discarded — three answers to
   three different questions, never one entry you read metadata to interpret), customer overrides,
-  the tenant's default markup rung, resolution runs, budgets, billing profiles, auto-top-up,
+  the tenant's default markup rung, resolution runs, customer spend pools, billing profiles, auto-top-up,
   postpaid config, margin thresholds, revenue profiles, webhook configs, plans, referral programs,
   Stripe Connect start, sandbox provisioning.
 - **Membership & key lifecycle** — invitations created/revoked, member roles changed, members
@@ -51,8 +51,8 @@ structurally cannot fall behind the surface.
 
 Each entry carries the **actor**, the **action name**, the **target resource** (type + id), the
 **timestamp**, the request's **correlation id** (linking it to any webhooks the same request
-emitted), and a small **hand-curated metadata** dict chosen per action (e.g. a budget change
-carries the new cap).
+emitted), and a small **hand-curated metadata** dict chosen per action (e.g. a change to a
+customer spend pool carries the new figure).
 
 There is **no automatic before/after snapshot**. Because nothing is captured indiscriminately,
 secrets — webhook signing secrets, raw API keys or their hashes, OAuth nonces, referral link tokens

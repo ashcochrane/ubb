@@ -1,8 +1,8 @@
 # Testing conventions
 
 Stack: **pytest + pytest-django + factory_boy** against **real Postgres and real Redis** (not
-LocMemCache — gating/budget tests need cross-process cache semantics). Run everything from
-`ubb-platform/`.
+LocMemCache — the spend-control tests under `apps/billing/gating/` need cross-process cache
+semantics). Run everything from `ubb-platform/`.
 
 ## Running
 
@@ -42,8 +42,8 @@ existing architecture walkers, which need the app registry loaded.
 ## Two non-obvious guards (in the root `conftest.py`)
 
 1. **Redis DB 15.** The suite is moved onto Redis DB index 15 (override with `UBB_TEST_REDIS_DB`
-   for parallel local runs) so `cache.clear()` / `FLUSHDB` in
-   gating/budget tests never touches app or Celery-broker data (DB 1). Don't hardcode a different
+   for parallel local runs) so `cache.clear()` / `FLUSHDB` in the spend-control tests never
+   touches app or Celery-broker data (DB 1). Don't hardcode a different
    index in a test.
 2. **Stripe network guard (autouse).** A sentinel key is forced and **any un-mocked Stripe network
    call raises `AssertionError`** naming the test. So: mock Stripe explicitly, or your test fails
@@ -81,7 +81,7 @@ rule needs judgment; the legitimate shapes are:
 
 - **Exercise real behavior end-to-end**, not mocks of your own code: record a usage event through
   `UsageService.record_usage`, then run the billing handler, then assert the wallet ledger — the way
-  `apps/billing/gating/tests/test_budget_e2e.py` does.
+  `apps/billing/gating/tests/test_customer_spend_pool_e2e.py` does.
 - **Assert invariants**, since so much of this domain is money and idempotency: a redelivered event
   debits exactly once, a crossing sets the stop flag without rolling the tipping event back, a
   stale task gets reaped. Prefer an invariant assertion over a single golden value.
