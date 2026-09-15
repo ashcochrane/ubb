@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,874 of 2,305 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,883 of 2,314 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2342,6 +2342,28 @@ measurement_key:
     # floor and four of the files that spelled that mode were among the nine
     # deleted or rewritten here. That is the direction #349 recorded — a retired
     # term can be tripped by REMOVING it — and slice 8 still owns the rename.
+    #
+    # 2026-09-15, #498 (the grouping contract's two kinds and its per-tenant
+    # discovery read): 1,874 of 2,305 -> 1,883 of 2,314 tracked files (`units`
+    # 44 files / 122 occurrences, UNMOVED for the fourth consecutive ticket).
+    # NINE files arrived and every one is SWEPT, so both totals move by the same
+    # nine and no exclusion count moves at all — the first ticket of this slice
+    # to add no migration. They are: two test modules, one driving the discovery
+    # read through its route and one holding the three claims that have no route
+    # (the refusal, the join, and that neither kind selects a rule); ONE kernel
+    # read module, which the satellite invariant forced rather than taste — a
+    # module where money is decided may not name a catalogue class, and
+    # metering's read contract is one, so the rollup join answers from beside
+    # the declaration; and SIX generated SDK core modules, which is the
+    # arithmetic #495 recorded rather than a new shape — one operation module
+    # for the new route, three model modules for the row, the envelope and the
+    # refusal it carries, and TWO enum modules, one per closed concept the row
+    # advertises.
+    # ⚠ THE PLURAL WAS REACHED FOR AND CAUGHT IN DRAFTING, which is worth saying
+    # because this slice's own axis word is ordinary English and the warning
+    # generalises: a docstring about what a rollup groups wants to say "every
+    # unit of work", and the safe spellings are that one, "contained work" and
+    # "each whole unit". No occurrence of the plural survives into the commit.
 
     - term: units
       retired_as: >-

@@ -48,6 +48,7 @@ from api.v1.schemas import (
     book_change_body, book_change_diff_out, book_publish_out,
     pricing_book_out, cost_book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
+    GroupingOptionsOut,
 )
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE,
@@ -2051,3 +2052,28 @@ def list_grouping_field_values(request, key: str):
     values = list(GroupingFieldValue.objects.filter(
         tenant=request.auth.tenant, key=key).order_by("value").values_list("value", flat=True))
     return 200, {"key": key, "values": values}
+
+
+@metering_router.get("/analytics/grouping-options", response=GroupingOptionsOut)
+@role_floor(READ)
+def list_grouping_options(request):
+    """What this tenant may group an economic question by — the discovery
+    contract (#498, slice 7 §7).
+
+    `apps/metering/queries.py::grouping_options` computes it and argues what it
+    is for; this is the wire, and the two things the wire itself decides.
+
+    Read floor, and deliberately: a finance operator building a chart is exactly
+    who asks this, and it publishes no amount. The axes it lists are the
+    tenant's own declarations, which the same floor already reads next door.
+
+    UNPAGINATED, on `docs/conventions/api-contract.md`'s *"computed reports are
+    not lists"* clause rather than in spite of its cursor rule. It is computed
+    per tenant; and where that clause asks a report to be parameter-bounded,
+    this one is bounded by CONSTRUCTION — the always-present axes, at most the
+    registry's ten slots, and the two rollups — so there is no window a caller
+    could leave open. The two registry reads beside it answer the same way.
+    """
+    _product_check(request)
+    from apps.metering.queries import grouping_options
+    return {"options": grouping_options(request.auth.tenant.id)}

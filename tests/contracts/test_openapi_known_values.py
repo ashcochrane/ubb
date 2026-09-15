@@ -1195,6 +1195,27 @@ CONCEPTS_IN_THE_CONTRACT = {
     # instead of creating one, and ADR-0007 §3 wants it there. #465's
     # `control_family` filter is the live precedent for the placement.
     "revenue_basis": Published(2, ENUM),
+    # #498 (slice 7 §6/§7) — THE FIRST PAIR THE CONTRACT ADVERTISES FROM ONE
+    # SCHEMA NODE'S WORTH OF ROW, and the first whose backend G2 twins were paid
+    # by COMPUTATION rather than by re-sourcing a list. The discovery contract
+    # answers what one tenant may group by, and every row of it states its own
+    # kind — a column or a join, with materially different cardinality and query
+    # cost, which is exactly what a flat list of axis names would hide.
+    #
+    # ONE NODE EACH, and the asymmetry between the two is the shape of the row
+    # rather than an accounting slip: every option has a kind, so that field is
+    # plain and required; only a rollup option names a rollup, so that field is
+    # nullable and the marker sits INSIDE its string member. A marker on the
+    # union node would have published a field admitting `null` under `anyOf` and
+    # refusing it under `enum` — the contradiction #323 installed its guard for.
+    #
+    # ⚠ THE REQUEST WORD CARRIES THE KIND TOO, AND THIS IS NOT A SECOND COPY OF
+    # IT. A caller sends `field:<name>` or `rollup:<name>`, one word carrying its
+    # own kind; the row states the kind separately so that READING the contract
+    # needs no string splitting. Sending and switching are different acts and the
+    # generator that reads this contract does the second.
+    "analytics_grouping_kind": Published(1, ENUM),  # GroupingOptionOut.kind
+    "analytics_rollup": Published(1, ENUM),         # GroupingOptionOut.rollup
 }
 
 
@@ -1649,6 +1670,16 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("revenue_basis",
            {"SuppliedRevenueWindowOut",
             "/api/v1/margin/customers/{customer_id}/supplied-revenue"})
+
+    # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
+    # ONE. Both on the discovery contract's row and on nothing else, which is
+    # the whole placement argument: an axis's kind is a property of the axis, so
+    # it belongs on the row that describes one. The request word carries the
+    # kind as well, and the parameter that takes that word arrives with the one
+    # economic query; when it does, its line joins these rather than replacing
+    # them, because sending a word and reading what a row IS are different acts.
+    placed("analytics_grouping_kind", {"GroupingOptionOut"})
+    placed("analytics_rollup", {"GroupingOptionOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2468,6 +2499,13 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # module (all 37 by reference, the moment the fifth rename made the
     # catalogue sourceable from the registry) and marked on the four nodes a
     # subscriber configures or reads it through, in the same commit.
-    assert len(_entries(programme)) >= 7, (
+    # 7 -> 5 in #498: `analytics_grouping_kind` and `analytics_rollup`, the
+    # eighth and ninth — TWO in one commit, for #458's reason and not a new
+    # one: they are one vocabulary read from two sides, so a commit paying one
+    # and leaving the other would have published half of it. Both were paid at
+    # the read contract, which now COMPUTES what a tenant may group by rather
+    # than naming the values, and both are marked on the row that computation
+    # publishes. Two entries out, two steps down.
+    assert len(_entries(programme)) >= 5, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

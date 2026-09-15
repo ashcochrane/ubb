@@ -266,6 +266,10 @@ API_V1_METERING_ENDPOINTS_LIST_GROUPING_FIELD_VALUES = Operation(
     'api_v1_metering_endpoints_list_grouping_field_values',
     'get',
     '/api/v1/metering/grouping-fields/{key}/values')
+API_V1_METERING_ENDPOINTS_LIST_GROUPING_OPTIONS = Operation(
+    'api_v1_metering_endpoints_list_grouping_options',
+    'get',
+    '/api/v1/metering/analytics/grouping-options')
 API_V1_METERING_ENDPOINTS_LIST_PRICING_BOOKS = Operation(
     'api_v1_metering_endpoints_list_pricing_books',
     'get',
