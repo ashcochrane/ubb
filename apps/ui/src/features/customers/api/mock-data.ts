@@ -1,11 +1,18 @@
 // Mock fixtures — one coherent story, July 2026.
 //
 // acme-corp     — business customer with two pooled seats, active subscription,
-//                 grants, a blocking pool crossed in July, recurring revenue
-//                 profile; healthy margin.
+//                 grants, a blocking pool crossed in July; healthy margin.
 // luna-labs     — individual on a negative balance (floor stop episodes),
-//                 negative margin, no subscription, no revenue profile.
-// nova-ai       — individual pinned to metered_only; usage tracked at cost.
+//                 negative margin, no subscription.
+// nova-ai       — individual whose supplier cost is INCOMPLETE: four events
+//                 carry a cost UBB never learned, so its totals are bounds.
+//
+// ⚠ TWO OF THOSE THREE LINES DESCRIBED RECORDS THAT NO LONGER EXIST. acme's
+// and luna's named the recurring revenue profile, deleted in #496; nova's
+// said it was "pinned to metered_only", the customer-level revenue switch
+// deleted in #497. Nothing in this roster is pinned to anything now — every
+// customer's billed usage is its revenue — and what makes nova worth having
+// in the story is the incomplete cost, which is what it is really for.
 // acme-corp:eng / acme-corp:research — seats under acme-corp.
 
 import {
@@ -25,7 +32,6 @@ import type {
   CustomerMarginOut,
   GrantOut,
   MarginTrendPointOut,
-  RevenueModeOut,
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
   UsageInvoiceOut,
@@ -161,11 +167,19 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
-    usage_revenue_micros: 0,
+    // ⚠ EVERY MICRO OF IT IS REVENUE SINCE #497, and this row is where that
+    // shows. It used to read 0 here: this customer was the roster's
+    // metered-only one, so a customer-level switch struck its billed usage out
+    // of its revenue and left a margin of minus the whole supplier cost. With
+    // the switch deleted the two usage figures are one figure for every
+    // customer, and this one lands at exactly break-even — which keeps its
+    // real story rather than losing it, because the cost below is INCOMPLETE,
+    // so a margin of zero here is a CEILING and the truth can only be worse.
+    usage_revenue_micros: 88_000_000,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
     unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
-    gross_margin_micros: -88_000_000,
+    gross_margin_micros: 0,
     margin_percentage: 0,
   },
   {
@@ -201,7 +215,6 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     customer_id: CUS_ACME,
     external_id: "acme-corp",
     period: MOCK_PERIOD,
-    revenue_mode: "billed",
     event_count: 48_213,
     subscription_revenue_micros: 199_000_000,
     supplied_revenue_micros: 0,
@@ -218,7 +231,6 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     customer_id: CUS_LUNA,
     external_id: "luna-labs",
     period: MOCK_PERIOD,
-    revenue_mode: "billed",
     event_count: 6_054,
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
@@ -235,25 +247,24 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     customer_id: CUS_NOVA,
     external_id: "nova-ai",
     period: MOCK_PERIOD,
-    revenue_mode: "metered_only",
     event_count: 12_882,
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
-    usage_revenue_micros: 0,
+    // The row's figures, and the row says why they moved in #497.
+    usage_revenue_micros: 88_000_000,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
     // Same four events as the list row above — one customer, one fact.
     unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
-    total_revenue_micros: 0,
-    gross_margin_micros: -88_000_000,
+    total_revenue_micros: 88_000_000,
+    gross_margin_micros: 0,
     margin_percentage: 0,
   },
   [CUS_SEAT_ENG]: {
     customer_id: CUS_SEAT_ENG,
     external_id: "acme-corp:eng",
     period: MOCK_PERIOD,
-    revenue_mode: "billed",
     event_count: 17_502,
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
@@ -270,7 +281,6 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     customer_id: CUS_SEAT_RES,
     external_id: "acme-corp:research",
     period: MOCK_PERIOD,
-    revenue_mode: "billed",
     event_count: 8_907,
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
@@ -328,21 +338,12 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
   };
 });
 
-export const MOCK_REVENUE_MODES: Record<string, RevenueModeOut> = {
-  [CUS_ACME]: { revenue_mode: "", resolved: "billed" },
-  [CUS_LUNA]: { revenue_mode: "", resolved: "billed" },
-  [CUS_NOVA]: { revenue_mode: "metered_only", resolved: "metered_only" },
-  [CUS_SEAT_ENG]: { revenue_mode: "", resolved: "billed" },
-  [CUS_SEAT_RES]: { revenue_mode: "", resolved: "billed" },
-};
-
 export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
   business_id: CUS_ACME,
   external_id: "acme-corp",
   seats: [
     {
       customer_id: CUS_SEAT_ENG,
-      revenue_mode: "billed",
       event_count: 17_502,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 0,
@@ -357,7 +358,6 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
     },
     {
       customer_id: CUS_SEAT_RES,
-      revenue_mode: "billed",
       event_count: 8_907,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 0,

@@ -76,7 +76,6 @@ Family parents: `BadRequestError` (400), `ForbiddenError` (403),
 Per-code leaves include `InsufficientBalanceError`, `WouldOverdrawError`,
 `CurrencyLockedError`, `LastActiveKeyError`, `LastActiveAdminError` (under
 `ConflictError`); `BillingPeriodClosedError`, `InvalidConfigError`,
-`InvalidRevenueModeError`,
 `UnsupportedCurrencyError`, `ValidationError`, the three `EffectiveAt*Error`
 (under `UnprocessableEntityError`); `FeatureNotEnabledError` (under
 `ForbiddenError`); `InvalidCursorError` (under `BadRequestError`);
@@ -234,7 +233,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `withdraw` | `WithdrawResponse` |
 | `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
-| `get_customer_margin` | `CustomerMarginOut` (full body — adds `revenue_mode`, `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
+| `get_customer_margin` | `CustomerMarginOut` (full body — adds `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
 | `get_margin_by_grouping_field` (was `get_margin_by_dimension` — see §8) | `list[GroupingFieldMarginRow]` |
 | `get_margin_trend` | `list[MarginTrendPointOut]` |
 
@@ -631,6 +630,42 @@ of money it was looking at.
   `ubb:carried-from-the-retired-recurring-amount`. An open-ended amount is carried up to the month
   the migration ran in and no further: a per-period record states a period, and the next one is
   yours to state.
+
+The routes pre-date the launch tag, so the removals are recorded in the break block
+(`openapi/oasdiff-err-ignore.txt`) as reviewed breaks.
+
+---
+
+## 15. The customer-level revenue switch is deleted, with no replacement (slice 7, #497 — pre-live)
+
+**`GET`/`PUT /api/v1/margin/customers/{customer_id}/revenue-mode` are gone**, with the request and
+response bodies they carried and the `invalid_revenue_mode` problem code (so
+`InvalidRevenueModeError` is no longer raised and no longer exported).
+
+- `MeteringClient.get_revenue_mode(customer_id)` and
+  `MeteringClient.set_revenue_mode(customer_id, ...)` are **deleted, and nothing replaces them.**
+  This is the one removal in this guide with no forwarding call, so it is worth saying why rather
+  than just where.
+- **The setting answered a question it had no business answering.** It decided, per customer,
+  whether that customer's billed usage counted as revenue at all — defaulting to an answer derived
+  from your workspace's billing mode. That turned *"UBB does not raise this customer's invoices"*
+  into *"this customer produced no revenue"*, which is not the same statement. Whether a given
+  posting carried customer revenue is already recorded on the posting: `pricing_status` is `known`,
+  `waived`, `unknown` or `not_applicable`, and `not_applicable_reason` says which cause applies.
+- **What changes in a response you already read.** For a customer the switch had resolved away from
+  billed usage, `usage_revenue_micros` was `0` and `gross_margin_micros` was the negative of the
+  supplier cost. Both now carry the figures that customer's own postings state.
+  `usage_revenue_micros` and `usage_billed_micros` are consequently the same number on every margin
+  response; both are kept for now, and the one economic query that replaces these routes is where
+  the shape is settled.
+- **The switch's own field is removed from `CustomerMarginOut` and `SeatMarginOut`.** It is named
+  descriptively here rather than spelled, because the spelling is a retired term whose ledger entry
+  this same change pays — after which the sweep refuses it on every living SDK file, this guide
+  included. If you were branching on that field, the branch has no subject: there is one behaviour
+  for every tenant.
+- **If you bill your customers outside UBB and want a revenue figure UBB can report on**, state it
+  with the per-period supplied revenue record in §14 — that is the supported way to supply revenue
+  UBB cannot see, and it carries its own period, currency, recognition method and source reference.
 
 The routes pre-date the launch tag, so the removals are recorded in the break block
 (`openapi/oasdiff-err-ignore.txt`) as reviewed breaks.

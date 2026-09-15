@@ -85,9 +85,13 @@ class MarginEndpointsTest(TestCase):
         assert b["usage_billed_micros"] == 1_300_000
         assert b["supplied_revenue_micros"] == expected_supplied
         assert b["subscription_revenue_micros"] == 0
-        # metered_only mode: usage excluded from revenue; margin = revenue - provider_cost
-        assert b["gross_margin_micros"] == expected_supplied - 1_000_000
-        assert b["total_revenue_micros"] == expected_supplied
+        # Both revenue sources reach the margin, and the billed usage is one of
+        # them for this tenant as for any other (#497): the switch that used to
+        # strike it out is deleted, so the margin is supplied + billed - cost.
+        assert b["usage_revenue_micros"] == 1_300_000
+        assert (b["gross_margin_micros"]
+                == expected_supplied + 1_300_000 - 1_000_000)
+        assert b["total_revenue_micros"] == expected_supplied + 1_300_000
 
     def test_a_customer_with_no_supplied_figure_reads_nothing_supplied(self):
         """The other posture, which must stay first-class (#153 §3.2).

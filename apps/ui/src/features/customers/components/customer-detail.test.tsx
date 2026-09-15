@@ -4,9 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
 
 import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
+import type { CustomerMarginOut } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
 import { CustomerDetailPage } from "./customer-detail-page";
+import { OverviewTab } from "./overview-tab";
 
 const SLOW = { timeout: 5000 };
 
@@ -45,6 +47,61 @@ describe("CustomerDetailPage — overview", () => {
       />,
     );
     expect(await screen.findByTestId("injected", undefined, SLOW)).toBeInTheDocument();
+  });
+
+  // ⚠ A FIXTURE THE MOCK DOES NOT AUTHOR, and that is what makes this case
+  // able to fail. Every margin detail the customers mock serves has
+  // `supplied_revenue_micros: 0`, and a zero cannot tell a three-way sum from
+  // a two-way one — the exact shape #496 was caught by. All three sources
+  // here are non-zero and distinct, so dropping any one of the cards, or
+  // wiring one to the wrong field, changes what this asserts.
+  it("breaks the total revenue into three sources that add up to it", async () => {
+    const SUBSCRIPTION = 100_000_000;
+    const SUPPLIED = 250_000_000;
+    const USAGE = 40_000_000;
+    const COST = 90_000_000;
+    const margin: CustomerMarginOut = {
+      customer_id: CUS_ACME,
+      external_id: "not-a-business",
+      period: { start: "2026-07-01", end: "2026-07-24" },
+      event_count: 12,
+      subscription_revenue_micros: SUBSCRIPTION,
+      supplied_revenue_micros: SUPPLIED,
+      usage_billed_micros: USAGE,
+      // ONE FIGURE UNDER TWO NAMES SINCE #497. The customer-level switch that
+      // could make these differ is deleted, so a fixture that moved only one
+      // of them would describe a response the server cannot produce.
+      usage_revenue_micros: USAGE,
+      provider_cost_micros: COST,
+      unresolved_event_count: 0,
+      unpriced_event_count: 0,
+      total_revenue_micros: SUBSCRIPTION + SUPPLIED + USAGE,
+      gross_margin_micros: SUBSCRIPTION + SUPPLIED + USAGE - COST,
+      margin_percentage: 76.92,
+    };
+
+    renderWithProviders(
+      <OverviewTab
+        customerId={CUS_ACME}
+        margin={margin}
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    // The headline, and the three cards that explain it.
+    expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
+    expect(screen.getByText("Subscription revenue")).toBeInTheDocument();
+    expect(screen.getByText("$100.00")).toBeInTheDocument();
+    expect(screen.getByText("Supplied revenue")).toBeInTheDocument();
+    expect(screen.getByText("$250.00")).toBeInTheDocument();
+    expect(screen.getByText("Usage billed")).toBeInTheDocument();
+    expect(screen.getByText("$40.00")).toBeInTheDocument();
+
+    // ⚠ AND THERE IS NO FOURTH CARD. A separate "counted as revenue" figure
+    // existed only because the deleted switch could answer "none of it"; with
+    // it gone that card showed the same number as the one above it, and two
+    // cards showing one number is how a reader stops trusting either.
+    expect(screen.queryByText("Usage counted as revenue")).not.toBeInTheDocument();
   });
 
   it("shows the not-found state for an unknown customer", async () => {

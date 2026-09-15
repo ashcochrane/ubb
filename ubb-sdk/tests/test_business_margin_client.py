@@ -2,40 +2,49 @@ import unittest
 from unittest.mock import patch, MagicMock
 from ubb.metering import MeteringClient
 
+#: One business, two seats, and the shape the route actually serves.
+#:
+#: ⚠ **IT DESCRIBED A RESPONSE NOBODY CAN SERVE UNTIL #497.** Every seat here
+#: carried a billed usage figure and `usage_revenue_micros: 0` beside it, with
+#: `total_revenue_micros: 0` and a positive margin underneath - arithmetic that
+#: only held while a customer-level switch could strike billed usage out of a
+#: customer's revenue. That switch is deleted, the two usage figures are one
+#: figure on every row, and the totals follow: a seat billing 500,000 against
+#: 200,000 of supplier cost has 500,000 of revenue and 300,000 of margin.
+#: The margins are unchanged, which is the tell that they were always the
+#: billed-minus-cost figure the deleted branch computed by another route.
 BUSINESS_MARGIN_FIXTURE = {
     "business_id": "00000000-0000-0000-0000-000000000001",
     "external_id": "biz",
     "totals": {
         "subscription_revenue_micros": 0,
-        "usage_revenue_micros": 0,
+        "usage_revenue_micros": 800_000,
         "provider_cost_micros": 300_000,
-        "total_revenue_micros": 0,
+        "total_revenue_micros": 800_000,
         "gross_margin_micros": 500_000,
         "event_count": 2,
     },
     "seats": [
         {
             "customer_id": "00000000-0000-0000-0000-000000000002",
-            "revenue_mode": "metered_only",
             "subscription_revenue_micros": 0,
             "usage_billed_micros": 500_000,
-            "usage_revenue_micros": 0,
+            "usage_revenue_micros": 500_000,
             "provider_cost_micros": 200_000,
-            "total_revenue_micros": 0,
+            "total_revenue_micros": 500_000,
             "gross_margin_micros": 300_000,
-            "margin_percentage": 0.0,
+            "margin_percentage": 60.0,
             "event_count": 1,
         },
         {
             "customer_id": "00000000-0000-0000-0000-000000000003",
-            "revenue_mode": "metered_only",
             "subscription_revenue_micros": 0,
             "usage_billed_micros": 300_000,
-            "usage_revenue_micros": 0,
+            "usage_revenue_micros": 300_000,
             "provider_cost_micros": 100_000,
-            "total_revenue_micros": 0,
+            "total_revenue_micros": 300_000,
             "gross_margin_micros": 200_000,
-            "margin_percentage": 0.0,
+            "margin_percentage": 66.67,
             "event_count": 1,
         },
     ],

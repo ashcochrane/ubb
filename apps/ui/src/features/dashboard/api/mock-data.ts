@@ -9,11 +9,20 @@
 //
 // The story: "Acme AI" resells LLM/API usage to acme-corp (a business with
 // two pooled seats), luna-labs, and nova-ai. Month-to-date the workspace has
-// $764.90 total revenue ($199 subscriptions + $565.90 usage revenue),
+// $852.90 total revenue ($199 subscriptions + $653.90 usage revenue),
 // $653.90 usage billed, $563.60 provider cost, and two unprofitable
-// customers (luna-labs runs at a loss; nova-ai is metered-only with real
-// COGS and no recognised revenue). Every breakdown below sums exactly to
-// those totals so the page reads as one consistent business.
+// customers (luna-labs runs at a loss; nova-ai sits at break-even against
+// an INCOMPLETE supplier cost, so even that figure is a ceiling). Every
+// breakdown below sums exactly to those totals so the page reads as one
+// consistent business.
+//
+// ⚠ THOSE FIGURES MOVED IN #497 AND THIS PARAGRAPH IS WHY THEY ARE WRITTEN
+// DOWN. It read $764.90 total and $565.90 usage revenue — the same totals
+// less nova-ai's $88.00, which a customer-level revenue switch struck out of
+// its revenue — and described that customer as having no recognised revenue
+// at all. The switch is deleted, every customer's billed usage is its
+// revenue, and the promise in the last sentence is the thing that would have
+// quietly become false.
 
 import { completeTotal, incompleteTotal } from "@/lib/economic-scenarios";
 
@@ -110,8 +119,10 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     margin_percentage: -35.7,
   },
   {
-    // nova-ai — metered-only: real COGS, no recognised revenue, and THE ONE
-    // CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE (#330). Four of its
+    // nova-ai — THE ONE CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE
+    // (#330), which is what it is really for. It read "metered-only: real
+    // COGS, no recognised revenue" until #497 deleted the switch that made
+    // that true of it. Four of its
     // events carry a supplier cost UBB never learned, so its provider total is
     // a floor and its margin a ceiling — and the console has to say so rather
     // than print both as figures. Kept in sync by hand with the customers
@@ -122,11 +133,19 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
-    usage_revenue_micros: 0,
+    // ⚠ EVERY MICRO OF IT IS REVENUE SINCE #497, and this row is where that
+    // shows. It used to read 0 here: this customer was the roster's
+    // metered-only one, so a customer-level switch struck its billed usage out
+    // of its revenue and left a margin of minus the whole supplier cost. With
+    // the switch deleted the two usage figures are one figure for every
+    // customer, and this one lands at exactly break-even — which keeps its
+    // real story rather than losing it, because the cost below is INCOMPLETE,
+    // so a margin of zero here is a CEILING and the truth can only be worse.
+    usage_revenue_micros: 88_000_000,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
     unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
-    gross_margin_micros: -88_000_000,
+    gross_margin_micros: 0,
     margin_percentage: 0,
   },
   {
@@ -164,7 +183,10 @@ export function mockMarginSummary(window: Window): MarginSummary {
     subscription_revenue_micros: 199_000_000,
     supplied_revenue_micros: 0,
     usage_billed_micros: 653_900_000,
-    usage_revenue_micros: 565_900_000,
+    // The whole billed total, because every customer's billed usage is
+    // revenue since #497. It read 565,900,000 — the same figure less nova-ai's
+    // 88,000,000, which the deleted switch struck out.
+    usage_revenue_micros: 653_900_000,
     provider_cost_micros: WINDOW_PROVIDER_COST.micros,
     // The exact sum over MOCK_MARGIN_CUSTOMERS, this figure included: only
     // nova-ai holds uncosted events, so the window's total is a floor by the
@@ -172,9 +194,12 @@ export function mockMarginSummary(window: Window): MarginSummary {
     // arithmetic rather than a promise (#371).
     unresolved_event_count: WINDOW_PROVIDER_COST.unresolved_event_count,
     unpriced_event_count: 0,
-    total_revenue_micros: 764_900_000,
-    gross_margin_micros: 201_300_000,
-    margin_percentage: 26.32,
+    // 199,000,000 subscription + 0 supplied + 653,900,000 billed usage.
+    total_revenue_micros: 852_900_000,
+    // 852,900,000 - 563,600,000 supplier cost, and the exact sum of the five
+    // rows' margins above (267.5 - 14.7 + 0 + 24.1 + 12.4, in millions).
+    gross_margin_micros: 289_300_000,
+    margin_percentage: 33.92,
     customer_count: 5,
   };
 }
@@ -185,13 +210,19 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
     {
       customer_id: CUSTOMER_IDS.nova,
       external_id: "nova-ai",
-      gross_margin_micros: -88_000_000,
+      // BREAK-EVEN, NOT MINUS THE WHOLE COST (#497) — the roster row above
+      // carries the reason. Still on this list, and the list is why the change
+      // is worth reading twice: unprofitable is a THRESHOLD verdict the
+      // alerting record holds, not "the margin is negative", so a customer
+      // sitting at 0% against a minimum of 15% belongs here exactly as before.
+      gross_margin_micros: 0,
       // The count is the ROSTER ROW's, not a second literal: this is the same
       // customer over the same window, and a margin beside a non-zero count is
-      // a CEILING for exactly those events (#371).
+      // a CEILING for exactly those events (#371). At zero that is the
+      // sharpest form of it: the displayed margin is the best case.
       unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
-      margin_percentage: -100,
+      margin_percentage: 0,
     },
     {
       customer_id: CUSTOMER_IDS.luna,

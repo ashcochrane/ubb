@@ -279,7 +279,12 @@ AUDIT_ACTIONS = (
     "event_category.withdrawn",
     # margin / revenue
     "margin_threshold.set",
-    "revenue_mode.set",
+    # THE CUSTOMER-LEVEL REVENUE SWITCH'S "set" ACTION WAS HERE AND IS GONE
+    # (#497, slice 7 §9), with the route that raised it. Named descriptively
+    # rather than spelled: its G7 ledger entry is paid in this same commit, and
+    # afterwards the word is refused on every swept backend file — a comment
+    # explaining why an entry died is exactly where that trap fires (#496).
+    # Nothing recorded becomes unrecorded: the act it recorded no longer exists.
     # WHAT THE TENANT EARNED SOMEWHERE OTHER THAN UBB, supplied for one
     # customer over one period (#495, slice 7 §9). The registry has carried
     # this name since #154 §3.7 ruled the recurring profile a per-period

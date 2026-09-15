@@ -1842,10 +1842,6 @@
             "title": "Provider Cost Micros",
             "type": "integer"
           },
-          "revenue_mode": {
-            "title": "Revenue Mode",
-            "type": "string"
-          },
           "subscription_revenue_micros": {
             "title": "Subscription Revenue Micros",
             "type": "integer"
@@ -1877,7 +1873,6 @@
         },
         "required": [
           "customer_id",
-          "revenue_mode",
           "subscription_revenue_micros",
           "supplied_revenue_micros",
           "usage_billed_micros",
@@ -6861,35 +6856,6 @@
         "title": "RevenueAnalyticsResponse",
         "type": "object"
       },
-      "RevenueModeIn": {
-        "properties": {
-          "revenue_mode": {
-            "default": "",
-            "title": "Revenue Mode",
-            "type": "string"
-          }
-        },
-        "title": "RevenueModeIn",
-        "type": "object"
-      },
-      "RevenueModeOut": {
-        "properties": {
-          "resolved": {
-            "title": "Resolved",
-            "type": "string"
-          },
-          "revenue_mode": {
-            "title": "Revenue Mode",
-            "type": "string"
-          }
-        },
-        "required": [
-          "revenue_mode",
-          "resolved"
-        ],
-        "title": "RevenueModeOut",
-        "type": "object"
-      },
       "RuleTermsOut": {
         "description": "What a rule charges, how it derives it, and which arithmetic it runs.\n\nEverything a change may move, so a `before` and an `after` side by side are\na complete account of what a publish does to a rule. `rate_structure`\ndecides which of the money terms is actually spent, so a rule going from a\nper-unit charge to a fixed component would read as *\"nothing moved\"* from\nthe terms alone.",
         "properties": {
@@ -6974,10 +6940,6 @@
             "title": "Provider Cost Micros",
             "type": "integer"
           },
-          "revenue_mode": {
-            "title": "Revenue Mode",
-            "type": "string"
-          },
           "subscription_revenue_micros": {
             "title": "Subscription Revenue Micros",
             "type": "integer"
@@ -7009,7 +6971,6 @@
         },
         "required": [
           "customer_id",
-          "revenue_mode",
           "subscription_revenue_micros",
           "supplied_revenue_micros",
           "usage_billed_micros",
@@ -13073,104 +13034,6 @@
           }
         ],
         "summary": "Customer Margin"
-      }
-    },
-    "/api/v1/margin/customers/{customer_id}/revenue-mode": {
-      "get": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_get_revenue_mode",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevenueModeOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Revenue Mode"
-      },
-      "put": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_put_revenue_mode",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RevenueModeIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevenueModeOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Put Revenue Mode"
       }
     },
     "/api/v1/margin/customers/{customer_id}/supplied-revenue": {

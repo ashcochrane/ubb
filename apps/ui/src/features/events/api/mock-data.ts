@@ -1087,7 +1087,6 @@ function marginDetail(
     customer_id: row.customer_id,
     external_id: externalId,
     period: MARGIN_PERIOD,
-    revenue_mode: "billed",
     event_count: eventCount,
     subscription_revenue_micros: row.subscription_revenue_micros,
     supplied_revenue_micros: 0,

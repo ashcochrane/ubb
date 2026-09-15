@@ -27,7 +27,6 @@ import {
   MOCK_GRANTS,
   MOCK_MARGIN_DETAILS,
   MOCK_MARGIN_ROWS,
-  MOCK_REVENUE_MODES,
   MOCK_SUB_INVOICES,
   MOCK_SUBSCRIPTIONS,
   MOCK_TRANSACTIONS,
@@ -57,7 +56,6 @@ import type {
   MarginListOut,
   MarginTrendOut,
   AffordabilityResponse,
-  RevenueModeOut,
   StatusResponse,
   StripeSubscriptionOut,
   SubscribeIn,
@@ -84,8 +82,6 @@ const grants: Record<string, GrantOut[]> = structuredClone(MOCK_GRANTS);
 const pools: Record<string, CustomerSpendPoolOut> = structuredClone(MOCK_CUSTOMER_SPEND_POOLS);
 const billingProfiles: Record<string, CustomerBillingProfileOut> =
   structuredClone(MOCK_BILLING_PROFILES);
-const revenueModes: Record<string, RevenueModeOut> =
-  structuredClone(MOCK_REVENUE_MODES);
 const subscriptions: Record<string, StripeSubscriptionOut> =
   structuredClone(MOCK_SUBSCRIPTIONS);
 
@@ -227,32 +223,6 @@ export async function getMarginTrend(
   };
 }
 
-export async function getRevenueMode(customerId: string): Promise<RevenueModeOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  return revenueModes[customerId] ?? { revenue_mode: "", resolved: "billed" };
-}
-
-export async function putRevenueMode(
-  customerId: string,
-  revenueMode: string,
-): Promise<RevenueModeOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  if (revenueMode !== "" && revenueMode !== "billed" && revenueMode !== "metered_only") {
-    throw new ApiProblem({
-      status: 422,
-      code: "invalid_revenue_mode",
-      title: "Invalid revenue mode",
-      detail: `revenue_mode must be one of '', 'billed', 'metered_only'; got '${revenueMode}'`,
-    });
-  }
-  const resolved = revenueMode === "" ? "billed" : revenueMode;
-  const saved: RevenueModeOut = { revenue_mode: revenueMode, resolved };
-  revenueModes[customerId] = saved;
-  return saved;
-}
-
 export async function getBusinessMargin(
   externalId: string,
   _range: DateRange,
@@ -304,7 +274,6 @@ export async function createCustomer(
     ...zeroRow,
     external_id: body.external_id,
     period: { start: "2026-07-01", end: "2026-07-24" },
-    revenue_mode: "billed",
     event_count: 0,
     total_revenue_micros: 0,
   };

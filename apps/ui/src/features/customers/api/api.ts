@@ -38,7 +38,6 @@ import {
   type MarginListOut,
   type MarginTrendOut,
   type AffordabilityResponse,
-  type RevenueModeOut,
   type StatusResponse,
   type StripeSubscriptionOut,
   type SubscribeIn,
@@ -89,25 +88,13 @@ export async function getMarginTrend(
 // figure per period with its own span and its own source reference, and the
 // panel that writes it is #508's.
 
-export async function getRevenueMode(customerId: string): Promise<RevenueModeOut> {
-  return unwrap(
-    await marginApi.GET("/customers/{customer_id}/revenue-mode", {
-      params: { path: { customer_id: customerId } },
-    }),
-  );
-}
-
-export async function putRevenueMode(
-  customerId: string,
-  revenueMode: string,
-): Promise<RevenueModeOut> {
-  return unwrap(
-    await marginApi.PUT("/customers/{customer_id}/revenue-mode", {
-      params: { path: { customer_id: customerId } },
-      body: { revenue_mode: revenueMode },
-    }),
-  );
-}
+// AND THE REVENUE-SWITCH PAIR WAS HERE AND IS GONE TOO (#497, slice 7 section
+// 9) - one path, two operations, which with the pair above completes what
+// phase A takes off this module. It read and wrote a per-customer override of
+// whether that customer's billed usage was revenue, resolved from the
+// workspace's billing mode wherever it was unset. Who raises a customer's
+// invoices is not who earned the money: each posting's own price status says
+// whether it carried revenue, and nothing above it has to guess.
 
 export async function getBusinessMargin(
   externalId: string,

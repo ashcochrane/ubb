@@ -61,14 +61,19 @@ describe("CustomerEconomicsTable", () => {
     expect(dataRowText(1)).toContain("4c3f6d51…");
   });
 
-  it("marks negative margins and links every row to the customer page", async () => {
+  it("bounds an incomplete margin and links every row to the customer page", async () => {
     renderWithClient(
       <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
     );
 
-    // nova-ai: negative gross margin rendered from the API's figures — and
-    // bounded, because it is the one customer holding uncosted events (#330).
-    expect(await screen.findByText("at most -$88.00")).toBeInTheDocument();
+    // nova-ai: gross margin rendered from the API's figures — and bounded,
+    // because it is the one customer holding uncosted events (#330).
+    // ⚠ IT READ "at most -$88.00" UNTIL #497 and the case was named for the
+    // minus sign. That figure was the deleted switch's: this customer's
+    // billed usage was struck out of its revenue, leaving a margin of minus
+    // the whole supplier cost. The BOUND is the subject here and survives
+    // unchanged; luna-labs below is the roster's genuinely negative row.
+    expect(await screen.findByText("at most $0.00")).toBeInTheDocument();
     const acmeLink = screen.getByRole("link", { name: "1f0c9c4e…" });
     expect(acmeLink).toHaveAttribute(
       "title",

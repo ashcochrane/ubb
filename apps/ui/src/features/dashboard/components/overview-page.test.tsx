@@ -38,13 +38,17 @@ describe("OverviewPage", () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
     // Total revenue / COGS / margin% from the mock margin summary.
-    expect(await screen.findByText("$764.90")).toBeInTheDocument();
+    // ⚠ $764.90 UNTIL #497: the window total excluded nova-ai's $88.00 of
+    // billed usage, which the deleted customer-level switch did not count as
+    // revenue. Every customer's billed usage is revenue now, so the total is
+    // the whole of it and the margin percentage below rises with it.
+    expect(await screen.findByText("$852.90")).toBeInTheDocument();
     // THE HEADLINE COGS IS A FLOOR, and it says so (#330). The mock window
     // holds four events whose supplier cost UBB never learned, so the total
     // over them can only be higher — and the margin computed against it can
     // only be lower.
     expect(screen.getByText("at least $563.60")).toBeInTheDocument();
-    expect(screen.getByText("at most 26.3% margin")).toBeInTheDocument();
+    expect(screen.getByText("at most 33.9% margin")).toBeInTheDocument();
     expect(screen.getByText("Customers with usage")).toBeInTheDocument();
     // Events total from the windowed usage analytics.
     expect(await screen.findByText("93.6k")).toBeInTheDocument();
@@ -57,10 +61,12 @@ describe("OverviewPage", () => {
     // (acme-corp has the highest revenue in the shared mock roster).
     expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
     expect(screen.getByText("View all customers")).toBeInTheDocument();
-    // nova-ai's negative gross margin renders signed AND bounded: it is the one
-    // customer in the mock story holding uncosted events, so its margin is an
-    // upper bound — the unlearned costs can only take it further down (#330).
-    expect(screen.getByText("at most -$88.00")).toBeInTheDocument();
+    // nova-ai's gross margin renders bounded: it is the one customer in the
+    // mock story holding uncosted events, so its margin is an upper bound —
+    // the unlearned costs can only take it further down (#330). It is
+    // break-even rather than minus its whole cost since #497; the bound is
+    // the claim, and at zero it is at its most load-bearing.
+    expect(screen.getByText("at most $0.00")).toBeInTheDocument();
   });
 
   // The other side of the same fact, on the same page. A count belongs to the
@@ -87,7 +93,7 @@ describe("OverviewPage", () => {
     // economics table below already bounds nova-ai's margin, and this alert
     // reads the same customer from a response carrying the same count — an
     // alert about unprofitability is the last place to overstate a margin.
-    expect(screen.getByText("at most -$88.00 margin")).toBeInTheDocument();
+    expect(screen.getByText("at most $0.00 margin")).toBeInTheDocument();
     // luna-labs' costs are all known, so its margin is the figure it is.
     expect(screen.getByText("-$14.70 margin")).toBeInTheDocument();
     // Threshold-aware copy links to the margin-alert settings.

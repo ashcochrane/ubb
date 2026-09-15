@@ -53,6 +53,10 @@ describe("margin list sorting and filtering", () => {
       ...MOCK_MARGIN_ROWS[0]!,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 400_000_000,
+      // Both, together: since #497 the wire cannot carry one without the
+      // other, and `listRowRevenueMicros` reading only the revenue side is
+      // no reason for a fixture to describe a row nobody can serve.
+      usage_billed_micros: 100_000_000,
       usage_revenue_micros: 100_000_000,
     };
     expect(listRowRevenueMicros(row)).toBe(500_000_000);

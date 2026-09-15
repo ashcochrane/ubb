@@ -38,9 +38,9 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 163
+  operations: 161
   unwrapped: 83
-  wrapped: 80
+  wrapped: 78
   generated_only: 83
   not_yet_wrapped: 0
 
@@ -803,12 +803,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_margin
-  - operation_id: apps_subscriptions_api_margin_endpoints_get_revenue_mode
-    method: GET
-    path: /api/v1/margin/customers/{customer_id}/revenue-mode
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_revenue_mode
   - operation_id: apps_subscriptions_api_margin_endpoints_get_supplied_revenue
     method: GET
     path: /api/v1/margin/customers/{customer_id}/supplied-revenue
@@ -843,12 +837,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_unprofitable_customers
-  - operation_id: apps_subscriptions_api_margin_endpoints_put_revenue_mode
-    method: PUT
-    path: /api/v1/margin/customers/{customer_id}/revenue-mode
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.set_revenue_mode
   - operation_id: apps_subscriptions_api_margin_endpoints_put_threshold
     method: PUT
     path: /api/v1/margin/threshold

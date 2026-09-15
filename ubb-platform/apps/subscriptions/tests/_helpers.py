@@ -53,6 +53,23 @@ def a_tenant_billing_its_customers_elsewhere(name="Bills elsewhere",
     return tenant, customer
 
 
+def a_tenant_ubb_invoices(name="Invoiced by UBB", external_id="c1"):
+    """The mirror: a tenant whose customers UBB bills, and one of its customers.
+
+    ⚠ **IT LIVES HERE BECAUSE THE PAIR IS THE POINT** (#497). The helper above
+    describes the posture that is easy to build badly; this one describes the
+    ordinary posture, and the assertion that matters is that the two get the
+    SAME answer from the same facts. A fixture for either one alone cannot make
+    that comparison, so a module holding only one of them is a module that has
+    to re-scaffold the other by hand — which is exactly what
+    `docs/conventions/testing.md` puts shared setup here to stop.
+    """
+    tenant = Tenant.objects.create(
+        name=name, products=["metering", "billing"], billing_mode="postpaid")
+    customer = Customer.objects.create(tenant=tenant, external_id=external_id)
+    return tenant, customer
+
+
 def a_supplied_figure(**stated):
     """The fields of one supplied revenue record, with this fixture's defaults.
 

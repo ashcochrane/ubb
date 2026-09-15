@@ -80,10 +80,6 @@
       "status": 400,
       "title": "Invalid cursor"
     },
-    "invalid_revenue_mode": {
-      "status": 422,
-      "title": "Invalid revenue mode"
-    },
     "invalid_tenant_id": {
       "status": 422,
       "title": "Invalid tenant id"

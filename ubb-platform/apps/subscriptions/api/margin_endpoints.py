@@ -27,7 +27,6 @@ from apps.subscriptions.economics.services import (
     MARGIN_REVENUE_BASIS, MarginService, total_revenue_micros)
 from apps.subscriptions.api.margin_schemas import (
     MarginThresholdIn, MarginThresholdOut,
-    RevenueModeIn, RevenueModeOut,
     MarginSummaryOut, MarginByGroupingFieldOut, UnprofitableOut, MarginListOut,
     CustomerMarginOut, MarginTrendOut, BusinessMarginOut, RevenueBasis,
     SuppliedRevenueWindowOut, TenantSuppliedRevenueIn, TenantSuppliedRevenueOut)
@@ -69,8 +68,6 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     from apps.metering.queries import get_per_customer_cost_totals
     from apps.subscriptions.economics.revenue import RevenueService
     rows = get_per_customer_cost_totals(tenant.id, s, e)
-    cust = {c.id: c for c in Customer.objects.filter(
-        id__in=[r["customer_id"] for r in rows], tenant=tenant)}
     total_provider = total_billed = total_sub = total_usage_rev = 0
     # THE THIRD SOURCE, ADDED UP UNDER ITS OWN NAME (#496). It travels beside
     # the Stripe total rather than inside it, all the way to the wire, so a
@@ -100,8 +97,16 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
         # The loop itself is what slice 7's one economic query replaces.
         total_supplied += SuppliedRevenueService.attributed_total(
             tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
-        if RevenueService.resolve_revenue_mode(tenant, cust[r["customer_id"]]) == "billed":
-            total_usage_rev += r["billed_cost_micros"]
+        # EVERY ROW'S BILLED TOTAL IS REVENUE (#497). A per-customer setting
+        # used to decide whether this line ran at all, which made a tenant-wide
+        # revenue figure depend on who raises the invoices rather than on what
+        # was sold. `_compose` carries the argument.
+        #
+        # ⚠ THE TICKET SAYS "THE COMPOSITION BRANCH" AND THE TREE HAD THREE
+        # COPIES OF IT — that one, this loop, and the per-customer list below.
+        # All three are gone; the duplication itself is what the collapse
+        # (slice 7 §1) removes, by leaving one query where three loops are.
+        total_usage_rev += r["billed_cost_micros"]
     total_revenue = total_revenue_micros(total_sub, total_supplied, total_usage_rev)
     margin = total_revenue - total_provider
     return {
@@ -403,45 +408,16 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
     }
 
 
-_VALID_MODES = {"", "billed", "metered_only"}
-
-
-@margin_router.get("/customers/{customer_id}/revenue-mode", response=RevenueModeOut)
-@role_floor(READ)
-def get_revenue_mode(request, customer_id: UUID):
-    _product_check(request)
-    from apps.subscriptions.economics.revenue import RevenueService
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    return {"revenue_mode": customer.revenue_mode,
-            "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
-
-
-@margin_router.put(
-    "/customers/{customer_id}/revenue-mode",
-    response={200: RevenueModeOut, 404: ProblemOut, 422: ProblemOut},
-)
-@role_floor(ADMIN)
-@records_audit("revenue_mode.set")
-def put_revenue_mode(request, customer_id: UUID, payload: RevenueModeIn):
-    _product_check(request)
-    from apps.subscriptions.economics.revenue import RevenueService
-    if payload.revenue_mode not in _VALID_MODES:
-        raise Problem(
-            "invalid_revenue_mode",
-            "revenue_mode must be one of '', 'billed', 'metered_only'; "
-            f"got '{payload.revenue_mode}'",
-        )
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    with transaction.atomic():
-        customer.revenue_mode = payload.revenue_mode
-        customer.save(update_fields=["revenue_mode", "updated_at"])
-        audit_record(
-            action="revenue_mode.set", tenant_id=request.auth.tenant.id,
-            resource_type="customer", resource_id=customer.id,
-            metadata={"customer_id": str(customer.id),
-                      "revenue_mode": customer.revenue_mode})
-    return {"revenue_mode": customer.revenue_mode,
-            "resolved": RevenueService.resolve_revenue_mode(request.auth.tenant, customer)}
+# THE CUSTOMER-LEVEL REVENUE SWITCH'S `GET`/`PUT` PAIR WAS HERE AND IS GONE
+# (#497, slice 7 §9) — ONE PATH, TWO OPERATIONS, which with the recurring
+# profile's pair (#496) completes phase A's two paths and four operations
+# (§17). It read and wrote a per-customer override of whether that customer's
+# usage counted as revenue, and the module's own composition then obeyed it.
+# Nothing replaces it, because nothing should: the question it answered coarsely
+# is answered precisely, per posting, by the price status the resolver writes
+# (#147 §7). The audit action the `PUT` raised is retired with it, named here
+# descriptively because its G7 ledger entry is paid in this same commit and a
+# swept backend file may not spell the word afterwards.
 
 
 @margin_router.get("/business/{external_id}", response=BusinessMarginOut)
@@ -497,17 +473,14 @@ def list_margin(request, start_date: date = None, end_date: date = None):
     from apps.metering.queries import get_per_customer_cost_totals
     from apps.subscriptions.economics.revenue import RevenueService
     rows = get_per_customer_cost_totals(tenant.id, s, e)
-    cust = {c.id: c for c in Customer.objects.filter(
-        id__in=[r["customer_id"] for r in rows], tenant=tenant)}
     out = []
     for r in rows:
-        customer_obj = cust[r["customer_id"]]
         sub = RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
         supplied = SuppliedRevenueService.attributed_total(
             tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
-        usage_rev = (r["billed_cost_micros"]
-                     if RevenueService.resolve_revenue_mode(tenant, customer_obj) == "billed"
-                     else 0)
+        # The row's own billed total, for every customer (#497) — see the
+        # summary loop above and `_compose` for the argument.
+        usage_rev = r["billed_cost_micros"]
         revenue = total_revenue_micros(sub, supplied, usage_rev)
         margin = revenue - r["provider_cost_micros"]
         out.append({"customer_id": str(r["customer_id"]),

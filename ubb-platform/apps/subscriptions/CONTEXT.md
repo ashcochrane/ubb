@@ -54,17 +54,25 @@ _Avoid_: pushing deltas — always full state.
 **Customer economics**:
 The per-customer, per-month margin snapshot — revenue minus provider cost — with a gross margin and
 an `is_unprofitable` flag. Revenue is three sources: the Stripe subscription accrual, tenant-supplied
-revenue, and billed usage **only where the customer's resolved revenue mode is `billed`**. Each is
-its own column, so a figure read off it can say which kind of money it is.
+revenue, and billed usage — the third for **every** customer since #497, because which postings
+carry customer revenue is a fact each posting states (#147 §7) rather than one a customer-level
+setting could override. Each source is its own column, so a figure read off it can say which kind of
+money it is.
 (`apps/subscriptions/economics/models.py:CustomerEconomics`)
 
 **Cost accumulator**:
 The per-customer, per-month running total of provider/billed cost and event count, incremented from
 `usage.recorded`. (`apps/subscriptions/economics/models.py:CustomerCostAccumulator`)
 
-**Revenue mode**:
-A per-customer switch (`billed` vs `metered_only`) deciding whether billed usage counts as revenue
-in the margin calc.
+**Revenue mode** — **RETIRED, AND THE TERM IS NOT REPLACED** (#497, slice 7 §9):
+A per-customer switch deciding whether billed usage counted as revenue in the margin calculation,
+resolved from the tenant's billing mode wherever it was unset. It turned *"UBB does not raise this
+customer's invoices"* into *"this customer produced no revenue"* — the inversion #141 §1.1's
+governing invariant forbids — and it answered coarsely, per customer, a question #147 §7 answers
+precisely per posting. **Nothing succeeds it**: ask the posting. `Posting.pricing_status` is
+`known`, `waived`, `unknown` or `not_applicable`, and `not_applicable_reason` says which of the two
+causes applies. The tenant-level posture that survives is `tenant_posture`, which is DERIVED from
+the billing mode, never stored (ADR-0006 §4), and decides who invoices — and nothing more.
 
 **Accrued subscription revenue**:
 Pro-rated Stripe subscription revenue for a window, computed without touching invoices. ⚠ **It used

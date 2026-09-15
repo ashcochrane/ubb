@@ -67,13 +67,6 @@ export function useMarginTrend(customerId: string, periods: number) {
   });
 }
 
-export function useRevenueMode(customerId: string) {
-  return useQuery({
-    queryKey: ["margin", "revenue-mode", customerId],
-    queryFn: () => customersApi.getRevenueMode(customerId),
-  });
-}
-
 /** null = 404 (individual customer, not a business) — callers hide the section. */
 export function useBusinessMargin(externalId: string | undefined, range: DateRange) {
   return useQuery({
@@ -206,16 +199,11 @@ export function useCreateCustomer() {
   });
 }
 
-export function useSaveRevenueMode(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (revenueMode: string) =>
-      customersApi.putRevenueMode(customerId, revenueMode),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-    },
-  });
-}
+// THE REVENUE-SWITCH READ AND WRITE WERE HERE AND ARE GONE (#497, slice 7
+// section 9), with the route pair behind them. The setting they moved decided
+// whether a customer's billed usage counted as revenue at all, which is not a
+// question a customer-level setting was ever entitled to answer: the price
+// status on each posting answers it, one posting at a time.
 
 function useBillingMutation<TArgs, TResult>(
   mutationFn: (args: TArgs) => Promise<TResult>,

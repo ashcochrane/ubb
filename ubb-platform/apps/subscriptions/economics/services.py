@@ -53,10 +53,28 @@ def total_revenue_micros(subscription_revenue, supplied_revenue, usage_revenue):
     return subscription_revenue + supplied_revenue + usage_revenue
 
 
-def _compose(subscription_revenue, supplied_revenue, usage_billed, provider_cost,
-             revenue_mode):
-    """The three revenue sources added up, and the margin that falls out."""
-    usage_revenue = usage_billed if revenue_mode == "billed" else 0
+def _compose(subscription_revenue, supplied_revenue, usage_billed, provider_cost):
+    """The three revenue sources added up, and the margin that falls out.
+
+    ⚠ **THE BILLED USAGE IS REVENUE FOR EVERY TENANT, AND THE BRANCH THAT USED
+    TO DECIDE OTHERWISE IS GONE** (#497, slice 7 §9). A customer-level setting
+    stood here, resolved from the tenant's billing mode wherever it was blank,
+    and struck the usage out of the revenue for anyone UBB does not invoice.
+    That is the inversion #141 §1.1 forbids: who sends the invoice is not who
+    earned the money, and a tenant that meters with UBB and bills elsewhere has
+    its prices resolved by the same resolver as anybody, *because its own
+    margin reporting is what they are resolved for*
+    (`apps/metering/pricing/applicability.py`).
+
+    **The figure is therefore only as complete as the postings are**, which is
+    the honest form of the answer the branch was faking. Usage a tenant has
+    declared no price for resolves `unknown`, contributes nothing, and travels
+    with `unpriced_event_count` saying the total is a floor; work that was
+    never going to carry customer revenue is `not_applicable` and contributes
+    nothing either, with no caveat, because nothing is missing from it. None of
+    that is a fact about a billing mode, and none of it is decided here.
+    """
+    usage_revenue = usage_billed
     total_revenue = total_revenue_micros(
         subscription_revenue, supplied_revenue, usage_revenue)
     margin = total_revenue - provider_cost
@@ -77,22 +95,16 @@ class MarginService:
         counter would be counting the same events twice.
         """
         from apps.metering.queries import get_customer_cost_totals
-        from apps.platform.tenants.models import Tenant
-        from apps.platform.customers.models import Customer
         costs = get_customer_cost_totals(tenant_id, customer_id, start_date, end_date)
-        tenant = Tenant.objects.get(id=tenant_id)
-        customer = Customer.objects.get(id=customer_id)
-        mode = RevenueService.resolve_revenue_mode(tenant, customer)
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, start_date, end_date)
         supplied_revenue = SuppliedRevenueService.attributed_total(
             tenant_id, customer_id, start_date, end_date, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
             subscription_revenue, supplied_revenue, costs["billed_cost_micros"],
-            costs["provider_cost_micros"], mode)
+            costs["provider_cost_micros"])
         return {
             "customer_id": str(customer_id),
-            "revenue_mode": mode,
             "subscription_revenue_micros": subscription_revenue,
             "supplied_revenue_micros": supplied_revenue,
             "usage_billed_micros": costs["billed_cost_micros"],
@@ -139,8 +151,6 @@ class MarginService:
     @staticmethod
     def snapshot_customer(tenant_id, customer_id, period_start, period_end) -> CustomerEconomics:
         """Monthly snapshot from the accumulator + full-month revenue. Persists CustomerEconomics."""
-        from apps.platform.tenants.models import Tenant
-        from apps.platform.customers.models import Customer
         acc = CustomerCostAccumulator.objects.filter(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start).first()
         provider_cost = acc.total_provider_cost_micros if acc else 0
@@ -155,15 +165,12 @@ class MarginService:
         # directions: an excluded cost makes the margin below a ceiling, an
         # excluded price makes it a floor, and a snapshot can be both.
         unpriced = acc.unpriced_event_count if acc else 0
-        tenant = Tenant.objects.get(id=tenant_id)
-        customer = Customer.objects.get(id=customer_id)
-        mode = RevenueService.resolve_revenue_mode(tenant, customer)
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, period_start, period_end)
         supplied_revenue = SuppliedRevenueService.attributed_total(
             tenant_id, customer_id, period_start, period_end, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
-            subscription_revenue, supplied_revenue, usage_billed, provider_cost, mode)
+            subscription_revenue, supplied_revenue, usage_billed, provider_cost)
         econ, _ = CustomerEconomics.objects.update_or_create(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start,
             defaults={
@@ -175,7 +182,6 @@ class MarginService:
                 UNRESOLVED_EVENT_COUNT_KEY: unresolved,
                 UNPRICED_EVENT_COUNT_KEY: unpriced,
                 "total_revenue_micros": total_revenue,
-                "revenue_mode": mode,
                 "gross_margin_micros": margin,
                 "margin_percentage": pct,
             })

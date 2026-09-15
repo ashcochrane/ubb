@@ -17,7 +17,6 @@ export type MarginListOut = MarginSchemas["MarginListOut"];
 export type CustomerMarginOut = MarginSchemas["CustomerMarginOut"];
 export type MarginTrendOut = MarginSchemas["MarginTrendOut"];
 export type MarginTrendPointOut = MarginSchemas["MarginTrendPointOut"];
-export type RevenueModeOut = MarginSchemas["RevenueModeOut"];
 export type BusinessMarginOut = MarginSchemas["BusinessMarginOut"];
 export type SeatMarginOut = MarginSchemas["SeatMarginOut"];
 export type BusinessMarginTotals = MarginSchemas["BusinessMarginTotals"];
