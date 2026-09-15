@@ -40,7 +40,12 @@ describe("CustomersPage", () => {
     expect(
       await screen.findByText("at least $88.00", undefined, { timeout: 5000 }),
     ).toBeInTheDocument();
-    expect(screen.getByText("at most -$88.00")).toBeInTheDocument();
+    // ⚠ nova-ai's margin is BREAK-EVEN since #497, not minus its whole
+    // supplier cost: the switch that struck its billed usage out of its
+    // revenue is deleted. The bound is what this case is about and it is
+    // untouched — sharper, if anything, because a margin of exactly zero
+    // that is only a CEILING says the customer may well be losing money.
+    expect(screen.getByText("at most $0.00")).toBeInTheDocument();
     // luna-labs also runs at a loss, and every one of its costs is known.
     expect(screen.getByText("-$14.70")).toBeInTheDocument();
     expect(screen.queryByText("at most -$14.70")).not.toBeInTheDocument();

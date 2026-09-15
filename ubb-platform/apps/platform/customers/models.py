@@ -44,7 +44,16 @@ class Customer(SoftDeleteMixin, BaseModel):
         db_index=True,
     )
     metadata = models.JSONField(default=dict)
-    revenue_mode = models.CharField(max_length=20, blank=True, default="")  # "" | "billed" | "metered_only"
+    # THE CUSTOMER-LEVEL REVENUE SWITCH WAS HERE AND IS GONE (#497, slice 7
+    # §9). It was a second, writable answer to a question the tenant's own
+    # billing mode already answers, and it turned that answer into a different
+    # one: "UBB does not raise this customer's invoices" became "this customer
+    # produced no revenue", the inversion #141 §1.1's governing invariant
+    # forbids. Whether a posting carries customer revenue is decided per
+    # posting by `Posting.pricing_status` and the reason beside it (#147 §7,
+    # `apps/metering/pricing/applicability.py`), which is where a reader
+    # should look. `tenant_posture` stays DERIVED and unstored (ADR-0006 §4),
+    # and gate G10 is what keeps it that way.
     account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")

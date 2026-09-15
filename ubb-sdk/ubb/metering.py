@@ -749,16 +749,13 @@ class MeteringClient:
             params=params)
         return r.json()
 
-    def set_revenue_mode(self, customer_id, revenue_mode=""):
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE_MODE(customer_id),
-            json={"revenue_mode": revenue_mode})
-        return r.json()
-
-    def get_revenue_mode(self, customer_id):
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE_MODE(customer_id))
-        return r.json()
+    # THE TWO METHODS THAT READ AND WROTE THE CUSTOMER-LEVEL REVENUE SWITCH
+    # WERE HERE AND ARE GONE (#497, slice 7 §9), with the route pair behind
+    # them. There is no replacement call, and that is the ruling rather than an
+    # omission: the setting decided whether a customer's billed usage counted
+    # as revenue at all, and that question is answered by each posting's own
+    # price status. `MIGRATION.md` §15 is where a caller arriving at the
+    # missing methods is told so.
 
     def declare_pricing_book(self, *, key, name="", is_default=False):
         """Declare a Pricing Book: a catalogue of what this tenant charges.

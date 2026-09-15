@@ -362,7 +362,15 @@ exclusions:
     # terms in 25 sites → **6 in 24** across the same commit, which is that
     # action's single site dying with the two files that held it, and the ledger
     # lost its entry in the same commit.
-    files: 262
+    # 262 → 264 in #497, slice 7's third: TWO migrations, one per table, dropping
+    # the customer-level revenue switch and the margin snapshot's frozen copy of
+    # it. Both SPELL the retired column, which is the whole reason this rule
+    # exists — `RemoveField(name=...)` cannot name a column any other way, and a
+    # migration that cannot say what it removes cannot be read. They are also the
+    # reason the rule's own totals fall by TWO terms rather than one: the switch's
+    # ledger sites and its audit action's are paid in the same commit, taking the
+    # sweep from **6 terms in 24 sites → 4 in 19**.
+    files: 264
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

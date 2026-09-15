@@ -253,7 +253,13 @@ _WRITE_ROUTES = {
 # operations on one path — a `GET` at the read floor and a `PUT` at the admin
 # floor — because this count is of OPERATIONS rather than of paths. Neither was
 # carved and neither was exempt, so the exempt count is untouched again.
-_EXPECTED_FLOORED = 153
+#
+# 153 - 2 = 151 in #497: the customer-level revenue switch's pair leaves, and
+# it is TWO operations on one path for the same reason — a `GET` at the read
+# floor and a `PUT` at the admin floor. With the pair above, phase A has taken
+# two paths and four operations off this surface (slice 7 §17), and the exempt
+# count is untouched by all four.
+_EXPECTED_FLOORED = 151
 _EXPECTED_EXEMPT = 10
 
 

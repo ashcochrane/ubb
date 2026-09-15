@@ -19,7 +19,6 @@ import {
   formatEventCount,
   formatMicros,
 } from "@/lib/format";
-import { revenueModeLabel } from "@/lib/labels";
 import {
   marginBound,
   marginPercentBound,
@@ -31,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { useMarginTrend } from "../api/queries";
 import type { CustomerMarginOut } from "../api/types";
 import { BusinessRollup } from "./business-rollup";
-import { RevenuePanels } from "./revenue-panels";
 
 const MarginTrendChart = React.lazy(() => import("./margin-trend-chart"));
 
@@ -56,7 +54,11 @@ export function OverviewTab({
           label="Total revenue"
           value={formatMicros(margin.total_revenue_micros, currency)}
           variant="raised"
-          subtitle={`Resolved revenue mode: ${revenueModeLabel(margin.revenue_mode)}`}
+          // THE SUBTITLE NAMED THE DELETED SWITCH UNTIL #497 — "Resolved
+          // revenue mode: …" — which told a reader which rule had been applied
+          // to their own usage rather than what the number was made of. The
+          // three sources are the honest answer, and they are the row below.
+          subtitle="Subscriptions, supplied figures and billed usage"
         />
         {/* The cost card's subtitle already carries a count — the events in
             the window — so the one that says how many of them went uncosted
@@ -94,10 +96,15 @@ export function OverviewTab({
         />
       </div>
 
-      {/* FOUR CARDS SINCE #496, MATCHING THE ROW ABOVE: the revenue sources
-          are three, not two, and the fourth column is where the third one
-          went rather than an extra row. */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* THREE CARDS SINCE #497, AND THEY ADD UP TO THE TOTAL ABOVE. It was
+          four: the sources, plus a card saying how much of the billed usage
+          counted as revenue. That card existed only because a customer-level
+          switch could answer "none of it" — with the switch deleted the two
+          usage figures are one figure, and two cards showing the same number
+          is worse than one card showing it once. The grid narrows to three
+          rather than holding a column open, on the same reasoning #496 used
+          when the panel below lost its second card. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           label="Subscription revenue"
           value={formatMicros(margin.subscription_revenue_micros, currency)}
@@ -116,15 +123,7 @@ export function OverviewTab({
         <StatCard
           label="Usage billed"
           value={formatMicros(margin.usage_billed_micros, currency)}
-        />
-        <StatCard
-          label="Usage counted as revenue"
-          value={formatMicros(margin.usage_revenue_micros, currency)}
-          subtitle={
-            margin.revenue_mode === "metered_only"
-              ? "Metered only — billed usage doesn't count as revenue"
-              : undefined
-          }
+          subtitle="Counted as revenue in full"
         />
       </div>
 
@@ -163,7 +162,14 @@ export function OverviewTab({
         )}
       </ChartCard>
 
-      <RevenuePanels customerId={customerId} />
+      {/* THE REVENUE PANELS WERE RENDERED HERE AND ARE GONE (#497,
+          slice 7 section 9). The module held two cards; #496 deleted the
+          recurring-amount card with the record it wrote, and this ticket
+          deletes the revenue-mode card with the switch it set, which left
+          nothing to render. #508 puts the supplied-revenue write panel
+          back in this slot, with the mid-period affordance section 9
+          rules into this slice. An empty grid held open for it would be a
+          defect on every customer page in the meantime. */}
 
       <BusinessRollup externalId={margin.external_id} range={range} />
     </div>

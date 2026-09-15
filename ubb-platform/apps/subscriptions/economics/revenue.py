@@ -49,14 +49,16 @@ class RevenueService:
     a Stripe subscription. That question now has a record of its own that
     states its own periods and its own source, and `SuppliedRevenueService`
     below is what reads it. What is left here is Stripe's, and only Stripe's.
-    """
 
-    @staticmethod
-    def resolve_revenue_mode(tenant, customer):
-        mode = getattr(customer, "revenue_mode", "") or ""
-        if mode:
-            return mode
-        return "metered_only" if tenant.billing_mode == "meter_only" else "billed"
+    ⚠ **AND IT NO LONGER RESOLVES A CUSTOMER'S POSTURE, WHICH IS THE OTHER
+    ABSENCE WORTH NAMING** (#497). A resolver stood here that read a writable
+    column on the customer, fell back to the tenant's billing mode, and handed
+    the composition a verdict on whether that customer's usage was revenue at
+    all. It answered from the wrong fact: who raises a customer's invoices
+    says nothing about whether the work was sold, and `Posting.pricing_status`
+    has answered the real question per posting since #147 §7. Nothing resolves
+    revenue existence from a billing mode any more, here or anywhere.
+    """
 
     @staticmethod
     def subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date) -> int:

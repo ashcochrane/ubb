@@ -422,10 +422,14 @@ export const AFFORDABILITY_REASONS = AFFORDABILITY_REASON_KNOWN_VALUES;
 // rather than a console one. Nothing here, and no map.
 export const CONTROL_FAMILIES = CONTROL_FAMILY_VALUES;
 
-export const revenueModeLabel = legacyLabelMap({
-  billed: "Billed revenue",
-  metered_only: "Metered only",
-});
+// THE REVENUE-SWITCH LABEL MAP WAS HERE AND IS GONE (#497, slice 7 section
+// 9), and it was SLICE 8's entry, paid early. The ledger expected it to become
+// a binding over the posture vocabulary at the cutover; that assumed its
+// callers survived, and all three of them read a response field this ticket
+// deletes. #154 section 9.1's own name-by-name table already listed this
+// export as deleted, so the naming authority and the ledger disagreed and the
+// authority was right. An entry cannot outlive its debt whoever owns it
+// (#283), and an owner slice may move earlier but never later.
 
 // Allowed grouping dimensions for usage analytics + timeseries.
 export const ANALYTICS_DIMENSIONS = [

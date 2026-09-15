@@ -1010,3 +1010,46 @@ GET /api/v1/customers/{customer_id}/past-limit-report api path removed without d
 # migration above.
 GET /api/v1/margin/customers/{customer_id}/revenue api path removed without deprecation
 PUT /api/v1/margin/customers/{customer_id}/revenue api path removed without deprecation
+
+# --- #497 (slice 7, ticket 3 of 18, phase A) -------------------------------
+#
+# THE CUSTOMER-LEVEL REVENUE SWITCH IS DELETED, AND NOTHING REPLACES IT. The
+# pair below read and wrote one column per customer that decided whether that
+# customer's billed usage counted as revenue at all, defaulting to a value
+# derived from the tenant's billing mode. It turned "UBB does not raise this
+# customer's invoices" into "this customer produced no revenue" — the exact
+# inversion #141 §1.1's governing invariant forbids — and it answered coarsely,
+# per customer, a question #147 §7 had already answered precisely per posting:
+# `Posting.pricing_status` is `known`, `waived`, `unknown` or `not_applicable`,
+# with `not_applicable_reason` saying which cause applies. There is no
+# successor route, because there is no setting left to make.
+#
+# ONE PATH, TWO OPERATIONS, which with #496's recurring-revenue pair completes
+# phase A's two paths and four operations (spec §17), exactly as that block
+# forecast.
+#
+# ⚠ THE TWO DIRECTIONS DISAGREE HERE, AND ONLY THE CUMULATIVE ONE MAY BE
+# FILED. The authoring run (`--baseline origin/main` — the REMOTE ref; the
+# local `main` in this checkout is stale by six slices and comparing against it
+# silently reports a wall of unrelated breaks) reports FOUR: these two paths,
+# plus the switch's own property leaving `CustomerMarginOut` and
+# `SeatMarginOut`. The cumulative run against `api-v1-launch` reports only the
+# two paths, and it is right to: `git show api-v1-launch:openapi/v1.json` has
+# neither of those schema names, because both margin responses were UNTYPED at
+# the tag and were typed later by #98. A property the tag never promised cannot
+# be a break against the tag, so filing those two lines would file two INERT
+# entries — and the gate fails on an inert entry exactly as on an unreviewed
+# one (#367, measured in #407). Two lines, not four.
+#
+# The `invalid_revenue_mode` problem code goes with the `PUT` and takes no line
+# of its own: `openapi/error-codes.json` is not part of the compared document.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot, the customers feature's two margin components, its revenue panels
+# module (deleted outright), its query hooks, typed client and mocks; the SDK's
+# generated core (two operation modules and two model modules) and its two
+# hand-written margin calls; and the two hand-written migrations that drop the
+# column and the snapshot's frozen copy of it.
+GET /api/v1/margin/customers/{customer_id}/revenue-mode api path removed without deprecation
+PUT /api/v1/margin/customers/{customer_id}/revenue-mode api path removed without deprecation

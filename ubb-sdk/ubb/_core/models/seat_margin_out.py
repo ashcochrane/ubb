@@ -29,7 +29,6 @@ class SeatMarginOut:
             gross_margin_micros (int):
             margin_percentage (float):
             provider_cost_micros (int):
-            revenue_mode (str):
             subscription_revenue_micros (int):
             supplied_revenue_micros (int):
             total_revenue_micros (int):
@@ -44,7 +43,6 @@ class SeatMarginOut:
     gross_margin_micros: int
     margin_percentage: float
     provider_cost_micros: int
-    revenue_mode: str
     subscription_revenue_micros: int
     supplied_revenue_micros: int
     total_revenue_micros: int
@@ -69,8 +67,6 @@ class SeatMarginOut:
 
         provider_cost_micros = self.provider_cost_micros
 
-        revenue_mode = self.revenue_mode
-
         subscription_revenue_micros = self.subscription_revenue_micros
 
         supplied_revenue_micros = self.supplied_revenue_micros
@@ -94,7 +90,6 @@ class SeatMarginOut:
             "gross_margin_micros": gross_margin_micros,
             "margin_percentage": margin_percentage,
             "provider_cost_micros": provider_cost_micros,
-            "revenue_mode": revenue_mode,
             "subscription_revenue_micros": subscription_revenue_micros,
             "supplied_revenue_micros": supplied_revenue_micros,
             "total_revenue_micros": total_revenue_micros,
@@ -121,8 +116,6 @@ class SeatMarginOut:
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
-        revenue_mode = d.pop("revenue_mode")
-
         subscription_revenue_micros = d.pop("subscription_revenue_micros")
 
         supplied_revenue_micros = d.pop("supplied_revenue_micros")
@@ -143,7 +136,6 @@ class SeatMarginOut:
             gross_margin_micros=gross_margin_micros,
             margin_percentage=margin_percentage,
             provider_cost_micros=provider_cost_micros,
-            revenue_mode=revenue_mode,
             subscription_revenue_micros=subscription_revenue_micros,
             supplied_revenue_micros=supplied_revenue_micros,
             total_revenue_micros=total_revenue_micros,

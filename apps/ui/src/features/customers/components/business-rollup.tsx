@@ -20,7 +20,6 @@ import {
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 import { formatEventCount, formatMicros } from "@/lib/format";
-import { revenueModeLabel } from "@/lib/labels";
 import {
   marginBound,
   marginPercentBound,
@@ -76,7 +75,6 @@ export function BusinessRollup({
             <TableHeader>
               <TableRow>
                 <TableHead>Seat</TableHead>
-                <TableHead>Revenue mode</TableHead>
                 <TableHead className="text-right">Events</TableHead>
                 <TableHead className="text-right">Revenue</TableHead>
                 <TableHead className="text-right">COGS</TableHead>
@@ -100,7 +98,6 @@ export function BusinessRollup({
                       <CopyButton value={seat.customer_id} label="Copy seat ID" />
                     </span>
                   </TableCell>
-                  <TableCell>{revenueModeLabel(seat.revenue_mode)}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatEventCount(seat.event_count)}
                   </TableCell>

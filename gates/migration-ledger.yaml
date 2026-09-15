@@ -402,7 +402,7 @@ entries:
     gate: G7
     site: backend::meter_only
     expected: customer_billing_mode
-    found: 14 files
+    found: 10 files
     owner_slice: slice_8
     reason: >-
       It said what UBB does NOT do; `external` says where the billing
@@ -420,6 +420,18 @@ entries:
       slice's count and may not raise it (§20). Slice 6 has landed and
       left it at 14. The platform glossary's tenant entry still lists
       the mode by name and stays counted.
+      ⚠ 14 → 10 in #497, slice 7's third, and NOT because that ticket set
+      out to pay any part of this debt. `found:` is a ceiling as well as a
+      floor — the sweep refuses an entry claiming more files than the tree
+      has — so a ticket that merely REMOVES a retired word from files is
+      forced to decrement somebody else's entry. Four files went: the
+      posture resolver, which read the mode to decide whether a customer's
+      usage was revenue and is deleted outright, and three test modules
+      that spelled the mode only to build a fixture for it. Nothing was
+      re-spelled and nothing moved to a new home — the default IS this
+      mode, so a metering-only fixture now names nothing at all, which is
+      how those modules stopped carrying it. Slice 8 still owns the rename
+      and the remaining ten.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and
@@ -452,26 +464,20 @@ entries:
   # where the rule's pointer at its container is `pricing_book` now under that
   # file's own header rule for a name retired AND REPLACED.
 
-  - id: g7-backend-revenue_mode
-    gate: G7
-    site: backend::revenue_mode
-    expected: tenant_posture
-    found: 11 files
-    owner_slice: slice_7
-    reason: >-
-      It named a mode where the fact is a posture. Slice 7 DELETES
-      `Customer.revenue_mode`, the `/revenue-mode` pair and the
-      `/customers/{id}/revenue` pair outright.
-
-  - id: g7-backend-revenue_mode.set
-    gate: G7
-    site: backend::revenue_mode.set
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_7
-    reason: >-
-      The audit action for setting it, retired with the field slice 7
-      deletes.
+  # THE CUSTOMER-LEVEL REVENUE SWITCH'S BACKEND ENTRY WAS HERE AND IS PAID
+  # (#497, slice 7 §9). It stood at 11 files — the column, the snapshot's copy
+  # of it, the resolver, the composition, the margin module's route pair and
+  # its schemas, and four test modules. All eleven went in one vertical pass,
+  # because the word was not being re-spelled anywhere: the thing it named
+  # ceased to exist. The word is now refused in every SWEPT file; the excluded
+  # sets — the migrations that name the column they drop, and this ledger's own
+  # bookkeeping — still carry it and always will, which is why the registry's
+  # `retired_aliases` entry stays exactly where it is. Paying a G7 debt deletes
+  # the excuse, not the retirement.
+  #
+  # `g7-backend-<the same word>.set` WAS BESIDE IT AND IS PAID TOO, at 2 files:
+  # the action registry and the route that raised it. Nothing recorded became
+  # unrecorded — the act it recorded no longer exists.
 
   # `g7-backend-revenue_profile.set` WAS HERE AND IS PAID (#496, slice 7 §9).
   # It stood at 2 files — the action registry and the margin module's route
@@ -664,16 +670,13 @@ entries:
   # an action whose humanised form is already correct keeps this commit out of a
   # debt it does not own.
 
-  - id: g7-console-revenue_mode
-    gate: G7
-    site: console::revenue_mode
-    expected: tenant_posture
-    found: 8 files
-    owner_slice: slice_7
-    reason: >-
-      It named a mode where the fact is a posture. Slice 7 DELETES
-      `Customer.revenue_mode`, the `/revenue-mode` pair and the
-      `/customers/{id}/revenue` pair outright.
+  # THE SWITCH'S CONSOLE ENTRY WAS HERE AND IS PAID (#497, slice 7 §9), at 8
+  # files: the generated contract snapshot, the customers feature's real and
+  # mock API layers with their fixtures, two components, the panels module that
+  # wrote it, and the events feature's margin fixture. The contract change and
+  # the console's reaction to it are one commit by necessity — CI regenerates
+  # the snapshot from `openapi/v1.json` and fails on any diff — so this entry
+  # could never have been paid on its own.
 
   # `g7-console-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), at 2 files: the hand-held event list in `labels.ts`
@@ -808,16 +811,11 @@ entries:
   # deleted — see the note on the backend side. One file, and it was the wire
   # key on the two schemas that publish the record.
 
-  - id: g7-openapi-revenue_mode
-    gate: G7
-    site: openapi::revenue_mode
-    expected: tenant_posture
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      It named a mode where the fact is a posture. Slice 7 DELETES
-      `Customer.revenue_mode`, the `/revenue-mode` pair and the
-      `/customers/{id}/revenue` pair outright.
+  # THE SWITCH'S CONTRACT ENTRY WAS HERE AND IS PAID (#497, slice 7 §9), at
+  # its one file. Four schema nodes carried the word — the two margin schemas
+  # that published it, and the request and response bodies of the pair that set
+  # it — and the document is generated, so all four left by regeneration rather
+  # than by an edit.
 
   # `g7-openapi-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), at 1 file. The published `webhooks` section derives
@@ -986,16 +984,13 @@ entries:
   # alone, as that ticket predicted: the three dead methods it deleted, and the
   # result type that went with them, spelled this word nowhere.
 
-  - id: g7-sdk-revenue_mode
-    gate: G7
-    site: sdk::revenue_mode
-    expected: tenant_posture
-    found: 9 files
-    owner_slice: slice_7
-    reason: >-
-      It named a mode where the fact is a posture. Slice 7 DELETES
-      `Customer.revenue_mode`, the `/revenue-mode` pair and the
-      `/customers/{id}/revenue` pair outright.
+  # THE SWITCH'S SDK ENTRY WAS HERE AND IS PAID (#497, slice 7 §9), at 9
+  # files: two hand-written methods on the metering client, three test modules
+  # whose fixtures carried the field, the migration guide's response table, and
+  # four generated modules — the pair's two request/response models and the two
+  # margin models that published it. The generated half regenerated away with
+  # the routes, which is the ordinary shape: a generated module only leaves
+  # when its operation does.
 
   - id: g7-sdk-tag_key
     gate: G7
@@ -1814,18 +1809,24 @@ entries:
       the ledger reaches zero; pulling it earlier is the ratchet's one free
       move.
 
-  - id: g6-map-revenue-mode-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::revenueModeLabel
-    expected: tenant_posture
-    owner_slice: slice_8
-    reason: >-
-      `revenueModeLabel` hand-writes the wording for whether revenue is billed
-      or metered, and falls back to `humanize` for anything it does not
-      recognise. It becomes `labelMap(TENANT_POSTURE_LABEL_KEYS)` in the slice
-      that rebuilds that vocabulary — the same slice the concept's own
-      value-list entry names, because a value list and the words for it cannot
-      honestly move apart.
+  # ⚠ A SLICE-8 ENTRY WAS HERE AND SLICE 7 PAID IT EARLY (#497, spec §20's
+  # ruling). It worded the customer-level revenue switch, and its reason
+  # assumed the map would be re-pointed at the posture vocabulary at the
+  # cutover — which assumed its three callers survived. They did not: all
+  # three read a response field #497 deletes, so after that commit there was
+  # nothing left to pass it. #154 §9.1's own name-by-name table had already
+  # listed the export as deleted, so the naming authority and this entry
+  # disagreed and the authority was right.
+  #
+  # The ledger's own rule permits the move — an owner slice may move a debt
+  # EARLIER but never later — and #283 settled that an entry cannot outlive its
+  # debt whoever owns it. The same shape as `docs/adr/0005-…:202-207`, where
+  # slice 2 paid a slice-7 entry early, in the opposite direction.
+  #
+  # ⚠ THIS IS THE ENTRY SPEC §20 FORECAST, AND IT IS THE SECOND SLICE-8 G6
+  # ENTRY THIS SLICE HAS PAID, NOT THE FIRST. #496 paid
+  # `g6-humanises-revenue-panels` unforecast, so the flip's census is **40, not
+  # the 41 §20 wrote** — see that entry's own tombstone below.
 
   - id: g6-map-reward-type-label
     gate: G6
@@ -1938,7 +1939,9 @@ entries:
 
   # `g6-humanises-revenue-panels` WAS HERE AND IS PAID (#496, slice 7 §9), and
   # it is a **SLICE-8 ENTRY PAID EARLY** — the SECOND one slice 7 pays, beside
-  # `g6-map-revenue-mode-label`, which is ticket 3's.
+  # `g6-map-revenue-mode-label`, which was ticket 3's and which **ticket 3
+  # (#497) has since paid**; its own tombstone is above, and it deletes the
+  # module this entry's path used to name.
   #
   # ⚠ **NOBODY FORECAST THIS ONE AND THE FLIP'S NUMBER MOVES BECAUSE OF IT.**
   # Slice 7's spec (#189, part 3 §20) forecasts the census at 41 = 31 owned + 1

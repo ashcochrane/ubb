@@ -82,14 +82,19 @@ ADAPTER_IMPORTERS = (
     # `budgetEnforceModeLabel`, deleted with its ledger entry; the section is
     # now `customer-spend-pool-section.tsx` and binds `@/lib/spend-pool`, the
     # same binding the Utilisation and headroom report renders.
-    "apps/ui/src/features/customers/components/business-rollup.tsx",
-    "apps/ui/src/features/customers/components/grants-section.tsx",
-    "apps/ui/src/features/customers/components/overview-tab.tsx",
+    # ⚠ THREE OF THIS FEATURE'S IMPORTERS LEFT IN #497, ALL ON ONE EXPORT.
+    # `business-rollup.tsx` and `overview-tab.tsx` are CONVERSIONS in the
+    # narrow sense that both files remain — each took its one word from
+    # `revenueModeLabel`, which is deleted with its ledger entry, and neither
+    # renders a replacement because the value itself is gone from the
+    # contract. `revenue-panels.tsx` LEFT by ceasing to exist: #496 deleted the
+    # recurring-amount card and #497 the revenue-mode card beside it, which was
+    # everything the module held.
     # `past-limit-section.tsx` LEFT IN #466 by ceasing to exist: the customer's
     # Usage tab now hosts Stops and breaches (the spend-controls feature's
     # component, injected by the route), which binds its family words in its
     # own `lib/` and renders a stop word through the open-set helper.
-    "apps/ui/src/features/customers/components/revenue-panels.tsx",
+    "apps/ui/src/features/customers/components/grants-section.tsx",
     "apps/ui/src/features/customers/components/subscription-tab.tsx",
     "apps/ui/src/features/customers/components/transactions-section.tsx",
     "apps/ui/src/features/customers/components/usage-invoices-section.tsx",
@@ -504,14 +509,25 @@ PAID_HUMANISING_DEBTS = {
     "g6-humanises-event-groups":
         "apps/ui/src/features/webhooks/lib/event-groups.ts::humanize",
     # #496: the recurring revenue card is deleted with the record it wrote,
-    # and the interval it humanised into a sentence went with it. ⚠ THE FILE
-    # SURVIVES ONLY UNTIL TICKET 3 (#497), which deletes the revenue-mode card
-    # beside it — the last thing in this module. Whoever lands that must move
-    # this entry's path to whatever holds the panels afterwards, or
-    # `test_a_paid_humanising_debt_names_a_file_that_still_exists` goes red on
-    # a debt that really was paid.
+    # and the interval it humanised into a sentence went with it.
+    #
+    # ⚠ **THE PATH MOVED IN #497, EXACTLY AS THE NOTE HERE SAID IT WOULD HAVE
+    # TO.** That ticket deleted the revenue-mode card beside it — the last
+    # thing in `revenue-panels.tsx` — so the module itself ceased to exist and
+    # `test_a_paid_humanising_debt_names_a_file_that_still_exists` would have
+    # gone red on a debt that really was paid. The path now names the customer
+    # overview tab, which is what rendered those panels and where #508 puts the
+    # supplied-revenue write panel back.
+    #
+    # ⚠ **MOVING A PATH IS NOT THE SAME ACT AS PAYING A DEBT, AND THE ID IS
+    # WHY THAT IS SAFE.** `revivals()` treats the id as the identity and the
+    # site as the fallback, so re-pointing a path cannot smuggle a debt back:
+    # the id is still refused in `gates/`, and the new file is checked for the
+    # humaniser exactly as the old one was. What the path is for is the vacuity
+    # guard — it must name a file that exists, or the absence this section
+    # asserts is an absence from nowhere.
     "g6-humanises-revenue-panels":
-        "apps/ui/src/features/customers/components/revenue-panels.tsx::humanize",
+        "apps/ui/src/features/customers/components/overview-tab.tsx::humanize",
 }
 
 #: How many files imported the humaniser when #210 installed this gate. Not a

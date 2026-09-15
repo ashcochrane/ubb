@@ -68,10 +68,15 @@ from core.vocabulary import (
 
 KNOWN_COST_MICROS = 1_000_000
 OTHER_KNOWN_COST_MICROS = 500_000
+#: WHAT EACH POSTING IN THIS MODULE IS PRICED AT. Named since #497,
+#: because it is now load-bearing in an assertion below rather than only a
+#: default nobody read: every posting's customer price is revenue, so a
+#: margin here is this figure times the postings less the supplier cost.
+BILLED_MICROS = 3_000_000
 
 
 def _posting(tenant, customer, key, *, status=COSTING_STATUS_KNOWN,
-             cost=KNOWN_COST_MICROS, billed=3_000_000, **kwargs):
+             cost=KNOWN_COST_MICROS, billed=BILLED_MICROS, **kwargs):
     """One posting in one of the three costing states.
 
     The amount and the status move together because the database refuses every
@@ -337,9 +342,28 @@ class TestTheMarginSaysWhatItsCostExcluded:
         assert rows[str(self.c2.id)][UNRESOLVED_EVENT_COUNT_KEY] == 0
 
     def test_one_customers_live_margin_carries_its_own_count(self):
+        """The count is the subject; the margin beside it is what the count
+        qualifies.
+
+        ⚠ **THE MARGIN FIGURE HERE WAS THE DELETED SWITCH'S UNTIL #497**, and
+        it read `-KNOWN_COST_MICROS` — minus the whole supplier cost, because
+        this tenant meters and does not bill through UBB, so a customer-level
+        setting struck both postings' customer price out of its revenue. That
+        setting is gone: who raises a customer's invoices does not decide
+        whether the work was sold, and the price UBB resolved is revenue. The
+        expression below is written from the fixture rather than as a literal,
+        so it says WHY the number is what it is.
+
+        Nothing about this case's own claim moves. `c1` has two postings, one
+        of which carries a supplier cost UBB never learned; the cost total is
+        therefore a floor, the margin a CEILING, and the count beside it is
+        what says so. A margin that is now positive makes that sharper rather
+        than weaker — an unlearned cost can only take it down.
+        """
         body = self._get(f"/api/v1/margin/customers/{self.c1.id}")
         assert body["provider_cost_micros"] == KNOWN_COST_MICROS
-        assert body["gross_margin_micros"] == -KNOWN_COST_MICROS
+        assert body["usage_revenue_micros"] == 2 * BILLED_MICROS
+        assert body["gross_margin_micros"] == 2 * BILLED_MICROS - KNOWN_COST_MICROS
         assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1
 
     def test_a_business_rollup_adds_its_seats_counts_up(self):

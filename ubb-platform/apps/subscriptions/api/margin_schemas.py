@@ -111,13 +111,12 @@ class MarginThresholdOut(Schema):
     provider_cost_spike_pct: float
 
 
-class RevenueModeIn(Schema):
-    revenue_mode: str = ""
-
-
-class RevenueModeOut(Schema):
-    revenue_mode: str
-    resolved: str
+# THE SWITCH'S REQUEST AND RESPONSE BODIES WERE HERE AND ARE GONE with the
+# path that carried them (#497, slice 7 §9). The response published two fields
+# — what had been set, and what it resolved to — which is a shape worth
+# remembering: it existed because the setting alone could not say what it
+# meant, the resolution being a second rule somewhere else. Nothing here
+# replaces them.
 
 
 # ---- Margin read surface out-types (#98) ----
@@ -176,7 +175,6 @@ class SeatMarginOut(Schema):
     """One customer's live margin (``MarginService.compute_live``) — the shape
     a business rollup's ``seats`` entries carry."""
     customer_id: str
-    revenue_mode: str
     subscription_revenue_micros: int
     #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
     #: under the `recorded` basis (#496). Beside the Stripe figure above and

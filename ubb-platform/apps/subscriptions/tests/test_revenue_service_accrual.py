@@ -11,15 +11,15 @@ PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)  # full June
 
 @pytest.mark.django_db
 class TestAccrual:
-    def test_resolve_revenue_mode_default_and_override(self):
-        t = Tenant.objects.create(name="MO", billing_mode="meter_only")
-        c = Customer.objects.create(tenant=t, external_id="c1")
-        assert RevenueService.resolve_revenue_mode(t, c) == "metered_only"
-        tb = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
-        cb = Customer.objects.create(tenant=tb, external_id="c1")
-        assert RevenueService.resolve_revenue_mode(tb, cb) == "billed"
-        cb.revenue_mode = "metered_only"; cb.save(update_fields=["revenue_mode"])
-        assert RevenueService.resolve_revenue_mode(tb, cb) == "metered_only"  # override wins
+    # THE POSTURE RESOLVER'S CASE WAS HERE AND IS GONE (#497, slice 7 §9). It
+    # drove the rule this class's subject no longer has: a per-customer
+    # override of whether usage counted as revenue, falling back to the
+    # tenant's billing mode. Nothing here resolves revenue existence from a
+    # billing mode any more, so there is no rule left to drive — and its
+    # replacement is not another case in this module but
+    # `test_who_invoices_decides_only_who_invoices.py`, which asserts that the
+    # two postures get one answer rather than that the resolver picks between
+    # them correctly.
 
     def test_subscription_nominal_full_month(self):
         # amount_micros now holds the FULL per-interval total; quantity is informational and

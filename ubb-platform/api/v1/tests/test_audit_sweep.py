@@ -184,7 +184,16 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # pair's `GET` was never counted here. The record that replaced it already
 # recorded its own act under a CURRENT name, so nothing recorded becomes
 # unrecorded. Recording 74 -> 73.
-_EXPECTED_MUTATING = 78
+#
+# 78 -> 77 in #497, slice 7's third: the customer-level revenue switch's `PUT`
+# leaves with the column it wrote, and the audit action it raised leaves with
+# it. ONE mutating operation again, not two — the pair's `GET` was never
+# counted here — and the retired action is named descriptively for the same
+# reason as the paragraph above, because this same commit pays its ledger
+# entry and afterwards no swept backend file may spell it. Recording 73 -> 72:
+# the act it recorded has ceased to exist rather than become unrecorded, which
+# is the only way this count may fall.
+_EXPECTED_MUTATING = 77
 _EXPECTED_EXEMPT = 5
 
 

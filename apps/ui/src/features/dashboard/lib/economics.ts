@@ -1,12 +1,32 @@
 // Pure derivations for the CFO overview.
 //
-// Meter-only semantics (margin spec): `usage_billed_micros` is what usage
-// billed at the tenant's prices regardless of mode; `usage_revenue_micros`
-// counts it as revenue only for billed-mode customers. A meter-only tenant
-// therefore has ~zero `total_revenue_micros`/`gross_margin_micros`, so the
-// honest figures to show are usage billed and the markup margin
-// (billed − provider cost) — clearly labelled "(metered)". Money stays in
-// integer micros end-to-end; only percentages (display-only) use floats.
+// ⚠ THE PREMISE OF THE METERED VIEW BELOW EXPIRED IN #497, AND THE VIEW
+// ITSELF IS LEFT STANDING. This paragraph used to read: a workspace that
+// does not bill through UBB has ~zero `total_revenue_micros` and ~zero
+// `gross_margin_micros`, because `usage_revenue_micros` counted billed
+// usage as revenue only for billed-mode customers — so the honest figures
+// to show were usage billed and the billed-minus-cost margin, labelled
+// "(metered)". That is no longer true of any workspace. The customer-level
+// revenue switch is deleted, `usage_revenue_micros` equals
+// `usage_billed_micros` on every row the server serves, and a workspace
+// billing its customers elsewhere gets a real total and a real margin like
+// anybody else.
+//
+// ⚠ **SO THE `meterOnly` BRANCHES NOW UNDER-REPORT, AND IT IS A RESIDUAL
+// RATHER THAN A FIX THIS TICKET MAY MAKE.** They substitute `usage_billed`
+// for the server's own total, which DROPS subscription revenue and anything
+// the tenant supplied (#496's column) — so a metered workspace with either
+// would read a smaller revenue figure here than on the customer page, over
+// the same window. The branch keys on `/tenant/config`'s billing mode, not
+// on the field #497 deletes, so nothing here is contract-forced and `tsc`
+// is green either way; removing it is a presentation change across five
+// files — the labels, the tooltips, the chart title and the sort — and
+// belongs with the dashboard's own ticket in phase B3 (#507), which
+// rebuilds this surface on the one economic query. Written down because a
+// falsified premise nobody records is how a branch survives six tickets.
+//
+// Money stays in integer micros end-to-end; only percentages (display-only)
+// use floats.
 
 import type {
   BreakdownRow,

@@ -68,11 +68,11 @@ class CustomerEconomics(BaseModel):
     """Per-customer, per-month margin snapshot.
 
     Revenue is three sources: the Stripe subscription accrual, what the tenant
-    says it earned elsewhere, and billed usage — the third **only where the
-    customer's resolved revenue mode is `billed`**, which is what
-    `_compose` decides and what `usage_revenue_micros` reports. Cost is the
-    provider total. Each source is its own column, so a figure read off this
-    record can say which kind of money it is.
+    says it earned elsewhere, and billed usage — the third for **every**
+    tenant since #497, because which postings carry customer revenue is a fact
+    each posting states (#147 §7) rather than one a customer-level setting
+    could override. Cost is the provider total. Each source is its own column,
+    so a figure read off this record can say which kind of money it is.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_economics")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="economics")
@@ -136,7 +136,11 @@ class CustomerEconomics(BaseModel):
     unpriced_event_count = models.IntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
     total_revenue_micros = models.BigIntegerField(default=0)
-    revenue_mode = models.CharField(max_length=20, blank=True, default="")
+    # THE SWITCH'S TWIN WAS HERE AND IS GONE (#497, slice 7 §9), with the
+    # column on the customer it was copied from. It froze one period's answer
+    # to "does this customer's usage count as revenue?", which was never a
+    # question about a period — and a snapshot holding a stale copy of a
+    # coarse setting is the shape that outlives the setting itself.
     margin_percentage = models.DecimalField(max_digits=7, decimal_places=2, default=0)
     is_unprofitable = models.BooleanField(default=False)
 

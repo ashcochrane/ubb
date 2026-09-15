@@ -17,7 +17,7 @@ class MarginClientTest(unittest.TestCase):
     def test_get_customer_margin(self, mock_get):
         # The full body the endpoint serves (CustomerMarginOut, #98).
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "customer_id": "c1", "external_id": "ext", "revenue_mode": "billed",
+            "customer_id": "c1", "external_id": "ext",
             "subscription_revenue_micros": 500_000_000,
             # NOTHING SUPPLIED HERE, and the field is present saying so (#496).
             # This customer's revenue is all Stripe's, which is a fact the

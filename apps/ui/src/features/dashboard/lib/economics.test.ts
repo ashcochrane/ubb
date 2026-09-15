@@ -14,30 +14,42 @@ const SUMMARY: MarginSummary = {
   period: { start: "2026-07-01", end: "2026-07-23" },
   subscription_revenue_micros: 1_000_000_000,
   supplied_revenue_micros: 0,
+  // THE TWO USAGE FIGURES ARE ONE FIGURE SINCE #497, so a fixture where
+  // they differ describes a response no server can produce. This one read
+  // 4,000,000,000 against 5,000,000,000 billed.
   usage_billed_micros: 5_000_000_000,
-  usage_revenue_micros: 4_000_000_000,
+  usage_revenue_micros: 5_000_000_000,
   provider_cost_micros: 2_500_000_000,
   unresolved_event_count: 0,
   unpriced_event_count: 0,
-  total_revenue_micros: 5_000_000_000,
-  gross_margin_micros: 2_500_000_000,
-  margin_percentage: 50,
+  // 1,000,000,000 subscription + 5,000,000,000 usage.
+  total_revenue_micros: 6_000_000_000,
+  gross_margin_micros: 3_500_000_000,
+  margin_percentage: 58.33,
   customer_count: 3,
 };
 
 describe("summaryEconomics", () => {
   it("passes server figures through for billing tenants", () => {
     const view = summaryEconomics(SUMMARY, false);
-    expect(view.revenue_micros).toBe(5_000_000_000);
-    expect(view.margin_micros).toBe(2_500_000_000);
-    expect(view.margin_pct).toBe(50);
+    expect(view.revenue_micros).toBe(6_000_000_000);
+    expect(view.margin_micros).toBe(3_500_000_000);
+    expect(view.margin_pct).toBe(58.33);
   });
 
-  it("derives usage-billed figures for meter-only tenants", () => {
+  // ⚠ THIS CASE NOW SHOWS THE METERED VIEW LOSING A BILLION, WHICH IS WHY
+  // IT IS RENAMED RATHER THAN QUIETLY RE-NUMBERED. The two branches agreed
+  // on this fixture while a metered workspace really did have ~zero
+  // recognised revenue; #497 deleted the switch that made that true, so the
+  // substitution now DROPS the subscription revenue the server counted.
+  // `economics.ts`'s header records it as a residual owned by the
+  // dashboard's own ticket (#507). What this case does is stop it being
+  // invisible, by asserting the gap rather than the substituted figure
+  // alone.
+  it("drops non-usage revenue for meter-only tenants — a residual, not a rule", () => {
     const view = summaryEconomics(SUMMARY, true);
-    // usage billed, not (near-zero) recognised revenue
-    expect(view.revenue_micros).toBe(5_000_000_000);
-    // billed − provider cost
+    expect(view.revenue_micros).toBe(5_000_000_000); // usage billed alone
+    expect(SUMMARY.total_revenue_micros).toBe(6_000_000_000); // what the server said
     expect(view.margin_micros).toBe(2_500_000_000);
     expect(view.margin_pct).toBe(50);
   });
@@ -48,19 +60,23 @@ const ROW: MarginCustomerRow = {
   subscription_revenue_micros: 200_000_000,
   supplied_revenue_micros: 0,
   usage_billed_micros: 1_000_000_000,
-  usage_revenue_micros: 0, // metered-only customer
+  // Equal to the billed figure, as it is on every row the server serves
+  // since #497. It read 0, commented "metered-only customer", which was
+  // the deleted switch's whole effect.
+  usage_revenue_micros: 1_000_000_000,
   provider_cost_micros: 600_000_000,
   unresolved_event_count: 0,
   unpriced_event_count: 0,
-  gross_margin_micros: -400_000_000,
-  margin_percentage: 0,
+  // 200,000,000 subscription + 1,000,000,000 usage − 600,000,000 cost.
+  gross_margin_micros: 600_000_000,
+  margin_percentage: 50,
 };
 
 describe("customerEconomics", () => {
   it("sums subscription + usage revenue for billing tenants (rows lack a total)", () => {
     const view = customerEconomics(ROW, false);
-    expect(view.revenue_micros).toBe(200_000_000);
-    expect(view.margin_micros).toBe(-400_000_000);
+    expect(view.revenue_micros).toBe(1_200_000_000);
+    expect(view.margin_micros).toBe(600_000_000);
   });
 
   it("uses usage billed for meter-only tenants", () => {
@@ -80,6 +96,9 @@ describe("customerEconomics", () => {
       ...ROW,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 500_000_000,
+      // Both, together: the two are one figure on the wire, and a row that
+      // moved only one of them could not be served.
+      usage_billed_micros: 100_000_000,
       usage_revenue_micros: 100_000_000,
     };
     expect(customerEconomics(supplied, false).revenue_micros).toBe(600_000_000);
@@ -88,8 +107,8 @@ describe("customerEconomics", () => {
 
 describe("sortCustomers", () => {
   const rows: MarginCustomerRow[] = [
-    { ...ROW, customer_id: "a", usage_revenue_micros: 100_000_000, gross_margin_micros: 50_000_000, margin_percentage: 10 },
-    { ...ROW, customer_id: "b", usage_revenue_micros: 900_000_000, gross_margin_micros: 20_000_000, margin_percentage: 90 },
+    { ...ROW, customer_id: "a", usage_billed_micros: 100_000_000, usage_revenue_micros: 100_000_000, gross_margin_micros: 50_000_000, margin_percentage: 10 },
+    { ...ROW, customer_id: "b", usage_billed_micros: 900_000_000, usage_revenue_micros: 900_000_000, gross_margin_micros: 20_000_000, margin_percentage: 90 },
   ];
 
   it("sorts descending by the requested key", () => {

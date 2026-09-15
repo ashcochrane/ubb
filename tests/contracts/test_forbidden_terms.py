@@ -368,7 +368,7 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # retired word -- it renames nothing and carries nothing -- so the
         # number moved for the file existing; the sites and terms held at
         # 7 in 25.
-        "historical-migrations": (UNTIL_SLICE_8, 262, 19),
+        "historical-migrations": (UNTIL_SLICE_8, 264, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

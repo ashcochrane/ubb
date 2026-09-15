@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,882 of 2,311 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,874 of 2,305 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2304,6 +2304,44 @@ measurement_key:
     # The sweep's own totals DID move, 7 terms in 25 sites -> **6 in 24**:
     # the audit action the retired model raised has no living site left, and
     # its G7 entry is deleted by the same commit.
+    #
+    # 2026-09-15, #497 (the customer-level revenue switch is deleted):
+    # 1,882 of 2,311 -> 1,874 of 2,305 tracked files (`units` 44 files / 122
+    # occurrences, UNMOVED for the third consecutive ticket -- this commit's
+    # new prose is about postings, prices and who raises an invoice, and it
+    # reaches for "figure", "amount" and "posting" where a careless draft would
+    # reach for the retired plural).
+    # ⚠ **THE DENOMINATORS FELL AGAIN, AND THIS IS THE LARGEST SINGLE-COMMIT
+    # FALL THIS ENTRY HAS RECORDED.** It is a net of TWELVE moves, and every one
+    # of them is a deletion this ticket is FOR rather than a side effect.
+    # THREE files arrived: the two migrations that drop the switch and the
+    # snapshot's frozen copy of it (both excluded, so the DECLARED
+    # `historical-migrations` count moves 262 -> 264 in `gates/forbidden-term-
+    # sweep.yaml` and, pinned a second time, in `tests/contracts/
+    # test_forbidden_terms.py`; the sweep's own printed exclusion total, which
+    # nothing declares, reads 431 rather than 429), and one new test module
+    # (swept) holding the claim the deletion makes true.
+    # NINE LEFT, and they divide four ways: THREE backend test modules whose
+    # whole subject was the switch — its route pair, its two columns, and the
+    # margin "modes" it produced; ONE console module, the customer's revenue
+    # panels, which #496 had reduced to a single card and this ticket empties
+    # (its render site and its entry in the legacy adapter's importer list go
+    # with it); ONE SDK test module for the two client calls; and FOUR generated
+    # SDK core modules — two operation modules and two model modules — deleted
+    # by regeneration when the route pair left the contract, which is the same
+    # four-file shape #496 recorded and for the same reason.
+    # So swept 1,882 + 1 - 9 = 1,874 and tracked 2,311 + 3 - 9 = 2,305, and NO
+    # EXCLUSION WIDENED: the only rule whose count moved is the migration one,
+    # by the two files that joined it.
+    # The sweep's own totals moved by TWO TERMS rather than one, 6 terms in 24
+    # sites -> **4 in 19**. The switch reached all four areas — backend (11),
+    # console (8), contract (1) and SDK (9) — and its audit action a fifth site
+    # on the backend; all five entries are deleted by the commits that make them
+    # false. A sixth entry was DECREMENTED without being paid: `backend::
+    # meter_only` falls 14 -> 10, because `found:` is a ceiling as well as a
+    # floor and four of the files that spelled that mode were among the nine
+    # deleted or rewritten here. That is the direction #349 recorded — a retired
+    # term can be tripped by REMOVING it — and slice 8 still owns the rename.
 
     - term: units
       retired_as: >-

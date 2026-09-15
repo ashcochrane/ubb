@@ -155,11 +155,6 @@ class InvalidCursorError(BadRequestError):
     CODE = 'invalid_cursor'
 
 
-class InvalidRevenueModeError(UnprocessableEntityError):
-    STATUS = 422
-    CODE = 'invalid_revenue_mode'
-
-
 class InvalidTenantIdError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'invalid_tenant_id'
@@ -254,7 +249,6 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'internal_error': InternalError,
     'invalid_config': InvalidConfigError,
     'invalid_cursor': InvalidCursorError,
-    'invalid_revenue_mode': InvalidRevenueModeError,
     'invalid_tenant_id': InvalidTenantIdError,
     'last_active_admin': LastActiveAdminError,
     'last_active_key': LastActiveKeyError,
@@ -313,7 +307,6 @@ __all__ = [
     'InternalError',
     'InvalidConfigError',
     'InvalidCursorError',
-    'InvalidRevenueModeError',
     'InvalidTenantIdError',
     'LastActiveAdminError',
     'LastActiveKeyError',
