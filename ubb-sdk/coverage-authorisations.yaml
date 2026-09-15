@@ -406,3 +406,28 @@ authorisations:
       valid values, so a wrapper would have to pass both through from the
       generated models, which is exactly what the generated module already
       does.
+  - id: slice-7-498-the-grouping-discovery-contract
+    issue: 498
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION ON ONE NEW PATH, `generated_only`: the discovery
+      contract, which answers what one tenant may group an economic question
+      by (`GET /metering/analytics/grouping-options`). The total moves 83 ->
+      84 and `not_yet_wrapped` stays at zero, the pinned generator having
+      produced a module and two enum modules for it.
+
+      WHY IT IS NOT WRAPPED HERE, and it is a question of ORDER rather than of
+      taste. Slice 7 §21 rules the collapse backend-first and the SDK second,
+      because the SDK's share is mostly generated and a generated module only
+      regenerates away when its route moves — so the phase that rebuilds this
+      client is the one that also removes the nine routes it currently wraps.
+      A wrapper written here would be written against a client the very next
+      phase re-shapes, and #505 is the ticket that says so.
+
+      ⚠ AND THE SHAPE THE WRAPPER WILL HAVE IS ALREADY DECIDED BY THE
+      CONTRACT, which is the argument for waiting rather than against it. The
+      row carries a closed kind and a closed rollup axis, both advertised, so
+      the generated models already hold them by reference — and
+      `docs/conventions/sdk-wrap.md` forbids a client keeping its own list of
+      valid values, which is precisely what a hand-written picker helper
+      invented now would grow.

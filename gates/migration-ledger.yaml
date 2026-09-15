@@ -1065,24 +1065,26 @@ entries:
   #     it earlier; none may take it later.
   #
 
-  - id: g2-backend-analytics_grouping_kind
-    gate: G2
-    site: ubb-platform/apps/metering/queries.py::analytics_grouping_kind
-    expected: analytics_grouping_kind
-    found: 0 of 2 values
-    owner_slice: slice_7
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. Analytics grouping is
-      slice 7's subject; #145 replaced ad-hoc grouping with declared Grouping
-      Fields and rollups, and the kind is how the two are told apart.
+  # `g2-backend-analytics_grouping_kind` AND `g2-backend-analytics_rollup` WERE
+  # HERE AND ARE PAID (#498, slice 7 §6/§7), each with its G4 contract twin in
+  # the same commit and each at `0 of 2`. Both were paid by COMPUTATION rather
+  # than by import, which is the distinction their own entries could not make:
+  # the read contract now computes what one tenant may group by — the two kinds,
+  # the axes of each, and the refusal that a combination outside them earns —
+  # so the values are held because something decides with them, not because a
+  # line names them. An import with no computation behind it would have been
+  # the vacuous form of both payments.
+  #
+  # ⚠ THE TWO DIED TOGETHER BECAUSE ONE READ SERVES BOTH. A rollup axis is one
+  # of the two kinds, so the row that states a kind states which rollup it is,
+  # and a commit that paid one and left the other would have had to publish
+  # half a vocabulary.
 
   - id: g2-backend-analytics_measure
     gate: G2
     site: ubb-platform/apps/metering/queries.py::analytics_measure
     expected: analytics_measure
-    found: 0 of 4 values
+    found: 1 of 4 values
     owner_slice: slice_7
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -1090,19 +1092,15 @@ entries:
       this adds an import rather than replacing a list. The three measures and
       the event count are what slice 7 rebuilds the analytics surface around
       (#145, #141's unknown-revenue rule).
-
-  - id: g2-backend-analytics_rollup
-    gate: G2
-    site: ubb-platform/apps/metering/queries.py::analytics_rollup
-    expected: analytics_rollup
-    found: 0 of 2 values
-    owner_slice: slice_7
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. Event Category and
-      Measurement Concept became analytics-only when #147 removed Event
-      Category from the pricing ladder. Slice 7 is where they land.
+      ⚠ 0 -> 1 in #498, and the one is a REFUSAL rather than a measure. The
+      grouping contract declares the supplier cost unsupported on the
+      measurement rollup, with its reason, because UBB records that cost per
+      posting and not per measurement — so the discovery read names that one
+      value in order to refuse it. What remains this entry's is the whole of it
+      and is unchanged: the module that COMPUTES the four is the one economic
+      query, and a read that listed all four in order to describe them would
+      have paid this by mention, which is the vacuous form the pairing with the
+      G4 twin below exists to catch.
 
   - id: g2-backend-audit_action
     gate: G2
@@ -1437,46 +1435,36 @@ entries:
   # an owner — #206's `meter_only` and #227's `audit_action` in a third place
   # — and any slice may take them earlier.
 
-  - id: g4-openapi-analytics_grouping_kind
-    gate: G4
-    site: openapi/v1.json::analytics_grouping_kind
-    expected: analytics_grouping_kind
-    found: 0 of 2 values
-    owner_slice: slice_7
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 7 rebuilds analytics around declared Grouping Fields and
-      rollups, which is what this kind tells apart. The metadata appears in
-      that slice.
+  # `g4-openapi-analytics_grouping_kind` AND `g4-openapi-analytics_rollup` WERE
+  # HERE AND ARE PAID (#498), each in the same commit as its backend G2 twin
+  # above — one debt read from two sides, and the pairing is not optional:
+  # `test_every_advertised_concept_reaches_the_contract` refuses a concept the
+  # backend serves that declares an `openapi` consumer and marks no field, so
+  # the commit that made the read contract hold both value sets could not stop
+  # there. Both are advertised on the discovery read's row — the kind on a plain
+  # string node, the rollup inside the string member of a nullable union,
+  # because a direct grouping field is not a rollup and a marker on the union
+  # node itself would admit `null` under `anyOf` and refuse it under `enum`.
+  # Two entries out of the seeding, and its floor comes down by two.
 
   - id: g4-openapi-analytics_measure
     gate: G4
     site: openapi/v1.json::analytics_measure
     expected: analytics_measure
-    found: 0 of 4 values
+    found: 1 of 4 values
     owner_slice: slice_7
     reason: >-
       The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      holds only some of them: the spec would publish the agreed vocabulary on a
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 7 rebuilds the analytics surface these three measures and the
       event count are computed for. The metadata appears in that slice.
-
-  - id: g4-openapi-analytics_rollup
-    gate: G4
-    site: openapi/v1.json::analytics_rollup
-    expected: analytics_rollup
-    found: 0 of 2 values
-    owner_slice: slice_7
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 7 rebuilds analytics, where Event Category and Measurement
-      Concept land once #147 removed the first from pricing. The metadata
-      appears in that slice.
+      ⚠ 0 -> 1 in #498, tracking its backend twin above: the grouping contract
+      names the supplier cost in order to declare it unsupported on the
+      measurement rollup. A partial hold is still a hold of nothing the document
+      may say — the refusal is served on a plain string beside the axis, not as
+      an advertised value — so the excuse this entry records is unchanged and
+      only its extent moves.
 
   - id: g4-openapi-audit_action
     gate: G4

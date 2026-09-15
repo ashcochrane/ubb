@@ -30,22 +30,30 @@
       ]
     },
     "analytics_grouping_kind": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "field",
+        "rollup"
+      ]
     },
     "analytics_measure": {
       "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "backend_serves": "1 of 4 values",
       "kind": "closed",
       "representation": "enum"
     },
     "analytics_rollup": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "event_category",
+        "measurement_concept"
+      ]
     },
     "audit_action": {
       "advertised": false,
