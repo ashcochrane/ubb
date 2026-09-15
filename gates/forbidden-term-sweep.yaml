@@ -341,7 +341,18 @@ exclusions:
     # fifteen entries for those five names on the backend, the console and
     # the contract, the catalogue's four by-reference entries and the last
     # `openapi::budget` file all reached zero in the same commit.
-    files: 260
+    # 260 → 261 in #495, slice 7's first: ONE migration, creating the table a
+    # tenant states what it earned somewhere other than UBB in. ⚠ IT NAMES NO
+    # RETIRED TERM — it renames nothing and carries nothing, its whole content
+    # being a new table with four checks and a uniqueness key — so the number
+    # moved for the file existing and not for anything it says, which is this
+    # rule's ordinary shape. The sweep's own retired-term totals were UNCHANGED
+    # across the same commit, 7 terms in 25 sites in both directions, and the
+    # ledger did not move either: the two concepts this ticket coins hold every
+    # value by reference on the day they are declared, so neither ever owed an
+    # entry. **Quote the RULE count (7), never this one, when arguing that no
+    # allowlist grew.**
+    files: 261
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

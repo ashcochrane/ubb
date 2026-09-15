@@ -99,4 +99,4 @@ class CustomerSubscriptionItem(BaseModel):
 
 
 # Import economics models so Django discovers them for migrations
-from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig  # noqa: E402, F401
+from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig, TenantSuppliedRevenue  # noqa: E402, F401

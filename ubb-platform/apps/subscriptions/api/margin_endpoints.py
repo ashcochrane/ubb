@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from typing import Optional
 from uuid import UUID
 
 from django.db import transaction
@@ -8,19 +9,28 @@ from ninja import Router
 
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
+from core.exceptions import MisalignedAmount
+from core.money import SUPPORTED_CURRENCIES, assert_aligned
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from core.vocabulary import (
+    AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED, PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_VALUES, REVENUE_BASIS_VALUES)
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.subscriptions.economics.models import (
-    CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
+    CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig,
+    TenantSuppliedRevenue)
+from apps.subscriptions.economics.revenue import (
+    DEFAULT_REVENUE_BASIS, SuppliedRevenueService)
 from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.api.margin_schemas import (
     RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut,
     RevenueModeIn, RevenueModeOut,
     MarginSummaryOut, MarginByGroupingFieldOut, UnprofitableOut, MarginListOut,
-    CustomerMarginOut, MarginTrendOut, BusinessMarginOut)
+    CustomerMarginOut, MarginTrendOut, BusinessMarginOut, RevenueBasis,
+    SuppliedRevenueWindowOut, TenantSuppliedRevenueIn, TenantSuppliedRevenueOut)
 
 margin_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
@@ -237,6 +247,190 @@ def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
     return {"recurring_amount_micros": p.recurring_amount_micros, "interval": p.interval,
             "currency": p.currency, "effective_from": p.effective_from.isoformat(),
             "effective_to": p.effective_to.isoformat() if p.effective_to else None}
+
+
+# --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
+#
+# WHAT A TENANT THAT BILLS ITS CUSTOMERS SOMEWHERE ELSE EARNED, stated by the
+# tenant per customer per period and admitted for analytics. #153 §3.2 rules
+# that both postures survive — cost tracking alone, and cost tracking plus a
+# supplied figure — and the recurring profile above was carrying the second one
+# badly. These two operations are what make it explicit.
+#
+# ⚠ THE FLOORS ARE ARGUED FROM THIS MODULE'S OWN PRECEDENT, not guessed. Every
+# mutating operation here is already `role_floor(ADMIN)` and every read is
+# `role_floor(READ)`; a record that writes numbers appearing in margin
+# reporting is an administrative act by that standard. #153 §19 handed the
+# authorization model forward and #155 §16 did not take it back, so the
+# argument is made here because this is the last place left to make it.
+#
+# ⚠ AND NEITHER OPERATION MAY EVER PRESENT ONE AS A CHARGE. UBB neither
+# created nor invoiced this money — `pricing.Charge` is what UBB charged for a
+# delivered piece of work, and the two records never meet.
+SUPPLIED_REVENUE_PATH = "/customers/{customer_id}/supplied-revenue"
+
+
+def _supplied_record_body(record):
+    """One supplied record on the wire, source reference included.
+
+    The source reference travels to every consuming surface from here: it is
+    what lets a reader of a revenue number say where the number came from,
+    which is the fact the recurring profile destroyed by summing its amount
+    into the same column as a Stripe subscription.
+    """
+    return {
+        "id": str(record.id),
+        "amount_micros": record.amount_micros,
+        "currency": record.currency,
+        "period_start": record.period_start.isoformat(),
+        "period_end": record.period_end.isoformat() if record.period_end else None,
+        "recognition_method": record.recognition_method,
+        "source_reference": record.source_reference,
+        "recorded_at": record.created_at.isoformat(),
+    }
+
+
+@margin_router.post(
+    SUPPLIED_REVENUE_PATH,
+    response={200: TenantSuppliedRevenueOut, 404: ProblemOut, 422: ProblemOut},
+)
+@role_floor(ADMIN)
+@records_audit(AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED)
+def record_supplied_revenue(request, customer_id: UUID,
+                            payload: TenantSuppliedRevenueIn):
+    _product_check(request)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    try:
+        period_start = date.fromisoformat(payload.period_start)
+        period_end = (date.fromisoformat(payload.period_end)
+                      if payload.period_end else None)
+    except ValueError as e:
+        raise Problem("validation_error", f"invalid period date: {e}")
+    if period_end is not None and period_end <= period_start:
+        raise Problem(
+            "validation_error",
+            "period_end is exclusive and must fall after period_start; "
+            "omit it for revenue that is an instant rather than a span")
+    if payload.recognition_method not in RECOGNITION_METHOD_VALUES:
+        raise Problem(
+            "validation_error",
+            f"unknown recognition_method {payload.recognition_method!r}; "
+            f"allowed: {', '.join(sorted(RECOGNITION_METHOD_VALUES))}")
+    # A span to divide by is what the spreading method MEANS. Refused here as
+    # well as at the database so the caller is told which of the two fields to
+    # change, rather than meeting an integrity error that names a constraint.
+    if (period_end is None
+            and SuppliedRevenueService.spreads_across_a_span(
+                payload.recognition_method)):
+        raise Problem(
+            "validation_error",
+            f"recognition_method {payload.recognition_method!r} spreads the "
+            "amount across a span, so period_end is required")
+    source_reference = payload.source_reference.strip()
+    if not source_reference:
+        raise Problem(
+            "validation_error",
+            "source_reference says where the number came from and may not be "
+            "blank — it is part of what makes the figure readable")
+    currency = payload.currency.strip().lower()
+    if currency not in SUPPORTED_CURRENCIES:
+        raise Problem(
+            "unsupported_currency",
+            f"unsupported currency {currency!r}; allowed: "
+            f"{', '.join(sorted(SUPPORTED_CURRENCIES))}")
+    try:
+        assert_aligned(payload.amount_micros, currency)
+    except MisalignedAmount as misaligned:
+        raise Problem("validation_error", str(misaligned))
+
+    with transaction.atomic():
+        # RE-STATING A FIGURE IS THE SAME ACT PERFORMED AGAIN, which is what
+        # the record's uniqueness key means: one row per customer per
+        # period-open per source reference. A different source reference for
+        # the same period adds a figure BESIDE this one, because two invoices
+        # covering one month are two facts rather than a contradiction.
+        record, _ = TenantSuppliedRevenue.objects.update_or_create(
+            tenant=request.auth.tenant, customer=customer,
+            period_start=period_start, source_reference=source_reference,
+            defaults={"amount_micros": payload.amount_micros,
+                      "currency": currency,
+                      "period_end": period_end,
+                      "recognition_method": payload.recognition_method})
+        audit_record(
+            action=AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED,
+            tenant_id=request.auth.tenant.id,
+            resource_type="tenant_supplied_revenue", resource_id=record.id,
+            metadata={"customer_id": str(customer.id),
+                      "amount_micros": record.amount_micros,
+                      "currency": record.currency,
+                      "period_start": record.period_start.isoformat(),
+                      "period_end": (record.period_end.isoformat()
+                                     if record.period_end else None),
+                      "recognition_method": record.recognition_method,
+                      "source_reference": record.source_reference})
+    return _supplied_record_body(record)
+
+
+@margin_router.get(
+    SUPPLIED_REVENUE_PATH,
+    response={200: SuppliedRevenueWindowOut, 404: ProblemOut, 422: ProblemOut},
+)
+@role_floor(READ)
+def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
+                         end_date: date = None,
+                         basis: Optional[RevenueBasis] = None):
+    """The window's supplied revenue, under a basis the response names.
+
+    ⚠ **THE BASIS PARAMETER CARRIES ITS CONCEPT'S MARKER, which is the
+    OPPOSITE of the ruling on the unit-of-work listing's `status` filter**
+    (`tests/contracts/test_openapi_known_values.py`), and the difference is
+    worth stating because the two look alike. There the marker was declined
+    because it would have NARROWED what a caller may send — turning a mistyped
+    filter into a 422 where it was an empty page. Here the route already
+    refuses a basis the registry does not declare, below, and would have to:
+    there is no honest answer to "state this figure on a basis I have
+    invented". So the marker documents a refusal the server already makes
+    rather than introducing one, which is exactly when ADR-0007 §3 wants it.
+
+    **`known` MEANS A SUPPLIED FIGURE IS ATTRIBUTABLE TO THIS WINDOW, NOT THAT
+    THE WINDOW IS FULLY COVERED.** That is a real limit and it is stated rather
+    than papered over: UBB cannot tell a month the tenant has not got round to
+    supplying from a month in which the customer generated nothing, so "fully
+    covered" is not a fact available to it. What the caller gets instead is the
+    contributing records themselves, each with its own period — so the coverage
+    is readable from the answer rather than asserted by a status that cannot
+    know it.
+    """
+    _product_check(request)
+    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    chosen = basis or DEFAULT_REVENUE_BASIS
+    if chosen not in REVENUE_BASIS_VALUES:
+        raise Problem(
+            "validation_error",
+            f"unknown basis {chosen!r}; allowed: "
+            f"{', '.join(sorted(REVENUE_BASIS_VALUES))}")
+    start, end = _window(start_date, end_date)
+    records = SuppliedRevenueService.in_window(
+        request.auth.tenant.id, customer.id, start, end, chosen)
+
+    rows, per_currency = [], {}
+    for record in records:
+        attributed = SuppliedRevenueService.attributed_micros(
+            record, start, end, chosen)
+        rows.append({**_supplied_record_body(record),
+                     "attributed_amount_micros": attributed})
+        per_currency[record.currency] = per_currency.get(record.currency, 0) + attributed
+    # AN EMPTY LIST IS HOW `unknown` IS SERVED AND IT IS NEVER A ZERO. A tenant
+    # that supplied nothing covering this window has revenue UBB does not know,
+    # so margin is unavailable here rather than nil (#153 §3.4).
+    return {
+        "basis": chosen,
+        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "pricing_status": PRICING_STATUS_KNOWN if records else PRICING_STATUS_UNKNOWN,
+        "totals": [{"currency": currency, "amount_micros": per_currency[currency]}
+                   for currency in sorted(per_currency)],
+        "records": rows,
+    }
 
 
 _VALID_MODES = {"", "billed", "metered_only"}

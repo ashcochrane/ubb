@@ -281,6 +281,21 @@ AUDIT_ACTIONS = (
     "margin_threshold.set",
     "revenue_profile.set",
     "revenue_mode.set",
+    # WHAT THE TENANT EARNED SOMEWHERE OTHER THAN UBB, supplied for one
+    # customer over one period (#495, slice 7 §9). The registry has carried
+    # this name since #154 §3.7 ruled the recurring profile a per-period
+    # record; it is registered here now because the route that writes one
+    # exists, and `record()` refuses a name this tuple does not hold.
+    #
+    # ONE ACTION, NOT A PAIR, and the asymmetry is argued rather than
+    # inherited. The pairs above split declaring from withdrawing because both
+    # acts exist and a governance reader must not read metadata to tell them
+    # apart. Here there is one act: a tenant states what it earned, and
+    # re-stating it for the same period from the same source is the same act
+    # performed again — the correction shape `grouping_field.declared` already
+    # covers by the same reasoning. Nothing is withdrawn, because nothing was
+    # offered to a customer; UBB neither created nor invoiced this number.
+    "tenant_supplied_revenue.recorded",
     # customers & subscriptions
     "customer.created",
     "plan.created",

@@ -1053,6 +1053,51 @@ REASON_CODE_KNOWN_VALUES = frozenset({
 # generator lost.
 
 
+# --- recognition_method ------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# How a tenant-supplied revenue record is spread over the span it declares.
+# `straight_line` divides the amount by day across the record's own period;
+# `on_receipt` places the whole amount on the day that period opens, which is
+# what an up-front fee covering a later span actually does. The RECORD states
+# it, so no reader has to assume — and that is the whole difference from the
+# recurring profile it replaces, where proration was unconditional and
+# unlabelled (#153 §3.3).
+#
+# Declared in concepts/economics.yaml.
+
+RECOGNITION_METHOD_STRAIGHT_LINE = 'straight_line'
+RECOGNITION_METHOD_ON_RECEIPT = 'on_receipt'
+
+RECOGNITION_METHOD_VALUES = frozenset({
+    RECOGNITION_METHOD_STRAIGHT_LINE,
+    RECOGNITION_METHOD_ON_RECEIPT,
+})
+
+
+# --- revenue_basis -----------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which of the two views a revenue figure is stated under. `recorded` places
+# each supplied amount whole on the day its period opens and distributes
+# nothing; `recognised` spreads it by the record's own `recognition_method`
+# across the span the record declares. Both are offered and every surface
+# serving either NAMES the one it served — a revenue figure whose basis is
+# unstated is the defect this concept exists to end.
+#
+# Declared in concepts/economics.yaml.
+
+REVENUE_BASIS_RECORDED = 'recorded'
+REVENUE_BASIS_RECOGNISED = 'recognised'
+
+REVENUE_BASIS_VALUES = frozenset({
+    REVENUE_BASIS_RECORDED,
+    REVENUE_BASIS_RECOGNISED,
+})
+
+
 # --- source_kind -------------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

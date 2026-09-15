@@ -363,7 +363,12 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # exactly why a migration is excluded; the sites and terms fell
         # 17 in 59 -> 16 in 43 as the five names' fifteen entries and the
         # catalogue's four died.
-        "historical-migrations": (UNTIL_SLICE_8, 260, 19),
+        # 260 -> 261 in #495: one migration, creating the table a tenant
+        # states what it earned somewhere other than UBB in. It names no
+        # retired word -- it renames nothing and carries nothing -- so the
+        # number moved for the file existing; the sites and terms held at
+        # 7 in 25.
+        "historical-migrations": (UNTIL_SLICE_8, 261, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

@@ -24,9 +24,12 @@ from .apps_subscriptions_api_endpoints_pause_subscription_response import AppsSu
 from .apps_subscriptions_api_endpoints_resume_subscription_response import AppsSubscriptionsApiEndpointsResumeSubscriptionResponse
 from .apps_subscriptions_api_endpoints_set_customer_seats_response import AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse
 from .apps_subscriptions_api_endpoints_subscribe_customer_response import AppsSubscriptionsApiEndpointsSubscribeCustomerResponse
+from .apps_subscriptions_api_margin_endpoints_get_supplied_revenue_basis_type_0 import AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0
 from .assign_plan_in import AssignPlanIn
 from .attribute_request import AttributeRequest
 from .attribute_response import AttributeResponse
+from .attributed_supplied_revenue_out import AttributedSuppliedRevenueOut
+from .attributed_supplied_revenue_out_recognition_method import AttributedSuppliedRevenueOutRecognitionMethod
 from .audit_record_list_response import AuditRecordListResponse
 from .audit_record_out import AuditRecordOut
 from .audit_record_out_metadata import AuditRecordOutMetadata
@@ -231,6 +234,10 @@ from .stripe_subscription_out import StripeSubscriptionOut
 from .subscribe_in import SubscribeIn
 from .subscription_cancel_in import SubscriptionCancelIn
 from .subscription_invoice_out import SubscriptionInvoiceOut
+from .supplied_revenue_total_out import SuppliedRevenueTotalOut
+from .supplied_revenue_window_out import SuppliedRevenueWindowOut
+from .supplied_revenue_window_out_basis import SuppliedRevenueWindowOutBasis
+from .supplied_revenue_window_out_pricing_status import SuppliedRevenueWindowOutPricingStatus
 from .sync_response import SyncResponse
 from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
@@ -262,6 +269,10 @@ from .tenant_default_markup_in import TenantDefaultMarkupIn
 from .tenant_default_markup_out import TenantDefaultMarkupOut
 from .tenant_invoice_list_response import TenantInvoiceListResponse
 from .tenant_invoice_out import TenantInvoiceOut
+from .tenant_supplied_revenue_in import TenantSuppliedRevenueIn
+from .tenant_supplied_revenue_in_recognition_method import TenantSuppliedRevenueInRecognitionMethod
+from .tenant_supplied_revenue_out import TenantSuppliedRevenueOut
+from .tenant_supplied_revenue_out_recognition_method import TenantSuppliedRevenueOutRecognitionMethod
 from .tenant_usage_invoice_list_response import TenantUsageInvoiceListResponse
 from .tenant_usage_invoice_out import TenantUsageInvoiceOut
 from .top_up_checkout_response import TopUpCheckoutResponse
@@ -356,7 +367,10 @@ __all__ = (
     "AppsSubscriptionsApiEndpointsResumeSubscriptionResponse",
     "AppsSubscriptionsApiEndpointsSetCustomerSeatsResponse",
     "AppsSubscriptionsApiEndpointsSubscribeCustomerResponse",
+    "AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0",
     "AssignPlanIn",
+    "AttributedSuppliedRevenueOut",
+    "AttributedSuppliedRevenueOutRecognitionMethod",
     "AttributeRequest",
     "AttributeResponse",
     "AuditRecordListResponse",
@@ -563,6 +577,10 @@ __all__ = (
     "SubscribeIn",
     "SubscriptionCancelIn",
     "SubscriptionInvoiceOut",
+    "SuppliedRevenueTotalOut",
+    "SuppliedRevenueWindowOut",
+    "SuppliedRevenueWindowOutBasis",
+    "SuppliedRevenueWindowOutPricingStatus",
     "SyncResponse",
     "TaskAnalyticsOut",
     "TaskAnalyticsRow",
@@ -594,6 +612,10 @@ __all__ = (
     "TenantDefaultMarkupOut",
     "TenantInvoiceListResponse",
     "TenantInvoiceOut",
+    "TenantSuppliedRevenueIn",
+    "TenantSuppliedRevenueInRecognitionMethod",
+    "TenantSuppliedRevenueOut",
+    "TenantSuppliedRevenueOutRecognitionMethod",
     "TenantUsageInvoiceListResponse",
     "TenantUsageInvoiceOut",
     "TopUpCheckoutResponse",

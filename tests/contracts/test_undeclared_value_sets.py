@@ -12,7 +12,11 @@ coincidence can satisfy"*. So the census cannot see it, will never be able to
 see it, and the honest response is not to pretend otherwise but to **count it**.
 
 That is what this module does. **Every Django `choices=` in living backend code
-is pinned below, by file and by count** — all 50 of them across 20 files,
+is pinned below, by file and by count** — all 58 of them across 21 files
+(**re-measured in #495, which found this sentence saying 50 across 20**: the
+per-file numbers below are the data the test reads and they were current, while
+this total had not been re-taken since some slice that raised one of them —
+which is what a counting claim in prose does when no gate reads it),
 whether or not the registry declares a consumer for that file.
 
 Pinning the whole inventory rather than only the unmatched part is deliberate,
@@ -163,6 +167,17 @@ VALUE_SETS = {
     "ubb-platform/apps/platform/work/models.py": 5,
     "ubb-platform/apps/referrals/models.py": 4,
     "ubb-platform/apps/referrals/rewards/models.py": 1,
+    # A NEW FILE IN THIS INVENTORY IN #495, and the first entry here whose set
+    # belongs to a concept COINED IN THE SAME COMMIT. A tenant-supplied revenue
+    # record states how it is to be recognised, and `recognition_method` is
+    # declared in the registry with this module as its backend consumer — so
+    # the list is a comprehension over the generated frozenset and holds not
+    # one value of its own, which is why the census reads this file as serving
+    # the concept in full and no ledger entry was ever owed for it. It is
+    # counted all the same: this inventory counts the SHAPE and not the
+    # provenance, because a derived list and a typed one are indistinguishable
+    # to a reader skimming a diff.
+    "ubb-platform/apps/subscriptions/economics/models.py": 1,
     "ubb-platform/apps/subscriptions/models.py": 1,
     # 5 -> 6 in #461: what released a prepaid reservation -- the unit's own
     # terminal transition (the ordinary path) or the backstop sweep (evidence

@@ -314,6 +314,71 @@
         "title": "AttributeResponse",
         "type": "object"
       },
+      "AttributedSuppliedRevenueOut": {
+        "description": "One supplied record and what a window gets of it under one basis.",
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "attributed_amount_micros": {
+            "title": "Attributed Amount Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "recognition_method": {
+            "enum": [
+              "straight_line",
+              "on_receipt"
+            ],
+            "title": "Recognition Method",
+            "type": "string",
+            "x-ubb-concept": "recognition_method"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "source_reference": {
+            "title": "Source Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "amount_micros",
+          "currency",
+          "period_start",
+          "recognition_method",
+          "source_reference",
+          "recorded_at",
+          "attributed_amount_micros"
+        ],
+        "title": "AttributedSuppliedRevenueOut",
+        "type": "object"
+      },
       "AuditRecordListResponse": {
         "properties": {
           "data": {
@@ -7430,6 +7495,76 @@
         "title": "SubscriptionInvoiceOut",
         "type": "object"
       },
+      "SuppliedRevenueTotalOut": {
+        "description": "One currency's worth of the window's attributed supplied revenue.",
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount_micros"
+        ],
+        "title": "SuppliedRevenueTotalOut",
+        "type": "object"
+      },
+      "SuppliedRevenueWindowOut": {
+        "description": "The window's supplied revenue, under a basis the response NAMES (#495).\n\n**The totals are a list per currency and never a single figure**, because a\nsingle figure summed across currencies is a wrong number, and this slice's\nwhole subject is revenue figures that say what they are. The normal answer\nis a one-element list; a customer whose supplied records are denominated\ntwo ways gets two entries rather than a total that is true of neither.\n\n**An empty list is how `unknown` is served, and it is never a zero.** A\ntenant that has supplied nothing for this window has revenue UBB does not\nknow \u2014 margin is unavailable there, not nil \u2014 and a `0` here would be the\nsilent-zero #153 \u00a73.4 refuses by name.",
+        "properties": {
+          "basis": {
+            "enum": [
+              "recorded",
+              "recognised"
+            ],
+            "title": "Basis",
+            "type": "string",
+            "x-ubb-concept": "revenue_basis"
+          },
+          "pricing_status": {
+            "enum": [
+              "known",
+              "waived",
+              "unknown",
+              "not_applicable"
+            ],
+            "title": "Pricing Status",
+            "type": "string",
+            "x-ubb-concept": "pricing_status"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/AttributedSuppliedRevenueOut"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "totals": {
+            "items": {
+              "$ref": "#/components/schemas/SuppliedRevenueTotalOut"
+            },
+            "title": "Totals",
+            "type": "array"
+          },
+          "window": {
+            "$ref": "#/components/schemas/PeriodWindow"
+          }
+        },
+        "required": [
+          "basis",
+          "window",
+          "pricing_status",
+          "totals",
+          "records"
+        ],
+        "title": "SuppliedRevenueWindowOut",
+        "type": "object"
+      },
       "SyncResponse": {
         "properties": {
           "errors": {
@@ -8543,6 +8678,116 @@
           "created_at"
         ],
         "title": "TenantInvoiceOut",
+        "type": "object"
+      },
+      "TenantSuppliedRevenueIn": {
+        "description": "What a tenant states it earned from one customer over one period.\n\n\u26a0 **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant\nbills its customers somewhere UBB cannot see and is supplying the figure so\nthat margin can be computed at the scope it was supplied at.",
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "recognition_method": {
+            "enum": [
+              "straight_line",
+              "on_receipt"
+            ],
+            "title": "Recognition Method",
+            "type": "string",
+            "x-ubb-concept": "recognition_method"
+          },
+          "source_reference": {
+            "title": "Source Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount_micros",
+          "currency",
+          "period_start",
+          "recognition_method",
+          "source_reference"
+        ],
+        "title": "TenantSuppliedRevenueIn",
+        "type": "object"
+      },
+      "TenantSuppliedRevenueOut": {
+        "description": "One supplied record, as the tenant stated it.",
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "recognition_method": {
+            "enum": [
+              "straight_line",
+              "on_receipt"
+            ],
+            "title": "Recognition Method",
+            "type": "string",
+            "x-ubb-concept": "recognition_method"
+          },
+          "recorded_at": {
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "source_reference": {
+            "title": "Source Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "amount_micros",
+          "currency",
+          "period_start",
+          "recognition_method",
+          "source_reference",
+          "recorded_at"
+        ],
+        "title": "TenantSuppliedRevenueOut",
         "type": "object"
       },
       "TenantUsageInvoiceListResponse": {
@@ -13079,6 +13324,180 @@
           }
         ],
         "summary": "Put Revenue Mode"
+      }
+    },
+    "/api/v1/margin/customers/{customer_id}/supplied-revenue": {
+      "get": {
+        "description": "The window's supplied revenue, under a basis the response names.\n\n\u26a0 **THE BASIS PARAMETER CARRIES ITS CONCEPT'S MARKER, which is the\nOPPOSITE of the ruling on the unit-of-work listing's `status` filter**\n(`tests/contracts/test_openapi_known_values.py`), and the difference is\nworth stating because the two look alike. There the marker was declined\nbecause it would have NARROWED what a caller may send \u2014 turning a mistyped\nfilter into a 422 where it was an empty page. Here the route already\nrefuses a basis the registry does not declare, below, and would have to:\nthere is no honest answer to \"state this figure on a basis I have\ninvented\". So the marker documents a refusal the server already makes\nrather than introducing one, which is exactly when ADR-0007 \u00a73 wants it.\n\n**`known` MEANS A SUPPLIED FIGURE IS ATTRIBUTABLE TO THIS WINDOW, NOT THAT\nTHE WINDOW IS FULLY COVERED.** That is a real limit and it is stated rather\nthan papered over: UBB cannot tell a month the tenant has not got round to\nsupplying from a month in which the customer generated nothing, so \"fully\ncovered\" is not a fact available to it. What the caller gets instead is the\ncontributing records themselves, each with its own period \u2014 so the coverage\nis readable from the answer rather than asserted by a status that cannot\nknow it.",
+        "operationId": "apps_subscriptions_api_margin_endpoints_get_supplied_revenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "recorded",
+                    "recognised"
+                  ],
+                  "type": "string",
+                  "x-ubb-concept": "revenue_basis"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Basis"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppliedRevenueWindowOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Supplied Revenue"
+      },
+      "post": {
+        "operationId": "apps_subscriptions_api_margin_endpoints_record_supplied_revenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "customer_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Customer Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantSuppliedRevenueIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantSuppliedRevenueOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Record Supplied Revenue"
       }
     },
     "/api/v1/margin/customers/{customer_id}/trend": {

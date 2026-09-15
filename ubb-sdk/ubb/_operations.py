@@ -540,6 +540,10 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE_MODE = Operation(
     'apps_subscriptions_api_margin_endpoints_get_revenue_mode',
     'get',
     '/api/v1/margin/customers/{customer_id}/revenue-mode')
+APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_SUPPLIED_REVENUE = Operation(
+    'apps_subscriptions_api_margin_endpoints_get_supplied_revenue',
+    'get',
+    '/api/v1/margin/customers/{customer_id}/supplied-revenue')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_THRESHOLD = Operation(
     'apps_subscriptions_api_margin_endpoints_get_threshold',
     'get',
@@ -576,3 +580,7 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_THRESHOLD = Operation(
     'apps_subscriptions_api_margin_endpoints_put_threshold',
     'put',
     '/api/v1/margin/threshold')
+APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_RECORD_SUPPLIED_REVENUE = Operation(
+    'apps_subscriptions_api_margin_endpoints_record_supplied_revenue',
+    'post',
+    '/api/v1/margin/customers/{customer_id}/supplied-revenue')

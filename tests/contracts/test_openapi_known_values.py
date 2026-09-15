@@ -786,7 +786,15 @@ CONCEPTS_IN_THE_CONTRACT = {
     # and `unknown` is what says so.
     #
     # #465 — a SIXTH node, the price half of the same itemised event.
-    "pricing_status": Published(6, ENUM),  # + the queue's row + the itemised event
+    #
+    # #495 — a SEVENTH, and the first that is not about a POSTING's price. The
+    # supplied-revenue read answers whether customer revenue for a window is
+    # settled at the scope the tenant supplied it at, and slice 7 §9 rules that
+    # the four revenue states are unchanged and gain no fifth — so the honest
+    # spelling of "the tenant has supplied nothing covering this window" is
+    # this concept's own `unknown`, on this concept's own marker, rather than a
+    # new status meaning the same thing one scope up.
+    "pricing_status": Published(7, ENUM),  # + the queue's row + the itemised event
     # #351 — the second nullable marker on a response, following exactly the
     # placement `unresolved_reason` above established: in the STRING MEMBER of
     # the union, never on the union node, because `enum` and `anyOf` at one node
@@ -1157,6 +1165,36 @@ CONCEPTS_IN_THE_CONTRACT = {
     # keys are the names, and its `event_type` properties are `const`s the
     # exporter writes, not marked strings.
     "webhook_event_type": Published(4, ENUM),
+    # #495 (slice 7 §9) — HOW A SUPPLIED REVENUE RECORD IS SPREAD OVER THE
+    # SPAN IT DECLARES, on all three schemas that carry such a record: the
+    # write body, the record as it comes back, and the attributed row inside
+    # the window read. Closed, so each renders a real `enum`.
+    #
+    # ⚠ BOTH OF THIS TICKET'S CONCEPTS ARE COINED AND ADVERTISED IN ONE
+    # COMMIT, which is #351's `not_applicable_reason` shape rather than the
+    # seeded one — a concept whose backend consumer holds every value on the
+    # day it is declared never owed a G4 debt, so neither of these entries
+    # comes out of the seeding and the seeding's floor does not move.
+    "recognition_method": Published(3, ENUM),
+    # WHICH OF THE TWO VIEWS A REVENUE FIGURE IS STATED UNDER, on the one
+    # response that serves one AND on the query parameter that asks for it.
+    # TWO nodes rather than three, and the asymmetry with the concept above is
+    # the ruling: the basis is a property of the ANSWER, not of the record —
+    # the same record read twice under two bases is two answers about one row
+    # — so a marker on a record schema would be saying the row had a basis of
+    # its own.
+    #
+    # ⚠ THE QUERY PARAMETER IS MARKED, WHICH IS THE OPPOSITE OF THE RULING ON
+    # `task_status`' LISTING FILTER ABOVE, and the two are told apart by what
+    # the marker CHANGES. There it would have narrowed what a caller may send,
+    # turning a mistyped filter into a 422 where it was an empty page — a
+    # request-surface change smuggled in under a ticket about what UBB
+    # advertises. Here the route already refuses a basis the registry does not
+    # declare and must: there is no honest answer to "state this figure on a
+    # basis I invented". So the marker documents a refusal that already exists
+    # instead of creating one, and ADR-0007 §3 wants it there. #465's
+    # `control_family` filter is the live precedent for the placement.
+    "revenue_basis": Published(2, ENUM),
 }
 
 
@@ -1373,9 +1411,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # ⚠ FIVE SINCE #364, the price half of the queue row's own argument: the
     # row publishes a customer price, and `unknown` is the other reason a
     # posting is in that list.
+    # ⚠ SEVEN SINCE #495, AND THE SEVENTH IS NOT A POSTING'S. The supplied
+    # revenue read answers the same question one scope up — is customer
+    # revenue for this window settled, and if not, why not — and `unknown`
+    # there is a tenant that has supplied no figure covering it. It is the
+    # placement that keeps the four revenue states from gaining a fifth.
     placed("pricing_status", {"RecordUsageResponse", "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
-                              "ItemisedEventRow", "usage.recorded"})
+                              "ItemisedEventRow", "usage.recorded",
+                              "SuppliedRevenueWindowOut"})
     placed("not_applicable_reason", {"RecordUsageResponse", "UsageEventOut",
                                      "UsageEventDetailOut"})
     # HOW a price was derived, beside the status saying WHETHER it is settled
@@ -1588,6 +1632,23 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("webhook_event_type",
            {"WebhookConfigCreateRequest", "WebhookConfigUpdateRequest",
             "WebhookConfigResponse", "WebhookDeliveryResponse"})
+    # HOW A SUPPLIED REVENUE RECORD IS RECOGNISED (#495), on every schema that
+    # carries such a record: the body that writes one, the record as it is
+    # answered back, and the attributed row the window read serves. The rule
+    # is "wherever the record goes", which is why these are named as schemas
+    # rather than counted.
+    placed("recognition_method", {"TenantSuppliedRevenueIn",
+                                  "TenantSuppliedRevenueOut",
+                                  "AttributedSuppliedRevenueOut"})
+    # AND WHICH VIEW THE ANSWER WAS STATED UNDER — on the answer, and on the
+    # parameter that asks for it. NOT on any of the three schemas above, for
+    # the reason the map gives: a basis belongs to a reading of a record,
+    # never to the record, and a marker there would claim a supplied figure
+    # has a basis of its own — the unlabelled proration this slice exists to
+    # end, wearing a label.
+    placed("revenue_basis",
+           {"SuppliedRevenueWindowOut",
+            "/api/v1/margin/customers/{customer_id}/supplied-revenue"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose

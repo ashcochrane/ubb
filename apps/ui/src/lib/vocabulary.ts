@@ -1156,6 +1156,59 @@ export const REASON_CODE_LABEL_KEYS = {
 // generator lost.
 
 
+// --- recognition_method -----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// How a tenant-supplied revenue record is spread over the span it declares.
+// `straight_line` divides the amount by day across the record's own period;
+// `on_receipt` places the whole amount on the day that period opens, which is
+// what an up-front fee covering a later span actually does. The RECORD states
+// it, so no reader has to assume — and that is the whole difference from the
+// recurring profile it replaces, where proration was unconditional and
+// unlabelled (#153 §3.3).
+//
+// Declared in concepts/economics.yaml.
+
+export const RECOGNITION_METHOD_VALUES = [
+  "straight_line",
+  "on_receipt",
+] as const;
+
+export type RecognitionMethod = (typeof RECOGNITION_METHOD_VALUES)[number];
+
+export const RECOGNITION_METHOD_LABEL_KEYS = {
+  "straight_line": "recognition_method.straight_line",
+  "on_receipt": "recognition_method.on_receipt",
+} as const satisfies Record<RecognitionMethod, string>;
+
+
+// --- revenue_basis ----------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which of the two views a revenue figure is stated under. `recorded` places
+// each supplied amount whole on the day its period opens and distributes
+// nothing; `recognised` spreads it by the record's own `recognition_method`
+// across the span the record declares. Both are offered and every surface
+// serving either NAMES the one it served — a revenue figure whose basis is
+// unstated is the defect this concept exists to end.
+//
+// Declared in concepts/economics.yaml.
+
+export const REVENUE_BASIS_VALUES = [
+  "recorded",
+  "recognised",
+] as const;
+
+export type RevenueBasis = (typeof REVENUE_BASIS_VALUES)[number];
+
+export const REVENUE_BASIS_LABEL_KEYS = {
+  "recorded": "revenue_basis.recorded",
+  "recognised": "revenue_basis.recognised",
+} as const satisfies Record<RevenueBasis, string>;
+
+
 // --- source_kind ------------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
