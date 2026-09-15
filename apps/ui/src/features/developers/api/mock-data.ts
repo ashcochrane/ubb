@@ -52,6 +52,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: "c1a2b3d4-0001-4abc-9def-000000000001",
     subscription_revenue_micros: 49_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 182_500_000,
     usage_revenue_micros: 182_500_000,
     provider_cost_micros: 96_200_000,
@@ -63,6 +64,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: "c1a2b3d4-0002-4abc-9def-000000000002",
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 64_100_000,
     usage_revenue_micros: 64_100_000,
     provider_cost_micros: 41_800_000,
@@ -74,6 +76,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: "c1a2b3d4-0003-4abc-9def-000000000003",
     subscription_revenue_micros: 99_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 12_400_000,
     usage_revenue_micros: 12_400_000,
     provider_cost_micros: 18_900_000,

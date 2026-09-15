@@ -973,3 +973,40 @@ components webhook `stop.fired` removed
 # SDK's generated core and the hand-shell helper (deleted; `MIGRATION.md`
 # §13 names the successor call).
 GET /api/v1/customers/{customer_id}/past-limit-report api path removed without deprecation
+#
+# ---- Slice 7, #496: the recurring revenue pair retires -------------------
+#
+# `GET`/`PUT /margin/customers/{customer_id}/revenue` read and wrote ONE
+# recurring amount per customer — no per-period rows, no source reference, and
+# an amount the accrual behind it added into the same response field as a
+# Stripe subscription, so the provenance of a revenue figure was destroyed the
+# moment it landed. #153 §3.3 rules the model REPLACED rather than widened for
+# exactly those reasons, and its replacement is `TenantSuppliedRevenue` at
+# `POST`/`GET /margin/customers/{customer_id}/supplied-revenue` (#495): a
+# figure per customer PER PERIOD, carrying its own span, its own recognition
+# method and its own source reference. A partial period — the one thing the
+# recurring shape expressed automatically — is a record from the fourteenth to
+# the month end, which is what the hand-written carry migration writes.
+#
+# ONE PATH, TWO OPERATIONS, which with ticket 3's switch pair is phase A's
+# total of two paths and four operations (spec §17). The two lines below are
+# the whole of this ticket's block: no schema line, because `RevenueProfileIn`
+# and `RevenueProfileOut` are referenced by nothing else and oasdiff reports
+# the path rather than the components that went with it.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY AGREE: two breaks, the same two, from
+# `--baseline main` (2 error, 0 warning) and from the cumulative gate; the path
+# pre-dates the tag, so the lines are live.
+#
+# THE REPLACEMENT'S OWN ADDITIONS BREAK NOTHING and take no line here —
+# `supplied_revenue_micros` joins five margin response schemas beside the
+# Stripe figure it used to be summed into, and an added property is additive.
+#
+# WHY THE PRE-LIVE LANE APPLIES: no tenant is integrated against v1, and every
+# known consumer moves in this same commit — the console's committed schema
+# snapshot and the customers feature's recurring-revenue panel, query hooks,
+# typed client and mocks, the SDK's generated core (two operation modules and
+# two model modules) and its two hand-written margin calls, and the data
+# migration above.
+GET /api/v1/margin/customers/{customer_id}/revenue api path removed without deprecation
+PUT /api/v1/margin/customers/{customer_id}/revenue api path removed without deprecation

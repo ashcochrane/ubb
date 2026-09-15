@@ -597,6 +597,46 @@ The route pre-dates the launch tag, so the removal is recorded in the break bloc
 
 ---
 
+## 14. The recurring revenue amount becomes per-period supplied revenue (slice 7, #496 — pre-live)
+
+**`GET`/`PUT /api/v1/margin/customers/{customer_id}/revenue` are gone, with `RevenueProfileIn` and
+`RevenueProfileOut`.** They read and wrote ONE recurring amount per customer: no period, no source
+reference, and an accrual behind them that added the amount into the same response field as a
+Stripe subscription — so a caller reading `subscription_revenue_micros` could not tell which kind
+of money it was looking at.
+
+- `MeteringClient.set_customer_revenue(customer_id, recurring_amount_micros, interval=..., ...)`
+  and `MeteringClient.get_customer_revenue(customer_id)` are **deleted**. State the figure per
+  period instead, through the generated client:
+  `ubb._core.api.default.apps_subscriptions_api_margin_endpoints_record_supplied_revenue` (`POST`)
+  and `..._get_supplied_revenue` (`GET`), against
+  `/api/v1/margin/customers/{customer_id}/supplied-revenue`. Neither has a hand-written call in
+  `ubb-sdk/ubb/` yet; the disposition manifest records both as `generated_only`.
+- **One recurring amount becomes one record per period.** `recurring_amount_micros` is
+  `amount_micros` for the period it covers; `effective_from`/`effective_to` become each record's
+  own `period_start`/`period_end`, so **a customer that started mid-month is one record from the
+  fourteenth to the month end** rather than an amount a proration had to guess at. Each record
+  also carries `recognition_method` — `straight_line` is what the old accrual was doing unlabelled
+  — and `source_reference`, your own handle for where the number came from, which is required.
+- ⚠ **`interval` is gone and nothing is lost by it.** Nothing ever divided by it: a profile of X
+  with `interval="year"` accrued X **per month**, the same as `"month"`. The periods say what the
+  interval was trying to say, and they say it where it is checkable.
+- **Every margin response now names the source of its revenue.** `supplied_revenue_micros` joins
+  `subscription_revenue_micros` on `SeatMarginOut`, `CustomerMarginOut`, `CustomerMarginListRow`,
+  `MarginSummaryOut`, `MarginTrendPointOut` and `BusinessMarginTotals`. Both are inside
+  `total_revenue_micros`; neither is inside the other. **If you were reading
+  `subscription_revenue_micros` to get a customer's whole revenue, read `total_revenue_micros`.**
+- Existing amounts are carried by the platform's own data migration — one record per calendar
+  month the amount applied to, with the source reference
+  `ubb:carried-from-the-retired-recurring-amount`. An open-ended amount is carried up to the month
+  the migration ran in and no further: a per-period record states a period, and the next one is
+  yours to state.
+
+The routes pre-date the launch tag, so the removals are recorded in the break block
+(`openapi/oasdiff-err-ignore.txt`) as reviewed breaks.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

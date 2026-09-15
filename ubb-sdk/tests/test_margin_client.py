@@ -4,7 +4,6 @@ from ubb.metering import MeteringClient
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
-from ubb._core.models.revenue_profile_out import RevenueProfileOut
 
 
 class MarginClientTest(unittest.TestCase):
@@ -20,6 +19,11 @@ class MarginClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "customer_id": "c1", "external_id": "ext", "revenue_mode": "billed",
             "subscription_revenue_micros": 500_000_000,
+            # NOTHING SUPPLIED HERE, and the field is present saying so (#496).
+            # This customer's revenue is all Stripe's, which is a fact the
+            # response can now state because the two sources are two fields
+            # rather than one column holding both.
+            "supplied_revenue_micros": 0,
             "usage_billed_micros": 1_300_000, "usage_revenue_micros": 1_300_000,
             "provider_cost_micros": 1_000_000, "total_revenue_micros": 501_300_000,
             # One event's supplier cost is unresolved, so this margin is a
@@ -32,6 +36,7 @@ class MarginClientTest(unittest.TestCase):
         m = self.client.get_customer_margin("c1")
         self.assertIsInstance(m, CustomerMarginOut)
         self.assertEqual(m.gross_margin_micros, 500_300_000)
+        self.assertEqual(m.supplied_revenue_micros, 0)
         # Read off the TYPED attribute, not the untyped bag: the point of the
         # field being required is that the generated model carries it.
         self.assertEqual(m.unresolved_event_count, 1)
@@ -129,24 +134,30 @@ class MarginClientTest(unittest.TestCase):
                  "unresolved_event_count": 1,
                  "unpriced_event_count": 0,
                  "usage_billed_micros": 200, "subscription_revenue_micros": 0,
+                 # A month whose revenue the tenant stated itself — the point
+                 # names the source, which is what the retired recurring
+                 # amount made impossible (#496).
+                 "supplied_revenue_micros": 200,
                  "gross_margin_micros": 100, "margin_percentage": 50.0}]})
         pts = self.client.get_margin_trend("c1", periods=3)
         self.assertIsInstance(pts[0], MarginTrendPointOut)
         self.assertEqual(pts[0].unresolved_event_count, 1)
+        self.assertEqual(pts[0].supplied_revenue_micros, 200)
         self.assertEqual(mock_get.call_args.kwargs["params"]["periods"], 3)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1/trend")
 
-    @patch("ubb.metering.httpx.Client.put")
-    def test_set_customer_revenue(self, mock_put):
-        mock_put.return_value = MagicMock(status_code=200, json=lambda: {
-            "recurring_amount_micros": 500_000_000, "interval": "month", "currency": "usd",
-            "effective_from": "2026-06-01", "effective_to": None})
-        rev = self.client.set_customer_revenue("c1", 500_000_000)
-        self.assertIsInstance(rev, RevenueProfileOut)
-        self.assertEqual(rev.recurring_amount_micros, 500_000_000)
-        body = mock_put.call_args.kwargs["json"]
-        self.assertEqual(body["recurring_amount_micros"], 500_000_000)
-        self.assertEqual(mock_put.call_args.args[0], "/api/v1/margin/customers/c1/revenue")
+    def test_the_recurring_revenue_pair_is_no_longer_callable(self):
+        """Both methods, because deleting one of a pair is the easy mistake.
+
+        Asserted rather than left to the absence of a test: a client that
+        still exposed either would be publishing a call whose route answers
+        404, and `hasattr` is the only thing that fails when a method quietly
+        comes back. The replacement is the supplied-revenue pair, reachable
+        through the generated client and recorded as `generated_only` in the
+        disposition manifest (#496; `MIGRATION.md` §14).
+        """
+        self.assertFalse(hasattr(self.client, "set_customer_revenue"))
+        self.assertFalse(hasattr(self.client, "get_customer_revenue"))
 
     @patch("ubb.metering.httpx.Client.get")
     def test_get_unprofitable(self, mock_get):

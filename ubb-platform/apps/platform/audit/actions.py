@@ -279,7 +279,6 @@ AUDIT_ACTIONS = (
     "event_category.withdrawn",
     # margin / revenue
     "margin_threshold.set",
-    "revenue_profile.set",
     "revenue_mode.set",
     # WHAT THE TENANT EARNED SOMEWHERE OTHER THAN UBB, supplied for one
     # customer over one period (#495, slice 7 §9). The registry has carried

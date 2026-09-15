@@ -39,25 +39,17 @@ def _month_iter(start, end):
 
 
 class RevenueService:
-    @staticmethod
-    def manual_revenue_for_window(tenant_id, customer_id, start_date, end_date) -> int:
-        from apps.subscriptions.economics.models import CustomerRevenueProfile
-        p = CustomerRevenueProfile.objects.filter(
-            tenant_id=tenant_id, customer_id=customer_id).first()
-        if not p or not p.recurring_amount_micros:
-            return 0
-        eff_start = max(start_date, p.effective_from)
-        eff_end = end_date if p.effective_to is None else min(end_date, p.effective_to)
-        if eff_end <= eff_start:
-            return 0
-        total = 0
-        for m_start, m_end in _month_iter(eff_start, eff_end):
-            w_start = max(eff_start, m_start)
-            w_end = min(eff_end, m_end)
-            overlap_days = (w_end - w_start).days
-            month_days = _days_in_month(m_start.year, m_start.month)
-            total += p.recurring_amount_micros * overlap_days // month_days
-        return total
+    """What UBB can work out for itself about a customer's revenue.
+
+    ⚠ **IT NO LONGER PRORATES A RECURRING AMOUNT, AND THE ABSENCE IS THE
+    POINT** (#496). Until slice 7 this class also answered *what did the tenant
+    collect outside UBB?* from a single recurring amount per customer, divided
+    by day over whatever window was asked for, with nothing on the wire saying
+    a division had happened — and then added the result into the same figure as
+    a Stripe subscription. That question now has a record of its own that
+    states its own periods and its own source, and `SuppliedRevenueService`
+    below is what reads it. What is left here is Stripe's, and only Stripe's.
+    """
 
     @staticmethod
     def resolve_revenue_mode(tenant, customer):
@@ -87,18 +79,25 @@ class RevenueService:
 
     @staticmethod
     def accrued_subscription_revenue(tenant_id, customer_id, start_date, end_date) -> int:
-        return (RevenueService.manual_revenue_for_window(tenant_id, customer_id, start_date, end_date)
-                + RevenueService.subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date))
+        """The window's Stripe subscription revenue. One call, one source.
+
+        It used to be a sum of two sources under a name that admitted only one
+        of them, which is how the destination column came to hold both (#496).
+        The other source is `SuppliedRevenueService.attributed_total` and every
+        caller adds it under its own name.
+        """
+        return RevenueService.subscription_nominal_for_window(
+            tenant_id, customer_id, start_date, end_date)
 
 
 class SuppliedRevenueService:
     """The two views of a tenant-supplied revenue record, each named (#495).
 
-    Slice 7 §5 is blunt about which of these is the new one: **recognised is
-    the only behaviour UBB has today, and it is unlabelled and
-    unconditional.** `RevenueService.manual_revenue_for_window` above prorates
-    a recurring profile by day every time it is asked, with no way to request
-    the figure as recorded and nothing on the wire saying that a division
+    Slice 7 §5 was blunt about which of these was the new one: **recognised
+    was the only behaviour UBB had, and it was unlabelled and unconditional.**
+    The recurring profile's accrual, which stood above this class until #496,
+    prorated one amount by day every time it was asked, with no way to request
+    the figure as recorded and nothing on the wire saying that a division had
     happened. So `recorded` is the view that was missing and the labelling is
     the honesty this class adds; the arithmetic is not new.
 
@@ -115,7 +114,7 @@ class SuppliedRevenueService:
     what the method says, and saying it is the point.
 
     **The division is integer, by whole days, floor-rounded**, matching the
-    arithmetic the accrual helpers above already use so that two revenue
+    arithmetic the Stripe accrual helper above already uses so that two revenue
     figures in one response cannot disagree about how a part-month is counted.
     A floor means the recognised parts of a split window can sum to slightly
     less than the supplied amount; that under-states rather than invents, which
@@ -211,3 +210,47 @@ class SuppliedRevenueService:
         ).order_by("period_start", "source_reference")
         return [record for record in candidates
                 if SuppliedRevenueService.contributes(record, start_date, end_date, basis)]
+
+    @staticmethod
+    def attributed_total(tenant_id, customer_id, start_date, end_date, basis) -> int:
+        """Every supplied record's contribution to the window, added up.
+
+        The one figure a margin composition needs, so that no caller iterates
+        `in_window` and re-derives the attribution rule (#496).
+
+        ⚠ **IT ADDS MICROS ACROSS CURRENCIES AND DOES NOT CONVERT**, which is
+        sound only because a tenant has exactly one currency (CUR-1) — the same
+        assumption `provider_cost_micros` and `usage_billed_micros` beside it
+        have always made, neither of which carries a currency at all. The
+        per-currency answer exists and is the supplied-revenue read's `totals`,
+        which is the surface to consult when the question is what was supplied
+        rather than what the margin is.
+        """
+        return sum(
+            SuppliedRevenueService.attributed_micros(
+                record, start_date, end_date, basis)
+            for record in SuppliedRevenueService.in_window(
+                tenant_id, customer_id, start_date, end_date, basis))
+
+    @staticmethod
+    def customer_ids_with_revenue_in(tenant_id, start_date, end_date, basis):
+        """Every customer of `tenant_id` with a supplied record contributing to
+        the window — the set a period sweep has to union with the cost side.
+
+        A customer whose tenant supplied revenue for a period in which UBB
+        metered nothing still has economics for that period, and a sweep that
+        only read the cost accumulator would leave it with no snapshot at all.
+        """
+        from django.db.models import Q
+        from apps.subscriptions.economics.models import TenantSuppliedRevenue
+
+        # One query for the tenant, not one per customer: the same database
+        # narrowing `in_window` uses, then the same per-basis rule applied in
+        # Python so the two cannot drift apart.
+        candidates = TenantSuppliedRevenue.objects.filter(
+            Q(tenant_id=tenant_id, period_start__lt=end_date),
+            Q(period_end__isnull=True) | Q(period_end__gt=start_date),
+        )
+        return {record.customer_id for record in candidates
+                if SuppliedRevenueService.contributes(
+                    record, start_date, end_date, basis)}

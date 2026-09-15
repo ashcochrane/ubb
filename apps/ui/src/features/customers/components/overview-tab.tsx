@@ -94,10 +94,24 @@ export function OverviewTab({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      {/* FOUR CARDS SINCE #496, MATCHING THE ROW ABOVE: the revenue sources
+          are three, not two, and the fourth column is where the third one
+          went rather than an extra row. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Subscription revenue"
           value={formatMicros(margin.subscription_revenue_micros, currency)}
+          subtitle="Billed by UBB through Stripe"
+        />
+        {/* THE CARD THAT MAKES THE TOTAL ABOVE ADD UP (#496). Until slice 7
+            this amount was inside the card above it, so a tenant reading
+            "subscription revenue" could not tell money UBB had invoiced from
+            money it had only been told about. Naming the source is the whole
+            point of the record the figure now comes from. */}
+        <StatCard
+          label="Supplied revenue"
+          value={formatMicros(margin.supplied_revenue_micros, currency)}
+          subtitle="Stated by you, billed outside UBB"
         />
         <StatCard
           label="Usage billed"

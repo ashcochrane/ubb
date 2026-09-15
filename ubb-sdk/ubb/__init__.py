@@ -27,7 +27,6 @@ from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.refund_response import RefundResponse
 from ubb._core.models.status_response import StatusResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
-from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
@@ -76,7 +75,7 @@ __all__ = [
     "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "StopsAndBreachesResponse",
     "UtilisationAndHeadroomResponse", "CustomerMarginOut", "GroupingFieldMarginRow",
     "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
-    "TopUpCheckoutResponse", "RevenueProfileOut",
+    "TopUpCheckoutResponse",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types, and the handle a start answers with (#422)
     "PaginatedResponse", "BatchItemResult", "BatchResult",

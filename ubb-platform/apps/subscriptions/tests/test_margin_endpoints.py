@@ -1,11 +1,15 @@
+import datetime
 import json
 from unittest.mock import patch
 from django.test import TestCase, Client
+from django.utils import timezone
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.services.usage_service import UsageService
+from core.vocabulary import (
+    PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_STRAIGHT_LINE)
 
 
 class MarginEndpointsTest(TestCase):
@@ -35,19 +39,86 @@ class MarginEndpointsTest(TestCase):
         r = self.http.get("/api/v1/margin/summary", **self._auth())
         assert r.status_code == 200  # NOT gated behind subscriptions product
 
-    def test_set_revenue_and_customer_margin(self):
-        r = self.http.put(
-            f"/api/v1/margin/customers/{self.customer.id}/revenue",
-            data=json.dumps({"recurring_amount_micros": 500_000_000}),
+    def test_supply_revenue_and_read_the_customers_margin(self):
+        """The workflow the retired recurring pair used to serve (#496).
+
+        It is the same journey — state what this customer pays you, then read
+        the margin — through the record that says which period the figure was
+        about and where it came from. ⚠ **AND THE MARGIN NAMES THE SOURCE**:
+        the supplied figure is its own field on the response, so the total
+        beside it can be taken apart by whoever reads it, which is the thing
+        the retired pair made impossible.
+
+        ⚠ **THE READ IS MONTH-TO-DATE, SO THE EXPECTED SHARE IS COMPUTED, NOT
+        TYPED.** This route's default window runs from the first of the month
+        to tomorrow, and a supplied figure reaches margin on the `recognised`
+        basis — the retired accrual's own day-proration. Hard-coding the whole
+        month's amount here would pass only on the last day of a month, and a
+        hard-coded fraction would rot on the first of the next one. The
+        arithmetic below is the route's own, which is what makes this case
+        calendar-proof rather than calendar-lucky.
+        """
+        today = timezone.now().date()
+        period_start = today.replace(day=1)
+        period_end = (period_start.replace(year=period_start.year + 1, month=1)
+                      if period_start.month == 12
+                      else period_start.replace(month=period_start.month + 1))
+        r = self.http.post(
+            f"/api/v1/margin/customers/{self.customer.id}/supplied-revenue",
+            data=json.dumps({
+                "amount_micros": 500_000_000, "currency": "usd",
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "recognition_method": RECOGNITION_METHOD_STRAIGHT_LINE,
+                "source_reference": "INV-9001"}),
             content_type="application/json", **self._auth())
-        assert r.status_code == 200
+        assert r.status_code == 200, r.content
+
         r = self.http.get(f"/api/v1/margin/customers/{self.customer.id}", **self._auth())
         assert r.status_code == 200
         b = r.json()
+        days_in_period = (period_end - period_start).days
+        days_read = (today + datetime.timedelta(days=1) - period_start).days
+        expected_supplied = 500_000_000 * days_read // days_in_period
+
         assert b["provider_cost_micros"] == 1_000_000
         assert b["usage_billed_micros"] == 1_300_000
-        # metered_only mode: usage excluded from revenue; margin = subscription_revenue - provider_cost
-        assert b["gross_margin_micros"] == b["subscription_revenue_micros"] - 1_000_000
+        assert b["supplied_revenue_micros"] == expected_supplied
+        assert b["subscription_revenue_micros"] == 0
+        # metered_only mode: usage excluded from revenue; margin = revenue - provider_cost
+        assert b["gross_margin_micros"] == expected_supplied - 1_000_000
+        assert b["total_revenue_micros"] == expected_supplied
+
+    def test_a_customer_with_no_supplied_figure_reads_nothing_supplied(self):
+        """The other posture, which must stay first-class (#153 §3.2).
+
+        A cost-tracking-only tenant is not a tenant that earned nothing — but
+        this surface has no state to say so with, so what it owes is a zero
+        that cannot be mistaken for a supplied figure, and the read that DOES
+        answer the question. Both are asserted, because asserting only the
+        first would bless the zero.
+        """
+        r = self.http.get(f"/api/v1/margin/customers/{self.customer.id}", **self._auth())
+        assert r.json()["supplied_revenue_micros"] == 0
+
+        r = self.http.get(
+            f"/api/v1/margin/customers/{self.customer.id}/supplied-revenue",
+            **self._auth())
+        assert r.status_code == 200, r.content
+        assert r.json()["pricing_status"] == PRICING_STATUS_UNKNOWN
+        assert r.json()["totals"] == []
+
+    def test_the_retired_recurring_pair_is_gone(self):
+        """Both operations, both verbs — the break block's one path (#496).
+
+        A route that answered on either verb would mean the contract still
+        publishes it whatever the regenerated document says.
+        """
+        path = f"/api/v1/margin/customers/{self.customer.id}/revenue"
+        assert self.http.get(path, **self._auth()).status_code == 404
+        assert self.http.put(
+            path, data=json.dumps({"recurring_amount_micros": 1}),
+            content_type="application/json", **self._auth()).status_code == 404
 
     def test_list_all_customer_margins(self):
         # #86 sweep: the root margin list moved from GET /margin to the explicit

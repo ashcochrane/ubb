@@ -921,6 +921,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "total_revenue_micros": {
             "title": "Total Revenue Micros",
             "type": "integer"
@@ -940,6 +944,7 @@
         },
         "required": [
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
           "unresolved_event_count",
@@ -1772,6 +1777,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "unpriced_event_count": {
             "title": "Unpriced Event Count",
             "type": "integer"
@@ -1792,6 +1801,7 @@
         "required": [
           "customer_id",
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
@@ -1840,6 +1850,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "total_revenue_micros": {
             "title": "Total Revenue Micros",
             "type": "integer"
@@ -1865,6 +1879,7 @@
           "customer_id",
           "revenue_mode",
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
@@ -3545,6 +3560,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "total_revenue_micros": {
             "title": "Total Revenue Micros",
             "type": "integer"
@@ -3569,6 +3588,7 @@
         "required": [
           "period",
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
@@ -3670,6 +3690,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "unpriced_event_count": {
             "title": "Unpriced Event Count",
             "type": "integer"
@@ -3690,6 +3714,7 @@
           "unpriced_event_count",
           "usage_billed_micros",
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "gross_margin_micros",
           "margin_percentage"
         ],
@@ -6865,91 +6890,6 @@
         "title": "RevenueModeOut",
         "type": "object"
       },
-      "RevenueProfileIn": {
-        "properties": {
-          "currency": {
-            "default": "usd",
-            "title": "Currency",
-            "type": "string"
-          },
-          "effective_from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective From"
-          },
-          "effective_to": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective To"
-          },
-          "interval": {
-            "default": "month",
-            "title": "Interval",
-            "type": "string"
-          },
-          "recurring_amount_micros": {
-            "minimum": 0,
-            "title": "Recurring Amount Micros",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "recurring_amount_micros"
-        ],
-        "title": "RevenueProfileIn",
-        "type": "object"
-      },
-      "RevenueProfileOut": {
-        "properties": {
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "effective_from": {
-            "title": "Effective From",
-            "type": "string"
-          },
-          "effective_to": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective To"
-          },
-          "interval": {
-            "title": "Interval",
-            "type": "string"
-          },
-          "recurring_amount_micros": {
-            "title": "Recurring Amount Micros",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "recurring_amount_micros",
-          "interval",
-          "currency",
-          "effective_from"
-        ],
-        "title": "RevenueProfileOut",
-        "type": "object"
-      },
       "RuleTermsOut": {
         "description": "What a rule charges, how it derives it, and which arithmetic it runs.\n\nEverything a change may move, so a `before` and an `after` side by side are\na complete account of what a publish does to a rule. `rate_structure`\ndecides which of the money terms is actually spent, so a rule going from a\nper-unit charge to a fixed component would read as *\"nothing moved\"* from\nthe terms alone.",
         "properties": {
@@ -7042,6 +6982,10 @@
             "title": "Subscription Revenue Micros",
             "type": "integer"
           },
+          "supplied_revenue_micros": {
+            "title": "Supplied Revenue Micros",
+            "type": "integer"
+          },
           "total_revenue_micros": {
             "title": "Total Revenue Micros",
             "type": "integer"
@@ -7067,6 +7011,7 @@
           "customer_id",
           "revenue_mode",
           "subscription_revenue_micros",
+          "supplied_revenue_micros",
           "usage_billed_micros",
           "usage_revenue_micros",
           "provider_cost_micros",
@@ -13128,104 +13073,6 @@
           }
         ],
         "summary": "Customer Margin"
-      }
-    },
-    "/api/v1/margin/customers/{customer_id}/revenue": {
-      "get": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_get_revenue",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevenueProfileOut"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Get Revenue"
-      },
-      "put": {
-        "operationId": "apps_subscriptions_api_margin_endpoints_put_revenue",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "customer_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Customer Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RevenueProfileIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RevenueProfileOut"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemOut"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        },
-        "security": [
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "summary": "Put Revenue"
       }
     },
     "/api/v1/margin/customers/{customer_id}/revenue-mode": {

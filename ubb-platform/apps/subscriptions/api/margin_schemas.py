@@ -56,7 +56,7 @@ class TenantSuppliedRevenueIn(Schema):
     #: ISO dates. The end is EXCLUSIVE and may be omitted for revenue that is
     #: an instant rather than a span; a partial period is therefore expressible
     #: by writing the part the record covers, which is what the recurring
-    #: profile this replaces could not do without a second record.
+    #: profile this replaced could not do without a second record.
     period_start: str
     period_end: Optional[str] = None
     recognition_method: RecognitionMethod
@@ -97,22 +97,6 @@ class SuppliedRevenueTotalOut(Schema):
 
     currency: str
     amount_micros: int
-
-
-class RevenueProfileIn(Schema):
-    recurring_amount_micros: int = Field(ge=0)
-    interval: str = "month"
-    currency: str = "usd"
-    effective_from: Optional[str] = None  # ISO date; defaults to today
-    effective_to: Optional[str] = None
-
-
-class RevenueProfileOut(Schema):
-    recurring_amount_micros: int
-    interval: str
-    currency: str
-    effective_from: str
-    effective_to: Optional[str] = None
 
 
 class MarginThresholdIn(Schema):
@@ -194,6 +178,12 @@ class SeatMarginOut(Schema):
     customer_id: str
     revenue_mode: str
     subscription_revenue_micros: int
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
+    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: never inside it: both are in `total_revenue_micros`, and this pair is
+    #: what lets a reader of that total say which part UBB drove through
+    #: Stripe and which part the tenant stated about a system UBB cannot see.
+    supplied_revenue_micros: int
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
@@ -215,6 +205,12 @@ class CustomerMarginOut(SeatMarginOut):
 class CustomerMarginListRow(Schema):
     customer_id: str
     subscription_revenue_micros: int
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
+    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: never inside it: both are in `total_revenue_micros`, and this pair is
+    #: what lets a reader of that total say which part UBB drove through
+    #: Stripe and which part the tenant stated about a system UBB cannot see.
+    supplied_revenue_micros: int
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
@@ -232,6 +228,12 @@ class MarginListOut(Schema):
 class MarginSummaryOut(Schema):
     period: PeriodWindow
     subscription_revenue_micros: int
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
+    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: never inside it: both are in `total_revenue_micros`, and this pair is
+    #: what lets a reader of that total say which part UBB drove through
+    #: Stripe and which part the tenant stated about a system UBB cannot see.
+    supplied_revenue_micros: int
     usage_billed_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
@@ -317,6 +319,10 @@ class MarginTrendPointOut(Schema):
     unpriced_event_count: int
     usage_billed_micros: int
     subscription_revenue_micros: int
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this point's
+    #: period under the `recorded` basis (#496) — beside the Stripe figure
+    #: above and never inside it, so a trend line can say which source moved.
+    supplied_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
 
@@ -327,9 +333,16 @@ class MarginTrendOut(Schema):
 
 
 class BusinessMarginTotals(Schema):
-    # The per-seat sums plus the business's own subscription revenue —
-    # no margin_percentage at the rollup level (the endpoint serves none).
+    # The per-seat sums plus the business's own subscription and supplied
+    # revenue — no margin_percentage at the rollup level (the endpoint serves
+    # none).
     subscription_revenue_micros: int
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
+    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: never inside it: both are in `total_revenue_micros`, and this pair is
+    #: what lets a reader of that total say which part UBB drove through
+    #: Stripe and which part the tenant stated about a system UBB cannot see.
+    supplied_revenue_micros: int
     usage_revenue_micros: int
     provider_cost_micros: int
     #: The seats' counts added up, exactly as the cost above is: one seat's

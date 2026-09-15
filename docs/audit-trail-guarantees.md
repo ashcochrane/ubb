@@ -25,8 +25,8 @@ committed change always leaves one. Coverage spans:
   books, every change to a book (a publish is declared, published or discarded — three answers to
   three different questions, never one entry you read metadata to interpret), customer overrides,
   the tenant's default markup rung, resolution runs, customer spend pools, billing profiles, auto-top-up,
-  postpaid config, margin thresholds, revenue profiles, webhook configs, plans, referral programs,
-  Stripe Connect start, sandbox provisioning.
+  postpaid config, margin thresholds, revenue you state that UBB did not bill, webhook configs,
+  plans, referral programs, Stripe Connect start, sandbox provisioning.
 - **Membership & key lifecycle** — invitations created/revoked, member roles changed, members
   removed, API keys created/rotated/revoked.
 - **Hand-moved money** — manual credits, debits, withdrawals, refunds, credit grants and voids, and

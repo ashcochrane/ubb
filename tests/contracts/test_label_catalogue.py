@@ -479,9 +479,18 @@ def test_the_map_constructor_name_appears_nowhere_else():
 #: that the ledger IS the allowlist, and a constant restating live entries would
 #: be the drifting copy ADR-0006 §4 warns about. These entries are not live.
 #: They record a fact that is now permanent, which is exactly the class of thing
-#: a literal may hold: three debts were paid, and neither side may quietly undo
-#: it. A slice that pays one of the eight still outstanding adds its line here.
-#: The closure below is what makes that an obligation rather than a courtesy.
+#: a literal may hold: four debts have been paid, and neither side may quietly
+#: undo it. A slice that pays one of the seven still outstanding adds its line
+#: here. The closure below is what makes that an obligation rather than a
+#: courtesy.
+#:
+#: ⚠ **THE FOURTH WAS PAID BY DELETION RATHER THAN CONVERSION, WHICH IS A
+#: DIFFERENT SHAPE AND STILL A PAYMENT** (#496). The first three converted a
+#: renderer to the catalogue. The fourth's humanising call went out with the
+#: card that made it: the card wrote the retired recurring revenue amount, and
+#: it humanised that amount's INTERVAL — a field nothing ever divided by — so
+#: when the record died there was no value left to word. #283's rule decides
+#: it: an entry cannot outlive its debt, whatever killed the debt.
 PAID_HUMANISING_DEBTS = {
     "g6-humanises-test-event-response":
         "apps/ui/src/features/developers/components/test-event-response.tsx::humanize",
@@ -494,6 +503,15 @@ PAID_HUMANISING_DEBTS = {
     # legacy adapter's `webhookEventTypeLabel`.
     "g6-humanises-event-groups":
         "apps/ui/src/features/webhooks/lib/event-groups.ts::humanize",
+    # #496: the recurring revenue card is deleted with the record it wrote,
+    # and the interval it humanised into a sentence went with it. ⚠ THE FILE
+    # SURVIVES ONLY UNTIL TICKET 3 (#497), which deletes the revenue-mode card
+    # beside it — the last thing in this module. Whoever lands that must move
+    # this entry's path to whatever holds the panels afterwards, or
+    # `test_a_paid_humanising_debt_names_a_file_that_still_exists` goes red on
+    # a debt that really was paid.
+    "g6-humanises-revenue-panels":
+        "apps/ui/src/features/customers/components/revenue-panels.tsx::humanize",
 }
 
 #: How many files imported the humaniser when #210 installed this gate. Not a

@@ -34,11 +34,28 @@ describe("money conversion", () => {
 });
 
 describe("margin list sorting and filtering", () => {
-  it("derives list-row revenue as subscription + usage revenue", () => {
+  it("derives list-row revenue as subscription + supplied + usage revenue", () => {
     const acme = MOCK_MARGIN_ROWS[0]!;
     expect(listRowRevenueMicros(acme)).toBe(
-      acme.subscription_revenue_micros + acme.usage_revenue_micros,
+      acme.subscription_revenue_micros +
+        acme.supplied_revenue_micros +
+        acme.usage_revenue_micros,
     );
+  });
+
+  // ⚠ THE ASSERTION ABOVE RESTATES THE FUNCTION, so it cannot tell a
+  // three-way sum from a two-way one while every fixture supplies nothing.
+  // This one names the figures (#496). The customer it describes is billed
+  // outside UBB: leaving its supplied revenue out would show it on the margin
+  // list earning a fifth of what it earns, and nothing else here would fail.
+  it("counts what the tenant supplied, not just what UBB billed", () => {
+    const row = {
+      ...MOCK_MARGIN_ROWS[0]!,
+      subscription_revenue_micros: 0,
+      supplied_revenue_micros: 400_000_000,
+      usage_revenue_micros: 100_000_000,
+    };
+    expect(listRowRevenueMicros(row)).toBe(500_000_000);
   });
 
   it("sorts descending by the chosen measure", () => {

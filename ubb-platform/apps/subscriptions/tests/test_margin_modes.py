@@ -22,14 +22,23 @@ def _usage(t, c, provider, billed):
 @pytest.mark.django_db
 class TestMarginModes:
     def test_metering_only_subtracts_cogs(self):
-        from apps.subscriptions.economics.models import CustomerRevenueProfile
+        from apps.subscriptions.economics.models import TenantSuppliedRevenue
+        from core.vocabulary import RECOGNITION_METHOD_STRAIGHT_LINE
         t = Tenant.objects.create(name="MO", billing_mode="meter_only")
         c = Customer.objects.create(tenant=t, external_id="c1")
-        CustomerRevenueProfile.objects.create(tenant=t, customer=c, recurring_amount_micros=100,
-                                              effective_from=PS)
+        # The revenue the tenant states it earned elsewhere, which is what the
+        # retired recurring profile was carrying badly (#496). It reaches the
+        # margin under its own name, never the Stripe column's.
+        TenantSuppliedRevenue.objects.create(
+            tenant=t, customer=c, amount_micros=100, currency="usd",
+            period_start=PS, period_end=PE,
+            recognition_method=RECOGNITION_METHOD_STRAIGHT_LINE,
+            source_reference="INV-1")
         _usage(t, c, provider=30, billed=30)
         d = MarginService.compute_live(t.id, c.id, PS, PE)
         assert d["revenue_mode"] == "metered_only"
+        assert d["subscription_revenue_micros"] == 0
+        assert d["supplied_revenue_micros"] == 100
         assert d["gross_margin_micros"] == 70  # was 100 — COGS now visible
 
     def test_billed_uses_nominal_sub_not_paid_invoice(self):

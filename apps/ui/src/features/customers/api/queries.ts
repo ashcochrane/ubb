@@ -26,7 +26,6 @@ import type {
   CreditRequest,
   CustomerBillingProfileIn,
   DebitRequest,
-  RevenueProfileIn,
   SubscribeIn,
   WithdrawRequest,
 } from "./types";
@@ -65,13 +64,6 @@ export function useMarginTrend(customerId: string, periods: number) {
     queryKey: ["margin", "trend", customerId, periods],
     queryFn: () => customersApi.getMarginTrend(customerId, periods),
     placeholderData: keepPreviousData,
-  });
-}
-
-export function useRevenueProfile(customerId: string) {
-  return useQuery({
-    queryKey: ["margin", "revenue", customerId],
-    queryFn: () => nullOn404(customersApi.getRevenueProfile(customerId)),
   });
 }
 
@@ -210,17 +202,6 @@ export function useCreateCustomer() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["margin"] });
       void queryClient.invalidateQueries({ queryKey: ["platform"] });
-    },
-  });
-}
-
-export function useSaveRevenueProfile(customerId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: RevenueProfileIn) =>
-      customersApi.putRevenueProfile(customerId, body),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
     },
   });
 }

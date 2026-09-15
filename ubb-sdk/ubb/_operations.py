@@ -532,10 +532,6 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_CUSTOMER_MARGIN = Operation(
     'apps_subscriptions_api_margin_endpoints_customer_margin',
     'get',
     '/api/v1/margin/customers/{customer_id}')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE = Operation(
-    'apps_subscriptions_api_margin_endpoints_get_revenue',
-    'get',
-    '/api/v1/margin/customers/{customer_id}/revenue')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE_MODE = Operation(
     'apps_subscriptions_api_margin_endpoints_get_revenue_mode',
     'get',
@@ -568,10 +564,6 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_UNPROFITABLE = Operation(
     'apps_subscriptions_api_margin_endpoints_margin_unprofitable',
     'get',
     '/api/v1/margin/unprofitable')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE = Operation(
-    'apps_subscriptions_api_margin_endpoints_put_revenue',
-    'put',
-    '/api/v1/margin/customers/{customer_id}/revenue')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE_MODE = Operation(
     'apps_subscriptions_api_margin_endpoints_put_revenue_mode',
     'put',

@@ -20,13 +20,13 @@ from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.subscriptions.economics.models import (
-    CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig,
-    TenantSuppliedRevenue)
+    CustomerEconomics, MarginThresholdConfig, TenantSuppliedRevenue)
 from apps.subscriptions.economics.revenue import (
     DEFAULT_REVENUE_BASIS, SuppliedRevenueService)
-from apps.subscriptions.economics.services import MarginService
+from apps.subscriptions.economics.services import (
+    MARGIN_REVENUE_BASIS, MarginService, total_revenue_micros)
 from apps.subscriptions.api.margin_schemas import (
-    RevenueProfileIn, RevenueProfileOut, MarginThresholdIn, MarginThresholdOut,
+    MarginThresholdIn, MarginThresholdOut,
     RevenueModeIn, RevenueModeOut,
     MarginSummaryOut, MarginByGroupingFieldOut, UnprofitableOut, MarginListOut,
     CustomerMarginOut, MarginTrendOut, BusinessMarginOut, RevenueBasis,
@@ -72,6 +72,10 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
     cust = {c.id: c for c in Customer.objects.filter(
         id__in=[r["customer_id"] for r in rows], tenant=tenant)}
     total_provider = total_billed = total_sub = total_usage_rev = 0
+    # THE THIRD SOURCE, ADDED UP UNDER ITS OWN NAME (#496). It travels beside
+    # the Stripe total rather than inside it, all the way to the wire, so a
+    # reader of this response can say which of the two a figure came from.
+    total_supplied = 0
     # WHAT THE TENANT-WIDE COST TOTAL LEFT OUT, ADDED UP LIKE THE COST (#328).
     # Each row the read contract returns carries its own count, and a loop that
     # took the money and dropped the caveat would publish a floor as a figure —
@@ -91,13 +95,19 @@ def margin_summary(request, start_date: date = None, end_date: date = None):
         total_billed += r["billed_cost_micros"]
         total_unpriced += r[UNPRICED_EVENT_COUNT_KEY]
         total_sub += RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
+        # One query per customer, like the Stripe accrual above it — this adds
+        # a second read to a loop that already had one rather than a new shape.
+        # The loop itself is what slice 7's one economic query replaces.
+        total_supplied += SuppliedRevenueService.attributed_total(
+            tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
         if RevenueService.resolve_revenue_mode(tenant, cust[r["customer_id"]]) == "billed":
             total_usage_rev += r["billed_cost_micros"]
-    total_revenue = total_sub + total_usage_rev
+    total_revenue = total_revenue_micros(total_sub, total_supplied, total_usage_rev)
     margin = total_revenue - total_provider
     return {
         "period": {"start": s.isoformat(), "end": e.isoformat()},
         "subscription_revenue_micros": total_sub,
+        "supplied_revenue_micros": total_supplied,
         "usage_billed_micros": total_billed,
         "usage_revenue_micros": total_usage_rev,
         "provider_cost_micros": total_provider,
@@ -202,60 +212,14 @@ def put_threshold(request, payload: MarginThresholdIn):
             "provider_cost_spike_pct": float(cfg.provider_cost_spike_pct)}
 
 
-@margin_router.get("/customers/{customer_id}/revenue", response=RevenueProfileOut)
-@role_floor(READ)
-def get_revenue(request, customer_id: UUID):
-    _product_check(request)
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    p = CustomerRevenueProfile.objects.filter(tenant=request.auth.tenant, customer=customer).first()
-    if not p:
-        return {"recurring_amount_micros": 0, "interval": "month", "currency": "usd",
-                "effective_from": timezone.now().date().isoformat(), "effective_to": None}
-    return {"recurring_amount_micros": p.recurring_amount_micros, "interval": p.interval,
-            "currency": p.currency, "effective_from": p.effective_from.isoformat(),
-            "effective_to": p.effective_to.isoformat() if p.effective_to else None}
-
-
-@margin_router.put(
-    "/customers/{customer_id}/revenue",
-    response={200: RevenueProfileOut, 404: ProblemOut, 422: ProblemOut},
-)
-@role_floor(ADMIN)
-@records_audit("revenue_profile.set")
-def put_revenue(request, customer_id: UUID, payload: RevenueProfileIn):
-    _product_check(request)
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    try:
-        eff_from = date.fromisoformat(payload.effective_from) if payload.effective_from else timezone.now().date()
-        eff_to = date.fromisoformat(payload.effective_to) if payload.effective_to else None
-    except ValueError as e:
-        raise Problem("validation_error", f"invalid effective date: {e}")
-    with transaction.atomic():
-        p, _ = CustomerRevenueProfile.objects.update_or_create(
-            tenant=request.auth.tenant, customer=customer,
-            defaults={"recurring_amount_micros": payload.recurring_amount_micros,
-                      "interval": payload.interval, "currency": payload.currency,
-                      "effective_from": eff_from, "effective_to": eff_to})
-        audit_record(
-            action="revenue_profile.set", tenant_id=request.auth.tenant.id,
-            resource_type="revenue_profile", resource_id=p.id,
-            metadata={"customer_id": str(customer.id),
-                      "recurring_amount_micros": p.recurring_amount_micros,
-                      "interval": p.interval, "currency": p.currency,
-                      "effective_from": p.effective_from.isoformat(),
-                      "effective_to": p.effective_to.isoformat() if p.effective_to else None})
-    return {"recurring_amount_micros": p.recurring_amount_micros, "interval": p.interval,
-            "currency": p.currency, "effective_from": p.effective_from.isoformat(),
-            "effective_to": p.effective_to.isoformat() if p.effective_to else None}
-
-
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
 #
 # WHAT A TENANT THAT BILLS ITS CUSTOMERS SOMEWHERE ELSE EARNED, stated by the
 # tenant per customer per period and admitted for analytics. #153 §3.2 rules
 # that both postures survive — cost tracking alone, and cost tracking plus a
-# supplied figure — and the recurring profile above was carrying the second one
-# badly. These two operations are what make it explicit.
+# supplied figure — and the recurring profile whose pair stood above these two
+# until #496 was carrying the second one badly. These two operations are what
+# make it explicit, and they are now the only way to state the figure.
 #
 # ⚠ THE FLOORS ARE ARGUED FROM THIS MODULE'S OWN PRECEDENT, not guessed. Every
 # mutating operation here is already `role_floor(ADMIN)` and every read is
@@ -403,6 +367,12 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
     """
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # ⚠ `DEFAULT_REVENUE_BASIS`, NOT `MARGIN_REVENUE_BASIS` — this module
+    # imports both and they are different values on purpose. This route lets a
+    # caller CHOOSE and names what it served, so its fallback is the view that
+    # invents nothing. The margin surfaces choose nothing and publish no basis
+    # field, so theirs honours each record's own recognition method instead;
+    # `services.py` argues it where it is set.
     chosen = basis or DEFAULT_REVENUE_BASIS
     if chosen not in REVENUE_BASIS_VALUES:
         raise Problem(
@@ -500,6 +470,7 @@ def margin_trend(request, customer_id: UUID, periods: int = 6):
         UNPRICED_EVENT_COUNT_KEY: r.unpriced_event_count,
         "usage_billed_micros": r.usage_billed_micros,
         "subscription_revenue_micros": r.subscription_revenue_micros,
+        "supplied_revenue_micros": r.supplied_revenue_micros,
         "gross_margin_micros": r.gross_margin_micros,
         "margin_percentage": float(r.margin_percentage),
     } for r in reversed(list(rows))]}
@@ -532,13 +503,16 @@ def list_margin(request, start_date: date = None, end_date: date = None):
     for r in rows:
         customer_obj = cust[r["customer_id"]]
         sub = RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
+        supplied = SuppliedRevenueService.attributed_total(
+            tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
         usage_rev = (r["billed_cost_micros"]
                      if RevenueService.resolve_revenue_mode(tenant, customer_obj) == "billed"
                      else 0)
-        revenue = sub + usage_rev
+        revenue = total_revenue_micros(sub, supplied, usage_rev)
         margin = revenue - r["provider_cost_micros"]
         out.append({"customer_id": str(r["customer_id"]),
                     "subscription_revenue_micros": sub,
+                    "supplied_revenue_micros": supplied,
                     "usage_billed_micros": r["billed_cost_micros"],
                     "usage_revenue_micros": usage_rev,
                     "provider_cost_micros": r["provider_cost_micros"],

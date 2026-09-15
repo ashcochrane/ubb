@@ -35,6 +35,7 @@ class TestGetEconomicsSummary:
         )
         assert result == {
             "subscription_revenue_micros": 0,
+            "supplied_revenue_micros": 0,
             "usage_billed_micros": 0,
             "provider_cost_micros": 0,
             # A window with no snapshots excluded nothing — the empty sum is
@@ -66,6 +67,11 @@ class TestGetEconomicsSummary:
             tenant=tenant, customer=c2,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
             subscription_revenue_micros=200_000_000,
+            # ⚠ ONLY THE SECOND CUSTOMER SUPPLIES REVENUE, so the two sources
+            # sum to two different totals (#496). Equal fixtures would pass
+            # against an implementation that summed one column twice, which is
+            # the same property the two counts below are fixtured for.
+            supplied_revenue_micros=50_000_000,
             usage_billed_micros=80_000_000,
             provider_cost_micros=60_000_000,
             # One of the two customers' months excluded a cost, so the tenant's
@@ -86,6 +92,7 @@ class TestGetEconomicsSummary:
         )
         assert result == {
             "subscription_revenue_micros": 300_000_000,
+            "supplied_revenue_micros": 50_000_000,
             "usage_billed_micros": 110_000_000,
             "provider_cost_micros": 80_000_000,
             "unresolved_event_count": 3,

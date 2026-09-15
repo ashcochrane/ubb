@@ -1,13 +1,64 @@
 from decimal import Decimal, ROUND_HALF_UP
 
 from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerEconomics
-from apps.subscriptions.economics.revenue import RevenueService
+from apps.subscriptions.economics.revenue import (
+    RevenueService, SuppliedRevenueService)
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
+from core.vocabulary import REVENUE_BASIS_RECOGNISED
+
+#: THE BASIS EVERY MARGIN FIGURE HERE IS STATED UNDER (#496).
+#:
+#: ⚠ **`recognised`, NOT THE `recorded` DEFAULT, AND THE REASON IS THAT A
+#: MARGIN IS TAKEN OVER A WINDOW THE CALLER CHOOSES.** These surfaces answer
+#: arbitrary windows — `_window()` defaults to month-to-DATE, and a report
+#: window may be any span up to a year — and `recorded` lands each supplied
+#: amount whole on the day its record opens. On the third of June that would
+#: put a whole month's revenue against three days of cost and call the result
+#: a margin: a flattering figure, which is the direction this codebase already
+#: refuses to be wrong in (#328's floors and ceilings are the same argument
+#: about the cost half).
+#:
+#: **AND IT IS NOT THE UNLABELLED PRORATION THE PROFILE WAS RETIRED FOR.** The
+#: retired accrual divided one amount by day because it had no other choice and
+#: said nothing about having done it. Here the division happens only where the
+#: record's OWN `recognition_method` says it should: an `on_receipt` record
+#: lands whole under this basis too, because that is what its method means.
+#: UBB is obeying a label the tenant chose rather than inventing a boundary.
+#:
+#: ⚠ **WHAT THESE SURFACES DO NOT DO IS PUBLISH THE BASIS**, and that is a real
+#: limit rather than an oversight: none of the five margin schemas has ever
+#: carried a basis field for any of its figures, and adding one to routes the
+#: collapse deletes would be contract churn. The surface where a caller CHOOSES
+#: a basis and is told which one it got is the supplied-revenue read (#495),
+#: and the one economic query that replaces these five (slice 7 §5) publishes
+#: it too. `test_economics.py` pins the choice so it cannot drift silently.
+MARGIN_REVENUE_BASIS = REVENUE_BASIS_RECOGNISED
 
 
-def _compose(subscription_revenue, usage_billed, provider_cost, revenue_mode):
+def total_revenue_micros(subscription_revenue, supplied_revenue, usage_revenue):
+    """THE ONE PLACE THAT KNOWS HOW MANY SOURCES A REVENUE TOTAL HAS (#496).
+
+    Public, and public for a reason: the margin module's tenant-wide summary
+    and its per-customer list each build a total of their own from figures they
+    have already accumulated, and before this they each re-derived the sum. A
+    third source then took four edits in four places to add, and the fourth was
+    found by a review rather than by a gate. Adding a fourth source is now one
+    edit here.
+
+    ⚠ **THE SOURCES STAY SEPARATE EVERYWHERE ELSE AND MEET ONLY HERE.** Summing
+    a tenant-supplied figure into the Stripe subscription argument on the way
+    in would put the two back in one number one layer earlier, which is the
+    defect this slice exists to end rather than a shortcut around it.
+    """
+    return subscription_revenue + supplied_revenue + usage_revenue
+
+
+def _compose(subscription_revenue, supplied_revenue, usage_billed, provider_cost,
+             revenue_mode):
+    """The three revenue sources added up, and the margin that falls out."""
     usage_revenue = usage_billed if revenue_mode == "billed" else 0
-    total_revenue = subscription_revenue + usage_revenue
+    total_revenue = total_revenue_micros(
+        subscription_revenue, supplied_revenue, usage_revenue)
     margin = total_revenue - provider_cost
     pct = (Decimal(margin) / Decimal(total_revenue) * 100).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP) if total_revenue > 0 else Decimal("0")
@@ -34,12 +85,16 @@ class MarginService:
         mode = RevenueService.resolve_revenue_mode(tenant, customer)
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, start_date, end_date)
+        supplied_revenue = SuppliedRevenueService.attributed_total(
+            tenant_id, customer_id, start_date, end_date, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
-            subscription_revenue, costs["billed_cost_micros"], costs["provider_cost_micros"], mode)
+            subscription_revenue, supplied_revenue, costs["billed_cost_micros"],
+            costs["provider_cost_micros"], mode)
         return {
             "customer_id": str(customer_id),
             "revenue_mode": mode,
             "subscription_revenue_micros": subscription_revenue,
+            "supplied_revenue_micros": supplied_revenue,
             "usage_billed_micros": costs["billed_cost_micros"],
             "usage_revenue_micros": usage_revenue,
             "provider_cost_micros": costs["provider_cost_micros"],
@@ -58,7 +113,8 @@ class MarginService:
         # The rollup's completeness is its seats' completeness added up (#328):
         # a business total that excluded one seat's cost has excluded it, and
         # summing the counts is the same arithmetic as summing the costs.
-        keys = ["subscription_revenue_micros", "usage_revenue_micros", "provider_cost_micros",
+        keys = ["subscription_revenue_micros", "supplied_revenue_micros",
+                "usage_revenue_micros", "provider_cost_micros",
                 UNRESOLVED_EVENT_COUNT_KEY, UNPRICED_EVENT_COUNT_KEY,
                 "total_revenue_micros", "gross_margin_micros", "event_count"]
         totals = {k: 0 for k in keys}
@@ -67,9 +123,16 @@ class MarginService:
                 totals[k] += d.get(k, 0) or 0
         business_sub = RevenueService.accrued_subscription_revenue(
             tenant_id, business.id, start_date, end_date)
+        # The business's OWN revenue, on top of its seats' — both sources of
+        # it, each staying in its own column on the way through (#496). A
+        # business billed outside UBB supplies revenue against the business
+        # customer, exactly as a seat does against a seat.
+        business_supplied = SuppliedRevenueService.attributed_total(
+            tenant_id, business.id, start_date, end_date, MARGIN_REVENUE_BASIS)
         totals["subscription_revenue_micros"] += business_sub
-        totals["total_revenue_micros"] += business_sub
-        totals["gross_margin_micros"] += business_sub
+        totals["supplied_revenue_micros"] += business_supplied
+        totals["total_revenue_micros"] += business_sub + business_supplied
+        totals["gross_margin_micros"] += business_sub + business_supplied
         return {"business_id": str(business.id), "external_id": business.external_id,
                 "totals": totals, "seats": per_seat}
 
@@ -97,13 +160,16 @@ class MarginService:
         mode = RevenueService.resolve_revenue_mode(tenant, customer)
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, period_start, period_end)
+        supplied_revenue = SuppliedRevenueService.attributed_total(
+            tenant_id, customer_id, period_start, period_end, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
-            subscription_revenue, usage_billed, provider_cost, mode)
+            subscription_revenue, supplied_revenue, usage_billed, provider_cost, mode)
         econ, _ = CustomerEconomics.objects.update_or_create(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start,
             defaults={
                 "period_end": period_end,
                 "subscription_revenue_micros": subscription_revenue,
+                "supplied_revenue_micros": supplied_revenue,
                 "usage_billed_micros": usage_billed,
                 "provider_cost_micros": provider_cost,
                 UNRESOLVED_EVENT_COUNT_KEY: unresolved,
@@ -117,12 +183,22 @@ class MarginService:
 
     @staticmethod
     def snapshot_all(tenant_id, period_start, period_end):
-        """Snapshot every customer with cost or revenue activity this period."""
-        from apps.subscriptions.economics.models import CustomerCostAccumulator, CustomerRevenueProfile
+        """Snapshot every customer with cost or revenue activity this period.
+
+        ⚠ **THE REVENUE HALF OF THAT SENTENCE NOW ASKS ABOUT THE PERIOD, WHICH
+        THE RECURRING PROFILE COULD NOT** (#496). The profile had no periods,
+        so the only question that could be asked of it was *does this customer
+        have one at all* — and every customer who had ever had one was
+        snapshotted for every period afterwards, including periods it said
+        nothing about. Per-period records answer the question that was actually
+        meant, and a customer with neither cost nor supplied revenue this
+        period is one the alerting record has nothing to evaluate about.
+        """
+        from apps.subscriptions.economics.models import CustomerCostAccumulator
         ids = set(CustomerCostAccumulator.objects.filter(
             tenant_id=tenant_id, period_start=period_start).values_list("customer_id", flat=True))
-        ids |= set(CustomerRevenueProfile.objects.filter(
-            tenant_id=tenant_id).values_list("customer_id", flat=True))
+        ids |= SuppliedRevenueService.customer_ids_with_revenue_in(
+            tenant_id, period_start, period_end, MARGIN_REVENUE_BASIS)
         results = []
         for cid in ids:
             econ = MarginService.snapshot_customer(tenant_id, cid, period_start, period_end)

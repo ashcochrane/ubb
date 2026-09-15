@@ -1043,6 +1043,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: CUSTOMER_A_ID,
     subscription_revenue_micros: 49_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 4_620_000,
     usage_revenue_micros: 4_620_000,
     provider_cost_micros: 3_580_000,
@@ -1054,6 +1055,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: CUSTOMER_B_ID,
     subscription_revenue_micros: 19_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 410_000,
     usage_revenue_micros: 410_000,
     provider_cost_micros: 320_000,
@@ -1065,6 +1067,7 @@ export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
   {
     customer_id: CUSTOMER_C_ID,
     subscription_revenue_micros: 9_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 0,
     usage_revenue_micros: 0,
     provider_cost_micros: 0,
@@ -1087,6 +1090,7 @@ function marginDetail(
     revenue_mode: "billed",
     event_count: eventCount,
     subscription_revenue_micros: row.subscription_revenue_micros,
+    supplied_revenue_micros: 0,
     usage_billed_micros: row.usage_billed_micros,
     usage_revenue_micros: row.usage_revenue_micros,
     provider_cost_micros: row.provider_cost_micros,

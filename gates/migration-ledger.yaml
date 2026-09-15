@@ -473,15 +473,15 @@ entries:
       The audit action for setting it, retired with the field slice 7
       deletes.
 
-  - id: g7-backend-revenue_profile.set
-    gate: G7
-    site: backend::revenue_profile.set
-    expected: audit_action
-    found: 2 files
-    owner_slice: slice_7
-    reason: >-
-      An earlier spelling of the same audit action, retired with the
-      same field.
+  # `g7-backend-revenue_profile.set` WAS HERE AND IS PAID (#496, slice 7 §9).
+  # It stood at 2 files — the action registry and the margin module's route
+  # pair, which raised it. The recurring revenue profile is deleted, so both
+  # sites went with the model in one commit, and the word is now refused in
+  # every swept file rather than excused in two. Paying a G7 debt deletes the
+  # EXCUSE, not the retirement: the `retired_aliases` entry on `audit_action`
+  # that keeps the name refused stays, exactly as `subtask.limit_exceeded`'s
+  # did. The replacement action, `tenant_supplied_revenue.recorded`, is a
+  # CURRENT name and owes nothing here.
 
   # `g7-backend-subtask.limit_exceeded` WAS HERE AND IS PAID (the
   # terminal-event split), with its G8 entry and its console and openapi twins.
@@ -1936,14 +1936,29 @@ entries:
       tooltip. The registry declares no concept for why a usage invoice was
       skipped.
 
-  - id: g6-humanises-revenue-panels
-    gate: G6
-    site: apps/ui/src/features/customers/components/revenue-panels.tsx::humanize
-    expected: label_key
-    owner_slice: slice_8
-    reason: >-
-      `revenue-panels.tsx` humanises a revenue profile's recurring interval
-      into a sentence.
+  # `g6-humanises-revenue-panels` WAS HERE AND IS PAID (#496, slice 7 §9), and
+  # it is a **SLICE-8 ENTRY PAID EARLY** — the SECOND one slice 7 pays, beside
+  # `g6-map-revenue-mode-label`, which is ticket 3's.
+  #
+  # ⚠ **NOBODY FORECAST THIS ONE AND THE FLIP'S NUMBER MOVES BECAUSE OF IT.**
+  # Slice 7's spec (#189, part 3 §20) forecasts the census at 41 = 31 owned + 1
+  # paid early, with G6 going 28 -> 26. This entry makes it **40, with G6 going
+  # 28 -> 25**. It was not visible from the ledger: the entry names a
+  # `humanize` call, not a route or a model, and what killed it is that the
+  # card doing the humanising went with the record it wrote. It humanised the
+  # retired recurring amount's INTERVAL — a field nothing ever divided by, on a
+  # card this ticket deletes — so after this commit the console does not do it
+  # and `test_label_catalogue.py` fails while the entry stands. The ledger's own
+  # rule permits the move (an owner slice may move earlier, never later) and
+  # #283 settled that an entry cannot outlive its debt whoever owns it; here
+  # there was no choice, because the gate goes red either way.
+  #
+  # **Whoever writes the flip (#512): the forecast is 40, not 41.**
+  #
+  # Paying it was the three acts `test_label_catalogue.py` requires — convert
+  # the file, delete this entry, add the id to `PAID_HUMANISING_DEBTS` — with
+  # "convert" taking its deletion form: there is no value left to word. The
+  # seeded total holds at eleven, now 7 outstanding + 4 paid.
 
   - id: g6-humanises-usage-invoices-section
     gate: G6

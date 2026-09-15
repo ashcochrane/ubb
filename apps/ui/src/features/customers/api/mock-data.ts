@@ -26,7 +26,6 @@ import type {
   GrantOut,
   MarginTrendPointOut,
   RevenueModeOut,
-  RevenueProfileOut,
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
   UsageInvoiceOut,
@@ -117,10 +116,20 @@ export const MOCK_DIRECTORY: MockCustomer[] = [
   },
 ];
 
+// ⚠ EVERY `supplied_revenue_micros` IN THIS FILE IS ZERO, DELIBERATELY (#496).
+// Each customer in this story is billed BY UBB — acme-corp has a real Stripe
+// subscription at the same 199 the retired recurring record used to carry, and
+// the rest earn through usage — so none of them has stated a figure UBB did
+// not bill. A fixture that supplied one anyway would be describing a workspace
+// none of these customers is in, and the panel a tenant states it through is
+// #508's. The three-way revenue sum is exercised with real numbers in
+// `lib/helpers.test.ts` and `features/dashboard/lib/economics.test.ts`, where
+// the figures are the case rather than the scenery.
 export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
   {
     customer_id: CUS_ACME,
     subscription_revenue_micros: 199_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: ACME_PROVIDER_COST.micros,
@@ -132,6 +141,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
   {
     customer_id: CUS_LUNA,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: LUNA_PROVIDER_COST.micros,
@@ -149,6 +159,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
     // between two views of them.
     customer_id: CUS_NOVA,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
@@ -160,6 +171,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
   {
     customer_id: CUS_SEAT_ENG,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
@@ -171,6 +183,7 @@ export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
   {
     customer_id: CUS_SEAT_RES,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
@@ -191,6 +204,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     revenue_mode: "billed",
     event_count: 48_213,
     subscription_revenue_micros: 199_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: ACME_PROVIDER_COST.micros,
@@ -207,6 +221,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     revenue_mode: "billed",
     event_count: 6_054,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: LUNA_PROVIDER_COST.micros,
@@ -223,6 +238,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     revenue_mode: "metered_only",
     event_count: 12_882,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
@@ -240,6 +256,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     revenue_mode: "billed",
     event_count: 17_502,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
@@ -256,6 +273,7 @@ export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
     revenue_mode: "billed",
     event_count: 8_907,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
@@ -301,6 +319,7 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
     unpriced_event_count: index === all.length - 2 ? 2 : 0,
     usage_billed_micros: billed,
     subscription_revenue_micros: subscription,
+    supplied_revenue_micros: 0,
     gross_margin_micros: margin,
     margin_percentage:
       billed + subscription === 0
@@ -308,16 +327,6 @@ export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
         : Math.round((margin / (billed + subscription)) * 1000) / 10,
   };
 });
-
-export const MOCK_REVENUE_PROFILES: Record<string, RevenueProfileOut> = {
-  [CUS_ACME]: {
-    recurring_amount_micros: 199_000_000,
-    currency: "usd",
-    interval: "month",
-    effective_from: "2026-01-01T00:00:00Z",
-    effective_to: null,
-  },
-};
 
 export const MOCK_REVENUE_MODES: Record<string, RevenueModeOut> = {
   [CUS_ACME]: { revenue_mode: "", resolved: "billed" },
@@ -336,6 +345,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       revenue_mode: "billed",
       event_count: 17_502,
       subscription_revenue_micros: 0,
+      supplied_revenue_micros: 0,
       usage_billed_micros: 120_400_000,
       usage_revenue_micros: 120_400_000,
       provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
@@ -350,6 +360,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
       revenue_mode: "billed",
       event_count: 8_907,
       subscription_revenue_micros: 0,
+      supplied_revenue_micros: 0,
       usage_billed_micros: 61_800_000,
       usage_revenue_micros: 61_800_000,
       provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
@@ -363,6 +374,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
   totals: {
     event_count: 26_409,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_revenue_micros: 182_200_000,
     provider_cost_micros: BUSINESS_PROVIDER_COST.micros,
     unresolved_event_count: BUSINESS_PROVIDER_COST.unresolved_event_count,

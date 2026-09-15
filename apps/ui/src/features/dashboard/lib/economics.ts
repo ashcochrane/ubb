@@ -58,9 +58,13 @@ export function customerEconomics(
 ): EconomicsView {
   if (!meterOnly) {
     return {
-      // List rows carry no total_revenue_micros — sum the two revenue parts.
+      // List rows carry no total_revenue_micros — sum the three revenue parts.
+      // The third is what a tenant that bills elsewhere supplied (#496);
+      // leaving it out would under-report exactly that tenant's revenue.
       revenue_micros:
-        row.subscription_revenue_micros + row.usage_revenue_micros,
+        row.subscription_revenue_micros +
+        row.supplied_revenue_micros +
+        row.usage_revenue_micros,
       margin_micros: row.gross_margin_micros,
       margin_pct: row.margin_percentage,
     };

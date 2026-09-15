@@ -213,8 +213,6 @@ from .revenue_analytics_response import RevenueAnalyticsResponse
 from .revenue_analytics_response_daily_item import RevenueAnalyticsResponseDailyItem
 from .revenue_mode_in import RevenueModeIn
 from .revenue_mode_out import RevenueModeOut
-from .revenue_profile_in import RevenueProfileIn
-from .revenue_profile_out import RevenueProfileOut
 from .rule_terms_out import RuleTermsOut
 from .rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
 from .rule_terms_out_rate_structure import RuleTermsOutRateStructure
@@ -556,8 +554,6 @@ __all__ = (
     "RevenueAnalyticsResponseDailyItem",
     "RevenueModeIn",
     "RevenueModeOut",
-    "RevenueProfileIn",
-    "RevenueProfileOut",
     "RuleTermsOut",
     "RuleTermsOutPricingMethodType0",
     "RuleTermsOutRateStructure",
