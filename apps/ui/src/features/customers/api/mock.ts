@@ -28,7 +28,6 @@ import {
   MOCK_MARGIN_DETAILS,
   MOCK_MARGIN_ROWS,
   MOCK_REVENUE_MODES,
-  MOCK_REVENUE_PROFILES,
   MOCK_SUB_INVOICES,
   MOCK_SUBSCRIPTIONS,
   MOCK_TRANSACTIONS,
@@ -59,8 +58,6 @@ import type {
   MarginTrendOut,
   AffordabilityResponse,
   RevenueModeOut,
-  RevenueProfileIn,
-  RevenueProfileOut,
   StatusResponse,
   StripeSubscriptionOut,
   SubscribeIn,
@@ -87,8 +84,6 @@ const grants: Record<string, GrantOut[]> = structuredClone(MOCK_GRANTS);
 const pools: Record<string, CustomerSpendPoolOut> = structuredClone(MOCK_CUSTOMER_SPEND_POOLS);
 const billingProfiles: Record<string, CustomerBillingProfileOut> =
   structuredClone(MOCK_BILLING_PROFILES);
-const revenueProfiles: Record<string, RevenueProfileOut> =
-  structuredClone(MOCK_REVENUE_PROFILES);
 const revenueModes: Record<string, RevenueModeOut> =
   structuredClone(MOCK_REVENUE_MODES);
 const subscriptions: Record<string, StripeSubscriptionOut> =
@@ -232,31 +227,6 @@ export async function getMarginTrend(
   };
 }
 
-export async function getRevenueProfile(customerId: string): Promise<RevenueProfileOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  const profile = revenueProfiles[customerId];
-  if (!profile) throw notFound("No recurring revenue profile for this customer.");
-  return profile;
-}
-
-export async function putRevenueProfile(
-  customerId: string,
-  body: RevenueProfileIn,
-): Promise<RevenueProfileOut> {
-  await mockDelay();
-  requireCustomer(customerId);
-  const saved: RevenueProfileOut = {
-    recurring_amount_micros: body.recurring_amount_micros,
-    currency: body.currency,
-    interval: body.interval,
-    effective_from: body.effective_from ?? new Date().toISOString(),
-    effective_to: body.effective_to ?? null,
-  };
-  revenueProfiles[customerId] = saved;
-  return saved;
-}
-
 export async function getRevenueMode(customerId: string): Promise<RevenueModeOut> {
   await mockDelay();
   requireCustomer(customerId);
@@ -320,6 +290,7 @@ export async function createCustomer(
   const zeroRow = {
     customer_id: id,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 0,
     usage_revenue_micros: 0,
     provider_cost_micros: 0,

@@ -87,6 +87,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     // acme-corp — business customer with an active subscription.
     customer_id: CUSTOMER_IDS.acme,
     subscription_revenue_micros: 199_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 342_500_000,
     usage_revenue_micros: 342_500_000,
     provider_cost_micros: ACME_PROVIDER_COST.micros,
@@ -99,6 +100,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     // luna-labs — individual running at a loss this period.
     customer_id: CUSTOMER_IDS.luna,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 41_200_000,
     usage_revenue_micros: 41_200_000,
     provider_cost_micros: LUNA_PROVIDER_COST.micros,
@@ -118,6 +120,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     // events behind these figures, so it must not differ between the two.
     customer_id: CUSTOMER_IDS.nova,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 88_000_000,
     usage_revenue_micros: 0,
     provider_cost_micros: NOVA_PROVIDER_COST.micros,
@@ -130,6 +133,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     // acme-corp:eng — seat under acme-corp.
     customer_id: CUSTOMER_IDS.seatEng,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 120_400_000,
     usage_revenue_micros: 120_400_000,
     provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
@@ -142,6 +146,7 @@ export const MOCK_MARGIN_CUSTOMERS: MarginCustomerRow[] = [
     // acme-corp:research — seat under acme-corp.
     customer_id: CUSTOMER_IDS.seatRes,
     subscription_revenue_micros: 0,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 61_800_000,
     usage_revenue_micros: 61_800_000,
     provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
@@ -157,6 +162,7 @@ export function mockMarginSummary(window: Window): MarginSummary {
   return {
     period: { start: window.start_date, end: window.end_date },
     subscription_revenue_micros: 199_000_000,
+    supplied_revenue_micros: 0,
     usage_billed_micros: 653_900_000,
     usage_revenue_micros: 565_900_000,
     provider_cost_micros: WINDOW_PROVIDER_COST.micros,

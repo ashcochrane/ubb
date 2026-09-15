@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,885 of 2,313 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,882 of 2,311 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2282,6 +2282,28 @@ measurement_key:
     # five schemas and one marked query parameter, and removed nothing, so
     # the break block takes no line. The sweep's site count holds at 25 and
     # its term count at 7.
+    #
+    # 2026-09-15, #496 (the recurring revenue profile is replaced by
+    # per-period records): 1,885 of 2,313 -> 1,882 of 2,311 tracked files
+    # (`units` 44 files / 122 occurrences, UNMOVED again -- the prose that
+    # held is the migration's "prorated by whole days" and the carry test's
+    # "whole days", neither of which reaches for the retired sense).
+    # ⚠ **THE DENOMINATORS FELL, WHICH IS THE DIRECTION THAT NEEDS THE
+    # STORY**, and it is a net of six moves rather than a shrinking walk.
+    # Two tracked files arrived: this slice's second migration (excluded, so
+    # the DECLARED `historical-migrations` count moves 261 -> 262 — in
+    # `gates/forbidden-term-sweep.yaml` and, pinned a second time, in
+    # `tests/contracts/test_forbidden_terms.py` — and the sweep's own printed
+    # exclusion total, which nothing declares, reads 429 rather than 428)
+    # and the carry's test module (swept). FOUR LEFT, all four generated SDK
+    # core modules -- two operation modules and two model modules -- deleted
+    # by regeneration when the recurring revenue pair left the contract. So
+    # swept 1,885 + 1 - 4 = 1,882 and tracked 2,313 + 2 - 4 = 2,311, and NO
+    # EXCLUSION WIDENED: the only rule whose count moved is the migration one,
+    # by the file that joined it.
+    # The sweep's own totals DID move, 7 terms in 25 sites -> **6 in 24**:
+    # the audit action the retired model raised has no living site left, and
+    # its G7 entry is deleted by the same commit.
 
     - term: units
       retired_as: >-

@@ -31,6 +31,7 @@ class SeatMarginOut:
             provider_cost_micros (int):
             revenue_mode (str):
             subscription_revenue_micros (int):
+            supplied_revenue_micros (int):
             total_revenue_micros (int):
             unpriced_event_count (int):
             unresolved_event_count (int):
@@ -45,6 +46,7 @@ class SeatMarginOut:
     provider_cost_micros: int
     revenue_mode: str
     subscription_revenue_micros: int
+    supplied_revenue_micros: int
     total_revenue_micros: int
     unpriced_event_count: int
     unresolved_event_count: int
@@ -71,6 +73,8 @@ class SeatMarginOut:
 
         subscription_revenue_micros = self.subscription_revenue_micros
 
+        supplied_revenue_micros = self.supplied_revenue_micros
+
         total_revenue_micros = self.total_revenue_micros
 
         unpriced_event_count = self.unpriced_event_count
@@ -92,6 +96,7 @@ class SeatMarginOut:
             "provider_cost_micros": provider_cost_micros,
             "revenue_mode": revenue_mode,
             "subscription_revenue_micros": subscription_revenue_micros,
+            "supplied_revenue_micros": supplied_revenue_micros,
             "total_revenue_micros": total_revenue_micros,
             "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
@@ -120,6 +125,8 @@ class SeatMarginOut:
 
         subscription_revenue_micros = d.pop("subscription_revenue_micros")
 
+        supplied_revenue_micros = d.pop("supplied_revenue_micros")
+
         total_revenue_micros = d.pop("total_revenue_micros")
 
         unpriced_event_count = d.pop("unpriced_event_count")
@@ -138,6 +145,7 @@ class SeatMarginOut:
             provider_cost_micros=provider_cost_micros,
             revenue_mode=revenue_mode,
             subscription_revenue_micros=subscription_revenue_micros,
+            supplied_revenue_micros=supplied_revenue_micros,
             total_revenue_micros=total_revenue_micros,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,

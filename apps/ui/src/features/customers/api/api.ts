@@ -39,8 +39,6 @@ import {
   type MarginTrendOut,
   type AffordabilityResponse,
   type RevenueModeOut,
-  type RevenueProfileIn,
-  type RevenueProfileOut,
   type StatusResponse,
   type StripeSubscriptionOut,
   type SubscribeIn,
@@ -84,25 +82,12 @@ export async function getMarginTrend(
   );
 }
 
-export async function getRevenueProfile(customerId: string): Promise<RevenueProfileOut> {
-  return unwrap(
-    await marginApi.GET("/customers/{customer_id}/revenue", {
-      params: { path: { customer_id: customerId } },
-    }),
-  );
-}
-
-export async function putRevenueProfile(
-  customerId: string,
-  body: RevenueProfileIn,
-): Promise<RevenueProfileOut> {
-  return unwrap(
-    await marginApi.PUT("/customers/{customer_id}/revenue", {
-      params: { path: { customer_id: customerId } },
-      body,
-    }),
-  );
-}
+// THE RECURRING REVENUE PAIR WAS HERE AND IS GONE (#496, slice 7 section 9).
+// It read and wrote one recurring amount per customer - no period, no source,
+// and an amount the backend added into the same field as a Stripe
+// subscription. Its replacement is the tenant-supplied revenue record, one
+// figure per period with its own span and its own source reference, and the
+// panel that writes it is #508's.
 
 export async function getRevenueMode(customerId: string): Promise<RevenueModeOut> {
   return unwrap(

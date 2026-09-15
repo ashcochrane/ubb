@@ -45,7 +45,6 @@ from ubb._core.models.task_out import TaskOut
 from ubb._core.models.customer_margin_out import CustomerMarginOut
 from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
-from ubb._core.models.revenue_profile_out import RevenueProfileOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.pricing_book_out import PricingBookOut
 from ubb._core.models.cost_book_out import CostBookOut
@@ -731,22 +730,17 @@ class MeteringClient:
             params={"periods": periods})
         return list_from_wire(MarginTrendPointOut, r.json()["points"])
 
-    def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
-                             currency="usd", effective_from=None, effective_to=None):
-        body = {"recurring_amount_micros": recurring_amount_micros, "interval": interval,
-                "currency": currency}
-        if effective_from:
-            body["effective_from"] = effective_from
-        if effective_to:
-            body["effective_to"] = effective_to
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_PUT_REVENUE(customer_id),
-            json=body)
-        return from_wire(RevenueProfileOut, r.json())
-
-    def get_customer_revenue(self, customer_id):
-        r = self._request(*ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_REVENUE(customer_id))
-        return from_wire(RevenueProfileOut, r.json())
+    # THE RECURRING REVENUE PAIR WAS HERE AND IS GONE (#496, slice 7 §9).
+    # One recurring amount per customer, with no period, no source and an
+    # accrual that added it into the same response field as a Stripe
+    # subscription. Its replacement is the tenant-supplied revenue record at
+    # `POST`/`GET /margin/customers/{customer_id}/supplied-revenue` — a figure
+    # per customer PER PERIOD, carrying its own span, recognition method and
+    # source reference. Both operations are reachable through the generated
+    # client (`ubb._core.api.default`) and neither has a hand-written call
+    # here yet; the disposition manifest records that as `generated_only`,
+    # which is a declared gap rather than an omission. `MIGRATION.md` §14 names
+    # the replacement call for anyone arriving at the missing methods.
 
     def get_business_margin(self, external_id, start_date=None, end_date=None):
         params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}

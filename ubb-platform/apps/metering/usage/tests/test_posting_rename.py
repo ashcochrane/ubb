@@ -111,8 +111,10 @@ DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
 #:
 #: Seven was the spec's own denominator, taken from the measurement vocabulary
 #: decision's §7.3 table, and it was the seven columns that default to `usd` the
-#: way the posting's does. **FIVE ARE LEFT (#368)** — the two paid below. **The
-#: tree holds others that were deliberately never listed**:
+#: way the posting's does. **FOUR ARE LEFT (#496)** — three paid below, by the
+#: same rule each time: two in #368, and the recurring revenue profile's when
+#: slice 7 deleted the model outright. **The tree holds others that were
+#: deliberately never listed**:
 #: `ReportedCostMapping.currency` is a DECLARED pin rather than a stamped copy
 #: (it defaults to `''`, and #266 landed it in this same slice), and
 #: `StripeSubscription` and `SubscriptionInvoice` mirror the payment rail's own
@@ -154,11 +156,23 @@ UNOWNED_CURRENCY_COLUMNS = (
     #     because a ticket's arithmetic expected three would be exactly the
     #     retire-a-gap-by-spelling the note above refuses. It is handed
     #     forward, unpaid and named.
+    #
+    # ⚠ **AND `ubb_customer_revenue_profile` LEFT ON `ubb_rate_card_assignment`'s
+    # TERMS (#496).** Slice 7 deleted the recurring revenue profile outright, so
+    # the gap is not constrained, it is gone — the strong form of #367's own
+    # escape clause, reached for the third time in this list.
+    #
+    # ⚠ **`TenantSuppliedRevenue`, WHICH REPLACED IT, DOES NOT INHERIT THE
+    # LINE.** Its currency has no default at all: it arrives from the caller
+    # with the figure it belongs to and is refused unless the platform supports
+    # it, which makes it a STATED fact rather than a stamped copy of the
+    # tenant's frozen choice. That is the `ReportedCostMapping` position the
+    # note above already draws, and admitting it here would record a debt that
+    # is not owed.
     "ubb_rate",                      # Rate
     "ubb_wallet",                    # Wallet
     "ubb_credit_grant",              # CreditGrant
     "ubb_customer_usage_invoice",    # CustomerUsageInvoice
-    "ubb_customer_revenue_profile",  # CustomerRevenueProfile
 )
 
 #: Operations that would cost rows, keys or indexes. `AlterModelTable`,

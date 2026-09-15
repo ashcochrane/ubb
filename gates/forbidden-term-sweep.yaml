@@ -352,7 +352,17 @@ exclusions:
     # value by reference on the day they are declared, so neither ever owed an
     # entry. **Quote the RULE count (7), never this one, when arguing that no
     # allowlist grew.**
-    files: 261
+    # 261 → 262 in #496, slice 7's second: ONE migration again, the carry that
+    # retires the recurring revenue profile. ⚠ **AND THIS ONE DOES NAME A
+    # RETIRED WORD'S NEIGHBOURS ON PURPOSE** — it spells the model it deletes
+    # and the uniqueness key it drops, because a migration that cannot say what
+    # it removes cannot be read. None of them is a retired TERM: the word the
+    # registry retired is the audit action `revenue_profile.set`, which this
+    # migration never raises and never mentions. The rule's own totals fell 7
+    # terms in 25 sites → **6 in 24** across the same commit, which is that
+    # action's single site dying with the two files that held it, and the ledger
+    # lost its entry in the same commit.
+    files: 262
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

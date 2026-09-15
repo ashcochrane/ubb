@@ -173,13 +173,13 @@ export const autoTopUpSchema = z.object({
 });
 export type AutoTopUpForm = z.infer<typeof autoTopUpSchema>;
 
-export const revenueProfileSchema = z.object({
-  amount: nonNegativeMoney,
-  interval: z.string().min(1, "Choose an interval"),
-  effective_from: z.string().trim(),
-  effective_to: z.string().trim(),
-});
-export type RevenueProfileForm = z.infer<typeof revenueProfileSchema>;
+// NO RECURRING REVENUE FORM (#496). It validated one amount, an interval and
+// an open-ended span for a record that had no periods and no source reference
+// - and the interval it made the tenant choose was never read by anything
+// that computed a number. The replacement is stated per period: an amount, the
+// span it covers, a recognition method and the tenant's own source reference.
+// The form for it lands with the panel in #508, where the mid-period
+// affordance (#153 section 19f) is what the span field is for.
 
 // ⚠ NO MARKUP FORM (#369). It validated a percentage beside a flat per-event
 // amount for the customer override dialog, and both the dialog and the record

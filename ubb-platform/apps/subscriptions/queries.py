@@ -60,6 +60,7 @@ def get_economics_summary(tenant_id, period_start: date, period_end: date):
 
     totals = qs.aggregate(
         total_subscription_revenue=Sum("subscription_revenue_micros"),
+        total_supplied_revenue=Sum("supplied_revenue_micros"),
         total_usage_billed=Sum("usage_billed_micros"),
         total_provider_cost=Sum("provider_cost_micros"),
         total_unresolved=Sum("unresolved_event_count"),
@@ -68,6 +69,12 @@ def get_economics_summary(tenant_id, period_start: date, period_end: date):
     )
     return {
         "subscription_revenue_micros": totals["total_subscription_revenue"] or 0,
+        # THE SECOND REVENUE SOURCE, SUMMED SEPARATELY (#496). A caller adding
+        # the two gets the tenant's whole non-usage revenue; a caller reading
+        # either alone knows which kind of money it has. Summing them here
+        # would put a Stripe figure and a tenant's own statement back in one
+        # number, which is the defect the column beside it exists to end.
+        "supplied_revenue_micros": totals["total_supplied_revenue"] or 0,
         "usage_billed_micros": totals["total_usage_billed"] or 0,
         # ⚠ THE `or 0` ON THESE TWO LINES IS THE EMPTY SUM AND NOTHING ELSE, and
         # that is what makes it different from every coalesce this slice deleted

@@ -19,9 +19,21 @@ export function microsToUnits(micros: number): string {
   return Number.isInteger(units) ? String(units) : units.toFixed(6).replace(/0+$/, "");
 }
 
-/** The list rows lack total_revenue_micros — derive it the way the detail does. */
+/** The list rows lack total_revenue_micros — derive it the way the detail does.
+ *
+ * ALL THREE SOURCES, and the third is why this reads as a list rather than a
+ * pair (#496). A tenant that bills its customers outside UBB states what it
+ * earned, and that figure is revenue as much as a Stripe subscription is —
+ * summing only the first two would hand exactly that tenant the "no revenue"
+ * answer the retired customer-level switch used to give, from a helper nobody
+ * would think to look in.
+ */
 export function listRowRevenueMicros(row: CustomerMarginListRow): number {
-  return row.subscription_revenue_micros + row.usage_revenue_micros;
+  return (
+    row.subscription_revenue_micros +
+    row.supplied_revenue_micros +
+    row.usage_revenue_micros
+  );
 }
 
 export type CustomerSort = "revenue" | "margin" | "margin_pct";

@@ -144,9 +144,9 @@ class TestCustomerCostAccumulator:
 
 @pytest.mark.django_db
 class TestMarginModels:
-    def test_revenue_profile_and_threshold_and_accumulator_fields(self):
+    def test_threshold_and_accumulator_and_snapshot_fields(self):
         from apps.subscriptions.economics.models import (
-            CustomerCostAccumulator, CustomerEconomics, CustomerRevenueProfile, MarginThresholdConfig)
+            CustomerCostAccumulator, CustomerEconomics, MarginThresholdConfig)
         from apps.platform.tenants.models import Tenant
         from apps.platform.customers.models import Customer
         import datetime
@@ -157,10 +157,6 @@ class TestMarginModels:
             period_end=datetime.date(2026, 7, 1),
             total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
         assert acc.total_provider_cost_micros == 800_000
-        rp = CustomerRevenueProfile.objects.create(
-            tenant=t, customer=c, recurring_amount_micros=500_000_000,
-            effective_from=datetime.date(2026, 6, 1))
-        assert rp.interval == "month"
         cfg = MarginThresholdConfig.objects.create(tenant=t)
         assert cfg.min_margin_pct == 0
         assert cfg.provider_cost_spike_pct == 25
@@ -170,3 +166,6 @@ class TestMarginModels:
             usage_billed_micros=1_000_000, provider_cost_micros=800_000,
             gross_margin_micros=500_200_000)
         assert econ.is_unprofitable is False
+        # The two revenue sources are two columns (#496), and the second one
+        # defaults to nothing rather than to unknown — see the column's note.
+        assert econ.supplied_revenue_micros == 0

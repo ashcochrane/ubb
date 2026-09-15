@@ -13,6 +13,7 @@ import {
 const SUMMARY: MarginSummary = {
   period: { start: "2026-07-01", end: "2026-07-23" },
   subscription_revenue_micros: 1_000_000_000,
+  supplied_revenue_micros: 0,
   usage_billed_micros: 5_000_000_000,
   usage_revenue_micros: 4_000_000_000,
   provider_cost_micros: 2_500_000_000,
@@ -45,6 +46,7 @@ describe("summaryEconomics", () => {
 const ROW: MarginCustomerRow = {
   customer_id: "3e7f0a41-5c2d-4b8e-9f10-8a64c1d2e301",
   subscription_revenue_micros: 200_000_000,
+  supplied_revenue_micros: 0,
   usage_billed_micros: 1_000_000_000,
   usage_revenue_micros: 0, // metered-only customer
   provider_cost_micros: 600_000_000,
@@ -66,6 +68,21 @@ describe("customerEconomics", () => {
     expect(view.revenue_micros).toBe(1_000_000_000);
     expect(view.margin_micros).toBe(400_000_000);
     expect(view.margin_pct).toBe(40);
+  });
+
+  // ⚠ A ROW WITH NOTHING SUPPLIED CANNOT TELL A THREE-WAY SUM FROM A TWO-WAY
+  // ONE, which is why this case carries a figure and the one above does not
+  // (#496). The tenant it describes bills its customers outside UBB: dropping
+  // its supplied figure here would under-report its revenue everywhere on the
+  // dashboard, and every assertion above would still pass.
+  it("counts what the tenant supplied as revenue too", () => {
+    const supplied: MarginCustomerRow = {
+      ...ROW,
+      subscription_revenue_micros: 0,
+      supplied_revenue_micros: 500_000_000,
+      usage_revenue_micros: 100_000_000,
+    };
+    expect(customerEconomics(supplied, false).revenue_micros).toBe(600_000_000);
   });
 });
 

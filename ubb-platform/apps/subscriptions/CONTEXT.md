@@ -52,8 +52,10 @@ _Avoid_: pushing deltas — always full state.
 ## Unit economics / margin
 
 **Customer economics**:
-The per-customer, per-month margin snapshot — revenue (subscription + usage-billed) minus provider
-cost — with a gross margin and an `is_unprofitable` flag.
+The per-customer, per-month margin snapshot — revenue minus provider cost — with a gross margin and
+an `is_unprofitable` flag. Revenue is three sources: the Stripe subscription accrual, tenant-supplied
+revenue, and billed usage **only where the customer's resolved revenue mode is `billed`**. Each is
+its own column, so a figure read off it can say which kind of money it is.
 (`apps/subscriptions/economics/models.py:CustomerEconomics`)
 
 **Cost accumulator**:
@@ -65,8 +67,25 @@ A per-customer switch (`billed` vs `metered_only`) deciding whether billed usage
 in the margin calc.
 
 **Accrued subscription revenue**:
-Pro-rated recurring revenue for a window — manual revenue profile + Stripe subscription nominal —
-computed without touching invoices.
+Pro-rated Stripe subscription revenue for a window, computed without touching invoices. ⚠ **It used
+to be a sum of two sources under a name that admitted only one**, and the second — a per-customer
+recurring amount the tenant collected elsewhere — landed in the same snapshot column as this one,
+so no surface could say where a revenue figure had come from. Slice 7 (#496) split them: this term
+is Stripe's alone, and the other is below.
+
+**Tenant-supplied revenue**:
+What a tenant that bills its customers somewhere other than UBB says it earned from one customer
+over one period, stated per period with its own span, its own recognition method and its own source
+reference. UBB neither created nor invoiced it and **no surface may present it as a Charge**; it is
+admitted so that margin can be computed at the scope it was supplied at (#153 §3.2). It reaches the
+margin under its own name, never the subscription figure's.
+(`apps/subscriptions/economics/models.py:TenantSuppliedRevenue`)
+
+**Recorded vs recognised**:
+The two labelled views of a supplied figure. **Recorded** places the whole amount on the day its
+record's period opens and is the default every surface falls back to — it invents nothing.
+**Recognised** spreads it by the record's own recognition method, and only ever along time.
+(`apps/subscriptions/economics/revenue.py:SuppliedRevenueService`)
 
 **Unprofitable / provider-cost spike**:
 The transition-guarded conditions that emit `customer.unprofitable` (below the margin floor

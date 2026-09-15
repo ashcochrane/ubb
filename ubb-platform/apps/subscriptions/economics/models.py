@@ -65,12 +65,51 @@ class CustomerCostAccumulator(BaseModel):
 
 
 class CustomerEconomics(BaseModel):
-    """Per-customer, per-month margin snapshot. revenue = subscription + usage_billed; cost = provider."""
+    """Per-customer, per-month margin snapshot.
+
+    Revenue is three sources: the Stripe subscription accrual, what the tenant
+    says it earned elsewhere, and billed usage — the third **only where the
+    customer's resolved revenue mode is `billed`**, which is what
+    `_compose` decides and what `usage_revenue_micros` reports. Cost is the
+    provider total. Each source is its own column, so a figure read off this
+    record can say which kind of money it is.
+    """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_economics")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="economics")
     period_start = models.DateField()
     period_end = models.DateField()
-    subscription_revenue_micros = models.BigIntegerField(default=0)  # manual + stripe
+    #: WHAT STRIPE SUBSCRIPTIONS ACCRUED OVER THE PERIOD, and nothing else.
+    #:
+    #: ⚠ IT CARRIED TWO DIFFERENT KINDS OF MONEY UNTIL #496 and the comment on
+    #: this line said so — `manual + stripe`. The recurring revenue profile's
+    #: amount was added in here, so a reader of the number could not say
+    #: whether it came from a subscription UBB drives through Stripe or from a
+    #: figure the tenant typed about a system UBB has never seen. That is the
+    #: provenance destruction slice 7 §9 names as the decisive reason the
+    #: profile was REPLACED rather than widened, and the fix is the column
+    #: below rather than a flag beside this one: two sources of money are two
+    #: columns, and then no surface has to be trusted to remember which.
+    subscription_revenue_micros = models.BigIntegerField(default=0)
+    #: WHAT THE TENANT SAID IT EARNED ELSEWHERE over the period — the
+    #: `TenantSuppliedRevenue` rows attributed to it, under the default
+    #: `recorded` basis (#496).
+    #:
+    #: Separate from the column above because the whole point of the record it
+    #: comes from is that a revenue figure can say where it came from. It is in
+    #: `total_revenue_micros` and therefore in `gross_margin_micros`, because a
+    #: tenant that bills its customers elsewhere is entitled to margin at the
+    #: scope it supplied revenue at (#153 §3.2) — and leaving it out would hand
+    #: that tenant the "no revenue, no margin" answer the deleted switch used
+    #: to give, this time with a webhook behind it.
+    #:
+    #: ⚠ ZERO HERE IS NOT `unknown`, AND THIS COLUMN CANNOT SAY WHICH IT IS.
+    #: The snapshot is the alerting record: every column on it is NOT NULL, so
+    #: a customer whose tenant supplied nothing is indistinguishable here from
+    #: one that supplied a deliberate zero. The question of whether revenue is
+    #: KNOWN is answered by the supplied-revenue read, which serves an empty
+    #: list and `pricing_status` `unknown` rather than a zero — and a surface
+    #: that needs to tell the two apart must ask it rather than this column.
+    supplied_revenue_micros = models.BigIntegerField(default=0)
     usage_billed_micros = models.BigIntegerField(default=0)
     provider_cost_micros = models.BigIntegerField(default=0)
     # WHAT THE FROZEN COST TOTAL LEFT OUT, copied from the accumulator this
@@ -112,34 +151,6 @@ class CustomerEconomics(BaseModel):
         return f"Economics({self.customer_id}: {self.margin_percentage}%)"
 
 
-class CustomerRevenueProfile(BaseModel):
-    """Manual per-customer recurring revenue the tenant collects externally.
-
-    ⚠ **BEING REPLACED BY `TenantSuppliedRevenue` BELOW, and a reader meeting
-    the two side by side needs to know which is which.** #153 §3.3 rules this
-    one *replaced* rather than widened: one recurring amount per customer, no
-    per-period rows, no source reference, and an amount summed into the same
-    column as a Stripe subscription — so a revenue figure's provenance is gone
-    the moment it lands. The record below is the replacement and #495 built it;
-    **carrying these rows onto it, and retiring this model with its route, is
-    the next ticket's** (#496). Until then both exist and only this one is read
-    by `RevenueService.manual_revenue_for_window`.
-    """
-    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="revenue_profiles")
-    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="revenue_profiles")
-    recurring_amount_micros = models.BigIntegerField(default=0)
-    interval = models.CharField(max_length=10, default="month")
-    currency = models.CharField(max_length=3, default="usd")
-    effective_from = models.DateField()
-    effective_to = models.DateField(null=True, blank=True)
-
-    class Meta:
-        app_label = "subscriptions"
-        db_table = "ubb_customer_revenue_profile"
-        constraints = [models.UniqueConstraint(
-            fields=["tenant", "customer"], name="uq_revenue_profile_tenant_customer")]
-
-
 class TenantSuppliedRevenue(BaseModel):
     """WHAT A TENANT EARNED FROM ONE CUSTOMER OVER ONE PERIOD, SOMEWHERE OTHER
     THAN UBB (#495, slice 7 §9; the name is #154 §3.7's).
@@ -149,11 +160,14 @@ class TenantSuppliedRevenue(BaseModel):
     revenue is `unknown` and margin is **unavailable rather than zero**; and
     cost tracking **plus** a supplied figure, where revenue is `known` at the
     scope it was supplied at and margin is available there. This record is the
-    second posture made explicit. `CustomerRevenueProfile` above was carrying
-    it badly: one recurring amount per customer, no per-period rows, no source
-    reference, and the amount summed into the same column as a Stripe
-    subscription — so the provenance of a revenue number was destroyed the
-    moment it landed.
+    second posture made explicit. The recurring profile it REPLACED (#496, gone
+    from this module with the migration that carried its rows here) was
+    carrying that posture badly: one recurring amount per customer, no
+    per-period rows, no source reference, and the amount summed into the same
+    column as a Stripe subscription — so the provenance of a revenue number was
+    destroyed the moment it landed. `supplied_revenue_micros` on
+    `CustomerEconomics` above is the column that ended that, and it is a
+    SEPARATE column for exactly that reason.
 
     ⚠ **IT IS NOT A CHARGE AND NO SURFACE MAY PRESENT IT AS ONE.** UBB neither
     created nor invoiced this money. `pricing.Charge` is what UBB charged a

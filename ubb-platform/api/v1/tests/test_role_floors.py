@@ -248,7 +248,12 @@ _WRITE_ROUTES = {
 # numbers appearing in margin reporting is an administrative act by that
 # standard. Neither is carved and neither is exempt, so the exempt count is
 # untouched. 153 + 2 = 155.
-_EXPECTED_FLOORED = 155
+#
+# 155 - 2 = 153 in #496: the recurring revenue pair leaves, and it is TWO
+# operations on one path — a `GET` at the read floor and a `PUT` at the admin
+# floor — because this count is of OPERATIONS rather than of paths. Neither was
+# carved and neither was exempt, so the exempt count is untouched again.
+_EXPECTED_FLOORED = 153
 _EXPECTED_EXEMPT = 10
 
 

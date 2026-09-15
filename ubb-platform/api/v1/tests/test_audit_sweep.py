@@ -175,7 +175,16 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # reporting is governance rather than telemetry by this file's own carve — the
 # exemption list is usage ingestion and the subscription sync, and this is
 # neither — so the exempt side does not move. Recording 73 -> 74.
-_EXPECTED_MUTATING = 79
+#
+# 79 -> 78 in #496, slice 7's second: the recurring revenue profile's `PUT`
+# leaves with the model it wrote, and the audit action it raised leaves with
+# it — the retired spelling whose G7 ledger entry the same commit pays, named
+# descriptively here because spelling it on a swept backend surface is the
+# failure that entry used to excuse. ONE mutating operation, not two: the
+# pair's `GET` was never counted here. The record that replaced it already
+# recorded its own act under a CURRENT name, so nothing recorded becomes
+# unrecorded. Recording 74 -> 73.
+_EXPECTED_MUTATING = 78
 _EXPECTED_EXEMPT = 5
 
 
