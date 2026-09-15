@@ -378,3 +378,31 @@ authorisations:
       subject is a rename, and the ticket that renames it says the wrapper
       MOVES with the routes and nothing more. The generated modules exist
       and are reachable without one.
+  - id: slice-7-495-the-tenant-supplied-revenue-record
+    issue: 495
+    operations_added: 2
+    reason: >-
+      TWO NEW OPERATIONS ON ONE NEW PATH, both `generated_only`: the write
+      that records what a tenant earned from a customer somewhere other than
+      UBB, and the read that serves it back under a stated basis
+      (`POST`/`GET /margin/customers/{customer_id}/supplied-revenue`). The
+      total moves 81 -> 83 and `not_yet_wrapped` stays at zero, the pinned
+      generator having produced a module for each.
+
+      WHY NEITHER IS WRAPPED, argued from the same distinction #456 and #414
+      drew rather than inherited from them. This SDK wraps the surface an
+      integrator drives from its own running code — recording usage, starting
+      and closing work, asking what a customer can afford. Supplying revenue
+      is an OPERATOR's act: it is authorised at the `ADMIN` floor, it states
+      a figure out of the tenant's own billing system for a period that has
+      already happened, and the console panels slice 7 builds are where a
+      human performs it. A method on an integrator's client for it would be
+      a new operator surface decided in a commit whose subject is a record.
+
+      ⚠ AND THE READ IS THE HALF THAT WOULD BE EASIEST TO WRAP BADLY. Its
+      answer carries a `basis` the caller may choose and a `pricing_status`
+      that is `unknown` rather than zero where nothing was supplied —
+      `docs/conventions/sdk-wrap.md` forbids a client holding its own list of
+      valid values, so a wrapper would have to pass both through from the
+      generated models, which is exactly what the generated module already
+      does.

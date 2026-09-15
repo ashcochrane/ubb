@@ -169,7 +169,13 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # and outside this walk altogether. Its row on the exemption list went with the
 # method: the exemption said "this mutation is telemetry", and there is no
 # mutation left to say it of. The RECORDING count is unmoved: 78 - 5 = 73.
-_EXPECTED_MUTATING = 78
+# 78 -> 79 WITH #495, AND THE ONE THAT ARRIVED RECORDS: the tenant states what
+# it earned from a customer somewhere other than UBB, at the `ADMIN` floor,
+# under `tenant_supplied_revenue.recorded`. A figure that appears in margin
+# reporting is governance rather than telemetry by this file's own carve — the
+# exemption list is usage ingestion and the subscription sync, and this is
+# neither — so the exempt side does not move. Recording 73 -> 74.
+_EXPECTED_MUTATING = 79
 _EXPECTED_EXEMPT = 5
 
 

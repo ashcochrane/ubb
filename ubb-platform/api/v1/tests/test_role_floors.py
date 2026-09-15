@@ -236,7 +236,19 @@ _WRITE_ROUTES = {
 # GET, retired with its module and its untyped schema once the console's
 # Stops and breaches had its second host. One floored route out; not carved
 # and not exempt, so the exempt count is untouched. 154 - 1 = 153.
-_EXPECTED_FLOORED = 153
+#
+# ⚠ AND THEN THE SUPPLIED REVENUE PAIR ARRIVED (slice 7, #495): `POST` and
+# `GET /margin/customers/{customer_id}/supplied-revenue`, the write a tenant
+# states what it earned somewhere other than UBB through and the read that
+# serves it back. TWO floored routes and they take DIFFERENT floors, which is
+# the whole of slice 7 §9's authorization ruling rather than the carve's
+# default: the write is `ADMIN` and the read is `READ`, argued from the margin
+# module's own precedent — every mutating operation on it is already
+# administrative and every read is at the read floor, and a record that writes
+# numbers appearing in margin reporting is an administrative act by that
+# standard. Neither is carved and neither is exempt, so the exempt count is
+# untouched. 153 + 2 = 155.
+_EXPECTED_FLOORED = 155
 _EXPECTED_EXEMPT = 10
 
 

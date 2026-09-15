@@ -706,6 +706,56 @@ measure_status:
     - surface: openapi
       path: openapi/v1.json
 
+recognition_method:
+  kind: closed
+  summary: >-
+    How a tenant-supplied revenue record is spread over the span it declares.
+    `straight_line` divides the amount by day across the record's own period;
+    `on_receipt` places the whole amount on the day that period opens, which is
+    what an up-front fee covering a later span actually does. The RECORD states
+    it, so no reader has to assume — and that is the whole difference from the
+    recurring profile it replaces, where proration was unconditional and
+    unlabelled (#153 §3.3).
+  # Time is the only axis a supplied record may be spread along, and this
+  # concept is deliberately not a vocabulary for spreading along any other: the
+  # record declares no supplier, no Event Type and no event, so a method
+  # naming one of those would invent a boundary the record never asserted.
+  values:
+    - straight_line
+    - on_receipt
+  label_key_prefix: recognition_method
+  # NO CONSOLE CONSUMER YET, and that is a statement about where this concept
+  # is turned into words rather than an omission. The panels that write a
+  # supplied record arrive with the console's own slice-7 tickets; declaring a
+  # console consumer before one exists would be declaring a debt, and this
+  # concept's whole point is that it is held by reference on the day it is
+  # coined (`not_applicable_reason`'s precedent, #351).
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/subscriptions/economics/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+revenue_basis:
+  kind: closed
+  summary: >-
+    Which of the two views a revenue figure is stated under. `recorded` places
+    each supplied amount whole on the day its period opens and distributes
+    nothing; `recognised` spreads it by the record's own `recognition_method`
+    across the span the record declares. Both are offered and every surface
+    serving either NAMES the one it served — a revenue figure whose basis is
+    unstated is the defect this concept exists to end.
+  values:
+    - recorded
+    - recognised
+  label_key_prefix: revenue_basis
+  # Same reason as `recognition_method` above for the absent console consumer.
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/subscriptions/economics/revenue.py
+    - surface: openapi
+      path: openapi/v1.json
+
 analytics_grouping_kind:
   kind: closed
   summary: >-

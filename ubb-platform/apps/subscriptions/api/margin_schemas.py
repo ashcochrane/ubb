@@ -1,5 +1,102 @@
-from typing import Optional
+from typing import Annotated, List, Optional
 from ninja import Schema, Field
+
+
+# --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
+#
+# THE THREE CONCEPT MARKERS THIS MODULE DECLARES, and why declaring them here
+# is not a second copy of anything. A marker names a concept and spells not one
+# of its values — the values arrive at export time from the registry's own
+# generated decision document — so an alias is a pointer, and a module that
+# publishes a field carrying a concept declares the pointer beside the field.
+# `apps/platform/events/schemas.py` already declares its own `PricingStatus`
+# for exactly this reason, beside the payloads that carry it.
+
+#: HOW A SUPPLIED REVENUE RECORD IS SPREAD OVER THE SPAN IT DECLARES. `closed`
+#: — UBB owns both values — so the export writes a real `enum` here and this
+#: file spells neither of them. No hand-written `description`: the registry owns
+#: this concept's summary, and a sentence restating it here would be a second
+#: copy no gate reads.
+RecognitionMethod = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "recognition_method"})]
+
+#: WHICH OF THE TWO VIEWS A REVENUE FIGURE IS STATED UNDER. Present on every
+#: response that serves one, never optional: a figure whose basis is unstated
+#: is the unlabelled proration slice 7 §5 exists to end, and an absent field
+#: would be exactly that.
+RevenueBasis = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "revenue_basis"})]
+
+#: WHETHER CUSTOMER REVENUE FOR THE WINDOW IS SETTLED, AND IF NOT, WHY NOT.
+#: The same four states the posting carries (#153 §3.4 rules this slice adds no
+#: fifth) — here answering the question at the supplied scope: `known` where a
+#: figure the tenant supplied is attributable to this window, `unknown` where
+#: none is. `unknown` is why the totals beside it are an EMPTY LIST rather than
+#: a zero: revenue UBB does not know is not revenue of nothing.
+#:
+#: ⚠ `known` DOES NOT CLAIM THE WINDOW IS FULLY COVERED, and it cannot: UBB
+#: has no way to tell a period the tenant has not supplied yet from one in
+#: which the customer generated nothing, so "fully covered" is not a fact
+#: available to this surface. The contributing `records` carry their own
+#: periods, which is where coverage is read from.
+PricingStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
+
+
+class TenantSuppliedRevenueIn(Schema):
+    """What a tenant states it earned from one customer over one period.
+
+    ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
+    bills its customers somewhere UBB cannot see and is supplying the figure so
+    that margin can be computed at the scope it was supplied at.
+    """
+
+    amount_micros: int
+    currency: str
+    #: ISO dates. The end is EXCLUSIVE and may be omitted for revenue that is
+    #: an instant rather than a span; a partial period is therefore expressible
+    #: by writing the part the record covers, which is what the recurring
+    #: profile this replaces could not do without a second record.
+    period_start: str
+    period_end: Optional[str] = None
+    recognition_method: RecognitionMethod
+    #: The tenant's own handle for where the number came from — required, and
+    #: refused blank. It is part of the record's identity: two figures covering
+    #: one month from two sources are two facts, and re-supplying the same
+    #: source for the same period re-states one.
+    source_reference: str
+
+
+class TenantSuppliedRevenueOut(Schema):
+    """One supplied record, as the tenant stated it."""
+
+    id: str
+    amount_micros: int
+    currency: str
+    period_start: str
+    period_end: Optional[str] = None
+    recognition_method: RecognitionMethod
+    source_reference: str
+    #: When UBB accepted the statement — not when the money was earned, which
+    #: is what the period above says.
+    recorded_at: str
+
+
+class AttributedSuppliedRevenueOut(TenantSuppliedRevenueOut):
+    """One supplied record and what a window gets of it under one basis."""
+
+    #: What the requested window gets of `amount_micros` above under the
+    #: response's stated basis. Equal to the whole amount wherever nothing was
+    #: distributed, which is every record under the `recorded` basis and every
+    #: `on_receipt` record under either.
+    attributed_amount_micros: int
+
+
+class SuppliedRevenueTotalOut(Schema):
+    """One currency's worth of the window's attributed supplied revenue."""
+
+    currency: str
+    amount_micros: int
 
 
 class RevenueProfileIn(Schema):
@@ -48,6 +145,28 @@ class PeriodWindow(Schema):
     # ISO dates; end is exclusive (month-to-date windows end at tomorrow).
     start: str
     end: str
+
+
+class SuppliedRevenueWindowOut(Schema):
+    """The window's supplied revenue, under a basis the response NAMES (#495).
+
+    **The totals are a list per currency and never a single figure**, because a
+    single figure summed across currencies is a wrong number, and this slice's
+    whole subject is revenue figures that say what they are. The normal answer
+    is a one-element list; a customer whose supplied records are denominated
+    two ways gets two entries rather than a total that is true of neither.
+
+    **An empty list is how `unknown` is served, and it is never a zero.** A
+    tenant that has supplied nothing for this window has revenue UBB does not
+    know — margin is unavailable there, not nil — and a `0` here would be the
+    silent-zero #153 §3.4 refuses by name.
+    """
+
+    basis: RevenueBasis
+    window: PeriodWindow
+    pricing_status: PricingStatus
+    totals: List[SuppliedRevenueTotalOut]
+    records: List[AttributedSuppliedRevenueOut]
 
 
 # WHAT `unresolved_event_count` MEANS EVERYWHERE BELOW, SAID ONCE (#328).

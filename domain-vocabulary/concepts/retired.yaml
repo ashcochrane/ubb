@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,869 of 2,296 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,885 of 2,313 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2249,6 +2249,39 @@ measurement_key:
     # nothing generated moved. Nine ledger entries left -- every `docs::`
     # seat slice 6 owned -- and the sweep's site count fell 34 -> 25, its
     # term count 16 -> 7.
+    #
+    # 2026-09-15, #495 (a tenant may state what it earned somewhere other
+    # than UBB): 1,869 of 2,296 -> 1,885 of 2,313 tracked files (`units` 44
+    # files / 122 occurrences, unmoved on the first take AND after the review
+    # pass: the prose that held is "a whole number of minor units" reached
+    # for only through `assert_aligned`'s own message, "one row per customer
+    # per period-open per source reference" and "whole days"). Seventeen
+    # tracked files arrived and none left. Sixteen of the seventeen are swept
+    # -- three test modules (the route's, the record's rule at the database,
+    # and the shared fixture the two of them read) and THIRTEEN GENERATED SDK
+    # CORE MODULES, which is the number to look at twice: two operation
+    # modules plus eleven model modules, and the eleven are five schema
+    # modules and SIX ENUM MODULES rather than five and four: a closed
+    # concept mints one enum module per schema node that carries it, and the
+    # window read carries two of them at once (`recognition_method` on the
+    # three record schemas, `revenue_basis` on the window read AND on the
+    # query parameter that asks for it, `pricing_status` on the window read).
+    # ⚠ **TWO OF THE SEVENTEEN ARRIVED IN THE REVIEW PASS RATHER THAN THE
+    # BUILD** — the shared fixture, extracted when the STANDARDS axis read
+    # three copies of one default block, and the enum module the marker on
+    # the basis parameter minted when the SPEC axis found that parameter
+    # shipping as a bare string against ADR-0007 §3. Taking these numbers
+    # before the review would have recorded fifteen. The seventeenth file is
+    # this slice's first migration and is excluded, so `historical-migrations`
+    # moves 260 -> 261 and the exclusion 427 -> 428.
+    # THE TWO CONCEPTS COINED HERE MOVE NO LEDGER ENTRY, which is #351's
+    # `not_applicable_reason` precedent rather than an omission: a concept
+    # whose backend consumer holds every one of its values on the day it is
+    # declared has never owed a G2 or a G4 debt, so there is nothing to seed
+    # and nothing to delete. The contract added one path, two operations,
+    # five schemas and one marked query parameter, and removed nothing, so
+    # the break block takes no line. The sweep's site count holds at 25 and
+    # its term count at 7.
 
     - term: units
       retired_as: >-
