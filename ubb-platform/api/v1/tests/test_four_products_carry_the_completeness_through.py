@@ -527,25 +527,20 @@ class TestTheAccumulatorAndTheSnapshot:
             HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
         assert listed["customers"][0][UNRESOLVED_EVENT_COUNT_KEY] == 1
 
-    def test_the_economics_summary_adds_the_snapshots_counts_up(self):
-        """#327 left this total a single figure and said why.
-
-        Its `Sum` is over a NOT NULL snapshot column, so SQL's null-skipping
-        could never reach it and there was nothing there to report. What it
-        could inherit was a partiality from upstream — and upstream now records
-        one, so the figure it publishes has something true to say.
-        """
-        from apps.subscriptions.economics.services import MarginService
-        from apps.subscriptions.queries import get_economics_summary
-
-        self._record(status=COSTING_STATUS_UNRESOLVED)
-        MarginService.snapshot_customer(
-            self.tenant.id, self.customer.id, self.period_start,
-            self.period_start + timedelta(days=31))
-        summary = get_economics_summary(
-            self.tenant.id, self.period_start,
-            self.period_start + timedelta(days=31))
-        assert summary[UNRESOLVED_EVENT_COUNT_KEY] == 1
+    # THE TENANT-WIDE SUMMARY'S CASE WAS HERE AND ITS SUBJECT MOVED (#502,
+    # slice 7 §8). It asserted that a total aggregated off the monthly snapshots
+    # inherited the count they froze — true, and answered from a stored figure.
+    # A stored margin is a cache of facts that move after the period closes, so
+    # the tenant-wide total is derived at read time now and the snapshot keeps
+    # only the alerting job it alone can do.
+    #
+    # The claim did not weaken; it went with the surface. The same question —
+    # one tenant, one window, no grouping — carries the count at
+    # `test_the_one_economic_query.py::TestAMarginIsNoBetterThanItsWorstInput::
+    # test_the_unresolved_count_travels_with_the_cost`, on the cost measure,
+    # computed from the postings rather than from a copy of them. The two cases
+    # ABOVE are what this class still owns: the pair reaching the accumulator,
+    # the snapshot inheriting it, and the alerting list publishing it.
 
 
 @pytest.mark.django_db

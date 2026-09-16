@@ -114,17 +114,27 @@ class AnUnresolvedCostSettlesOnceTest(TestCase):
 
         A settlement that checked the row first and wrote second would pass
         every other test in this class and lose a race in production. What rules
-        that out is that there is one statement and its `WHERE` clause carries
-        the whole precondition.
+        that out is that there is one statement, that **nothing runs before
+        it**, and that its `WHERE` clause carries the whole precondition.
+
+        ⚠ **"NOTHING BEFORE IT" IS THE CLAIM; "NOTHING AT ALL" WAS A PROXY FOR
+        IT AND STOPPED BEING TRUE** (#502). The door now also reads the settled
+        posting to say which month went stale, which is a cache invalidation
+        that happens after the update has already committed to its own outcome
+        and could not affect the race if it tried. Asserting a total query count
+        would have made any later work here look like the defect this case is
+        about — and, worse, a read placed BEFORE the update would have satisfied
+        it just as well the day somebody raised the number.
         """
         posting = _unresolved()
         with CaptureQueriesContext(connection) as queries:
             settle_provider_cost(posting_id=posting.pk,
                                  provider_cost_micros=1)
-        statements = [q["sql"] for q in queries.captured_queries
-                      if q["sql"].lstrip().upper().startswith("UPDATE")]
+        captured = [q["sql"] for q in queries.captured_queries]
+        statements = [sql for sql in captured
+                      if sql.lstrip().upper().startswith("UPDATE")]
         self.assertEqual(len(statements), 1)
-        self.assertEqual(len(queries.captured_queries), 1)
+        self.assertEqual(captured[0], statements[0])
         for condition in ("provider_cost_micros", "IS NULL", "costing_status"):
             self.assertIn(condition, statements[0])
 

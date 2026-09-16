@@ -62,6 +62,60 @@ def tenant_wide_money(tenant_id, *, start_date, end_date):
     return {entry["measure"]: entry for entry in answer["rows"][0]["measures"]}
 
 
+#: The one economic query's published path.
+ECONOMICS = "/api/v1/metering/analytics/economics"
+
+
+def a_tenant(name="T", *, fields=()):
+    """A metering tenant and a raw key for it.
+
+    `products=["metering"]` is not optional — the one query is product-gated, so
+    a tenant without it answers 403 rather than 200, which reads as an auth bug.
+
+    ⚠ **SHARED SINCE #502, WHICH IS WHEN A SECOND MODULE ASKED THE ONE QUERY
+    THROUGH THE ROUTE.** The collapse's own module built this; the module about
+    a closed period restating needs the same tenant and the same key, and
+    scaffolding a second one by hand is what `docs/conventions/testing.md` calls
+    out by name.
+    """
+    from apps.platform.grouping_fields.models import GroupingField
+
+    tenant = Tenant.objects.create(name=name, products=["metering"])
+    for position, key in enumerate(fields, start=1):
+        GroupingField.objects.create(tenant=tenant, key=key,
+                                     slot=f"grouping_field_{position}",
+                                     scope="event")
+    _, raw_key = TenantApiKey.create_key(tenant)
+    return tenant, raw_key
+
+
+def ask(raw_key, **params):
+    """One economic question, with the measures and axes repeated properly.
+
+    A list value becomes a repeated query parameter rather than a comma-joined
+    one, which is the shape the route declares and the only shape that carries
+    an axis order.
+    """
+    from django.test import Client
+
+    query = []
+    for name, value in params.items():
+        if isinstance(value, (list, tuple)):
+            query += [(name, entry) for entry in value]
+        elif value is not None:
+            query.append((name, value))
+    return Client().get(ECONOMICS, query,
+                        HTTP_AUTHORIZATION=f"Bearer {raw_key}")
+
+
+def measure_of(body, measure, row=0):
+    """One measure's entry out of a row of the answer, or a readable failure."""
+    for entry in body["rows"][row]["measures"]:
+        if entry["measure"] == measure:
+            return entry
+    raise AssertionError(f"{measure!r} is not in row {row} of the answer")
+
+
 def retired_aliases(concept_file, concept):
     """The spellings the registry has RETIRED for ``concept``, read off the
     registry itself rather than spelled in a test: the sweep refuses a

@@ -17,7 +17,12 @@ Consumers:
 - apps/billing/wallets/tasks.py → iter_billable_usage_events()
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
-  clear_backfill_dirty_period() (the ack half of the marker contract)
+  clear_backfill_dirty_period() (the ack half of the marker contract),
+  get_customer_cost_totals() (the repair a marker's consumer runs first, #502)
+- apps/subscriptions/api/margin_endpoints.py → mark_backfill_dirty_period()
+  (the write half: a figure a tenant supplies about a month that has closed
+  makes that month's cached economics stale, exactly as a late supplier cost
+  does, #502)
 - api/v1/metering_endpoints.py → get_unresolved_queue(),
   get_projected_adjustment(), get_waived_loss() (the three recovery reads, #364),
   and economics() with grouping_options() beside it — the one economic query
@@ -581,13 +586,55 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     return [(label, billed, counts[label]) for label, billed in merged.items()]
 
 
-def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
-    """Pending backfill markers (plain dicts, oldest first).
+def mark_backfill_dirty_period(tenant_id, customer_id, period_start) -> None:
+    """Declare one customer's CLOSED month stale. Idempotent (#502, slice 7 §8).
 
-    Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written by
-    record_usage when an event backfills into a PRIOR calendar month; consumed
-    by subscriptions' resnapshot_dirty_periods, which acks each marker via
+    The second deliberate WRITE half of the marker contract, and the reason it
+    exists on this side of the boundary: the marker table is metering's, and a
+    period's economics go stale for reasons that are not (`apps/subscriptions`
+    may not reach for the model, ADR-001). A tenant that bills its customers
+    elsewhere can state what it earned in a month that closed long ago, and
+    revenue is half of every margin the evaluator flags on — so a figure
+    supplied late has to be able to reach the same rebuild a late supplier cost
+    does.
+
+    **The caller decides the period has closed**, because what counts as closed
+    is the caller's own question: the recording path asks it of an event's
+    effective month and the supplied-revenue write asks it of a record's stated
+    period. Writing a marker for an open month is harmless but pointless — the
+    consumer skips a non-prior marker without acking it.
+    """
+    from django.db import IntegrityError, transaction
+
+    from apps.metering.usage.models import BackfillDirtyPeriod
+
+    try:
+        # The savepoint-IntegrityError-swallow the recording path uses on the
+        # same unique key: a marker already pending for this period is the same
+        # request made twice.
+        with transaction.atomic():
+            BackfillDirtyPeriod.objects.create(
+                tenant_id=tenant_id, customer_id=customer_id,
+                period_start=period_start)
+    except IntegrityError:
+        pass
+
+
+def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
+    """Pending markers for periods whose cached economics are stale (plain
+    dicts, oldest first).
+
+    Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written
+    whenever a fact behind a CLOSED month's cached figures moves — an event
+    backfilled into a prior month by record_usage, a supplier cost settled long
+    after the call, a figure the tenant supplied late — and consumed by
+    subscriptions' resnapshot_dirty_periods, which acks each marker via
     clear_backfill_dirty_period() AFTER its snapshot work succeeds.
+
+    ⚠ **THE NAME IS NARROWER THAN THE MEANING AND THE MEANING IS THE WIDER ONE.**
+    Backfilled usage was the first cause and is no longer the only one; renaming
+    the record is a migration nothing here needs, so the sentence above is the
+    authority on what a marker says.
 
     created_before: only markers created strictly before this aware datetime.
     The consumer passes now − its settle horizon so a marker is never acked

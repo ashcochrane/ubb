@@ -12,15 +12,16 @@ from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KE
 from core.exceptions import MisalignedAmount
 from core.money import SUPPORTED_CURRENCIES, assert_aligned
 from core.problems import Problem, ProblemOut
-from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from core.time_windows import REPORT_WINDOW_MAX_DAYS, month_bounds
 from core.vocabulary import (
     AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED, PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_VALUES, REVENUE_BASIS_VALUES)
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
+from apps.subscriptions.economics.alerting import flagged_in
 from apps.subscriptions.economics.models import (
-    CustomerEconomics, MarginThresholdConfig, TenantSuppliedRevenue)
+    MarginThresholdConfig, TenantSuppliedRevenue)
 from apps.subscriptions.economics.revenue import (
     DEFAULT_REVENUE_BASIS, SuppliedRevenueService)
 from apps.subscriptions.economics.services import MarginService
@@ -82,28 +83,50 @@ def _window(start_date, end_date):
 @margin_router.get("/unprofitable", response=UnprofitableOut)
 @role_floor(READ)
 def margin_unprofitable(request, period_start: date = None):
+    # THE CUSTOMERS A THRESHOLD RULE HAS NAMED, AND THE FIGURES IT NAMED THEM
+    # ON — read through the alerting record's own door since #502 (slice 7 §8).
+    # The route, its floor, its parameters and every figure below are unchanged;
+    # what changed is that the rows come from `economics.alerting` rather than
+    # from a queryset written here, which is what makes "no REPORTING surface
+    # reads a margin figure from the snapshot" checkable rather than a list of
+    # files somebody remembered to exempt.
+    #
+    # The margins here are facts about ALARMS — what each customer's flag was
+    # raised on, which is what the tenant was sent a webhook about — and not
+    # what that period's margin reads today. The second question is a report and
+    # it is `GET /metering/analytics/economics`.
+    #
+    # ⚠ A COMMENT AND NOT A DOCSTRING, DELIBERATELY. django-ninja publishes a
+    # view's docstring as the operation's `description`, so writing this one
+    # would have put a maintainer's note about a refactor on the contract every
+    # tenant reads — and taken the console snapshot and the generated SDK with
+    # it, for prose that says nothing a caller needed. The operation had no
+    # description before this commit and has none after it.
     _product_check(request)
     ps = period_start or _current_month()[0]
-    rows = CustomerEconomics.objects.filter(
-        tenant=request.auth.tenant, period_start=ps, is_unprofitable=True
-    ).select_related("customer")
+    rows = flagged_in(request.auth.tenant.id, ps)
     return {"period_start": ps.isoformat(), "customers": [{
-        "customer_id": str(r.customer_id), "external_id": r.customer.external_id,
-        "gross_margin_micros": r.gross_margin_micros,
+        "customer_id": r["customer_id"], "external_id": r["external_id"],
+        "gross_margin_micros": r["gross_margin_micros"],
         # A CEILING ON A MARGIN CAN ONLY GET WORSE, WHICH IS WHY THIS LIST OF
         # ALL PLACES CARRIES THE COUNT (#328). The customers here are named as
         # unprofitable on a margin computed from a cost total that excluded
         # events — the true margin is lower still, so a non-zero count never
         # means "maybe they are fine".
-        UNRESOLVED_EVENT_COUNT_KEY: r.unresolved_event_count,
+        UNRESOLVED_EVENT_COUNT_KEY: r[UNRESOLVED_EVENT_COUNT_KEY],
         # ⚠ AND THIS COUNT POINTS THE OTHER WAY, WHICH IS WHY IT IS HERE (#351).
         # An excluded PRICE means revenue was left out, so the true margin is
         # HIGHER than the one that named this customer unprofitable — a non-zero
         # count here really can mean "maybe they are fine", and a list of
         # unprofitable customers that showed only the count which cannot say
         # that would be the more misleading of the two.
-        UNPRICED_EVENT_COUNT_KEY: r.unpriced_event_count,
-        "margin_percentage": float(r.margin_percentage),
+        UNPRICED_EVENT_COUNT_KEY: r[UNPRICED_EVENT_COUNT_KEY],
+        # Floated HERE rather than in the alerting read, which keeps the
+        # percentage a `Decimal` all the way to the wire: the threshold
+        # comparison that raised these flags is an exact one, and a customer
+        # sitting on its tenant's threshold would land on the wrong side of it
+        # if the evaluator read a float.
+        "margin_percentage": float(r["margin_pct"]),
     } for r in rows]}
 
 
@@ -259,7 +282,39 @@ def record_supplied_revenue(request, customer_id: UUID,
                                      if record.period_end else None),
                       "recognition_method": record.recognition_method,
                       "source_reference": record.source_reference})
+    _the_period_it_states_is_stale(record)
     return _supplied_record_body(record)
+
+
+def _the_period_it_states_is_stale(record):
+    """Rebuild a closed month's cached economics when a tenant states its
+    revenue late (#502, slice 7 §8).
+
+    A tenant that bills its customers elsewhere may supply a figure about a
+    month that closed long ago, and **revenue is half of every margin the
+    evaluator flags on** — so without this a customer could stay named
+    unprofitable on the half of the answer UBB happened to have first, with the
+    webhook already sent and nothing left that would ever look again.
+
+    ⚠ **THE MARKER TABLE IS METERING'S AND THIS IS SUBSCRIPTIONS**, so it is
+    asked through the metering read contract rather than reached for (ADR-001).
+    That is also the honest shape: one channel says *this customer's month is
+    stale*, whatever made it stale, and one consumer rebuilds it.
+
+    ⚠ **OUTSIDE THE WRITE'S TRANSACTION, DELIBERATELY.** The figure is recorded
+    and audited whether or not a cache rebuild is queued; a marker is a request,
+    and a request that could fail the statement it follows would make a
+    reporting convenience able to refuse a tenant's own record.
+    """
+    from apps.metering.queries import mark_backfill_dirty_period
+
+    period_start, _ = month_bounds(record.period_start)
+    if period_start >= month_bounds(timezone.now())[0]:
+        # The open month is snapshotted daily and swept hourly; a marker for it
+        # is one the consumer would skip without acking until the month rolls.
+        return
+    mark_backfill_dirty_period(record.tenant_id, record.customer_id,
+                               period_start)
 
 
 @margin_router.get(

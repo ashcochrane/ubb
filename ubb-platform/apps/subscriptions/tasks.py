@@ -47,6 +47,68 @@ def calculate_all_economics_task():
             )
 
 
+#: WHAT THE POSTING LEDGER SAYS ABOUT A PERIOD, IN THE ACCUMULATOR'S OWN
+#: COLUMNS. One mapping rather than two copies of it: the hourly repair below
+#: reads a whole tenant's ledger and the marker path reads one customer's, and
+#: an accumulator repaired by one route into a different shape from the other is
+#: the drift both of them exist to remove.
+#:
+#: The two PAIRS are what make it a mapping rather than a list (#328, #351): the
+#: read contract counts the postings each total excluded, and a row repaired to
+#: the right totals while keeping stale counts is a row that disagrees with
+#: itself.
+_LEDGER_COLUMNS = (
+    ("total_provider_cost_micros", "provider_cost_micros"),
+    ("unresolved_event_count", UNRESOLVED_EVENT_COUNT_KEY),
+    ("total_billed_cost_micros", "billed_cost_micros"),
+    ("unpriced_event_count", UNPRICED_EVENT_COUNT_KEY),
+    ("event_count", "event_count"),
+)
+
+#: The ledger's answer for a customer that has no postings in the period at all
+#: — a complete answer rather than an unknown one, and the shape the repair
+#: needs when an accumulator has outlived the postings behind it.
+_NOTHING_IN_THE_PERIOD = {ledger_key: 0 for _, ledger_key in _LEDGER_COLUMNS}
+
+
+def repair_one_accumulator(tenant_id, customer_id, period_start, period_end,
+                           totals) -> bool:
+    """Set one period's accumulator to what the posting ledger says.
+
+    Returns whether anything moved, which is the drift both callers report.
+    `totals` is a row of the metering read contract's cost totals, or
+    `_NOTHING_IN_THE_PERIOD` where the ledger has none.
+
+    ⚠ **THE PERIOD END IS WRITTEN WITHOUT BEING COMPARED**, which is deliberate
+    and not an oversight: it is the calendar's answer rather than the ledger's,
+    so a row differing only there is a row whose stored bound was wrong, and
+    correcting it silently is right. Drift is about the figures.
+    """
+    from apps.subscriptions.economics.models import CustomerCostAccumulator
+
+    columns = {column: totals[ledger_key] for column, ledger_key in _LEDGER_COLUMNS}
+    acc = CustomerCostAccumulator.objects.filter(
+        tenant_id=tenant_id, customer_id=customer_id,
+        period_start=period_start).first()
+    if acc is None and not any(columns.values()):
+        # NOTHING TO CACHE AND NOTHING CACHING IT. A customer whose period the
+        # ledger has no postings for is already answered correctly by the
+        # absence — `snapshot_customer` reads a missing accumulator as no cost
+        # and nothing left out — so writing a row of zeros would add a record
+        # that says exactly what its absence said.
+        return False
+    if acc is None:
+        CustomerCostAccumulator.objects.create(
+            tenant_id=tenant_id, customer_id=customer_id,
+            period_start=period_start, period_end=period_end, **columns)
+        return True
+    if all(getattr(acc, column) == value for column, value in columns.items()):
+        return False
+    CustomerCostAccumulator.objects.filter(id=acc.id).update(
+        period_end=period_end, **columns)
+    return True
+
+
 @shared_task(queue="ubb_economics")
 def reconcile_cost_accumulators():
     """Source-of-truth repair: recompute each open-period CustomerCostAccumulator
@@ -56,6 +118,15 @@ def reconcile_cost_accumulators():
     (Tenant.backfill_window_days, max 60 days) can span 3 calendar months, so a
     maximally backdated event still lands inside the reconcile horizon and is
     corrected within the hour.
+
+    ⚠ **THIS HORIZON IS A SWEEP AND NOT AN AUTHORITY** (#502, slice 7 §8). It
+    catches drift in the months a backdated recording can reach on its own, and
+    it used to be the only thing that repaired these rows at all — which quietly
+    made three months the age past which a figure UBB knew to be wrong stayed
+    wrong. What repairs an OLDER period is the marker channel, which is bounded
+    by nothing: `resnapshot_dirty_periods` calls the same repair below for
+    whatever month a marker names. Neither is a reporting surface any more, so
+    nothing a tenant reads waits on either.
 
     # TODO: extend to aggregate business-level rollup once Stage-E2 "seats never
     # invoiced directly" semantics are confirmed stable (avoid double-counting).
@@ -75,49 +146,14 @@ def reconcile_cost_accumulators():
         for tenant in Tenant.objects.filter(products__contains=["metering"], is_active=True):
             ledger = {r["customer_id"]: r
                       for r in get_per_customer_cost_totals(tenant.id, period_start, period_end)}
-            seen = set()
-            for acc in CustomerCostAccumulator.objects.filter(
-                    tenant_id=tenant.id, period_start=period_start):
-                seen.add(acc.customer_id)
-                r = ledger.get(acc.customer_id)
-                prov = r["provider_cost_micros"] if r else 0
-                # THE REPAIR RESTORES THE PAIR, NOT HALF OF IT (#328). The read
-                # contract counts the postings its total excluded, and an
-                # accumulator repaired to the right total while keeping a stale
-                # count would be a row that disagrees with itself — the exact
-                # drift this task exists to remove.
-                unresolved = r[UNRESOLVED_EVENT_COUNT_KEY] if r else 0
-                bill = r["billed_cost_micros"] if r else 0
-                # BOTH PAIRS, OR THE REPAIR RESTORES HALF A ROW (#351). The
-                # billed total gained a count of its own with the nullable price
-                # column, and a reconcile that rewrote the amount while leaving
-                # this stale would produce exactly the self-disagreeing row the
-                # cost half's comment above refuses.
-                unpriced = r[UNPRICED_EVENT_COUNT_KEY] if r else 0
-                cnt = r["event_count"] if r else 0
-                if (acc.total_provider_cost_micros != prov
-                        or acc.unresolved_event_count != unresolved
-                        or acc.total_billed_cost_micros != bill
-                        or acc.unpriced_event_count != unpriced
-                        or acc.event_count != cnt):
+            stored = set(CustomerCostAccumulator.objects.filter(
+                tenant_id=tenant.id, period_start=period_start
+            ).values_list("customer_id", flat=True))
+            for customer_id in stored | set(ledger):
+                if repair_one_accumulator(
+                        tenant.id, customer_id, period_start, period_end,
+                        ledger.get(customer_id, _NOTHING_IN_THE_PERIOD)):
                     drift += 1
-                    CustomerCostAccumulator.objects.filter(id=acc.id).update(
-                        period_end=period_end, total_provider_cost_micros=prov,
-                        unresolved_event_count=unresolved,
-                        total_billed_cost_micros=bill,
-                        unpriced_event_count=unpriced, event_count=cnt)
-            for cid, r in ledger.items():
-                if cid in seen:
-                    continue
-                CustomerCostAccumulator.objects.create(
-                    tenant_id=tenant.id, customer_id=cid, period_start=period_start,
-                    period_end=period_end,
-                    total_provider_cost_micros=r["provider_cost_micros"],
-                    unresolved_event_count=r[UNRESOLVED_EVENT_COUNT_KEY],
-                    total_billed_cost_micros=r["billed_cost_micros"],
-                    unpriced_event_count=r[UNPRICED_EVENT_COUNT_KEY],
-                    event_count=r["event_count"])
-                drift += 1
 
     logger.info("cost_accumulator_reconcile", extra={"data": {"drift_count": drift}})
 
@@ -137,24 +173,41 @@ assert RESNAPSHOT_MARKER_MIN_AGE > OUTBOX_RETRY_HORIZON
 
 @shared_task(queue="ubb_economics")
 def resnapshot_dirty_periods():
-    """Refresh margin snapshots for periods dirtied by backfilled usage.
+    """Rebuild a closed period's two per-customer caches when its facts move.
 
     Consumes BackfillDirtyPeriod markers via the metering read contract —
     only markers older than RESNAPSHOT_MARKER_MIN_AGE, so the accumulator the
     snapshot reads has provably settled (outbox horizon + one reconcile pass).
-    For a marker on a PRIOR month: re-run snapshot_customer (update_or_create,
-    idempotent) + evaluate_and_emit (transition-guarded + OutboxEvent-deduped,
-    idempotent), then ack the marker — a crash before the ack leaves the
-    marker for the next hourly run. A NON-prior (current/future-month) marker
-    is skipped WITHOUT ack: markers are only ever written for prior months,
-    so one is reachable here only via clock skew, and acking it would discard
-    work — it is consumed once the month genuinely rolls past it.
+    For a marker on a PRIOR month: repair the accumulator from the posting
+    ledger, then re-run snapshot_customer (update_or_create, idempotent) +
+    evaluate_and_emit (transition-guarded + OutboxEvent-deduped, idempotent),
+    then ack the marker — a crash before the ack leaves the marker for the next
+    hourly run. A NON-prior (current/future-month) marker is skipped WITHOUT
+    ack: markers are only ever written for prior months, so one is reachable
+    here only via clock skew, and acking it would discard work — it is consumed
+    once the month genuinely rolls past it.
 
-    Beat: hourly at :55, AFTER reconcile_cost_accumulators (:50) so the
-    accumulator this snapshot reads has already been repaired to the ledger.
+    ⚠ **THE REPAIR IS WHAT MAKES THE MARKER WORK AT ANY AGE** (#502, slice 7
+    §8). The snapshot is built from the accumulator, and the accumulator is
+    swept on a three-month horizon — so consuming a marker on an older month
+    without repairing first would faithfully re-freeze the figures the period
+    had when its cost was still unknown, and ack the marker for having done it.
+    Reading the ledger for the one customer the marker names costs one query and
+    takes the horizon out of the path entirely, which is what "a cache is
+    invalidatable by anything that can change its inputs, at any age" means.
+
+    ⚠ **AND IT MAKES THE MINIMUM AGE MORE LOAD-BEARING, NOT LESS.** The repair
+    SETS the row from the ledger, where the outbox handler INCREMENTS it — so a
+    dispatch landing after a repair would add its event on top of a total that
+    already counted it. The floor is what keeps the two apart, and it is why
+    this waits out the dispatch horizon rather than trusting the repair to make
+    waiting unnecessary.
+
+    Beat: hourly at :55, AFTER reconcile_cost_accumulators (:50).
     """
     from apps.metering.queries import (
-        clear_backfill_dirty_period, list_backfill_dirty_periods,
+        clear_backfill_dirty_period, get_customer_cost_totals,
+        list_backfill_dirty_periods,
     )
     from apps.subscriptions.handlers import _period_bounds_for
 
@@ -168,6 +221,12 @@ def resnapshot_dirty_periods():
                 # Clock-skew guard: leave the marker in place (no ack).
                 continue
             _, period_end = _period_bounds_for(period_start)
+            repair_one_accumulator(
+                marker["tenant_id"], marker["customer_id"], period_start,
+                period_end,
+                get_customer_cost_totals(marker["tenant_id"],
+                                         marker["customer_id"],
+                                         period_start, period_end))
             econ = MarginService.snapshot_customer(
                 marker["tenant_id"], marker["customer_id"],
                 period_start, period_end)

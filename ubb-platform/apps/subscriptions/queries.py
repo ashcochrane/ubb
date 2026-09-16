@@ -12,8 +12,6 @@ Consumers:
   query's revenue half, #499 — the composition layer wires it to metering's
   read contract, which is where the measures are computed)
 """
-from datetime import date
-
 from core.vocabulary import REVENUE_BASIS_VALUES
 
 #: WHERE A REVENUE FIGURE THIS PRODUCT HOLDS CAME FROM.
@@ -60,83 +58,30 @@ REVENUE_ATTRIBUTABLE_AXES = ("customer",)
 REVENUE_FINEST_BUCKET = "day"
 
 
-def get_customer_economics(tenant_id, customer_id, period_start: date, period_end: date):
-    """Returns CustomerEconomics or None."""
-    from apps.subscriptions.economics.models import CustomerEconomics
-
-    return CustomerEconomics.objects.filter(
-        tenant_id=tenant_id,
-        customer_id=customer_id,
-        period_start__gte=period_start,
-        period_end__lte=period_end,
-    ).order_by("-period_start").first()
-
-
-def get_economics_summary(tenant_id, period_start: date, period_end: date):
-    """Returns aggregated economics for all customers.
-
-    THIS TOTAL IS A PAIR, AND ITS COUNT IS INHERITED RATHER THAN MEASURED HERE
-    (#327, #328).
-
-    Every supplier-cost total in the tree travels with the count of postings it
-    excluded, because `Posting.provider_cost_micros` is nullable and a bare
-    `Sum` over it silently skips the unresolved rows. **This `Sum` is not over
-    that column.** `CustomerEconomics.provider_cost_micros` is a monthly
-    SNAPSHOT, `NOT NULL` with a default of zero, so SQL's null-skipping cannot
-    reach it — its `Sum` is `None` only when no snapshot matched, which is the
-    empty sum and is exactly complete.
-
-    What it inherits instead is a partiality from upstream, which is why #327
-    left the figure alone and #328 did not: the accumulator these snapshots are
-    built from now COUNTS the costs it could not add, and the snapshot freezes
-    that count beside the total. So the number summed here is a real one every
-    row computed, not a zero published to look like the others — the count
-    arrived with the fact, and the fact is what is being added up.
-    `apps/subscriptions/tests/test_queries.py` holds the cost column to `NOT
-    NULL`, so the paragraph above fails rather than ages.
-    """
-    from apps.subscriptions.economics.models import CustomerEconomics
-    from django.db.models import Sum
-
-    qs = CustomerEconomics.objects.filter(
-        tenant_id=tenant_id,
-        period_start__gte=period_start,
-        period_end__lte=period_end,
-    )
-    from core.cost_totals import (
-        UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY)
-
-    totals = qs.aggregate(
-        total_subscription_revenue=Sum("subscription_revenue_micros"),
-        total_supplied_revenue=Sum("supplied_revenue_micros"),
-        total_usage_billed=Sum("usage_billed_micros"),
-        total_provider_cost=Sum("provider_cost_micros"),
-        total_unresolved=Sum("unresolved_event_count"),
-        total_unpriced=Sum("unpriced_event_count"),
-        total_margin=Sum("gross_margin_micros"),
-    )
-    return {
-        "subscription_revenue_micros": totals["total_subscription_revenue"] or 0,
-        # THE SECOND REVENUE SOURCE, SUMMED SEPARATELY (#496). A caller adding
-        # the two gets the tenant's whole non-usage revenue; a caller reading
-        # either alone knows which kind of money it has. Summing them here
-        # would put a Stripe figure and a tenant's own statement back in one
-        # number, which is the defect the column beside it exists to end.
-        "supplied_revenue_micros": totals["total_supplied_revenue"] or 0,
-        "usage_billed_micros": totals["total_usage_billed"] or 0,
-        # ⚠ THE `or 0` ON THESE TWO LINES IS THE EMPTY SUM AND NOTHING ELSE, and
-        # that is what makes it different from every coalesce this slice deleted
-        # (#328). Both columns are NOT NULL on the snapshot, so `None` can only
-        # mean no snapshot matched the window — and a window with no snapshots
-        # spent nothing and excluded nothing, which is a complete answer. The
-        # coalesce this slice removed stood over a NULLABLE column, where the
-        # same 0 could also have meant "UBB has not learned this".
-        "provider_cost_micros": totals["total_provider_cost"] or 0,
-        UNRESOLVED_EVENT_COUNT_KEY: totals["total_unresolved"] or 0,
-        UNPRICED_EVENT_COUNT_KEY: totals["total_unpriced"] or 0,
-        "total_margin_micros": totals["total_margin"] or 0,
-        "customer_count": qs.count(),
-    }
+# THE TWO READS OF THE MARGIN SNAPSHOT WERE HERE AND ARE GONE (#502, slice 7
+# §8) — one customer's stored margin row, and the tenant-wide total aggregated
+# off the stored margin columns.
+#
+# **Margin is derived at read time from postings, Charges and revenue records.**
+# A closed period's reported cost and margin move when its facts resolve — a
+# supplier cost UBB learns months later lands at the instant the call happened,
+# and a remediation can complete a cost inside a period that closed — so a
+# figure frozen into a monthly row is a cache of facts that have since moved.
+# Publishing one is publishing a number UBB already knows is wrong.
+#
+# Both questions are `GET /metering/analytics/economics`: one customer's is that
+# query with `customer_id=` as a filter, and the tenant-wide total is the same
+# query with no grouping and no bucket. One definition, derived when asked.
+#
+# ⚠ THE ROW THEY READ IS NOT GONE, AND IT IS NOT A MARGIN RECORD. It is the
+# ALERTING record — the evaluator's memory of what it last alerted on, which is
+# the one thing a read-time derivation cannot do for it — and its door is
+# `apps.subscriptions.economics.alerting`, inside this product. Nothing outside
+# reads it, which is why neither of these grew a replacement here.
+#
+# ⚠ AND THE ROWS THEMSELVES ARE #190's. Slice 7 removes the reader; the cutover
+# removes the rows for the periods nothing alerts on. Neither half is complete
+# without the other.
 
 
 def revenue_contributions(tenant_id, *, windows, basis, customer_ids=None) -> list[dict]:

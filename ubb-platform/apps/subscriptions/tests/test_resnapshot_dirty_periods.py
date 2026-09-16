@@ -8,7 +8,7 @@ from unittest import mock
 import pytest
 from django.utils import timezone
 
-from apps.metering.usage.models import BackfillDirtyPeriod
+from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.models import (
@@ -27,6 +27,27 @@ def _setup():
     return t, c, cur_start, prior_start
 
 
+def _postings(t, c, period_start, *, provider, billed, count):
+    """The postings an accumulator for this period is a cache OF (#502).
+
+    ⚠ **THE FIXTURE USED TO BE THE CACHE ALONE**, and that stopped being a
+    reachable state when consuming a marker began repairing the accumulator from
+    the posting ledger first: a row holding three hundred with nothing behind it
+    is exactly the drift the repair exists to correct, so a test asserting it
+    survives would have been asserting the defect. The totals are split evenly
+    across `count` rows, which is all these cases need of them.
+    """
+    for index in range(count):
+        Posting.objects.create(
+            tenant=t, customer=c, idempotency_key=f"resnapshot-{index}",
+            event_type="chat.completion",
+            provider_cost_micros=provider // count,
+            billed_cost_micros=billed // count,
+            effective_at=datetime.datetime(
+                period_start.year, period_start.month, 15, 12,
+                tzinfo=datetime.timezone.utc))
+
+
 def _aged_marker(t, c, period_start, age=None):
     """Markers younger than RESNAPSHOT_MARKER_MIN_AGE are deliberately NOT
     consumed (the accumulator is outbox-populated; ~2h43m retry horizon).
@@ -43,6 +64,7 @@ def _aged_marker(t, c, period_start, age=None):
 class TestResnapshotDirtyPeriods:
     def test_prior_month_marker_resnapshots_then_acks(self):
         t, c, cur_start, prior_start = _setup()
+        _postings(t, c, prior_start, provider=300, billed=900, count=2)
         CustomerCostAccumulator.objects.create(
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=300, total_billed_cost_micros=900,
@@ -65,6 +87,7 @@ class TestResnapshotDirtyPeriods:
             tenant_id=t.id, customer_id=c.id, period_start=prior_start,
             period_end=cur_start, provider_cost_micros=1, usage_billed_micros=1,
             total_revenue_micros=0, gross_margin_micros=-1, margin_percentage=0)
+        _postings(t, c, prior_start, provider=500, billed=700, count=1)
         CustomerCostAccumulator.objects.create(
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=500, total_billed_cost_micros=700,

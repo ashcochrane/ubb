@@ -23,18 +23,22 @@ neither of that pair's columns, which is why the count below is zero rather than
 one, and the vacuity guard is written against the walk having happened rather
 than against a permitted site existing.
 
-**The one exemption is DERIVED, not asserted.** `CustomerEconomics` — the
-monthly margin snapshot — has a column of the same name that is `NOT NULL`, so
-SQL's null-skipping cannot reach it and this rule has nothing to say about it.
-That is a claim about a model, so the exemption is granted by re-checking the
-claim rather than by naming the file and hoping: the day that column becomes
-nullable, the exemption goes red rather than silently covering a real defect.
+**THERE IS NO EXEMPTION LEFT, AND THE ONE THERE WAS IS INSTRUCTIVE** (#502,
+slice 7 §8). It was the tenant-wide margin total, summed off `CustomerEconomics`
+— the monthly margin snapshot, whose column of the same name is `NOT NULL`, so
+SQL's null-skipping could not reach it and this rule had nothing to say about
+it. The exemption was sound and the total is gone anyway, for a reason this rule
+could never have caught: **a stored margin is a cache of facts that move after
+the period closes**, and summing complete copies of stale numbers answers a
+complete-looking figure just the same. Margin is derived at read time now, so
+nothing sums a frozen copy of it.
 
-⚠ The exempt total is **still a pair** (#328) — it publishes a count, summed
-from a column each snapshot filled in from the accumulator it froze. That is a
-fact inherited from upstream rather than one this aggregate could measure, which
-is why the exemption is about null-skipping and not about completeness. The pair
-itself is asserted in `apps/subscriptions/tests/test_queries.py`.
+The map below is therefore empty, and the test that re-earns its entries has
+become a ratchet: an exemption arriving is a deliberate edit that fails until its
+author restores the per-entry re-check. What keeps an exemption honest is that it
+is a claim about a MODEL, re-checked rather than granted by naming a file — the
+day the column it rests on becomes nullable it goes red instead of quietly
+covering a real defect.
 
 ⚠ **What this does NOT cover.** It reads the FIRST argument of a `Sum` call and
 only when that argument is a literal string, so `Sum(F("provider_cost_micros"))`
@@ -75,10 +79,7 @@ SKIP_PARTS = ("tests", "migrations")
 #: A count rather than a bare name, so a SECOND aggregate arriving in one of
 #: these files is read by a person rather than inheriting somebody else's
 #: exemption.
-NON_POSTING_AGGREGATES = {
-    "apps/subscriptions/queries.py": ("subscriptions", "CustomerEconomics",
-                                      SUPPLIER_COST.amount_column, 1),
-}
+NON_POSTING_AGGREGATES = {}
 
 
 def _aggregate_sites(source: str, column: str) -> list[int]:
@@ -122,8 +123,19 @@ def test_an_amount_is_summed_only_where_it_cannot_be_unknown(pair):
 
 
 @pytest.mark.django_db
-def test_every_exemption_is_still_true():
-    """An exemption is a claim about a model, and this is where it is checked."""
+def test_no_aggregate_is_exempt_without_re_earning_it():
+    """An exemption is a claim about a model, and this is where it is checked.
+
+    ⚠ **THE MAP IS EMPTY SINCE #502, AND THAT MADE THIS CONTROL A RATCHET
+    RATHER THAN A LOOP.** The one exemption was the tenant-wide margin total
+    read off the snapshot, and it is severed: margin is derived at read time, so
+    nothing sums a stored copy of it any more. A loop over nothing would pass in
+    silence, which is the shape this repository has shipped a vacuous gate in
+    twice — so the emptiness is asserted rather than assumed, and the day an
+    entry legitimately returns this fails and hands its author the re-check to
+    restore. The claim the file actually makes is meanwhile the STRONGER one
+    above: nothing outside the seam sums either column at all.
+    """
     from django.apps import apps as django_apps
 
     for path, (app_label, model_name, column_name, _) in NON_POSTING_AGGREGATES.items():
@@ -133,6 +145,10 @@ def test_every_exemption_is_still_true():
             f"{path} is exempt because {model_name}.{column_name} cannot be "
             f"unknown. It can now — the aggregate there has to become a pair, "
             f"or the exemption has to say something else that is true.")
+    assert NON_POSTING_AGGREGATES == {}, (
+        "An exemption arrived. Delete this assertion and keep the loop above, "
+        "which re-earns each one against the model it is a claim about — the "
+        "loop is what stops an exemption outliving its reason.")
 
 
 def test_the_walk_reached_the_modules_this_rule_is_about():

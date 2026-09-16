@@ -38,11 +38,16 @@ def month_bounds(as_of):
 
     Always normalizes to UTC before extracting the date, so callers passing a
     timezone-aware datetime with a non-UTC offset get the correct UTC month.
+
+    ``as_of`` may be a `date` as well as a `datetime`. A date has already been
+    reduced to a calendar day by whoever wrote it down — a supplied revenue
+    record's period opens on one (#502) — so there is no instant left to
+    normalize and asking for its month is the same question.
     """
     # Normalize aware datetimes to UTC; naive datetimes are treated as UTC.
     if hasattr(as_of, "tzinfo") and as_of.tzinfo is not None:
         as_of = as_of.astimezone(timezone.utc)
-    day = as_of.date()
+    day = as_of.date() if hasattr(as_of, "date") else as_of
     start = day.replace(day=1)
     if day.month == 12:
         end = day.replace(year=day.year + 1, month=1, day=1)

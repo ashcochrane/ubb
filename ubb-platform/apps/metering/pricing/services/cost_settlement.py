@@ -27,8 +27,17 @@ was built in: proved and defended before there was anything to come through it,
 so the first caller could not invent its own. A run learns a cost by re-resolving
 the posting at its own instant and settles it here, one posting at a time, and it
 hands over the completed receipt so the record and the columns move together.
+
+⚠ **AND BECAUSE IT IS THE ONE DOOR, IT IS ALSO WHERE A CLOSED PERIOD IS DECLARED
+STALE** (#502, slice 7 §8). A settlement lands the amount at the instant the call
+happened, which may be inside a month that closed long ago, and two per-customer
+monthly caches are built from these postings. `_the_period_it_changed_is_stale`
+below marks that month so they are rebuilt at any age; it is a side effect of the
+settlement rather than part of it, and it argues itself there.
 """
 import enum
+
+from django.utils import timezone
 
 from apps.metering.usage.models import Posting
 from core.vocabulary import COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED
@@ -110,6 +119,7 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
                         **completes_the_record))
 
     if affected == 1:
+        _the_period_it_changed_is_stale(posting_id)
         return Settlement.SETTLED
 
     if affected > 1:
@@ -135,3 +145,47 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
             f"no row; the conditional update and the table disagree")
     return (Settlement.ALREADY_SETTLED if status == COSTING_STATUS_KNOWN
             else Settlement.NEVER_UNRESOLVED)
+
+
+def _the_period_it_changed_is_stale(posting_id):
+    """Mark a settled posting's CLOSED month as needing its caches rebuilt
+    (#502, slice 7 §8).
+
+    **Caches survive; authorities do not.** Two per-customer monthly caches are
+    built from these postings, and the only thing that repaired them on a
+    schedule covered the current calendar month and the two before it. That
+    horizon was fine while it had to catch drift and quietly became the thing
+    deciding whether a figure was right — because a supplier cost UBB learns
+    long after the fact settles at the instant the call happened (#146 §3.1),
+    and a remediation can complete a cost inside a period that closed (#148
+    §7.3). Neither announces itself, and neither is bounded by three months.
+
+    A marker is the invalidation channel that is bounded by nothing: the
+    consumer repairs whatever month it names, at any age. **A cost settling is
+    exactly such a change and this is the one door it settles through**, so it
+    is the one place that can say so for every caller there will ever be.
+
+    ⚠ **The CURRENT month is deliberately not marked.** The markers are only
+    ever written for months that have closed — the hourly repair and the daily
+    snapshot both cover the open one, and the consumer skips a non-prior marker
+    without acking it, so writing one here would leave a row nothing consumes
+    until the month rolls past it.
+
+    ⚠ **Nothing about the settlement depends on this succeeding.** A marker is a
+    request to rebuild a cache, not part of the statement that moved the money
+    columns — it is written after the conditional update has already committed
+    to its own outcome, and a marker already pending for the same period is the
+    same request made twice.
+    """
+    from apps.metering.queries import mark_backfill_dirty_period
+    from core.time_windows import month_bounds
+
+    row = (Posting.objects.filter(pk=posting_id)
+           .values("tenant_id", "customer_id", "effective_at").first())
+    if row is None:
+        return
+    period_start, _ = month_bounds(row["effective_at"])
+    if period_start >= month_bounds(timezone.now())[0]:
+        return
+    mark_backfill_dirty_period(row["tenant_id"], row["customer_id"],
+                               period_start)

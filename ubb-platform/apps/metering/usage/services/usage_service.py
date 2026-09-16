@@ -14,7 +14,7 @@ from core.vocabulary import (
     TRIGGER_SOURCE_USAGE_INGEST)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
-    BackfillDirtyPeriod, Posting, PostingMeasurement)
+    Posting, PostingMeasurement)
 from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
@@ -649,18 +649,20 @@ class UsageService:
         if inp.effective_at is not None:
             eff_month_start = month_bounds(inp.effective_at)[0]
             if eff_month_start < month_bounds(inp.now)[0]:
-                # Backfill into a PRIOR month: mark the period dirty so the
-                # hourly resnapshot task refreshes its margin snapshot. Same
-                # transaction as the event; savepoint-IntegrityError-swallow
-                # (billing/handlers.py pattern) absorbs the unique-marker
-                # race.
-                try:
-                    with transaction.atomic():
-                        BackfillDirtyPeriod.objects.create(
-                            tenant=tenant, customer=customer,
-                            period_start=eff_month_start)
-                except IntegrityError:
-                    pass  # marker already pending for this (tenant, customer, period)
+                # Backfill into a PRIOR month: mark the period stale so the
+                # hourly resnapshot task rebuilds its cached economics. Same
+                # transaction as the event; the marker write's own
+                # savepoint-IntegrityError-swallow (billing/handlers.py
+                # pattern) absorbs the unique-marker race.
+                #
+                # ⚠ ONE WRITER FOR THE MARKER, and this stopped being its only
+                # cause in #502: a supplier cost settling into a closed month
+                # and a figure a tenant supplies late say exactly the same thing
+                # about the same period, so all three ask through the read
+                # contract rather than each spelling the create.
+                from apps.metering.queries import mark_backfill_dirty_period
+                mark_backfill_dirty_period(tenant.id, customer.id,
+                                           eff_month_start)
         write_event(UsageRecorded(
             tenant_id=str(tenant.id), customer_id=str(customer.id),
             event_id=str(event.id),

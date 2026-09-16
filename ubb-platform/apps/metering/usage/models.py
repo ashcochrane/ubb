@@ -793,12 +793,22 @@ class PostingMeasurement(BaseModel):
 
 
 class BackfillDirtyPeriod(BaseModel):
-    """Marker: a posting was backfilled into a PRIOR calendar month for this
-    (tenant, customer). Written in the same transaction as the Posting insert
+    """Marker: a CLOSED calendar month's cached economics are stale for this
+    (tenant, customer). Written through ``apps.metering.queries``
     (savepoint-IntegrityError-swallow on the unique constraint), consumed by the
-    hourly ``resnapshot_dirty_periods`` task via the apps.metering.queries
-    contract — the consumer re-snapshots the period's margin then deletes the
-    marker, so a crash before delete is retried."""
+    hourly ``resnapshot_dirty_periods`` task via the same contract — the
+    consumer repairs the period's caches then deletes the marker, so a crash
+    before delete is retried.
+
+    ⚠ **THE NAME RECORDS THE FIRST CAUSE AND NO LONGER THE ONLY ONE** (#502,
+    slice 7 §8). Backfilled usage was it: a posting landing in a prior month, in
+    the same transaction as the insert. Since then a supplier cost settling long
+    after the call (#146 §3.1) and a figure a tenant supplies about an old month
+    say exactly the same thing about the same period, and all three write one
+    marker. **Caches survive; authorities do not** — what makes this one a cache
+    is that anything able to change its inputs can invalidate it, at any age,
+    and this is the channel that is true of. Renaming the record is a migration
+    nothing needs; the sentence above is what a marker means."""
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="backfill_dirty_periods"
     )

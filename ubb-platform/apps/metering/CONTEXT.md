@@ -133,9 +133,13 @@ dropped.
 Recording usage with a past `effective_at` inside the tenant's backfill window. Reaching into an
 already-invoiced month is refused (`billing_period_closed`).
 
-**Backfill dirty period**:
-A marker that a backfilled event landed in a prior calendar month, signalling that month's margin
-snapshot must be recomputed; produced here, consumed by subscriptions.
+**Backfill dirty period** — **THE NAME RECORDS THE FIRST CAUSE, NOT THE ONLY ONE** (#502):
+A marker that a CLOSED calendar month's cached economics are stale for one customer, so subscriptions
+rebuilds them. Written here on three occasions and through one function
+(`queries.py:mark_backfill_dirty_period`): usage backfilled into a prior month, a supplier cost
+settled long after the call, and a figure a tenant supplied about a month that has closed. **Caches
+survive; authorities do not** — a marker is bounded by nothing, so a month is rebuilt at any age,
+which is what the hourly three-month sweep on its own could not promise.
 (`apps/metering/usage/models.py:BackfillDirtyPeriod`)
 
 **Metadata**:
