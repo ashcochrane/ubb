@@ -686,11 +686,15 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
 //
-// What one requested measure's amount is worth in a response. Four facts that
+// What one requested measure's amount is worth in a response. Five facts that
 // used to be one integer: `incomplete` says some input is still unresolved,
 // `unavailable_at_requested_grain` says the number exists but cannot be
-// attributed this finely, and `not_applicable` says the measure does not apply
-// here. No query may coerce any of them to zero (#153 §8.5).
+// attributed this finely, `unavailable_outside_retention_horizon` says the
+// stretch asked about reaches past the horizon UBB publishes for the records
+// the figure would be read from, and `not_applicable` says the measure does
+// not apply here. The two unavailable values stay apart because their remedies
+// differ: ask a coarser question, against that data is gone. No query may
+// coerce any of them to zero (#153 §8.5).
 //
 // Declared in concepts/economics.yaml.
 
@@ -698,6 +702,7 @@ export const MEASURE_STATUS_VALUES = [
   "known",
   "incomplete",
   "unavailable_at_requested_grain",
+  "unavailable_outside_retention_horizon",
   "not_applicable",
 ] as const;
 
@@ -707,6 +712,7 @@ export const MEASURE_STATUS_LABEL_KEYS = {
   "known": "measure_status.known",
   "incomplete": "measure_status.incomplete",
   "unavailable_at_requested_grain": "measure_status.unavailable_at_requested_grain",
+  "unavailable_outside_retention_horizon": "measure_status.unavailable_outside_retention_horizon",
   "not_applicable": "measure_status.not_applicable",
 } as const satisfies Record<MeasureStatus, string>;
 

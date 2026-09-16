@@ -80,9 +80,18 @@
 // NOT because `measurements_status` itself is read in several places — it is
 // read on the event receipt and nowhere else today. Analytics has its own,
 // SEPARATE concept, `measure_status`, and the registry spends a long comment on
-// exactly this near miss: one says whether a NUMBER is knowable at the grain
-// asked for, the other whether the RECORD of what was measured is still there
-// to read a number from. Do not merge them here on the strength of the names.
+// exactly this near miss.
+//
+// ⚠ AND SINCE #500 THE TWO BOTH SPEAK ABOUT RETENTION, so the old one-line
+// distinction — *one is about grain, the other about the record* — no longer
+// tells them apart on its own. What does is the GRAIN OF THE SUBJECT.
+// `measurements_status` is a fact about ONE posting, derived per row, saying
+// whether that posting's own measured quantities can still be read.
+// `measure_status` is a fact about one MEASURE on an aggregate row, saying what
+// its figure is worth — knowable, a bound, inattributable at the grain asked
+// for, or unavailable because the STRETCH asked about reaches past a published
+// horizon. Do not merge them here on the strength of the names, and do not
+// merge them on the strength of both mentioning a clock.
 
 import type {
   CeilingStatus,

@@ -34,9 +34,9 @@ file spelling one fails before any of this runs.
 import ast
 import inspect
 import uuid
-from datetime import date, datetime, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from apps.metering import queries
 from apps.metering.pricing.models import Charge
@@ -55,6 +55,7 @@ from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.retention import MEASUREMENT_RETENTION_DAYS_SETTING
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
     ANALYTICS_MEASURE_CUSTOMER_REVENUE,
@@ -62,7 +63,10 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
     COSTING_METHOD_CALCULATED, COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE, MEASURE_STATUS_KNOWN,
-    MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN, PRICING_STATUS_KNOWN,
+    MEASURE_STATUS_NOT_APPLICABLE,
+    MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
+    MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING, USAGE_EVENT_KIND_TASK_CHARGE,
 )
@@ -806,3 +810,360 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
         and stop being evidence about this query."""
         assert "KeyTextTransform" in inspect.getsource(
             queries.get_dimensional_margin)
+
+
+class WhichClockGovernsARowTest(TestCase):
+    """§13: two horizons, and the grouping decides which one binds a row.
+
+    ⚠ **HERE RATHER THAN AT THE ROUTE BECAUSE THE FIXTURE NEEDS A PINNED DAY.**
+    Both horizons are measured back from the day the question is asked, so a
+    route test has to read the horizon off the answer it is checking; only a
+    direct call can hold the day still and say *this window straddles the
+    horizon by exactly one day*. What a caller can OBSERVE — both horizons on
+    every answer, the fifth state on the wire, `available_from` beside it — is
+    driven through the route in `api/v1/tests/`.
+    """
+
+    ASKED_ON = date(2026, 9, 16)
+    #: The economic horizon on that day, stated rather than computed, so this
+    #: fixture says which window it is about. `core/tests/test_retention.py`
+    #: owns the arithmetic and the leap day.
+    HOLDS_FROM = date(2020, 9, 16)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        cls.concept = MeasurementConcept.objects.create(
+            tenant=cls.tenant, key="input_size")
+        cls.event_type = EventType.objects.create(
+            tenant=cls.tenant, key="chat.completion",
+            costing_method=COSTING_METHOD_CALCULATED)
+        Measurement.objects.create(
+            event_type=cls.event_type, code="prompt_tokens", unit=UNIT_TOKEN,
+            source_kind=SOURCE_KIND_CALLER_SUPPLIED, concept=cls.concept)
+        # One posting recorded well inside both horizons, so nothing below is
+        # answered by an empty table.
+        recently = datetime(2026, 9, 2, 9, 30, tzinfo=dt_timezone.utc)
+        cls.posting = a_posting(cls.tenant, cls.customer, "i1",
+                                effective_at=recently)
+        PostingMeasurement.objects.create(posting=cls.posting,
+                                          recorded_at=recently,
+                                          measurements={"prompt_tokens": 600})
+
+    def a_question_from(self, opens, **kwargs):
+        return economics(
+            self.tenant.id, as_of=self.ASKED_ON,
+            filters=EconomicFilters(start_date=opens,
+                                    end_date=date(2026, 9, 16)),
+            **kwargs)
+
+    def test_both_horizons_are_on_the_answer_with_nothing_truncated(self):
+        answer = self.a_question_from(date(2026, 9, 1), measures=MONEY,
+                                      contributed_revenue=())
+
+        assert answer["economic_data_available_from"] == "2020-09-16"
+        assert answer["measurement_data_available_from"] == "2020-09-16"
+        assert measure_of(answer, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["status"] == MEASURE_STATUS_KNOWN
+
+    def test_with_no_shorter_clock_the_two_horizons_are_the_same_day(self):
+        """The composition #500 publishes: nothing prunes a measurement record
+        on its own, so it lives as long as the posting it hangs off."""
+        answer = self.a_question_from(date(2026, 9, 1), measures=MONEY,
+                                      contributed_revenue=())
+
+        assert (answer["measurement_data_available_from"]
+                == answer["economic_data_available_from"])
+
+    @override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: 90})
+    def test_a_configured_shorter_clock_never_truncates_a_money_question(self):
+        """⚠ **THE DECISION THAT MAKES SETTING THE NUMBER A CONFIGURATION
+        CHANGE.** All four measures are economic and read from postings, so a
+        shorter measurement clock must not move a single money answer — if it
+        did, #190 typing a number would silently re-answer every question a
+        tenant already asks.
+
+        The window reaches back a year, well past a ninety-day clock.
+        """
+        answer = self.a_question_from(date(2025, 9, 16), measures=MONEY,
+                                      contributed_revenue=())
+
+        assert answer["measurement_data_available_from"] == "2026-06-18"
+        for measure in MONEY:
+            assert measure_of(answer, measure)["status"] != (
+                MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
+
+    @override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: 90})
+    def test_the_shorter_clock_does_bind_a_measurement_grouped_question(self):
+        """The other half, and the pair is the point: the same window, the same
+        day, the same tenant — and the answer differs because the rollup reads
+        the child records that clock releases."""
+        answer = self.a_question_from(
+            date(2025, 9, 16), measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS])
+
+        assert answer["rows"], "an empty answer would prove nothing here"
+        for row in answer["rows"]:
+            count = [entry for entry in row["measures"]
+                     if entry["measure"] == ANALYTICS_MEASURE_RECORDED_EVENTS]
+            assert count[0]["status"] == (
+                MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
+            assert count[0]["available_from"] == "2026-06-18"
+            assert count[0]["event_count"] is None, "never a count, never zero"
+
+    def test_a_question_with_no_start_date_is_not_about_all_of_history(self):
+        """⚠ AN ABSENT LOWER BOUND IS THE HORIZON, NOT THE BEGINNING OF TIME.
+
+        UBB holds nothing before the horizon, so an open-ended question is a
+        question from the horizon onwards. Reading it the other way would make
+        the read contract's own default — the ordinary tenant-wide question,
+        which names no window at all — answer *outside the retention horizon*
+        about every row it has.
+        """
+        answer = economics(self.tenant.id, as_of=self.ASKED_ON, measures=MONEY,
+                           contributed_revenue=())
+
+        assert answer["rows"]
+        for measure in MONEY:
+            assert measure_of(answer, measure)["status"] == MEASURE_STATUS_KNOWN
+
+    def test_a_bucket_is_judged_on_its_own_stretch_and_clamped_to_the_period(
+            self):
+        """Three day buckets around the horizon, and only the one that opens
+        before it is truncated.
+
+        DAY buckets rather than months on purpose: a month bucket opens on the
+        first of its month, so which side of the horizon it falls on would
+        depend on what day of the month the fixture's `as_of` is — a test that
+        passes for eleven months of the year.
+        """
+        for offset, key in ((-1, "before"), (0, "on"), (1, "after")):
+            day = self.HOLDS_FROM + timedelta(days=offset)
+            a_posting(self.tenant, self.customer, f"h-{key}",
+                      effective_at=datetime(day.year, day.month, day.day,
+                                            12, 0, tzinfo=dt_timezone.utc))
+        answer = self.a_question_from(
+            self.HOLDS_FROM - timedelta(days=1),
+            measures=[ANALYTICS_MEASURE_SUPPLIER_COGS], bucket=BUCKET_DAY)
+
+        states = {row["bucket_start"][:10]: row["measures"][0]["status"]
+                  for row in answer["rows"]}
+        assert states[(self.HOLDS_FROM - timedelta(days=1)).isoformat()] == (
+            MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
+        assert states[self.HOLDS_FROM.isoformat()] == MEASURE_STATUS_KNOWN
+        assert states[(self.HOLDS_FROM + timedelta(days=1)).isoformat()] == (
+            MEASURE_STATUS_KNOWN)
+
+    def test_the_degenerate_question_states_the_state_where_it_stated_zeros(
+            self):
+        """⚠ THE CASE THE FIFTH STATE EXISTS FOR, AND THE ONE SHAPE THAT IS
+        GUARANTEED A ROW.
+
+        An ungrouped, unbucketed question always has exactly one row — #499
+        built that so the three-measure preset could not answer nothing — and
+        over a window the platform no longer holds, that row used to be ZEROS
+        with every state `known`. A tenant asking what 2015 cost was told it
+        cost nothing.
+        """
+        answer = economics(self.tenant.id, as_of=self.ASKED_ON,
+                           measures=ALL_FOUR, contributed_revenue=(),
+                           filters=EconomicFilters(
+                               start_date=date(2015, 1, 1),
+                               end_date=date(2015, 6, 1)))
+
+        assert len(answer["rows"]) == 1
+        for measure in ALL_FOUR:
+            entry = measure_of(answer, measure)
+            assert entry["status"] == (
+                MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
+            assert entry["available_from"] == "2020-09-16"
+            assert entry.get("amount_micros") is None
+            assert entry.get("event_count") is None
+
+    def test_a_grouped_question_over_a_released_stretch_has_no_row_to_state(
+            self):
+        """⚠ **THE LIMIT, WRITTEN DOWN RATHER THAN LEFT TO BE DISCOVERED.**
+
+        Rows are the groups the data produces, and the groups that existed in a
+        released stretch are exactly what the horizon no longer holds — so
+        there is no row to carry the fifth state on, and inventing one would
+        mean naming an axis value nobody can read back. What the caller gets is
+        the two horizons, which say precisely why the series starts where it
+        does. The wrong answer this rules out is a row of zeros under an
+        invented heading; the answer it accepts is silence with a published
+        reason.
+        """
+        answer = economics(self.tenant.id, as_of=self.ASKED_ON,
+                           measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                           group_by=[PROVIDER_AXIS],
+                           filters=EconomicFilters(
+                               start_date=date(2015, 1, 1),
+                               end_date=date(2015, 6, 1)))
+
+        assert answer["rows"] == []
+        assert answer["economic_data_available_from"] == "2020-09-16"
+        assert answer["measurement_data_available_from"] == "2020-09-16"
+
+    def test_a_released_period_is_offered_no_remedy_it_cannot_honour(self):
+        """⚠ **`context` IS A REMEDY, AND THERE IS NONE HERE.**
+
+        Every context row names the axes and the bucket at which asking again
+        WOULD produce a margin. Over a released stretch a coarser question is
+        refused for the same reason this one was, so listing the money with
+        that remedy beside it would publish an instruction that cannot work.
+        The money is not lost — it answers on any window inside the horizon,
+        which the response states.
+
+        Reachable only because nothing prunes yet: a supplied revenue record is
+        itself on the six-year clock, so once the promise is real the other
+        product returns no rows for such a window at all. Which is exactly why
+        this has to be decided now rather than discovered later.
+        """
+        contributed = [{"window_start": date(2015, 1, 1),
+                        "window_end": date(2015, 6, 1),
+                        "customer_id": str(self.customer.id),
+                        "source": "subscription", "amount_micros": 9_000_000,
+                        "attributable_axes": ("customer",),
+                        "finest_bucket": BUCKET_DAY}]
+
+        answer = economics(self.tenant.id, as_of=self.ASKED_ON,
+                           measures=MONEY, group_by=[PROVIDER_AXIS],
+                           filters=EconomicFilters(
+                               start_date=date(2015, 1, 1),
+                               end_date=date(2015, 6, 1)),
+                           contributed_revenue=contributed)
+
+        assert answer["context"] == []
+        # The guard, so this is not passing because the contribution was
+        # ignorable: the same shape over a window inside the horizon IS offered
+        # the remedy.
+        inside = economics(self.tenant.id, as_of=self.ASKED_ON,
+                           measures=MONEY, group_by=[PROVIDER_AXIS],
+                           filters=EconomicFilters(start_date=date(2026, 9, 1),
+                                                   end_date=date(2026, 9, 16)),
+                           contributed_revenue=[
+                               {**contributed[0],
+                                "window_start": date(2026, 9, 1),
+                                "window_end": date(2026, 9, 16)}])
+        assert inside["context"][0]["attributable_axes"] == [CUSTOMER_AXIS]
+
+    def test_a_straddling_window_keeps_the_remedy_for_the_part_it_holds(self):
+        """⚠ **THE TEST IS WHETHER ANY ROW COULD ANSWER, NOT WHETHER THE PERIOD
+        REACHES BACK** — and the difference is a whole slice of the answer.
+
+        A window straddling the horizon has buckets on both sides. The ones
+        inside it are exactly the buckets a re-grouping WOULD produce a margin
+        for, so withholding the remedy from the whole answer because its
+        earliest bucket is released would refuse to help with the part that is
+        perfectly answerable. The first draft of this rule did that.
+        """
+        after = self.HOLDS_FROM + timedelta(days=1)
+        a_posting(self.tenant, self.customer, "held",
+                  effective_at=datetime(after.year, after.month, after.day,
+                                        12, 0, tzinfo=dt_timezone.utc))
+        answer = economics(
+            self.tenant.id, as_of=self.ASKED_ON, measures=MONEY,
+            group_by=[PROVIDER_AXIS], bucket=BUCKET_DAY,
+            filters=EconomicFilters(
+                start_date=self.HOLDS_FROM - timedelta(days=1),
+                end_date=after),
+            contributed_revenue=[{
+                "window_start": self.HOLDS_FROM - timedelta(days=1),
+                "window_end": after,
+                "customer_id": str(self.customer.id),
+                "source": "subscription", "amount_micros": 9_000_000,
+                "attributable_axes": ("customer",),
+                "finest_bucket": BUCKET_DAY}])
+
+        assert answer["context"], "the answerable buckets deserve the remedy"
+        assert answer["context"][0]["attributable_axes"] == [CUSTOMER_AXIS]
+
+
+class TheAnswerKeepsOneShapeWithOrWithoutAFigureTest(TestCase):
+    """The control on the two branches of a row: a measure fills the SAME slot
+    when its figure is gone as when it is known.
+
+    ⚠ **THE WRONG ANSWER THIS RULES OUT IS A UNIT ERROR ON THE ROWS A READER IS
+    LEAST ABLE TO CHECK.** Three measures are denominated in micros and the
+    fourth is a number of records; a truncated row that nulled `amount_micros`
+    on the count and left `event_count` absent would publish the count's slot as
+    money's, and every state assertion in this module would still pass.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "i1")
+
+    def test_every_measure_nulls_exactly_the_slots_it_otherwise_fills(self):
+        known = economics(self.tenant.id, as_of=date(2026, 9, 16),
+                          measures=ALL_FOUR, contributed_revenue=(),
+                          filters=EconomicFilters(start_date=WINDOW[0],
+                                                  end_date=WINDOW[1]))
+        gone = economics(self.tenant.id, as_of=date(2026, 9, 16),
+                         measures=ALL_FOUR, contributed_revenue=(),
+                         filters=EconomicFilters(start_date=date(2015, 1, 1),
+                                                 end_date=date(2015, 6, 1)))
+
+        for measure in ALL_FOUR:
+            filled = measure_of(known, measure)
+            emptied = measure_of(gone, measure)
+            assert set(emptied) == set(filled) | {"available_from"}, measure
+            for slot in set(filled) - {"measure", "status"}:
+                assert filled[slot] is not None, (measure, slot)
+                assert emptied[slot] is None, (measure, slot)
+
+
+class TheStatesThisQueryReachesTest(TestCase):
+    """The census this module keeps of its own measure states, and the one it
+    declares unreachable.
+
+    ⚠ **`not_applicable` IS NAMED AND NOT COMPUTED, AND THAT IS A DESIGN
+    PROPERTY RATHER THAN AN OMISSION.** A combination a measure cannot answer is
+    REFUSED against the discovery contract before a row is built, so an answer
+    never contains a measure that does not apply to it. The module holds the
+    concept as a SET so that a SIXTH value cannot arrive as a state the answer
+    silently never carries — which is the condition the contract's `enum` needs:
+    a closed set publishes whole or not at all.
+    """
+
+    def test_the_refused_value_is_named_and_never_ranked(self):
+        """⚠ **NOT A RESTATEMENT OF THE MODULE'S OWN IMPORT-TIME GUARD, AND THE
+        DIFFERENCE IS A REAL HOLE IT CANNOT SEE.**
+
+        That guard asserts a UNION: the ranked states plus the named exception
+        equal the registry's set. Moving `not_applicable` INTO the ranking
+        satisfies it unchanged — the union is the same set — and the query
+        would then carry a precedence for a state it can never produce, which
+        is the first step back toward one value meaning two failures. This
+        asserts the two halves separately, which is what the union cannot.
+
+        It also pins what the ledger payment actually rests on: the module
+        holding the concept's whole-set name BY REFERENCE, which is the unit
+        the consumer census measures. Deleting that import to "tidy up" the
+        guard would silently un-pay `g2-backend-measure_status`, and nothing
+        else in the tree would notice until the next census run.
+        """
+        assert queries.MEASURE_STATUS_VALUES is MEASURE_STATUS_VALUES
+        assert MEASURE_STATUS_NOT_APPLICABLE not in (
+            queries.MEASURE_STATES_WORST_LAST)
+        assert set(queries.MEASURE_STATES_WORST_LAST) < MEASURE_STATUS_VALUES
+
+    def test_the_worst_state_is_the_one_with_no_remedy_on_this_surface(self):
+        """The order is the precedence and it is load-bearing: the margin takes
+        the worse of its two inputs' states, so ranking a grain problem above
+        an age problem would offer a re-grouping remedy for a stretch no
+        re-grouping can reach."""
+        order = queries.MEASURE_STATES_WORST_LAST
+        assert order[-1] == MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON
+        assert order.index(MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN) > (
+            order.index(MEASURE_STATUS_INCOMPLETE))
+
+    def test_neither_unavailable_state_may_carry_a_figure(self):
+        assert set(queries.MEASURE_STATES_WITH_NO_FIGURE) == {
+            MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+            MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON}

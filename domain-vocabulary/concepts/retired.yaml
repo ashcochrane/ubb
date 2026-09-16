@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,893 of 2,324 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,896 of 2,327 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2392,6 +2392,26 @@ measurement_key:
     # this ticket owed explicitly: it renders into three generated files and is
     # one of exactly two summaries that legitimately spell this denominator, so
     # rewording it would move the numerator on three surfaces at once.
+    #
+    # 2026-09-16, #500 (two retention horizons published, the fifth measure
+    # state, and the per-call window bound stated once): 1,893 of 2,324 ->
+    # 1,896 of 2,327 tracked files (`units` 44 files / 122 occurrences,
+    # UNMOVED for the SIXTH consecutive ticket). THREE files arrived and every
+    # one is SWEPT, so both totals move by the same three and no exclusion
+    # count moves — the third ticket of this slice to add no migration, and the
+    # reason is the subject: this ticket makes an existing column's horizon a
+    # PUBLISHED value and starts no clock, so there is nothing to alter. They
+    # are: the two-clock module in `core/` and its own test module, and ONE
+    # generated SDK enum module — the fifth measure state's, and exactly one
+    # because the concept reaches exactly one schema node (`EconomicMeasureOut`
+    # .status). ⚠ No per-site file list moved in either direction, checked
+    # before and after: this ticket adds files and rewrites prose in files the
+    # ledger already counts, and rewrote none of a counted file's occurrences.
+    # ⚠ AND THE PLURAL WAS NOT REACHED FOR, which is worth recording only
+    # because the two obvious traps were both in range and both avoided: the
+    # registry summary this ticket DOES edit is `measure_status`'s, not the
+    # measure concept's, and the new module's prose says "six calendar years"
+    # and "in days" where "units of time" was the sentence that wanted writing.
 
     - term: units
       retired_as: >-

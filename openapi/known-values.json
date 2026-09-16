@@ -165,10 +165,17 @@
       "representation": "none"
     },
     "measure_status": {
-      "advertised": false,
-      "backend_serves": "3 of 4 values",
+      "advertised": true,
+      "backend_serves": "5 of 5 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "known",
+        "incomplete",
+        "unavailable_at_requested_grain",
+        "unavailable_outside_retention_horizon",
+        "not_applicable"
+      ]
     },
     "measurement_key": {
       "advertised": false,

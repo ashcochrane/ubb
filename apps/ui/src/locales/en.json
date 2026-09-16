@@ -121,6 +121,7 @@
   "measure_status.known": "Known",
   "measure_status.not_applicable": "Not applicable",
   "measure_status.unavailable_at_requested_grain": "Unavailable at this grain",
+  "measure_status.unavailable_outside_retention_horizon": "Outside retention horizon",
   "measurements_status.available": "Measurements available",
   "measurements_status.not_applicable": "No measurements apply",
   "measurements_status.pruned": "Measurements no longer retained",

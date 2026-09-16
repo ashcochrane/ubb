@@ -2098,7 +2098,8 @@ UNANSWERABLE_COMBINATION = "unanswerable_combination"
 
 
 def _economic_window(start_date, end_date, bucket):
-    """The window one economic question is asked about, bounded and inclusive.
+    """The window one economic question is asked about, bounded and inclusive,
+    AND the day it was resolved against.
 
     `docs/conventions/api-contract.md`: a computed report is cursor-exempt and
     PARAMETER-BOUNDED. This one runs a `GROUP BY` per requested axis over the
@@ -2122,12 +2123,20 @@ def _economic_window(start_date, end_date, bucket):
     so there is no shape of request that reaches the query unbounded. It matters
     more here than it did there: the measurement fold is Python-side and rests
     on this bound by name.
+
+    ⚠ **IT HANDS BACK THE DAY IT READ, AND THAT IS WHY.** The default window and
+    the two retention horizons beside it must come from ONE reading of the
+    clock — two readings a microsecond apart answer differently across midnight,
+    and the surface would then publish a period its own horizon disagreed with.
+    Returning the day makes that structural: the caller has nothing else it
+    could pass on, so the obligation is not left to a docstring for somebody to
+    honour.
     """
     today = timezone.now().date()
     start = start_date or today.replace(day=1)
     end = end_date or today
     _refuse_an_unbounded_window(start, end, hourly=bucket == "hour")
-    return start, end
+    return start, end, today
 
 
 def _refuse_an_unbounded_window(start, end, *, hourly):
@@ -2215,8 +2224,22 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     and is the default, `recognised` spreads it by the record's own method. The
     answer always states which it served.
 
-    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
-    because the ceiling is about how many buckets one answer may carry. The
+    **How far back you may ask, and how much of it per request — the two
+    numbers, together, because they do not compose on their own.** UBB keeps the
+    economics for six years and detailed measurement on a shorter platform
+    clock, and this answer publishes both start dates in
+    `economic_data_available_from` and `measurement_data_available_from` —
+    always, whether or not anything was truncated. One request, meanwhile, may
+    span 366 days, or 92 for an hourly question, because that ceiling is about
+    how many buckets one answer may carry. So six years of history is reachable
+    in successive windows, not in one call, and the response states each
+    number rather than leaving you to discover the second by being refused.
+
+    A measure whose stretch reaches back past the horizon governing it reads
+    `unavailable_outside_retention_horizon` and carries `available_from`: never
+    a zero, and never a partial total presented as a total. Only a question
+    grouped by the measurement-concept rollup is governed by the shorter clock;
+    every money measure is on the six-year one however you filter it. The
     response echoes the period it applied, so a caller who left the window to
     the default can see what it was.
 
@@ -2245,7 +2268,7 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         raise Problem("validation_error",
                       f"unknown bucket {bucket!r}; allowed: "
                       f"{', '.join(ECONOMIC_BUCKETS)}")
-    start, end = _economic_window(start_date, end_date, bucket)
+    start, end, asked_on = _economic_window(start_date, end_date, bucket)
     filters = EconomicFilters(
         start_date=start, end_date=end, customer_id=customer_id,
         event_type=event_type, task_type=task_type, task_id=task_id,
@@ -2306,7 +2329,7 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     try:
         answer = economics(request.auth.tenant.id, measures=measures,
                            group_by=axes, bucket=bucket, filters=filters,
-                           basis=chosen, **supplied)
+                           basis=chosen, as_of=asked_on, **supplied)
     except EconomicQuestionRefused as refused:
         # The read contract answers a refusal as a sentence, because a read
         # contract returns plain data and the caller decides what an

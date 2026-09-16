@@ -296,6 +296,19 @@ UBB_PLATFORM_FEE_PERCENTAGE = float(
 # window so every automatic retry of usage-invoice-{id} keys stays a safe replay.
 UBB_POSTPAID_PUSH_MAX_ATTEMPTS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_ATTEMPTS", "8"))
 UBB_POSTPAID_PUSH_MAX_AGE_HOURS = int(os.environ.get("UBB_POSTPAID_PUSH_MAX_AGE_HOURS", "20"))
+# ⚠ THE MEASUREMENT RETENTION HORIZON, IN DAYS, AND IT IS DELIBERATELY UNSET.
+# `None` means no shorter clock runs, which is today's truth: the column exists
+# and a trigger defends the exemption, but no number, schedule or owner does
+# (#500, spec §13). Setting it is what #190 does, by name, once real volume is
+# known — nothing is deployed anywhere, so the volume cannot be known before
+# cutover. It is read in exactly one place, `core.retention`, which publishes it
+# on the one economic query's every answer, so setting it is a configuration
+# change rather than a contract change. Absent rather than zero: zero would mean
+# *prune everything now* and any positive number would be a clock started by
+# accident. The economic horizon beside it is NOT a setting and says why.
+UBB_MEASUREMENT_RETENTION_DAYS = (
+    int(os.environ["UBB_MEASUREMENT_RETENTION_DAYS"])
+    if os.environ.get("UBB_MEASUREMENT_RETENTION_DAYS") else None)
 # Async-ingest ops (first-tenant hardening spec §3) went with the surfaces it
 # configured: UBB_OPS_TOKEN gated the deleted ops route, and the lag/queue-depth
 # warn thresholds were read only by the health alert task deleted beside it.

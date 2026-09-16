@@ -38,7 +38,9 @@ class EconomicsOut:
             bucket (None | str): The time grain the rows are bucketed at — 'hour', 'day' or 'month' — or null where the
                 whole period is one row.
             context (list[RevenueContextOut]):
+            economic_data_available_from (str):
             group_by (list[str]):
+            measurement_data_available_from (str):
             period_end (str):
             period_start (str):
             rows (list[EconomicRowOut]):
@@ -47,7 +49,9 @@ class EconomicsOut:
     basis: EconomicsOutBasis
     bucket: None | str
     context: list[RevenueContextOut]
+    economic_data_available_from: str
     group_by: list[str]
+    measurement_data_available_from: str
     period_end: str
     period_start: str
     rows: list[EconomicRowOut]
@@ -72,9 +76,13 @@ class EconomicsOut:
 
 
 
+        economic_data_available_from = self.economic_data_available_from
+
         group_by = self.group_by
 
 
+
+        measurement_data_available_from = self.measurement_data_available_from
 
         period_end = self.period_end
 
@@ -94,7 +102,9 @@ class EconomicsOut:
             "basis": basis,
             "bucket": bucket,
             "context": context,
+            "economic_data_available_from": economic_data_available_from,
             "group_by": group_by,
+            "measurement_data_available_from": measurement_data_available_from,
             "period_end": period_end,
             "period_start": period_start,
             "rows": rows,
@@ -132,8 +142,12 @@ class EconomicsOut:
             context.append(context_item)
 
 
+        economic_data_available_from = d.pop("economic_data_available_from")
+
         group_by = cast(list[str], d.pop("group_by"))
 
+
+        measurement_data_available_from = d.pop("measurement_data_available_from")
 
         period_end = d.pop("period_end")
 
@@ -153,7 +167,9 @@ class EconomicsOut:
             basis=basis,
             bucket=bucket,
             context=context,
+            economic_data_available_from=economic_data_available_from,
             group_by=group_by,
+            measurement_data_available_from=measurement_data_available_from,
             period_end=period_end,
             period_start=period_start,
             rows=rows,

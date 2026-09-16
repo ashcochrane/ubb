@@ -17,7 +17,7 @@ all, and it is made here deliberately.
 registry retires them and the sweep refuses a living file that names one.
 """
 import uuid
-from datetime import date, datetime, timezone as dt_timezone
+from datetime import date, datetime, timedelta, timezone as dt_timezone
 
 import pytest
 from django.test import Client
@@ -32,15 +32,22 @@ from apps.platform.work.models import Task
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS
 from apps.subscriptions.models import StripeSubscription
+from api.v1.schemas import EconomicMeasureOut, EconomicsOut, MeasureStatus
 from core.auth import READ
-from core.time_windows import HOURLY_REPORT_WINDOW_MAX_DAYS
+from core.retention import (
+    AVAILABLE_FROM_FIELD, ECONOMIC_HORIZON_FIELD, ECONOMIC_RETENTION_YEARS,
+    MEASUREMENT_HORIZON_FIELD)
+from core.time_windows import (
+    HOURLY_REPORT_WINDOW_MAX_DAYS, REPORT_WINDOW_MAX_DAYS)
 from core.vocabulary import (
     TENANT_PRODUCT_METERING,
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     ANALYTICS_MEASURE_RECORDED_EVENTS, ANALYTICS_MEASURE_SUPPLIER_COGS,
     COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN, MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
-    PRICING_STATUS_KNOWN, RECOGNITION_METHOD_STRAIGHT_LINE,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
+    MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN,
+    RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECORDED, UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
@@ -109,6 +116,21 @@ def measure_of(body, measure, row=0):
         if entry["measure"] == measure:
             return entry
     raise AssertionError(f"{measure!r} is not in row {row} of the answer")
+
+
+def describe(path):
+    """One operation's PUBLISHED description, which is what a caller reads.
+
+    Off the live document rather than off the function's `__doc__`: a claim the
+    contract has to carry is a claim about the contract, and the two differ the
+    moment anything reshapes the description on its way out.
+    """
+    from api.v1.api import api
+
+    document = api.get_openapi_schema()
+    matched = [key for key in document["paths"] if key.endswith(path)]
+    assert len(matched) == 1, f"{path} is not one operation: {matched}"
+    return document["paths"][matched[0]]["get"]["description"]
 
 
 @pytest.mark.django_db
@@ -571,3 +593,124 @@ class TestTheSurfaceIsGatedLikeItsNeighbours:
         """The premise the paragraph above rests on, read off the model."""
         tenant = Tenant.objects.create(name="T", products=[])
         assert TENANT_PRODUCT_METERING in tenant.products
+
+
+@pytest.mark.django_db
+class TestTheTwoHorizonsOnTheWire:
+    """#500, spec §13 and §16: both horizons on every answer, and a series that
+    falls outside one says exactly that.
+
+    ⚠ **THE HORIZON IS READ OFF THE ANSWER AND THE TRUNCATING QUESTION IS BUILT
+    FROM IT**, which is what a caller does and what keeps this test off the
+    calendar. Both horizons are measured back from the day the question is
+    asked, so a fixture spelling *2020-09-16* would be a test that starts
+    failing on a date nobody chose — and re-deriving *today minus six years*
+    here would re-implement the arithmetic `core/tests/test_retention.py`
+    already owns, leap day and all.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fixture(self):
+        self.tenant, self.key = a_tenant()
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="c1")
+        a_posting(self.tenant, self.customer, "i1")
+
+    def horizon(self):
+        """The economic horizon, as this surface publishes it."""
+        body = ask(self.key, measures=MONEY).json()
+        return date.fromisoformat(body["economic_data_available_from"])
+
+    def test_both_horizons_are_published_on_an_untruncated_answer(self):
+        """AC 1: whether or not anything was truncated — because *when can this
+        series start* is a question a caller answers BEFORE choosing a window,
+        and a field that appears only once something has gone wrong is a field
+        nobody builds against."""
+        body = ask(self.key, measures=ALL_FOUR, start_date=OPENS.isoformat(),
+                   end_date=CLOSES.isoformat()).json()
+
+        assert date.fromisoformat(body["economic_data_available_from"])
+        assert date.fromisoformat(body["measurement_data_available_from"])
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["status"] == MEASURE_STATUS_KNOWN
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["available_from"] is None
+
+    def test_the_two_horizons_are_named_what_the_response_schema_names_them(
+            self):
+        """One spelling of each, held between the module that fills them and the
+        schema that publishes them. ADR-0007 §3 makes both final, so a typo on
+        either side is a published name nobody can take back."""
+        published = set(EconomicsOut.model_fields)
+        assert ECONOMIC_HORIZON_FIELD in published
+        assert MEASUREMENT_HORIZON_FIELD in published
+        assert AVAILABLE_FROM_FIELD in set(EconomicMeasureOut.model_fields)
+
+    def test_a_window_outside_the_horizon_reads_the_state_and_never_a_zero(
+            self):
+        """AC 2, on the one shape guaranteed a row: an ungrouped, unbucketed
+        question over a stretch the platform no longer holds.
+
+        Before this ticket that row was ZEROS with every state `known` — a
+        tenant asking what a released period cost was told it cost nothing.
+        """
+        opens = self.horizon() - timedelta(days=200)
+        body = ask(self.key, measures=ALL_FOUR, start_date=opens.isoformat(),
+                   end_date=(opens + timedelta(days=30)).isoformat()).json()
+
+        assert len(body["rows"]) == 1
+        for measure in ALL_FOUR:
+            entry = measure_of(body, measure)
+            assert entry["status"] == (
+                MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
+            assert entry["available_from"] == self.horizon().isoformat()
+            assert entry["amount_micros"] is None
+            assert entry["event_count"] is None
+
+    def test_the_state_is_published_as_one_of_the_registry_s_five(self):
+        """The contract half of the same payment: the field carries the concept
+        and the document enumerates the whole set, rather than a bare string
+        with a hand-written sentence standing in for it."""
+        marker = MeasureStatus.__metadata__[0].json_schema_extra
+        assert marker == {"x-ubb-concept": "measure_status"}
+        assert MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON in (
+            MEASURE_STATUS_VALUES)
+        assert len(MEASURE_STATUS_VALUES) == 5
+
+    def test_the_bound_is_stated_beside_the_horizon_and_is_not_raised(self):
+        """AC 6: *six years available* and *at most 366 days per request* are
+        two numbers that do not compose on their own, so the published
+        description states them TOGETHER — and the bound itself is untouched,
+        because raising it or adding an export path is a capacity decision and
+        #194's.
+
+        Read off the operation's own published description rather than off the
+        docstring, because the description is what a caller gets.
+        """
+        published = describe(ECONOMICS)
+        assert str(REPORT_WINDOW_MAX_DAYS) in published
+        assert str(HOURLY_REPORT_WINDOW_MAX_DAYS) in published
+        assert ECONOMIC_HORIZON_FIELD in published
+        assert MEASUREMENT_HORIZON_FIELD in published
+        # And the bound is the one the routes this query collapses enforce, not
+        # a wider one this ticket helped itself to.
+        assert (REPORT_WINDOW_MAX_DAYS, HOURLY_REPORT_WINDOW_MAX_DAYS) == (
+            366, 92)
+
+        # ⚠ THE HORIZON IS SPELLED IN WORDS ON A PUBLISHED SURFACE, SO THE ONLY
+        # THING THAT CAN HOLD THE TWO TOGETHER IS A LITERAL HERE. The two bounds
+        # above are read off their constants, so moving either turns this red on
+        # its own; `ECONOMIC_RETENTION_YEARS` cannot be, because a description
+        # is prose and "six years" is how a promise reads to the tenant who was
+        # given it. So the constant is pinned to the English beside it: change
+        # the constant and this fails, naming every surface that spells it.
+        assert ECONOMIC_RETENTION_YEARS == 6, (
+            "the horizon moved, and it is spelled IN WORDS on surfaces no "
+            "gate reads: this route's description, `EconomicsOut`'s field "
+            "docs, `core/retention.py`'s module docstring, "
+            "`docs/conventions/api-contract.md` and "
+            "`apps/metering/CONTEXT.md`. Re-run `grep -rin 'six year'` for "
+            "the live list — no per-file count is given here on purpose, "
+            "because one would be the next thing to go stale — re-word every "
+            "hit, then this line")
+        assert "six years" in published

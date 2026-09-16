@@ -2951,28 +2951,32 @@ AnalyticsMeasure = Annotated[
 RevenueBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "revenue_basis"})]
 
+#: WHAT ONE MEASURE'S FIGURE IS WORTH — the `measure_status` concept, on every
+#: measure of every economic row. `closed`, so the export writes a real `enum`
+#: and this file spells none of the five; plain and required, because every
+#: measure has a state and none is absent, so the marker never sits inside a
+#: nullable union.
+#:
+#: ⚠ **IT SHIPPED AS A BARE STRING WITH A WRITTEN `description` UNTIL #500**,
+#: because the contract may not advertise a concept its backend consumer holds
+#: only some of and #499's query held three of four values. #500 added the
+#: fifth (`unavailable_outside_retention_horizon`) and made the read contract
+#: hold the concept as a SET, which is what the marker was waiting for.
+#:
+#: ⚠ **AND THE `description` DID NOT SURVIVE THE MARKER — IT MOVED UP.** Not one
+#: marked node in the published document carries a `description` (119 of them at
+#: this commit, this one included), and this is not the one to make an exception
+#: of; every claim that sentence made was about how the measure's OTHER fields
+#: behave under a given state, which is a statement about the row rather than
+#: about the word, so it now sits on `EconomicMeasureOut`.
+MeasureStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "measure_status"})]
+
 #: The three sets this surface publishes that the registry declares no concept
 #: for, on `GroupingOptionOut`'s terms above: each is UBB's own, each is
 #: computed in exactly one place, and each is DESCRIBED here rather than
 #: enumerated, because a response has to be fully interpretable from raw HTTP
 #: with no typed client.
-#:
-#: ⚠ `measure_status` IS NOT ONE OF THEM. That concept is declared, its values
-#: are the registry's, and the field below is deliberately left UNMARKED: the
-#: contract may not advertise a concept its backend consumer holds only some of,
-#: and this query computes three of the four states. The ticket that adds the
-#: fifth state is the one that computes them all and marks this field.
-MEASURE_STATE_MEANING = (
-    "What this measure's figure is worth: 'known' where every input resolved; "
-    "'incomplete' where some input is still unresolved, so the figure is a "
-    "bound rather than a total and the count beside it says how far off it can "
-    "be; and 'unavailable_at_requested_grain' where a figure exists that cannot "
-    "be attributed this finely. Under that last one a revenue figure is the "
-    "part that COULD be placed and the rest is listed in 'context', while a "
-    "margin is null outright — there is no such thing as a partial margin. "
-    "⚠ None of the three is ever a stand-in for a figure: a zero here is a "
-    "measured zero, and where UBB has no figure at all the field is null."
-)
 GROUPED_VALUE_STATUS_MEANING = (
     "Why this row has no value on the axis in the same position, where it has "
     "none: 'recorded' means the value beside it is the axis's value, "
@@ -2999,11 +3003,35 @@ class EconomicMeasureOut(Schema):
 
     ⚠ **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS
     OWN.** A measure whose inputs are still resolving carries a bound and says
-    so here; a measure that could not be attributed at the requested grain
-    carries whatever part of itself could be placed — or, for a margin, nothing
-    at all — and says so here. A reader that took the figure and dropped this
-    field would publish a floor as a total, which is the defect the whole
-    surface exists to end.
+    so in `status`; a measure that could not be attributed at the requested
+    grain carries whatever part of itself could be placed — or, for a margin,
+    nothing at all — and says so there too. A reader that took the figure and
+    dropped that field would publish a floor as a total, which is the defect the
+    whole surface exists to end.
+
+    **What each state says about the fields beside it**, which is what the state
+    is for:
+
+    * `known` — every input resolved.
+    * `incomplete` — some input is still unresolved, so the figure is a bound
+      rather than a total, and the count beside it says how far off it can be.
+    * `unavailable_at_requested_grain` — a figure exists and cannot be
+      attributed this finely. A REVENUE figure here is the part that COULD be
+      placed, with the rest in the answer's `context`; a MARGIN is null
+      outright, because there is no such thing as a partial margin.
+    * `unavailable_outside_retention_horizon` — the stretch this row covers
+      reaches back past the horizon UBB publishes for the records the figure
+      would be read from, so there is no figure and no count: `available_from`
+      says the day this measure's series can start. The two unavailable states
+      are separate because their remedies are: ask a coarser question, against
+      that data is gone.
+    * `not_applicable` — the measure does not apply. This surface refuses such a
+      combination against `/metering/analytics/grouping-options` before building
+      a row, so an answer from THIS query never carries it; the value is the
+      concept's and a later surface may.
+
+    ⚠ **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured
+    zero, and where UBB has no figure at all the field is null.
     """
     measure: AnalyticsMeasure
     #: The money measures' figure, in micros. Null on the count measure, which
@@ -3020,7 +3048,7 @@ class EconomicMeasureOut(Schema):
     #: field whose name ends `_micros` would read as a hundredth of a cent. The
     #: measure's own name says which of the two is filled.
     event_count: Optional[int] = None
-    status: str = Field(description=MEASURE_STATE_MEANING)
+    status: MeasureStatus
     #: How many postings the supplier-cost total could not include. Present on
     #: the cost measure and on nothing else, because the two counts in this
     #: system are about different rows and a shared slot would merge them.
@@ -3028,6 +3056,19 @@ class EconomicMeasureOut(Schema):
     #: How many postings the revenue total could not include, for the same
     #: reason in the other direction.
     unpriced_event_count: Optional[int] = None
+    #: The day this measure's series can start, NON-NULL exactly where the
+    #: state is `unavailable_outside_retention_horizon`.
+    #:
+    #: ⚠ "Non-null" and not "present": the field is on every measure of every
+    #: row, as every optional field on this schema is, and carries `null` where
+    #: the measure has a figure. A reader keys off the STATE; saying "present"
+    #: here would describe a wire shape the server does not send.
+    #:
+    #: ⚠ IT REPEATS THE HORIZON THE ROW WAS JUDGED AGAINST rather than making a
+    #: reader work out which of the answer's two horizon fields applied — which
+    #: they could not, because which clock governs a row depends on how the
+    #: question was grouped, and the answer does not otherwise say.
+    available_from: Optional[str] = None
 
 
 class EconomicRowOut(Schema):
@@ -3103,6 +3144,27 @@ class EconomicsOut(Schema):
     #: Which view the revenue is stated under. Always present, because a figure
     #: whose basis is unstated is the unlabelled proration this slice ends.
     basis: RevenueBasis
+    #: THE TWO RETENTION HORIZONS, ON EVERY ANSWER, TRUNCATED OR NOT.
+    #:
+    #: The earliest day each of UBB's two clocks can still answer for: the
+    #: economics — charges, postings, supplied revenue, receipts, statuses,
+    #: amounts, currency, attribution and rate provenance — for six years, and
+    #: detailed measurement (raw records, quantities, component drill-down, the
+    #: measurement-concept rollup) on one shorter platform clock. One horizon
+    #: each, platform-wide: no per-tenant policy, no per-record clock and no
+    #: per-chart horizon.
+    #:
+    #: ⚠ THEY ARE HERE WHETHER OR NOT ANY MEASURE WAS TRUNCATED, because *when
+    #: can this series start* is a question a caller answers BEFORE choosing a
+    #: window, and a field that only appears once something has gone wrong is a
+    #: field nobody builds against.
+    #:
+    #: ⚠ AND READ THEM BESIDE THE PER-REQUEST WINDOW BOUND, which is the other
+    #: number and a different one: six years is what is reachable, 366 days
+    #: (92 hourly) is what one request may span. Six years therefore takes
+    #: successive windows rather than one call.
+    economic_data_available_from: str
+    measurement_data_available_from: str
     rows: list[EconomicRowOut]
     context: list[RevenueContextOut]
 
