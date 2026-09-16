@@ -28,7 +28,8 @@ describe("CustomerDetailPage — overview", () => {
     // external_id big in the header; UUID shown in mono alongside.
     expect(await screen.findByText("acme-corp", undefined, SLOW)).toBeInTheDocument();
     expect(screen.getByText(CUS_ACME)).toBeInTheDocument();
-    // Overview economics from GET /margin/customers/{id}.
+    // Overview economics from the one query, filtered to this customer
+    // (#501 — it was `GET /margin/customers/{id}`).
     expect(await screen.findByText("$541.50", undefined, SLOW)).toBeInTheDocument();
     // getAllBy — the async business-rollup table repeats the label as a
     // column header once it loads, so a single-match query is timing-fragile.

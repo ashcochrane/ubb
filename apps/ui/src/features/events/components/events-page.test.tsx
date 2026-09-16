@@ -36,10 +36,20 @@ describe("EventsPage", () => {
   it("renders the ledger and analytics for a selected customer", async () => {
     renderPage({ customer_id: CUSTOMER_A_ID });
 
-    // Analytics strip labels ("Billed"/"Provider cost" also head table columns).
+    // Analytics strip labels. "Revenue" and "Provider cost" ALSO head table
+    // columns, so both are asserted with an All- query rather than a
+    // single-match one — "Revenue" is the old "Billed" label, renamed in
+    // #501 because the one query answers revenue from one definition.
     expect((await screen.findAllByText("Revenue")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Provider cost").length).toBeGreaterThan(0);
-    // ⚠ "MARKUP MARGIN" WAS NEITHER (#501) — the difference between two`n    // aggregates, named as if it were a rate. It is the gross-margin measure.`n    expect(screen.getByText("Gross margin")).toBeInTheDocument();
+    // ⚠ "MARKUP MARGIN" WAS NEITHER (#501) — the difference between two
+    // aggregates, named as if it were a rate. It is the gross-margin measure.
+    //
+    // Read synchronously on purpose: the strip is ONE query, so the awaited
+    // "Revenue" above is what proves it has rendered. And singular on purpose
+    // too — unlike its two neighbours, this label heads no table column, so
+    // a second match would be a regression rather than the normal case.
+    expect(screen.getByText("Gross margin")).toBeInTheDocument();
 
     // Ledger rows from the mock fixture set (multiple chat.completion rows).
     const rows = await screen.findAllByText("chat.completion");
