@@ -431,3 +431,30 @@ authorisations:
       `docs/conventions/sdk-wrap.md` forbids a client keeping its own list of
       valid values, which is precisely what a hand-written picker helper
       invented now would grow.
+  - id: slice-7-499-the-one-economic-query
+    issue: 499
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION ON ONE NEW PATH, `generated_only`: the one economic
+      query, which answers what a tenant's AI work cost, what it earned and the
+      difference, over any filters, at any declared grouping axes, at hour, day
+      or month (`GET /metering/analytics/economics`). The total moves 84 -> 85
+      and `not_yet_wrapped` stays at zero, the pinned generator having produced
+      a module for it.
+
+      WHY IT IS NOT WRAPPED HERE, and it is the same question of ORDER the
+      entry above answers, one ticket further in. Slice 7 §21 rules the collapse
+      backend-first and the SDK second, because the SDK's share of the retired
+      axis word is mostly generated and a generated module only regenerates away
+      when its route moves — so the phase that rebuilds this client is the one
+      that also removes the NINE routes it currently wraps, which this query
+      replaces. #505 is the ticket that writes the one handle, and writing it
+      here would be writing it against a client that still wraps all nine.
+
+      ⚠ AND THIS IS THE OPERATION THAT MAKES THE HANDLE WORTH WAITING FOR. Its
+      request is measures, axes, a bucket and filters; its answer carries a
+      measure's own STATE beside its amount, and the states are the whole point
+      — generated reporting code must carry one rather than coerce it. A
+      wrapper that flattened four measures into four fields, or that defaulted
+      the measure set, would reintroduce at the client exactly the two things
+      the route refuses at the server.

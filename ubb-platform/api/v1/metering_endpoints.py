@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
@@ -26,7 +26,8 @@ from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
 from core.scheduling import validate_scheduled_instant
 from core.time_windows import (
-    REPORT_WINDOW_MAX_DAYS, utc_day_start, utc_next_day_start)
+    HOURLY_REPORT_WINDOW_MAX_DAYS, REPORT_WINDOW_MAX_DAYS, utc_day_start,
+    utc_next_day_start)
 from django.utils import timezone
 
 from api.v1.schemas import (
@@ -48,8 +49,11 @@ from api.v1.schemas import (
     book_change_body, book_change_diff_out, book_publish_out,
     pricing_book_out, cost_book_out, rate_out, usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
-    GroupingOptionsOut,
+    GroupingOptionsOut, EconomicsOut,
 )
+from core.vocabulary import (
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    REVENUE_BASIS_VALUES)
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE,
     CostBook, PricingBook, PricingBookPublish, Rate,
@@ -898,14 +902,15 @@ def usage_timeseries(request, granularity: str = "day", start_date: date = None,
     resolved_group_by = None
     if group_by is not None:
         resolved_group_by = _resolve_dimension(request.auth.tenant, group_by)
-    # #78 bounds: hourly windows capped at ~92 days, daily at 366.
+    # #78 bounds: hourly windows capped at ~92 days, daily at 366 — decided in
+    # one place now (#499), because the one economic query is a third asker and
+    # three copies of a ceiling are three answers to how far back a report may
+    # reach. ⚠ This route keeps its OWN open-window behaviour: an omitted end
+    # date escapes the ceiling here, which the one query does not allow and
+    # which is #501's to take away with the route.
     if start_date and end_date:
-        if end_date < start_date:
-            raise Problem("validation_error", "end_date must not precede start_date")
-        if granularity == "hour" and (end_date - start_date).days > 92:
-            raise Problem("validation_error", "hourly window too large (max 92 days)")
-        if granularity == "day" and (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
-            raise Problem("validation_error", "date window must not exceed 366 days")
+        _refuse_an_unbounded_window(start_date, end_date,
+                                    hourly=granularity == "hour")
     from apps.metering.queries import get_usage_timeseries
     series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
         customer_id=customer_id, group_by=resolved_group_by, start_date=start_date, end_date=end_date)
@@ -2077,3 +2082,281 @@ def list_grouping_options(request):
     _product_check(request)
     from apps.metering.queries import grouping_options
     return {"options": grouping_options(request.auth.tenant.id)}
+
+
+#: The problem code a well-formed question UBB will not answer earns.
+#:
+#: ⚠ **A SECOND CODE, AND THE DIVISION IS WHAT A CALLER DOES NEXT.**
+#: `validation_error` means the request is malformed — a date that will not
+#: parse, a window past the bound, a measure name that is not one — and the
+#: remedy is to fix the request. This one means the request is perfectly
+#: well-formed and UBB declines to answer it, because answering would be subtly
+#: wrong; the remedy is to ask a DIFFERENT question, and the sentence says which.
+#: Serving both on one code would give away, on the one surface built to refuse
+#: the dishonest comparison, exactly the distinguishability the refusal is for.
+UNANSWERABLE_COMBINATION = "unanswerable_combination"
+
+
+def _economic_window(start_date, end_date, bucket):
+    """The window one economic question is asked about, bounded and inclusive.
+
+    `docs/conventions/api-contract.md`: a computed report is cursor-exempt and
+    PARAMETER-BOUNDED. This one runs a `GROUP BY` per requested axis over the
+    largest table in the system, so the bound is what keeps it safe at the Read
+    floor rather than an inherited formality. The default is the current month
+    to date, which is what every surface this query replaces defaults to.
+
+    ⚠ **AN HOURLY QUESTION KEEPS THE TIGHTER CEILING, AND INHERITING IT IS NOT
+    OPTIONAL.** The timeseries route this query replaces has always refused an
+    hourly window past the shorter bound, because the ceiling is really about
+    how many BUCKETS a report may produce and an hour is twenty-four times a
+    day. Taking that route's job without taking its bound would publish a
+    surface that answers, over the widest window, the report its predecessor
+    refused.
+
+    ⚠⚠ **THE BOUND IS APPLIED TO THE RESOLVED SPAN, NOT TO THE REQUEST, AND
+    THAT IS THE WHOLE OF IT.** The surfaces this replaces bound the window only
+    when the caller supplied BOTH dates — so an open end escapes the ceiling
+    entirely, and `?start_date=2000-01-01&bucket=hour` is a twenty-six-year
+    hourly report at the Read floor. This one defaults first and bounds second,
+    so there is no shape of request that reaches the query unbounded. It matters
+    more here than it did there: the measurement fold is Python-side and rests
+    on this bound by name.
+    """
+    today = timezone.now().date()
+    start = start_date or today.replace(day=1)
+    end = end_date or today
+    _refuse_an_unbounded_window(start, end, hourly=bucket == "hour")
+    return start, end
+
+
+def _refuse_an_unbounded_window(start, end, *, hourly):
+    """The #78 ceilings, decided in ONE place for every report that has them.
+
+    An hourly report keeps the tighter one because the bound is really about how
+    many BUCKETS an answer may carry, and an hour is twenty-four times a day.
+    """
+    if end < start:
+        raise Problem("validation_error",
+                      "end_date must not precede start_date")
+    span = (end - start).days
+    if hourly and span > HOURLY_REPORT_WINDOW_MAX_DAYS:
+        raise Problem(
+            "validation_error",
+            f"hourly window too large (max {HOURLY_REPORT_WINDOW_MAX_DAYS} days)")
+    if span > REPORT_WINDOW_MAX_DAYS:
+        raise Problem("validation_error",
+                      f"date window must not exceed {REPORT_WINDOW_MAX_DAYS} days")
+
+
+def _equality_filters(wanted):
+    """The declared grouping fields a caller pinned to a value.
+
+    Each one is `<axis word>=<value>`, split at the FIRST `=`. ⚠ **A DECLARED
+    KEY MAY CONTAIN THAT CHARACTER AND SUCH A KEY CANNOT BE FILTERED THIS WAY**,
+    which is a named limit rather than a hatch: UBB never invented a charset for
+    a tenant's own key — the registry says so at the column, because a charset
+    UBB invented would be UBB second-guessing a tenant's catalogue — so the
+    split has to happen somewhere and a value may contain the character too.
+    Splitting at the first one makes the failure LOUD: the text before it is not
+    an axis this tenant declared, and the refusal names the word.
+    """
+    filters = []
+    for entry in wanted or []:
+        axis, separator, value = str(entry).partition("=")
+        if not separator or not axis:
+            raise Problem(
+                "validation_error",
+                f"{entry!r} is not a filter; each one is <axis>=<value>, "
+                "with the axis spelled as it is on the grouping options")
+        filters.append((axis, value))
+    return filters
+
+
+@metering_router.get("/analytics/economics",
+                     response={200: EconomicsOut, 422: ProblemOut})
+@role_floor(READ)
+def query_economics(request, start_date: date = None, end_date: date = None,
+                    measures: list[str] = Query(None),
+                    group_by: list[str] = Query(None),
+                    bucket: str = None,
+                    basis: str = None,
+                    customer_id: UUIDIdentifier = None,
+                    event_type: str = None, task_type: str = None,
+                    task_id: UUIDIdentifier = None,
+                    include_subtasks: bool = False,
+                    where: list[str] = Query(None),
+                    past_limit: bool = None, stop_scope: str = None,
+                    episode_seq: int = None):
+    """What your AI work cost, what it earned, and the difference — one answer
+    from one definition.
+
+    Ask for one or more `measures`, group by zero or more axes from
+    `/metering/analytics/grouping-options`, and bucket by `hour`, `day` or
+    `month`. Every filter composes with every grouping.
+
+    **Requesting no measure is refused rather than defaulted**: a default
+    measure set is how a caller ends up aggregating three different things to
+    draw one line.
+
+    **A row's grouped values are positional**, in the order the axes were sent,
+    and the response echoes `group_by` so the alignment is readable from the
+    answer alone. Where a row has no value on an axis, the entry beside it says
+    whether the value was never recorded or whether the question does not apply
+    to that kind of row.
+
+    **Each measure carries its own state and the state is part of the answer.**
+    A margin UBB cannot attribute at the grain you asked for is absent rather
+    than small, and the revenue that could not be placed is listed under
+    `context` with the axes at which asking again would produce one.
+
+    `basis` picks how revenue a tenant supplied is spread over the span it
+    declares: `recorded` places each amount whole on the day its record opens
+    and is the default, `recognised` spreads it by the record's own method. The
+    answer always states which it served.
+
+    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
+    because the ceiling is about how many buckets one answer may carry. The
+    response echoes the period it applied, so a caller who left the window to
+    the default can see what it was.
+
+    Codes: `validation_error` for a request that will not parse or a window past
+    the bound; `unanswerable_combination` for a well-formed question this
+    surface declines to answer subtly wrongly, whose message says what to ask
+    instead.
+    """
+    _product_check(request)
+    from apps.metering.queries import (
+        ECONOMIC_BUCKETS, ECONOMIC_MEASURES, EconomicFilters,
+        EconomicQuestionRefused, economic_refusal, economics, grouping_options)
+    from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
+    from apps.subscriptions.queries import revenue_contributions
+
+    measures = list(measures or [])
+    axes = list(group_by or [])
+    chosen = basis or DEFAULT_REVENUE_BASIS
+    if chosen not in REVENUE_BASIS_VALUES:
+        raise Problem("validation_error",
+                      f"unknown basis {chosen!r}; allowed: "
+                      f"{', '.join(sorted(REVENUE_BASIS_VALUES))}")
+    # The bucket is settled BEFORE the window, because the window's ceiling
+    # depends on it: an hourly question keeps the tighter one.
+    if bucket is not None and bucket not in ECONOMIC_BUCKETS:
+        raise Problem("validation_error",
+                      f"unknown bucket {bucket!r}; allowed: "
+                      f"{', '.join(ECONOMIC_BUCKETS)}")
+    start, end = _economic_window(start_date, end_date, bucket)
+    filters = EconomicFilters(
+        start_date=start, end_date=end, customer_id=customer_id,
+        event_type=event_type, task_type=task_type, task_id=task_id,
+        include_subtasks=include_subtasks, past_limit=past_limit,
+        stop_scope=stop_scope, episode_seq=episode_seq,
+        field_filters=_equality_filters(where))
+    refusal = economic_refusal(request.auth.tenant.id, measures=measures,
+                               axes=axes, event_type=event_type)
+    if refusal is not None:
+        # ⚠ TWO CODES, AND THE LINE BETWEEN THEM IS WHETHER THE REQUEST CAN BE
+        # READ AT ALL. A name this vocabulary does not contain — a measure, or
+        # an axis the tenant never declared — is a request UBB cannot
+        # interpret, and the remedy is to fix it. Everything else here is a
+        # request UBB reads perfectly and declines to answer subtly wrongly,
+        # and the remedy is to ask a DIFFERENT question. One code for both
+        # would give away, on the surface built to refuse the dishonest
+        # comparison, exactly the distinguishability the refusal is bought for.
+        #
+        # ⚠ DECIDED STRUCTURALLY AND NOT BY READING THE SENTENCE. Matching on
+        # the refusal's wording would make the published error code depend on
+        # prose, so re-wording a message for clarity would silently re-code the
+        # response. The extra read runs only on the refusal path.
+        offered = {option["key"]
+                   for option in grouping_options(request.auth.tenant.id)}
+        unreadable = (not measures
+                      or set(measures) - set(ECONOMIC_MEASURES)
+                      or any(word not in offered for word in axes))
+        raise Problem("validation_error" if unreadable else
+                      UNANSWERABLE_COMBINATION, refusal)
+
+    # ⚠ THE REVENUE THIS PRODUCT DOES NOT HOLD IS READ FROM THE PRODUCT THAT
+    # DOES, HERE, WHICH IS THE COMPOSITION LAYER'S JOB AND NOT THE READ
+    # CONTRACT'S. Metering owns the postings a price was resolved on;
+    # subscriptions owns a tenant's Stripe accruals and the figures it supplied
+    # itself, and ADR-001 forbids either product reaching into the other — on a
+    # service split metering would not have them. So they are fetched from that
+    # product's own read contract and handed over as plain data, each row saying
+    # whose it is, which window it lands in and what it can be attributed at.
+    # `economics` REFUSES to answer a revenue measure without them, so this
+    # wiring cannot be forgotten into a margin that is short by a subscription.
+    #
+    # ⚠ **AND IT IS NOT FETCHED WHERE NO MEASURE WOULD USE IT**, which is two
+    # fewer queries on a cost-only question and, more than that, a different
+    # ANSWER: the money a grouping cannot place is reported as context, and
+    # context on a question that asked nothing about revenue is noise about a
+    # number the caller did not request. The argument is absent exactly when it
+    # is irrelevant, which is the one case the read contract's refusal is not
+    # about.
+    revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                           ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
+    supplied = {}
+    if revenue_wanted:
+        supplied["contributed_revenue"] = revenue_contributions(
+            request.auth.tenant.id,
+            windows=_economic_buckets(start, end, bucket), basis=chosen,
+            customer_ids=[customer_id] if customer_id else None)
+
+    try:
+        answer = economics(request.auth.tenant.id, measures=measures,
+                           group_by=axes, bucket=bucket, filters=filters,
+                           basis=chosen, **supplied)
+    except EconomicQuestionRefused as refused:
+        # The read contract answers a refusal as a sentence, because a read
+        # contract returns plain data and the caller decides what an
+        # unanswerable request looks like on its own surface. This is that
+        # decision, and it is the same one the pre-flight above makes — the
+        # pre-flight exists so the common refusals never build a queryset.
+        #
+        # ⚠ THE TYPE IS WHAT MAKES THIS SAFE. Catching `ValueError` would catch
+        # every incidental one the query or Django raises underneath it and
+        # render its internal message to a tenant as a 422 refusal. Only a
+        # refusal of the QUESTION is translated; a `ValueError` about the CALL
+        # — the caller forgot the revenue rows — is a bug and reaches the
+        # handler as one.
+        raise Problem(UNANSWERABLE_COMBINATION, str(refused))
+    return 200, {"period_start": start.isoformat(),
+                 "period_end": end.isoformat(), **answer}
+
+
+def _economic_buckets(start, end, bucket):
+    """The half-open windows the contributed revenue is attributed to.
+
+    One window per bucket the answer will have, so a figure a tenant supplied
+    for a month lands in the months, days or hours of that month exactly as the
+    postings beside it do — and one window for the whole period where the caller
+    asked for no bucket.
+
+    ⚠ **THE END DATE IS INCLUSIVE ON THE WIRE AND HALF-OPEN HERE**, which is
+    what every window in this system means by an end date; getting that wrong
+    would drop the last day's revenue while keeping its cost.
+
+    ⚠ **EVERY WINDOW IS CLAMPED TO THE PERIOD ASKED ABOUT.** A month bucket
+    starting mid-month opens on the first of that month, and an unclamped window
+    would attribute revenue from days the postings beside it exclude — a total
+    that is right about the cost and wrong about the money, which is the exact
+    disagreement the collapse exists to remove.
+
+    An hour bucket asks for DAY windows, and the query then declines to place
+    the money at all: a supplied record declares a span in whole days, so hour
+    precision is not a narrower answer, it is an invented one.
+    """
+    closes = end + timedelta(days=1)
+    if bucket is None:
+        return [(start, closes)]
+    windows, opens = [], (start.replace(day=1) if bucket == "month" else start)
+    while opens < closes:
+        if bucket == "month":
+            nxt = (opens.replace(year=opens.year + 1, month=1, day=1)
+                   if opens.month == 12 else opens.replace(month=opens.month + 1))
+        else:
+            nxt = opens + timedelta(days=1)
+        windows.append((max(opens, start), min(nxt, closes)))
+        opens = nxt
+    return windows

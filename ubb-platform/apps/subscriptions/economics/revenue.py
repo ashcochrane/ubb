@@ -23,6 +23,16 @@ _SPREADS_ACROSS_THE_SPAN = {
 #: the default is visible rather than assumed (slice 7 §5).
 DEFAULT_REVENUE_BASIS = REVENUE_BASIS_RECORDED
 
+#: THE MIRRORED SUBSCRIPTION STATUSES THAT ACCRUE REVENUE AT ALL.
+#:
+#: Named because two callers now ask the question — the per-customer accrual
+#: below and the tenant-wide read the one economic query composes from (slice 7
+#: §2) — and a status list spelled twice is two answers to *which subscriptions
+#: count*. `past_due` and `unpaid` are in: Stripe leaves a renewal in those
+#: states while it retries, and revenue a tenant is still chasing is revenue it
+#: earned.
+ACCRUING_SUBSCRIPTION_STATUSES = ("active", "trialing", "past_due", "unpaid")
+
 
 def _days_in_month(year, month):
     return calendar.monthrange(year, month)[1]
@@ -61,23 +71,46 @@ class RevenueService:
     """
 
     @staticmethod
-    def subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date) -> int:
+    def accruing(tenant_id, *, customer_id=None):
+        """The mirrored subscriptions that accrue revenue at all.
+
+        Split out from the sum below because the one economic query asks the
+        same question for a whole tenant at once (slice 7 §2) and two copies of
+        this status list would be two answers to *which subscriptions count*.
+        """
         from apps.subscriptions.models import StripeSubscription
         subs = StripeSubscription.objects.filter(
-            tenant_id=tenant_id, customer_id=customer_id,
-            status__in=["active", "trialing", "past_due", "unpaid"])
+            tenant_id=tenant_id, status__in=ACCRUING_SUBSCRIPTION_STATUSES)
+        return subs.filter(customer_id=customer_id) if customer_id else subs
+
+    @staticmethod
+    def nominal_for_window(subscription, start_date, end_date) -> int:
+        """ONE mirrored subscription's nominal accrual over the half-open window.
+
+        PURE, and deliberately: the one economic query buckets a window into
+        hours, days or months and needs this answered per bucket without going
+        back to the database once per bucket. Taking the row rather than its
+        keys is what lets a caller fetch once and attribute many times.
+        """
+        per_interval = subscription.amount_micros
+        monthly = (per_interval // 12 if subscription.interval == "year"
+                   else per_interval)
         total = 0
-        for sub in subs:
-            per_interval = sub.amount_micros
-            monthly = per_interval // 12 if sub.interval == "year" else per_interval
-            for m_start, m_end in _month_iter(start_date, end_date):
-                w_start = max(start_date, m_start)
-                w_end = min(end_date, m_end)
-                overlap_days = (w_end - w_start).days
-                if overlap_days <= 0:
-                    continue
-                total += monthly * overlap_days // _days_in_month(m_start.year, m_start.month)
+        for m_start, m_end in _month_iter(start_date, end_date):
+            w_start = max(start_date, m_start)
+            w_end = min(end_date, m_end)
+            overlap_days = (w_end - w_start).days
+            if overlap_days <= 0:
+                continue
+            total += monthly * overlap_days // _days_in_month(m_start.year, m_start.month)
         return total
+
+    @staticmethod
+    def subscription_nominal_for_window(tenant_id, customer_id, start_date, end_date) -> int:
+        return sum(
+            RevenueService.nominal_for_window(sub, start_date, end_date)
+            for sub in RevenueService.accruing(
+                tenant_id, customer_id=customer_id))
 
     @staticmethod
     def accrued_subscription_revenue(tenant_id, customer_id, start_date, end_date) -> int:

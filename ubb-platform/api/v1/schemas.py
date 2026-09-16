@@ -2922,6 +2922,191 @@ class GroupingOptionsOut(Schema):
     options: list[GroupingOptionOut]
 
 
+#: WHICH OF THE FOUR THINGS THIS ROW MEASURES. `closed` — UBB owns all four —
+#: so the export writes a real `enum` here and this file spells none of them.
+#:
+#: ⚠ **EVERY ROW NAMES ITS OWN MEASURE RATHER THAN THE RESPONSE FIXING FOUR
+#: FIELDS**, and that is what makes requesting one measure different from
+#: requesting four. A response with a slot per measure has to put SOMETHING in
+#: the slots a caller did not ask for, and whatever it puts there is a number
+#: nobody computed.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads. ⚠ That summary is also one of exactly two in the registry
+#: that legitimately spells a sense-retired denominator, so it must not be
+#: reworded from here either.
+AnalyticsMeasure = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "analytics_measure"})]
+
+#: WHICH OF THE TWO VIEWS THE REVENUE IS STATED UNDER. `closed` — UBB owns both
+#: values — so the export writes a real `enum` and this file spells neither.
+#:
+#: DECLARED HERE AND ALSO ON THE MARGIN MODULE, which is the house rule rather
+#: than a second copy: a marker names a concept and spells not one of its
+#: values, so an alias is a POINTER, and a module that publishes a field
+#: carrying a concept declares the pointer beside the field.
+#: `apps/subscriptions/api/margin_schemas.py` says so at its own three, and
+#: `apps/platform/events/schemas.py` does the same next to its payloads.
+RevenueBasis = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "revenue_basis"})]
+
+#: The three sets this surface publishes that the registry declares no concept
+#: for, on `GroupingOptionOut`'s terms above: each is UBB's own, each is
+#: computed in exactly one place, and each is DESCRIBED here rather than
+#: enumerated, because a response has to be fully interpretable from raw HTTP
+#: with no typed client.
+#:
+#: ⚠ `measure_status` IS NOT ONE OF THEM. That concept is declared, its values
+#: are the registry's, and the field below is deliberately left UNMARKED: the
+#: contract may not advertise a concept its backend consumer holds only some of,
+#: and this query computes three of the four states. The ticket that adds the
+#: fifth state is the one that computes them all and marks this field.
+MEASURE_STATE_MEANING = (
+    "What this measure's figure is worth: 'known' where every input resolved; "
+    "'incomplete' where some input is still unresolved, so the figure is a "
+    "bound rather than a total and the count beside it says how far off it can "
+    "be; and 'unavailable_at_requested_grain' where a figure exists that cannot "
+    "be attributed this finely. Under that last one a revenue figure is the "
+    "part that COULD be placed and the rest is listed in 'context', while a "
+    "margin is null outright — there is no such thing as a partial margin. "
+    "⚠ None of the three is ever a stand-in for a figure: a zero here is a "
+    "measured zero, and where UBB has no figure at all the field is null."
+)
+GROUPED_VALUE_STATUS_MEANING = (
+    "Why this row has no value on the axis in the same position, where it has "
+    "none: 'recorded' means the value beside it is the axis's value, "
+    "'not_recorded' means these events could have carried one and did not, and "
+    "'not_applicable' means this kind of row never carries one — a charge "
+    "raised for a delivered piece of work names no supplier and no event type. "
+    "The two absences are different facts and only one of them has a remedy."
+)
+REVENUE_SOURCE_MEANING = (
+    "Where a revenue figure came from: 'subscription' for a Stripe "
+    "subscription UBB mirrors, 'tenant_supplied' for a figure the tenant "
+    "recorded itself. They are kept apart so a reader of a revenue number can "
+    "say which kind of money it is."
+)
+ECONOMIC_BUCKET_MEANING = (
+    "The time grain the rows are bucketed at — 'hour', 'day' or 'month' — or "
+    "null where the whole period is one row."
+)
+
+
+class EconomicMeasureOut(Schema):
+    """One requested measure on one row: its amount, and what that amount is
+    worth.
+
+    ⚠ **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS
+    OWN.** A measure whose inputs are still resolving carries a bound and says
+    so here; a measure that could not be attributed at the requested grain
+    carries whatever part of itself could be placed — or, for a margin, nothing
+    at all — and says so here. A reader that took the figure and dropped this
+    field would publish a floor as a total, which is the defect the whole
+    surface exists to end.
+    """
+    measure: AnalyticsMeasure
+    #: The money measures' figure, in micros. Null on the count measure, which
+    #: is not money, and null on the margin where it could not be attributed at
+    #: the requested grain — there is no such thing as a partial margin. A
+    #: REVENUE figure at that same state is not null: it is the part that could
+    #: be placed, with the rest in `context`. Never a zero standing in for any
+    #: of these.
+    amount_micros: Optional[int] = None
+    #: The count measure's figure, a number of records. Null on the three
+    #: measures denominated in money.
+    #:
+    #: ⚠ A SEPARATE FIELD RATHER THAN A SHARED ONE, because a count carried in a
+    #: field whose name ends `_micros` would read as a hundredth of a cent. The
+    #: measure's own name says which of the two is filled.
+    event_count: Optional[int] = None
+    status: str = Field(description=MEASURE_STATE_MEANING)
+    #: How many postings the supplier-cost total could not include. Present on
+    #: the cost measure and on nothing else, because the two counts in this
+    #: system are about different rows and a shared slot would merge them.
+    unresolved_event_count: Optional[int] = None
+    #: How many postings the revenue total could not include, for the same
+    #: reason in the other direction.
+    unpriced_event_count: Optional[int] = None
+
+
+class EconomicRowOut(Schema):
+    """One bucket of the answer: what it groups, and each measure asked for.
+
+    ⚠ **THE GROUPED VALUES ARE POSITIONAL, ALIGNED WITH THE REQUEST'S OWN
+    `group_by`**, which the response echoes so the alignment is readable from
+    the answer alone. The request already named the axes; repeating them once
+    per row would say the same thing over and over, and the row key itself is
+    settled vocabulary (`docs/adr/0005-declared-grouping-fields.md:191`).
+    """
+    #: The bucket's opening instant, or null where the whole period is one row.
+    bucket_start: Optional[str] = None
+    #: One value per requested axis, in the order they were requested. Null
+    #: where the axis has no value on these rows — read the entry in the same
+    #: position of the list below to learn which of the two absences it is.
+    grouping_field_value: list[Optional[str]]
+    grouping_field_value_status: list[str] = Field(
+        description=GROUPED_VALUE_STATUS_MEANING)
+    measures: list[EconomicMeasureOut]
+
+
+class RevenueContextOut(Schema):
+    """Revenue that exists and could not be placed at the requested grouping.
+
+    ⚠ **IT IS HERE PRECISELY SO THAT NO MARGIN CAN BE DRAWN OVER IT SILENTLY.**
+    A subscription and a figure a tenant supplied are statements about a
+    customer over a period; neither names a supplier, an event type or an event,
+    so spreading one across an operational axis would invent a boundary the
+    record never asserted. Rather than distribute it, bucket it as unattributed
+    or drop it, the query states it here with the axes at which asking again
+    WOULD produce a margin.
+    """
+    source: str = Field(description=REVENUE_SOURCE_MEANING)
+    customer_id: str
+    amount_micros: int
+    window_start: str
+    window_end: str
+    #: The grouping that WOULD place this money — the caller's remedy, in the
+    #: same request vocabulary the caller already sent.
+    attributable_axes: list[str]
+    #: The finest bucket that would place it, which is a SECOND and different
+    #: remedy: a question bucketed more finely than the record's own span is not
+    #: fixed by changing the axes, and a caller told only about the axes would
+    #: keep asking a question that cannot be answered.
+    #:
+    #: ⚠ It carries its OWN description rather than the bucket field's, which
+    #: ends "or null where the whole period is one row" — true of what a caller
+    #: SENDS and false of this, which is always present and never null.
+    attributable_bucket: str = Field(
+        description="The finest time grain this money can honestly be placed "
+                    "at — 'hour', 'day' or 'month'. A question bucketed more "
+                    "finely than this cannot attribute it, because the record "
+                    "behind it declares no finer a span.")
+
+
+class EconomicsOut(Schema):
+    """What this tenant's AI work cost, what it earned, and the difference.
+
+    One definition of two numbers, over any filters, at any declared grouping
+    axes, at hour, day or month. The request is echoed back — the measures are
+    on each row, and the axes and the bucket are here — because a row's values
+    are positional and a response a reader cannot align is a response a reader
+    will align wrongly.
+    """
+    #: The window the question was asked about, inclusive of its end date, so
+    #: the answer states the period a caller may have left to the default.
+    period_start: str
+    period_end: str
+    #: The axes this answer is grouped by, in the order a row's values follow.
+    group_by: list[str]
+    bucket: Optional[str] = Field(description=ECONOMIC_BUCKET_MEANING)
+    #: Which view the revenue is stated under. Always present, because a figure
+    #: whose basis is unstated is the unlabelled proration this slice ends.
+    basis: RevenueBasis
+    rows: list[EconomicRowOut]
+    context: list[RevenueContextOut]
+
+
 #: WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR. `closed` — UBB owns
 #: both values — so the export writes a real `enum` here and this file spells
 #: neither of them; the default below is the registry's own constant for the

@@ -42,7 +42,8 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
-    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_SUPPLIER_COGS,
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_RECORDED_EVENTS, ANALYTICS_MEASURE_SUPPLIER_COGS,
     ANALYTICS_ROLLUP_EVENT_CATEGORY, ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
     COSTING_METHOD_CALCULATED, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
 )
@@ -115,12 +116,34 @@ class TheRefusalNamesWhatItRefused(TestCase):
         assert MEASUREMENT_ROLLUP in refusal
         assert declared["reason"] in refusal
 
-    def test_the_same_axis_with_another_measure_is_answerable(self):
-        """The narrowing is one measure of one axis. An axis refused outright
-        would be the shortfall §7 rules against."""
+    def test_every_money_measure_is_refused_at_that_axis(self):
+        """⚠ **THE DECLARATION WAS COMPLETED IN #499 AND THIS CASE MOVED WITH
+        IT.** It used to assert that the customer revenue WAS answerable here,
+        because #498 could name only one measure — naming all of them would have
+        made this read the measure concept's serving consumer and paid #499's
+        ledger entry by mention — and it said so at the time. The reason written
+        at that axis was never about cost: UBB holds an amount per POSTING on
+        both sides of the margin, so revenue at this grain repeats one event's
+        price once per quantity exactly as a supplier cost would.
+        """
+        for measure in (ANALYTICS_MEASURE_SUPPLIER_COGS,
+                        ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                        ANALYTICS_MEASURE_GROSS_MARGIN):
+            refusal = grouping_refusal(self.tenant.id,
+                                       axes=[MEASUREMENT_ROLLUP],
+                                       measures=[measure])
+            assert refusal is not None, measure
+            assert measure in refusal and MEASUREMENT_ROLLUP in refusal
+
+    def test_the_axis_is_not_refused_outright(self):
+        """The narrowing is a set of measures, not the axis. An axis refused
+        outright would be the shortfall §7 rules against — and the count is what
+        survives, because it counts the POSTINGS a heading reaches rather than
+        the measurement records, so it keeps the one meaning it has everywhere.
+        """
         assert grouping_refusal(
             self.tenant.id, axes=[MEASUREMENT_ROLLUP],
-            measures=[ANALYTICS_MEASURE_CUSTOMER_REVENUE]) is None
+            measures=[ANALYTICS_MEASURE_RECORDED_EVENTS]) is None
 
     def test_an_axis_is_refused_on_a_surface_that_does_not_take_it(self):
         refusal = grouping_refusal(self.tenant.id, axes=[MEASUREMENT_ROLLUP],

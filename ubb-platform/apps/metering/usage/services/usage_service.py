@@ -44,15 +44,19 @@ logger = logging.getLogger(__name__)
 #
 # THE CONSEQUENCE, STATED IN THE DIRECTION IT ACTUALLY RUNS. A caller whose keys
 # the retired bag refused with a 422 now gets a 200 — that much is the #272
-# precedent. But the removal also WIDENS what can reach the three grouping
-# surfaces slice 7 owns: they used to read a bag validated flat `str -> str` and
-# now read the same arbitrary JSON everything else in this bag may hold, so a
-# key-driven chart or invoice line label can be handed a serialised object
-# rather than a short string. Nothing is mis-metered and no money moves — the
-# bag is filtered and read, never priced — but this is a widening on the very
-# surfaces this ticket must not widen, and it is slice 7's to close when it
-# moves that capability onto the declared grouping contract.
-# `tests/test_the_second_open_bag_folds.py` pins both halves.
+# precedent, and it is the whole of what is left to say.
+#
+# THE WIDENING THAT STOOD HERE IS CLOSED (#499). #273 recorded that folding the
+# bag also widened what could reach a grouping surface — a key-driven chart
+# could be handed arbitrary JSON where it used to be handed a flat `str -> str`
+# — and named slice 7 as the one that closes it when it moves that capability
+# onto the declared grouping contract. The move has happened: the one economic
+# query groups by declared axes and by nothing else, it takes no parameter that
+# can name a key in this bag, and the caution is deleted with the condition it
+# was waiting on. This bag is filtered and read, never grouped and never priced.
+# `tests/test_the_second_open_bag_folds.py` still pins that, and
+# `apps/metering/tests/test_the_one_economic_query.py` pins the rebuild's half —
+# that nothing the query reaches reads a key out of here.
 
 # Tolerated clock skew for caller-supplied effective_at in the future.
 _FUTURE_SKEW = timedelta(minutes=5)

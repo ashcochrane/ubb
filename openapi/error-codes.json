@@ -128,6 +128,10 @@
       "status": 409,
       "title": "This customer cannot start new work right now"
     },
+    "unanswerable_combination": {
+      "status": 422,
+      "title": "That combination cannot be answered honestly"
+    },
     "unauthorized": {
       "status": 401,
       "title": "Unauthorized"

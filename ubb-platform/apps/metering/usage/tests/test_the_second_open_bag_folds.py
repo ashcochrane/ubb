@@ -313,20 +313,25 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
     read it. That is the part of "an unbounded free-text key can never drive an
     invoice line label" slice 2 can honestly deliver.
 
-    WHAT IT DOES NOT PIN, DELIBERATELY: the keyed analytics parameter and the
-    `tag:` grouping prefix still read keys out of this bag, so an unbounded key
-    CAN still reach a chart and an invoice line today. Those three surfaces —
-    the keyed analytics parameter, the keyed margin breakdown and the
-    key-driven invoice line labels — carry two G7 ledger entries of their own,
-    both owned by slice 7, and slice 7 is where the capability moves onto the
-    declared grouping contract. Slice 2 folded the field; moving the capability
-    early would be building another slice's design without it.
+    WHAT IT DOES NOT PIN, DELIBERATELY: three surfaces still read keys out of
+    this bag — the keyed analytics parameter, the keyed margin breakdown and the
+    key-driven invoice line labels — so an unbounded key CAN still reach a chart
+    and an invoice line today, and they carry two G7 ledger entries of their own
+    for exactly that reason.
 
-    AND IT REACHES FURTHER THAN IT DID, WHICH IS WORTH SAYING OUT LOUD ON THIS
-    COMMIT OF ALL COMMITS. Those three surfaces used to read a bag the recording
-    path validated flat `str -> str`; they now read the same arbitrary JSON the
-    surviving bag has always been allowed to hold, so a label can arrive as a
-    serialised object rather than a short string.
+    ⚠ **THE CAPABILITY HAS MOVED AND THOSE THREE READERS HAVE NOT YET GONE**
+    (#499). Slice 2 said slice 7 was where the capability moves onto the
+    declared grouping contract, and it has: the one economic query groups by
+    declared axes and by nothing else, and takes no parameter that can name a
+    key in here. What survives is the three old readers, which go with the
+    routes that expose them — #501's, by name — and the entries with them.
+
+    AND IT REACHES FURTHER THAN IT DID, WHICH IS WHY THOSE THREE ARE WORTH
+    NAMING. They used to read a bag the recording path validated flat
+    `str -> str`; they now read the same arbitrary JSON the surviving bag has
+    always been allowed to hold, so a label can arrive as a serialised object
+    rather than a short string. The replacement cannot: an axis it groups by is
+    one the tenant declared.
     `test_a_nested_value_reaches_the_label_path_unconstrained` runs it rather
     than asserting it cannot happen. The alternative was imposing the retired
     bag's value rules on a published field that never had them, which is a
