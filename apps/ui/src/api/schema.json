@@ -3080,6 +3080,102 @@
         "title": "GroupingFieldValuesOut",
         "type": "object"
       },
+      "GroupingOptionOut": {
+        "description": "One axis this tenant may group by.\n\nEvery field's reason is at `apps/metering/queries.py::grouping_options`,\nwhich computes the row; two are worth repeating at the wire because they are\nwhat a reader of the CONTRACT will otherwise misread.\n\n``label`` is empty on most rows and that is a rule, not a gap: it carries\nthe TENANT's own word, and UBB's own wording for its own axes lives in the\nlocalisation layer (ADR-0008 \u00a74).\n\n``max_cardinality`` is the cap the tenant declared, null where UBB owns the\naxis. It is published because \u00a77 makes cardinality one of the three things a\nrequest is validated against \u2014 but nothing refuses on it HERE; the surfaces\nthat can count the rows a request would produce decide with it.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "field",
+              "rollup"
+            ],
+            "title": "Kind",
+            "type": "string",
+            "x-ubb-concept": "analytics_grouping_kind"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_cardinality": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Cardinality"
+          },
+          "rollup": {
+            "anyOf": [
+              {
+                "enum": [
+                  "event_category",
+                  "measurement_concept"
+                ],
+                "type": "string",
+                "x-ubb-concept": "analytics_rollup"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rollup"
+          },
+          "source_grain": {
+            "description": "The grain this axis's value is constant at: 'event', 'task' or 'subtask' for a declared field \u2014 the scope it was declared with \u2014 and 'measurement' for an axis that groups the quantities beneath an event rather than the event itself.",
+            "title": "Source Grain",
+            "type": "string"
+          },
+          "supported_surfaces": {
+            "description": "Where this axis may be used: 'analytics' for the economic query, 'invoice_lines' for the grouping a tenant's invoice lines are built on. An axis resolving at the measurement grain is analytics-only, because an invoice line is money and UBB holds no money at that grain.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Supported Surfaces",
+            "type": "array"
+          },
+          "unsupported_measures": {
+            "items": {
+              "$ref": "#/components/schemas/UnsupportedMeasureOut"
+            },
+            "title": "Unsupported Measures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "label",
+          "source_grain",
+          "supported_surfaces",
+          "unsupported_measures"
+        ],
+        "title": "GroupingOptionOut",
+        "type": "object"
+      },
+      "GroupingOptionsOut": {
+        "description": "What this tenant may group by \u2014 computed for them, never a shipped list.\n\nThe reason it is computed rather than fixed is argued once, at\n`apps/metering/queries.py::grouping_options`.",
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/GroupingOptionOut"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "options"
+        ],
+        "title": "GroupingOptionsOut",
+        "type": "object"
+      },
       "InheritedPricingRule": {
         "description": "One rule, as a client would start an override from it.\n\nEverything an override body has to state, in the shape it has to state it \u2014\nso *create from the inherited rule* is a copy rather than a translation. The\nrule's own id and the book it came from ride along so a reader can say where\nthe starting point came from.",
         "properties": {
@@ -9079,6 +9175,25 @@
         "title": "UnresolvedQueueTotals",
         "type": "object"
       },
+      "UnsupportedMeasureOut": {
+        "description": "One measure an axis REFUSES, and why.\n\nDeclaring capability by exception rather than by enumeration: every measure\nnot named here is accepted at this axis and answers with its own state. The\nset these are exceptions to is published by the one economic query, which is\nthe module that computes the measures \u2014 this read only ever names one in\norder to refuse it.",
+        "properties": {
+          "measure": {
+            "title": "Measure",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measure",
+          "reason"
+        ],
+        "title": "UnsupportedMeasureOut",
+        "type": "object"
+      },
       "UsageAnalyticsResponse": {
         "properties": {
           "breakdowns": {
@@ -13752,6 +13867,31 @@
           }
         ],
         "summary": "Get Usage Summary"
+      }
+    },
+    "/api/v1/metering/analytics/grouping-options": {
+      "get": {
+        "description": "What this tenant may group an economic question by \u2014 the discovery\ncontract (#498, slice 7 \u00a77).\n\n`apps/metering/queries.py::grouping_options` computes it and argues what it\nis for; this is the wire, and the two things the wire itself decides.\n\nRead floor, and deliberately: a finance operator building a chart is exactly\nwho asks this, and it publishes no amount. The axes it lists are the\ntenant's own declarations, which the same floor already reads next door.\n\nUNPAGINATED, on `docs/conventions/api-contract.md`'s *\"computed reports are\nnot lists\"* clause rather than in spite of its cursor rule. It is computed\nper tenant; and where that clause asks a report to be parameter-bounded,\nthis one is bounded by CONSTRUCTION \u2014 the always-present axes, at most the\nregistry's ten slots, and the two rollups \u2014 so there is no window a caller\ncould leave open. The two registry reads beside it answer the same way.",
+        "operationId": "api_v1_metering_endpoints_list_grouping_options",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupingOptionsOut"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Grouping Options"
       }
     },
     "/api/v1/metering/analytics/tasks": {

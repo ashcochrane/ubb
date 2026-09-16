@@ -2817,6 +2817,111 @@ class GroupingFieldValuesOut(Schema):
     values: list[str]
 
 
+#: WHETHER AN AXIS IS A COLUMN OR A JOIN. `closed` — UBB owns both values — so
+#: the export writes a real `enum` here and this file spells neither of them.
+#:
+#: ⚠ THE KIND IS PART OF THE REQUEST WORD AND THIS FIELD IS NOT A SECOND COPY
+#: OF IT (#498, slice 7 §6). A caller sends `field:<name>` or `rollup:<name>`,
+#: one word carrying its own kind, because an untyped list of axis names hides
+#: materially different cardinality and query cost behind strings that look
+#: alike. The discovery row states the kind separately so that READING the
+#: contract needs no string splitting — the request word is what you send and
+#: this is what you switch on.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+AnalyticsGroupingKind = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "analytics_grouping_kind"})]
+
+#: WHICH ROLLUP AXIS, where the row's kind is one. `closed` — UBB owns both
+#: values and the tenant assigns members to them — so the export writes a real
+#: `enum` and this file spells neither.
+#:
+#: Nullable, because a direct grouping field is not a rollup: `Optional[...]`
+#: renders `anyOf: [string, null]` with the marker inside the STRING member,
+#: which is the required placement — a marker on the union node yields a field
+#: that admits `null` under `anyOf` and refuses it under `enum`.
+#:
+#: NO HAND-WRITTEN `description`, for the reason above it.
+AnalyticsRollup = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "analytics_rollup"})]
+
+#: The two sets this contract publishes that the registry declares no concept
+#: for. Both are UBB's own, both are computed in exactly one place
+#: (`apps/metering/queries.py`), and both are DESCRIBED here rather than
+#: enumerated — §7 requires the response to be fully interpretable from raw HTTP
+#: with no typed client, and a value a reader cannot interpret fails that
+#: whether or not a generated enum would have constrained it.
+#:
+#: Leaving them undeclared is `event_types.VALUE_TYPE_CHOICES`' position and its
+#: argument: the contract does not RESTATE the set, so there is still exactly
+#: one place the values live. What a concept would buy is the published `enum`
+#: and the console wording, and neither is owed by a ticket that names two
+#: concepts and no more.
+SOURCE_GRAIN_MEANING = (
+    "The grain this axis's value is constant at: 'event', 'task' or 'subtask' "
+    "for a declared field — the scope it was declared with — and 'measurement' "
+    "for an axis that groups the quantities beneath an event rather than the "
+    "event itself."
+)
+SUPPORTED_SURFACES_MEANING = (
+    "Where this axis may be used: 'analytics' for the economic query, "
+    "'invoice_lines' for the grouping a tenant's invoice lines are built on. "
+    "An axis resolving at the measurement grain is analytics-only, because an "
+    "invoice line is money and UBB holds no money at that grain."
+)
+
+
+class UnsupportedMeasureOut(Schema):
+    """One measure an axis REFUSES, and why.
+
+    Declaring capability by exception rather than by enumeration: every measure
+    not named here is accepted at this axis and answers with its own state. The
+    set these are exceptions to is published by the one economic query, which is
+    the module that computes the measures — this read only ever names one in
+    order to refuse it.
+    """
+    measure: str
+    reason: str
+
+
+class GroupingOptionOut(Schema):
+    """One axis this tenant may group by.
+
+    Every field's reason is at `apps/metering/queries.py::grouping_options`,
+    which computes the row; two are worth repeating at the wire because they are
+    what a reader of the CONTRACT will otherwise misread.
+
+    ``label`` is empty on most rows and that is a rule, not a gap: it carries
+    the TENANT's own word, and UBB's own wording for its own axes lives in the
+    localisation layer (ADR-0008 §4).
+
+    ``max_cardinality`` is the cap the tenant declared, null where UBB owns the
+    axis. It is published because §7 makes cardinality one of the three things a
+    request is validated against — but nothing refuses on it HERE; the surfaces
+    that can count the rows a request would produce decide with it.
+    """
+    key: str
+    kind: AnalyticsGroupingKind
+    rollup: Optional[AnalyticsRollup] = None
+    label: str
+    source_grain: str = Field(description=SOURCE_GRAIN_MEANING)
+    supported_surfaces: list[str] = Field(
+        description=SUPPORTED_SURFACES_MEANING)
+    max_cardinality: Optional[int] = None
+    unsupported_measures: list[UnsupportedMeasureOut]
+
+
+class GroupingOptionsOut(Schema):
+    """What this tenant may group by — computed for them, never a shipped list.
+
+    The reason it is computed rather than fixed is argued once, at
+    `apps/metering/queries.py::grouping_options`.
+    """
+    options: list[GroupingOptionOut]
+
+
 #: WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR. `closed` — UBB owns
 #: both values — so the export writes a real `enum` here and this file spells
 #: neither of them; the default below is the registry's own constant for the

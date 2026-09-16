@@ -40,8 +40,18 @@ from core.cost_totals import (
     cost_total_annotations,
 )
 from core.time_windows import month_bounds, utc_day_start, utc_next_day_start
-from core.vocabulary import PRICING_STATUS_WAIVED
-from apps.platform.grouping_fields.models import SLOT_CHOICES
+from core.vocabulary import (
+    ANALYTICS_GROUPING_KIND_FIELD,
+    ANALYTICS_GROUPING_KIND_ROLLUP,
+    ANALYTICS_GROUPING_KIND_VALUES,
+    ANALYTICS_MEASURE_SUPPLIER_COGS,
+    ANALYTICS_ROLLUP_EVENT_CATEGORY,
+    ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
+    ANALYTICS_ROLLUP_VALUES,
+    PRICING_STATUS_WAIVED,
+)
+from apps.platform.grouping_fields.models import (
+    RESERVED_KEYS, SCOPE_CHOICES, SLOT_CHOICES)
 
 #: The slot columns a caller may group by, read off the registry that owns the
 #: vocabulary. Restating it as a literal range here is how the two come to
@@ -1278,3 +1288,399 @@ def charge_that_reached(tenant_id, customer_id, *, stop_threshold_micros,
                              .values_list("id", flat=True).first())
             return _stopped_work_posting_row(p, charge_id)
     return None
+
+
+# --- What a tenant may group by, and what each axis can honestly answer -----
+#
+# THE GROUPING CONTRACT (#498, slice 7 §6 and §7). Four bespoke per-surface
+# grouping parameters each answered the same question their own way and three of
+# them read free text; the registry retires all four to ONE request word whose
+# values carry their own kind.
+#
+# EXACTLY TWO KINDS, AND THEIR DIFFERENCE STAYS VISIBLE TO THE CALLER. A direct
+# grouping field is a COLUMN — a value materially attached to the posting or
+# inherited from the work it belongs to. A declared semantic rollup is a JOIN —
+# a controlled mapping from an identity the tenant already declared to a broader
+# analytical heading. The two have materially different cardinality and query
+# cost, so a flat list of axis names would hide that behind strings that look
+# alike. The kind is therefore part of the request word (`field:` / `rollup:`)
+# rather than metadata beside it, which is why `analytics_grouping_kind` is a
+# closed set rather than a boolean.
+#
+# COMPUTED PER TENANT, NEVER A SHIPPED LIST. UBB ships no catalogue of
+# suppliers, event types or prices and its registries start empty (map #137
+# constraint 5), so an answer that did not vary by tenant would be UBB shipping
+# one. The two rollup axes are UBB's and closed; the fields are the tenant's and
+# open.
+#
+# ⚠ IT IS THE PROTECTION, NOT A CONVENIENCE FOR CLIENTS. Renaming a measure
+# makes the honest reading *available*; it does not make the dishonest
+# comparison impossible (#154 §14). What makes it impossible is refusing the
+# combination — and a refusal can only be stated against a declared vocabulary,
+# which is this one. :func:`grouping_refusal` is that statement.
+#
+# ⚠ NEITHER KIND EVER SELECTS A RATE OR A CUSTOMER-PRICING RULE. #145 §5 took
+# that role away and #147 §2 took the event heading out of pricing by name, and
+# this vocabulary must not readmit either through a reporting door. What makes
+# it structural rather than a promise: a rule's selectors are `Rate.SELECTORS`,
+# nothing here writes one, and neither rollup identity is a column on that
+# table. `apps/metering/tests/test_the_grouping_contract.py` asserts it, and
+# `apps/platform/tests/test_event_type_declaration_invariants.py` has held the
+# quantity heading to it since the record was built.
+
+#: The character between an axis's kind and its name in the one request word.
+#:
+#: ⚠ **A DECLARED KEY MAY CONTAIN IT, AND THE WORD IS STILL UNAMBIGUOUS.** UBB
+#: never invented a charset for a tenant's own key — the registry says so at the
+#: column, because a charset UBB invented would be UBB second-guessing a
+#: tenant's catalogue — so the split has to be at the FIRST separator and the
+#: rest is the name, however many more it holds. Requiring the key to avoid this
+#: character would have been a rule nothing enforces, stated where a reader
+#: would believe it.
+GROUPING_KIND_SEPARATOR = ":"
+
+#: The grain an axis's value is constant at. Three of the four are the Grouping
+#: Field registry's own scopes, read off it rather than restated; the fourth is
+#: the one no declared field can ever be scoped to, because it is a rollup's.
+#:
+#: UBB owns this set and the registry declares no concept for it — legal, and
+#: legal for the reason `event_types.VALUE_TYPE_CHOICES` gives for its own pair:
+#: the contract does not RESTATE the set. The field publishes as a plain string
+#: whose meaning the schema states in prose (`api/v1/schemas.py::
+#: SOURCE_GRAIN_MEANING`), so this is still the one place the values live, and
+#: §7's raw-HTTP reader is told what they mean without a generated enum. A
+#: concept would buy the published `enum` and the console wording, and neither
+#: is owed by a ticket that names two concepts and no more. A later slice
+#: wanting either should register it; the cost of doing so has not risen.
+GRAIN_MEASUREMENT = "measurement"
+GROUPING_GRAINS = tuple(scope for scope, _ in SCOPE_CHOICES) + (GRAIN_MEASUREMENT,)
+GRAIN_EVENT, GRAIN_TASK, GRAIN_SUBTASK = "event", "task", "subtask"
+
+#: The three above are the registry's own scope values, and a declared field's
+#: grain is passed straight through from its scope — so they are spelled here
+#: only for the axes that have no declaration to read one from. The agreement is
+#: checked rather than assumed: a scope renamed in the kernel would otherwise
+#: leave this module answering a grain no declared field can ever match.
+assert {GRAIN_EVENT, GRAIN_TASK, GRAIN_SUBTASK} < set(GROUPING_GRAINS), (
+    "the always-present axes must be scoped in the registry's own words")
+
+#: The surfaces that take a grouping axis. Two, and the second is why this read
+#: is not "the analytics capabilities endpoint": a tenant chooses how its
+#: invoice lines are grouped from this same vocabulary rather than through a
+#: fourth bespoke door (§11). Held to the same reasoning as the grains above,
+#: and described on the wire by `api/v1/schemas.py::SUPPORTED_SURFACES_MEANING`.
+#:
+#: It declares CAPABILITY rather than availability, which is §5.4's own rule and
+#: is why the invoice surface is named before the ticket that consumes it: an
+#: axis is listed where it may honestly be used, and a surface reads this to
+#: find out, rather than each surface keeping a list of its own.
+SURFACE_ANALYTICS = "analytics"
+SURFACE_INVOICE_LINES = "invoice_lines"
+GROUPING_SURFACES = (SURFACE_ANALYTICS, SURFACE_INVOICE_LINES)
+
+#: The axes every posting carries whatever the tenant has declared, each with
+#: the grain its value is constant at, in the order a reader meets them.
+#:
+#: THEY ARE NOT A CATALOGUE AND THAT IS WHY THEY ARE HERE. A catalogue is a list
+#: of VALUES UBB would be shipping on a tenant's behalf — which suppliers exist,
+#: which event types exist. These are COLUMNS every posting has, exactly the
+#: four ADR-0005 calls the reserved keys, plus the customer the posting is
+#: attributed to. Leaving them out would make a whole family of the collapse
+#: unexpressible: the per-customer margin list becomes grouping by the customer
+#: field, and a vocabulary that cannot name it cannot validate it.
+#:
+#: ⚠ THE CUSTOMER IS A GROUPING AXIS AND NOT A RATE SELECTOR, and that is why
+#: the registry's reserved words and `Rate.SELECTORS` are two lists rather than
+#: one. A rule pins a customer through `Rate.customer`, its own relation, never
+#: through a selector. §6 names the customer first among the direct grouping
+#: fields, so it is an axis here — and the registry reserves the word, which is
+#: what stops a tenant declaring a field called `customer` and leaving one
+#: request word naming two axes at two grains.
+ALWAYS_PRESENT_AXES = (
+    ("customer", GRAIN_EVENT),
+    ("provider", GRAIN_EVENT),
+    ("event_type", GRAIN_EVENT),
+    ("task_type", GRAIN_TASK),
+    ("subtask_type", GRAIN_SUBTASK),
+)
+
+#: The registry owns WHICH words are always present; this module owns the grain
+#: each one resolves at, which the registry does not record. So the pair is
+#: checked rather than copied, in both directions: a sixth reserved word with no
+#: grain here would be silently ungroupable on a contract whose whole claim is
+#: that it says what may be grouped by, and an axis here that the registry does
+#: NOT reserve is a word a tenant could declare underneath.
+assert {name for name, _ in ALWAYS_PRESENT_AXES} == set(RESERVED_KEYS), (
+    "every reserved word needs a grain here, and every axis here must be a "
+    "word the registry reserves")
+
+#: THE MEASUREMENT-CONCEPT ROLLUP SHIPS NARROWED, AND THAT IS THE HONEST ANSWER
+#: (§7). #153 §5.4's own sketch wanted it to support component-level cost and
+#: §19's first residue said that had to be resolved before the axis could ship.
+#: Slice 2's split did not resolve it: the measurement child record carries
+#: quantities, a parent, a recorded moment and a retention column — and no cost
+#: lines. The per-measurement components live inside the receipt's JSON, which
+#: is exactly what does not scale.
+#:
+#: So the axis ships supporting measurement quantities with the supplier cost
+#: declared UNSUPPORTED on it, and the reason stated. §5.4's whole purpose is
+#: that this contract declares CAPABILITY rather than availability, so declaring
+#: an unsupported measure is the honest answer the mechanism was built to
+#: express — strictly better than an axis that ships and is quietly unusable at
+#: volume. The component-grain row is #194's, by name.
+#:
+#: ⚠ AND THE RESTRICTION TRAVELS WITH THE AXIS. It groups measurement RECORDS,
+#: not events, so a cost at this grain could only be produced by spreading one
+#: event's whole cost across every measurement that event contains. That is not
+#: a narrower answer, it is a wrong one — a tenant reading it would see the same
+#: money once per quantity — and refusing is what stops it.
+MEASUREMENT_ROLLUP_UNSUPPORTED = (
+    (ANALYTICS_MEASURE_SUPPLIER_COGS,
+     "UBB records supplier cost per posting and not per measurement, so a cost "
+     "at this grain could only be produced by repeating one event's whole cost "
+     "against every quantity that event was measured by."),
+)
+
+#: The rollup axes, each with the grain it resolves at and the measures it
+#: cannot answer. UBB owns both and the set is closed, which is the half of this
+#: contract that is NOT computed per tenant: the tenant assigns members to them;
+#: the axes themselves are UBB's.
+#:
+#: THIS TUPLE FIXES THE ORDER THE READ ANSWERS IN, and it is the only thing that
+#: does — the guard below holds the SET against the registry, which a reordering
+#: of either would not move. Saying the order "is the registry's" would be a
+#: claim nothing checks.
+ROLLUP_AXES = (
+    (ANALYTICS_ROLLUP_EVENT_CATEGORY, GRAIN_EVENT, ()),
+    (ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT, GRAIN_MEASUREMENT,
+     MEASUREMENT_ROLLUP_UNSUPPORTED),
+)
+
+#: A rollup that ships without a line here would be an axis this module answers
+#: for and never offers — invisible, because every function below iterates the
+#: tuple rather than the registry. The guard is the one place the two are
+#: compared.
+assert {axis for axis, _, _ in ROLLUP_AXES} == ANALYTICS_ROLLUP_VALUES, (
+    "every declared rollup needs a line in ROLLUP_AXES")
+
+#: Same guard, for the kinds: a third kind would need a prefix, a grain rule and
+#: a place in the answer, and the failure to give it one should be loud rather
+#: than a word the read silently never offers.
+assert {ANALYTICS_GROUPING_KIND_FIELD,
+        ANALYTICS_GROUPING_KIND_ROLLUP} == ANALYTICS_GROUPING_KIND_VALUES, (
+    "every declared grouping kind needs a prefix and a place in the answer")
+
+
+def grouping_axis(kind, name) -> str:
+    """The one request word for an axis: its kind, then the axis's own name.
+
+    Spelled once, here, so the request word and the discovery read cannot
+    disagree about what a caller sends.
+    """
+    return f"{kind}{GROUPING_KIND_SEPARATOR}{name}"
+
+
+def parse_grouping_axis(word) -> tuple[str, str] | None:
+    """``(kind, name)`` for one request word, or ``None`` where it names none.
+
+    ``None`` covers both halves of the same mistake — a word with no kind at all
+    (the bare axis name every parameter this vocabulary replaces took) and a
+    word whose kind is not one the registry declares. Both are refused by the
+    same sentence, because both are a caller guessing at a vocabulary instead of
+    reading it.
+    """
+    kind, separator, name = str(word).partition(GROUPING_KIND_SEPARATOR)
+    if not separator or not name or kind not in ANALYTICS_GROUPING_KIND_VALUES:
+        return None
+    return kind, name
+
+
+def grouping_options(tenant_id) -> list[dict]:
+    """This tenant's grouping vocabulary — one row per axis it may group by.
+
+    Each row carries what a caller needs to build a request and to know what the
+    answer will mean:
+
+    ``key``
+        the one request word, with its kind attached.
+    ``kind``
+        ``field`` or ``rollup`` — a column or a join, stated rather than
+        inferred from the prefix, so nothing has to split a string to learn it.
+    ``rollup``
+        which rollup axis, where the kind is one; ``None`` otherwise.
+    ``label``
+        the TENANT's own word for the axis, and ``""`` where the wording is
+        UBB's. That asymmetry is ADR-0008 §4 rather than an omission: the
+        registry owns identity and the localisation layer owns expression, so a
+        backend deriving "Event Category" from `event_category` would be
+        manufacturing user-facing terminology out of an implementation token —
+        the defect that section names by example. A tenant's own key is not
+        UBB's English and has nowhere else to come from, which is why it is
+        here and UBB's wording is not.
+    ``source_grain``
+        the grain the axis's value is constant at.
+    ``supported_surfaces``
+        which surfaces take the axis.
+    ``max_cardinality``
+        the cap the tenant declared on the axis, and ``None`` where UBB owns the
+        axis and no cap was declared. §7 makes cardinality one of the three
+        things a request is validated against, and the invoice-line surface
+        warns at configuration time from this same read.
+    ``unsupported_measures``
+        the measures this axis REFUSES, each with its reason. An axis that
+        refuses none carries an empty list, and every measure not named here is
+        accepted and answers with its own state.
+
+    ⚠ **THE COMPLEMENT — an enumerated `supported_measures` — IS NOT HERE, AND
+    THE HALF THAT IS MISSING IS NAMED RATHER THAN QUIETLY DROPPED.** Listing the
+    supported measures means this module naming all four by reference, which
+    would make it the measure concept's serving consumer and pay a debt that
+    belongs to the query that COMPUTES the measures rather than to the read that
+    lists them — the vacuous form of the payment, and the one thing both tickets
+    forbid. Worse, the contract cannot advertise a measure value while its
+    backend consumer holds none, so publishing the set here would publish it
+    ahead of anything that can serve it. Declaring capability BY EXCEPTION is
+    complete for the server, which is where refusal happens; the set the
+    exceptions are exceptions to arrives with the one economic query.
+
+    ⚠ **RETIRED FIELDS STAY IN THE ANSWER.** Retirement blocks new VALUES, never
+    reads (ADR-0005 D8): a posting recorded before its field was retired must
+    still be groupable, so an axis that can still answer is still offered.
+
+    Ordered: the always-present axes, then the tenant's declared fields in slot
+    order, then the rollups in registry order. Slot order is not alphabetical
+    order and the registry's own read is what knows the difference.
+    """
+    from apps.platform.grouping_fields.queries import declared_dimensions
+
+    options = [
+        _option(grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, name),
+                kind=ANALYTICS_GROUPING_KIND_FIELD, grain=grain)
+        for name, grain in ALWAYS_PRESENT_AXES
+    ]
+    options += [
+        _option(grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, field["key"]),
+                kind=ANALYTICS_GROUPING_KIND_FIELD, grain=field["scope"],
+                label=field["key"], max_cardinality=field["max_cardinality"])
+        for field in declared_dimensions(tenant_id)
+    ]
+    options += [
+        _option(grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP, axis),
+                kind=ANALYTICS_GROUPING_KIND_ROLLUP, grain=grain, rollup=axis,
+                unsupported=unsupported)
+        for axis, grain, unsupported in ROLLUP_AXES
+    ]
+    return options
+
+
+def _option(key, *, kind, grain, rollup=None, label="", max_cardinality=None,
+            unsupported=()):
+    """One row of :func:`grouping_options`, built in one place.
+
+    The surface list is derived rather than passed: an axis resolving at the
+    measurement grain may appear only where component-level quantities exist,
+    and an invoice line is money — so the rule is the grain's and not each
+    caller's to remember.
+    """
+    surfaces = [surface for surface in GROUPING_SURFACES
+                if surface != SURFACE_INVOICE_LINES
+                or grain != GRAIN_MEASUREMENT]
+    return {"key": key, "kind": kind, "rollup": rollup, "label": label,
+            "source_grain": grain, "supported_surfaces": surfaces,
+            "max_cardinality": max_cardinality,
+            "unsupported_measures": [{"measure": measure, "reason": reason}
+                                     for measure, reason in unsupported]}
+
+
+def grouping_refusal(tenant_id, *, axes, measures=(),
+                     surface=SURFACE_ANALYTICS) -> str | None:
+    """Why this combination may not be answered, or ``None`` where it may.
+
+    A sentence rather than a raised error, because a read contract returns plain
+    data and the caller decides what an unanswerable request looks like on its
+    own surface.
+
+    ⚠ **IT NAMES THE AXIS AND THE MEASURE, NOT JUST THAT SOMETHING WAS WRONG.**
+    A caveat a client may ignore is a caveat that will be ignored, and that is
+    how three free-text hatches survived ADR-0005 in the first place; a refusal
+    a client cannot act on is the same failure one step later.
+
+    ⚠ **IT REFUSES ON TWO OF §7's THREE GROUNDS, AND THE THIRD IS NAMED RATHER
+    THAN SILENTLY ABSENT.** §7 validates a request against supported measures,
+    supported surfaces AND cardinality. The first two are decided here, from
+    facts this contract holds. The third is not: a cardinality refusal has to
+    compare the tenant's declared cap against how many rows a request would
+    ACTUALLY produce, which is a count over their postings — something only the
+    query that runs them can know, and something the invoice-line surface asks
+    at configuration time rather than at request time. So the cap travels on the
+    row (`max_cardinality`) and the two surfaces that can count decide with it.
+    Refusing here on the cap alone would mean refusing a request that would have
+    returned three rows because the tenant once said a hundred was their limit.
+    """
+    available = {option["key"]: option for option in grouping_options(tenant_id)}
+    for word in axes:
+        if parse_grouping_axis(word) is None:
+            return (f"{word!r} names no grouping kind — every axis is sent as "
+                    f"{ANALYTICS_GROUPING_KIND_FIELD}"
+                    f"{GROUPING_KIND_SEPARATOR}<name> or "
+                    f"{ANALYTICS_GROUPING_KIND_ROLLUP}"
+                    f"{GROUPING_KIND_SEPARATOR}<name>")
+        option = available.get(word)
+        if option is None:
+            return f"{word!r} is not a grouping axis this tenant has declared"
+        if surface not in option["supported_surfaces"]:
+            return f"{word!r} is not available on {surface!r}"
+        for refused in option["unsupported_measures"]:
+            if refused["measure"] in measures:
+                return (f"{refused['measure']!r} is not available grouped by "
+                        f"{word!r}: {refused['reason']}")
+    return None
+
+
+def rollup_membership(tenant_id, rollup) -> dict:
+    """``{identity: heading}`` for one declared semantic rollup.
+
+    The JOIN half of the contract, as plain data: which of the tenant's own
+    declared identities currently sit under which of their own headings. An
+    identity with no heading is absent rather than present under a sentinel —
+    "nobody has filed this" and "this is filed under nothing" are the same fact
+    here, and the axis is opt-in on both sides.
+
+    ⚠ **IT IS READ LIVE, AND THAT IS WHAT RECLASSIFYING HISTORY MEANS.** Moving
+    an identity to another heading changes what every past row rolls up to, and
+    that is safe precisely because a rollup touches no money: it alters no
+    original event, no cost, no Charge, no receipt and no historical monetary
+    amount. Making that true is this module's job and the console states the
+    behaviour at the point of change.
+
+    Keyed by the tenant's own spelling on both sides, because those are the
+    words the tenant reads on the surfaces that carry the answer. The event
+    heading keys on an Event Type's key; the measurement heading keys on the
+    PAIR of Event Type key and quantity code, because a declaration is
+    Event-Type-local and two Event Types declaring one name may be filed under
+    two different headings — the kernel read argues that in full.
+
+    ⚠ **THE QUERY IS THE KERNEL'S AND NOT THIS MODULE'S, AND THAT IS ENFORCED
+    RATHER THAN PREFERRED.** `apps/platform/tests/test_event_type_satellite
+    _invariants.py` refuses a module where a cost, a price or a spend ceiling is
+    decided to NAME a catalogue class — money code does not hold catalogue rows
+    — and this file is metering's read contract, which is squarely one. So the
+    records are reached through `event_types.rollups`, which answers in plain
+    data beside the declaration, exactly as `costing.py` answers what a
+    declaration says about cost. The reporter asks; the kernel answers.
+    """
+    from apps.platform.event_types import rollups
+
+    readers = {
+        ANALYTICS_ROLLUP_EVENT_CATEGORY: rollups.event_types_by_category,
+        ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT: rollups.measurements_by_concept,
+    }
+    # A declared axis with no reader must not fall out of the door below, which
+    # would tell a caller its own registry does not declare the axis it just
+    # read off the discovery contract — a true-sounding message about the wrong
+    # thing. The registry's set is the authority in both directions.
+    assert set(readers) == ANALYTICS_ROLLUP_VALUES, (
+        "every declared rollup needs a reader in the kernel")
+    if rollup not in readers:
+        raise ValueError(f"{rollup!r} is not a declared rollup axis")
+    return readers[rollup](tenant_id)

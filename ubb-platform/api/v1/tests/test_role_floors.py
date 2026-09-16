@@ -259,7 +259,15 @@ _WRITE_ROUTES = {
 # floor and a `PUT` at the admin floor. With the pair above, phase A has taken
 # two paths and four operations off this surface (slice 7 §17), and the exempt
 # count is untouched by all four.
-_EXPECTED_FLOORED = 151
+#
+# 151 + 1 = 152 in #498, and it is phase B's first arrival rather than another
+# of phase A's departures: the discovery contract — `GET /metering/analytics/
+# grouping-options`, one path and one operation, at the READ floor. The carve's
+# default for a GET is the right floor here and the argument is not the
+# default's: this publishes no amount, and the axes it lists are the tenant's
+# own declarations, which the registry read next door already serves at the
+# same floor. Not carved and not exempt, so the exempt count is untouched.
+_EXPECTED_FLOORED = 152
 _EXPECTED_EXEMPT = 10
 
 

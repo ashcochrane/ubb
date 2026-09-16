@@ -126,18 +126,44 @@ class TheRegistryDeclaresTenSlotsTest(SimpleTestCase):
         self.assertEqual(SLOTS,
                          tuple(f"grouping_field_{i}" for i in range(1, 11)))
 
-    def test_the_four_always_present_axes_are_unchanged(self):
+    def test_the_always_present_axes_are_what_the_vocabulary_says(self):
         """Ten TENANT slots, on top of these — not ten in total.
 
-        These four are never declared and never retired, and a widening that
-        quietly absorbed them would leave a tenant six new slots rather than
-        four, with four of its axes suddenly re-declarable.
+        These are never declared and never retired, and a widening that quietly
+        absorbed them would leave a tenant new slots rather than the four it
+        was given, with its always-present axes suddenly re-declarable.
+
+        ⚠ **FIVE SINCE #498, AND THE FIFTH IS NOT A SELECTOR.** The customer
+        became an analytics axis when slice 7's grouping contract made it one,
+        and the word had to be reserved in the same commit: an unreserved
+        `customer` lets a tenant declare a field of that name, after which the
+        one request word `field:customer` names two axes at two grains with
+        nothing to say which the caller meant. It is emphatically NOT in
+        `Rate.SELECTORS` — a rule pins a customer through its own relation —
+        which is why the two lists stopped being the same list here and are
+        asserted apart, below.
         """
         self.assertEqual(RESERVED_KEYS,
-                         ("provider", "event_type", "task_type", "subtask_type"))
+                         ("provider", "event_type", "task_type",
+                          "subtask_type", "customer"))
         for axis in RESERVED_KEYS:
             with self.subTest(axis=axis):
                 self.assertNotIn(axis, SLOTS)
+
+    def test_the_reserved_words_are_not_the_rate_selectors(self):
+        """The two lists ask different questions, and #498 is where their
+        answers stopped coinciding.
+
+        A word a tenant may not DECLARE is not the same as a column a rule may
+        PIN ON. Asserting the difference rather than leaving it to a comment is
+        what stops the next widening from being applied to both by reflex — and
+        a customer selector would be a customer-pricing rule selected by a
+        reporting axis, which slice 7 §6 forbids outright.
+        """
+        from apps.metering.pricing.models import Rate
+
+        self.assertNotIn("customer", Rate.SELECTORS)
+        self.assertEqual(set(RESERVED_KEYS) - set(Rate.SELECTORS), {"customer"})
 
     def test_the_widest_identifier_is_seventeen_characters(self):
         """The literal the migration had to hard-code, pinned from the outside.

@@ -42,7 +42,24 @@ SCOPE_CHOICES = [("task", "Task"), ("subtask", "Subtask"), ("event", "Event")]
 
 # Always-present axes that are never declared and never retired (D1). A tenant
 # may not bind one of these words to a dim slot.
-RESERVED_KEYS = ("provider", "event_type", "task_type", "subtask_type")
+#
+# ⚠ **FIVE, AND THE FIFTH IS NOT A RATE SELECTOR — WHICH IS WHY THIS TUPLE AND
+# `Rate.SELECTORS` ARE TWO LISTS RATHER THAN ONE** (#498, slice 7 §6). They ask
+# different questions and used to have the same answer, which is how a reader
+# comes to think they are one list. This one asks *which words may a tenant not
+# bind to a slot*; `Rate.SELECTORS` asks *which columns may a rule pin on*, and
+# ADR-0005's "fourteen selectors" is about the second.
+#
+# The customer joined THIS list when slice 7's grouping contract made it an
+# analytics axis every posting carries — §6 names it first among the direct
+# grouping fields, and the per-customer margin list collapses into grouping by
+# it. Without the reservation a tenant could declare a field keyed `customer`
+# and the one request word `field:customer` would name two different axes at
+# two different grains, with nothing to say which the caller meant. A rule still
+# pins a customer through `Rate.customer`, its own relation, and never through a
+# selector — so the fifth word belongs here and nowhere near that list.
+RESERVED_KEYS = ("provider", "event_type", "task_type", "subtask_type",
+                 "customer")
 
 # Correlation identifiers (D9): unbounded by construction, so they are filter
 # parameters and may never be declared as dimensions.
