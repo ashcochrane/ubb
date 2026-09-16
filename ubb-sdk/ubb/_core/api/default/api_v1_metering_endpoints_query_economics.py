@@ -239,8 +239,22 @@ def sync_detailed(
     and is the default, `recognised` spreads it by the record's own method. The
     answer always states which it served.
 
-    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
-    because the ceiling is about how many buckets one answer may carry. The
+    **How far back you may ask, and how much of it per request — the two
+    numbers, together, because they do not compose on their own.** UBB keeps the
+    economics for six years and detailed measurement on a shorter platform
+    clock, and this answer publishes both start dates in
+    `economic_data_available_from` and `measurement_data_available_from` —
+    always, whether or not anything was truncated. One request, meanwhile, may
+    span 366 days, or 92 for an hourly question, because that ceiling is about
+    how many buckets one answer may carry. So six years of history is reachable
+    in successive windows, not in one call, and the response states each
+    number rather than leaving you to discover the second by being refused.
+
+    A measure whose stretch reaches back past the horizon governing it reads
+    `unavailable_outside_retention_horizon` and carries `available_from`: never
+    a zero, and never a partial total presented as a total. Only a question
+    grouped by the measurement-concept rollup is governed by the shorter clock;
+    every money measure is on the six-year one however you filter it. The
     response echoes the period it applied, so a caller who left the window to
     the default can see what it was.
 
@@ -349,8 +363,22 @@ def sync(
     and is the default, `recognised` spreads it by the record's own method. The
     answer always states which it served.
 
-    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
-    because the ceiling is about how many buckets one answer may carry. The
+    **How far back you may ask, and how much of it per request — the two
+    numbers, together, because they do not compose on their own.** UBB keeps the
+    economics for six years and detailed measurement on a shorter platform
+    clock, and this answer publishes both start dates in
+    `economic_data_available_from` and `measurement_data_available_from` —
+    always, whether or not anything was truncated. One request, meanwhile, may
+    span 366 days, or 92 for an hourly question, because that ceiling is about
+    how many buckets one answer may carry. So six years of history is reachable
+    in successive windows, not in one call, and the response states each
+    number rather than leaving you to discover the second by being refused.
+
+    A measure whose stretch reaches back past the horizon governing it reads
+    `unavailable_outside_retention_horizon` and carries `available_from`: never
+    a zero, and never a partial total presented as a total. Only a question
+    grouped by the measurement-concept rollup is governed by the shorter clock;
+    every money measure is on the six-year one however you filter it. The
     response echoes the period it applied, so a caller who left the window to
     the default can see what it was.
 
@@ -454,8 +482,22 @@ async def asyncio_detailed(
     and is the default, `recognised` spreads it by the record's own method. The
     answer always states which it served.
 
-    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
-    because the ceiling is about how many buckets one answer may carry. The
+    **How far back you may ask, and how much of it per request — the two
+    numbers, together, because they do not compose on their own.** UBB keeps the
+    economics for six years and detailed measurement on a shorter platform
+    clock, and this answer publishes both start dates in
+    `economic_data_available_from` and `measurement_data_available_from` —
+    always, whether or not anything was truncated. One request, meanwhile, may
+    span 366 days, or 92 for an hourly question, because that ceiling is about
+    how many buckets one answer may carry. So six years of history is reachable
+    in successive windows, not in one call, and the response states each
+    number rather than leaving you to discover the second by being refused.
+
+    A measure whose stretch reaches back past the horizon governing it reads
+    `unavailable_outside_retention_horizon` and carries `available_from`: never
+    a zero, and never a partial total presented as a total. Only a question
+    grouped by the measurement-concept rollup is governed by the shorter clock;
+    every money measure is on the six-year one however you filter it. The
     response echoes the period it applied, so a caller who left the window to
     the default can see what it was.
 
@@ -564,8 +606,22 @@ async def asyncio(
     and is the default, `recognised` spreads it by the record's own method. The
     answer always states which it served.
 
-    Explicit date windows are bounded: 366 days, and 92 for an hourly question,
-    because the ceiling is about how many buckets one answer may carry. The
+    **How far back you may ask, and how much of it per request — the two
+    numbers, together, because they do not compose on their own.** UBB keeps the
+    economics for six years and detailed measurement on a shorter platform
+    clock, and this answer publishes both start dates in
+    `economic_data_available_from` and `measurement_data_available_from` —
+    always, whether or not anything was truncated. One request, meanwhile, may
+    span 366 days, or 92 for an hourly question, because that ceiling is about
+    how many buckets one answer may carry. So six years of history is reachable
+    in successive windows, not in one call, and the response states each
+    number rather than leaving you to discover the second by being refused.
+
+    A measure whose stretch reaches back past the horizon governing it reads
+    `unavailable_outside_retention_horizon` and carries `available_from`: never
+    a zero, and never a partial total presented as a total. Only a question
+    grouped by the measurement-concept rollup is governed by the shorter clock;
+    every money measure is on the six-year one however you filter it. The
     response echoes the period it applied, so a caller who left the window to
     the default can see what it was.
 

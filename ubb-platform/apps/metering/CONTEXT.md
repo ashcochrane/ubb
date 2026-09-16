@@ -67,9 +67,12 @@ for the projection of a Charge, which #417 made writable and #418 is where the d
 end to end against a row the backend really produces.
 (`apps/metering/usage/measurements.py:measurements_status_for`)
 _Avoid_: reading it as analytics' `measure_status`. The near miss is accepted, not overlooked
-(`economics.yaml` argues it against ADR-0006 §§2–3): `measure_status` says whether a NUMBER is
-knowable at the grain asked for, this one whether the RECORD of what was measured is still there to
-read a number from.
+(`economics.yaml` argues it against ADR-0006 §§2–3), and since #500 both concepts speak about
+retention — so what tells them apart is the **grain of the subject**, not the subject. This one is a
+fact about ONE posting: can its own measured quantities still be read. `measure_status` is a fact
+about one MEASURE of an aggregate row: what its figure is worth — knowable, a bound, inattributable
+at the grain asked for, or unavailable because the *stretch* asked about reaches past a published
+horizon.
 
 **Recording core**:
 The recording body (price → create → accumulate → stop-context tag → dirty marker →

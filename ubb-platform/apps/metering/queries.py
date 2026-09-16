@@ -34,12 +34,16 @@ from django.db.models import Sum, Count
 from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import (
     TruncDate, TruncDay, TruncHour, TruncMonth)
+from django.utils import timezone
 
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import (
     UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total,
     cost_total_annotations,
 )
+from core.retention import (
+    AVAILABLE_FROM_FIELD, ECONOMIC_HORIZON_FIELD, MEASUREMENT_HORIZON_FIELD,
+    retention_horizons)
 from core.time_windows import month_bounds, utc_day_start, utc_next_day_start
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD,
@@ -55,7 +59,10 @@ from core.vocabulary import (
     ANALYTICS_ROLLUP_VALUES,
     MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN,
+    MEASURE_STATUS_NOT_APPLICABLE,
     MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
+    MEASURE_STATUS_VALUES,
     PRICING_STATUS_WAIVED,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
@@ -1821,20 +1828,58 @@ AXES_A_CHARGE_POSTING_CANNOT_CARRY = ("provider", "event_type", "subtask_type")
 
 #: The measure states this query can reach, worst last.
 #:
-#: ⚠ **THREE OF THE REGISTRY'S FOUR, AND THE FOURTH IS NAMED RATHER THAN
-#: QUIETLY ABSENT.** `not_applicable` says the measure does not apply here, and
-#: nothing this query does produces that: a combination a measure cannot answer
-#: is REFUSED against the discovery contract before any row is built, which is
-#: §7's whole mechanism, so the answer never contains a measure that does not
-#: apply to it. The state arrives with the surface that can produce one.
-#:
 #: The ORDER is the precedence, and it runs from most to least informative about
 #: the number beside it: a measure that cannot be attributed at this grain is
 #: saying the figure is not the answer at all, which outranks a figure that is a
 #: real bound. Ranking the other way would let a bound hide an inattributable
-#: total.
+#: total. The retention state is last because it outranks even that: a grain
+#: problem has a remedy on this surface — ask a coarser question — and an age
+#: problem has none, so a figure standing beside it would be a figure about a
+#: stretch nothing can be read from.
 MEASURE_STATES_WORST_LAST = (MEASURE_STATUS_KNOWN, MEASURE_STATUS_INCOMPLETE,
-                             MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN)
+                             MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+                             MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
+
+#: ⚠ **FOUR OF THE REGISTRY'S FIVE, AND THE FIFTH IS NAMED RATHER THAN QUIETLY
+#: ABSENT — WHICH IS WHY THIS GUARD SPELLS THE WHOLE SET.**
+#:
+#: `not_applicable` says the measure does not apply here, and nothing this query
+#: does produces that: a combination a measure cannot answer is REFUSED against
+#: the discovery contract before any row is built, which is §7's whole
+#: mechanism, so an answer never contains a measure that does not apply to it.
+#: #499 recorded that as a property of the design rather than an omission, and
+#: #500 did not find a reading that made it reachable without folding two
+#: failures into one value — the exact defect §4 forbids.
+#:
+#: So this module holds the concept as a SET and says which member it reaches:
+#: the four above are computed, the fifth is declared unreachable here, and a
+#: SIXTH arriving in the registry fails rather than becoming a state the answer
+#: silently never carries. That is what makes this module the authority on the
+#: concept rather than a consumer of some of it, and it is the condition the
+#: contract's `enum` needs: a closed set is published whole or not at all
+#: (publishing three values now and a fourth later is the break a generated
+#: client's exhaustive switch cannot survive), so what the document needs is a
+#: backend that knows the whole set, not one that can reach every member of it.
+#:
+#: The `assert` below is the idiom this module already uses twice, and it fails
+#: at import on every ordinary run — but it is stripped under `python -O`, so
+#: the control that really holds this is
+#: `test_the_precedence_holds_every_value_but_the_refused_one`, which pins the
+#: same equality. The statement here is for the reader; the test is the gate.
+assert (set(MEASURE_STATES_WORST_LAST) | {MEASURE_STATUS_NOT_APPLICABLE}
+        == MEASURE_STATUS_VALUES), (
+    "every measure state needs a precedence here, or a stated reason this "
+    "query cannot reach it")
+
+#: The states under which a row states NO figure at all (#153 §8.5).
+#:
+#: Both are `unavailable_<why>`, and neither may carry a number: a margin UBB
+#: cannot attribute at the requested grain is not a small margin, and a total
+#: over a stretch the platform no longer holds is not a small total. `NO_FIGURE`
+#: below is what they carry instead.
+MEASURE_STATES_WITH_NO_FIGURE = (
+    MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
 
 #: THE ABSENCE OF THE REVENUE ARGUMENT, WHICH IS NOT THE SAME AS AN EMPTY ONE.
 #:
@@ -1989,7 +2034,7 @@ def _keeps_the_event_type_constant(axes) -> bool:
 
 
 def economics(tenant_id, *, measures, group_by=(), bucket=None,
-              filters=None, basis=None,
+              filters=None, basis=None, as_of=None,
               contributed_revenue=_NOTHING_WAS_CONTRIBUTED) -> dict:
     """What this tenant's AI work cost, what it earned, and the difference.
 
@@ -2017,6 +2062,12 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
     ``filters``
         an :class:`EconomicFilters` — what the question is asked ABOUT. Absent
         means the ordinary tenant-wide question rather than a special case.
+    ``as_of``
+        the day the question is being asked, which is what the two retention
+        horizons are measured back from. A caller that also resolves a window
+        should pass the same day it resolved that window against, so the period
+        and the horizons come from ONE reading of the clock — two readings a
+        microsecond apart disagree across midnight.
     ``contributed_revenue``
         the revenue rows this product does not hold — see below. Passing
         nothing is a different request from passing none, and the default is
@@ -2078,6 +2129,61 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
     argument is a `ValueError` and only an explicitly empty sequence means
     there was none.
 
+    ⚠ **TWO RETENTION HORIZONS, PUBLISHED ON EVERY ANSWER, TRUNCATED OR NOT**
+    (§13). The platform keeps the money for six years and measurement detail on
+    a shorter clock; `core.retention` owns both dates and the argument for why
+    one is a constant and the other configurable. They are on every answer and
+    not only on a truncated one, because *when can this series start* is a
+    question a caller has to answer BEFORE choosing a window, and a field that
+    appears only once something has gone wrong is a field nobody builds against.
+
+    **WHICH CLOCK GOVERNS A ROW DEPENDS ON THE GROUPING, AND THAT IS THE WHOLE
+    OF IT.** All four measures are economic and read from postings, so an
+    ordinary question is governed by the six-year clock however it is filtered.
+    A question grouped by the measurement-concept rollup reads the child records
+    the shorter clock prunes, so those rows are governed by the shorter one.
+    ⚠ **The shorter clock therefore never truncates a money chart** — which is
+    what makes setting its number later a configuration change rather than a
+    silent re-answering of every question a tenant already asks.
+
+    ⚠ **A ROW WHOSE STRETCH REACHES BACK PAST ITS CLOCK STATES NO FIGURE.** Not
+    zero, and not the partial total of the part that survived: a total over a
+    stretch the platform no longer holds is not a small total, it is not a total.
+    Every measure on such a row reads
+    `unavailable_outside_retention_horizon` and carries the day its series can
+    start. A row's stretch is the requested period where the question is
+    unbucketed, and the bucket clamped to that period where it is bucketed — so
+    a month bucket straddling the horizon is truncated and the month after it is
+    not.
+
+    ⚠ **AND A QUESTION WITH NO START DATE IS NOT A QUESTION ABOUT ALL OF
+    HISTORY.** UBB holds nothing before the horizon, so an unbounded question is
+    a question about *the horizon onwards*, and no row of it is truncated. The
+    truncation bites when a caller NAMES a day the platform cannot answer for,
+    which is the case where the old answer was a confident zero.
+
+    ⚠ **AND NO `context` WHERE NOTHING COULD ANSWER, FOR THE SAME REASON IN THE
+    OTHER DIRECTION.** A context row is a REMEDY — it names the axes and the
+    bucket at which asking again would produce a margin — and a coarser
+    question about a released stretch is refused exactly as this one was, so
+    offering it there would publish an instruction that cannot work. The test is
+    whether ANY row of this answer could state a figure, not whether the period
+    reaches back: a window straddling the horizon keeps its context, because the
+    buckets inside the horizon are exactly the ones a re-grouping would help.
+    The money is not lost either way; it is answerable on any window inside the
+    horizon, which this response states.
+
+    ⚠ **THE LIMIT, NAMED RATHER THAN LEFT TO BE DISCOVERED: A GROUPED QUESTION
+    OVER A STRETCH THE PLATFORM NO LONGER HOLDS HAS NO ROWS FOR IT.** Rows are
+    the groups the data produces, and the groups that existed in a pruned
+    stretch are exactly what the horizon no longer holds — there is no honest
+    way to invent one, because inventing it would mean naming an axis value
+    nobody can read back. What the caller gets is the two horizon fields, which
+    say precisely why the series starts where it does. The one shape that is
+    guaranteed a row is the ungrouped, unbucketed question, whose row always
+    exists — and that is the shape whose old answer was zeros, so it is the one
+    the fifth state matters most on.
+
     ⚠ **NON-GOAL — A CONFIDENT PRICE OVER AN UNRESOLVED COST (§15).** The
     pricing service consults the costing status only inside its margin-over-cost
     branch; every other path returns a confident price, that amount becomes a
@@ -2114,9 +2220,15 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
 
     plans = [_axis_plan(tenant_id, word) for word in axes]
     postings = _economic_postings(tenant_id, filters)
+    # Whether this answer is read out of the child records the shorter clock
+    # prunes, which decides BOTH how it is grouped and which horizon governs it.
+    # Asked once, because two readings of one fact are two answers waiting to
+    # disagree.
+    from_measurements = any(
+        plan["rollup"] == ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT
+        for plan in plans)
 
-    if any(plan["rollup"] == ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT
-           for plan in plans):
+    if from_measurements:
         groups = _measurement_grouped(tenant_id, postings, plans, bucket)
     else:
         groups = _posting_grouped(tenant_id, postings, plans, bucket)
@@ -2135,17 +2247,81 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
         # inventing a group.
         groups[(None, ())] = _empty_group()
 
+    horizons = retention_horizons(as_of or _today())
+    holds_from = (horizons.measurement if from_measurements
+                  else horizons.economic)
+    ordered = sorted(groups.items(), key=_row_order)
+    series_starts = [_series_start_if_released(key[0], filters, holds_from)
+                     for key, _ in ordered]
     rows = [_economic_row(key, group, measures=measures,
-                          attributable=attributable or not contributions)
-            for key, group in sorted(groups.items(), key=_row_order)]
+                          attributable=attributable or not contributions,
+                          available_from=series_start)
+            for (key, group), series_start in zip(ordered, series_starts)]
+    # ⚠ WHETHER A REMEDY IS WORTH OFFERING AT ALL — see `context` below. Two
+    # clauses because there are two ways to deserve one, and an answer with no
+    # rows needs the second: a grouped question over an EMPTY window inside the
+    # horizon still wants to be told the money exists (that is #499's shape and
+    # it is unchanged), while the same question over a released stretch does
+    # not, because asking again in any shape reaches the same refusal.
+    remediable = (any(start is None for start in series_starts)
+                  or _series_start_if_released(None, filters,
+                                               holds_from) is None)
     return {
         "group_by": list(axes),
         "bucket": bucket,
         "basis": basis,
+        # Both horizons, whether or not anything was truncated — the docstring
+        # above gives the reason.
+        ECONOMIC_HORIZON_FIELD: horizons.economic.isoformat(),
+        MEASUREMENT_HORIZON_FIELD: horizons.measurement.isoformat(),
         "rows": rows,
-        "context": ([] if attributable
+        # ⚠ AND NO CONTEXT WHERE NOTHING COULD ANSWER, BECAUSE CONTEXT IS A
+        # REMEDY AND THERE IS NO RE-GROUPING HERE. Every `context` row carries
+        # the axes and the bucket at which asking again WOULD produce a margin
+        # — but a coarser question about a stretch the platform no longer holds
+        # is refused for the same reason this one was, so offering it would
+        # publish an instruction that cannot work. The money is not lost: it is
+        # answerable on any window inside the horizon, which the answer states.
+        "context": ([] if attributable or not remediable
                     else _context_rows(contributions, axes)),
     }
+
+
+def _today():
+    """The day the question is being asked, read in one place.
+
+    ⚠ **THE ONLY CLOCK THIS MODULE READS, AND IT IS A DEFAULT RATHER THAN THE
+    RULE.** Every caller that also resolves a window should pass its own `as_of`
+    so the two come from one reading; this exists so that a caller with no
+    window of its own — a test, a later surface asking the degenerate question —
+    does not have to invent one.
+    """
+    return timezone.now().date()
+
+
+def _series_start_if_released(bucket_start, filters, holds_from):
+    """The day a row's series can start, where its stretch reaches back past
+    that day — and ``None`` where the row is wholly inside the horizon.
+
+    ⚠ **NAMED FOR WHAT IT RETURNS AND NOT FOR THE QUESTION IT ANSWERS.** A
+    predicate name over a date-or-``None`` reads as a boolean at every call
+    site, and one of those call sites feeds `available_from` straight onto the
+    wire.
+
+    The stretch is the requested period for an unbucketed question and the
+    bucket for a bucketed one, and the `max` is what clamps a bucket to the
+    period: a month bucket opening before the day the caller asked from was only
+    ever summed from that day, so it is not truncated for opening early.
+
+    ⚠ **AN ABSENT START DATE IS THE HORIZON, NOT THE BEGINNING OF TIME.** The
+    platform holds nothing before it, so a question with no lower bound is a
+    question from the horizon onwards and none of its rows is truncated. A
+    caller only meets the fifth state by naming a day.
+    """
+    opens = filters.start_date or holds_from
+    if bucket_start is not None:
+        opens = max(bucket_start.date(), opens)
+    return holds_from if opens < holds_from else None
 
 
 def _economic_postings(tenant_id, filters):
@@ -2513,48 +2689,80 @@ def _row_order(item):
                   for value, status in values))
 
 
-def _economic_row(key, group, *, measures, attributable) -> dict:
+def _economic_row(key, group, *, measures, attributable,
+                  available_from) -> dict:
     """One row of the answer: what it groups, and each requested measure.
 
     The subtraction happens HERE and only here, over the two totals this row
     will actually state — which is what "a bucket-level subtraction" means in
     code rather than in prose.
+
+    ``available_from`` is the day this row's series can start, passed exactly
+    where the row's stretch reaches back past the horizon governing it — so the
+    KEY is absent from this plain data otherwise, which is not the same as what
+    the wire carries: the published field is on every measure and holds `null`
+    where there is a figure, and the schema says so at its own field. It
+    decides every measure at once: there is no figure to state and no partial
+    one worth stating, so the row says which day it could have answered from
+    instead. ⚠ **The four figure slots stay exactly the slots each measure fills
+    when the figure IS known** — one `return`, so the two branches can only
+    differ in what they state about a measure, and held to that by
+    `apps/metering/tests/test_the_one_economic_query.py` besides, because a
+    measure that filled one slot with a number and nulled a different one would
+    publish a count as money on the very rows a reader is least able to check.
     """
     bucket_start, values = key
-    revenue = (group["posting_revenue_micros"]
-               + group["contributed_revenue_micros"])
-    cost_state = (MEASURE_STATUS_INCOMPLETE
-                  if group[UNRESOLVED_EVENT_COUNT_KEY]
-                  else MEASURE_STATUS_KNOWN)
-    if not attributable:
-        revenue_state = MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
-    elif group[UNPRICED_EVENT_COUNT_KEY]:
-        revenue_state = MEASURE_STATUS_INCOMPLETE
-    else:
-        revenue_state = MEASURE_STATUS_KNOWN
-
     # ⚠ THE COUNT DOES NOT SHARE THE MONEY'S FIELD, AND THE MEASURE'S OWN NAME
     # IS WHAT SAYS WHICH ONE IT FILLS. Three of the four are denominated in
     # micros and the fourth is a number of records; putting a count in a field
     # whose name ends `_micros` would be a hundredth-of-a-cent reading of two,
     # which is the kind of quiet unit error this whole programme is about. So
-    # each measure fills exactly one, and the other is null.
-    built = {
-        ANALYTICS_MEASURE_SUPPLIER_COGS: {
-            "amount_micros": group["provider_cost_micros"],
-            "status": cost_state,
-            UNRESOLVED_EVENT_COUNT_KEY: group[UNRESOLVED_EVENT_COUNT_KEY]},
-        ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
-            "amount_micros": revenue,
-            "status": revenue_state,
-            UNPRICED_EVENT_COUNT_KEY: group[UNPRICED_EVENT_COUNT_KEY]},
-        ANALYTICS_MEASURE_RECORDED_EVENTS: {
-            "event_count": group[ANALYTICS_MEASURE_RECORDED_EVENTS],
-            "status": MEASURE_STATUS_KNOWN},
-        ANALYTICS_MEASURE_GROSS_MARGIN: _margin(
-            revenue, group["provider_cost_micros"],
-            revenue_state=revenue_state, cost_state=cost_state),
-    }
+    # each measure fills exactly one, and the other is null — in BOTH branches
+    # below, which is what makes a truncated row the same shape as an answered
+    # one rather than a second shape a reader has to learn.
+    if available_from is not None:
+        gone = {"status": MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
+                AVAILABLE_FROM_FIELD: available_from.isoformat()}
+        built = {
+            ANALYTICS_MEASURE_SUPPLIER_COGS: {
+                "amount_micros": NO_FIGURE,
+                UNRESOLVED_EVENT_COUNT_KEY: NO_FIGURE, **gone},
+            ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
+                "amount_micros": NO_FIGURE,
+                UNPRICED_EVENT_COUNT_KEY: NO_FIGURE, **gone},
+            ANALYTICS_MEASURE_RECORDED_EVENTS: {
+                "event_count": NO_FIGURE, **gone},
+            ANALYTICS_MEASURE_GROSS_MARGIN: {
+                "amount_micros": NO_FIGURE, **gone},
+        }
+    else:
+        revenue = (group["posting_revenue_micros"]
+                   + group["contributed_revenue_micros"])
+        cost_state = (MEASURE_STATUS_INCOMPLETE
+                      if group[UNRESOLVED_EVENT_COUNT_KEY]
+                      else MEASURE_STATUS_KNOWN)
+        if not attributable:
+            revenue_state = MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
+        elif group[UNPRICED_EVENT_COUNT_KEY]:
+            revenue_state = MEASURE_STATUS_INCOMPLETE
+        else:
+            revenue_state = MEASURE_STATUS_KNOWN
+        built = {
+            ANALYTICS_MEASURE_SUPPLIER_COGS: {
+                "amount_micros": group["provider_cost_micros"],
+                "status": cost_state,
+                UNRESOLVED_EVENT_COUNT_KEY: group[UNRESOLVED_EVENT_COUNT_KEY]},
+            ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
+                "amount_micros": revenue,
+                "status": revenue_state,
+                UNPRICED_EVENT_COUNT_KEY: group[UNPRICED_EVENT_COUNT_KEY]},
+            ANALYTICS_MEASURE_RECORDED_EVENTS: {
+                "event_count": group[ANALYTICS_MEASURE_RECORDED_EVENTS],
+                "status": MEASURE_STATUS_KNOWN},
+            ANALYTICS_MEASURE_GROSS_MARGIN: _margin(
+                revenue, group["provider_cost_micros"],
+                revenue_state=revenue_state, cost_state=cost_state),
+        }
     return {
         "bucket_start": (bucket_start.isoformat()
                          if bucket_start is not None else None),
@@ -2583,10 +2791,12 @@ def _margin(revenue, cost, *, revenue_state, cost_state) -> dict:
 
     Where either side cannot be attributed at this grain there is no margin at
     all — not a small one, and not one computed from the half that could be
-    placed — so the figure is absent and the state says why.
+    placed — so the figure is absent and the state says why. The test is against
+    the whole family of unavailable states rather than against one of them, so a
+    state added to that family cannot arrive carrying a subtraction.
     """
     state = max((revenue_state, cost_state),
                 key=MEASURE_STATES_WORST_LAST.index)
-    if state == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN:
+    if state in MEASURE_STATES_WITH_NO_FIGURE:
         return {"amount_micros": NO_FIGURE, "status": state}
     return {"amount_micros": revenue - cost, "status": state}

@@ -1231,12 +1231,18 @@ CONCEPTS_IN_THE_CONTRACT = {
     # nobody computed. So the marker sits where the name is — plain and required,
     # since a measure is always one of the four and never absent.
     #
-    # ⚠ ITS SIBLING `measure_status` IS DELIBERATELY NOT HERE. The same rows
-    # carry a state per measure, that concept declares four values and the query
-    # computes three, and the contract may not advertise a concept its backend
-    # consumer holds only some of — so the state ships as a plain string with a
-    # written `description` and the marker arrives with the fifth value.
     "analytics_measure": Published(1, ENUM),  # EconomicMeasureOut.measure
+
+    # ⚠ ITS SIBLING `measure_status` ARRIVED ONE TICKET LATER, ON THE SAME NODE.
+    # At #499 the concept declared four values, the query computed three, and
+    # the contract may not advertise a concept whose backend consumer holds only
+    # some of one — so the state shipped as a plain string with a written
+    # `description`. #500 added the FIFTH value
+    # (`unavailable_outside_retention_horizon`), made the read contract hold the
+    # concept as a SET, and marked the field; the `description` moved up onto
+    # the schema, whose subject it was. One node, because a state sits on each
+    # measure and each measure on a row resolves independently.
+    "measure_status": Published(1, ENUM),  # EconomicMeasureOut.status
 }
 
 
@@ -1697,6 +1703,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # rather than one, so a marker at that level would be saying the whole
     # response had a measure of its own.
     placed("analytics_measure", {"EconomicMeasureOut"})
+
+    # WHAT ONE MEASURE'S FIGURE IS WORTH, on the same row and for the same
+    # reason: the state belongs to the measure, not to the answer, because each
+    # measure on a row resolves independently of the others. One node, and a
+    # LATER one than its sibling above — #499 marked the name and #500 the
+    # state, once the concept's fifth value existed and the read contract held
+    # the set rather than three of its members.
+    placed("measure_status", {"EconomicMeasureOut"})
 
     # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
     # ONE. Both on the discovery contract's row and on nothing else, which is
@@ -2537,9 +2551,19 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # module that COMPUTES the concept's values rather than one that holds
     # them — each measure is aggregated from its own canonical source, so the
     # four are held because something decides with them. Its sibling
-    # `measure_status` stays: the same query computes three of that concept's
-    # four states, and a document naming four over a consumer holding three is
-    # the defect this seeding exists to stop. One entry out, one step down.
-    assert len(_entries(programme)) >= 4, (
+    # `measure_status` stayed one ticket longer: at that commit the same query
+    # computed three of that concept's four states, and a document naming four
+    # over a consumer holding three is the defect this seeding exists to stop.
+    # One entry out, one step down.
+    # 4 -> 3 in #500: `measure_status`, the eleventh, paid in the commit that
+    # added the concept's FIFTH value (`unavailable_outside_retention_horizon`,
+    # spec §4) and made the read contract hold the concept as a SET rather than
+    # as four of its members. The reachability question the entry above raises
+    # is answered in the ledger's own tombstone: four of the five are computed,
+    # `not_applicable` is refused before a row is built, and what a `closed`
+    # set needs from a backend is authority over the whole set rather than a
+    # path to every member — which is the ruling `measurements_status` has
+    # carried since it was coined. One entry out, one step down.
+    assert len(_entries(programme)) >= 3, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

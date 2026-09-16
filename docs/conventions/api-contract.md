@@ -106,7 +106,39 @@ but **parameter-bounded** — explicit date windows are refused past 366 days
 (hourly timeseries: 92) with `validation_error`. A report that lets the caller
 leave the window open bounds it itself — the spend-control reports take the
 366 days ending now — and echoes the window it applied, so the bound is never
-silent (#465).
+silent (#465). **Default first, bound second, against the RESOLVED span**: the
+reports written before #499 bound only when the caller sent BOTH dates, so an
+open end escaped the ceiling entirely.
+
+**How far back is a different number from how much per request, and a report
+that publishes one owes the other** (#500). UBB keeps the economics for six
+years and detailed measurement on a shorter platform clock; `core/retention.py`
+owns both dates, one platform-wide each, with no per-tenant policy. *Six years
+available* beside *at most 366 days per request, no pagination* is two numbers
+that do not compose on their own, so a report reaching back past a horizon
+states both: the horizons as response fields under their final names
+(`economic_data_available_from`, `measurement_data_available_from`), published
+whether or not anything was truncated, and the per-call bound in the same
+description. **A measure whose stretch reaches past its horizon says so** —
+`measure_status: unavailable_outside_retention_horizon` with `available_from`,
+never a zero and never a partial total presented as a total.
+
+Two boundaries of that rule, recorded here because they are the kind a later
+report will meet again. **A remedy is only offered where a remedy exists**: the
+economic query's `context` names the axes and bucket at which asking again would
+produce a margin, and it is therefore absent where NO row of the answer could
+state a figure — a coarser question about a released stretch is refused for the
+same reason the first one was, so listing the money with that remedy beside it
+would publish an instruction that cannot work. This is a boundary of the
+"never silently drop" prohibition rather than an exception to it: under
+truncation no figure is stated at all, so no total can be short. **And rows are
+the groups the data produces**, so a GROUPED question over a wholly released
+stretch has no rows to carry the state on — the groups that existed there are
+exactly what the horizon no longer holds. The horizon fields are what say why
+the series starts where it does; only the ungrouped, unbucketed question is
+guaranteed a row. ⚠ A refusal is a problem+json body and carries no horizons, so
+a caller whose window is refused for spanning too long learns the horizon from
+its next successful answer rather than from the refusal.
 
 ## Usage verdicts: data, not errors
 

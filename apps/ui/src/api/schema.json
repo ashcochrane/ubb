@@ -2562,7 +2562,7 @@
         "type": "object"
       },
       "EconomicMeasureOut": {
-        "description": "One requested measure on one row: its amount, and what that amount is\nworth.\n\n\u26a0 **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS\nOWN.** A measure whose inputs are still resolving carries a bound and says\nso here; a measure that could not be attributed at the requested grain\ncarries whatever part of itself could be placed \u2014 or, for a margin, nothing\nat all \u2014 and says so here. A reader that took the figure and dropped this\nfield would publish a floor as a total, which is the defect the whole\nsurface exists to end.",
+        "description": "One requested measure on one row: its amount, and what that amount is\nworth.\n\n\u26a0 **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS\nOWN.** A measure whose inputs are still resolving carries a bound and says\nso in `status`; a measure that could not be attributed at the requested\ngrain carries whatever part of itself could be placed \u2014 or, for a margin,\nnothing at all \u2014 and says so there too. A reader that took the figure and\ndropped that field would publish a floor as a total, which is the defect the\nwhole surface exists to end.\n\n**What each state says about the fields beside it**, which is what the state\nis for:\n\n* `known` \u2014 every input resolved.\n* `incomplete` \u2014 some input is still unresolved, so the figure is a bound\n  rather than a total, and the count beside it says how far off it can be.\n* `unavailable_at_requested_grain` \u2014 a figure exists and cannot be\n  attributed this finely. A REVENUE figure here is the part that COULD be\n  placed, with the rest in the answer's `context`; a MARGIN is null\n  outright, because there is no such thing as a partial margin.\n* `unavailable_outside_retention_horizon` \u2014 the stretch this row covers\n  reaches back past the horizon UBB publishes for the records the figure\n  would be read from, so there is no figure and no count: `available_from`\n  says the day this measure's series can start. The two unavailable states\n  are separate because their remedies are: ask a coarser question, against\n  that data is gone.\n* `not_applicable` \u2014 the measure does not apply. This surface refuses such a\n  combination against `/metering/analytics/grouping-options` before building\n  a row, so an answer from THIS query never carries it; the value is the\n  concept's and a later surface may.\n\n\u26a0 **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured\nzero, and where UBB has no figure at all the field is null.",
         "properties": {
           "amount_micros": {
             "anyOf": [
@@ -2574,6 +2574,17 @@
               }
             ],
             "title": "Amount Micros"
+          },
+          "available_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Available From"
           },
           "event_count": {
             "anyOf": [
@@ -2598,9 +2609,16 @@
             "x-ubb-concept": "analytics_measure"
           },
           "status": {
-            "description": "What this measure's figure is worth: 'known' where every input resolved; 'incomplete' where some input is still unresolved, so the figure is a bound rather than a total and the count beside it says how far off it can be; and 'unavailable_at_requested_grain' where a figure exists that cannot be attributed this finely. Under that last one a revenue figure is the part that COULD be placed and the rest is listed in 'context', while a margin is null outright \u2014 there is no such thing as a partial margin. \u26a0 None of the three is ever a stand-in for a figure: a zero here is a measured zero, and where UBB has no figure at all the field is null.",
+            "enum": [
+              "known",
+              "incomplete",
+              "unavailable_at_requested_grain",
+              "unavailable_outside_retention_horizon",
+              "not_applicable"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "measure_status"
           },
           "unpriced_event_count": {
             "anyOf": [
@@ -2715,12 +2733,20 @@
             "title": "Context",
             "type": "array"
           },
+          "economic_data_available_from": {
+            "title": "Economic Data Available From",
+            "type": "string"
+          },
           "group_by": {
             "items": {
               "type": "string"
             },
             "title": "Group By",
             "type": "array"
+          },
+          "measurement_data_available_from": {
+            "title": "Measurement Data Available From",
+            "type": "string"
           },
           "period_end": {
             "title": "Period End",
@@ -2744,6 +2770,8 @@
           "group_by",
           "bucket",
           "basis",
+          "economic_data_available_from",
+          "measurement_data_available_from",
           "rows",
           "context"
         ],
@@ -14109,7 +14137,7 @@
     },
     "/api/v1/metering/analytics/economics": {
       "get": {
-        "description": "What your AI work cost, what it earned, and the difference \u2014 one answer\nfrom one definition.\n\nAsk for one or more `measures`, group by zero or more axes from\n`/metering/analytics/grouping-options`, and bucket by `hour`, `day` or\n`month`. Every filter composes with every grouping.\n\n**Requesting no measure is refused rather than defaulted**: a default\nmeasure set is how a caller ends up aggregating three different things to\ndraw one line.\n\n**A row's grouped values are positional**, in the order the axes were sent,\nand the response echoes `group_by` so the alignment is readable from the\nanswer alone. Where a row has no value on an axis, the entry beside it says\nwhether the value was never recorded or whether the question does not apply\nto that kind of row.\n\n**Each measure carries its own state and the state is part of the answer.**\nA margin UBB cannot attribute at the grain you asked for is absent rather\nthan small, and the revenue that could not be placed is listed under\n`context` with the axes at which asking again would produce one.\n\n`basis` picks how revenue a tenant supplied is spread over the span it\ndeclares: `recorded` places each amount whole on the day its record opens\nand is the default, `recognised` spreads it by the record's own method. The\nanswer always states which it served.\n\nExplicit date windows are bounded: 366 days, and 92 for an hourly question,\nbecause the ceiling is about how many buckets one answer may carry. The\nresponse echoes the period it applied, so a caller who left the window to\nthe default can see what it was.\n\nCodes: `validation_error` for a request that will not parse or a window past\nthe bound; `unanswerable_combination` for a well-formed question this\nsurface declines to answer subtly wrongly, whose message says what to ask\ninstead.",
+        "description": "What your AI work cost, what it earned, and the difference \u2014 one answer\nfrom one definition.\n\nAsk for one or more `measures`, group by zero or more axes from\n`/metering/analytics/grouping-options`, and bucket by `hour`, `day` or\n`month`. Every filter composes with every grouping.\n\n**Requesting no measure is refused rather than defaulted**: a default\nmeasure set is how a caller ends up aggregating three different things to\ndraw one line.\n\n**A row's grouped values are positional**, in the order the axes were sent,\nand the response echoes `group_by` so the alignment is readable from the\nanswer alone. Where a row has no value on an axis, the entry beside it says\nwhether the value was never recorded or whether the question does not apply\nto that kind of row.\n\n**Each measure carries its own state and the state is part of the answer.**\nA margin UBB cannot attribute at the grain you asked for is absent rather\nthan small, and the revenue that could not be placed is listed under\n`context` with the axes at which asking again would produce one.\n\n`basis` picks how revenue a tenant supplied is spread over the span it\ndeclares: `recorded` places each amount whole on the day its record opens\nand is the default, `recognised` spreads it by the record's own method. The\nanswer always states which it served.\n\n**How far back you may ask, and how much of it per request \u2014 the two\nnumbers, together, because they do not compose on their own.** UBB keeps the\neconomics for six years and detailed measurement on a shorter platform\nclock, and this answer publishes both start dates in\n`economic_data_available_from` and `measurement_data_available_from` \u2014\nalways, whether or not anything was truncated. One request, meanwhile, may\nspan 366 days, or 92 for an hourly question, because that ceiling is about\nhow many buckets one answer may carry. So six years of history is reachable\nin successive windows, not in one call, and the response states each\nnumber rather than leaving you to discover the second by being refused.\n\nA measure whose stretch reaches back past the horizon governing it reads\n`unavailable_outside_retention_horizon` and carries `available_from`: never\na zero, and never a partial total presented as a total. Only a question\ngrouped by the measurement-concept rollup is governed by the shorter clock;\nevery money measure is on the six-year one however you filter it. The\nresponse echoes the period it applied, so a caller who left the window to\nthe default can see what it was.\n\nCodes: `validation_error` for a request that will not parse or a window past\nthe bound; `unanswerable_combination` for a well-formed question this\nsurface declines to answer subtly wrongly, whose message says what to ask\ninstead.",
         "operationId": "api_v1_metering_endpoints_query_economics",
         "parameters": [
           {

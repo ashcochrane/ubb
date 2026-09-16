@@ -636,23 +636,29 @@ DECLARATION_STATUS_VALUES = frozenset({
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
 #
-# What one requested measure's amount is worth in a response. Four facts that
+# What one requested measure's amount is worth in a response. Five facts that
 # used to be one integer: `incomplete` says some input is still unresolved,
 # `unavailable_at_requested_grain` says the number exists but cannot be
-# attributed this finely, and `not_applicable` says the measure does not apply
-# here. No query may coerce any of them to zero (#153 §8.5).
+# attributed this finely, `unavailable_outside_retention_horizon` says the
+# stretch asked about reaches past the horizon UBB publishes for the records
+# the figure would be read from, and `not_applicable` says the measure does not
+# apply here. The two unavailable values stay apart because their remedies
+# differ: ask a coarser question, against that data is gone. No query may
+# coerce any of them to zero (#153 §8.5).
 #
 # Declared in concepts/economics.yaml.
 
 MEASURE_STATUS_KNOWN = 'known'
 MEASURE_STATUS_INCOMPLETE = 'incomplete'
 MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN = 'unavailable_at_requested_grain'
+MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON = 'unavailable_outside_retention_horizon'
 MEASURE_STATUS_NOT_APPLICABLE = 'not_applicable'
 
 MEASURE_STATUS_VALUES = frozenset({
     MEASURE_STATUS_KNOWN,
     MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
     MEASURE_STATUS_NOT_APPLICABLE,
 })
 

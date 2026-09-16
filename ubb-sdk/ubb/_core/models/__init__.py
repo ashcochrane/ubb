@@ -90,6 +90,7 @@ from .dimension_registry_out import DimensionRegistryOut
 from .earnings_out import EarningsOut
 from .economic_measure_out import EconomicMeasureOut
 from .economic_measure_out_measure import EconomicMeasureOutMeasure
+from .economic_measure_out_status import EconomicMeasureOutStatus
 from .economic_row_out import EconomicRowOut
 from .economics_out import EconomicsOut
 from .economics_out_basis import EconomicsOutBasis
@@ -440,6 +441,7 @@ __all__ = (
     "EarningsOut",
     "EconomicMeasureOut",
     "EconomicMeasureOutMeasure",
+    "EconomicMeasureOutStatus",
     "EconomicRowOut",
     "EconomicsOut",
     "EconomicsOutBasis",

@@ -517,10 +517,19 @@ measurements_status:
   # declaration lifecycle further down this file, and the rule `pricing_model`
   # beside `pricing_mode` broke. The meanings here are not unrelated, which is
   # exactly what takes this out of §3: one is the analytics reading of a
-  # requested measure's amount and says whether a NUMBER is knowable at the
-  # grain asked for; this one says whether the RECORD of what was measured is
-  # still there to read a number from. They are two halves of one subject, and
-  # a reader who confuses them still lands in the right domain.
+  # requested measure's amount and says what a NUMBER is worth; this one says
+  # whether the RECORD of what was measured is still there to read a number
+  # from. They are two halves of one subject, and a reader who confuses them
+  # still lands in the right domain.
+  #
+  # ⚠ SINCE #500 BOTH SETS SPEAK ABOUT RETENTION and the line between them is
+  # no longer *grain versus the record*. What separates them is the GRAIN OF
+  # THE SUBJECT: this one is a fact about ONE posting, derived per row;
+  # `measure_status` is a fact about one MEASURE of an AGGREGATE row, and its
+  # `unavailable_outside_retention_horizon` says no figure can be stated for
+  # the STRETCH asked about — which is true whatever any individual row in it
+  # still holds. `pruned` and that value are therefore two different
+  # observations of one clock and neither implies the other.
   #
   # ADR-0006 §2 is the sharper edge and it is about ONE concept, not two: no
   # short form beside a long form, no second public name for the same thing.
@@ -686,16 +695,41 @@ analytics_measure:
 
 measure_status:
   kind: closed
+  # ⚠ THE FIFTH VALUE ARRIVED IN #500, AND IT IS A RE-STATEMENT OF THIS ENTRY'S
+  # EXTENT RATHER THAN A NEW ALLOWLIST SEAT. #155 §3.2 forbids a slice ADDING an
+  # allowlist entry; re-stating an existing one's extent is a different act, and
+  # #369 and #373 did it routinely.
+  #
+  # WHY IT IS NOT FOLDED INTO `unavailable_at_requested_grain`. That value means
+  # *the number exists but cannot be attributed this finely* — which is GRAIN,
+  # not AGE. The two have different remedies: one is *ask a coarser question*,
+  # the other is *that data is gone*. Folding them makes one value mean two
+  # failures, which is precisely the defect #153 §7.1 exists to end, and this
+  # set may not reintroduce it while implementing that separation.
+  #
+  # AND IT IS NOT `measurements_status.pruned` EITHER, though they are about the
+  # same clock. That one is a fact about ONE posting — its measurement record
+  # was there and has been removed — and is derived per row by a serialiser.
+  # This one is a fact about an AGGREGATE over a stretch of time: no figure can
+  # be stated for that stretch, whatever any individual row still holds. A
+  # reader who confuses them still lands in the right domain, which is the test
+  # ADR-0006 §3 sets; what would breach §2 is a second public name for one
+  # concept, and these two are two concepts with two grains.
   summary: >-
-    What one requested measure's amount is worth in a response. Four facts that
+    What one requested measure's amount is worth in a response. Five facts that
     used to be one integer: `incomplete` says some input is still unresolved,
     `unavailable_at_requested_grain` says the number exists but cannot be
-    attributed this finely, and `not_applicable` says the measure does not
-    apply here. No query may coerce any of them to zero (#153 §8.5).
+    attributed this finely, `unavailable_outside_retention_horizon` says the
+    stretch asked about reaches past the horizon UBB publishes for the records
+    the figure would be read from, and `not_applicable` says the measure does
+    not apply here. The two unavailable values stay apart because their
+    remedies differ: ask a coarser question, against that data is gone. No
+    query may coerce any of them to zero (#153 §8.5).
   values:
     - known
     - incomplete
     - unavailable_at_requested_grain
+    - unavailable_outside_retention_horizon
     - not_applicable
   label_key_prefix: measure_status
   consumers:
