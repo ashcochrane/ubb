@@ -1,7 +1,9 @@
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 
 from core.auth import ApiKeyAuth, READ, WRITE, role_floor
+from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
@@ -21,6 +23,38 @@ class CustomerResponse(Schema):
     id: str
     external_id: str
     stripe_customer_id: str
+    status: str
+
+
+class CustomerIdentityOut(Schema):
+    """Who a customer IS, by the identity UBB assigned them.
+
+    ⚠ **THIS ROUTE EXISTS BECAUSE #501 TOOK AWAY THE ONLY READ THAT ANSWERED
+    IT**, and that is worth stating on a slice whose whole subject is removing
+    published surface. One customer's margin used to publish `external_id`
+    beside its figures, and that was the single place a caller holding UBB's
+    identity for a customer could learn the tenant's own word for them. The one
+    economic query groups by IDENTITY and publishes no external id — rightly: a
+    tenant's own vocabulary is not a measure, and a report is not a directory.
+    So the capability was never the report's, and it is here, on the mount that
+    owns customers.
+
+    It matters beyond a page title: the subscription lifecycle is keyed on the
+    external id (`/subscriptions/customers/{external_id}/...`) while every
+    metering and billing read is keyed on the UUID, so a surface holding one and
+    needing the other has nowhere else to turn.
+
+    `account_type` and `parent_external_id` travel with it because a seat's
+    bill is its business's, and a caller that had to ask a second question to
+    find that out would be one round trip from rendering a seat as if it paid
+    its own way.
+    """
+
+    id: str
+    external_id: str
+    account_type: str
+    #: The business a seat belongs to, or "" for a customer that is not one.
+    parent_external_id: str = ""
     status: str
 
 
@@ -83,6 +117,33 @@ def create_customer(request, payload: CreateCustomerRequest):
         }
     except IntegrityError:
         raise Problem("conflict", "customer with this external_id already exists")
+
+
+@platform_router.get("/customers/{customer_id}",
+                     response={200: CustomerIdentityOut, 404: ProblemOut})
+@role_floor(READ)
+def get_customer(request, customer_id: UUIDIdentifier):
+    """One customer's identity: who UBB knows them as, and who you call them.
+
+    Read this where you hold UBB's id for a customer and need the id you gave
+    them — the subscription lifecycle is addressed by your own external id while
+    every metering and billing read is addressed by UBB's, and this is what
+    bridges the two.
+
+    It answers about identity and says nothing about money: what a customer cost
+    or earned is one question asked at
+    `GET /metering/analytics/economics`, filtered to them.
+    """
+    customer = get_object_or_404(Customer, id=customer_id,
+                                 tenant=request.auth.tenant)
+    return 200, {
+        "id": str(customer.id),
+        "external_id": customer.external_id,
+        "account_type": customer.account_type,
+        "parent_external_id": (customer.parent.external_id
+                               if customer.parent_id else ""),
+        "status": customer.status,
+    }
 
 
 @platform_router.get("/accounts/business/{external_id}", response={200: dict, 404: ProblemOut})

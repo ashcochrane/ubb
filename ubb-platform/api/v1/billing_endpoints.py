@@ -17,7 +17,6 @@ from api.v1.schemas import (
     TopUpCheckoutResponse, WithdrawResponse, RefundResponse,
     PaginatedWalletTransactions,
     CreateGrantRequest, GrantOut, PaginatedGrants,
-    RevenueAnalyticsResponse,
     CustomerSpendPoolIn, CustomerSpendPoolOut, CustomerSpendPoolStatusOut,
     CustomerBillingProfileIn, CustomerBillingProfileOut,
     UsageInvoiceListResponse, PostpaidConfigIn, PostpaidConfigOut,
@@ -29,7 +28,6 @@ from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
-from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
@@ -524,20 +522,17 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
 
 
 # ---------- Analytics ----------
-
-
-@billing_router.get("/analytics/revenue", response=RevenueAnalyticsResponse)
-@role_floor(READ)
-def revenue_analytics(request, start_date: date = None, end_date: date = None):
-    _product_check(request)
-    from apps.metering.queries import get_revenue_analytics
-    # #78: computed reports are cursor-exempt but parameter-bounded.
-    if start_date and end_date:
-        if end_date < start_date:
-            raise Problem("validation_error", "end_date must not precede start_date")
-        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
-            raise Problem("validation_error", "date window must not exceed 366 days")
-    return get_revenue_analytics(request.auth.tenant.id, start_date, end_date)
+#
+# THE BILLING REVENUE REPORT WAS HERE AND IS GONE (#501, slice 7 §1) — the
+# fourth of the nine routes the one economic query replaces, and the clearest
+# duplicate of the lot: a daily billed-versus-supplier-cost series, tenant-wide,
+# which is exactly what the metering timeseries beside it already served. Two
+# products each held a definition of the same two numbers, and the markup the
+# report published between them was a third name for the difference.
+#
+# It is now `GET /metering/analytics/economics?bucket=day` with the customer
+# revenue and supplier cost measures asked for — one definition, on the surface
+# that owns the postings both figures are read from.
 
 
 # ---------- Customer spend pool: declaration + status ----------

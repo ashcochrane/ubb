@@ -351,7 +351,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 16 files
+    found: 15 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -387,6 +387,24 @@ entries:
       inventing a word. WHAT REMAINS THIS ENTRY'S is unchanged and is the
       axis half: the request parameter, the `by_tag` block, and the discovery
       contract that replaces them.
+
+      16 -> 15 in #501, THE FIRST DECREMENT THIS ENTRY HAS TAKEN FROM ITS OWN
+      SLICE rather than from a neighbour paying early. The file is
+      `api/v1/tests/test_analytics_dimensions.py`, deleted whole: it tested how
+      the usage report turned a grouping name into a breakdown, and the report
+      is one of the nine routes the collapse deletes. The axis half named just
+      above went with it — the request parameter and the `by_tag` block are
+      both gone, and the discovery contract that replaces them shipped in #498.
+
+      WHAT IS LEFT IS NOT THE ANALYTICS AXIS AT ALL, and the entry stays open
+      only because the word is still spelled. The fifteen are the declared
+      registry (`required_dimensions` on a published schema, its models and its
+      tests), the task surface's own slot bag, the pricing selectors, and the
+      event-recording payloads that carry a tenant's declared keys. None of
+      them is a grouping request, so this entry is now a naming debt on the
+      REGISTRY's word rather than on the report's — the distinction the
+      boundary paragraph above drew between an axis and a value, arrived at
+      from the other side.
 
   # ⚠ THE TWO MARKUP AUDIT ACTIONS REACHED ZERO ON EVERY SURFACE AND ALL FIVE
   # OF THEIR ENTRIES ARE DELETED (#369) — backend (3 files and 2 files), console
@@ -508,12 +526,29 @@ entries:
     gate: G7
     site: backend::tag_key
     expected: analytics_grouping_kind
-    found: 8 files
+    found: 3 files
     owner_slice: slice_7
     reason: >-
       A grouping kind that read from the open bag. Slice 7's grouping
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
+
+      8 -> 3 in #501, and the five that went are the grouping half in its
+      entirety: the two analytics endpoint test modules, `apps/metering/
+      queries.py` where the revenue and timeseries rollups grouped on it, the
+      scale test that built rows for them, and `margin_endpoints.py`'s grouped
+      breakdown. Every one died with a route the collapse deletes.
+
+      ⚠ **THE THREE LEFT ARE A FILTER, NOT A GROUPING**, and that is the whole
+      of what this entry now owes. `GET /metering/customers/{customer_id}/usage`
+      — the per-customer
+      event list, which survives the collapse and must — takes `tag_key` and
+      `tag_value` as a pair and narrows the rows to events carrying that key,
+      and the two remaining test files exercise the open bag underneath it.
+      A filter holds a value as constant as a grouping does, so the word is as
+      wrong here as it was there; what it is NOT is a request to group, which
+      means the one economic query cannot absorb it and no route removal will
+      clear it. It is a rename on a surviving route, and it is still slice 7's.
 
   # `g7-backend-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split). It stood at 15 files, the largest of the four surfaces, and the
@@ -572,7 +607,7 @@ entries:
     gate: G7
     site: console::dimensions
     expected: analytics_grouping_kind
-    found: 4 files
+    found: 3 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -610,11 +645,24 @@ entries:
       entry — a debt may be paid early from another slice, and an owner may
       move earlier and never later.
 
+      4 -> 3 in #501, and this one IS slice 7 doing the work it owns. The file
+      is the dashboard feature's real API layer, where the plural was the query
+      parameter asking the usage report for breakdowns. The dashboard now calls
+      the one economic query and asks for `field:` and `rollup:` axes by name,
+      so there is no bag to ask for and nothing to spell.
+
+      The three left are the committed schema mirror, the pricing feature's
+      single unwrap of the declared registry envelope (#372's paragraph above),
+      and the label module's own list — none of them an analytics request any
+      more. The console side of this entry is therefore done as an ANALYTICS
+      debt and open only as a REGISTRY one, which is exactly the shape the
+      backend entry took in the same commit.
+
   - id: g7-console-meter_only
     gate: G7
     site: console::meter_only
     expected: customer_billing_mode
-    found: 7 files
+    found: 6 files
     owner_slice: slice_8
     reason: >-
       It said what UBB does NOT do; `external` says where the billing
@@ -624,6 +672,20 @@ entries:
       been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
+
+      7 -> 6 in #501, paid by slice 7 and not by this entry's owner, which the
+      ratchet permits and the sweep requires — an entry may not record more
+      files than the tree holds. The file is the dashboard's overview page,
+      which branched on the mode to decide WHICH revenue figure to show a
+      meter-only tenant. That branch is not renamed here, it is deleted: the
+      field it read is one of the ones the collapse removes, and the one
+      economic query publishes ONE revenue figure under one definition for
+      every tenant whatever their mode. A conditional that no longer has two
+      answers to choose between is not a conditional.
+
+      The six left are the genuine subject — the settings surface where a
+      tenant reads and changes its mode, the config hook and the labels — and
+      slice 8 still owns them.
 
   # ⚠ `price_card` REACHED ZERO ON THE CONSOLE IN #371 and its entry is deleted
   # — see the cost half's note above, which it shared a file and a fate with.
@@ -899,7 +961,7 @@ entries:
     gate: G7
     site: sdk::dimensions
     expected: analytics_grouping_kind
-    found: 11 files
+    found: 10 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -927,6 +989,20 @@ entries:
       it — an entry may not overstate — so the decrement belongs here even
       though the owner does not move. Slice 7 still owes the eleven, all of
       them grouping axes.
+
+      11 -> 10 in #501, and unlike the two decrements above this is the owner's
+      own commit. The file is the generated module for `GET /metering/analytics/
+      usage`, deleted when the route left the contract and the client
+      regenerated. It carried the plural as the breakdown query parameter —
+      generated, never hand-written, which is why it could not be paid before
+      the route was.
+
+      The ten left are NOT grouping axes, and the sentence above needs that
+      correction rather than a restatement: they are the declared registry's
+      generated models, the recording and task payloads that carry a tenant's
+      declared keys, and the README and hand-written client that describe them.
+      What slice 7 owes here is the registry's word, on surfaces no route
+      removal reaches.
 
   - id: g7-sdk-meter_only
     gate: G7
@@ -996,12 +1072,30 @@ entries:
     gate: G7
     site: sdk::tag_key
     expected: analytics_grouping_kind
-    found: 7 files
+    found: 3 files
     owner_slice: slice_7
     reason: >-
       A grouping kind that read from the open bag. Slice 7's grouping
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
+
+      7 -> 3 in #501, and the four divide into two different kinds of payment.
+      THREE WENT WITH THE ROUTES: the generated modules for the usage report and
+      the grouped margin breakdown, and `client.py`, whose delegates for those
+      calls are deleted with the methods behind them. THE FOURTH IS THE README,
+      which documented the deleted report's own parameter — a quick-start
+      describing a method that no longer exists is not a naming debt, it is a
+      wrong document, and rewriting that section paid this site as a
+      side-effect. The migration guide's entry for this ticket names the two
+      surviving parameters DESCRIPTIVELY rather than spelling them, on the rule
+      #497 set on this surface: a guide that spells a retired word re-opens a
+      site the same commit is closing.
+
+      The three left are the same FILTER the backend entry describes, seen from
+      the client: the generated module for `GET /metering/customers/{customer_id}/usage`, the
+      hand-written wrapper that passes the pair through, and the test that
+      exercises it. The event list survives the collapse deliberately, so this
+      is a rename on a live call rather than a debt any deletion will clear.
 
 
   - id: g7-sdk-usage_line_item_group_by

@@ -8,14 +8,14 @@ import type { DatetimeWindow } from "@/lib/date-range";
 import {
   CUSTOMER_ACME,
   MOCK_EPISODES,
-  MOCK_MARGIN_CUSTOMERS,
+  MOCK_CUSTOMER_CHOICES,
   MOCK_UTILISATION_ROWS,
   POOL_STATUS_ACME,
   totalsOf,
   utilisationReport,
 } from "./mock-data";
 import type {
-  MarginCustomers,
+  CustomerChoice,
   StopsAndBreaches,
   StopsAndBreachesFilters,
   UtilisationAndHeadroom,
@@ -62,7 +62,7 @@ export async function getUtilisationAndHeadroom(
   return utilisationReport(rows, boundedWindow(filters), pool);
 }
 
-export async function listCustomers(): Promise<MarginCustomers> {
+export async function listCustomers(): Promise<CustomerChoice[]> {
   await mockDelay();
-  return MOCK_MARGIN_CUSTOMERS;
+  return MOCK_CUSTOMER_CHOICES;
 }

@@ -4,19 +4,113 @@
 import type {
   BillingSchemas,
   MarginSchemas,
-  MeteringSchemas,
   PlatformSchemas,
   SubscriptionSchemas,
 } from "@/api/types";
+import {
+  amountOn,
+  axisValueOn,
+  completenessOn,
+  CUSTOMER_REVENUE,
+  eventsOn,
+  GROSS_MARGIN,
+  marginPercentOf,
+  onlyRow,
+  orZero,
+  SUPPLIER_COGS,
+  type EconomicRow,
+  type EconomicsAnswer,
+} from "@/lib/economic-query";
 
 // ---------------------------------------------------------------------------
 // Margin (list + detail workbench overview)
 
-export type CustomerMarginListRow = MarginSchemas["CustomerMarginListRow"];
-export type MarginListOut = MarginSchemas["MarginListOut"];
-export type CustomerMarginOut = MarginSchemas["CustomerMarginOut"];
-export type MarginTrendOut = MarginSchemas["MarginTrendOut"];
-export type MarginTrendPointOut = MarginSchemas["MarginTrendPointOut"];
+// ⚠ **FIVE OF THIS FEATURE'S READS WERE FIVE ROUTES AND ARE ONE (#501)** — the
+// per-customer margin list, one customer's margin, that customer's trend, the
+// usage rollup and its day series. What arrives is one answer shape; the
+// narrowings below turn it into the four views this feature renders.
+//
+// ⚠ **AND ONE FIGURE IS NOT A THREE-WAY SPLIT ANY MORE.** One customer's margin
+// published a subscription share, a supplied share and billed usage beside its
+// total. The one economic query answers `customer_revenue` from ONE definition
+// — that is the point of it — so the split is not on this surface. The supplied
+// share is still readable, from the record that owns it
+// (`GET /margin/customers/{id}/supplied-revenue`), and rebuilding the panel on
+// that read is the customers feature's own ticket.
+export type Economics = EconomicsAnswer;
+
+/** One customer's economics over a window. */
+export interface CustomerEconomics {
+  customer_id: string;
+  total_revenue_micros: number;
+  provider_cost_micros: number;
+  /** Null where UBB states no margin — never a zero. */
+  gross_margin_micros: number | null;
+  margin_percentage: number;
+  unresolved_event_count: number;
+  unpriced_event_count: number;
+  /** Recorded work, where the question could carry it. A GROUPED question
+   *  cannot: a count across rows that mix Event Types is the comparison the
+   *  server refuses. */
+  event_count: number | null;
+}
+
+/** One point of the margin trend — a month of the same answer. */
+export interface TrendPoint {
+  period_start: string;
+  provider_cost_micros: number;
+  revenue_micros: number;
+  gross_margin_micros: number | null;
+  unresolved_event_count: number;
+  unpriced_event_count: number;
+}
+
+function economicsOf(row: EconomicRow | undefined, customerId: string): CustomerEconomics {
+  const revenue = orZero(amountOn(row, CUSTOMER_REVENUE));
+  const margin = amountOn(row, GROSS_MARGIN);
+  return {
+    customer_id: customerId,
+    total_revenue_micros: revenue,
+    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    gross_margin_micros: margin,
+    margin_percentage: marginPercentOf(revenue, margin),
+    event_count: eventsOn(row),
+    ...completenessOn(row),
+  };
+}
+
+/** One row per customer, from an answer grouped by the customer axis. */
+export function toCustomerRows(answer: Economics): CustomerEconomics[] {
+  return answer.rows.map((row) => economicsOf(row, axisValueOn(row) ?? ""));
+}
+
+/** One customer's own figures, from an answer filtered to them. */
+export function toOneCustomer(answer: Economics): CustomerEconomics {
+  return economicsOf(onlyRow(answer), "");
+}
+
+/** The trend's points, from a month-bucketed answer. */
+export function toTrendPoints(answer: Economics): TrendPoint[] {
+  return answer.rows.map((row) => ({
+    period_start: (row.bucket_start ?? "").slice(0, 10),
+    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
+    gross_margin_micros: amountOn(row, GROSS_MARGIN),
+    ...completenessOn(row),
+  }));
+}
+
+/** The usage tab's day series. */
+export function toTimeseriesPoints(answer: Economics): TimeseriesPoint[] {
+  return answer.rows.map((row) => ({
+    bucket: row.bucket_start ?? "",
+    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
+    event_count: eventsOn(row) ?? 0,
+    unresolved_event_count: completenessOn(row).unresolved_event_count,
+  }));
+}
+
 export type BusinessMarginOut = MarginSchemas["BusinessMarginOut"];
 export type SeatMarginOut = MarginSchemas["SeatMarginOut"];
 export type BusinessMarginTotals = MarginSchemas["BusinessMarginTotals"];
@@ -27,6 +121,24 @@ export type PeriodWindow = MarginSchemas["PeriodWindow"];
 
 export type CreateCustomerRequest = PlatformSchemas["CreateCustomerRequest"];
 export type CustomerResponse = PlatformSchemas["CustomerResponse"];
+
+/**
+ * Who a customer is, by the identity UBB assigned them.
+ *
+ * ⚠ **READ FROM ITS OWN ROUTE SINCE #501.** One customer's margin used to
+ * publish `external_id` beside its figures, and that was the only place a
+ * surface holding UBB's id could learn the tenant's own word for a customer.
+ * The one economic query groups by identity and publishes no external id —
+ * a tenant's vocabulary is not a measure — so the capability moved to
+ * `GET /platform/customers/{customer_id}`, which is about identity and says
+ * nothing about money.
+ *
+ * It is load-bearing rather than decorative: the subscription lifecycle is
+ * addressed by the EXTERNAL id while every metering and billing read is
+ * addressed by the UUID, so this is what bridges them.
+ */
+export type CustomerIdentity = PlatformSchemas["CustomerIdentityOut"];
+
 
 // ---------------------------------------------------------------------------
 // Billing (wallet, grants, customer spend pool, wallet policy)
@@ -55,8 +167,7 @@ export type UsageInvoiceOut = BillingSchemas["UsageInvoiceOut"];
 // ---------------------------------------------------------------------------
 // Metering (usage analytics + pricing)
 
-export type UsageAnalyticsResponse = MeteringSchemas["UsageAnalyticsResponse"];
-export type UsageTimeseriesResponse = MeteringSchemas["UsageTimeseriesResponse"];
+// The metering reads are the one query — see the narrowings above.
 
 // ---------------------------------------------------------------------------
 // Subscriptions
@@ -78,12 +189,13 @@ export type SubscribeIn = SubscriptionSchemas["SubscribeIn"];
  * read by nothing.
  */
 export interface TimeseriesPoint {
+  /** The bucket's opening instant, as the answer states it. */
   bucket: string;
   provider_cost_micros: number;
-  billed_cost_micros: number;
-  markup_micros: number;
+  revenue_micros: number;
   event_count: number;
-  /** This bucket's own uncosted events — the server answers it per bucket. */
+  /** That day's own uncosted events — per bucket, because an unresolved cost
+   *  belongs to the day it fell in. */
   unresolved_event_count: number;
 }
 
@@ -92,25 +204,12 @@ export interface TimeseriesPoint {
 // the ONLY place a cast-like assertion may live for these shapes; everything
 // is rebuilt with typeof guards (unknown fields default safely).
 
-function num(value: unknown): number {
-  return typeof value === "number" ? value : 0;
-}
-function str(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
-export function narrowTimeseriesPoints(
-  rows: Record<string, unknown>[],
-): TimeseriesPoint[] {
-  return rows.map((row) => ({
-    bucket: str(row.bucket),
-    provider_cost_micros: num(row.provider_cost_micros),
-    billed_cost_micros: num(row.billed_cost_micros),
-    markup_micros: num(row.markup_micros),
-    event_count: num(row.event_count),
-    unresolved_event_count: num(row.unresolved_event_count),
-  }));
-}
+// ⚠ THE DEFENSIVE TIMESERIES NARROWING IS GONE (#501). It read an untyped
+// `series[]` key by key, degrading a missing number to zero, because the route
+// left its rows `additionalProperties: true` and nothing in the generated types
+// could hold the console's read to them. The one economic query DECLARES its
+// row: a key that moves is a contract break the gates see, so there is nothing
+// left to defend against and `toTimeseriesPoints` above reads it directly.
 
 // ⚠ `narrowPastLimitReport` AND THE FOUR SHAPES IT NARROWED ARE DELETED (#466).
 // They narrowed the untyped body of the per-customer report of what was spent

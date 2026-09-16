@@ -15,7 +15,7 @@ import type {
   EarningsOut,
   EarningsPeriodParams,
   LedgerEntryOut,
-  MarginCustomerRow,
+  CustomerChoice,
   PayoutExportOut,
   PayoutRow,
   ProgramCreateRequest,
@@ -326,7 +326,7 @@ export async function getReferralLedger(
 
 // --- Customer picker ---------------------------------------------------------
 
-export async function listMarginCustomers(): Promise<MarginCustomerRow[]> {
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
   await mockDelay();
   return mockState.marginCustomers.map((row) => ({ ...row }));
 }

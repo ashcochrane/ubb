@@ -778,9 +778,15 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
                     if "bag" in name or "meta" in name], taken
 
     def test_no_function_this_query_calls_reads_the_bag(self):
-        """The stronger half: the module still holds a bag-reading rollup that
-        the routes this slice collapses call, so the claim has to be about THIS
-        query's own reachable source rather than about the file."""
+        """The stronger half: the module still holds a bag-reading rollup, so
+        the claim has to be about THIS query's own reachable source rather than
+        about the file.
+
+        ⚠ **THE ONE IT HOLDS IS NO LONGER THE GROUPED MARGIN.** That one went
+        with its route (#501); what is left is the invoice-line breakdown, which
+        is a BILLING surface reached through this read contract and is a later
+        ticket's to migrate. The guard below names it.
+        """
         source = ast.parse(inspect.getsource(queries))
         by_name = {node.name: node for node in ast.walk(source)
                    if isinstance(node, ast.FunctionDef)}
@@ -807,9 +813,18 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
     def test_the_bag_reading_rollup_beside_it_is_still_there(self):
         """The vacuity guard on the case above: if the module stopped holding a
         bag-reading function at all, that test would pass for the wrong reason
-        and stop being evidence about this query."""
+        and stop being evidence about this query.
+
+        ⚠ **IT POINTED AT THE GROUPED MARGIN UNTIL #501 DELETED IT**, which is
+        exactly the failure this guard exists to catch — the subject going away
+        and the case above staying green over nothing. The invoice-line
+        breakdown is the bag-reading rollup this module still holds, and it is
+        the last one: when the ticket that migrates it lands, this guard goes
+        red rather than quiet, and the case above should then be re-argued
+        rather than re-pointed.
+        """
         assert "KeyTextTransform" in inspect.getsource(
-            queries.get_dimensional_margin)
+            queries.get_customer_billed_breakdown)
 
 
 class WhichClockGovernsARowTest(TestCase):

@@ -1,22 +1,21 @@
 import { ChartCard } from "@/components/shared/chart-card";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatEventCount, formatMicros } from "@/lib/format";
+import { formatMicros } from "@/lib/format";
 import { dimensionLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 import {
   BREAKDOWN_DIMENSIONS,
-  toBreakdownRows,
   type BreakdownDimension,
-  type UsageAnalytics,
+  type BreakdownRow,
 } from "../api/types";
 import { topWithOther } from "../lib/economics";
 import { SectionEmpty } from "./section-empty";
 
-/** The slice of the analytics query result this card consumes. */
+/** The slice of the grouped-economics query result this card consumes. */
 export interface AnalyticsQueryLike {
-  data: UsageAnalytics | undefined;
+  data: BreakdownRow[] | undefined;
   isPending: boolean;
   isError: boolean;
   error: unknown;
@@ -98,7 +97,7 @@ function BreakdownBody({
   }
   if (!query.data) return null;
 
-  const bars = topWithOther(toBreakdownRows(query.data, groupBy), 8);
+  const bars = topWithOther(query.data, 8);
   if (bars.length === 0) {
     return (
       <SectionEmpty
@@ -109,7 +108,7 @@ function BreakdownBody({
     );
   }
 
-  const max = bars.reduce((m, bar) => Math.max(m, bar.billed_micros), 0);
+  const max = bars.reduce((m, bar) => Math.max(m, bar.revenue_micros), 0);
   return (
     <div
       className={cn(
@@ -125,19 +124,19 @@ function BreakdownBody({
                 "truncate",
                 bar.isOther ? "text-text-muted" : "text-text-secondary",
               )}
-              title={`${bar.name} — ${formatEventCount(bar.event_count)} events`}
+              title={`${bar.name} — ${formatMicros(bar.provider_micros, currency)} provider cost`}
             >
               {bar.name}
             </span>
             <span className="shrink-0 font-medium text-text-primary">
-              {formatMicros(bar.billed_micros, currency)}
+              {formatMicros(bar.revenue_micros, currency)}
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-bg-subtle">
             <div
               className="h-full rounded-full"
               style={{
-                width: max === 0 ? "0%" : `${Math.max(2, (bar.billed_micros / max) * 100)}%`,
+                width: max === 0 ? "0%" : `${Math.max(2, (bar.revenue_micros / max) * 100)}%`,
                 backgroundColor: bar.isOther ? "var(--chart-3)" : "var(--chart-1)",
               }}
             />
@@ -145,7 +144,7 @@ function BreakdownBody({
         </div>
       ))}
       <p className="pt-1 text-[11px] text-text-muted">
-        Billed cost by {dimensionLabel(groupBy).toLowerCase()}, top 8 shown.
+        Revenue by {dimensionLabel(groupBy).toLowerCase()}, top 8 shown.
       </p>
     </div>
   );

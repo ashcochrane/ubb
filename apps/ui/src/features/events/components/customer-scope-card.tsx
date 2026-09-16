@@ -13,9 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { problemMessage } from "@/api/problem";
 
-import { useCustomerMargin, useMarginCustomers } from "../api/queries";
+import { useCustomerChoices } from "../api/queries";
 import { shortId } from "../lib/search";
 
 const NONE = "none";
@@ -29,8 +28,7 @@ export function CustomerScopeCard({
   onSelect: (customerId: string | undefined) => void;
   onGoToCustomers?: () => void;
 }) {
-  const customers = useMarginCustomers();
-  const selected = useCustomerMargin(customerId);
+  const customers = useCustomerChoices();
 
   if (customers.isError) {
     return (
@@ -42,7 +40,7 @@ export function CustomerScopeCard({
     );
   }
 
-  const rows = customers.data?.customers ?? [];
+  const rows = customers.data ?? [];
 
   return (
     <div className="rounded-md border border-border bg-bg-surface p-4">
@@ -91,22 +89,21 @@ export function CustomerScopeCard({
           </Select>
         )}
 
-        {customerId !== undefined &&
-          (selected.isLoading ? (
-            <Skeleton className="h-5 w-32" />
-          ) : selected.isError ? (
-            <span className="text-[12px] text-red-text">
-              {problemMessage(selected.error)}
+        {/* ⚠ THE "RESOLVES TO <external id>" AFFORDANCE IS GONE (#501). It
+            read one customer's margin, which published the tenant's own word
+            for the row beside its figures; that route collapsed into the one
+            economic query, which groups by IDENTITY and publishes no external
+            id — and no surviving route maps an arbitrary customer's id to one.
+            The picker shows the shortened id with a copy affordance, as its own
+            list does. */}
+        {customerId !== undefined && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary">
+            <span className="font-mono text-[12px] font-medium text-text-primary">
+              {shortId(customerId)}
             </span>
-          ) : selected.data ? (
-            <span className="inline-flex items-center gap-1.5 text-[12px] text-text-secondary">
-              resolves to{" "}
-              <span className="font-mono text-[12px] font-medium text-text-primary">
-                {selected.data.external_id}
-              </span>
-              <CopyButton value={customerId} label="Copy customer ID" />
-            </span>
-          ) : null)}
+            <CopyButton value={customerId} label="Copy customer ID" />
+          </span>
+        )}
 
         {customerId !== undefined && (
           <Button variant="ghost" size="sm" onClick={() => onSelect(undefined)}>

@@ -6,22 +6,24 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useCursorList } from "@/api/pagination";
 
 import { billingFeatureApi } from "./provider";
+import { toRevenueWindow } from "./types";
 import type { CustomerSpendPoolIn, CreditRequest, DebitRequest, PostpaidConfigIn } from "./types";
 
 export const billingKeys = {
   all: ["billing"] as const,
   revenue: (range: { start_date: string; end_date: string }) =>
-    ["billing", "revenue-analytics", range] as const,
+    ["metering", "analytics", "economics", "daily", range] as const,
   seatDefaultPool: ["billing", "customer-spend-pool", "tenant"] as const,
   tenantUsageInvoices: (period: string | null) =>
     ["billing", "tenant-usage-invoices", { period }] as const,
   postpaidConfig: ["billing", "postpaid-config"] as const,
 };
 
-export function useRevenueAnalytics(range: { start_date: string; end_date: string }) {
+export function useRevenueWindow(range: { start_date: string; end_date: string }) {
   return useQuery({
     queryKey: billingKeys.revenue(range),
-    queryFn: () => billingFeatureApi.getRevenueAnalytics(range),
+    queryFn: () => billingFeatureApi.getRevenueWindow(range),
+    select: toRevenueWindow,
     // Window changes keep the previous chart visible instead of blanking.
     placeholderData: keepPreviousData,
   });

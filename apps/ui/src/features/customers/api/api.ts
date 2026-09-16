@@ -16,6 +16,11 @@ import {
 } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
+import {
+  EVERY_MEASURE,
+  FIELD_AXIS,
+  MONEY_MEASURES,
+} from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
 
 import {
@@ -25,27 +30,24 @@ import {
   type CustomerSpendPoolStatusOut,
   type ConfigureAutoTopUpRequest,
   type CreateCustomerRequest,
+  type CustomerIdentity,
   type CreateGrantRequest,
   type CreateTopUpRequest,
   type CreditRequest,
   type CustomerBillingProfileIn,
   type CustomerBillingProfileOut,
-  type CustomerMarginOut,
+  type Economics,
   type CustomerResponse,
   type DebitCreditResponse,
   type DebitRequest,
   type GrantOut,
-  type MarginListOut,
-  type MarginTrendOut,
   type AffordabilityResponse,
   type StatusResponse,
   type StripeSubscriptionOut,
   type SubscribeIn,
   type SubscriptionInvoiceOut,
   type TopUpCheckoutResponse,
-  type UsageAnalyticsResponse,
   type UsageInvoiceOut,
-  type UsageTimeseriesResponse,
   type WalletTransactionOut,
   type WithdrawRequest,
   type WithdrawResponse,
@@ -55,28 +57,67 @@ import {
 // ---------------------------------------------------------------------------
 // Margin
 
-export async function listCustomerMargins(range: DateRange): Promise<MarginListOut> {
-  return unwrap(await marginApi.GET("/customers", { params: { query: range } }));
+export async function listCustomerMargins(range: DateRange): Promise<Economics> {
+  return unwrap(
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          ...range,
+          measures: [...MONEY_MEASURES],
+          group_by: [FIELD_AXIS("customer")],
+        },
+      },
+    }),
+  );
 }
 
 export async function getCustomerMargin(
   customerId: string,
   range: DateRange,
-): Promise<CustomerMarginOut> {
+): Promise<Economics> {
   return unwrap(
-    await marginApi.GET("/customers/{customer_id}", {
-      params: { path: { customer_id: customerId }, query: range },
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          ...range,
+          customer_id: customerId,
+          measures: [...EVERY_MEASURE],
+        },
+      },
     }),
   );
 }
 
+/**
+ * The customer's margin month by month.
+ *
+ * ⚠ **A WINDOW THIS CONSOLE COMPUTES, WHERE IT USED TO BE A COUNT THE SERVER
+ * TOOK.** The trend route read N stored monthly snapshots; the one query
+ * derives each month from the facts as they stand, so what it takes is a
+ * window and a bucket. Twelve months is the most it can answer in one request,
+ * because a computed report is bounded at 366 days — and that is a real
+ * narrowing from the thirty-six the snapshot route would serve.
+ */
 export async function getMarginTrend(
   customerId: string,
   periods: number,
-): Promise<MarginTrendOut> {
+): Promise<Economics> {
+  const months = Math.max(1, Math.min(periods, 12));
+  const today = new Date();
+  const start = new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - (months - 1), 1),
+  );
   return unwrap(
-    await marginApi.GET("/customers/{customer_id}/trend", {
-      params: { path: { customer_id: customerId }, query: { periods } },
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          start_date: start.toISOString().slice(0, 10),
+          end_date: today.toISOString().slice(0, 10),
+          customer_id: customerId,
+          measures: [...MONEY_MEASURES],
+          bucket: "month",
+        },
+      },
     }),
   );
 }
@@ -110,6 +151,17 @@ export async function getBusinessMargin(
 // ---------------------------------------------------------------------------
 // Platform — create customer
 
+/** One customer's identity — the id you gave them, from the id UBB did. */
+export async function getCustomerIdentity(
+  customerId: string,
+): Promise<CustomerIdentity> {
+  return unwrap(
+    await platformApi.GET("/customers/{customer_id}", {
+      params: { path: { customer_id: customerId } },
+    }),
+  );
+}
+
 export async function createCustomer(
   body: CreateCustomerRequest,
 ): Promise<CustomerResponse> {
@@ -118,25 +170,30 @@ export async function createCustomer(
 
 // ---------------------------------------------------------------------------
 // Metering — usage analytics
-
-export async function getUsageAnalytics(
-  customerId: string,
-  range: DateRange,
-): Promise<UsageAnalyticsResponse> {
-  return unwrap(
-    await meteringApi.GET("/analytics/usage", {
-      params: { query: { ...range, customer_id: customerId } },
-    }),
-  );
-}
+//
+// ⚠ **THERE IS NO SEPARATE CALL HERE ANY MORE, AND THAT IS THE TICKET'S OWN
+// POINT TURNED INWARD (#501).** The Usage tab and the Overview tab ask the same
+// question of the same customer over the same window — every measure, no
+// grouping — so a second function would issue a byte-identical request and
+// cache it under a second key. Two cache entries for one answer is how two tabs
+// start disagreeing about a period, which is the defect this whole slice
+// exists to remove. Both tabs call `getCustomerMargin` through
+// `useCustomerMargin`, and each narrows the one answer its own way.
 
 export async function getUsageTimeseries(
   customerId: string,
   range: DateRange,
-): Promise<UsageTimeseriesResponse> {
+): Promise<Economics> {
   return unwrap(
-    await meteringApi.GET("/analytics/usage/timeseries", {
-      params: { query: { ...range, customer_id: customerId, granularity: "day" } },
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          ...range,
+          customer_id: customerId,
+          measures: [...EVERY_MEASURE],
+          bucket: "day",
+        },
+      },
     }),
   );
 }

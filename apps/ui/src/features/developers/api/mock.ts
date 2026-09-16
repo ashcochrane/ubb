@@ -13,7 +13,7 @@ import type { ReasonCodeKnown } from "@/lib/vocabulary";
 import {
   MOCK_API_KEYS,
   MOCK_COSTED_MEASUREMENTS,
-  MOCK_MARGIN_CUSTOMERS,
+  MOCK_CUSTOMER_CHOICES,
   MOCK_MEASUREMENT_RATE_MICROS,
   MOCK_SANDBOX,
   MOCK_SANDBOX_TENANT_ID,
@@ -27,7 +27,7 @@ import type {
   ApiKeyCreated,
   ApiKeyRevoked,
   ApiKeyRotated,
-  MarginCustomerRow,
+  CustomerChoice,
   RecordUsageRequest,
   RecordUsageResponse,
   SandboxKeyMinted,
@@ -160,9 +160,9 @@ export async function createSandbox(): Promise<SandboxKeyMinted> {
   return { sandbox_tenant_id: tenantId, api_key: mockRawKey(prefix) };
 }
 
-export async function listMarginCustomers(): Promise<MarginCustomerRow[]> {
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
   await mockDelay();
-  return MOCK_MARGIN_CUSTOMERS.map((row) => ({ ...row }));
+  return MOCK_CUSTOMER_CHOICES.map((row) => ({ ...row }));
 }
 
 export async function sendTestEvent(

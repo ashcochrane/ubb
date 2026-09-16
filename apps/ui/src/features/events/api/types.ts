@@ -6,16 +6,51 @@
 
 import type {
   BillingSchemas,
-  MarginSchemas,
   MeteringSchemas,
   RootSchemas,
 } from "@/api/types";
+import {
+  amountOn,
+  axisValueOn,
+  completenessOn,
+  eventsOn,
+  onlyRow,
+  CUSTOMER_REVENUE,
+  GROSS_MARGIN,
+  SUPPLIER_COGS,
+  type EconomicsAnswer,
+} from "@/lib/economic-query";
 
 export type UsageEventRow = MeteringSchemas["UsageEventOut"];
 export type UsageEventDetail = MeteringSchemas["UsageEventDetailOut"];
 export type UsagePage = MeteringSchemas["PaginatedUsageResponse"];
-export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
-export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
+// ⚠ **FOUR OF THIS FEATURE'S READS WERE FOUR ROUTES AND ARE ONE (#501)** —
+// the usage report, its day series, the per-customer margin list and one
+// customer's margin. What arrives is one answer shape; the narrowings below
+// turn it into the three views this page has always rendered.
+export type Economics = EconomicsAnswer;
+
+/** The window's totals, from the ungrouped answer's single row. */
+export interface WindowTotals {
+  event_count: number;
+  revenue_micros: number;
+  provider_cost_micros: number;
+  /** Null where UBB states no margin — never a zero. */
+  margin_micros: number | null;
+  unresolved_event_count: number;
+  unpriced_event_count: number;
+}
+
+export function toWindowTotals(answer: Economics): WindowTotals {
+  const row = onlyRow(answer);
+  return {
+    event_count: eventsOn(row) ?? 0,
+    revenue_micros: amountOn(row, CUSTOMER_REVENUE) ?? 0,
+    provider_cost_micros: amountOn(row, SUPPLIER_COGS) ?? 0,
+    margin_micros: amountOn(row, GROSS_MARGIN),
+    ...completenessOn(row),
+  };
+}
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
 // (#409), so this comes from the root schemas rather than from metering's.
 export type CloseTaskResult = RootSchemas["CloseTaskResponse"];
@@ -35,9 +70,11 @@ export type CloseTaskResult = RootSchemas["CloseTaskResponse"];
 export type { TaskOutcome } from "@/lib/vocabulary";
 export type RefundBody = BillingSchemas["RefundRequest"];
 export type RefundResult = BillingSchemas["RefundResponse"];
-export type MarginCustomers = MarginSchemas["MarginListOut"];
-export type MarginCustomerRow = MarginSchemas["CustomerMarginListRow"];
-export type CustomerMargin = MarginSchemas["CustomerMarginOut"];
+/** One choice in the ledger's customer picker — an identity, which is what
+ *  the customer axis groups and what the picker submits. */
+export interface CustomerChoice {
+  customer_id: string;
+}
 
 /** Composable filters for the per-customer usage list. */
 export interface UsageListFilters {
@@ -71,10 +108,6 @@ export interface TimeseriesParams {
 
 function str(value: unknown): string | null {
   return typeof value === "string" ? value : null;
-}
-
-function num(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function numOrNull(value: unknown): number | null {
@@ -177,8 +210,9 @@ export function asStopContextEntries(
 export interface TimeseriesPoint {
   bucket: string;
   provider_cost_micros: number;
-  billed_cost_micros: number;
-  markup_micros: number;
+  revenue_micros: number;
+  /** Null where UBB states no margin for the bucket. */
+  margin_micros: number | null;
   event_count: number;
   /** This bucket's own uncosted events — the server answers it per bucket. */
   unresolved_event_count: number;
@@ -207,26 +241,20 @@ export interface TimeseriesPoint {
  */
 export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
-export function asTimeseriesPoints(
-  series: Array<Record<string, unknown>>,
-): TimeseriesPoint[] {
-  const points: TimeseriesPoint[] = [];
-  for (const row of series) {
-    const bucket = str(row.bucket);
-    if (!bucket) continue;
+export function asTimeseriesPoints(answer: Economics): TimeseriesPoint[] {
+  return answer.rows.map((row) => {
     const point: TimeseriesPoint = {
-      bucket,
-      provider_cost_micros: num(row.provider_cost_micros),
-      billed_cost_micros: num(row.billed_cost_micros),
-      markup_micros: num(row.markup_micros),
-      event_count: num(row.event_count),
-      unresolved_event_count: num(row.unresolved_event_count),
+      bucket: row.bucket_start ?? "",
+      provider_cost_micros: amountOn(row, SUPPLIER_COGS) ?? 0,
+      revenue_micros: amountOn(row, CUSTOMER_REVENUE) ?? 0,
+      margin_micros: amountOn(row, GROSS_MARGIN),
+      event_count: eventsOn(row) ?? 0,
+      unresolved_event_count: completenessOn(row).unresolved_event_count,
     };
-    const groupValue = str(row[WIRE_GROUP_VALUE_KEY]);
-    if (groupValue !== null) point.group_value = groupValue;
-    points.push(point);
-  }
-  return points;
+    const value = axisValueOn(row);
+    if (value !== null) point.group_value = value;
+    return point;
+  });
 }
 
 // ⚠ THE PAST-LIMIT REPORT'S NARROWING WAS HERE AND IS DELETED (#466). The

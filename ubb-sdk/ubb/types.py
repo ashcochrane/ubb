@@ -68,8 +68,15 @@ class BatchResult:
 # refund / transactions / auto-top-up / the margin surface) are RETIRED (#98):
 # those responses are typed in the committed contract now, so their DTOs come
 # from the generated core (TopUpCheckoutResponse, WithdrawResponse,
-# RefundResponse, WalletTransactionOut, StatusResponse, CustomerMarginOut,
-# GroupingFieldMarginRow, MarginTrendPointOut).
+# RefundResponse, WalletTransactionOut, StatusResponse).
+#
+# THE MARGIN SURFACE'S THREE ARE GONE ALTOGETHER (#501), which is the same
+# ruling reaching its end rather than an exception to it: CustomerMarginOut,
+# GroupingFieldMarginRow and MarginTrendPointOut were generated from routes
+# that no longer exist, so they left when the paths did. What they answered is
+# `GET /metering/analytics/economics`, and the point #98 was making survives
+# them — a response this client hand-rolls a result for is a response the
+# contract has not typed.
 
 T = TypeVar("T")
 

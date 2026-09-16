@@ -37,8 +37,7 @@ import type {
 import { receiptComponent, type ReceiptComponent } from "../lib/receipt";
 
 import type {
-  CustomerMargin,
-  MarginCustomerRow,
+  CustomerChoice,
   UsageEventDetail,
 } from "./types";
 
@@ -1039,71 +1038,13 @@ export const ALL_EVENTS: MockEvent[] = [
 
 export const MARGIN_PERIOD = { start: "2026-07-01", end: "2026-07-25" };
 
-export const MARGIN_CUSTOMERS: MarginCustomerRow[] = [
-  {
-    customer_id: CUSTOMER_A_ID,
-    subscription_revenue_micros: 49_000_000,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 4_620_000,
-    usage_revenue_micros: 4_620_000,
-    provider_cost_micros: 3_580_000,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    gross_margin_micros: 50_040_000,
-    margin_percentage: 93.3,
-  },
-  {
-    customer_id: CUSTOMER_B_ID,
-    subscription_revenue_micros: 19_000_000,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 410_000,
-    usage_revenue_micros: 410_000,
-    provider_cost_micros: 320_000,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    gross_margin_micros: 19_090_000,
-    margin_percentage: 98.4,
-  },
-  {
-    customer_id: CUSTOMER_C_ID,
-    subscription_revenue_micros: 9_000_000,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 0,
-    usage_revenue_micros: 0,
-    provider_cost_micros: 0,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    gross_margin_micros: 9_000_000,
-    margin_percentage: 100,
-  },
+// ⚠ THE PICKER'S FEED IS AN IDENTITY LIST NOW (#501). It was a per-customer
+// margin roster plus a lookup from id to the tenant's own external id, and both
+// came off routes the one economic query replaced — which groups by identity
+// and publishes no external id, because a tenant's own word for a row belongs
+// to the surface that renders it.
+export const CUSTOMER_CHOICES: CustomerChoice[] = [
+  { customer_id: CUSTOMER_A_ID },
+  { customer_id: CUSTOMER_B_ID },
+  { customer_id: CUSTOMER_C_ID },
 ];
-
-function marginDetail(
-  row: MarginCustomerRow,
-  externalId: string,
-  eventCount: number,
-): CustomerMargin {
-  return {
-    customer_id: row.customer_id,
-    external_id: externalId,
-    period: MARGIN_PERIOD,
-    event_count: eventCount,
-    subscription_revenue_micros: row.subscription_revenue_micros,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: row.usage_billed_micros,
-    usage_revenue_micros: row.usage_revenue_micros,
-    provider_cost_micros: row.provider_cost_micros,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    total_revenue_micros:
-      row.subscription_revenue_micros + row.usage_revenue_micros,
-    gross_margin_micros: row.gross_margin_micros,
-    margin_percentage: row.margin_percentage,
-  };
-}
-
-export const CUSTOMER_MARGIN_BY_ID: Record<string, CustomerMargin> = {
-  [CUSTOMER_A_ID]: marginDetail(MARGIN_CUSTOMERS[0]!, CUSTOMER_A_EXTERNAL, 64),
-  [CUSTOMER_B_ID]: marginDetail(MARGIN_CUSTOMERS[1]!, CUSTOMER_B_EXTERNAL, 5),
-  [CUSTOMER_C_ID]: marginDetail(MARGIN_CUSTOMERS[2]!, CUSTOMER_C_EXTERNAL, 0),
-};

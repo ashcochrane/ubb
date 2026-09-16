@@ -79,8 +79,16 @@ POST /api/v1/platform/plans api path removed without deprecation
 # replaced by `task_type`/`subtask_type`/`dim1`..`dim6`. The WARN-level findings
 # for this same rework live in oasdiff-warn-ignore.txt.
 #
-# Usage analytics groups by declared dimensions/task_type, not the old by_product bucket:
-GET /api/v1/metering/analytics/usage removed the required property `by_product` from the response with the `200` status
+# Usage analytics grouped by a declared axis rather than by the old by_product
+# bucket, and its line WAS HERE.
+#
+# ⚠ IT WENT IN #501, WHICH REMOVED THE WHOLE PATH. A removed path subsumes
+# every property-level break on it, so the entry stopped suppressing anything —
+# and this gate fails on an entry that suppresses nothing exactly as it fails on
+# an unreviewed break (#367, measured in #407). The same rule the single-rate
+# create route's two lines were deleted under, applied a second time. What that
+# response grouped by is now `group_by=field:…` on the one economic query.
+#
 # Rate write/read contract moves from a JSONB `dimensions` blob + `product_id` to
 # the ten named selector columns (dim1..dim6, task_type, subtask_type) — the
 # book's rate LIST route carries this:
@@ -260,8 +268,16 @@ PATCH /api/v1/tenant/config request property `products/anyOf[subschema #1]/items
 # collapse and would then inherit its final shape. The column and its last
 # reader died here regardless — you cannot drop a column while a reader
 # survives, and slice 7 cannot inherit a shape nobody has cut.
-GET /api/v1/me/usage-summary removed the required property `metrics/items/units` from the response with the `200` status
-GET /api/v1/me/usage-summary removed the required property `total_units` from the response with the `200` status
+#
+# ⚠ IT DID FALL INSIDE IT, AND THE TWO LINES THAT STOOD HERE ARE GONE (#501).
+# The route was the eighth of the nine that collapsed into the one economic
+# query, and removing a path subsumes every property-level break on it — so both
+# entries stopped suppressing anything, and this gate fails on an entry that
+# suppresses nothing exactly as it fails on an unreviewed break (#367, measured
+# in #407). **The block stays because the RULING is still the record**: the
+# retirement was argued here, and `tests/contracts/test_the_inline_unit_total_is_gone.py`
+# points at this prose. What the ruling flagged as "may fall inside" is settled,
+# and the removal is filed in this file's #501 block with the other seven.
 
 # 2026-08-12 THE RATE'S QUANTITY NAME TAKES THE CANONICAL MEASUREMENT NAME
 # (#275, slice 2; PR #303). Decision reference: ADR-0007 §1 and §3, and the
@@ -1053,3 +1069,136 @@ PUT /api/v1/margin/customers/{customer_id}/revenue api path removed without depr
 # column and the snapshot's frozen copy of it.
 GET /api/v1/margin/customers/{customer_id}/revenue-mode api path removed without deprecation
 PUT /api/v1/margin/customers/{customer_id}/revenue-mode api path removed without deprecation
+
+# --- #501 (slice 7, ticket 7 of 18, phase B1) ------------------------------
+#
+# NINE PUBLISHED ROUTES COLLAPSE INTO ONE ECONOMIC QUERY, and with them the
+# five independent backend definitions of revenue and margin they carried. The
+# nine, and what answers each now:
+#
+#   the usage analytics report        measures, with multi-axis `group_by`
+#   its timeseries sibling            `bucket=day|hour`
+#   the grouped margin breakdown      a DUPLICATE: same rows, same arithmetic,
+#                                     a silently different revenue basis
+#   the billing revenue report        a DUPLICATE of the timeseries, tenant-wide
+#   the per-customer margin list      `group_by=field:customer`
+#   one customer's margin             the same question, filtered
+#   one customer's margin trend       `bucket=month`, and it stops reading the
+#                                     alerting snapshot
+#   the customer-scoped usage summary the same question, customer-scoped
+#   the tenant-wide margin total      the degenerate preset: three measures,
+#                                     no grouping, no bucket
+#
+# Every one is `GET /api/v1/metering/analytics/economics`, whose request names
+# MEASURES and AXES rather than a report.
+#
+# ⚠ NINE PATHS, NINE OPERATIONS, AND EIGHT LINES. The ninth is the grouped
+# margin breakdown, and it takes no line because the cumulative baseline never
+# published the path it is being removed from: at `api-v1-launch` that route
+# was `/api/v1/margin/by-dimension`, and slice 2 renamed it to
+# `/api/v1/margin/by-grouping-field` — a rename the block at the head of this
+# file records, and which it took DELIBERATELY under the ledger's ownership
+# rule, knowing this slice would take the route away. So the tag's path was
+# already filed as removed there, and the new spelling is a path the tag never
+# promised. Filing a line for it would file an INERT entry, and the gate fails
+# on an inert entry exactly as on an unreviewed one (#367, measured in #407).
+# **Eight lines, nine routes, and the difference is a rename that already paid
+# for itself.**
+#
+# ⚠⚠ **AND THAT MOVES A NUMBER THE SPEC WROTE, WHICH IS FLAGGED HERE
+# RATHER THAN ABSORBED.** §17 prices this slice's whole break budget as
+# **eleven paths and thirteen operations** — phase A's two paths and four
+# operations plus this ticket's nine and nine. The nine routes DO go, so the
+# ticket's own count is right; what cannot be filed is the ninth LINE, so the
+# committed total this file will carry for slice 7 is **ten paths and twelve
+# operations**. The missing one is not an unreviewed break: it is a path the tag
+# never published, already filed under the name the tag knew it by.
+#
+# A later ticket auditing §17's arithmetic against this file will find ten
+# where it expects eleven, and the answer is this paragraph. It is recorded and
+# not silently corrected because §17 is the spec's number and a ticket that
+# finds the spec's arithmetic moved is told to say so rather than to quietly
+# adopt a different one.
+#
+# ⚠ AND TWO OF THE EIGHT ARE FILED FOR A SECOND REASON, WHICH IS A FINDING
+# ABOUT THIS GATE RATHER THAN ABOUT THE CONTRACT. `--emit` reported only SIX
+# unreviewed breaks: it considered `/api/v1/margin/customers` and
+# `/api/v1/margin/customers/{customer_id}` already covered, because this gate
+# matches an entry's path by CONTAINMENT and the older line
+# `GET /api/v1/margin/customers/{customer_id}/revenue api path removed without
+# deprecation` contains both of them as substrings, with the same operation and
+# the same finding text. oasdiff's own `--err-ignore` pass does not agree, and
+# `_cross_check` is what turned the disagreement into a failure instead of a
+# false green — an entry written for the revenue switch's route would otherwise
+# have silently reviewed two route removals nobody had looked at. The two lines
+# below are filed explicitly, which restores the agreement. **The matcher's
+# containment rule is a real hole and it is not closed here**: tightening it
+# would re-test every line in this file against six slices of history, which is
+# a change with its own blast radius and no ticket behind it.
+#
+# BOTH DIRECTIONS WERE RUN AND THEY DISAGREE BY EXACTLY THAT ONE ROUTE, WHICH
+# IS THE CHECK RATHER THAN A COMPLICATION. The authoring run
+# (`--baseline origin/main` — the REMOTE ref, since the local `main` in this
+# checkout is stale by six slices) reports NINE path removals, one per route;
+# the cumulative run reports eight, and the ninth is the grouped margin
+# breakdown for the reason above. Filing only what the cumulative run is missing
+# is the rule (#411), and here it is the difference between eight live entries
+# and eight live entries plus one inert one.
+#
+# Neither direction reports anything but path removals: a removed path takes its
+# response schemas with it, so the eight response bodies these routes answered
+# with — including the fused field that stated billed minus supplier cost over a
+# window, and the free-text-key breakdown block — produce no findings of their
+# own.
+#
+# ⚠ AND THREE OLDER ENTRIES WENT INERT AND WERE DELETED IN THIS COMMIT, for the
+# same reason: `by_product` leaving the usage report's response, and the two
+# retired inline totals leaving the customer-scoped summary's. A removed path
+# subsumes every property-level break on it, and an entry that suppresses
+# nothing fails this gate exactly as an unreviewed break does. Their prose
+# blocks stay — the rulings are still the record — and each says what happened
+# to its lines.
+#
+# WHY THE PRE-LIVE LANE APPLIES (map #137 constraint 1; ADR-0007 §5): no tenant
+# is integrated against v1, and this is one clean break across API, SDK, UI and
+# database rather than eleven deprecation cycles under ADR-0003 §4. #153 §13.4
+# is explicit that it is the SAME exercise as #148 §11 and the cutover, not a
+# fourth one. Every known consumer moves in this same commit — the read
+# contract's four duplicate definitions, eight response schemas, the SDK's
+# generated core (nine operation modules and their models) and its five
+# hand-written analytics and margin calls.
+#
+# ⚠ ONE FIELD ON A REMOVED ROUTE SURVIVES, and it is the opposite defect worth
+# naming here: the tenant-wide margin total published a count of unprofitable
+# customers, which reads the ALERTING record rather than a margin figure.
+# `GET /api/v1/margin/unprofitable` keeps its own contract and is untouched.
+#
+# ⚠⚠ AND ONE PATH IS ADDED BY THE SAME COMMIT, WHICH ON A TICKET THAT REMOVES
+# NINE IS WORTH THE PARAGRAPH. `GET /api/v1/platform/customers/{customer_id}`
+# answers a customer's IDENTITY: the id UBB assigned them, the id the tenant
+# gave them, the kind of account and the business a seat belongs to.
+#
+# One customer's margin published `external_id` beside its figures, and that
+# was the ONLY read on the contract mapping UBB's identity for a customer to
+# the tenant's own word for them. The one economic query groups by identity and
+# publishes no external id — rightly, because a tenant's vocabulary is not a
+# measure and a report is not a directory — so the capability had nowhere to go.
+#
+# It is load-bearing rather than cosmetic: the subscription lifecycle is
+# addressed by the EXTERNAL id and every metering and billing read by the UUID,
+# so a caller holding one and needing the other had no way across. Removing the
+# nine without this would have stopped subscription management working on any
+# surface that navigates by UBB's id, the console included.
+#
+# An ADDED path is not a breaking change and takes no line in this file. It is
+# recorded here because a reader auditing this block against the ticket's "nine
+# paths" will otherwise find 118 where 117 was expected, and the answer should
+# be beside the question.
+GET /api/v1/billing/analytics/revenue api path removed without deprecation
+GET /api/v1/margin/customers api path removed without deprecation
+GET /api/v1/margin/customers/{customer_id} api path removed without deprecation
+GET /api/v1/margin/customers/{customer_id}/trend api path removed without deprecation
+GET /api/v1/margin/summary api path removed without deprecation
+GET /api/v1/me/usage-summary api path removed without deprecation
+GET /api/v1/metering/analytics/usage api path removed without deprecation
+GET /api/v1/metering/analytics/usage/timeseries api path removed without deprecation

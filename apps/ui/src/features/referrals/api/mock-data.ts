@@ -9,7 +9,7 @@
 
 import type {
   LedgerEntryOut,
-  MarginCustomerRow,
+  CustomerChoice,
   ProgramOut,
   ReferralOut,
   ReferrerOut,
@@ -45,22 +45,15 @@ export interface ReferralsMockState {
   referralsByReferrer: Record<string, ReferralOut[]>;
   /** Keyed by referral id. */
   ledgerByReferral: Record<string, LedgerEntryOut[]>;
-  marginCustomers: MarginCustomerRow[];
+  marginCustomers: CustomerChoice[];
 }
 
-function marginRow(customerId: string, revenue: number, cost: number): MarginCustomerRow {
-  return {
-    customer_id: customerId,
-    usage_revenue_micros: revenue,
-    usage_billed_micros: revenue,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    provider_cost_micros: cost,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    gross_margin_micros: revenue - cost,
-    margin_percentage: revenue === 0 ? 0 : ((revenue - cost) / revenue) * 100,
-  };
+// ⚠ THE PICKER'S FEED IS AN IDENTITY NOW (#501). It was a margin row built
+// from a revenue and a cost, and this feature never read either: the per-
+// customer margin list is gone, and the one economic query grouped by the
+// customer axis answers what a picker actually asked for.
+function customerChoice(customerId: string): CustomerChoice {
+  return { customer_id: customerId };
 }
 
 export function buildInitialState(): ReferralsMockState {
@@ -229,12 +222,12 @@ export function buildInitialState(): ReferralsMockState {
       ],
     },
     marginCustomers: [
-      marginRow(MOCK_CUSTOMER_IDS.acme, 1_200_000_000, 480_000_000),
-      marginRow(MOCK_CUSTOMER_IDS.nova, 640_000_000, 300_000_000),
-      marginRow(MOCK_CUSTOMER_IDS.kite, 210_000_000, 95_000_000),
-      marginRow(MOCK_CUSTOMER_IDS.ember, 88_000_000, 61_000_000),
-      marginRow(MOCK_CUSTOMER_IDS.spareOne, 540_000_000, 220_000_000),
-      marginRow(MOCK_CUSTOMER_IDS.spareTwo, 130_000_000, 90_000_000),
+      customerChoice(MOCK_CUSTOMER_IDS.acme),
+      customerChoice(MOCK_CUSTOMER_IDS.nova),
+      customerChoice(MOCK_CUSTOMER_IDS.kite),
+      customerChoice(MOCK_CUSTOMER_IDS.ember),
+      customerChoice(MOCK_CUSTOMER_IDS.spareOne),
+      customerChoice(MOCK_CUSTOMER_IDS.spareTwo),
     ],
   };
 }

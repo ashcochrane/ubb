@@ -6,12 +6,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCursorList } from "@/api/pagination";
 
 import { eventsApi } from "./provider";
-import type {
-  AnalyticsParams,
-  RefundBody,
-  TaskOutcome,
-  TimeseriesParams,
-  UsageListFilters,
+import {
+  asTimeseriesPoints,
+  toWindowTotals,
+  type AnalyticsParams,
+  type RefundBody,
+  type TaskOutcome,
+  type TimeseriesParams,
+  type UsageListFilters,
 } from "./types";
 
 /** What closing a unit of work takes: which one, and how it ended. */
@@ -20,25 +22,22 @@ export interface CloseTaskVariables {
   outcome: TaskOutcome;
 }
 
-export function useMarginCustomers() {
+export function useCustomerChoices() {
   return useQuery({
-    queryKey: ["margin", "customers"] as const,
-    queryFn: () => eventsApi.listMarginCustomers(),
+    queryKey: ["metering", "analytics", "economics", "by-customer"] as const,
+    queryFn: () => eventsApi.listCustomerChoices(),
   });
 }
 
-export function useCustomerMargin(customerId: string | undefined) {
-  return useQuery({
-    queryKey: ["margin", "customer", customerId] as const,
-    queryFn: () => eventsApi.getCustomerMargin(customerId ?? ""),
-    enabled: customerId !== undefined,
-  });
-}
+// ⚠ THE HOOK THAT RESOLVED A CUSTOMER'S UUID TO ITS EXTERNAL ID IS GONE (#501)
+// with the route behind it, and nothing on the contract replaces it —
+// `api.ts` carries the whole reason beside the call that used to make it.
 
 export function useUsageAnalytics(params: AnalyticsParams) {
   return useQuery({
-    queryKey: ["metering", "analytics", "usage", params] as const,
+    queryKey: ["metering", "analytics", "economics", "totals", params] as const,
     queryFn: () => eventsApi.getUsageAnalytics(params),
+    select: toWindowTotals,
     // Window/filter changes refresh in the background without blanking.
     placeholderData: (previous) => previous,
   });
@@ -46,8 +45,9 @@ export function useUsageAnalytics(params: AnalyticsParams) {
 
 export function useUsageTimeseries(params: TimeseriesParams) {
   return useQuery({
-    queryKey: ["metering", "analytics", "timeseries", params] as const,
+    queryKey: ["metering", "analytics", "economics", "daily", params] as const,
     queryFn: () => eventsApi.getUsageTimeseries(params),
+    select: asTimeseriesPoints,
     placeholderData: (previous) => previous,
   });
 }

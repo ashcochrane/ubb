@@ -1,7 +1,13 @@
 // TanStack Query hooks for the CFO overview. All query keys live here; the
-// first key segment is the BACKEND namespace (margin / metering / billing /
-// tenant / connect), not the feature name. The dashboard is read-only — no
-// mutations, so no invalidation lives here either.
+// first key segment is the BACKEND namespace (metering / margin / tenant /
+// connect), not the feature name. The dashboard is read-only — no mutations, so
+// no invalidation lives here either.
+//
+// ⚠ **FIVE KEYS BECAME ONE NAMESPACE (#501).** Four of these hooks read one
+// route each and a fifth chose between two by product; they all read
+// `metering/analytics/economics` now, and what distinguishes their cache
+// entries is the SHAPE of the question — grouped, bucketed or neither — rather
+// than which route was asked.
 
 import {
   keepPreviousData,
@@ -9,115 +15,104 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { hasProduct, useTenantConfig } from "@/hooks/use-tenant-config";
-
-import { revenuePoints, timeseriesPoints, type RevenueCostPoint } from "../lib/economics";
 import { dashboardApi } from "./provider";
-import type {
-  ApiKeyList,
-  BreakdownDimension,
-  ConnectStatus,
-  MarginCustomerList,
-  MarginSummary,
-  PricingBookList,
-  UsageAnalytics,
-  Unprofitable,
-  Window,
+import {
+  toBreakdownRows,
+  toCustomerRows,
+  toRevenueCostPoints,
+  toTenantEconomics,
+  type ApiKeyList,
+  type BreakdownDimension,
+  type BreakdownRow,
+  type ConnectStatus,
+  type CustomerEconomicsRow,
+  type Economics,
+  type PricingBookList,
+  type RevenueCostPoint,
+  type TenantEconomics,
+  type Unprofitable,
+  type Window,
 } from "./types";
 
-export function useMarginSummary(window: Window): UseQueryResult<MarginSummary> {
+export function useTenantEconomics(
+  window: Window,
+): UseQueryResult<TenantEconomics> {
   return useQuery({
-    queryKey: ["margin", "summary", window] as const,
-    queryFn: () => dashboardApi.getMarginSummary(window),
+    queryKey: ["metering", "analytics", "economics", "totals", window] as const,
+    queryFn: () => dashboardApi.getTenantEconomics(window),
+    select: toTenantEconomics,
     // Date-range changes refresh in the background instead of blanking.
     placeholderData: keepPreviousData,
   });
 }
 
 /**
- * Windowed usage analytics with one breakdown axis. The totals do not depend on
- * the axis, so `placeholderData` keeps the stat row and bars stable while an
- * axis switch refetches.
+ * The same window grouped by one axis. The totals do not depend on the axis, so
+ * `placeholderData` keeps the bars stable while an axis switch refetches.
  */
-export function useWindowAnalytics(
+export function useGroupedEconomics(
   window: Window,
   groupBy: BreakdownDimension,
-): UseQueryResult<UsageAnalytics> {
+): UseQueryResult<BreakdownRow[]> {
   return useQuery({
-    queryKey: ["metering", "analytics", "usage", { ...window, groupBy }] as const,
-    queryFn: () => dashboardApi.getWindowAnalytics(window, groupBy),
+    queryKey: [
+      "metering", "analytics", "economics", "grouped",
+      { ...window, groupBy },
+    ] as const,
+    queryFn: () => dashboardApi.getGroupedEconomics(window, groupBy),
+    select: toBreakdownRows,
     placeholderData: keepPreviousData,
   });
 }
 
 /** All-time totals — decides whether the getting-started card renders. */
-export function useLifetimeAnalytics(): UseQueryResult<UsageAnalytics> {
+export function useLifetimeEconomics(): UseQueryResult<Economics> {
   return useQuery({
-    queryKey: ["metering", "analytics", "usage", "lifetime"] as const,
-    queryFn: () => dashboardApi.getLifetimeAnalytics(),
+    queryKey: ["metering", "analytics", "economics", "lifetime"] as const,
+    queryFn: () => dashboardApi.getLifetimeEconomics(),
   });
-}
-
-export interface RevenueCostChartQuery {
-  points: RevenueCostPoint[] | undefined;
-  isPending: boolean;
-  isError: boolean;
-  error: unknown;
-  refetch: () => void;
 }
 
 /**
- * Chart source selection: tenants with the billing product read
- * GET /billing/analytics/revenue; everyone else reads the metering daily
- * timeseries. Neither query fires until tenant config resolves, so the wrong
- * endpoint is never hit while the product list is unknown.
+ * Chart source: one question for every workspace.
+ *
+ * ⚠ **THE PRODUCT FORK IS GONE AND THAT IS THE COLLAPSE WORKING.** This hook
+ * used to pick between the billing revenue report and the metering timeseries
+ * on whether the workspace had the billing product, and hold both queries so
+ * neither fired before the product list resolved. The two reports were the same
+ * two numbers over the same postings under two definitions; one query answers
+ * both, so there is nothing left to choose and nothing to wait for.
  */
-export function useRevenueVsCost(window: Window): RevenueCostChartQuery {
-  const { data: config } = useTenantConfig();
-  const billing = config ? hasProduct(config, "billing") : undefined;
-
-  const revenueQuery = useQuery({
-    queryKey: ["billing", "analytics", "revenue", window] as const,
-    queryFn: () => dashboardApi.getRevenueAnalytics(window),
-    enabled: billing === true,
-    select: revenuePoints,
-    placeholderData: keepPreviousData,
-  });
-  const timeseriesQuery = useQuery({
-    queryKey: [
-      "metering",
-      "analytics",
-      "timeseries",
-      { ...window, granularity: "day" },
-    ] as const,
-    queryFn: () => dashboardApi.getUsageTimeseries(window),
-    enabled: billing === false,
-    select: timeseriesPoints,
-    placeholderData: keepPreviousData,
-  });
-
-  const active = billing === false ? timeseriesQuery : revenueQuery;
-  return {
-    points: active.data,
-    // While config is still loading neither query runs — report pending.
-    isPending: billing === undefined || active.isPending,
-    isError: active.isError,
-    error: active.error,
-    refetch: active.refetch,
-  };
-}
-
-export function useMarginCustomers(
+export function useRevenueVsCost(
   window: Window,
-): UseQueryResult<MarginCustomerList> {
+): UseQueryResult<RevenueCostPoint[]> {
   return useQuery({
-    queryKey: ["margin", "customers", window] as const,
-    queryFn: () => dashboardApi.getMarginCustomers(window),
+    queryKey: [
+      "metering", "analytics", "economics", "daily", window,
+    ] as const,
+    queryFn: () => dashboardApi.getDailyEconomics(window),
+    select: toRevenueCostPoints,
     placeholderData: keepPreviousData,
   });
 }
 
-/** Unprofitable customers in the current (server-defaulted) period. */
+export function useCustomerEconomics(
+  window: Window,
+): UseQueryResult<CustomerEconomicsRow[]> {
+  return useQuery({
+    queryKey: [
+      "metering", "analytics", "economics", "by-customer", window,
+    ] as const,
+    queryFn: () => dashboardApi.getCustomerEconomics(window),
+    select: toCustomerRows,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Unprofitable customers in the current (server-defaulted) period.
+ *
+ *  Still the MARGIN namespace, because it still reads the alerting record —
+ *  which is why it kept its route when the reports lost theirs. */
 export function useUnprofitable(): UseQueryResult<Unprofitable> {
   return useQuery({
     queryKey: ["margin", "unprofitable"] as const,

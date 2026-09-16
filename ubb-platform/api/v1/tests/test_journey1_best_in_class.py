@@ -247,25 +247,60 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         exp_by_agent["(unattributed)"] = COST_UNATTR
 
         # ---- 4. multi-axis COGS breakdown via the SDK (no client joins) ----
-        rep = client.usage_analytics(
-            customer_id=str(c1.id),
-            dimensions=["product", "service", "agent"])
-        breakdowns = rep["breakdowns"]
-        assert set(breakdowns) == {"product", "service", "agent"}
+        #
+        # ⚠ ONE QUERY WHERE THERE WERE TWO ROUTES AND FIVE METHODS (#501), and
+        # reached through the SDK's generated operation rather than an ergonomic
+        # one: the methods this step used went with their routes, and the handle
+        # that replaces them is a later ticket's. It is still the SDK talking to
+        # the server, which is what this journey is about.
+        #
+        # ⚠ AND AN ABSENT VALUE IS NO LONGER A SENTINEL STRING. The three events
+        # with no service, product or agent used to be bucketed under one
+        # `(unattributed)` heading, which said nothing about WHY the value was
+        # absent; the row now carries `None` with a status beside it. The
+        # reconciliation this step exists to prove is unchanged: every breakdown
+        # still sums to the same grand total.
+        from ubb import _operations as ops
 
-        def _as_map(rows):
-            return {r["grouping_field_value"]: r["total_provider_cost_micros"]
-                    for r in rows}
+        # ⚠ AND THE WINDOW IS NAMED, WHICH THE OLD CALL DID NOT HAVE TO DO. The
+        # report this step used read every posting a tenant had ever recorded
+        # unless a caller narrowed it; the one query defaults to the current
+        # month to date and bounds the resolved span, so a question about a
+        # fixed month in the past has to say which month. This journey pins its
+        # nine events onto three days of January 2026 on purpose — the costs
+        # reconcile per axis only because the days are known — so naming the
+        # window is stating what the journey already decided, not working
+        # around a default.
+        JOURNEY_MONTH = ("2026-01-01", "2026-01-31")
 
-        by_product = _as_map(breakdowns["product"])
-        by_service = _as_map(breakdowns["service"])
-        by_agent = _as_map(breakdowns["agent"])
+        def _breakdown(axis):
+            response = client._request(
+                *ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
+                params=[("measures", "supplier_cogs"),
+                        ("customer_id", str(c1.id)),
+                        ("start_date", JOURNEY_MONTH[0]),
+                        ("end_date", JOURNEY_MONTH[1]),
+                        ("group_by", f"field:{axis}")])
+            assert response.status_code == 200, response.text
+            return {row["grouping_field_value"][0]:
+                    next(entry["amount_micros"] for entry in row["measures"]
+                         if entry["measure"] == "supplier_cogs")
+                    for row in response.json()["rows"]}
+
+        #: The unattributed heading, as the one query spells it.
+        NOTHING_RECORDED = None
+        for expected in (exp_by_product, exp_by_service, exp_by_agent):
+            expected[NOTHING_RECORDED] = expected.pop("(unattributed)")
+
+        by_product = _breakdown("product")
+        by_service = _breakdown("service")
+        by_agent = _breakdown("agent")
 
         # (a) per-service totals reflect alpha=2/unit (200 each) vs beta=5/unit (500 each),
-        #     PLUS an "(unattributed)" row for the event with no service tag.
+        #     PLUS a row for the event with no service recorded.
         assert by_service == exp_by_service == {
-            "alpha": 800, "beta": 2000, "(unattributed)": COST_UNATTR}
-        # (b) every breakdown sums to the SAME grand-total provider cost (including unattributed).
+            "alpha": 800, "beta": 2000, NOTHING_RECORDED: COST_UNATTR}
+        # (b) every breakdown sums to the SAME grand-total provider cost.
         assert sum(by_product.values()) == grand_total
         assert sum(by_service.values()) == grand_total
         assert sum(by_agent.values()) == grand_total
@@ -274,24 +309,29 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # (c) the typo'd agent is its OWN row -- not merged into a real agent, not dropped.
         assert "ag_typo" in by_agent
         assert by_agent["ag_typo"] == COST_ALPHA   # event 7 was service "alpha"
-        assert rep["total_provider_cost_micros"] == grand_total
 
         # ---- 5. time-series per-day per-service reconciles to the step-4 breakdown ----
-        ts = client.usage_timeseries(
-            customer_id=str(c1.id), granularity="day", group_by="service")
-        series = ts["series"]
-        # 3 distinct day-buckets (days 1, 2, 3).
-        buckets = {row["bucket"] for row in series}
-        assert len(buckets) == 3, buckets
-        # Sum provider cost per service across all buckets -> must equal step-4 totals.
+        # The SAME query, bucketed — which is the collapse working: one surface
+        # answers the grouping and the bucketing together rather than two
+        # answering them apart and agreeing by luck.
+        response = client._request(
+            *ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
+            params=[("measures", "supplier_cogs"),
+                    ("customer_id", str(c1.id)),
+                    ("start_date", JOURNEY_MONTH[0]),
+                    ("end_date", JOURNEY_MONTH[1]),
+                    ("group_by", "field:service"), ("bucket", "day")])
+        assert response.status_code == 200, response.text
+        rows = response.json()["rows"]
+        assert len({row["bucket_start"] for row in rows}) == 3, rows
         ts_by_service = {}
-        for row in series:
-            svc = row["grouping_field_value"]
-            ts_by_service[svc] = ts_by_service.get(svc, 0) + (row["provider_cost_micros"] or 0)
-        # Timeseries totals per service must match the step-4 dimensional breakdown
-        # (alpha, beta, AND the "(unattributed)" bucket from the no-service-tag event).
+        for row in rows:
+            service = row["grouping_field_value"][0]
+            cost = next(entry["amount_micros"] for entry in row["measures"]
+                        if entry["measure"] == "supplier_cogs")
+            ts_by_service[service] = ts_by_service.get(service, 0) + cost
         assert ts_by_service == by_service == {
-            "alpha": 800, "beta": 2000, "(unattributed)": COST_UNATTR}
+            "alpha": 800, "beta": 2000, NOTHING_RECORDED: COST_UNATTR}
 
         # ---- 6. version history via publish + point-in-time as_of ----
         # Capture a timestamp strictly BEFORE the reprice (old rate active then).

@@ -1,9 +1,19 @@
+"""The margin calls this client still has, and the ones it must not grow back.
+
+⚠ **FIVE CASES FOR THREE METHODS WERE HERE AND ARE GONE (#501)** — one
+customer's margin, the grouped breakdown with its axis and declared-key cases,
+and the trend. They called routes that no longer exist, and the surface that
+replaced all three is one economic query named by MEASURES and AXES rather than
+by a route. The ergonomic handle for it is a later ticket's; until then the
+operation is reachable through the generated client with a `generated_only`
+disposition recorded for it, which is the same shape the supplied-revenue pair
+has carried since #495.
+"""
 import unittest
 from unittest.mock import patch, MagicMock
+
+from ubb.client import UBBClient
 from ubb.metering import MeteringClient
-from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
-from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 
 
 class MarginClientTest(unittest.TestCase):
@@ -13,158 +23,63 @@ class MarginClientTest(unittest.TestCase):
     def tearDown(self):
         self.client.close()
 
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_customer_margin(self, mock_get):
-        # The full body the endpoint serves (CustomerMarginOut, #98).
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "customer_id": "c1", "external_id": "ext",
-            "subscription_revenue_micros": 500_000_000,
-            # NOTHING SUPPLIED HERE, and the field is present saying so (#496).
-            # This customer's revenue is all Stripe's, which is a fact the
-            # response can now state because the two sources are two fields
-            # rather than one column holding both.
-            "supplied_revenue_micros": 0,
-            "usage_billed_micros": 1_300_000, "usage_revenue_micros": 1_300_000,
-            "provider_cost_micros": 1_000_000, "total_revenue_micros": 501_300_000,
-            # One event's supplier cost is unresolved, so this margin is a
-            # CEILING (#328) — a fixture of the kind that needs the field rather
-            # than one that merely carries it, on the ROWS precedent below.
-            "unresolved_event_count": 1,
-            "unpriced_event_count": 0,
-            "gross_margin_micros": 500_300_000, "margin_percentage": 99.8,
-            "event_count": 2, "period": {"start": "2026-06-01", "end": "2026-06-09"}})
-        m = self.client.get_customer_margin("c1")
-        self.assertIsInstance(m, CustomerMarginOut)
-        self.assertEqual(m.gross_margin_micros, 500_300_000)
-        self.assertEqual(m.supplied_revenue_micros, 0)
-        # Read off the TYPED attribute, not the untyped bag: the point of the
-        # field being required is that the generated model carries it.
-        self.assertEqual(m.unresolved_event_count, 1)
-        self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1")
+    #: Every margin call removed from this client with its route, and the
+    #: ticket that took it. Read as one list because the failure mode is
+    #: identical for all of them: a method that quietly comes back is a call
+    #: whose route answers 404.
+    REMOVED = {
+        "set_customer_revenue": "#496 — the recurring revenue pair",
+        "get_customer_revenue": "#496 — the recurring revenue pair",
+        "get_customer_margin": "#501 — one customer's margin",
+        "get_margin_by_grouping_field": "#501 — the grouped margin breakdown",
+        "get_margin_trend": "#501 — one customer's margin trend",
+        "usage_analytics": "#501 — the usage analytics report",
+        "usage_timeseries": "#501 — its timeseries sibling",
+    }
 
-    # `unresolved_event_count` is required on the row (#327): the supplier cost
-    # a margin is taken against can be one UBB has not resolved, and a row that
-    # did not say so would report a ceiling on a margin as a margin. One here,
-    # so the fixture is a row of the kind that needs the field rather than a row
-    # that merely carries it.
-    ROWS = {"period": {}, "rows": [
-        {"grouping_field_value": "openai", "provider_cost_micros": 1_000_000,
-         "unresolved_event_count": 1,
-         "unpriced_event_count": 0,
-         "billed_cost_micros": 1_300_000, "margin_micros": 300_000,
-         "event_count": 2}]}
+    def test_no_removed_margin_call_is_still_on_the_client(self):
+        """`hasattr` is the only thing that fails when a method comes back."""
+        for name, why in self.REMOVED.items():
+            with self.subTest(name):
+                self.assertFalse(hasattr(self.client, name), why)
 
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_margin_by_grouping_field(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
-        rows = self.client.get_margin_by_grouping_field()
-        self.assertIsInstance(rows[0], GroupingFieldMarginRow)
-        self.assertEqual(rows[0].margin_micros, 300_000)
-        # Asserted explicitly because the generated model keeps an unrecognised
-        # key in `additional_properties` rather than refusing it: without this
-        # line the mock could spell the value property any way it liked, the
-        # attribute would be UNSET, and every other assertion here would still
-        # pass — a test whose mock agrees with the mistake.
-        self.assertEqual(rows[0].grouping_field_value, "openai")
-        # The completeness reaches a typed attribute, not the untyped bag —
-        # which is the whole reason the row declares it rather than letting it
-        # arrive: a caller must be able to see that this margin is a ceiling.
-        self.assertEqual(rows[0].unresolved_event_count, 1)
+    def test_and_none_of_them_is_still_on_the_facade_either(self):
+        """⚠ **THE HALF THAT WAS MISSING, AND IT HAD ALREADY BITTEN.**
 
-    @patch("ubb.metering.httpx.Client.get")
-    def test_the_request_carries_the_axis_and_nothing_the_route_would_drop(
-            self, mock_get):
-        """The whole params dict, not one key of it — and this is the point.
+        `UBBClient` forwards to the product clients, and its two delegates for
+        the recurring revenue pair OUTLIVED the methods they forwarded to: #496
+        removed those and left these, so calling either raised `AttributeError`
+        from inside the client rather than answering anything. A facade that
+        forwards to nothing looks callable, which is worse than one that does
+        not forward at all — and the case above could not see it, because it
+        asks the wrong object.
 
-        THE DEFECT THIS REPLACES, recorded by #278 and left for the ticket that
-        owns this method. The method used to take `provider: bool` and
-        `product: bool` and send them as `provider=1` / `product=1`. The route
-        publishes no such parameters — its four are the axis, the open-bag key
-        and the two date bounds — and Django Ninja DROPS an unknown query
-        parameter rather than refusing it. So `product=True` returned rows
-        grouped by the axis parameter's default, which is `provider`, and had
-        always done so: a wrong request that answered 200 with plausible,
-        wrong data. `provider=True` looked right for the same reason it was
-        never doing anything.
-
-        Asserting the dict WHOLE is what makes that unrepeatable. A per-key
-        assertion passes while a pseudo-flag rides along beside it, which is
-        exactly how the old one stayed green.
+        Found while removing three more of the same shape (#501), which is why
+        the assertion is over the same list rather than beside it.
         """
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
-        self.client.get_margin_by_grouping_field(group_by="event_type")
-        self.assertEqual(mock_get.call_args.kwargs["params"],
-                         {"group_by": "event_type"})
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_a_declared_grouping_field_key_is_an_axis_like_any_other(self, mock_get):
-        """A tenant's own declared key goes on the wire unchanged.
-
-        The route resolves the four built-in axes itself and looks anything
-        else up in the tenant's declared slots, answering 422 for a key it
-        does not know. The client does not second-guess that: a client holding
-        its own list of valid axes would refuse a key the tenant declared
-        after the client was pinned.
-        """
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: self.ROWS)
-        self.client.get_margin_by_grouping_field(group_by="model",
-                                                 start_date="2026-06-01",
-                                                 end_date="2026-06-30")
-        self.assertEqual(mock_get.call_args.kwargs["params"],
-                         {"group_by": "model", "start_date": "2026-06-01",
-                          "end_date": "2026-06-30"})
-
-    # THE OPEN-BAG GROUPING PARAMETER IS DELIBERATELY NOT EXERCISED HERE, and
-    # the reason is a gate rather than an oversight. Its name is a retired term
-    # whose ledger entry belongs to a later slice and records the exact set of
-    # files it may appear in; this file is not one of them, and a test written
-    # to cover it fails the sweep with `term_spread` — the word reaching
-    # further while the debt stands. The parameter is unchanged by this ticket
-    # (it took the same keyword before the rebuild and still does), so nothing
-    # this commit alters goes uncovered. It joins these assertions in the
-    # commit that renames it.
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_get_margin_trend(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "customer_id": "c1", "points": [
-                {"period_start": "2026-05-01", "provider_cost_micros": 100,
-                 # Per point (#328): a month whose cost total excluded an event
-                 # is a floor for that month alone.
-                 "unresolved_event_count": 1,
-                 "unpriced_event_count": 0,
-                 "usage_billed_micros": 200, "subscription_revenue_micros": 0,
-                 # A month whose revenue the tenant stated itself — the point
-                 # names the source, which is what the retired recurring
-                 # amount made impossible (#496).
-                 "supplied_revenue_micros": 200,
-                 "gross_margin_micros": 100, "margin_percentage": 50.0}]})
-        pts = self.client.get_margin_trend("c1", periods=3)
-        self.assertIsInstance(pts[0], MarginTrendPointOut)
-        self.assertEqual(pts[0].unresolved_event_count, 1)
-        self.assertEqual(pts[0].supplied_revenue_micros, 200)
-        self.assertEqual(mock_get.call_args.kwargs["params"]["periods"], 3)
-        self.assertEqual(mock_get.call_args.args[0], "/api/v1/margin/customers/c1/trend")
-
-    def test_the_recurring_revenue_pair_is_no_longer_callable(self):
-        """Both methods, because deleting one of a pair is the easy mistake.
-
-        Asserted rather than left to the absence of a test: a client that
-        still exposed either would be publishing a call whose route answers
-        404, and `hasattr` is the only thing that fails when a method quietly
-        comes back. The replacement is the supplied-revenue pair, reachable
-        through the generated client and recorded as `generated_only` in the
-        disposition manifest (#496; `MIGRATION.md` §14).
-        """
-        self.assertFalse(hasattr(self.client, "set_customer_revenue"))
-        self.assertFalse(hasattr(self.client, "get_customer_revenue"))
+        for name, why in self.REMOVED.items():
+            with self.subTest(name):
+                self.assertFalse(hasattr(UBBClient, name), why)
 
     @patch("ubb.metering.httpx.Client.get")
     def test_get_unprofitable(self, mock_get):
+        """The alerting read, which keeps its own contract (slice 7 §8, §14):
+        it counts customers a threshold rule has NAMED rather than deriving
+        anything from a margin figure."""
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "period_start": "2026-06-01", "customers": [{"customer_id": "c1"}]})
         rows = self.client.get_unprofitable_customers()
         self.assertEqual(rows[0]["customer_id"], "c1")
+
+    def test_the_alerting_read_is_still_on_the_facade(self):
+        """The vacuity guard on the two absence cases above.
+
+        They assert that seven names are missing from two objects. A facade
+        that had lost every margin call — or a typo'd import leaving `UBBClient`
+        as something else entirely — would satisfy both and mean nothing.
+        """
+        self.assertTrue(hasattr(UBBClient, "get_unprofitable_customers"))
+        self.assertTrue(hasattr(self.client, "get_unprofitable_customers"))
 
 
 if __name__ == "__main__":

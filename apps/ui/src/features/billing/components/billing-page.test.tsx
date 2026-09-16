@@ -47,8 +47,10 @@ describe("BillingPage", () => {
 
   // #330: the window's supplier total is a FLOOR whenever it holds events UBB
   // could not cost, and the markup beside it is then a ceiling — billed minus
-  // the RESOLVED cost, which is the backend's own statement about that figure
-  // (`get_revenue_analytics`). The mock puts uncosted events on today, so every
+  // the RESOLVED cost, which the contract states on the measure itself since
+  // #501 (`EconomicMeasureOut.status` = `incomplete`, where the figure "is a
+  // bound rather than a total"; it used to be `get_revenue_analytics`, one of
+  // the five definitions that collapsed). The mock puts uncosted events on today, so every
   // default window is partial and both tiles have to say which way they are
   // wrong.
   it("renders a partial window's cost as a floor and its markup as a ceiling", async () => {

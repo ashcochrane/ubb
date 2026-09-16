@@ -17,13 +17,13 @@ import {
 } from "@/components/shared/supplier-cost";
 import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
-import type { MarginTrendPointOut } from "../api/types";
+import type { TrendPoint } from "../api/types";
 
 /** Which bounding rule each plotted series obeys (#330). */
 function roleOf(dataKey: string): SeriesRole {
   if (dataKey === "provider_cost_micros") return "supplier-cost";
   if (dataKey === "gross_margin_micros") return "margin";
-  // Usage billed is NOT NULL at the column and whole by construction.
+  // Revenue is bounded by its own count, which the point carries.
   return "whole";
 }
 
@@ -35,7 +35,7 @@ export default function MarginTrendChart({
   points,
   currency,
 }: {
-  points: MarginTrendPointOut[];
+  points: TrendPoint[];
   currency: string;
 }) {
   return (
@@ -88,8 +88,8 @@ export default function MarginTrendChart({
             isAnimationActive={false}
           />
           <Line
-            dataKey="usage_billed_micros"
-            name="Usage billed"
+            dataKey="revenue_micros"
+            name="Revenue"
             stroke="var(--chart-3)"
             strokeWidth={2}
             dot={false}

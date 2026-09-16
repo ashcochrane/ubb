@@ -42,9 +42,6 @@ from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.start_task_response import StartTaskResponse
 from ubb._core.models.task_detail_out import TaskDetailOut
 from ubb._core.models.task_out import TaskOut
-from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
-from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.pricing_book_out import PricingBookOut
 from ubb._core.models.cost_book_out import CostBookOut
@@ -680,42 +677,22 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_GET_USAGE(customer_id), params=params)
         return page_from_wire(UsageEventOut, r.json())
 
-    def get_customer_margin(self, customer_id, start_date=None, end_date=None):
-        params = {k: v for k, v in {"start_date": start_date, "end_date": end_date}.items() if v}
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_CUSTOMER_MARGIN(customer_id),
-            params=params)
-        return from_wire(CustomerMarginOut, r.json())
-
-    def get_margin_by_grouping_field(self, *, group_by="provider", tag_key=None,
-                                     start_date=None, end_date=None):
-        """Margin broken down by one Grouping Field, one row per value.
-
-        ``group_by`` is the axis: one of the built-in ``provider``,
-        ``event_type``, ``task_type``, ``subtask_type``, or any key the tenant
-        has declared in its Grouping Field registry. The route resolves the key
-        and answers 422 for one it does not know — this client does not hold a
-        list of its own, because a client that did would refuse a key declared
-        after it was pinned.
-
-        ``tag_key`` groups by a key in the open metadata bag instead, and the
-        route prefers it over the axis when both arrive.
-
-        The row's value is ``grouping_field_value`` — the thing that was
-        reported, a model name or a region. The axis is not repeated on every
-        row, because the request already names it.
-        """
-        params = {"group_by": group_by}
-        if tag_key:
-            params["tag_key"] = tag_key
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_GROUPING_FIELD,
-            params=params)
-        return list_from_wire(GroupingFieldMarginRow, r.json()["rows"])
+    # ONE CUSTOMER'S MARGIN AND THE GROUPED MARGIN BREAKDOWN WERE HERE AND ARE
+    # GONE (#501), with the routes they called. Nine published routes collapsed
+    # into one economic query, and the same request that used to name a route
+    # now names MEASURES and AXES: what a customer cost is
+    # `measures=supplier_cogs` filtered to that customer, and a breakdown is the
+    # same question with `group_by=field:<axis>` beside it.
+    #
+    # ⚠ THE KEYED HALF HAS NO REPLACEMENT AND THAT IS THE RULING. The breakdown
+    # also grouped by a key read out of the open metadata bag; the declared
+    # grouping contract publishes what a tenant may group by, and an unbounded
+    # keyspace is exactly the capability it does not have.
+    #
+    # There is no ergonomic call for the replacement here YET. The operation is
+    # reachable through the generated client and the disposition manifest
+    # records it as such, which is a declared gap rather than an omission;
+    # `MIGRATION.md` names the replacement for anyone arriving at these methods.
 
     def get_unprofitable_customers(self, period_start=None):
         params = {"period_start": period_start} if period_start else {}
@@ -724,11 +701,12 @@ class MeteringClient:
             params=params)
         return r.json()["customers"]
 
-    def get_margin_trend(self, customer_id, periods=6):
-        r = self._request(
-            *ops.APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_TREND(customer_id),
-            params={"periods": periods})
-        return list_from_wire(MarginTrendPointOut, r.json()["points"])
+    # THE MARGIN TREND WAS HERE AND IS GONE (#501), with the route it called.
+    # It served N months of one customer's margin read straight off a stored
+    # snapshot; the one economic query answers it as `bucket=month` filtered to
+    # that customer, derived at read time — so a supplier cost that resolves
+    # late moves the month it belongs to instead of leaving a figure UBB knows
+    # is wrong on a chart.
 
     # THE RECURRING REVENUE PAIR WAS HERE AND IS GONE (#496, slice 7 §9).
     # One recurring amount per customer, with no period, no source and an
@@ -830,52 +808,28 @@ class MeteringClient:
                           params=params or None)
         return list_from_wire(CostBookOut, r.json()["data"])
 
-    def usage_timeseries(self, *, granularity="day", start_date=None, end_date=None,
-                         customer_id=None, group_by=None) -> dict:
-        """Time-series spend rollup via GET /api/v1/metering/analytics/usage/timeseries.
-
-        Returns dict with ``granularity``, ``group_by``, and ``series`` (list of bucket dicts).
-        """
-        params: dict = {"granularity": granularity}
-        if start_date is not None:
-            params["start_date"] = start_date
-        if end_date is not None:
-            params["end_date"] = end_date
-        if customer_id is not None:
-            params["customer_id"] = customer_id
-        if group_by is not None:
-            params["group_by"] = group_by
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES, params=params)
-        return r.json()
-
-    def usage_analytics(self, *, start_date=None, end_date=None, customer_id=None,
-                        tag_key=None, dimensions=None, past_limit=None,
-                        stop_scope=None, episode_seq=None):
-        """Cost + margin analytics with customer/product/tag breakdowns via
-        GET /api/v1/metering/analytics/usage.
-
-        Pass ``dimensions`` as a list of strings (e.g. ``["product_id", "tag:region"]``)
-        to receive a ``breakdowns`` dict in the response.  httpx encodes a list as
-        repeated query parameters, matching what django-ninja expects.
-
-        The #41 past-limit filters (``past_limit`` / ``stop_scope`` /
-        ``episode_seq``) compose with every breakdown — e.g.
-        ``past_limit=True`` totals exactly what was spent past a stop, in
-        both denominations.
-        """
-        params = {k: v for k, v in {
-            "start_date": start_date, "end_date": end_date,
-            "customer_id": customer_id, "tag_key": tag_key}.items() if v}
-        if dimensions is not None:
-            params["dimensions"] = dimensions
-        if past_limit is not None:
-            params["past_limit"] = past_limit
-        if stop_scope is not None:
-            params["stop_scope"] = stop_scope
-        if episode_seq is not None:
-            params["episode_seq"] = episode_seq
-        r = self._request(*ops.API_V1_METERING_ENDPOINTS_USAGE_ANALYTICS, params=params)
-        return r.json()
+    # ---- THE TWO ANALYTICS METHODS ARE GONE (#501) ----
+    #
+    # One served a day-or-hour spend series and the other cost-and-margin
+    # totals with breakdown blocks; both called routes that no longer exist.
+    # Between them and the three margin methods above, FIVE hand-written calls
+    # leave this client and the surface they reached is one query.
+    #
+    # **WHAT AN INTEGRATOR ASKS INSTEAD**, because a removal owes that rather
+    # than a list of what went: name the MEASURES you want and, optionally, the
+    # AXES to group them by and a `bucket`. The totals are the measures with no
+    # grouping; the four fixed breakdown blocks are `group_by=field:provider`
+    # and its siblings, asked for rather than always returned; the several
+    # ad-hoc breakdowns are several axes in one request; the day and hour
+    # series are `bucket=day|hour`; and every filter — including the three
+    # stop-context ones — composes with all of it exactly as it did.
+    #
+    # ⚠ AND EACH MEASURE COMES BACK WITH ITS OWN STATE, which is the part no
+    # wrapper should paper over: a figure that is a bound says so beside itself,
+    # and a figure UBB cannot attribute at the grain asked for is absent rather
+    # than small. The ergonomic handle for the replacement is a later ticket's,
+    # and until it lands the operation is reachable through the generated client
+    # with a `generated_only` disposition recorded for it.
 
     # ---- NO MARKUP METHODS (#369) ----
     #

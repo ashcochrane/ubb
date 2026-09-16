@@ -382,11 +382,23 @@ class PastLimitQueryFiltersTest(PastLimitPinTestBase):
         self.assertEqual(len(self._usage("?episode_seq=99")), 0)
 
     def test_analytics_filters_compose(self, _mock):
+        """The #41 filters on the surface that reports totals.
+
+        They asked the usage report until #501 collapsed it; the one economic
+        query takes the same three and composes them with every grouping, which
+        is the property this case is about rather than the route it was written
+        against. The measures are named because that query refuses a request
+        that names none.
+        """
         self._seed()
         resp = self.http_client.get(
-            "/api/v1/metering/analytics/usage?past_limit=true&stop_scope=customer",
+            "/api/v1/metering/analytics/economics",
+            {"measures": ["recorded_events", "customer_revenue"],
+             "past_limit": "true", "stop_scope": "customer"},
             **self._auth())
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["total_events"], 2)
-        self.assertEqual(body["total_billed_cost_micros"], 26_000_000)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        measures = {entry["measure"]: entry
+                    for entry in resp.json()["rows"][0]["measures"]}
+        self.assertEqual(measures["recorded_events"]["event_count"], 2)
+        self.assertEqual(measures["customer_revenue"]["amount_micros"],
+                         26_000_000)

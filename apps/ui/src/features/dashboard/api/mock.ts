@@ -6,94 +6,52 @@ import { mockDelay } from "@/lib/api-provider";
 import {
   MOCK_API_KEYS,
   MOCK_CONNECT_STATUS,
-  MOCK_LIFETIME_ANALYTICS,
-  MOCK_MARGIN_CUSTOMERS,
+  MOCK_LIFETIME_ECONOMICS,
   MOCK_PRICING_BOOKS,
   MOCK_UNPROFITABLE,
-  mockDailySeries,
-  mockMarginSummary,
-  mockWindowAnalytics,
+  mockCustomerEconomics,
+  mockDailyEconomics,
+  mockGroupedEconomics,
+  mockTenantEconomics,
 } from "./mock-data";
 import type {
   ApiKeyList,
   BreakdownDimension,
   ConnectStatus,
-  MarginCustomerList,
-  MarginSummary,
+  Economics,
   PricingBookList,
-  RevenueAnalytics,
   Unprofitable,
-  UsageAnalytics,
-  UsageTimeseries,
   Window,
 } from "./types";
 
-export async function getMarginSummary(window: Window): Promise<MarginSummary> {
+export async function getTenantEconomics(window: Window): Promise<Economics> {
   await mockDelay();
-  return mockMarginSummary(window);
+  return mockTenantEconomics(window);
 }
 
-export async function getWindowAnalytics(
-  _window: Window,
+export async function getGroupedEconomics(
+  window: Window,
   groupBy: BreakdownDimension,
-): Promise<UsageAnalytics> {
+): Promise<Economics> {
   await mockDelay();
-  return mockWindowAnalytics(groupBy);
+  return mockGroupedEconomics(window, groupBy);
 }
 
-export async function getLifetimeAnalytics(): Promise<UsageAnalytics> {
+export async function getLifetimeEconomics(): Promise<Economics> {
   await mockDelay();
-  return MOCK_LIFETIME_ANALYTICS;
+  return MOCK_LIFETIME_ECONOMICS;
 }
 
-export async function getRevenueAnalytics(
+export async function getDailyEconomics(window: Window): Promise<Economics> {
+  await mockDelay();
+  return mockDailyEconomics(window);
+}
+
+export async function getCustomerEconomics(
   window: Window,
-): Promise<RevenueAnalytics> {
+): Promise<Economics> {
   await mockDelay();
-  const daily = mockDailySeries(window);
-  const billed = daily.reduce((sum, d) => sum + d.billed_cost_micros, 0);
-  const provider = daily.reduce((sum, d) => sum + d.provider_cost_micros, 0);
-  return {
-    daily: daily.map((d) => ({
-      day: d.day,
-      provider_cost_micros: d.provider_cost_micros,
-      billed_cost_micros: d.billed_cost_micros,
-      event_count: d.event_count,
-    })),
-    total_billed_cost_micros: billed,
-    total_provider_cost_micros: provider,
-    // Nothing was excluded — see the note beside the billing feature's copy.
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    total_markup_micros: billed - provider,
-  };
-}
-
-export async function getUsageTimeseries(
-  window: Window,
-): Promise<UsageTimeseries> {
-  await mockDelay();
-  return {
-    granularity: "day",
-    group_by: "",
-    series: mockDailySeries(window).map((d) => ({
-      bucket: `${d.day}T00:00:00+00:00`,
-      provider_cost_micros: d.provider_cost_micros,
-      billed_cost_micros: d.billed_cost_micros,
-      markup_micros: d.billed_cost_micros - d.provider_cost_micros,
-      event_count: d.event_count,
-    })),
-  };
-}
-
-export async function getMarginCustomers(
-  window: Window,
-): Promise<MarginCustomerList> {
-  await mockDelay();
-  return {
-    customers: MOCK_MARGIN_CUSTOMERS,
-    period: { start: window.start_date, end: window.end_date },
-  };
+  return mockCustomerEconomics(window);
 }
 
 export async function getUnprofitable(): Promise<Unprofitable> {

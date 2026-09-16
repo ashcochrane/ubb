@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import type { PostpaidConfig } from "../api/types";
-import { toRevenueDailyRow } from "../api/types";
 import {
   buildPostpaidPayload,
   currencyToMicros,
@@ -57,53 +56,15 @@ describe("postpaid partial-update payload", () => {
   });
 });
 
-describe("untyped revenue daily rows", () => {
-  it("narrows backend rows and degrades bad data to zeros", () => {
-    expect(
-      toRevenueDailyRow({
-        day: "2026-07-01",
-        provider_cost_micros: 10,
-        billed_cost_micros: 13,
-        event_count: 2,
-        unresolved_event_count: 1,
-        unpriced_event_count: 2,
-      }),
-    ).toEqual({
-      day: "2026-07-01",
-      provider_cost_micros: 10,
-      billed_cost_micros: 13,
-      event_count: 2,
-      unresolved_event_count: 1,
-      // A DIFFERENT NUMBER FROM ITS SIBLING, deliberately (#351): the two
-      // counts are about different postings, so equal fixtures would pass
-      // against a narrower that read either key for both.
-      unpriced_event_count: 2,
-    });
-    expect(toRevenueDailyRow({ day: 42, provider_cost_micros: "x" })).toEqual({
-      day: "",
-      provider_cost_micros: 0,
-      billed_cost_micros: 0,
-      event_count: 0,
-      unresolved_event_count: 0,
-      unpriced_event_count: 0,
-    });
-  });
-
-  // The day's own completeness has to SURVIVE the narrowing, and this is the
-  // assertion that says so: reading the cost while dropping the count beside it
-  // would leave the chart plotting a floor and calling it a figure (#330).
-  it("carries the day's own uncosted-event count through", () => {
-    const row = toRevenueDailyRow({
-      day: "2026-07-01",
-      provider_cost_micros: 10,
-      billed_cost_micros: 13,
-      event_count: 2,
-      unresolved_event_count: 3,
-    });
-
-    expect(row.unresolved_event_count).toBe(3);
-  });
-});
+// ⚠ THE UNTYPED-ROW SUITE IS GONE WITH THE SHAPE IT NARROWED (#501). Two
+// cases asserted that a day row was read off an `additionalProperties: true`
+// body and that bad data degraded to zeros rather than crashing the chart — a
+// narrowing that existed because the revenue report left its day rows untyped.
+//
+// The one economic query DECLARES its row, so the day series arrives typed: a
+// key that moved is a contract break the drift and breaking gates see, not a
+// silent zero this console has to defend against. What replaced the narrowing
+// is `toRevenueWindow` in `../api/types`, tested through the mock it serves.
 
 describe("month filter", () => {
   it("maps the month input to the API's period-start date", () => {

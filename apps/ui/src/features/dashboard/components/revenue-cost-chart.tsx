@@ -21,7 +21,7 @@ import {
   formatEventCount,
 } from "@/lib/format";
 
-import type { RevenueCostPoint } from "../lib/economics";
+import type { RevenueCostPoint } from "../api/types";
 
 /** Which bounding rule each plotted series obeys (#330). */
 function roleOf(dataKey: string): SeriesRole {
@@ -48,12 +48,12 @@ export default function RevenueCostChart({
   points,
   showMargin,
   currency,
-  billedLabel,
+  revenueLabel,
 }: {
   points: RevenueCostPoint[];
   showMargin: boolean;
   currency: string;
-  billedLabel: string;
+  revenueLabel: string;
 }) {
   return (
     <div className="h-[280px] w-full">
@@ -87,8 +87,8 @@ export default function RevenueCostChart({
             cursor={{ stroke: "var(--chart-grid)" }}
           />
           <Line
-            dataKey="billed_micros"
-            name={billedLabel}
+            dataKey="revenue_micros"
+            name={revenueLabel}
             stroke="var(--chart-1)"
             strokeWidth={2}
             dot={false}

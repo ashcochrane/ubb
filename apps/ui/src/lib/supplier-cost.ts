@@ -8,11 +8,18 @@
 // beside a non-zero count is a FLOOR rather than a figure, and the margin
 // computed from it is a CEILING.
 //
-// That is the backend's own statement rather than a console inference:
-// `get_revenue_analytics` says the markup "is billed MINUS THE RESOLVED
-// provider cost, so where the count is non-zero it is an upper bound rather
-// than a figure". This module is where the console stops rendering both of them
-// as though they were whole.
+// That is the backend's own statement rather than a console inference, and
+// since #501 it is said on the PUBLISHED CONTRACT rather than in a read
+// contract's docstring: `EconomicMeasureOut.status` reads `incomplete` when
+// "some input is still unresolved, so the figure is a bound rather than a
+// total, and the count beside it says how far off it can be". This module is
+// where the console stops rendering both of them as though they were whole.
+//
+// ⚠ IT USED TO CITE `get_revenue_analytics`, one of five backend definitions
+// of revenue and margin that each said this in their own words. All five are
+// deleted and the one query says it once, per MEASURE rather than per
+// response — which is why the roster below now names one schema where it used
+// to name six.
 //
 // A MARKER STATES ONLY THAT SOMETHING IS MISSING; "at least $4.20" STATES THE
 // ECONOMIC MEANING. A badge reading `incomplete` beside a number leaves the
@@ -33,15 +40,14 @@
 // console's own readers of a supplier cost — or of a margin computed against
 // one — intersected with the responses that carry a completeness count:
 //
-//   dashboard/stat-row              MarginSummaryOut
-//   dashboard/customer-economics-table, customers/customers-page
-//                                   CustomerMarginListRow
+//   dashboard/stat-row, dashboard/customer-economics-table,
+//   customers/customers-page, customers/overview-tab,
+//   customers/usage-tab, events/analytics-strip,
+//   billing/revenue-section         EconomicsOut — the one query, asked
+//                                   unbucketed, grouped by customer, or
+//                                   filtered to one, according to the surface
 //   dashboard/unprofitable-alert    UnprofitableCustomerRow (margin only)
-//   customers/overview-tab          CustomerMarginOut
 //   customers/business-rollup       SeatMarginOut + BusinessMarginTotals
-//   customers/usage-tab, events/analytics-strip
-//                                   UsageAnalyticsResponse
-//   billing/revenue-section         RevenueAnalyticsResponse
 //   events/task-section             CloseTaskResponse
 //   spend-controls/stops-and-breaches (its own tab and the customer's
 //   Usage tab)                      StopsAndBreachesResponse — episodes, their
@@ -49,6 +55,17 @@
 //   billing/revenue-chart, dashboard/revenue-cost-chart,
 //   customers/margin-trend-chart, customers/usage-timeseries-chart,
 //   events/usage-timeseries-chart   the per-point rows of the responses above
+//                                   — which, for all five, is now the same
+//                                   query with a `bucket`
+//
+// ⚠ **SEVEN SURFACES ON ONE SCHEMA IS THE COLLAPSE, AND IT CHANGES WHERE THE
+// COUNT LIVES.** The six responses those seven used to read each carried ONE
+// completeness count for the whole payload. `EconomicsOut` carries one per
+// MEASURE per row, so a surface showing a cost and a margin side by side reads
+// two counts and may floor one without flooring the other. The rule this module
+// states is unchanged; what changed is that the caller now has to say which
+// measure it is asking about, which is the thing a single per-response count
+// let it avoid saying.
 //
 // ⚠ DERIVING THAT LIST FROM THE CONTRACT'S TYPED SCHEMAS MISSES THE UNTYPED
 // ONES, AND THAT IS HOW THE REPORT STOPS AND BREACHES REPLACED WAS FIRST

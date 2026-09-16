@@ -39,7 +39,6 @@ import { useCustomerMargins } from "../api/queries";
 import {
   CUSTOMER_SORT_OPTIONS,
   filterMarginRows,
-  listRowRevenueMicros,
   shortId,
   sortMarginRows,
   type CustomerSort,
@@ -64,7 +63,7 @@ export function CustomersPage({
   const [sort, setSort] = React.useState<CustomerSort>("revenue");
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  const rows = query.data?.customers ?? [];
+  const rows = query.data ?? [];
   const visible = filterMarginRows(sortMarginRows(rows, sort), filter);
 
   return (
@@ -173,7 +172,7 @@ export function CustomersPage({
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(listRowRevenueMicros(row), currency)}
+                    {formatMicros(row.total_revenue_micros, currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {supplierCostTotal(row.provider_cost_micros, row, currency)}
@@ -181,10 +180,12 @@ export function CustomersPage({
                   <TableCell
                     className={cn(
                       "text-right tabular-nums",
-                      row.gross_margin_micros < 0 && "text-danger-dark",
+                      (row.gross_margin_micros ?? 0) < 0 && "text-danger-dark",
                     )}
                   >
-                    {marginBound(row.gross_margin_micros, row, currency)}
+                    {row.gross_margin_micros === null
+                      ? "—"
+                      : marginBound(row.gross_margin_micros, row, currency)}
                   </TableCell>
                   <TableCell
                     className={cn(

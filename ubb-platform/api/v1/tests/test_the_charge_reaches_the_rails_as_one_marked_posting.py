@@ -63,7 +63,7 @@ from apps.billing.wallets import operations as wallet_ops
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.metering.pricing.services.charge_projection import project_the_charge
 from apps.metering.pricing.services.charge_service import compensate
-from apps.metering.queries import get_revenue_analytics
+from api.v1.tests._helpers import tenant_wide_money
 from apps.metering.pricing.tests._helpers import (
     a_price_for_whole_work, a_rule_that_prices_what_it_measures, priced_at,
 )
@@ -78,6 +78,7 @@ from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.work.models import Task
 from core.vocabulary import (
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     COSTING_STATUS_KNOWN, MEASUREMENTS_STATUS_NOT_APPLICABLE,
     OUTCOME_REASON_EXECUTION_FAILED, PRICING_STATUS_KNOWN, TASK_OUTCOME_FAILED,
     USAGE_EVENT_KIND_METERED_USAGE, USAGE_EVENT_KIND_TASK_CHARGE,
@@ -563,9 +564,14 @@ class TestATenantThatDoesNotBillThroughUbbIsProjectedToo(ProjectionTestBase):
         started = self._priced_work()
         self._close(started)
 
-        totals = get_revenue_analytics(str(self.tenant.id))
-        assert totals["total_billed_cost_micros"] == THE_AGREED_PRICE
-        assert totals["total_markup_micros"] == THE_AGREED_PRICE
+        today = timezone.now().date()
+        measures = tenant_wide_money(self.tenant.id,
+                                     start_date=today - timedelta(days=1),
+                                     end_date=today + timedelta(days=2))
+        assert measures[ANALYTICS_MEASURE_CUSTOMER_REVENUE][
+            "amount_micros"] == THE_AGREED_PRICE
+        assert measures[ANALYTICS_MEASURE_GROSS_MARGIN][
+            "amount_micros"] == THE_AGREED_PRICE
 
     def test_nothing_is_collected_for_it(self):
         """A recorded fact rather than a collection, driven through the real

@@ -227,18 +227,23 @@ class TheContractIsWhereTheCanonicalNameCameFromTest(SimpleTestCase):
     Two claims, and they are not the same one twice. The ABSENCE is why this
     rename is not a contract change: nothing published carried the retired name,
     so the spec regenerates byte-identical. The PRESENCE is why the replacement
-    was not invented here — `GroupingFieldMarginRow` is a DECLARED schema on
-    `/margin/by-grouping-field`, and its own comment states the reading this
-    whole commit rests on: the property holds *the value the row groups, not the
-    axis it was grouped on*. The two open-dict analytics rollups and this column
-    now say what that schema has said all along.
+    was not invented here — a DECLARED schema already published the property,
+    and its own comment states the reading this whole commit rests on: it holds
+    *the value the row groups, not the axis it was grouped on*. This column says
+    what that schema has said all along.
+
+    ⚠ **THE SCHEMA THAT SAID IT FIRST IS GONE (#501), AND THE PROPERTY IS NOT.**
+    It was the grouped margin's row, one of three rollups over the same axes and
+    the only one a drift gate could see; the one economic query's row declares
+    the same property and is now the only publisher of it, which is a stronger
+    place for this pin to point than it was when there were three.
 
     That makes this the pin under the ruling. If the published property is ever
-    renamed, three sites that were deliberately spelled to match it are wrong,
-    and this is where a reader finds that out.
+    renamed, the sites that were deliberately spelled to match it are wrong, and
+    this is where a reader finds that out.
     """
 
-    PUBLISHED_ROW = "GroupingFieldMarginRow"
+    PUBLISHED_ROW = "EconomicRowOut"
 
     @classmethod
     def setUpClass(cls):

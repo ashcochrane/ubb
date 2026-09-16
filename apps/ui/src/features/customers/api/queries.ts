@@ -17,6 +17,12 @@ import { isNotFound } from "@/api/problem";
 import type { DateRange } from "@/lib/date-range";
 
 import { customersApi } from "./provider";
+import {
+  toCustomerRows,
+  toOneCustomer,
+  toTimeseriesPoints,
+  toTrendPoints,
+} from "./types";
 import type {
   CustomerSpendPoolIn,
   ConfigureAutoTopUpRequest,
@@ -42,10 +48,18 @@ async function nullOn404<T>(promise: Promise<T>): Promise<T | null> {
 // ---------------------------------------------------------------------------
 // Margin reads
 
+export function useCustomerIdentity(customerId: string) {
+  return useQuery({
+    queryKey: ["platform", "customers", customerId] as const,
+    queryFn: () => customersApi.getCustomerIdentity(customerId),
+  });
+}
+
 export function useCustomerMargins(range: DateRange) {
   return useQuery({
     queryKey: ["margin", "customers", range],
     queryFn: () => customersApi.listCustomerMargins(range),
+    select: toCustomerRows,
     // Date-range changes refresh in the background instead of blanking.
     placeholderData: keepPreviousData,
   });
@@ -55,6 +69,7 @@ export function useCustomerMargin(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["margin", "customer", customerId, range],
     queryFn: () => customersApi.getCustomerMargin(customerId, range),
+    select: toOneCustomer,
     placeholderData: keepPreviousData,
   });
 }
@@ -63,6 +78,7 @@ export function useMarginTrend(customerId: string, periods: number) {
   return useQuery({
     queryKey: ["margin", "trend", customerId, periods],
     queryFn: () => customersApi.getMarginTrend(customerId, periods),
+    select: toTrendPoints,
     placeholderData: keepPreviousData,
   });
 }
@@ -80,10 +96,17 @@ export function useBusinessMargin(externalId: string | undefined, range: DateRan
 // ---------------------------------------------------------------------------
 // Usage reads
 
+// ⚠ THE SAME KEY AS `useCustomerMargin`, DELIBERATELY. The Usage tab wants
+// one customer's figures for a window, which is exactly what the Overview tab
+// wants, so sharing the key makes the two tabs share one fetch and one cached
+// answer instead of racing two identical requests to the same route. The hooks
+// stay separate because each tab reads the answer for its own reason and a
+// `select` is per-caller; what they must not have is two ANSWERS.
 export function useUsageAnalytics(customerId: string, range: DateRange) {
   return useQuery({
-    queryKey: ["metering", "analytics", "usage", customerId, range],
-    queryFn: () => customersApi.getUsageAnalytics(customerId, range),
+    queryKey: ["margin", "customer", customerId, range],
+    queryFn: () => customersApi.getCustomerMargin(customerId, range),
+    select: toOneCustomer,
     placeholderData: keepPreviousData,
   });
 }
@@ -92,6 +115,7 @@ export function useUsageTimeseries(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["metering", "analytics", "timeseries", customerId, range],
     queryFn: () => customersApi.getUsageTimeseries(customerId, range),
+    select: toTimeseriesPoints,
     placeholderData: keepPreviousData,
   });
 }

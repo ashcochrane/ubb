@@ -51,7 +51,11 @@ READERS = {
         "four public request/response schemas",
     "ubb-platform/api/v1/me_endpoints.py":
         "the customer-facing usage-summary endpoint, and the two schemas it "
-        "answered with",
+        "answered with — ⚠ THAT ENDPOINT AND ITS SCHEMAS ARE THEMSELVES GONE "
+        "NOW (#501 collapsed the route into the one economic query), so what "
+        "this path guards is that the word does not come back to the module "
+        "that carried it, which is a weaker claim than it was and is still "
+        "worth making",
     "ubb-platform/api/v1/metering_endpoints.py":
         "the single/batch keyword map, and the detail serialiser",
     "ubb-platform/apps/metering/usage/services/usage_service.py":

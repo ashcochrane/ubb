@@ -122,14 +122,29 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         assert res.provider_cost_micros == 2000  # 1000 * 2
         assert res.uncosted_measurement_keys == []   # input_tokens HAS a cost card
 
-        # (c) analytics returns per-customer + per-product PROVIDER cost (COGS) via the SDK.
-        rep = client.usage_analytics(customer_id=str(customer.id), dimensions=["dim1"])
-        assert rep["total_provider_cost_micros"] == 2000
-        assert any(r["customer__external_id"] == "acme" and r["total_provider_cost_micros"] == 2000
-                   for r in rep["by_customer"])
-        assert any(r["grouping_field_value"] == "search"
-                   and r["total_provider_cost_micros"] == 2000
-                   for r in rep["breakdowns"]["dim1"])
+        # (c) analytics returns per-customer and per-declared-field PROVIDER
+        #     cost (COGS) through the SDK's own transport.
+        #
+        # ⚠ REACHED THROUGH THE GENERATED OPERATION RATHER THAN AN ERGONOMIC
+        # METHOD, because there is not one yet. The five analytics methods this
+        # step used went with the routes they called (#501); the one query that
+        # replaced them has a generated module and a `generated_only`
+        # disposition until the ticket that wraps it. Using the transport keeps
+        # the journey honest — it is still the SDK talking to the server — and
+        # says which half of the client is doing the work.
+        from ubb import _operations as ops
+
+        response = client._request(
+            *ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
+            params=[("measures", "supplier_cogs"),
+                    ("customer_id", str(customer.id)),
+                    ("group_by", "field:dim1")])
+        rows = response.json()["rows"]
+        by_value = {row["grouping_field_value"][0]:
+                    next(entry["amount_micros"] for entry in row["measures"]
+                         if entry["measure"] == "supplier_cogs")
+                    for row in rows}
+        assert by_value == {"search": 2000}
     finally:
         client.close()
         api.close()

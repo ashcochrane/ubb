@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveRange, type DateRange } from "@/lib/date-range";
 import { cn } from "@/lib/utils";
 
-import { useCustomerMargin } from "../api/queries";
+import { useCustomerIdentity, useCustomerMargin } from "../api/queries";
 import { BillingTab } from "./billing-tab";
 import { OverviewTab } from "./overview-tab";
 import { SubscriptionTab } from "./subscription-tab";
@@ -63,6 +63,11 @@ export function CustomerDetailPage({
 }) {
   const range = resolveRange(search);
   const margin = useCustomerMargin(customerId, range);
+  // ⚠ WHO THIS CUSTOMER IS, ASKED SEPARATELY SINCE #501. One customer's
+  // margin used to carry the tenant's own id beside its figures; the one
+  // economic query answers money and the identity read answers identity,
+  // which is the division the collapse makes everywhere else too.
+  const identity = useCustomerIdentity(customerId);
   // Unknown/stale ?tab= values fall back to Overview instead of rendering an
   // empty tab panel (the route schema also coerces them to undefined).
   const requestedTab = search.tab;
@@ -71,7 +76,7 @@ export function CustomerDetailPage({
       ? requestedTab
       : "overview";
 
-  if (margin.isLoading) {
+  if (margin.isLoading || identity.isLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-9 w-72" />
@@ -81,8 +86,9 @@ export function CustomerDetailPage({
     );
   }
 
-  if (margin.isError) {
-    if (isNotFound(margin.error)) {
+  const failure = identity.isError ? identity : margin;
+  if (failure.isError) {
+    if (isNotFound(failure.error)) {
       return (
         <EmptyState
           icon={UserRoundX}
@@ -91,11 +97,13 @@ export function CustomerDetailPage({
         />
       );
     }
-    return <ErrorCard error={margin.error} onRetry={() => void margin.refetch()} />;
+    return (
+      <ErrorCard error={failure.error} onRetry={() => void failure.refetch()} />
+    );
   }
 
-  const detail = margin.data;
-  if (!detail) return null;
+  const detail = identity.data;
+  if (!detail || !margin.data) return null;
 
   return (
     // keepPreviousData keeps the page mounted across range changes; the
@@ -148,7 +156,12 @@ export function CustomerDetailPage({
           ))}
         </TabsList>
         <TabsContent value="overview" className="pt-3">
-          <OverviewTab customerId={customerId} margin={detail} range={range} />
+          <OverviewTab
+            customerId={customerId}
+            margin={margin.data}
+            externalId={detail.external_id}
+            range={range}
+          />
         </TabsContent>
         <TabsContent value="usage" className="pt-3">
           <UsageTab customerId={customerId} range={range} stopsAndBreaches={stopsAndBreaches} />

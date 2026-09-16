@@ -27,16 +27,12 @@ import type {
   BalanceResponse,
   CustomerSpendPoolOut,
   BusinessMarginOut,
+  Economics,
   CustomerBillingProfileOut,
-  CustomerMarginListRow,
-  CustomerMarginOut,
   GrantOut,
-  MarginTrendPointOut,
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
   UsageInvoiceOut,
-  UsageAnalyticsResponse,
-  UsageTimeseriesResponse,
   WalletTransactionOut,
 } from "./types";
 
@@ -131,212 +127,7 @@ export const MOCK_DIRECTORY: MockCustomer[] = [
 // #508's. The three-way revenue sum is exercised with real numbers in
 // `lib/helpers.test.ts` and `features/dashboard/lib/economics.test.ts`, where
 // the figures are the case rather than the scenery.
-export const MOCK_MARGIN_ROWS: CustomerMarginListRow[] = [
-  {
-    customer_id: CUS_ACME,
-    subscription_revenue_micros: 199_000_000,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 342_500_000,
-    usage_revenue_micros: 342_500_000,
-    provider_cost_micros: ACME_PROVIDER_COST.micros,
-    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    gross_margin_micros: 267_500_000,
-    margin_percentage: 49.4,
-  },
-  {
-    customer_id: CUS_LUNA,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 41_200_000,
-    usage_revenue_micros: 41_200_000,
-    provider_cost_micros: LUNA_PROVIDER_COST.micros,
-    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    gross_margin_micros: -14_700_000,
-    margin_percentage: -35.7,
-  },
-  {
-    // THE ONE CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE (#330). Four of
-    // nova-ai's events carry a supplier cost UBB never learned, so its provider
-    // total is a floor and its margin a ceiling. Kept in sync by hand with the
-    // dashboard feature's roster, which carries byte-identical economics; the
-    // count is a fact about the events behind these figures and cannot differ
-    // between two views of them.
-    customer_id: CUS_NOVA,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 88_000_000,
-    // ⚠ EVERY MICRO OF IT IS REVENUE SINCE #497, and this row is where that
-    // shows. It used to read 0 here: this customer was the roster's
-    // metered-only one, so a customer-level switch struck its billed usage out
-    // of its revenue and left a margin of minus the whole supplier cost. With
-    // the switch deleted the two usage figures are one figure for every
-    // customer, and this one lands at exactly break-even — which keeps its
-    // real story rather than losing it, because the cost below is INCOMPLETE,
-    // so a margin of zero here is a CEILING and the truth can only be worse.
-    usage_revenue_micros: 88_000_000,
-    provider_cost_micros: NOVA_PROVIDER_COST.micros,
-    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    gross_margin_micros: 0,
-    margin_percentage: 0,
-  },
-  {
-    customer_id: CUS_SEAT_ENG,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 120_400_000,
-    usage_revenue_micros: 120_400_000,
-    provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
-    unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    gross_margin_micros: 24_100_000,
-    margin_percentage: 20,
-  },
-  {
-    customer_id: CUS_SEAT_RES,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 61_800_000,
-    usage_revenue_micros: 61_800_000,
-    provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
-    unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    gross_margin_micros: 12_400_000,
-    margin_percentage: 20.1,
-  },
-];
-
 export const MOCK_PERIOD = { start: "2026-07-01", end: "2026-07-24" };
-
-export const MOCK_MARGIN_DETAILS: Record<string, CustomerMarginOut> = {
-  [CUS_ACME]: {
-    customer_id: CUS_ACME,
-    external_id: "acme-corp",
-    period: MOCK_PERIOD,
-    event_count: 48_213,
-    subscription_revenue_micros: 199_000_000,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 342_500_000,
-    usage_revenue_micros: 342_500_000,
-    provider_cost_micros: ACME_PROVIDER_COST.micros,
-    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    total_revenue_micros: 541_500_000,
-    gross_margin_micros: 267_500_000,
-    margin_percentage: 49.4,
-  },
-  [CUS_LUNA]: {
-    customer_id: CUS_LUNA,
-    external_id: "luna-labs",
-    period: MOCK_PERIOD,
-    event_count: 6_054,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 41_200_000,
-    usage_revenue_micros: 41_200_000,
-    provider_cost_micros: LUNA_PROVIDER_COST.micros,
-    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    total_revenue_micros: 41_200_000,
-    gross_margin_micros: -14_700_000,
-    margin_percentage: -35.7,
-  },
-  [CUS_NOVA]: {
-    customer_id: CUS_NOVA,
-    external_id: "nova-ai",
-    period: MOCK_PERIOD,
-    event_count: 12_882,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 88_000_000,
-    // The row's figures, and the row says why they moved in #497.
-    usage_revenue_micros: 88_000_000,
-    provider_cost_micros: NOVA_PROVIDER_COST.micros,
-    // Same four events as the list row above — one customer, one fact.
-    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    total_revenue_micros: 88_000_000,
-    gross_margin_micros: 0,
-    margin_percentage: 0,
-  },
-  [CUS_SEAT_ENG]: {
-    customer_id: CUS_SEAT_ENG,
-    external_id: "acme-corp:eng",
-    period: MOCK_PERIOD,
-    event_count: 17_502,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 120_400_000,
-    usage_revenue_micros: 120_400_000,
-    provider_cost_micros: SEAT_ENG_PROVIDER_COST.micros,
-    unresolved_event_count: SEAT_ENG_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    total_revenue_micros: 120_400_000,
-    gross_margin_micros: 24_100_000,
-    margin_percentage: 20,
-  },
-  [CUS_SEAT_RES]: {
-    customer_id: CUS_SEAT_RES,
-    external_id: "acme-corp:research",
-    period: MOCK_PERIOD,
-    event_count: 8_907,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 61_800_000,
-    usage_revenue_micros: 61_800_000,
-    provider_cost_micros: SEAT_RES_PROVIDER_COST.micros,
-    unresolved_event_count: SEAT_RES_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    total_revenue_micros: 61_800_000,
-    gross_margin_micros: 12_400_000,
-    margin_percentage: 20.1,
-  },
-};
-
-/** 12 closed monthly periods, chronological ascending (Aug 2025 → Jul 2026). */
-export const MOCK_TREND_POINTS: MarginTrendPointOut[] = [
-  "2025-08-01",
-  "2025-09-01",
-  "2025-10-01",
-  "2025-11-01",
-  "2025-12-01",
-  "2026-01-01",
-  "2026-02-01",
-  "2026-03-01",
-  "2026-04-01",
-  "2026-05-01",
-  "2026-06-01",
-  "2026-07-01",
-].map((period_start, index, all) => {
-  const billed = 180_000_000 + index * 16_000_000;
-  const provider = 150_000_000 + index * 11_000_000;
-  const subscription = index >= 5 ? 199_000_000 : 0;
-  const margin = billed + subscription - provider;
-  return {
-    period_start,
-    provider_cost_micros: provider,
-    // ONLY THE MOST RECENT PERIOD IS INCOMPLETE, which is the shape a real
-    // trend has: a supplier invoice that has not arrived is a fact about the
-    // month still in progress, and every earlier month has long since settled.
-    // A fixture that marked all twelve could not tell a per-period read from a
-    // series-wide one (#330).
-    unresolved_event_count: index === all.length - 1 ? 4 : 0,
-    // A DIFFERENT MONTH, DELIBERATELY (#351). The two counts are about
-    // different postings, so a fixture that put them on the same period would
-    // pass against a console that read either one for both.
-    unpriced_event_count: index === all.length - 2 ? 2 : 0,
-    usage_billed_micros: billed,
-    subscription_revenue_micros: subscription,
-    supplied_revenue_micros: 0,
-    gross_margin_micros: margin,
-    margin_percentage:
-      billed + subscription === 0
-        ? 0
-        : Math.round((margin / (billed + subscription)) * 1000) / 10,
-  };
-});
 
 export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
   business_id: CUS_ACME,
@@ -712,111 +503,6 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
 // ---------------------------------------------------------------------------
 // Usage tab
 
-export const MOCK_USAGE_ANALYTICS: Record<string, UsageAnalyticsResponse> = {
-  [CUS_ACME]: {
-    total_events: 48_213,
-    total_billed_cost_micros: 342_500_000,
-    total_provider_cost_micros: ACME_PROVIDER_COST.micros,
-    unresolved_event_count: ACME_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    usage_markup_margin_micros: 68_500_000,
-    by_provider: [
-      {
-        provider: "anthropic",
-        event_count: 31_204,
-        total_cost_micros: 228_000_000,
-        total_provider_cost_micros: 182_400_000,
-      },
-      {
-        provider: "openai",
-        event_count: 17_009,
-        total_cost_micros: 114_500_000,
-        total_provider_cost_micros: 91_600_000,
-      },
-    ],
-    by_event_type: [],
-    by_customer: [],
-    by_task_type: [],
-    by_tag: [],
-    breakdowns: {},
-  },
-  [CUS_LUNA]: {
-    total_events: 6_054,
-    total_billed_cost_micros: 41_200_000,
-    total_provider_cost_micros: LUNA_PROVIDER_COST.micros,
-    unresolved_event_count: LUNA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    usage_markup_margin_micros: -14_700_000,
-    by_provider: [],
-    by_event_type: [],
-    by_customer: [],
-    by_task_type: [],
-    by_tag: [],
-    breakdowns: {},
-  },
-  // nova-ai — the same window the margin detail reports, and the same four
-  // events it could not cost (#330). Two views of one set of postings may not
-  // disagree about what is missing from them, so the count is the same number
-  // here as it is on the margin row.
-  [CUS_NOVA]: {
-    total_events: 12_882,
-    total_billed_cost_micros: 88_000_000,
-    total_provider_cost_micros: NOVA_PROVIDER_COST.micros,
-    unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
-    unpriced_event_count: 0,
-    usage_markup_margin_micros: 0,
-    by_provider: [],
-    by_event_type: [],
-    by_customer: [],
-    by_task_type: [],
-    by_tag: [],
-    breakdowns: {},
-  },
-};
-
-/**
- * Which of nova-ai's daily buckets hold an uncosted event, and how many.
- *
- * The four the margin row counts, landing on two days rather than spread over
- * fourteen: the point of a per-bucket count is that a reader hovering one day
- * is told about THAT day, and a fixture that gave every bucket one could not
- * tell a working per-bucket read from a window-wide one.
- */
-const NOVA_UNRESOLVED_BY_BUCKET: Record<number, number> = { 11: 3, 12: 1 };
-
-export function buildMockTimeseries(customerId: string): UsageTimeseriesResponse {
-  const scale = customerId === CUS_ACME ? 1 : 0.15;
-  const series = Array.from({ length: 14 }, (_, index) => {
-    const day = index + 10;
-    const provider = Math.round((9_000_000 + (index % 5) * 2_400_000) * scale);
-    const billed = Math.round(provider * 1.25);
-    return {
-      bucket: `2026-07-${String(day).padStart(2, "0")}T00:00:00Z`,
-      provider_cost_micros: provider,
-      billed_cost_micros: billed,
-      markup_micros: billed - provider,
-      event_count: Math.round((1_800 + index * 120) * scale),
-      unresolved_event_count:
-        customerId === CUS_NOVA ? (NOVA_UNRESOLVED_BY_BUCKET[index] ?? 0) : 0,
-    };
-  });
-  return { granularity: "day", group_by: "", series };
-}
-
-// ---------------------------------------------------------------------------
-// Pricing
-//
-// ⚠ NO FIXTURE (#369), AND NONE IS COMING HERE. The per-customer markup
-// overrides that were here described a record that is deleted, with its five
-// routes. A customer's price comes from a rule in a pricing book now, and both
-// the read and its fixture belong to the pricing feature (#372) — the
-// customer's own book is a Pricing Book like any other, so its rules are seeded
-// where every other book's are.
-
-
-// ---------------------------------------------------------------------------
-// Subscriptions
-
 export const MOCK_SUBSCRIPTIONS: Record<string, StripeSubscriptionOut> = {
   [CUS_ACME]: {
     id: "8f65f0d7-0000-4000-8000-000000000601",
@@ -863,3 +549,236 @@ export const MOCK_SUB_INVOICES: Record<string, SubscriptionInvoiceOut[]> = {
     },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// The one query's answer shape, built from the facts a fixture chooses.
+//
+// ⚠ THE COUNTS RIDE THEIR OWN MEASURES. `unresolved_event_count` belongs to the
+// supplier cost and `unpriced_event_count` to the customer revenue; they are
+// different sets of postings and they bound the margin in opposite directions,
+// so a builder that put both on one entry would let a fixture describe a
+// response no server can produce.
+
+export function economicRow({
+  values = [],
+  bucket = null,
+  cost,
+  revenue,
+  margin,
+  events,
+  unresolved = 0,
+  unpriced = 0,
+}: {
+  values?: (string | null)[];
+  bucket?: string | null;
+  cost: number;
+  revenue: number;
+  margin?: number | null;
+  events?: number;
+  unresolved?: number;
+  unpriced?: number;
+}): Economics["rows"][number] {
+  const measures: unknown[] = [
+    {
+      measure: "supplier_cogs",
+      amount_micros: cost,
+      status: unresolved ? "incomplete" : "known",
+      unresolved_event_count: unresolved,
+    },
+    {
+      measure: "customer_revenue",
+      amount_micros: revenue,
+      status: unpriced ? "incomplete" : "known",
+      unpriced_event_count: unpriced,
+    },
+    {
+      measure: "gross_margin",
+      amount_micros: margin === undefined ? revenue - cost : margin,
+      status:
+        margin === null
+          ? "unavailable_at_requested_grain"
+          : unresolved || unpriced
+            ? "incomplete"
+            : "known",
+    },
+  ];
+  if (events !== undefined) {
+    measures.push({
+      measure: "recorded_events",
+      event_count: events,
+      status: "known",
+    });
+  }
+  return {
+    bucket_start: bucket,
+    grouping_field_value: values,
+    grouping_field_value_status: values.map((value) =>
+      value === null ? "not_recorded" : "recorded",
+    ),
+    measures,
+  } as unknown as Economics["rows"][number];
+}
+
+export function economicAnswer({
+  range,
+  rows,
+  groupBy = [],
+  bucket = null,
+}: {
+  range?: { start_date?: string; end_date?: string };
+  rows: Economics["rows"];
+  groupBy?: string[];
+  bucket?: string | null;
+}): Economics {
+  return {
+    period_start: range?.start_date ?? "2026-07-01",
+    period_end: range?.end_date ?? "2026-07-31",
+    group_by: groupBy,
+    bucket,
+    basis: "recorded",
+    economic_data_available_from: "2020-07-01",
+    measurement_data_available_from: "2026-01-01",
+    rows,
+    context: [],
+  } as unknown as Economics;
+}
+
+/**
+ * The roster, as `[customer_id, revenue, cost, margin, events]`.
+ *
+ * ⚠ ONE REVENUE FIGURE WHERE THERE WERE THREE (#501). A customer row published
+ * a subscription share, a supplied share and billed usage; the one economic
+ * query answers `customer_revenue` from one definition, and acme-corp's
+ * includes its $199 subscription.
+ *
+ * Mirrors the dashboard feature's roster — byte-identical economics, keep in
+ * sync (cross-feature imports are forbidden).
+ */
+export const MOCK_CUSTOMER_ECONOMICS: [string, number, number, number, number][] = [
+  [CUS_ACME, 541_500_000, ACME_PROVIDER_COST.micros, 267_500_000, 48_213],
+  [CUS_LUNA, 41_200_000, LUNA_PROVIDER_COST.micros, -14_700_000, 6_054],
+  [CUS_NOVA, 88_000_000, NOVA_PROVIDER_COST.micros, 0, 12_882],
+  [CUS_SEAT_ENG, 120_400_000, SEAT_ENG_PROVIDER_COST.micros, 24_100_000, 17_502],
+  [CUS_SEAT_RES, 61_800_000, SEAT_RES_PROVIDER_COST.micros, 12_400_000, 8_907],
+];
+
+function unresolvedFor(customerId: string): number {
+  return customerId === CUS_NOVA
+    ? NOVA_PROVIDER_COST.unresolved_event_count
+    : 0;
+}
+
+export function mockCustomerList(range: {
+  start_date?: string;
+  end_date?: string;
+}): Economics {
+  return economicAnswer({
+    range,
+    groupBy: ["field:customer"],
+    rows: MOCK_CUSTOMER_ECONOMICS.map(([id, revenue, cost, margin]) =>
+      economicRow({
+        values: [id],
+        revenue,
+        cost,
+        margin,
+        unresolved: unresolvedFor(id),
+      }),
+    ),
+  });
+}
+
+export function mockOneCustomer(
+  customerId: string,
+  range: { start_date?: string; end_date?: string },
+): Economics {
+  const row = MOCK_CUSTOMER_ECONOMICS.find(([id]) => id === customerId);
+  const [, revenue = 0, cost = 0, margin = 0, events = 0] = row ?? [];
+  return economicAnswer({
+    range,
+    rows: [
+      economicRow({
+        revenue,
+        cost,
+        margin,
+        events,
+        unresolved: unresolvedFor(customerId),
+      }),
+    ],
+  });
+}
+
+/** Which day buckets of nova-ai's series are short of a supplier cost.
+ *
+ *  TWO OF FOURTEEN, and not the same two the trend marks: a fixture where every
+ *  bucket were partial could not tell a per-bucket read from a series-wide one
+ *  (#330). It sat beside the retired usage-report fixture until #501 and moves
+ *  here with the series it is about. */
+const NOVA_UNRESOLVED_BY_BUCKET: Record<number, number> = { 11: 3, 12: 1 };
+
+export function mockUsageTimeseries(
+  customerId: string,
+  range: { start_date?: string; end_date?: string },
+): Economics {
+  const scale = customerId === CUS_ACME ? 1 : 0.15;
+  return economicAnswer({
+    range,
+    bucket: "day",
+    rows: Array.from({ length: 14 }, (_, index) => {
+      const day = index + 10;
+      const provider = Math.round((9_000_000 + (index % 5) * 2_400_000) * scale);
+      const billed = Math.round(provider * 1.25);
+      return economicRow({
+        bucket: `2026-07-${String(day).padStart(2, "0")}T00:00:00Z`,
+        cost: provider,
+        revenue: billed,
+        events: Math.round((1_800 + index * 120) * scale),
+        unresolved:
+          customerId === CUS_NOVA
+            ? (NOVA_UNRESOLVED_BY_BUCKET[index] ?? 0)
+            : 0,
+      });
+    }),
+  });
+}
+
+/**
+ * The margin trend, month by month.
+ *
+ * ⚠ **TWELVE MONTHS AT MOST, WHERE THE SNAPSHOT ROUTE WOULD SERVE THIRTY-SIX**
+ * (#501): every point is derived at read time from a window, and a computed
+ * report is bounded at 366 days. The fixture keeps the shape of a real trend —
+ * only the month still in progress is incomplete, and a DIFFERENT month is
+ * short on the revenue side, so a console reading either count for both fails.
+ */
+export function mockMarginTrend(periods: number): Economics {
+  const months = Math.max(1, Math.min(periods, 12));
+  const all = [
+    "2025-08-01",
+    "2025-09-01",
+    "2025-10-01",
+    "2025-11-01",
+    "2025-12-01",
+    "2026-01-01",
+    "2026-02-01",
+    "2026-03-01",
+    "2026-04-01",
+    "2026-05-01",
+    "2026-06-01",
+    "2026-07-01",
+  ].slice(-months);
+  return economicAnswer({
+    bucket: "month",
+    rows: all.map((month, index) => {
+      const billed = 180_000_000 + index * 16_000_000;
+      const provider = 150_000_000 + index * 11_000_000;
+      const subscription = index >= all.length - 7 ? 199_000_000 : 0;
+      return economicRow({
+        bucket: `${month}T00:00:00Z`,
+        cost: provider,
+        revenue: billed + subscription,
+        unresolved: index === all.length - 1 ? 4 : 0,
+        unpriced: index === all.length - 2 ? 2 : 0,
+      });
+    }),
+  });
+}

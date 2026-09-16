@@ -4,11 +4,17 @@
 // On `rootApi` (#465): the spend-control reports read across the kernel's
 // ceiling, billing's pool and wallet policy, and belong to no product prefix.
 
-import { marginApi, rootApi } from "@/api/client";
+import { meteringApi, rootApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
+import {
+  customerIdsIn,
+  FIELD_AXIS,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
+
 
 import type {
-  MarginCustomers,
+  CustomerChoice,
   StopsAndBreaches,
   StopsAndBreachesFilters,
   UtilisationAndHeadroom,
@@ -37,7 +43,14 @@ export async function getUtilisationAndHeadroom(
   );
 }
 
-/** Every customer with a margin row — the customer filter's choices. */
-export async function listCustomers(): Promise<MarginCustomers> {
-  return unwrap(await marginApi.GET("/customers"));
+/** Every customer the window's work reached — the filter's choices. */
+export async function listCustomers(): Promise<CustomerChoice[]> {
+  const answer = unwrap(
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: { measures: [SUPPLIER_COGS], group_by: [FIELD_AXIS("customer")] },
+      },
+    }),
+  );
+  return customerIdsIn(answer).map((customer_id) => ({ customer_id }));
 }

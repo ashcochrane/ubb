@@ -4,8 +4,8 @@ import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
-import { useWindowAnalytics } from "../api/queries";
-import type { BreakdownDimension, UsageAnalytics } from "../api/types";
+import { useGroupedEconomics } from "../api/queries";
+import type { BreakdownDimension } from "../api/types";
 import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -40,7 +40,7 @@ const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 function Harness() {
   const [groupBy, setGroupBy] =
     React.useState<BreakdownDimension>("provider");
-  const query = useWindowAnalytics(WINDOW, groupBy);
+  const query = useGroupedEconomics(WINDOW, groupBy);
   return (
     <GroupingFieldBreakdown
       query={query}
@@ -68,24 +68,15 @@ describe("GroupingFieldBreakdown", () => {
   });
 
   it("shows an empty state with a real CTA when the window has no usage", () => {
-    const empty: UsageAnalytics = {
-      total_events: 0,
-      total_billed_cost_micros: 0,
-      total_provider_cost_micros: 0,
-      unresolved_event_count: 0,
-      unpriced_event_count: 0,
-      usage_markup_margin_micros: 0,
-      by_provider: [],
-      by_event_type: [],
-      by_task_type: [],
-      by_customer: [],
-      by_tag: [],
-      breakdowns: { provider: [] },
-    };
+    // ⚠ NO ROWS AT ALL, which is what a GROUPED question over an empty window
+    // answers (#501). The report this replaced always returned its breakdown
+    // blocks, empty or not; a grouped answer's rows ARE the groups the data
+    // produced, so a window with no usage produces none — and that is the
+    // shape this empty state has to handle.
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: empty,
+          data: [],
           isPending: false,
           isError: false,
           error: null,

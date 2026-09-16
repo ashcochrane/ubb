@@ -21,20 +21,20 @@ import { formatCostMicros, formatShortDate } from "@/lib/format";
 import type { RevenueDailyRow } from "../api/types";
 
 interface ChartRow extends RevenueDailyRow {
-  markup_micros: number;
+  margin_micros: number;
 }
 
 const SERIES: { key: keyof ChartRow; label: string; color: string }[] = [
-  { key: "billed_cost_micros", label: "Billed", color: "var(--chart-1)" },
+  { key: "revenue_micros", label: "Revenue", color: "var(--chart-1)" },
   { key: "provider_cost_micros", label: "Provider cost", color: "var(--chart-2)" },
-  { key: "markup_micros", label: "Markup", color: "var(--chart-3)" },
+  { key: "margin_micros", label: "Gross margin", color: "var(--chart-3)" },
 ];
 
 /** Which bounding rule each plotted series obeys (#330). */
 function roleOf(dataKey: string): SeriesRole {
   if (dataKey === "provider_cost_micros") return "supplier-cost";
-  if (dataKey === "markup_micros") return "margin";
-  // Billed is NOT NULL at the column and whole by construction.
+  if (dataKey === "margin_micros") return "margin";
+  // Revenue is bounded by its own count, which the row carries.
   return "whole";
 }
 
@@ -51,7 +51,7 @@ export default function RevenueChart({
 }) {
   const chartData: ChartRow[] = data.map((row) => ({
     ...row,
-    markup_micros: row.billed_cost_micros - row.provider_cost_micros,
+    margin_micros: row.revenue_micros - row.provider_cost_micros,
   }));
 
   return (

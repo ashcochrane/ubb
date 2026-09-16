@@ -4,8 +4,7 @@ from uuid import UUID
 
 from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
-from django.db.models import Sum, Count, Q
-from django.db.models.fields.json import KeyTextTransform
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from ninja import Query, Router
@@ -15,12 +14,7 @@ from apps.metering.pricing.receipts import (
     subject_type_of,
     uncosted_quantity_keys,
 )
-from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
-from core.cost_totals import (
-    UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY, carry_cost_total,
-    cost_total_annotations,
-)
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
@@ -36,8 +30,6 @@ from api.v1.schemas import (
     PaginatedUsageResponse,
     UsageEventDetailOut,
     TenantDefaultMarkupIn, TenantDefaultMarkupOut,
-    UsageAnalyticsResponse,
-    UsageTimeseriesResponse,
     TaskAnalyticsOut,
     PricingBookIn, PricingBookOut, CostBookIn, CostBookOut,
     PaginatedPricingBooks, PaginatedCostBooks, PaginatedRates,
@@ -64,7 +56,6 @@ from apps.platform.work.models import Task
 from apps.platform.audit.actors import get_current_actor
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
-from apps.metering.queries import GROUPED_VALUE_KEY
 # THE MODULE RATHER THAN ITS FUNCTIONS, so that each route handler can carry
 # the SAME name as the read-contract call it makes without shadowing it.
 # ADR-0006 §2 wants one canonical public term per concept, and a handler's name
@@ -79,7 +70,6 @@ from core.vocabulary import (
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
-from apps.platform.grouping_fields.models import SLOT_CHOICES
 from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
 from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
@@ -679,37 +669,15 @@ def withdraw_tenant_default_markup(request):
 # --- Analytics ---
 
 
-# The four reserved dimensions (design D1) plus "customer", which is a column
-# on the event rather than a slot. Tenant keys come from the registry.
-_RESERVED_ANALYTICS_DIMS = ("provider", "event_type", "task_type", "subtask_type",
-                            "customer")
-
-#: How many breakdowns one analytics call may ask for. The tenant slot count,
-#: read off the registry rather than restated — six was the slot count too, and
-#: #276 made a hard-coded six disagree with it.
-#:
-#: NOT "one per requestable axis": the four reserved axes plus `customer` are
-#: also requestable, so fifteen names can be asked for and ten of them can be
-#: served in one call. The cap is a bound on work per request, and the slot
-#: count is what it has always been pinned to.
-_MAX_BREAKDOWNS = len(SLOT_CHOICES)
-
-
-def _resolve_dimension(tenant, dim):
-    """Map a requested grouping axis to the column to GROUP BY.
-
-    Reserved names map to themselves; declared tenant keys map to their slot.
-    Anything else — notably a correlation id like task_id (design D9) — is a
-    422, so an unbounded key can never become a group-by.
-    """
-    from apps.platform.grouping_fields.queries import slot_map
-
-    if dim in _RESERVED_ANALYTICS_DIMS:
-        return "customer__external_id" if dim == "customer" else dim
-    slot = slot_map(tenant.id).get(dim)
-    if slot is None:
-        raise Problem("validation_error", f"unknown grouping field {dim!r}")
-    return slot
+# THE AD-HOC AXIS RESOLVER WAS HERE AND IS GONE WITH THE TWO ROUTES THAT USED
+# IT (#501). It mapped a requested word either to itself, for a handful of
+# reserved names, or to whichever slot a tenant's key happened to occupy — and
+# the cap beside it bounded how many such breakdowns one call could ask for.
+# Both are now the discovery contract's job: `grouping_options` publishes the
+# axes a tenant may group by, each carrying its own kind, and the one query
+# refuses a word that is not on it. The bound is by CONSTRUCTION there — a fixed
+# set of axes plus at most one slot apiece — rather than a number this module
+# kept in step with the registry by hand.
 
 
 def _apply_task_filter(qs, tenant, task_id, include_subtasks):
@@ -727,194 +695,41 @@ def _apply_task_filter(qs, tenant, task_id, include_subtasks):
     return qs.filter(task_id__in=ids)
 
 
-@metering_router.get("/analytics/usage", response={200: UsageAnalyticsResponse, 422: ProblemOut})
-@role_floor(READ)
-def usage_analytics(request, start_date: date = None, end_date: date = None,
-                    customer_id: UUIDIdentifier = None, tag_key: str = None,
-                    dimensions: list[str] = Query(None),
-                    task_id: UUIDIdentifier = None, include_subtasks: bool = False,
-                    past_limit: bool = None, stop_scope: str = None,
-                    episode_seq: int = None):
-    """Usage analytics with markup margin and customer/product/tag breakdowns.
-
-    The #41 past-limit filters (past_limit / stop_scope / episode_seq)
-    compose with every breakdown — e.g. past_limit=true totals exactly what
-    was spent past a stop, in both denominations."""
-    _product_check(request)
-    tenant = request.auth.tenant
-    # #78: computed reports are cursor-exempt but parameter-bounded.
-    if start_date and end_date:
-        if end_date < start_date:
-            raise Problem("validation_error", "end_date must not precede start_date")
-        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
-            raise Problem("validation_error", "date window must not exceed 366 days")
-    qs = Posting.objects.filter(tenant=tenant)
-
-    if start_date:
-        qs = qs.filter(effective_at__gte=utc_day_start(start_date))
-    if end_date:
-        # Inclusive date end == strict bound at the NEXT UTC midnight.
-        qs = qs.filter(effective_at__lt=utc_next_day_start(end_date))
-    if customer_id:
-        qs = qs.filter(customer_id=customer_id)
-    qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
-    qs = _apply_task_filter(qs, tenant, task_id, include_subtasks)
-
-    # EVERY MONEY TOTAL BELOW IS A PAIR, ON BOTH SIDES OF THE MARGIN (#327,
-    # #351), and each breakdown row carries its OWN two counts: a provider whose
-    # costs are all resolved is not made partial by another provider's that are
-    # not, and the same holds of prices.
-    totals = qs.aggregate(
-        total_events=Count("id"),
-        **cost_total_annotations(CUSTOMER_PRICE, key="total_billed_cost_micros"),
-        **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-    )
-    totals = carry_cost_total(SUPPLIER_COST, totals,
-                              key="total_provider_cost_micros")
-    totals = carry_cost_total(CUSTOMER_PRICE, totals,
-                              key="total_billed_cost_micros")
-    total_billed = totals["total_billed_cost_micros"]
-    total_provider = totals["total_provider_cost_micros"]
-
-    def _paired(grouped, *, billed_key):
-        """Resolve each grouped row's TWO pairs. Every block goes through here,
-        including the two below that build their own query.
-
-        ``billed_key`` because the four blocks do not agree on what they call
-        the billed total — three say `total_cost_micros` and the dimensional one
-        says `total_billed_cost_micros` — and inventing a fifth spelling here to
-        avoid the parameter would rename a published response property.
-        """
-        rows = [carry_cost_total(SUPPLIER_COST, row,
-                                 key="total_provider_cost_micros")
-                for row in grouped]
-        return [carry_cost_total(CUSTOMER_PRICE, row, key=billed_key)
-                for row in rows]
-
-    def _rollup(column, *, skip_blank=False):
-        """One breakdown block: group by `column`, largest billed first, every
-        row carrying the count of what its own group excluded.
-
-        Four blocks differed only in the column they group and whether an
-        unattributed value is dropped, and the completeness pair would have been
-        a fifth copy of the same four lines in each.
-        """
-        rows = qs.exclude(**{column: ""}) if skip_blank else qs
-        return _paired(rows.values(column).annotate(
-            event_count=Count("id"),
-            **cost_total_annotations(CUSTOMER_PRICE, key="total_cost_micros"),
-            **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-        ).order_by("-total_cost_micros"), billed_key="total_cost_micros")
-
-    by_provider = _rollup("provider", skip_blank=True)
-    by_event_type = _rollup("event_type", skip_blank=True)
-    by_customer = _rollup("customer__external_id")
-    by_task_type = _rollup("task_type", skip_blank=True)
-
-    by_tag = []
-    if tag_key:
-        # SLICE 7 OWNS THIS SURFACE, and #273 left it exactly where it found
-        # it: the keyed parameter, the response block and their spelling are
-        # the analytics grouping vocabulary the ledger owns at slice 7, which
-        # is what migrates the capability onto the declared grouping contract.
-        # All that moved here is the column underneath, because the bag this
-        # read folded into the survivor.
-        by_tag = _paired(
-            qs.filter(metadata__has_key=tag_key)
-            .annotate(tag_value=KeyTextTransform(tag_key, "metadata"))
-            .values("tag_value")
-            .annotate(
-                event_count=Count("id"),
-                **cost_total_annotations(CUSTOMER_PRICE, key="total_cost_micros"),
-                **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-            )
-            .order_by("-total_cost_micros"),
-            billed_key="total_cost_micros",
-        )
-
-    breakdowns: dict = {}
-    if dimensions:
-        if len(dimensions) > _MAX_BREAKDOWNS:
-            raise Problem("validation_error",
-                          f"at most {_MAX_BREAKDOWNS} dimensions")
-        for dim in dimensions:
-            col = _resolve_dimension(tenant, dim)
-            # Run over the FULL qs (no exclusion) so every event is counted.
-            # customer always has an external_id so no "(unattributed)" needed there.
-            rows = _paired(
-                qs.values(col)
-                .annotate(
-                    event_count=Count("id"),
-                    **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
-                    **cost_total_annotations(CUSTOMER_PRICE,
-                                             key="total_billed_cost_micros"),
-                )
-                .order_by("-total_billed_cost_micros"),
-                billed_key="total_billed_cost_micros",
-            )
-            for r in rows:
-                raw_val = r.pop(col)
-                # Map empty string or None to the sentinel for non-customer cols
-                if dim != "customer" and not raw_val:
-                    raw_val = "(unattributed)"
-                # The same property the DECLARED margin rollup publishes for the
-                # same thing (`GroupingFieldMarginRow.grouping_field_value`),
-                # taken from the one constant its sibling timeseries rollup also
-                # writes so the two cannot drift. These rows are `list[dict]`,
-                # so no schema holds the name and no drift or breaking gate can
-                # see it change — `test_analytics_dimensions.py` asserts the
-                # whole row instead.
-                r[GROUPED_VALUE_KEY] = raw_val
-            breakdowns[dim] = rows
-
-    return 200, {
-        "total_events": totals["total_events"] or 0,
-        "total_billed_cost_micros": total_billed,
-        "total_provider_cost_micros": total_provider,
-        UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
-        UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
-        # What UBB knows it charged minus what it knows it paid, bounded by BOTH
-        # counts. An excluded cost makes this the largest the margin can be; an
-        # excluded price makes it the smallest. Two facts, each stated once, and
-        # the margin mints neither of them again.
-        "usage_markup_margin_micros": total_billed - total_provider,
-        "by_provider": by_provider,
-        "by_event_type": by_event_type,
-        "by_customer": by_customer,
-        "by_task_type": by_task_type,
-        "by_tag": by_tag,
-        "breakdowns": breakdowns,
-    }
-
-
-@metering_router.get("/analytics/usage/timeseries", response={200: UsageTimeseriesResponse, 422: ProblemOut})
-@role_floor(READ)
-def usage_timeseries(request, granularity: str = "day", start_date: date = None, end_date: date = None,
-                     customer_id: UUIDIdentifier = None, group_by: str = None):
-    """Time-series spend rollup: daily or hourly COGS per tenant/customer.
-
-    start_date and end_date are both INCLUSIVE calendar dates, matching the
-    /analytics/usage rollup so the same inputs cover the same window on both.
-    """
-    _product_check(request)
-    if granularity not in ("hour", "day"):
-        raise Problem("validation_error", "granularity must be hour or day")
-    resolved_group_by = None
-    if group_by is not None:
-        resolved_group_by = _resolve_dimension(request.auth.tenant, group_by)
-    # #78 bounds: hourly windows capped at ~92 days, daily at 366 — decided in
-    # one place now (#499), because the one economic query is a third asker and
-    # three copies of a ceiling are three answers to how far back a report may
-    # reach. ⚠ This route keeps its OWN open-window behaviour: an omitted end
-    # date escapes the ceiling here, which the one query does not allow and
-    # which is #501's to take away with the route.
-    if start_date and end_date:
-        _refuse_an_unbounded_window(start_date, end_date,
-                                    hourly=granularity == "hour")
-    from apps.metering.queries import get_usage_timeseries
-    series = get_usage_timeseries(request.auth.tenant.id, granularity=granularity,
-        customer_id=customer_id, group_by=resolved_group_by, start_date=start_date, end_date=end_date)
-    return 200, {"granularity": granularity, "group_by": group_by or "", "series": series}
+# THE USAGE ANALYTICS REPORT AND ITS TIMESERIES SIBLING WERE HERE AND ARE GONE
+# (#501, slice 7 §1) — the first two of the nine routes the one economic query
+# replaces, and between them the origin of the rest: the grouped margin
+# breakdown and the billing revenue report were each a reimplementation of one
+# of these two.
+#
+# What each capability became, because a removal owes that per capability and
+# not per route:
+#
+# * the totals — the three money measures on the one query, with no grouping;
+# * the four fixed breakdown blocks — `group_by=field:provider` and its three
+#   siblings, which are PRESETS a caller composes rather than four response keys
+#   every answer carries whether or not it was asked for;
+# * the several ad-hoc breakdowns in one response — multi-axis `group_by`;
+# * day and hour bucketing — `bucket=day|hour`;
+# * every filter, including the three stop-context ones and the unit-of-work
+#   pair — filters on the one query, which compose with every grouping exactly
+#   as they did here.
+#
+# ⚠ TWO THINGS DIED WITH THESE ROUTES RATHER THAN MOVING.
+#
+# The FREE-TEXT-KEY BREAKDOWN, which grouped by whatever key a caller named out
+# of the open bag, has no replacement on purpose: the declared grouping contract
+# (#498) publishes what a tenant may group by and an unbounded keyspace is the
+# capability it deliberately does not have.
+#
+# The FUSED FIELD that stated the billed total minus the supplier cost over the
+# whole window is neither a markup nor a margin — it is the difference between
+# two aggregates, which after this slice is the gross-margin measure, computed
+# once at a bucket and carrying its own state. Publishing it under a name that
+# suggested a rate is what let a reader take a floor for a figure.
+#
+# The one query also bounds its window on the RESOLVED span rather than only
+# where both dates were sent, so the open-window escape this timeseries kept —
+# flagged in its own comment as #501's to take away — goes with it.
 
 
 # --- Rate Cards ---

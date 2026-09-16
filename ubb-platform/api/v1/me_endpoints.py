@@ -1,9 +1,7 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from ninja import Router, Schema, Field
 from pydantic import field_validator
 from typing import Optional
-
-from django.utils import timezone
 
 from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
@@ -11,7 +9,6 @@ from apps.platform.audit.marker import records_audit
 from api.v1.schemas import whole_minor_units
 from core.auth import ProductAccess
 from core.money import DEFAULT_CURRENCY, minor_units
-from core.problems import Problem
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
@@ -19,7 +16,6 @@ from apps.billing.invoicing.models import Invoice
 me_router = Router(auth=WidgetJWTAuth())
 
 _billing_check = ProductAccess("billing")
-_metering_check = ProductAccess("metering")
 
 
 def _check_billing_product(request):
@@ -28,10 +24,10 @@ def _check_billing_product(request):
     _billing_check(request)
 
 
-def _check_metering_product(request):
-    """Same bridge for metering-scoped widget endpoints (usage summary)."""
-    request.tenant = request.widget_tenant
-    _metering_check(request)
+# THE METERING BRIDGE WENT WITH THE ONE ROUTE THAT USED IT (#501). Every
+# surface left on this mount is billing-scoped, so the widget's product check
+# has one form again; a second one kept for nobody would read as an invitation
+# to put metering back here rather than on the tenant's own mount.
 
 
 class MeBalanceResponse(Schema):
@@ -196,20 +192,6 @@ class PaginatedSubscriptionInvoices(Paginated[MeSubscriptionInvoiceOut]):
     pass
 
 
-class UsageMetricOut(Schema):
-    event_type: str
-    billed_cost_micros: int
-    event_count: int
-
-
-class UsageSummaryResponse(Schema):
-    period_start: str
-    period_end: str
-    total_billed_micros: int
-    currency: str
-    metrics: list[UsageMetricOut]
-
-
 @me_router.get("/balance", response=MeBalanceResponse)
 def get_balance(request):
     """A pooled seat's balance IS the billing owner's (Task 9 finding B):
@@ -339,41 +321,20 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
                 cursor, limit, serialize=_usage_invoice_out)
 
 
-@me_router.get("/usage-summary", response=UsageSummaryResponse)
-def get_usage_summary(request):
-    """Month-to-date usage rollup for the calling end customer.
-
-    Window: current UTC calendar month-to-date (house convention — first of
-    month through today inclusive; period_end is the exclusive day bound).
-
-    Deliberately NO billing-owner gate (unlike /me/usage-invoices): usage
-    attribution is per-seat by design, so a pooled seat sees only its OWN
-    consumption here and leaks nothing about its siblings — there is no
-    consolidated money amount to protect. A BUSINESS token aggregates across
-    its seats (the same seat basis its consolidated invoice bills on).
-    Metering-scoped, not billing-scoped: a meter-only tenant's customers can
-    still see what they consumed.
-    """
-    # The per-Event-Type rows are the magnitude here (#272). This response is
-    # where the retirement was argued and where its reviewed break was taken —
-    # see the block in `openapi/oasdiff-err-ignore.txt`. (A comment, not
-    # docstring prose: this docstring is the published description.)
-    _check_metering_product(request)
-    customer = request.widget_customer
-    from apps.metering.queries import get_customer_usage_summary
-
-    today = timezone.now().date()
-    period_start = today.replace(day=1)
-    period_end = today + timedelta(days=1)  # month-to-date, inclusive of today
-    summary = get_customer_usage_summary(
-        request.widget_tenant.id, customer.id, period_start, period_end)
-    return {
-        "period_start": period_start.isoformat(),
-        "period_end": period_end.isoformat(),
-        "total_billed_micros": summary["total_billed_micros"],
-        "currency": request.widget_tenant.default_currency or "usd",
-        "metrics": summary["metrics"],
-    }
+# THE CUSTOMER-SCOPED USAGE SUMMARY WAS HERE AND IS GONE (#501, slice 7 §1) —
+# the eighth of the nine routes the one economic query replaces, and the only
+# one of them that stood on this mount. It served a month-to-date rollup with a
+# row per Event Type, which is `GET /metering/analytics/economics` filtered to
+# one customer and grouped by the Event Type axis.
+#
+# ⚠ AND THE REPLACEMENT IS ON THE TENANT'S MOUNT, NOT ON THIS ONE, which is a
+# real narrowing and is recorded rather than glossed: this route answered an END
+# CUSTOMER holding a widget token, and the one query answers a TENANT holding an
+# API key at the Read floor. A tenant that wants to keep showing its customers
+# what they consumed asks the one query on their behalf, which it is already
+# doing for every other figure on such a page. #153 §8.2 files the capability as
+# *"same query, customer-scoped"* and the block in `openapi/oasdiff-err-ignore.txt`
+# flagged the route for this slice by name; nothing here re-decides that.
 
 
 @me_router.get("/subscription-invoices", response=PaginatedSubscriptionInvoices)

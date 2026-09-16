@@ -25,6 +25,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.metering import queries
 from core.time_windows import utc_day_start
+from core.vocabulary import ANALYTICS_MEASURE_SUPPLIER_COGS
 
 
 def _utc(y, mo, d, h=0, mi=0, s=0, us=0):
@@ -92,48 +93,54 @@ class BoundaryEquivalenceTest(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["event_count"], 2)
 
-    def test_dimensional_margin_half_open(self):
-        rows = queries.get_dimensional_margin(
-            self.tenant.id, group_by="provider",
-            start_date=date(2026, 6, 1), end_date=date(2026, 7, 1))
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["grouping_field_value"], "openai")
-        self.assertEqual(rows[0]["event_count"], 2)
-
     # --- inclusive-end (date <= end_date) call sites ---
+    #
+    # ⚠ FOUR OF THESE WERE FIVE SEPARATE SURFACES AND ARE NOW ONE (#501). The
+    # tenant-wide daily rollup, the day-or-hour series and the usage report each
+    # resolved an inclusive end date for itself, and each had a case here. The
+    # one economic query resolves it once, so the edge is asked once — and the
+    # fixture is the thing that matters either way: an event at the last
+    # representable microsecond of the end date must be INSIDE, and midnight of
+    # the following day must be outside.
 
-    def test_revenue_analytics_inclusive_end(self):
-        result = queries.get_revenue_analytics(
-            self.tenant.id, start_date=date(2026, 6, 1), end_date=date(2026, 6, 30))
-        # Includes BOTH June events (the 06-30T23:59:59.999999 one in particular),
-        # excludes 07-01T00:00:00 and the May event.
-        self.assertEqual(result["total_billed_cost_micros"], 2_000_000)
-        self.assertEqual(len(result["daily"]), 2)
+    def _economics(self, start, end, bucket=None):
+        return queries.economics(
+            self.tenant.id, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+            bucket=bucket,
+            filters=queries.EconomicFilters(start_date=start, end_date=end))
 
-    def test_revenue_analytics_inclusive_end_includes_last_microsecond_of_end_date(self):
-        result = queries.get_revenue_analytics(
-            self.tenant.id, start_date=date(2026, 5, 1), end_date=date(2026, 5, 31))
-        self.assertEqual(result["total_billed_cost_micros"], 1_000_000)
+    def _cost(self, answer, row=0):
+        return next(entry["amount_micros"]
+                    for entry in answer["rows"][row]["measures"]
+                    if entry["measure"] == ANALYTICS_MEASURE_SUPPLIER_COGS)
 
-    def test_usage_analytics_endpoint_inclusive_end(self):
+    def test_the_one_query_takes_the_last_microsecond_of_its_end_date(self):
+        answer = self._economics(date(2026, 6, 1), date(2026, 6, 30))
+        # Both June events, the 06-30T23:59:59.999999 one in particular;
+        # 07-01T00:00:00 and the May event are outside.
+        self.assertEqual(self._cost(answer), 1_200_000)
+
+    def test_and_the_day_before_it_belongs_to_the_previous_window(self):
+        answer = self._economics(date(2026, 5, 1), date(2026, 5, 31))
+        self.assertEqual(self._cost(answer), 600_000)
+
+    def test_its_buckets_split_that_same_window(self):
+        answer = self._economics(date(2026, 6, 1), date(2026, 6, 30),
+                                 bucket="day")
+        self.assertEqual([row["bucket_start"][:10] for row in answer["rows"]],
+                         ["2026-06-01", "2026-06-30"])
+        self.assertTrue(all(self._cost(answer, index) == 600_000
+                            for index in range(len(answer["rows"]))))
+
+    def test_the_route_resolves_the_same_edge(self):
         _, raw_key = TenantApiKey.create_key(self.tenant, label="f21")
         resp = Client().get(
-            "/api/v1/metering/analytics/usage?start_date=2026-06-01&end_date=2026-06-30",
+            "/api/v1/metering/analytics/economics",
+            {"measures": ANALYTICS_MEASURE_SUPPLIER_COGS,
+             "start_date": "2026-06-01", "end_date": "2026-06-30"},
             HTTP_AUTHORIZATION=f"Bearer {raw_key}")
-        self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        # 06-30T23:59:59.999999 included; 07-01T00:00:00 and May excluded.
-        self.assertEqual(body["total_events"], 2)
-        self.assertEqual(body["total_billed_cost_micros"], 2_000_000)
-
-    def test_usage_timeseries_inclusive_end(self):
-        # Aligned with the /analytics/usage rollup: end_date is INCLUSIVE, so
-        # the 06-30 bucket is present (its last-microsecond event counts) while
-        # the 07-01T00:00:00 event and the May event are excluded.
-        series = queries.get_usage_timeseries(
-            self.tenant.id, start_date=date(2026, 6, 1), end_date=date(2026, 6, 30))
-        self.assertEqual([s["bucket"] for s in series], ["2026-06-01", "2026-06-30"])
-        self.assertTrue(all(s["event_count"] == 1 for s in series))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(self._cost(resp.json()), 1_200_000)
 
 
 class SqlShapeRegressionTest(TestCase):
@@ -154,29 +161,36 @@ class SqlShapeRegressionTest(TestCase):
             self.assertNotIn("::date", where.lower(), q["sql"])
 
     def test_rewritten_query_functions_have_cast_free_where(self):
+        """⚠ FIVE OF THE EIGHT CALLS HERE WERE THE SURFACES #501 COLLAPSED, and
+        the one query replaces them in this check as it does everywhere else —
+        ungrouped, grouped and bucketed, because those are three different
+        querysets and only the first would have been exercised by a bare call."""
         tenant = Tenant.objects.create(name="F21 Shape", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="c_f21_shape")
         s, e = date(2026, 6, 1), date(2026, 7, 1)
+        window = queries.EconomicFilters(start_date=s, end_date=e)
         with CaptureQueriesContext(connection) as ctx:
             queries.get_period_totals(tenant.id, s, e)
-            queries.get_revenue_analytics(tenant.id, start_date=s, end_date=date(2026, 6, 30))
             queries.get_customer_cost_totals(tenant.id, customer.id, s, e)
-            queries.get_usage_timeseries(tenant.id, start_date=s, end_date=e)
-            queries.get_usage_timeseries(tenant.id, granularity="hour", start_date=s, end_date=e)
             queries.get_per_customer_cost_totals(tenant.id, s, e)
-            queries.get_dimensional_margin(tenant.id, group_by="provider", start_date=s, end_date=e)
-            queries.get_dimensional_margin(tenant.id, tag_key="model", start_date=s, end_date=e)
+            for grouping, bucket in (((), None), (("field:provider",), None),
+                                     ((), "day"), ((), "hour")):
+                queries.economics(
+                    tenant.id, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                    group_by=grouping, bucket=bucket, filters=window)
         self._assert_sargable(ctx)
 
-    def test_usage_analytics_endpoint_has_cast_free_where(self):
+    def test_the_economics_endpoint_has_cast_free_where(self):
         tenant = Tenant.objects.create(name="F21 Shape EP", products=["metering"])
         _, raw_key = TenantApiKey.create_key(tenant, label="f21")
         client = Client()
         with CaptureQueriesContext(connection) as ctx:
             resp = client.get(
-                "/api/v1/metering/analytics/usage?start_date=2026-06-01&end_date=2026-06-30",
+                "/api/v1/metering/analytics/economics",
+                {"measures": ANALYTICS_MEASURE_SUPPLIER_COGS,
+                 "start_date": "2026-06-01", "end_date": "2026-06-30"},
                 HTTP_AUTHORIZATION=f"Bearer {raw_key}")
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 200, resp.content)
         self._assert_sargable(ctx)
 
 
@@ -417,330 +431,24 @@ class OpenBagGinPlannerProofTest(TestCase):
 # ---------------------------------------------------------------------------
 # F2.3 — SQL pushdown for grouped aggregation
 # ---------------------------------------------------------------------------
-
-class TagGroupByPushdownTest(TestCase):
-    """Output-contract freeze, query-count pins, GROUP-BY-trap regression, and
-    BEFORE/AFTER equivalence for the two tag-aggregation rewrites.
-
-    Dataset (tag key = "env"):
-      A  env=prod,     billed=3_000_000  provider=1_000_000  effective_at=T1
-      B  env=prod,     billed=2_000_000  provider=500_000    effective_at=T2  <- GROUP-BY trap
-      C  env=staging,  billed=4_000_000  provider=2_000_000
-      D  env=""        billed=1_000_000  provider=400_000    <- empty-string tag value
-
-    All four rows have metadata__has_key("env") so all appear in the output.
-
-    Expected get_dimensional_margin (sorted -margin_micros):
-      prod    prov=1_500_000 billed=5_000_000 margin=3_500_000 count=2
-      staging prov=2_000_000 billed=4_000_000 margin=2_000_000 count=1
-      ""      prov=400_000   billed=1_000_000 margin=600_000   count=1
-
-    Expected by_tag (sorted -total_cost_micros):
-      prod    total=5_000_000 prov=1_500_000 count=2
-      staging total=4_000_000 prov=2_000_000 count=1
-      ""      total=1_000_000 prov=400_000   count=1
-    """
-
-    TAG_KEY = "env"
-
-    def setUp(self):
-        self.tenant = Tenant.objects.create(name="F23 Tag Pushdown", products=["metering"])
-        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c_f23")
-        _, self.raw_key = TenantApiKey.create_key(self.tenant, label="f23")
-
-        def _create(n, bag, billed, provider, ts):
-            ev = Posting.objects.create(
-                tenant=self.tenant, customer=self.customer,
-                idempotency_key=f"idem_f23_{n}",
-                billed_cost_micros=billed, provider_cost_micros=provider,
-                metadata=bag)
-            _pin(ev, ts)
-            return ev
-
-        _create("A", {"env": "prod"},    3_000_000, 1_000_000, _utc(2026, 6, 1))
-        _create("B", {"env": "prod"},    2_000_000,   500_000, _utc(2026, 6, 2))  # different ts
-        _create("C", {"env": "staging"}, 4_000_000, 2_000_000, _utc(2026, 6, 1))
-        _create("D", {"env": ""},        1_000_000,   400_000, _utc(2026, 6, 1))
-
-    # ------------------------------------------------------------------
-    # Reference implementations (the OLD Python-loop logic) used in
-    # BEFORE/AFTER equivalence assertions.
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _old_get_dimensional_margin_tag(tenant_id, tag_key):
-        """Grouping the same rows in Python, as the pre-rewrite branch did.
-
-        ⚠ IT ACCUMULATES BOTH PAIRS, because the rule it is a reference for
-        changed twice (#327, #351). The pre-rewrite loop added `provider or 0`
-        into the total, which was harmless while the column was NOT NULL and is
-        the silent-zero defect since #317 — so a reference still written that
-        way would be asserting that the SQL pushdown reproduces a defect. #351
-        did the same to `b or 0` on the line below it, and the same repair
-        applies. What is held constant is what this class is for: grouping in
-        SQL answers what grouping in Python answers.
-        """
-        from collections import defaultdict
-        from apps.metering.usage.models import Posting as UE
-        from core.vocabulary import COSTING_STATUS_UNRESOLVED, PRICING_STATUS_UNKNOWN
-
-        def _row(dim, provider, billed, unresolved, unpriced, count):
-            return {"grouping_field_value": dim, "provider_cost_micros": provider,
-                    "unresolved_event_count": unresolved,
-                    "billed_cost_micros": billed,
-                    "unpriced_event_count": unpriced,
-                    "margin_micros": billed - provider,
-                    "event_count": count}
-
-        agg = defaultdict(lambda: {"p": 0, "b": 0, "u": 0, "x": 0, "n": 0})
-        for bag, p, b, status, price_status in UE.objects.filter(
-                tenant_id=tenant_id, metadata__has_key=tag_key
-        ).values_list("metadata", "provider_cost_micros", "billed_cost_micros",
-                      "costing_status", "pricing_status"):
-            k = (bag or {}).get(tag_key)
-            if p is not None:
-                agg[k]["p"] += p
-            if status == COSTING_STATUS_UNRESOLVED:
-                agg[k]["u"] += 1
-            if b is not None:
-                agg[k]["b"] += b
-            if price_status == PRICING_STATUS_UNKNOWN:
-                agg[k]["x"] += 1
-            agg[k]["n"] += 1
-        rows = [_row(k, v["p"], v["b"], v["u"], v["x"], v["n"])
-                for k, v in agg.items()]
-        return sorted(rows, key=lambda r: -r["margin_micros"])
-
-    @staticmethod
-    def _old_by_tag(tenant_id, tag_key):
-        """Grouping the same rows in Python, as the pre-rewrite block did.
-
-        ⚠ It accumulates BOTH pairs — see the sibling helper above for why a
-        reference that still coalesced would be pinning the wrong thing.
-        """
-        from collections import defaultdict
-        from apps.metering.usage.models import Posting as UE
-        from core.vocabulary import COSTING_STATUS_UNRESOLVED, PRICING_STATUS_UNKNOWN
-
-        agg = defaultdict(lambda: {"event_count": 0, "total_cost_micros": 0,
-                                   "unpriced_event_count": 0,
-                                   "total_provider_cost_micros": 0,
-                                   "unresolved_event_count": 0})
-        for bag, billed, provider, status, price_status in UE.objects.filter(
-                tenant_id=tenant_id, metadata__has_key=tag_key
-        ).values_list("metadata", "billed_cost_micros", "provider_cost_micros",
-                      "costing_status", "pricing_status"):
-            val = (bag or {}).get(tag_key)
-            agg[val]["event_count"] += 1
-            if billed is not None:
-                agg[val]["total_cost_micros"] += billed
-            if price_status == PRICING_STATUS_UNKNOWN:
-                agg[val]["unpriced_event_count"] += 1
-            if provider is not None:
-                agg[val]["total_provider_cost_micros"] += provider
-            if status == COSTING_STATUS_UNRESOLVED:
-                agg[val]["unresolved_event_count"] += 1
-        return [
-            {"tag_value": k, "event_count": v["event_count"],
-             "total_cost_micros": v["total_cost_micros"],
-             "unpriced_event_count": v["unpriced_event_count"],
-             "total_provider_cost_micros": v["total_provider_cost_micros"],
-             "unresolved_event_count": v["unresolved_event_count"]}
-            for k, v in sorted(agg.items(), key=lambda kv: -kv[1]["total_cost_micros"])
-        ]
-
-    # ------------------------------------------------------------------
-    # Output-contract freeze for get_dimensional_margin
-    # ------------------------------------------------------------------
-
-    def test_dimensional_margin_output_contract(self):
-        """Hardcoded expected output — pins the new implementation's contract."""
-        rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
-        self.assertEqual(len(rows), 3)
-        # sort: -margin_micros => prod 3_500_000, staging 2_000_000, "" 600_000
-        self.assertEqual(rows[0]["grouping_field_value"], "prod")
-        self.assertEqual(rows[0]["provider_cost_micros"], 1_500_000)
-        self.assertEqual(rows[0]["billed_cost_micros"], 5_000_000)
-        self.assertEqual(rows[0]["margin_micros"], 3_500_000)
-        self.assertEqual(rows[0]["event_count"], 2)
-
-        self.assertEqual(rows[1]["grouping_field_value"], "staging")
-        self.assertEqual(rows[1]["provider_cost_micros"], 2_000_000)
-        self.assertEqual(rows[1]["billed_cost_micros"], 4_000_000)
-        self.assertEqual(rows[1]["margin_micros"], 2_000_000)
-        self.assertEqual(rows[1]["event_count"], 1)
-
-        self.assertEqual(rows[2]["grouping_field_value"], "")
-        self.assertEqual(rows[2]["provider_cost_micros"], 400_000)
-        self.assertEqual(rows[2]["billed_cost_micros"], 1_000_000)
-        self.assertEqual(rows[2]["margin_micros"], 600_000)
-        self.assertEqual(rows[2]["event_count"], 1)
-
-    # ------------------------------------------------------------------
-    # Output-contract freeze for by_tag endpoint
-    # ------------------------------------------------------------------
-
-    def test_by_tag_output_contract(self):
-        """Hardcoded expected output for the by_tag block via HTTP endpoint."""
-        resp = Client().get(
-            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        self.assertEqual(resp.status_code, 200)
-        by_tag = resp.json()["by_tag"]
-        self.assertEqual(len(by_tag), 3)
-        # sort: -total_cost_micros => prod 5_000_000, staging 4_000_000, "" 1_000_000
-        self.assertEqual(by_tag[0]["tag_value"], "prod")
-        self.assertEqual(by_tag[0]["total_cost_micros"], 5_000_000)
-        self.assertEqual(by_tag[0]["total_provider_cost_micros"], 1_500_000)
-        self.assertEqual(by_tag[0]["event_count"], 2)
-
-        self.assertEqual(by_tag[1]["tag_value"], "staging")
-        self.assertEqual(by_tag[1]["total_cost_micros"], 4_000_000)
-        self.assertEqual(by_tag[1]["total_provider_cost_micros"], 2_000_000)
-        self.assertEqual(by_tag[1]["event_count"], 1)
-
-        self.assertEqual(by_tag[2]["tag_value"], "")
-        self.assertEqual(by_tag[2]["total_cost_micros"], 1_000_000)
-        self.assertEqual(by_tag[2]["total_provider_cost_micros"], 400_000)
-        self.assertEqual(by_tag[2]["event_count"], 1)
-
-    # ------------------------------------------------------------------
-    # GROUP-BY trap regression: rows with same tag value but different
-    # effective_at must collapse into a single output row.
-    # ------------------------------------------------------------------
-
-    def test_dimensional_margin_collapses_same_tag_different_timestamps(self):
-        """Rows A and B both have env=prod but different effective_at.
-        Without .order_by(), Meta.ordering adds effective_at to GROUP BY,
-        shattering them into two rows.  Assert exactly one row for prod."""
-        rows = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
-        prod_rows = [r for r in rows if r["grouping_field_value"] == "prod"]
-        self.assertEqual(len(prod_rows), 1,
-                         "GROUP-BY trap: prod split into multiple rows (missing .order_by())")
-        self.assertEqual(prod_rows[0]["event_count"], 2)
-
-    def test_by_tag_collapses_same_tag_different_timestamps(self):
-        """Same GROUP-BY trap check for the endpoint by_tag block."""
-        resp = Client().get(
-            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        by_tag = resp.json()["by_tag"]
-        prod_rows = [r for r in by_tag if r["tag_value"] == "prod"]
-        self.assertEqual(len(prod_rows), 1,
-                         "GROUP-BY trap: prod split into multiple rows (missing .order_by())")
-        self.assertEqual(prod_rows[0]["event_count"], 2)
-
-    # ------------------------------------------------------------------
-    # Query-count pins
-    # ------------------------------------------------------------------
-
-    def test_dimensional_margin_is_exactly_one_query(self):
-        """get_dimensional_margin(tag_key=...) must issue exactly 1 SQL query."""
-        with CaptureQueriesContext(connection) as ctx:
-            queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
-        self.assertEqual(len(ctx.captured_queries), 1,
-                         f"Expected 1 query, got {len(ctx.captured_queries)}: "
-                         f"{[q['sql'] for q in ctx.captured_queries]}")
-
-    def test_by_tag_endpoint_query_count_does_not_grow_with_rows(self):
-        """Endpoint query count must be the same for 50 rows as for 500 rows.
-
-        Seeds an isolated tenant with 50 and 500 rows (different effective_at
-        to exercise the GROUP-BY fix) and asserts the query count is identical.
-        A Python-loop implementation would issue 1 query for 50 rows and still
-        just 1 query for 500 rows (loop is Python, not SQL), BUT the important
-        property here is that the SQL-pushdown implementation doesn't accidentally
-        regress to N queries.  We also verify the counts are reasonable (<10).
-        """
-        def _count_queries_for_n_rows(n):
-            t = Tenant.objects.create(
-                name=f"F23 Scale {n}", products=["metering"])
-            c = Customer.objects.create(tenant=t, external_id=f"c_f23_scale_{n}")
-            _, key = TenantApiKey.create_key(t, label="f23s")
-            evs = []
-            for i in range(n):
-                evs.append(Posting(
-                    tenant=t, customer=c,
-                    idempotency_key=f"idem_f23s_{n}_{i}",
-                    billed_cost_micros=1_000,
-                    provider_cost_micros=500,
-                    metadata={"env": "prod" if i % 2 == 0 else "staging"},
-                ))
-            Posting.objects.bulk_create(evs, batch_size=200)
-            client = Client()
-            with CaptureQueriesContext(connection) as ctx:
-                resp = client.get(
-                    f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
-                    HTTP_AUTHORIZATION=f"Bearer {key}")
-            self.assertEqual(resp.status_code, 200)
-            return len(ctx.captured_queries)
-
-        q50 = _count_queries_for_n_rows(50)
-        q500 = _count_queries_for_n_rows(500)
-        self.assertEqual(q50, q500,
-                         f"Query count changed with row count: {q50} vs {q500}")
-        self.assertLess(q50, 10,
-                        f"Unexpectedly many queries ({q50}) for tag analytics endpoint")
-
-    # ------------------------------------------------------------------
-    # BEFORE/AFTER equivalence — new SQL output == old Python-loop output
-    # ------------------------------------------------------------------
-
-    def test_dimensional_margin_equivalence_with_old_loop(self):
-        """New SQL implementation must return the same result as the old loop."""
-        new_result = queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)
-        old_result = self._old_get_dimensional_margin_tag(self.tenant.id, self.TAG_KEY)
-        self.assertEqual(new_result, old_result,
-                         "SQL pushdown result differs from old Python-loop reference")
-
-    def test_by_tag_equivalence_with_old_loop(self):
-        """New SQL implementation must match old Python-loop for by_tag."""
-        resp = Client().get(
-            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        new_by_tag = resp.json()["by_tag"]
-        old_by_tag = self._old_by_tag(self.tenant.id, self.TAG_KEY)
-        # Normalise: old loop returns Python dicts; new returns dicts from JSON.
-        self.assertEqual(new_by_tag, old_by_tag,
-                         "SQL pushdown by_tag result differs from old Python-loop reference")
-
-    # ------------------------------------------------------------------
-    # Completeness — both keyed rollups report what they excluded (#327)
-    # ------------------------------------------------------------------
-
-    def test_both_keyed_rollups_report_what_they_excluded(self):
-        """A cost UBB has not resolved is counted, per group, on both surfaces.
-
-        ⚠ THIS LIVES HERE RATHER THAN WITH ITS SIBLINGS, and the reason is the
-        sweep. Every other total's completeness is asserted in
-        `api/v1/tests/test_a_cost_total_says_what_it_excluded.py`, from one
-        fixture; reaching THESE two means naming the request parameter that
-        carries a key out of the open bag, which is retired under slice 7's
-        ledger entry at eight files. A ninth would fail the sweep with
-        `term_spread`. This module already carries the word and already owns
-        both keyed rollups, including the fixture with an empty-string key —
-        so the assertion costs the recorded extent nothing by sitting here.
-
-        The row for `prod` is the partial one; `staging` beside it is whole,
-        which is what makes the first number mean anything.
-        """
-        Posting.objects.create(
-            tenant=self.tenant, customer=self.customer,
-            idempotency_key="idem_f23_E",
-            billed_cost_micros=7_000_000, provider_cost_micros=None,
-            costing_status="unresolved", unresolved_reason="cost_rate_missing",
-            metadata={"env": "prod"})
-
-        margin = {r["grouping_field_value"]: r for r in
-                  queries.get_dimensional_margin(self.tenant.id, tag_key=self.TAG_KEY)}
-        self.assertEqual(margin["prod"]["provider_cost_micros"], 1_500_000)
-        self.assertEqual(margin["prod"]["unresolved_event_count"], 1)
-        self.assertEqual(margin["staging"]["unresolved_event_count"], 0)
-
-        resp = Client().get(
-            f"/api/v1/metering/analytics/usage?tag_key={self.TAG_KEY}",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
-        by_tag = {r["tag_value"]: r for r in resp.json()["by_tag"]}
-        self.assertEqual(by_tag["prod"]["total_provider_cost_micros"], 1_500_000)
-        self.assertEqual(by_tag["prod"]["unresolved_event_count"], 1)
-        self.assertEqual(by_tag["staging"]["unresolved_event_count"], 0)
+#
+# THE KEYED-ROLLUP CLASS WAS HERE AND IS GONE WITH BOTH OF ITS SUBJECTS (#501).
+# It froze the output contract of the two rollups that grouped by a key read out
+# of the open bag, pinned their query counts against a row-count-dependent loop,
+# caught the GROUP BY trap two rows with the same key and different timestamps
+# produce, and compared each against a Python reference implementation.
+#
+# Both rollups went with the routes that served them, and the capability has no
+# replacement on purpose: the declared grouping contract publishes what a tenant
+# may group by, and an unbounded keyspace is what it deliberately does not have.
+#
+# ⚠ WHAT DID NOT DIE WITH THEM IS THE INDEX, and it is still proved above.
+# `OpenBagGinSchemaTest` and `OpenBagGinPlannerProofTest` read the bag directly
+# through the ORM, because the surfaces that still filter on it — the
+# per-customer event listing, and the invoice-line breakdown a later ticket
+# migrates — are filter surfaces rather than grouping ones.
+#
+# The completeness claim this class carried for those two rollups is the one
+# every other total's is asserted with, in
+# `api/v1/tests/test_a_cost_total_says_what_it_excluded.py`, against the one
+# economic query and per group.

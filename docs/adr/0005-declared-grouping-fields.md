@@ -192,8 +192,10 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   registry retires the singular noun to `grouping_field_value` and the plural to
   `analytics_grouping_kind`, so a value is this slice's and an axis is that one's, and the row key
   holds a value. Nothing but a test asserting the whole row can hold that agreement, which is what
-  `api/v1/tests/test_analytics_dimensions.py` does for both open rollups, and why the console's two
-  narrowing constants and the SDK's samples had to move in the same commit rather than a later one.
+  `api/v1/tests/test_analytics_dimensions.py` DID for both open rollups until #501 deleted the
+  rollups and the module with them (see the supersession note at the end of this section), and why
+  the console's two narrowing constants and the SDK's samples had to move in the same commit rather
+  than a later one.
   Both backend writers take the key from one constant (`apps/metering/queries.py`), so they cannot
   drift apart from each other; the two whole-row pins remain because a shared constant proves they
   AGREE and not that what they agree on is what the console narrows and the SDK documents.
@@ -206,6 +208,33 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   an owner slice may move earlier but never later, and #283 settled that an entry cannot outlive its
   debt whoever owns it. Slice 7 therefore never pays that file, and this sentence is why its ledger
   entry is not there to explain itself.
+
+- **Superseded by slice 7 (#501): the three rollups are one, and it DECLARES its rows.** The two
+  bullets above describe a surface that no longer exists. `/analytics/usage`, its `/timeseries`
+  sibling and `/margin/by-grouping-field` are deleted, along with six other published reports, and
+  what answers all nine is `GET /metering/analytics/economics` — whose rows are
+  `EconomicRowOut`, a declared schema, so the drift gate and the breaking gate now hold the thing
+  that two of the three were beyond the reach of. The agreement those bullets fought for is
+  therefore no longer an agreement between independent writers; it is one writer, and the row key
+  is still `grouping_field_value` for the reason they give.
+  - **What changed about the key, and it is worth stating precisely:** it is now a LIST, positional
+    against the request's own `group_by`, which the response echoes. The reading is unchanged — the
+    value the row groups, not the axis it was grouped on — and the axis is still named by the
+    request. What the one query added is that a reader can ask for several axes at once, which the
+    three separate rollups could not do at all.
+  - `api/v1/tests/test_analytics_dimensions.py` is deleted with the rollups it pinned. The whole-row
+    pin it provided is not lost: `api/v1/tests/test_the_one_economic_query.py` asserts the declared
+    row, and the schema itself is now the pin the open rollups never had.
+  - **The second of the three ad-hoc label reads is gone too.** `tag_key` driving the `by_tag`
+    breakdown died with the report; the remaining two survive exactly as the bullet describes them —
+    `tag_key` + `tag_value` FILTERING a customer's postings on `/customers/{id}/usage`, and
+    `usage_line_item_group_by` labelling postpaid invoice lines. Both are still slice 7's to rename
+    and neither is a grouping axis, which is why no route removal will clear them.
+  - This note is appended rather than written into the bullets above because a published field
+    description cites this file by LINE NUMBER (`EconomicRowOut`, `api/v1/schemas.py`), and editing
+    above that line would silently move what it points at. That is a fair criticism of the citation
+    rather than of the bullets; it is left for the ticket that next has reason to regenerate the
+    description.
 
 ## Deferred findings tracked against this ADR
 

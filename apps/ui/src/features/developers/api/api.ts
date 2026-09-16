@@ -2,9 +2,15 @@
 // reject with a typed ApiProblem. Untyped bodies are narrowed via the
 // functions in ./types (the only place their shapes are assumed).
 
-import { marginApi, meteringApi, tenantApi } from "@/api/client";
+import { meteringApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
+import {
+  customerIdsIn,
+  FIELD_AXIS,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
+
 
 import {
   toApiKeyCreated,
@@ -16,7 +22,7 @@ import {
   type ApiKeyCreated,
   type ApiKeyRevoked,
   type ApiKeyRotated,
-  type MarginCustomerRow,
+  type CustomerChoice,
   type RecordUsageRequest,
   type RecordUsageResponse,
   type SandboxKeyMinted,
@@ -78,9 +84,19 @@ export async function createSandbox(): Promise<SandboxKeyMinted> {
   return toSandboxKeyMinted(unwrap(await tenantApi.POST("/sandbox")));
 }
 
-/** Customer rows for the test-console picker (current period, no filters). */
-export async function listMarginCustomers(): Promise<MarginCustomerRow[]> {
-  return unwrap(await marginApi.GET("/customers")).customers;
+/** Customer choices for the test-console picker (current period, no filters).
+ *
+ *  The window is left to the server, which defaults it to the current month to
+ *  date — the same default the margin list had. */
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
+  const answer = unwrap(
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: { measures: [SUPPLIER_COGS], group_by: [FIELD_AXIS("customer")] },
+      },
+    }),
+  );
+  return customerIdsIn(answer).map((customer_id) => ({ customer_id }));
 }
 
 /**

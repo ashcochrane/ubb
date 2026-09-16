@@ -15,7 +15,6 @@ import {
 import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
 
 import {
-  buildMockTimeseries,
   MOCK_BALANCES,
   MOCK_BILLING_PROFILES,
   MOCK_CUSTOMER_SPEND_POOLS,
@@ -25,13 +24,13 @@ import {
   MOCK_BUSINESS_MARGIN,
   MOCK_DIRECTORY,
   MOCK_GRANTS,
-  MOCK_MARGIN_DETAILS,
-  MOCK_MARGIN_ROWS,
+  mockCustomerList,
+  mockMarginTrend,
+  mockOneCustomer,
+  mockUsageTimeseries,
   MOCK_SUB_INVOICES,
   MOCK_SUBSCRIPTIONS,
   MOCK_TRANSACTIONS,
-  MOCK_TREND_POINTS,
-  MOCK_USAGE_ANALYTICS,
   MOCK_USAGE_INVOICES,
   type MockCustomer,
 } from "./mock-data";
@@ -48,22 +47,19 @@ import type {
   CreditRequest,
   CustomerBillingProfileIn,
   CustomerBillingProfileOut,
-  CustomerMarginOut,
+  Economics,
+  CustomerIdentity,
   CustomerResponse,
   DebitCreditResponse,
   DebitRequest,
   GrantOut,
-  MarginListOut,
-  MarginTrendOut,
   AffordabilityResponse,
   StatusResponse,
   StripeSubscriptionOut,
   SubscribeIn,
   SubscriptionInvoiceOut,
   TopUpCheckoutResponse,
-  UsageAnalyticsResponse,
   UsageInvoiceOut,
-  UsageTimeseriesResponse,
   WalletTransactionOut,
   WithdrawRequest,
   WithdrawResponse,
@@ -73,8 +69,6 @@ import type {
 // Session state (reset on reload)
 
 const directory: MockCustomer[] = [...MOCK_DIRECTORY];
-const marginRows = [...MOCK_MARGIN_ROWS];
-const marginDetails: Record<string, CustomerMarginOut> = { ...MOCK_MARGIN_DETAILS };
 const balances: Record<string, BalanceResponse> = structuredClone(MOCK_BALANCES);
 const transactions: Record<string, WalletTransactionOut[]> =
   structuredClone(MOCK_TRANSACTIONS);
@@ -188,39 +182,27 @@ function page<T>(rows: T[]): CursorPage<T> {
 // ---------------------------------------------------------------------------
 // Margin
 
-export async function listCustomerMargins(range: DateRange): Promise<MarginListOut> {
+export async function listCustomerMargins(range: DateRange): Promise<Economics> {
   await mockDelay();
-  const resolved = resolveRange(range);
-  return {
-    customers: marginRows,
-    period: { start: resolved.start_date, end: resolved.end_date },
-  };
+  return mockCustomerList(resolveRange(range));
 }
 
 export async function getCustomerMargin(
   customerId: string,
   range: DateRange,
-): Promise<CustomerMarginOut> {
+): Promise<Economics> {
   await mockDelay();
-  const detail = marginDetails[customerId];
-  if (!detail) throw notFound("Unknown customer.");
-  const resolved = resolveRange(range);
-  return {
-    ...detail,
-    period: { start: resolved.start_date, end: resolved.end_date },
-  };
+  requireCustomer(customerId);
+  return mockOneCustomer(customerId, resolveRange(range));
 }
 
 export async function getMarginTrend(
   customerId: string,
   periods: number,
-): Promise<MarginTrendOut> {
+): Promise<Economics> {
   await mockDelay();
   requireCustomer(customerId);
-  return {
-    customer_id: customerId,
-    points: MOCK_TREND_POINTS.slice(-Math.min(Math.max(periods, 1), 36)),
-  };
+  return mockMarginTrend(periods);
 }
 
 export async function getBusinessMargin(
@@ -236,6 +218,21 @@ export async function getBusinessMargin(
 
 // ---------------------------------------------------------------------------
 // Platform — create customer
+
+export async function getCustomerIdentity(
+  customerId: string,
+): Promise<CustomerIdentity> {
+  await mockDelay();
+  const found = directory.find((entry) => entry.id === customerId);
+  if (!found) throw notFound("Unknown customer.");
+  return {
+    id: found.id,
+    external_id: found.external_id,
+    account_type: found.account_type,
+    parent_external_id: found.parent_external_id ?? "",
+    status: "active",
+  };
+}
 
 export async function createCustomer(
   body: CreateCustomerRequest,
@@ -257,26 +254,12 @@ export async function createCustomer(
     parent_external_id: body.parent_external_id,
     stripe_customer_id: body.stripe_customer_id,
   });
-  const zeroRow = {
-    customer_id: id,
-    subscription_revenue_micros: 0,
-    supplied_revenue_micros: 0,
-    usage_billed_micros: 0,
-    usage_revenue_micros: 0,
-    provider_cost_micros: 0,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-    gross_margin_micros: 0,
-    margin_percentage: 0,
-  };
-  marginRows.push(zeroRow);
-  marginDetails[id] = {
-    ...zeroRow,
-    external_id: body.external_id,
-    period: { start: "2026-07-01", end: "2026-07-24" },
-    event_count: 0,
-    total_revenue_micros: 0,
-  };
+  // ⚠ NO SEEDED MARGIN ROW OR DETAIL (#501). A new customer used to need a
+  // zero row pushed onto a roster fixture and a zero detail beside it, because
+  // two routes each held their own idea of the roster. The one economic query
+  // answers a customer with no recorded work as zeros by construction, and a
+  // GROUPED answer has no row for one at all — which is the honest shape
+  // rather than a row somebody had to remember to add.
   return {
     id,
     external_id: body.external_id,
@@ -287,38 +270,18 @@ export async function createCustomer(
 
 // ---------------------------------------------------------------------------
 // Metering — usage analytics
-
-export async function getUsageAnalytics(
-  customerId: string,
-  _range: DateRange,
-): Promise<UsageAnalyticsResponse> {
-  await mockDelay();
-  requireCustomer(customerId);
-  return (
-    MOCK_USAGE_ANALYTICS[customerId] ?? {
-      total_events: 0,
-      total_billed_cost_micros: 0,
-      total_provider_cost_micros: 0,
-      unresolved_event_count: 0,
-      unpriced_event_count: 0,
-      usage_markup_margin_micros: 0,
-      by_provider: [],
-      by_event_type: [],
-      by_customer: [],
-      by_task_type: [],
-      by_tag: [],
-      breakdowns: {},
-    }
-  );
-}
+//
+// `getUsageAnalytics` is gone from both halves of this pair (#501): it answered
+// the same question as `getCustomerMargin` and the Usage tab now shares that
+// call. The api/mock signature symmetry holds because BOTH sides lost it.
 
 export async function getUsageTimeseries(
   customerId: string,
-  _range: DateRange,
-): Promise<UsageTimeseriesResponse> {
+  range: DateRange,
+): Promise<Economics> {
   await mockDelay();
   requireCustomer(customerId);
-  return buildMockTimeseries(customerId);
+  return mockUsageTimeseries(customerId, resolveRange(range));
 }
 
 // ---------------------------------------------------------------------------

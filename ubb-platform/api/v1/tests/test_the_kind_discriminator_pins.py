@@ -9,17 +9,24 @@ These two are written anyway, and that is not a contradiction — they guard THI
 slice's own new column, and without them nothing stops a charge posting
 inflating a unit of work's event count between here and slice 7.
 
-1. `recorded_events` counts `metered_usage` only — **not pinnable**, slice 7's.
-   The measure exists only as vocabulary: a registry value and a generated
-   constant, with no query computing it anywhere.
+1. `recorded_events` counts `metered_usage` only — was **not pinnable** when
+   this module was written, because the measure existed only as vocabulary with
+   no query computing it. ⚠ **#499 BUILT THAT QUERY AND THE REASON HAS
+   EXPIRED**; the claim is asserted against it in
+   `api/v1/tests/test_the_one_economic_query.py`.
 2. `Task.event_count` counts `metered_usage` only — **PINNABLE, and here.** The
    column exists today, in this slice's own app.
-3. The provider and measurement analytics exclude `task_charge` — **not
-   pinnable in final form**, slice 7's. The surfaces exist, and slice 7
-   collapses five of them into one, so a gate written against the five would be
-   rewritten rather than kept.
+3. The provider and measurement analytics exclude `task_charge` — was **not
+   pinnable in final form**, because a gate written against the five surfaces
+   would have been rewritten rather than kept. ⚠ **#501 COLLAPSED THEM**, so
+   there is one surface to write it against and that reason has expired too.
 4. Revenue and monetary totals may include both kinds, per their economic
    fields — **PINNABLE, and here.** The reads exist today.
+
+⚠ **THE EXPIRED REASONS DO NOT INSTALL THE ROW.** Both of the above say why
+pins 1 and 3 could not be written when this module was; whether the manifest row
+is armed, and against what, is the ticket that installs it — this module is
+named for the row and has never been the row.
 
 ⚠ **PINS 2 AND 4 PULL IN OPPOSITE DIRECTIONS AND THAT IS THE WHOLE POINT.** A
 charge posting is a real posting carrying real revenue, so every MONETARY total
@@ -31,13 +38,12 @@ counted* would get one of the two wrong; what decides is the ECONOMIC FIELD each
 measure is about.
 
 ⚠ **PIN 1 IS NOT ASSERTED HERE AND ITS ABSENCE IS DELIBERATE.**
-`get_customer_cost_totals` and the daily rollup beside it carry an
-`event_count`, and it counts every posting including a projection. That is
-NOT pin 1 arriving early and must not be read as it: pin 1 is about
-`recorded_events`, a declared measure with no query behind it, and the counts
-those reads carry are denominators for their own totals rather than a claim
-about what was reported. Slice 7 builds the measure and the row stays owed
-until it does.
+`get_customer_cost_totals` carries an `event_count`, and it counts every posting
+including a projection. That is NOT pin 1 and must not be read as it: pin 1 is
+about `recorded_events`, whose own query excludes the charge posting kind, and
+the count that read carries is a denominator for its own totals rather than a
+claim about what was reported. The two answer different questions from the same
+rows, which is exactly why one of them is a pin and the other is not.
 """
 import uuid
 from datetime import date, timedelta
@@ -50,18 +56,32 @@ from api.v1.tests.test_a_delivered_unit_of_work_is_charged_once import (
 from api.v1.tests.test_the_charge_reaches_the_rails_as_one_marked_posting import (
     A_METERED_SALE, ProjectionTestBase,
 )
-from apps.metering.queries import (
-    get_customer_cost_totals, get_revenue_analytics,
-)
+from api.v1.tests._helpers import tenant_wide_money
+from apps.metering.queries import get_customer_cost_totals
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.work.models import Task
-from core.vocabulary import USAGE_EVENT_KIND_TASK_CHARGE
+from core.vocabulary import (
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_SUPPLIER_COGS, USAGE_EVENT_KIND_TASK_CHARGE,
+)
 
 #: A window wide enough to hold everything a case in this module records. The
 #: reads under test window on dates, and a case whose fixture fell outside its
 #: own window would assert an empty total in both directions.
 WINDOW_START = date.today() - timedelta(days=1)
 WINDOW_END = date.today() + timedelta(days=2)
+
+def tenant_wide(tenant_id):
+    """PIN 4's tenant-wide read, over this module's window.
+
+    It read the daily revenue rollup until #501 deleted that rollup with its
+    route; the one economic query answers the same question. The claims did not
+    change — both kinds count, per their ECONOMIC FIELDS — and the subtraction
+    that used to be published under a name suggesting a rate is now the margin
+    measure, computed once at the bucket.
+    """
+    return tenant_wide_money(tenant_id, start_date=WINDOW_START,
+                             end_date=WINDOW_END)
 
 
 @pytest.mark.django_db
@@ -169,9 +189,9 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
 
         self._close(started)
 
-        totals = get_revenue_analytics(str(self.tenant.id))
-        assert totals["total_billed_cost_micros"] == (
-            THE_AGREED_PRICE + A_METERED_SALE)
+        measures = tenant_wide(self.tenant.id)
+        assert measures[ANALYTICS_MEASURE_CUSTOMER_REVENUE][
+            "amount_micros"] == THE_AGREED_PRICE + A_METERED_SALE
 
     def test_the_supplier_total_is_the_metered_cost_alone(self):
         """The projection's zero is real and settled, so it adds nothing — and
@@ -185,9 +205,9 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
 
         self._close(started)
 
-        totals = get_revenue_analytics(str(self.tenant.id))
-        assert totals["total_provider_cost_micros"] == 3_000_000
-        assert totals["unresolved_event_count"] == 0
+        cost = tenant_wide(self.tenant.id)[ANALYTICS_MEASURE_SUPPLIER_COGS]
+        assert cost["amount_micros"] == 3_000_000
+        assert cost["unresolved_event_count"] == 0
 
     def test_the_margin_nets_the_agreed_price_against_the_work_it_cost(self):
         """WHAT PIN 4 IS FOR. Revenue and COGS for one unit of work land in one
@@ -201,8 +221,9 @@ class TestRevenueAndMonetaryTotalsIncludeBothKinds(ProjectionTestBase):
 
         self._close(started)
 
-        totals = get_revenue_analytics(str(self.tenant.id))
-        assert totals["total_markup_micros"] == THE_AGREED_PRICE - 3_000_000
+        measures = tenant_wide(self.tenant.id)
+        assert measures[ANALYTICS_MEASURE_GROSS_MARGIN][
+            "amount_micros"] == THE_AGREED_PRICE - 3_000_000
 
     def test_the_customers_monetary_totals_hold_it_too(self):
         """The per-customer read, which is what a bill is reconciled against.

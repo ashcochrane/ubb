@@ -66,7 +66,7 @@ export function CustomerFilter({
   onChange: (next: string | undefined) => void;
 }) {
   const customers = useSpendControlCustomers();
-  const rows = customers.data?.customers ?? [];
+  const rows = customers.data ?? [];
   return (
     <div className="space-y-1">
       <Label className="text-[11px] text-text-muted">Customer</Label>

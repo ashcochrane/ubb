@@ -22,11 +22,44 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
-    PRICING_MODE_FIXED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_SUPPLIER_COGS, PRICING_MODE_FIXED,
+    TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 #: `domain-vocabulary/concepts/` at the git root — the registry. Four parents
 #: up: tests -> v1 -> api -> ubb-platform -> the root.
 REGISTRY_CONCEPTS = Path(__file__).resolve().parents[4] / "domain-vocabulary" / "concepts"
+
+#: The three money measures, in the order a reader thinks about them.
+MONEY_MEASURES = (ANALYTICS_MEASURE_SUPPLIER_COGS,
+                  ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                  ANALYTICS_MEASURE_GROSS_MARGIN)
+
+
+def tenant_wide_money(tenant_id, *, start_date, end_date):
+    """This tenant's ungrouped economic answer, as ``{measure: entry}``.
+
+    ⚠ **SHARED BECAUSE TWO MODULES ASK IT AND ONE IMPORTS THE OTHER.** Both are
+    about the projected Charge — one that it reaches the rails as a posting, one
+    that it counts as revenue and not as work — and both read a tenant-wide
+    total. Until #501 they read the daily revenue rollup; that rollup went with
+    the routes it served, and the one economic query answers the same question.
+    A copy in each module would be a copy of the sentinel argument below, which
+    is the one thing a caller must not get wrong.
+
+    ⚠ `contributed_revenue=()` IS A STATEMENT AND NOT A DEFAULT. The query
+    refuses a revenue measure without the rows this product does not hold, so an
+    empty sequence is how a fixture says *this tenant has no subscription and
+    supplied nothing* — which is what makes the totals readable as postings
+    alone. Passing nothing at all raises, deliberately.
+    """
+    from apps.metering.queries import EconomicFilters, economics
+
+    answer = economics(
+        str(tenant_id), measures=MONEY_MEASURES, contributed_revenue=(),
+        filters=EconomicFilters(start_date=start_date, end_date=end_date))
+    assert len(answer["rows"]) == 1, answer["rows"]
+    return {entry["measure"]: entry for entry in answer["rows"][0]["measures"]}
 
 
 def retired_aliases(concept_file, concept):

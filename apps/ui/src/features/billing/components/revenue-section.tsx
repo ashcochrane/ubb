@@ -1,7 +1,6 @@
 import { Suspense, lazy } from "react";
 
-import { toRevenueDailyRow } from "../api/types";
-import { useRevenueAnalytics } from "../api/queries";
+import { useRevenueWindow } from "../api/queries";
 import { ChartLegend } from "@/components/shared/chart-legend";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -37,7 +36,7 @@ export function RevenueSection({
 }) {
   const resolved = resolveRange(range);
   const currency = useTenantCurrency();
-  const query = useRevenueAnalytics(resolved);
+  const query = useRevenueWindow(resolved);
 
   return (
     <SectionCard
@@ -51,8 +50,7 @@ export function RevenueSection({
         <ErrorCard error={query.error} onRetry={() => void query.refetch()} />
       ) : query.data ? (
         (() => {
-          const daily = query.data.daily.map(toRevenueDailyRow);
-          const eventTotal = daily.reduce((sum, row) => sum + row.event_count, 0);
+          const { daily, event_count: eventTotal } = query.data;
           if (daily.length === 0) {
             return (
               <EmptyState
@@ -77,14 +75,14 @@ export function RevenueSection({
             >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <StatCard
-                  label="Billed"
-                  value={formatMicros(query.data.total_billed_cost_micros, currency)}
+                  label="Revenue"
+                  value={formatMicros(query.data.revenue_micros, currency)}
                   subtitle={`${formatEventCount(eventTotal)} events`}
                 />
                 <StatCard
                   label="Provider cost"
                   value={supplierCostTotal(
-                    query.data.total_provider_cost_micros,
+                    query.data.provider_cost_micros,
                     query.data,
                     currency,
                   )}
@@ -92,14 +90,19 @@ export function RevenueSection({
                     partialTotalNote(query.data.unresolved_event_count) ?? undefined
                   }
                 />
+                {/* ⚠ "MARKUP" WAS NEITHER A MARKUP NOR A MARGIN (#501) — it
+                    was billed minus supplier cost over a window, published
+                    under a name that suggested a rate. It is the gross-margin
+                    measure now, and a window UBB cannot state one for renders
+                    as an absence rather than as zero. */}
                 <StatCard
-                  label="Markup"
-                  value={marginBound(
-                    query.data.total_markup_micros,
-                    query.data,
-                    currency,
-                  )}
-                  subtitle="Billed minus provider cost"
+                  label="Gross margin"
+                  value={
+                    query.data.margin_micros === null
+                      ? "—"
+                      : marginBound(query.data.margin_micros, query.data, currency)
+                  }
+                  subtitle="Revenue minus provider cost"
                 />
               </div>
               <div className="flex justify-end">

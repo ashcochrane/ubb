@@ -568,10 +568,12 @@ tenant can go back to a customer for; and reporting waived charges here — what
 ## Read contract & events
 
 **queries.py**:
-Metering's plain-data read contract (period totals, revenue analytics, margin grouped by a declared
-field via `get_dimensional_margin`, billing-owner billed total, backfill markers) — never returns
-ORM objects. The function names still carry the pre-#155 noun; the rename is slice 7's, with the
-row keys it serves.
+Metering's plain-data read contract (period totals, the one economic query and the discovery read
+that says what may be asked of it, per-customer cost totals, billing-owner billed total, backfill
+markers) — never returns ORM objects. Five separate definitions of revenue and margin stood here
+until #501; `economics` is the one that replaced them, and what it can be grouped by comes from
+`grouping_options` rather than from a list each reader kept for itself. The remaining function names
+still carry the pre-#155 noun; the rename is slice 7's, with the row keys it serves.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
 **usage.recorded**:

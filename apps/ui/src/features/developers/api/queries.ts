@@ -96,11 +96,13 @@ export function useCreateSandbox() {
 
 export function useMarginCustomers() {
   return useQuery({
-    // Projection tail: this entry caches the EXTRACTED customers array, not
-    // the raw MarginListOut — a bare ["margin","customers"] key would collide
-    // with other features caching the raw response shape.
+    // Projection tail: this entry caches the EXTRACTED customer choices, not
+    // the response they were read out of — a bare ["margin","customers"] key
+    // would collide with other features caching a raw response shape. The key
+    // keeps its historical words; what it names is no longer a margin list
+    // (#501 deleted that route), which is exactly why the tail matters.
     queryKey: ["margin", "customers", "picker"] as const,
-    queryFn: () => developersApi.listMarginCustomers(),
+    queryFn: () => developersApi.listCustomerChoices(),
     staleTime: 60_000,
   });
 }

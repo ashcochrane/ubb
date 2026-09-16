@@ -8,12 +8,23 @@
 // narrowed types. The narrowers read fields with typeof checks (no casts), so
 // a drifted backend degrades to empty strings instead of crashing the UI.
 
-import type { MarginSchemas, MeteringSchemas, TenantSchemas } from "@/api/types";
+import type { MeteringSchemas, TenantSchemas } from "@/api/types";
 
 export type ApiKey = TenantSchemas["ApiKeyOut"];
 export type RecordUsageRequest = MeteringSchemas["RecordUsageRequest"];
 export type RecordUsageResponse = MeteringSchemas["RecordUsageResponse"];
-export type MarginCustomerRow = MarginSchemas["CustomerMarginListRow"];
+/**
+ * One choice in a customer picker.
+ *
+ * ⚠ **IT WAS A MARGIN ROW AND IS AN IDENTITY (#501).** This feature read the
+ * per-customer margin list for the ids alone — every money field on it was
+ * ignored here — and that route is gone with the other eight the one economic
+ * query replaced. Grouping that query by the customer axis answers the same
+ * question and nothing more, which is the shape this always wanted.
+ */
+export interface CustomerChoice {
+  customer_id: string;
+}
 
 // ---------------------------------------------------------------------------
 // [backend-verified shape — see discovery spec] POST /tenant/api-keys → 201.

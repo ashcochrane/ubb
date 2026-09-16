@@ -22,7 +22,7 @@ import {
 } from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
 
-import { useMarginCustomers } from "../api/queries";
+import { useCustomerEconomics } from "../api/queries";
 import type { Window } from "../api/types";
 import {
   customerEconomics,
@@ -35,24 +35,22 @@ import { SectionEmpty } from "./section-empty";
 
 const TOP_N = 10;
 
-const METERED_TIP =
-  "Meter-only workspace: revenue here is what usage billed at your prices, " +
-  "and margin is billed minus provider cost.";
+// ⚠ THE METERED TIP IS GONE (#501), with the second reading of revenue it
+// existed to name: the one economic query answers `customer_revenue` from one
+// definition for every workspace, so there is nothing left to explain away.
 
 export interface CustomerEconomicsTableProps {
   window: Window;
-  meterOnly: boolean;
   currency: string;
   className?: string;
 }
 
 export function CustomerEconomicsTable({
   window,
-  meterOnly,
   currency,
   className,
 }: CustomerEconomicsTableProps) {
-  const query = useMarginCustomers(window);
+  const query = useCustomerEconomics(window);
   const [sort, setSort] = React.useState<CustomerSortKey>("revenue");
 
   return (
@@ -81,7 +79,7 @@ export function CustomerEconomicsTable({
           title="Couldn't load customer economics"
           onRetry={() => void query.refetch()}
         />
-      ) : query.data.customers.length === 0 ? (
+      ) : query.data.length === 0 ? (
         <SectionEmpty
           title="No customer usage in this window"
           description="Customer revenue, cost, and margin appear once usage is recorded."
@@ -89,11 +87,10 @@ export function CustomerEconomicsTable({
         />
       ) : (
         <EconomicsRows
-          rows={sortCustomers(query.data.customers, meterOnly, sort)}
-          total={query.data.customers.length}
+          rows={sortCustomers(query.data, sort)}
+          total={query.data.length}
           sort={sort}
           onSortChange={setSort}
-          meterOnly={meterOnly}
           currency={currency}
         />
       )}
@@ -140,14 +137,12 @@ function EconomicsRows({
   total,
   sort,
   onSortChange,
-  meterOnly,
   currency,
 }: {
   rows: ReturnType<typeof sortCustomers>;
   total: number;
   sort: CustomerSortKey;
   onSortChange: (key: CustomerSortKey) => void;
-  meterOnly: boolean;
   currency: string;
 }) {
   const visible = rows.slice(0, TOP_N);
@@ -159,11 +154,10 @@ function EconomicsRows({
             <TableHead>Customer</TableHead>
             <TableHead className="text-right">
               <SortHeader
-                label={meterOnly ? "Usage billed" : "Revenue"}
+                label="Revenue"
                 sortKey="revenue"
                 sort={sort}
                 onSortChange={onSortChange}
-                help={meterOnly ? METERED_TIP : undefined}
               />
             </TableHead>
             <TableHead className="text-right">COGS</TableHead>
@@ -187,14 +181,19 @@ function EconomicsRows({
         </TableHeader>
         <TableBody>
           {visible.map((row) => {
-            const view = customerEconomics(row, meterOnly);
-            const negative = view.margin_micros < 0;
+            const view = customerEconomics(row);
+            // ⚠ A ROW MAY STATE NO MARGIN AT ALL, and an absence is not a loss:
+            // null is neither negative nor zero, so it is styled as neither.
+            const negative =
+              view.margin_micros !== null && view.margin_micros < 0;
             return (
               <TableRow key={row.customer_id}>
                 <TableCell>
                   <span className="inline-flex items-center gap-1.5">
-                    {/* Margin list rows carry no external_id (contract gap) —
-                        show the shortened customer UUID with a copy affordance. */}
+                    {/* The customer axis groups by IDENTITY — a tenant's own
+                        external id is its word for the same row and belongs to
+                        the surface that renders it — so show the shortened UUID
+                        with a copy affordance. */}
                     <Link
                       to="/customers/$customerId"
                       params={{ customerId: row.customer_id }}
@@ -219,12 +218,16 @@ function EconomicsRows({
                 <TableCell
                   className={cn("text-right font-medium", negative && "text-destructive")}
                 >
-                  {marginBound(view.margin_micros, row, currency)}
+                  {view.margin_micros === null
+                    ? "—"
+                    : marginBound(view.margin_micros, row, currency)}
                 </TableCell>
                 <TableCell
                   className={cn("text-right", negative && "text-destructive")}
                 >
-                  {marginPercentBound(view.margin_pct, row)}
+                  {view.margin_micros === null
+                    ? "—"
+                    : marginPercentBound(view.margin_pct, row)}
                 </TableCell>
               </TableRow>
             );

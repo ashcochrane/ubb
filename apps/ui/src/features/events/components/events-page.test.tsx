@@ -37,9 +37,9 @@ describe("EventsPage", () => {
     renderPage({ customer_id: CUSTOMER_A_ID });
 
     // Analytics strip labels ("Billed"/"Provider cost" also head table columns).
-    expect((await screen.findAllByText("Billed")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Revenue")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Provider cost").length).toBeGreaterThan(0);
-    expect(screen.getByText("Markup margin")).toBeInTheDocument();
+    // ⚠ "MARKUP MARGIN" WAS NEITHER (#501) — the difference between two`n    // aggregates, named as if it were a rate. It is the gross-margin measure.`n    expect(screen.getByText("Gross margin")).toBeInTheDocument();
 
     // Ledger rows from the mock fixture set (multiple chat.completion rows).
     const rows = await screen.findAllByText("chat.completion");

@@ -20,10 +20,7 @@ from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
 from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from ubb._core.models.stops_and_breaches_response import StopsAndBreachesResponse
 from ubb._core.models.utilisation_and_headroom_response import UtilisationAndHeadroomResponse
-from ubb._core.models.customer_margin_out import CustomerMarginOut
-from ubb._core.models.grouping_field_margin_row import GroupingFieldMarginRow
 from ubb._core.models.grant_out import GrantOut
-from ubb._core.models.margin_trend_point_out import MarginTrendPointOut
 from ubb._core.models.refund_response import RefundResponse
 from ubb._core.models.status_response import StatusResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
@@ -73,8 +70,11 @@ __all__ = [
     "RecordUsageResponse", "StartTaskResponse", "CloseTaskResponse", "TaskOut",
     "TaskDetailOut", "CustomerResponse", "BalanceResponse", "AffordabilityResponse",
     "CustomerSpendPoolOut", "CustomerSpendPoolStatusOut", "StopsAndBreachesResponse",
-    "UtilisationAndHeadroomResponse", "CustomerMarginOut", "GroupingFieldMarginRow",
-    "GrantOut", "MarginTrendPointOut", "RefundResponse", "StatusResponse",
+    # ⚠ THREE MARGIN DTOs LEFT THIS LIST IN #501, with the nine routes that
+    # answered with them. They were generated from response schemas that no
+    # longer exist, so re-exporting them is not a choice this module has.
+    "UtilisationAndHeadroomResponse",
+    "GrantOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # shell-owned types, and the handle a start answers with (#422)

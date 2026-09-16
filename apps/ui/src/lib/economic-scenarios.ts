@@ -507,6 +507,83 @@ export function incompletePriceTotal(
 }
 
 // ---------------------------------------------------------------------------
+// `margin_at_a_grain` — a difference of two totals, and whether UBB will
+// state it at the grain it was asked at (#501, slice 7 §1).
+
+/**
+ * A margin beside the two totals it was drawn from, and the count that bounds
+ * them.
+ *
+ * ⚠ **THE MARGIN IS NULLABLE AND THE TOTALS ARE NOT, WHICH IS THE WHOLE
+ * STATE.** Nine reports each published a margin as a number; the one economic
+ * query publishes one per measure with a `status` beside it, and
+ * `unavailable_at_requested_grain` means UBB has the money and cannot attribute
+ * it this finely. A revenue in that state carries the part that COULD be
+ * placed, with the rest in the answer's `context` — but a margin carries
+ * NOTHING, because there is no such thing as a partial margin.
+ *
+ * So this scenario exists to make the console's version of that impossible to
+ * write by halves: `null` here is not "zero margin" and not "no data", it is
+ * *UBB will not state one at this grain*, and a renderer that coalesces it to
+ * `0` publishes a claim about a customer that nobody made. `dashes()` is the
+ * composed absence; `stated()` is its foil, and a test that renders only one of
+ * them proves nothing about the coalesce.
+ */
+export interface MarginScenario {
+  readonly provider_cost_micros: number;
+  readonly total_revenue_micros: number;
+  readonly gross_margin_micros: number | null;
+  readonly margin_percentage: number;
+  readonly unresolved_event_count: number;
+  readonly unpriced_event_count: number;
+}
+
+/**
+ * A margin UBB states, with the two totals it is the difference of.
+ *
+ * The margin is COMPUTED here rather than passed, because a fixture free to
+ * state a third number is a fixture free to state one the subtraction would
+ * not produce — which is a row the backend cannot write.
+ */
+export function statedMargin(
+  providerCostMicros: number,
+  revenueMicros: number,
+): MarginScenario {
+  const margin = revenueMicros - providerCostMicros;
+  return {
+    provider_cost_micros: providerCostMicros,
+    total_revenue_micros: revenueMicros,
+    gross_margin_micros: margin,
+    margin_percentage: revenueMicros === 0 ? 0 : (margin / revenueMicros) * 100,
+    unresolved_event_count: 0,
+    unpriced_event_count: 0,
+  };
+}
+
+/**
+ * The two totals, and NO margin: UBB could not attribute one at this grain.
+ *
+ * The percentage is zero and it is not a share of anything — the field is
+ * required on the row, and there is no percentage of a margin that does not
+ * exist. That is precisely why it is composed here rather than left to a
+ * caller: a fixture that paired a null margin with a plausible-looking
+ * percentage would let a renderer show a share for a figure it refuses to show.
+ */
+export function marginUnavailableAtThisGrain(
+  providerCostMicros: number,
+  revenueMicros: number,
+): MarginScenario {
+  return {
+    provider_cost_micros: providerCostMicros,
+    total_revenue_micros: revenueMicros,
+    gross_margin_micros: null,
+    margin_percentage: 0,
+    unresolved_event_count: 0,
+    unpriced_event_count: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The Customer Spend Pool's status pair — where one customer's known period
 // charges stand against the pool that applies to them (#456 §13; composed
 // here in #468, slice 6 §4, §18).

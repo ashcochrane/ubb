@@ -1,23 +1,28 @@
 // Real API calls for the events feature. Every call goes through `unwrap`
 // so failures always reject with a typed ApiProblem.
 
-import { billingApi, marginApi, meteringApi, rootApi } from "@/api/client";
+import { billingApi, meteringApi, rootApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
+import {
+  customerIdsIn,
+  EVERY_MEASURE,
+  FIELD_AXIS,
+  MONEY_MEASURES,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
 
 import type {
   AnalyticsParams,
   CloseTaskResult,
-  CustomerMargin,
-  MarginCustomers,
   RefundBody,
   RefundResult,
   TaskOutcome,
   TimeseriesParams,
-  UsageAnalytics,
+  CustomerChoice,
+  Economics,
   UsageEventDetail,
   UsageListFilters,
   UsagePage,
-  UsageTimeseries,
 } from "./types";
 
 /** Cursor page of a customer's usage ledger (newest first). */
@@ -53,43 +58,67 @@ export async function getUsageEvent(eventId: string): Promise<UsageEventDetail> 
   );
 }
 
-/** Window rollup: totals in both denominations + markup margin. */
+/** Window rollup: what the window cost, earned and the difference. */
 export async function getUsageAnalytics(
   params: AnalyticsParams,
-): Promise<UsageAnalytics> {
+): Promise<Economics> {
   return unwrap(
-    await meteringApi.GET("/analytics/usage", {
-      params: { query: { ...params } },
+    await meteringApi.GET("/analytics/economics", {
+      params: { query: { ...params, measures: [...EVERY_MEASURE] } },
     }),
   );
 }
 
-/** Daily spend timeseries, optionally grouped by one axis. */
+/** Daily spend timeseries, optionally grouped by one axis.
+ *
+ *  ⚠ MONEY ONLY WHERE IT GROUPS. `recorded_events` counts records at the
+ *  granularity each Event Type declares, so the server refuses it across rows
+ *  that mix Event Types — which a provider or declared-field grouping does. */
 export async function getUsageTimeseries(
   params: TimeseriesParams,
-): Promise<UsageTimeseries> {
+): Promise<Economics> {
+  const { group_by, ...window } = params;
   return unwrap(
-    await meteringApi.GET("/analytics/usage/timeseries", {
-      params: { query: { granularity: "day", ...params } },
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          ...window,
+          bucket: "day",
+          measures: group_by ? [...MONEY_MEASURES] : [...EVERY_MEASURE],
+          ...(group_by ? { group_by: [FIELD_AXIS(group_by)] } : {}),
+        },
+      },
     }),
   );
 }
 
-/** All customers with margin rows — the ledger's customer picker source. */
-export async function listMarginCustomers(): Promise<MarginCustomers> {
-  return unwrap(await marginApi.GET("/customers"));
-}
-
-/** One customer's margin detail — resolves the UUID to its external_id. */
-export async function getCustomerMargin(
-  customerId: string,
-): Promise<CustomerMargin> {
-  return unwrap(
-    await marginApi.GET("/customers/{customer_id}", {
-      params: { path: { customer_id: customerId } },
+/** Every customer the window's work reached — the picker's choices. */
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
+  const answer = unwrap(
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: { measures: [SUPPLIER_COGS], group_by: [FIELD_AXIS("customer")] },
+      },
     }),
   );
+  return customerIdsIn(answer).map((customer_id) => ({ customer_id }));
 }
+
+// ⚠ THIS PICKER SHOWS IDS RATHER THAN THE TENANT'S OWN WORDS, AND THE REASON IS
+// THE SHAPE OF THE READ RATHER THAN THE ABSENCE OF ONE. One customer's margin
+// published the tenant's word for the row beside its figures, and that route is
+// gone (#501); the one economic query groups by IDENTITY and publishes no
+// external id, because a tenant's own vocabulary belongs to the surface that
+// renders it rather than to a measure.
+//
+// `GET /platform/customers/{customer_id}` — added by the same commit — does map
+// one id to one external id, and `customers/api/api.ts: getCustomerIdentity`
+// calls it where a page holds ONE customer. It is not called here: this builds a
+// picker over every customer in the answer, so resolving the list would be one
+// request per row. Turning that into a read the picker can afford — a batch, or
+// the axis publishing the word beside the id — is the events page's own ticket.
+// The picker shows the shortened id with a copy affordance meanwhile, which is
+// what it shows in its own list.
 
 /** Refund a usage charge back into the wallet (lot-aware; admin floor). */
 export async function refundUsage(
