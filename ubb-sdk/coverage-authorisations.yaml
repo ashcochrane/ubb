@@ -458,3 +458,36 @@ authorisations:
       wrapper that flattened four measures into four fields, or that defaulted
       the measure set, would reintroduce at the client exactly the two things
       the route refuses at the server.
+  - id: slice-7-501-the-customer-identity-read
+    issue: 501
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION ON ONE NEW PATH, `generated_only`: a customer's
+      identity — the id UBB assigned them, the id the tenant gave them, what
+      kind of account it is and which business a seat belongs to
+      (`GET /platform/customers/{customer_id}`).
+
+      ⚠ **IT IS AN ADDITION ON A TICKET THAT REMOVES NINE ROUTES, AND THE
+      REASON IS THE REMOVAL.** One customer's margin published `external_id`
+      beside its figures, and that was the ONLY read on the contract that
+      mapped UBB's identity for a customer to the tenant's own word for them.
+      The one economic query groups by identity and publishes no external id —
+      rightly, since a tenant's vocabulary is not a measure and a report is not
+      a directory — so the capability had nowhere to go and it is here, on the
+      mount that owns customers.
+
+      It is load-bearing rather than cosmetic: the subscription lifecycle is
+      addressed by the EXTERNAL id (`/subscriptions/customers/{external_id}/…`)
+      while every metering and billing read is addressed by the UUID, so a
+      surface holding one and needing the other had no way across. The console's
+      customer page is exactly that surface, and without this read its
+      subscription management would have stopped working on the commit that
+      collapsed the reports.
+
+      WHY IT IS NOT WRAPPED HERE. The same question of ORDER the two entries
+      above answer: slice 7 §21 rules the collapse backend-first and the SDK
+      second, and #505 is the ticket that writes this client's handles. A read
+      that returns five flat identity fields is also the least likely of the
+      three to need argument when it is wrapped — which is a reason to let the
+      ticket that owns the client shape it, not a reason to pre-empt that
+      ticket here.

@@ -55,28 +55,36 @@ export function AnalyticsStrip({
         <StatCard
           variant="raised"
           label="Events"
-          value={formatEventCount(data.total_events)}
+          value={formatEventCount(data.event_count)}
         />
         <StatCard
           variant="raised"
-          label="Billed"
-          value={formatMicros(data.total_billed_cost_micros, currency)}
+          label="Revenue"
+          value={formatMicros(data.revenue_micros, currency)}
         />
         <StatCard
           variant="raised"
           label="Provider cost"
           value={supplierCostTotal(
-            data.total_provider_cost_micros,
+            data.provider_cost_micros,
             data,
             currency,
           )}
           subtitle={partialTotalNote(data.unresolved_event_count) ?? undefined}
         />
+        {/* ⚠ "MARKUP MARGIN" WAS NEITHER (#501) — it was the difference
+            between two aggregates, named as if it were a rate. It is the
+            gross-margin measure now, and a window UBB cannot state one for
+            renders as an absence rather than as zero. */}
         <StatCard
           variant="raised"
-          label="Markup margin"
-          value={marginBound(data.usage_markup_margin_micros, data, currency)}
-          subtitle="Billed minus provider cost"
+          label="Gross margin"
+          value={
+            data.margin_micros === null
+              ? "—"
+              : marginBound(data.margin_micros, data, currency)
+          }
+          subtitle="Revenue minus provider cost"
         />
       </div>
       {tagFilterActive && (

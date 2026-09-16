@@ -56,9 +56,17 @@ PATH_OPERATIONS = [
      {"new_secret": "s" * 32}),
 ]
 
+#: ⚠ **BOTH OPERATIONS THE ISSUE LISTED ON THIS CHANNEL WERE COLLAPSED (#501)**,
+#: and the channel did not go with them: the one economic query takes the same
+#: identifier as a query parameter, declared the same way, and is the surface
+#: the two reports became.
+#:
+#: Each entry carries the parameters a well-formed request needs BESIDE the
+#: malformed identifier, because this query refuses a request naming no measure
+#: — and a 422 earned by the missing measure would pass this test while saying
+#: nothing about the identifier.
 QUERY_OPERATIONS = [
-    "/api/v1/metering/analytics/usage",
-    "/api/v1/metering/analytics/usage/timeseries",
+    ("/api/v1/metering/analytics/economics", {"measures": "supplier_cogs"}),
 ]
 
 
@@ -91,7 +99,8 @@ class QueryChannelTest(UUIDIdentifierPinBase):
 
     def test_malformed_query_identifier_is_a_422_problem(self):
         response = self.http_client.get(
-            "/api/v1/metering/analytics/usage", {"customer_id": "0"}, **self.auth
+            "/api/v1/metering/analytics/economics",
+            {"measures": "supplier_cogs", "customer_id": "0"}, **self.auth
         )
         body = assert_problem(self, response, "validation_error")
         self.assertEqual(
@@ -146,12 +155,16 @@ class OperationSweepTest(UUIDIdentifierPinBase):
                 assert_problem(self, response, "not_found")
 
     def test_every_query_operation_answers_422(self):
-        for url in QUERY_OPERATIONS:
+        for url, wellformed in QUERY_OPERATIONS:
             with self.subTest(url):
                 response = self.http_client.get(
-                    url, {"customer_id": "0"}, **self.auth
+                    url, {**wellformed, "customer_id": "0"}, **self.auth
                 )
-                assert_problem(self, response, "validation_error")
+                body = assert_problem(self, response, "validation_error")
+                # NAMED, so a 422 earned by anything else in the request would
+                # fail here rather than pass for the wrong reason.
+                assert any(error["type"] == "uuid_identifier"
+                           for error in body["errors"]), body
 
 
 class MixedErrorOrderingTest(UUIDIdentifierPinBase):

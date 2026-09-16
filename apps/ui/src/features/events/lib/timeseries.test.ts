@@ -11,9 +11,9 @@ function point(
 ): TimeseriesPoint {
   const base: TimeseriesPoint = {
     bucket,
-    billed_cost_micros: billed,
+    revenue_micros: billed,
     provider_cost_micros: Math.round(billed * 0.8),
-    markup_micros: Math.round(billed * 0.2),
+    margin_micros: Math.round(billed * 0.2),
     event_count: 1,
     unresolved_event_count: unresolvedEventCount,
   };
@@ -130,16 +130,32 @@ describe("pivotTimeseries", () => {
   // #312 is the commit that updated it — deliberately, alongside the backend's
   // own rename, which is the pairing this test exists to force.
   it("paints a verbatim backend response by its grouped value", () => {
-    const fromBackend = [
-      {
-        bucket: "2026-07-01T00:00:00Z",
-        provider_cost_micros: 80,
-        billed_cost_micros: 100,
-        markup_micros: 20,
-        event_count: 1,
-        grouping_field_value: "openai",
-      },
-    ];
+    // ⚠ A WHOLE ANSWER, because that is what the narrowing takes since #501:
+    // the row's grouped values are POSITIONAL and aligned with the `group_by`
+    // the answer echoes, so a fixture that was a bare list of rows could not
+    // express the alignment this case is about.
+    const fromBackend = {
+      period_start: "2026-07-01",
+      period_end: "2026-07-01",
+      group_by: ["field:provider"],
+      bucket: "day",
+      basis: "recorded",
+      economic_data_available_from: "2020-07-01",
+      measurement_data_available_from: "2026-01-01",
+      rows: [
+        {
+          bucket_start: "2026-07-01T00:00:00Z",
+          grouping_field_value: ["openai"],
+          grouping_field_value_status: ["recorded"],
+          measures: [
+            { measure: "supplier_cogs", amount_micros: 80, status: "known", unresolved_event_count: 0 },
+            { measure: "customer_revenue", amount_micros: 100, status: "known", unpriced_event_count: 0 },
+            { measure: "gross_margin", amount_micros: 20, status: "known" },
+          ],
+        },
+      ],
+      context: [],
+    } as unknown as Parameters<typeof asTimeseriesPoints>[0];
 
     const points = asTimeseriesPoints(fromBackend);
     expect(points[0]?.group_value).toBe("openai");

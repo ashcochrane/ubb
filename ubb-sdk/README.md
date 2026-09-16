@@ -179,74 +179,47 @@ payload. `get_task`, `list_tasks` and `list_subtasks` read the work back, and
 `close_task(task_id, outcome)` is the primitive for closing by id from somewhere the handle
 did not travel.
 
-### 3. Read per-customer cost analytics
+### 3. Read what the work cost, what it earned, and the difference
 
-```python
-analytics = client.usage_analytics(customer_id="cust-uuid-here")
+**The three cost-analytics reads this guide used to document are gone (#501), and so are six
+other published reports.** One query answers all nine:
 
-print(analytics["total_provider_cost_micros"])   # total COGS for this customer
-
-for row in analytics["by_product"]:
-    print(row["product_id"], row["total_provider_cost_micros"])
-
-# Add a tag breakdown (e.g. tag events with {"agent": "gpt-4o"})
-analytics = client.usage_analytics(customer_id="cust-uuid-here", tag_key="agent")
-for row in analytics["by_tag"]:
-    print(row)
+```
+GET /api/v1/metering/analytics/economics
 ```
 
-### 4. Cost breakdown across several grouping fields
+`MeteringClient` does **not** wrap it yet — the handle is the next SDK ticket's, and the generated
+core already carries the operation — so the quick-start shows the request itself rather than a call
+that does not exist. `MIGRATION.md` §16 maps every removed call onto it, question by question.
 
-Pass `dimensions` as a list to slice COGS by any combination of `product_id`,
-`service_id`, `agent_id`, or any `tag:key` you tag events with. The response
-includes a `breakdowns` dict keyed by grouping field, each value a list of
-per-value rows. An `(unattributed)` bucket collects events with no value for
-that field, so the rows always reconcile to `total_provider_cost_micros`.
+What you ask for:
 
-> **The row's value key is `"grouping_field_value"`, the same property the
-> declared `/margin/by-grouping-field` rows publish.** These analytics routes
-> return an open dict, so the key is not in the schema and this SDK hands the
-> rows to you as they arrive rather than renaming anything in flight — but the
-> three rollups now agree on one word for a row's grouped value.
->
-> **This key changed in the release that renamed it server-side.** It was
-> previously the retired word the registry route dropped, and both moved
-> together on purpose: a client that renamed the read on its own would have
-> agreed with its own tests and disagreed with a running server.
->
-> The request keyword `dimensions` has NOT moved — the registry route is
-> already `/grouping-fields`, and the request property follows in the slice
-> that owns it.
+| Parameter | What it does |
+| --- | --- |
+| `measures` | one or more of `supplier_cogs`, `customer_revenue`, `gross_margin`, `recorded_events` |
+| `group_by` | zero or more axes, each `field:<declared key>` or `rollup:<name>` |
+| `bucket` | `hour`, `day` or `month`; omit it and the whole period is one row |
+| `start_date` / `end_date` | the period; omitting `start_date` means *the retention horizon*, not the beginning of time |
+| `customer_id`, `event_type`, `task_type`, `task_id`, `where` | filters, which narrow without grouping |
+| `basis` | `recorded` or `recognised` |
 
-```python
-analytics = client.usage_analytics(
-    customer_id="cust-uuid-here",
-    dimensions=["product_id", "service_id", "agent_id"],
-)
+What comes back: `rows`, each carrying `grouping_field_value` — a LIST, positional against the
+`group_by` you sent, which the response echoes back beside `bucket`, `period_start` and
+`period_end` — and one entry per measure you asked for.
 
-for field, rows in analytics["breakdowns"].items():
-    for row in rows:
-        print(field, row["grouping_field_value"], row["total_provider_cost_micros"])
-# field="product_id"  grouping_field_value="search"         total_provider_cost_micros=45000
-# field="product_id"  grouping_field_value="(unattributed)" total_provider_cost_micros=3000
-```
+> **⚠ Every measure carries a `status`, and the amount alone is not the answer.** `known` means
+> every input resolved. `incomplete` means the figure is a bound and the counts beside it say how
+> far off it can be. `unavailable_at_requested_grain` means the figure could not be attributed this
+> finely — a revenue figure is the part that *could* be placed, with the rest in the answer's
+> `context`, and a margin is `null` outright, because there is no such thing as a partial margin.
+> `unavailable_outside_retention_horizon` means the row reaches back past what UBB still holds, and
+> `available_from` says the day that measure's series can start. `not_applicable` means the measure
+> does not apply to this row at all. **A reader that takes the amount and drops the status will
+> publish a floor as a total.**
 
-### 5. Time-series spend rollup
-
-When you pass `group_by`, each bucket carries the grouped value under the same
-wire key §4 describes, for the same reason — this is the second of the two open
-analytics payloads. Omit `group_by` and the key is simply absent, which is why
-the sample below reads it with `.get`.
-
-```python
-series = client.usage_timeseries(
-    customer_id="cust-uuid-here",
-    granularity="day",   # "hour" | "day"  (only these two values; others → 422)
-    group_by="product_id",
-)
-for row in series["series"]:
-    print(row["bucket"], row.get("grouping_field_value"), row["provider_cost_micros"])
-```
+Two horizons come back on every answer — `economic_data_available_from` and
+`measurement_data_available_from` — because money and measurements are kept for different lengths
+of time.
 
 ## Expiring credit grants (paid vs promo)
 
@@ -508,13 +481,9 @@ client.get_task(task_id: str)
 client.list_tasks(*, cursor=None, limit=None, customer_id=None, task_type=None, status=None)
 client.list_subtasks(task_id: str, *, cursor=None, limit=None)
 
-# usage_analytics  → dict  (pass dimensions=["product_id","service_id"] for breakdowns)
-client.usage_analytics(*, start_date=None, end_date=None, customer_id=None, tag_key=None,
-    dimensions=None, past_limit=None, stop_scope=None, episode_seq=None)
-
-# usage_timeseries  → dict
-client.usage_timeseries(*, granularity="day", start_date=None, end_date=None,
-    customer_id=None, group_by=None)
+# The cost-analytics reads are DELETED (#501) and no signature replaces them here:
+# nine reports collapsed into GET /api/v1/metering/analytics/economics, which this
+# client does not wrap yet. See §3 above and MIGRATION.md §16.
 ```
 
 ## RecordUsageResponse fields

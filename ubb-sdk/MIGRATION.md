@@ -672,6 +672,94 @@ The routes pre-date the launch tag, so the removals are recorded in the break bl
 
 ---
 
+## 16. Nine reports collapse into one economic query (slice 7, #501 — pre-live)
+
+**Nine published reads are gone.** One query that is already on the contract answers all of them:
+`GET /api/v1/metering/analytics/economics`, with `GET /api/v1/metering/analytics/grouping-options`
+saying what may be asked of it.
+
+| Gone | What it answered |
+| --- | --- |
+| `GET /api/v1/metering/analytics/usage` | supplier COGS, with per-customer and per-field breakdowns |
+| `GET /api/v1/metering/analytics/usage/timeseries` | the same COGS bucketed by hour or day |
+| `GET /api/v1/billing/analytics/revenue` | revenue, with a daily series |
+| `GET /api/v1/margin/summary` | tenant-wide revenue, cost and margin |
+| `GET /api/v1/margin/customers` | one row per customer |
+| `GET /api/v1/margin/customers/{customer_id}` | one customer's totals |
+| `GET /api/v1/margin/customers/{customer_id}/trend` | one customer's margin by month |
+| `GET /api/v1/margin/by-grouping-field` | margin grouped by one declared field |
+| `GET /api/v1/me/usage-summary` | an end customer's own usage, on the widget mount |
+
+**Five hand-written calls go with them**, and nothing in this release replaces them:
+`MeteringClient.usage_analytics`, `.usage_timeseries`, `.get_customer_margin`,
+`.get_margin_by_grouping_field` and `.get_margin_trend`, together with the `UBBClient` delegates
+for the last three and the DTOs `CustomerMarginOut`, `GroupingFieldMarginRow` and
+`MarginTrendPointOut`. The generated core carries the replacement operation
+(`api_v1_metering_endpoints_query_economics`); **the hand-written handle for it is the next SDK
+ticket's**, which is why this section maps questions onto a request rather than onto a method.
+
+**How the old questions are asked now.** The request is `measures` (one or more of `supplier_cogs`,
+`customer_revenue`, `gross_margin`, `recorded_events`), `group_by` (zero or more axes, each
+`field:<declared key>` or `rollup:<name>`), an optional `bucket` of `hour`, `day` or `month`, and
+filters that narrow without grouping:
+
+- **Tenant-wide totals** (`/margin/summary`, `/billing/analytics/revenue`) — no `group_by`, no
+  `bucket`. One row.
+- **One row per customer** (`/margin/customers`, the usage report's customer breakdown) —
+  `group_by=field:customer_id`.
+- **One customer** (`/margin/customers/{customer_id}`) — `customer_id=<id>` as a FILTER.
+- **A trend** (`/margin/customers/{customer_id}/trend`, `/analytics/usage/timeseries`) — `bucket`,
+  with `customer_id` if you want one customer's.
+- **Grouped by a declared field** (`/margin/by-grouping-field`, the usage report's breakdowns) —
+  `group_by=field:<key>`, whose legal values the discovery read lists for your tenant.
+
+**Three things are worth knowing before you port a chart.**
+
+- **The margin is subtracted at the bucket, never at a row.** Ask for `gross_margin` and you get it
+  where it can be computed; where the grain makes it unattributable it is `null` rather than a
+  number, because there is no such thing as a partial margin.
+- **Every measure carries its own `status`** — `known`, `incomplete`,
+  `unavailable_at_requested_grain`, `unavailable_outside_retention_horizon` or `not_applicable` —
+  and its own completeness counts. A reader that takes the amount and drops the status publishes a
+  floor as a total. The old reports had one completeness answer for a whole response; this has one
+  per measure per row.
+- **A row's grouped value is a LIST**, positional against the `group_by` you sent, which the
+  response echoes back. Several axes at once is a thing the old reports could not do at all.
+
+**What did NOT collapse, deliberately.**
+
+- `GET /api/v1/metering/customers/{customer_id}/usage` still returns **paginated event rows**,
+  with its two-part
+  label filter — the key and the value you tagged events with — unchanged. It lists events; it is
+  not a measure, and a query that returns measures cannot return it. (The two query parameters are
+  named descriptively here rather than spelled, because the key half is a retired term this
+  guide's own surface is still being cleared of; the call's signature spells them.)
+- The **unprofitable-customer count** still stands, on `GET /api/v1/margin/unprofitable` — an
+  alerting surface reading the alerting record, which is a different question from "what did this
+  cost and earn".
+- The **business/seat margin tree** (`GET /api/v1/margin/business/{external_id}`), the two
+  spend-control reports, the task cost-distribution report (`GET
+  /api/v1/metering/analytics/tasks`), the supplied-revenue records and the referrals analytics
+  routes are untouched.
+
+**Two fields are gone and nothing reintroduces them**: the fused markup-margin figure, and the
+breakdown block keyed by free-text labels. The first fused two questions into one number; the
+second grouped on an unbounded keyspace, which ADR-0005 rules is never a grouping axis.
+
+**One route is ADDED, on a ticket that removes nine**:
+`GET /api/v1/platform/customers/{customer_id}` returns a customer's identity — the id UBB assigned
+them, the id you gave them, the account type, the business a seat belongs to, and the status. One
+customer's margin was the only read that mapped the two ids to each other, and the economic query
+groups by identity and publishes no external id; the subscription lifecycle is addressed by the
+external id while the metering and billing reads are addressed by the UUID, so a caller holding one
+and needing the other needed somewhere to cross. No hand-written wrapper in this release, for the
+same reason as above.
+
+The routes pre-date the launch tag, so the removals are recorded in the break block
+(`openapi/oasdiff-err-ignore.txt`) as reviewed breaks.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

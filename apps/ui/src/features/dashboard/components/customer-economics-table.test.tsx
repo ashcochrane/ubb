@@ -43,7 +43,7 @@ function dataRowText(index: number): string {
 describe("CustomerEconomicsTable", () => {
   it("sorts by revenue by default and re-sorts on toggle", async () => {
     renderWithClient(
-      <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
+      <CustomerEconomicsTable window={WINDOW} currency="usd" />,
     );
 
     // acme-corp leads on every sort; the runner-up distinguishes the keys.
@@ -63,7 +63,7 @@ describe("CustomerEconomicsTable", () => {
 
   it("bounds an incomplete margin and links every row to the customer page", async () => {
     renderWithClient(
-      <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
+      <CustomerEconomicsTable window={WINDOW} currency="usd" />,
     );
 
     // nova-ai: gross margin rendered from the API's figures — and bounded,
@@ -87,7 +87,7 @@ describe("CustomerEconomicsTable", () => {
   // pass a single-row test and mislead on the page.
   it("says which COGS is a floor and leaves the settled ones alone", async () => {
     renderWithClient(
-      <CustomerEconomicsTable window={WINDOW} meterOnly={false} currency="usd" />,
+      <CustomerEconomicsTable window={WINDOW} currency="usd" />,
     );
 
     expect(await screen.findByText("at least $88.00")).toBeInTheDocument();

@@ -277,8 +277,40 @@ _WRITE_ROUTES = {
 # chart is exactly who asks it, and the discovery read it validates every request
 # against sits at the same floor one line above. Not carved and not exempt, so
 # the exempt count is untouched.
-_EXPECTED_FLOORED = 153
-_EXPECTED_EXEMPT = 10
+#
+# 153 - 8 = 145 in #501, the largest single fall this count has taken, and the
+# arithmetic is worth doing out loud because the ticket says NINE routes. Eight
+# of the nine were floored operations on the tenant's own API — the usage report
+# and its series, the grouped margin breakdown, the billing revenue report, the
+# per-customer margin list, one customer's margin, that customer's trend and the
+# tenant-wide margin total — every one a `GET` at the READ floor. What replaces
+# them is the one economic query already counted above, which is the whole
+# point: eight floored reads become one.
+#
+# ⚠ **THE NINTH IS THE EXEMPT COUNT'S, AND IT IS THE FIRST TIME A SLICE-7 ROUTE
+# HAS MOVED THAT NUMBER.** The customer-scoped usage summary stood on the widget
+# mount, which `_EXEMPT_PREFIXES` exempts wholesale: an end customer holding a
+# widget token is not a role this carve has floors for. So `10 - 1 = 9`, and a
+# reader checking "nine routes" against "eight floored" is reading the right
+# number on the wrong counter — the ninth is one line down rather than missing.
+#
+# 145 + 1 = 146 in the same commit, and an ADDITION on a ticket that removes
+# nine deserves its own sentence rather than a net figure. `GET /platform/
+# customers/{customer_id}` answers a customer's IDENTITY — the id UBB assigned
+# them, the id the tenant gave them, the kind of account, the business a seat
+# belongs to — at the READ floor, which is the carve's default for a GET and
+# the right one on the argument that matters here: it publishes no amount and
+# decides nothing, and every surface that needs it needs it to READ.
+#
+# WHY IT EXISTS AT ALL, on a slice removing published surface: one customer's
+# margin published `external_id` beside its figures, and it was the only read
+# mapping UBB's identity for a customer to the tenant's own word for them. The
+# one economic query groups by identity and publishes no external id, so the
+# capability had nowhere to go — and the subscription lifecycle is addressed by
+# the EXTERNAL id while every metering and billing read is addressed by the
+# UUID. Not carved and not exempt, so it moves the floored count alone.
+_EXPECTED_FLOORED = 146
+_EXPECTED_EXEMPT = 9
 
 
 def _iter_ops():

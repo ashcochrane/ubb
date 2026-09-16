@@ -9,33 +9,29 @@ import {
   supplierCostTotal,
 } from "@/lib/supplier-cost";
 
-import { useMarginSummary } from "../api/queries";
+import { useCustomerEconomics, useTenantEconomics } from "../api/queries";
 import type { Window } from "../api/types";
 import { summaryEconomics } from "../lib/economics";
-import { HelpTip } from "./help-tip";
 
-const METERED_TIP =
-  "This workspace is meter-only: UBB tracks what usage would bill at your " +
-  "prices (usage billed) but doesn't count it as revenue until a customer " +
-  "is switched to billed mode. Provider cost is real either way.";
+// ⚠ THE METER-ONLY TIP AND ITS TWO RELABELLED CARDS ARE GONE (#501). They said
+// a workspace that does not bill through UBB sees what usage WOULD bill at its
+// prices rather than revenue — true until #497 deleted the switch that made it
+// true, and left standing because the branch keyed on something else. The one
+// economic query answers revenue from one definition for every workspace, so
+// there is no second reading to label and no second figure to substitute.
 
 export interface StatRowProps {
   window: Window;
-  meterOnly: boolean;
   currency: string;
-  /** Event total from the windowed analytics query (owned by the page). */
-  eventsTotal: number | undefined;
-  eventsPending: boolean;
 }
 
-export function StatRow({
-  window,
-  meterOnly,
-  currency,
-  eventsTotal,
-  eventsPending,
-}: StatRowProps) {
-  const summary = useMarginSummary(window);
+export function StatRow({ window, currency }: StatRowProps) {
+  const summary = useTenantEconomics(window);
+  // Customers WITH USAGE is the row count of the same window grouped by the
+  // customer axis — which is what the total that used to publish it as a field
+  // was counting. The table below reads the same query, so this costs no
+  // second request.
+  const customers = useCustomerEconomics(window);
 
   if (summary.isPending) {
     return (
@@ -56,21 +52,14 @@ export function StatRow({
     );
   }
 
-  const view = summaryEconomics(summary.data, meterOnly);
-  const revenueLabel = meterOnly ? "Usage billed (metered)" : "Total revenue";
-  const marginLabel = meterOnly ? "Usage margin (metered)" : "Gross margin";
+  const view = summaryEconomics(summary.data);
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
       <StatCard
         variant="raised"
-        label={revenueLabel}
-        value={
-          <span className="inline-flex items-baseline gap-1.5">
-            {formatMicros(view.revenue_micros, currency)}
-            {meterOnly && <HelpTip label="About usage billed" text={METERED_TIP} />}
-          </span>
-        }
+        label="Total revenue"
+        value={formatMicros(view.revenue_micros, currency)}
       />
       {/* The window's supplier cost is a FLOOR wherever the summary counts
           events it could not cost, and the margin beside it is then a ceiling
@@ -87,31 +76,44 @@ export function StatRow({
         )}
         subtitle={partialTotalNote(summary.data.unresolved_event_count) ?? undefined}
       />
+      {/* ⚠ A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS ZERO.
+          `gross_margin_micros` is nullable on the one query — a margin it
+          cannot attribute at the grain asked for has no figure at all — and a
+          currency zero here would be exactly the silent zero this surface
+          exists to delete. Showing the states as themselves is the rendering
+          ticket's; not inventing one is this ticket's. */}
       <StatCard
         variant="raised"
-        label={marginLabel}
+        label="Gross margin"
         value={
-          <span className="inline-flex items-baseline gap-1.5">
-            {marginBound(view.margin_micros, summary.data, currency)}
-            {meterOnly && <HelpTip label="About usage margin" text={METERED_TIP} />}
-          </span>
+          view.margin_micros === null
+            ? "—"
+            : marginBound(view.margin_micros, summary.data, currency)
         }
-        subtitle={`${marginPercentBound(view.margin_pct, summary.data)} margin`}
+        subtitle={
+          view.margin_micros === null
+            ? "not available for this window"
+            : `${marginPercentBound(view.margin_pct, summary.data)} margin`
+        }
       />
-      <StatCard
-        variant="raised"
-        label="Customers with usage"
-        value={summary.data.customer_count.toLocaleString()}
-      />
-      {eventsPending ? (
+      {customers.isPending ? (
         <Skeleton className="h-[104px] rounded-md" />
       ) : (
         <StatCard
           variant="raised"
-          label="Events"
-          value={eventsTotal === undefined ? "—" : formatEventCount(eventsTotal)}
+          label="Customers with usage"
+          value={(customers.data?.length ?? 0).toLocaleString()}
         />
       )}
+      <StatCard
+        variant="raised"
+        label="Events"
+        value={
+          summary.data.event_count === null
+            ? "—"
+            : formatEventCount(summary.data.event_count)
+        }
+      />
     </div>
   );
 }

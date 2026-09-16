@@ -28,7 +28,10 @@ class TestSelectorColumns:
                 WHERE tablename = 'ubb_posting'
             """)
             defs = " ".join(row[0] for row in cur.fetchall())
-        assert "provider" in defs, "provider must be indexed — it is grouped on every /analytics/usage call"
+        assert "provider" in defs, (
+            "provider must be indexed — it is the commonest grouping axis the "
+            "one economic query is asked for, and the column's own comment "
+            "records that the report it was indexed for is gone (#501)")
 
     def test_reserved_dim_keys_constant_is_gone(self):
         import apps.metering.usage.models as m

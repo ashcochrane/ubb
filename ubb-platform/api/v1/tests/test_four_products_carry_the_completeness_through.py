@@ -59,9 +59,13 @@ from apps.platform.work.services import TaskService
 from apps.platform.work.services import STOP_CAUSE_KEY
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+    ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_SUPPLIER_COGS,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    MEASURE_STATUS_INCOMPLETE,
     TASK_OUTCOME_DELIVERED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
@@ -329,17 +333,42 @@ class TestTheMarginSaysWhatItsCostExcluded:
         return self.client.get(
             path, HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
 
+    def _economics(self, **params):
+        """⚠ THREE OF THIS CLASS'S SURFACES COLLAPSED INTO ONE (#501) and the
+        claim travels with them: a cost total that is a floor makes the margin a
+        ceiling, and the count is what says so. What the one query adds is that
+        the measure says it in its own state as well."""
+        query = [("measures", name) for name in (
+            ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+            ANALYTICS_MEASURE_GROSS_MARGIN)]
+        query += list(params.items())
+        response = self.client.get("/api/v1/metering/analytics/economics",
+                                   query,
+                                   HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        assert response.status_code == 200, response.content
+        return response.json()
+
+    @staticmethod
+    def _measure(body, measure, row=0):
+        return next(entry for entry in body["rows"][row]["measures"]
+                    if entry["measure"] == measure)
+
     def test_the_tenant_wide_summary_reports_what_its_cost_total_excluded(self):
-        body = self._get("/api/v1/margin/summary")
-        assert body["provider_cost_micros"] == (
+        cost = self._measure(self._economics(),
+                             ANALYTICS_MEASURE_SUPPLIER_COGS)
+        assert cost["amount_micros"] == (
             KNOWN_COST_MICROS + OTHER_KNOWN_COST_MICROS)
-        assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1
+        assert cost[UNRESOLVED_EVENT_COUNT_KEY] == 1
 
     def test_one_customers_gap_does_not_make_anothers_margin_partial(self):
-        rows = {r["customer_id"]: r
-                for r in self._get("/api/v1/margin/customers")["customers"]}
-        assert rows[str(self.c1.id)][UNRESOLVED_EVENT_COUNT_KEY] == 1
-        assert rows[str(self.c2.id)][UNRESOLVED_EVENT_COUNT_KEY] == 0
+        body = self._economics(group_by="field:customer")
+        counts = {
+            row["grouping_field_value"][0]:
+                self._measure(body, ANALYTICS_MEASURE_SUPPLIER_COGS,
+                              index)[UNRESOLVED_EVENT_COUNT_KEY]
+            for index, row in enumerate(body["rows"])}
+        assert counts[str(self.c1.id)] == 1
+        assert counts[str(self.c2.id)] == 0
 
     def test_one_customers_live_margin_carries_its_own_count(self):
         """The count is the subject; the margin beside it is what the count
@@ -360,11 +389,19 @@ class TestTheMarginSaysWhatItsCostExcluded:
         what says so. A margin that is now positive makes that sharper rather
         than weaker — an unlearned cost can only take it down.
         """
-        body = self._get(f"/api/v1/margin/customers/{self.c1.id}")
-        assert body["provider_cost_micros"] == KNOWN_COST_MICROS
-        assert body["usage_revenue_micros"] == 2 * BILLED_MICROS
-        assert body["gross_margin_micros"] == 2 * BILLED_MICROS - KNOWN_COST_MICROS
-        assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1
+        body = self._economics(customer_id=str(self.c1.id))
+        cost = self._measure(body, ANALYTICS_MEASURE_SUPPLIER_COGS)
+        assert cost["amount_micros"] == KNOWN_COST_MICROS
+        assert cost[UNRESOLVED_EVENT_COUNT_KEY] == 1
+        assert self._measure(
+            body, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+        )["amount_micros"] == 2 * BILLED_MICROS
+        margin = self._measure(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert margin["amount_micros"] == 2 * BILLED_MICROS - KNOWN_COST_MICROS
+        # ⚠ AND THE MARGIN SAYS IT IS A CEILING IN ITS OWN STATE, which is the
+        # half the surface this replaced had no field for: a reader had to know
+        # to look at the count on the measure beside it.
+        assert margin["status"] == MEASURE_STATUS_INCOMPLETE
 
     def test_a_business_rollup_adds_its_seats_counts_up(self):
         """A rollup over seats is a total like any other.
@@ -459,14 +496,21 @@ class TestTheAccumulatorAndTheSnapshot:
         assert econ.provider_cost_micros == KNOWN_COST_MICROS
         assert econ.unresolved_event_count == 1
 
-    def test_the_trend_and_the_unprofitable_list_carry_each_months_count(self):
-        """Two reads of the same snapshot, and both had to be told.
+    def test_the_unprofitable_list_carries_the_periods_count(self):
+        """⚠ TWO READS OF THE SAME SNAPSHOT UNTIL #501, AND ONE OF THEM WAS A
+        REPORT.
 
-        The trend states it PER POINT because completeness varies month to
-        month — one count at the top would be a claim about the wrong months.
-        The unprofitable list states it because a margin named unprofitable on
-        a partial cost is a CEILING: the customer can only be worse than the
-        figure says, never better, so the count can never read as a reprieve.
+        The trend stated the count PER POINT, because completeness varies month
+        to month and one count at the top would be a claim about the wrong
+        months. That reasoning was sound and the surface is gone: a reporting
+        read may not take a margin figure off the alerting record at all, so the
+        trend is `bucket=month` on the one economic query and carries the count
+        per bucket for the same reason it carried it per point.
+
+        What is left here is the ALERTING read, and its reason is its own: a
+        margin named unprofitable on a partial cost is a CEILING — the customer
+        can only be worse than the figure says, never better — so the count can
+        never read as a reprieve.
         """
         from apps.subscriptions.economics.services import MarginService
 
@@ -477,14 +521,8 @@ class TestTheAccumulatorAndTheSnapshot:
             self.period_start + timedelta(days=31))
         econ.is_unprofitable = True
         econ.save(update_fields=["is_unprofitable", "updated_at"])
-        client = Client()
 
-        trend = client.get(
-            f"/api/v1/margin/customers/{self.customer.id}/trend",
-            HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
-        assert trend["points"][-1][UNRESOLVED_EVENT_COUNT_KEY] == 1
-
-        listed = client.get(
+        listed = Client().get(
             f"/api/v1/margin/unprofitable?period_start={self.period_start}",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}").json()
         assert listed["customers"][0][UNRESOLVED_EVENT_COUNT_KEY] == 1
@@ -573,9 +611,11 @@ class TestAnUnresolvedPreviousCostIsNotASpike:
         # comparison is not announced — an event saying "I did not compare"
         # would be a signal nobody asked for — so what a reader has instead is
         # the previous window's own snapshot, which states what its cost total
-        # left out on every surface that serves it (`/margin/trend`,
-        # `/margin/customers`, the economics summary). That row said nothing
-        # before this commit; it is the report.
+        # left out on the surface that still serves it: the alerting list. ⚠ The
+        # three REPORTING reads that also served it are gone (#501) — a
+        # reporting surface may not take a margin figure off this record — and
+        # they say the same thing from the one economic query, per bucket. That
+        # row said nothing before #327; it is the report.
         prev.refresh_from_db()
         assert prev.unresolved_event_count == 1
 

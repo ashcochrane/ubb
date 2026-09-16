@@ -331,14 +331,29 @@ class NoSlotCarriesAnIndexTest(TestCase):
     def test_the_surviving_composites_match_a_real_query_shape(self):
         """What replaced it, and why nothing replaced it in kind.
 
-        No query selects rows by a slot. Every read of one is a `GROUP BY` of a
-        single slot inside a tenant (sometimes a customer) and an `effective_at`
-        window, so the columns that select the rows are the two below and the
-        slot is only the group key. The lone predicate on a slot anywhere is
-        `get_dimensional_margin`'s `.exclude(<slot>="")`, a negation no btree
-        index would serve. Both indexes below already existed; the dropped
-        composite was a mis-ordered variant of the first, leading with two
-        columns no query selects on.
+        Almost no query selects rows by a slot. Every read of one is a
+        `GROUP BY` of a single slot inside a tenant (sometimes a customer) and
+        an `effective_at` window, so the columns that select the rows are the
+        two below and the slot is only the group key. Both indexes below already
+        existed; the dropped composite was a mis-ordered variant of the first,
+        leading with two columns no query selects on — which is the finding, and
+        it survives what follows.
+
+        ⚠ **THE ONE PREDICATE CHANGED SHAPE IN #501 AND THE SENTENCE HERE HAD TO
+        CHANGE WITH IT.** It used to be `get_dimensional_margin`'s
+        `.exclude(<slot>="")` — a negation no btree index would serve, which is
+        why it settled nothing. That function is deleted with its route, and the
+        one economic query took its place with an EQUALITY filter: `where`
+        narrows to one declared field's value, `<slot> = <value>`, inside the
+        same tenant and window. An equality predicate on a slot IS servable, so
+        the reason this paragraph used to give no longer applies and the
+        conclusion now rests on the shape of the query rather than on the
+        predicate being unservable: the filter is always accompanied by the
+        tenant and the window, so an index leading with those two is the one
+        that serves it, which is the first index below. **No index is added or
+        changed here** — whether the filtered read wants a slot as a trailing
+        column is a measurement nobody has taken, and it is named as an open
+        question rather than answered by assertion.
         """
         for name, expected in SURVIVING_COMPOSITES.items():
             with self.subTest(index=name):

@@ -145,7 +145,12 @@ class Posting(BaseModel):
     # "not set" on an event and "matches anything" on a Rate; specificity =
     # the count of non-empty selectors.
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
-    # Indexed: /analytics/usage groups by provider unconditionally on every call.
+    # Indexed: the usage report grouped by provider unconditionally on every
+    # call, which is why this column carries an index the other selectors do
+    # not. ⚠ THAT REPORT IS GONE (#501) and the one economic query groups by
+    # provider only when a caller asks — so this index is now earning its keep
+    # on a narrower case than the one it was added for, and whether it still
+    # pays for itself is a question for whoever next measures this table.
     provider = models.CharField(max_length=100, blank=True, default="", db_index=True)
     # Inherited from the event's task chain, never sent by the caller (D6).
     task_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
@@ -161,13 +166,24 @@ class Posting(BaseModel):
     # The per-column indexes went because a cardinality-capped column is around
     # one percent selective, at which the planner reaches for a sequential scan
     # or a composite anyway. The composite went for a sharper reason: NO QUERY
-    # SELECTS ROWS BY A SLOT. Every read of one is a `GROUP BY` of a single slot
-    # inside a tenant (sometimes a customer) and an `effective_at` window —
-    # `apps.metering.queries.get_dimensional_margin`, `get_usage_timeseries`,
-    # `get_customer_billed_breakdown`, and the `/analytics/usage` breakdowns.
-    # The single predicate on a slot in the tree is `get_dimensional_margin`'s
-    # `.exclude(<slot>="")`, a negation on a column whose commonest value is ""
-    # — which no btree index would serve. So the columns that select the rows
+    # SELECTS ROWS BY A SLOT. Every read of one is a `GROUP BY` of one or more
+    # slots inside a tenant (sometimes a customer) and an `effective_at`
+    # window — `apps.metering.queries.economics` and
+    # `get_customer_billed_breakdown`. The claim held when five separate reads
+    # grouped these columns and holds with one (#501), which now groups several
+    # slots at once: a multi-slot `GROUP BY` is exactly what a composite led by
+    # an arbitrary two of ten could not serve either.
+    #
+    # ⚠ THE PREDICATE THIS USED TO REST ON IS GONE AND THE ARGUMENT NO LONGER
+    # NEEDS IT. It was `get_dimensional_margin`'s `.exclude(<slot>="")`, a
+    # negation on a column whose commonest value is "" and therefore one no
+    # btree index would serve — which settled the question by making the only
+    # predicate unservable. That function died with its route in #501, and the
+    # one query brought a different shape: `where` narrows to one declared
+    # field's value, an EQUALITY predicate, which an index CAN serve. It changes
+    # nothing here because it never arrives alone — the tenant and the window
+    # are always beside it, which is what the two indexes below lead with. So
+    # the columns that select the rows
     # are `tenant`/`customer` and `effective_at`, and those are exactly what
     # `idx_usage_tenant_effective` and `idx_usage_customer_effective` lead with.
     # A composite led by two slots could only ever be scanned whole, and "the

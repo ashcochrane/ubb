@@ -19,7 +19,6 @@ import {
 import { cn } from "@/lib/utils";
 
 import { useUsageAnalytics, useUsageTimeseries } from "../api/queries";
-import { narrowTimeseriesPoints } from "../api/types";
 
 const UsageTimeseriesChart = React.lazy(() => import("./usage-timeseries-chart"));
 
@@ -70,18 +69,18 @@ export function UsageTab({
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             label="Events"
-            value={formatEventCount(analytics.data.total_events)}
+            value={formatEventCount(analytics.data.event_count ?? 0)}
             variant="raised"
           />
           <StatCard
             label="Billed cost"
-            value={formatMicros(analytics.data.total_billed_cost_micros, currency)}
+            value={formatMicros(analytics.data.total_revenue_micros, currency)}
             variant="raised"
           />
           <StatCard
             label="Provider cost"
             value={supplierCostTotal(
-              analytics.data.total_provider_cost_micros,
+              analytics.data.provider_cost_micros,
               analytics.data,
               currency,
             )}
@@ -95,11 +94,11 @@ export function UsageTab({
             value={
               <span
                 className={cn(
-                  analytics.data.usage_markup_margin_micros < 0 && "text-danger-dark",
+                  (analytics.data.gross_margin_micros ?? 0) < 0 && "text-danger-dark",
                 )}
               >
                 {marginBound(
-                  analytics.data.usage_markup_margin_micros,
+                  (analytics.data.gross_margin_micros ?? 0),
                   analytics.data,
                   currency,
                 )}
@@ -116,7 +115,7 @@ export function UsageTab({
           <Skeleton className="h-56 w-full" />
         ) : timeseries.isError ? (
           <ErrorCard error={timeseries.error} onRetry={() => void timeseries.refetch()} />
-        ) : !timeseries.data || timeseries.data.series.length === 0 ? (
+        ) : !timeseries.data || timeseries.data.length === 0 ? (
           <EmptyState
             title="No usage in this window"
             description="Recorded events will chart here by day."
@@ -124,7 +123,7 @@ export function UsageTab({
         ) : (
           <React.Suspense fallback={<Skeleton className="h-56 w-full" />}>
             <UsageTimeseriesChart
-              points={narrowTimeseriesPoints(timeseries.data.series)}
+              points={timeseries.data}
               currency={currency}
             />
           </React.Suspense>

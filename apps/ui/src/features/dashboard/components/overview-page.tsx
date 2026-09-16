@@ -9,7 +9,9 @@ import {
 } from "@/hooks/use-tenant-config";
 import { resolveRange, type DateRange } from "@/lib/date-range";
 
-import { useLifetimeAnalytics, useWindowAnalytics } from "../api/queries";
+import { eventsOn, onlyRow } from "@/lib/economic-query";
+
+import { useGroupedEconomics, useLifetimeEconomics } from "../api/queries";
 import type { BreakdownDimension } from "../api/types";
 import { CustomerEconomicsTable } from "./customer-economics-table";
 import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
@@ -30,21 +32,22 @@ export interface OverviewPageProps {
 export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
   const window = resolveRange(search);
   const { data: config } = useTenantConfig();
-  const meterOnly = config?.billing_mode === "meter_only";
   const hasBilling = config ? hasProduct(config, "billing") : false;
   const currency = useTenantCurrency();
 
-  // One windowed analytics query powers both the events stat and the cost
-  // breakdown card (the totals do not depend on the axis).
+  // The windowed question, grouped by the axis the picker names. The stat row
+  // asks the same window UNGROUPED for its own totals, which is what lets this
+  // one be money-only — a count across rows that mix Event Types is the
+  // comparison the server refuses.
   const [groupBy, setGroupBy] = React.useState<BreakdownDimension>("provider");
-  const analytics = useWindowAnalytics(window, groupBy);
+  const grouped = useGroupedEconomics(window, groupBy);
 
   // All-time totals decide whether this workspace still looks brand new —
   // deliberately not windowed, so changing the date range never resurrects
   // the getting-started card on an active workspace.
-  const lifetime = useLifetimeAnalytics();
+  const lifetime = useLifetimeEconomics();
   const showGettingStarted =
-    lifetime.isSuccess && lifetime.data.total_events === 0;
+    lifetime.isSuccess && eventsOn(onlyRow(lifetime.data)) === 0;
 
   return (
     <div className="space-y-5">
@@ -58,20 +61,14 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
 
       <UnprofitableAlert currency={currency} />
 
-      <StatRow
-        window={window}
-        meterOnly={meterOnly}
-        currency={currency}
-        eventsTotal={analytics.data?.total_events}
-        eventsPending={analytics.isPending}
-      />
+      <StatRow window={window} currency={currency} />
 
-      <RevenueCostSection window={window} meterOnly={meterOnly} currency={currency} />
+      <RevenueCostSection window={window} currency={currency} />
 
       <div className="grid gap-5 lg:grid-cols-5">
         <GroupingFieldBreakdown
           className="lg:col-span-2"
-          query={analytics}
+          query={grouped}
           groupBy={groupBy}
           onGroupByChange={setGroupBy}
           currency={currency}
@@ -79,7 +76,6 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
         <CustomerEconomicsTable
           className="lg:col-span-3"
           window={window}
-          meterOnly={meterOnly}
           currency={currency}
         />
       </div>

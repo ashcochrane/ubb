@@ -1574,58 +1574,23 @@ def start_task_out(t, *, replayed):
     }
 
 
-class UsageAnalyticsResponse(Schema):
-    total_events: int
-    total_billed_cost_micros: int
-    total_provider_cost_micros: int
-    #: HOW MANY EVENTS THE SUPPLIER-COST TOTAL COULD NOT INCLUDE (#327).
-    #:
-    #: A supplier cost UBB has not resolved contributes nothing to the total
-    #: above, and SQL says nothing about having skipped it — so the total says
-    #: it here instead. Non-zero means the figure is a FLOOR: the true cost is
-    #: at least that much, and the margin beside it is at most what it says.
-    #: Zero means the total is whole.
-    #:
-    #: An event whose Event Type declares no supplier cost is NOT counted here.
-    #: Nothing about it is missing, and a caveat that is always on is a caveat
-    #: nobody reads.
-    #:
-    #: The breakdown blocks below are `list[dict]` and each of their rows
-    #: carries the same key for its own group. No schema holds those rows, so
-    #: `api/v1/tests/test_a_cost_total_says_what_it_excluded.py` asserts them.
-    unresolved_event_count: int
-    #: And how many the BILLED total could not include (#351). It bounds the
-    #: margin below in the OPPOSITE direction from the count above: an excluded
-    #: cost makes the margin a ceiling, an excluded price makes it a floor, and
-    #: an answer can be both at once. That is why they are two properties and
-    #: not one — a single number could not say which way the figure is wrong.
-    unpriced_event_count: int
-    usage_markup_margin_micros: int
-    by_provider: list[dict]
-    by_event_type: list[dict]
-    by_customer: list[dict]
-    by_task_type: list[dict]
-    by_tag: list[dict]
-    breakdowns: dict = {}
-
-
-class RevenueAnalyticsResponse(Schema):
-    total_provider_cost_micros: int
-    #: The same pair as `UsageAnalyticsResponse` above, for the tenant-wide
-    #: total. Each row of `daily` carries its own count for its own day.
-    unresolved_event_count: int
-    total_billed_cost_micros: int
-    #: The price half of the same pair (#351), tenant-wide. Each row of `daily`
-    #: carries its own, for its own day.
-    unpriced_event_count: int
-    total_markup_micros: int
-    daily: list[dict]
-
-
-class UsageTimeseriesResponse(Schema):
-    granularity: str
-    group_by: str = ""
-    series: list[dict]
+# THE THREE ANALYTICS RESPONSE BODIES WERE HERE AND ARE GONE (#501, slice 7
+# §1): the usage report's, its timeseries sibling's and the billing revenue
+# report's. `EconomicsOut` is what the one query publishes in their place.
+#
+# ⚠ WHAT THE SHAPE COST, RECORDED ONCE BECAUSE IT IS THE ARGUMENT FOR THE
+# REPLACEMENT RATHER THAN A NOTE ABOUT THREE DEAD CLASSES. Each of the three
+# declared its scalars and left its grouped rows as `list[dict]`, so the drift
+# and breaking gates could see a total change and could not see a row's key
+# change; the counts that bound those totals had to be re-argued in a docstring
+# per schema, because nothing tied them together; and the usage report carried
+# four fixed breakdown blocks plus an open one whether or not a caller wanted
+# any of them. `EconomicsOut` declares the row, so a rename of a row key is a
+# break the gates catch, and a caller gets the groupings it asked for.
+#
+# The count pair those docstrings argued is now one measure's own state and
+# `unresolved_event_count` beside it, said once per measure per row rather than
+# once per schema in prose.
 
 
 class TaskAnalyticsRow(Schema):

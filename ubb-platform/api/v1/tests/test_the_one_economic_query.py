@@ -7,11 +7,13 @@ combinations a request cannot express, and the claims about WHERE a number came
 from, are beside the read contract in `apps/metering/tests/`.
 
 ⚠ **THE PARITY CLASS IS THE ACCEPTANCE CRITERION AND NOT A SMOKE TEST.** Five
-backend definitions of two numbers collapse into one, and the only way to show
-that the one is the same as the five is to run both against one fixture and
-compare. The two routes it compares against are still live — they collapse in
-the next ticket — so this is the window in which the comparison can be made at
-all, and it is made here deliberately.
+backend definitions of two numbers collapsed into one. While the routes carrying
+the other four were still live this class ran both against one fixture and
+compared; #501 deleted them, so what it compares against now is the set of
+figures those routes returned, written down beside the fixture that produces
+them. The cases did not get weaker — each still fails on any change to the
+composition — but the thing on the right-hand side is a recorded number rather
+than a second live surface, and that is stated rather than left to be noticed.
 
 ⚠ **THIS MODULE NEVER SPELLS THE PARAMETERS THIS VOCABULARY REPLACES.** The
 registry retires them and the sweep refuses a living file that names one.
@@ -52,8 +54,6 @@ from core.vocabulary import (
 )
 
 ECONOMICS = "/api/v1/metering/analytics/economics"
-SUMMARY = "/api/v1/margin/summary"
-PER_CUSTOMER = "/api/v1/margin/customers"
 
 #: The window every fixture records into: one whole calendar month, so the
 #: coarse revenue's own span and the question's period are the same shape.
@@ -133,16 +133,51 @@ def describe(path):
     return document["paths"][matched[0]]["get"]["description"]
 
 
+#: WHAT EACH OF THE NINE ROUTES STATED ABOUT THE FIXTURE BELOW, KEPT AS
+#: LITERALS BECAUSE THE ROUTES ARE GONE (#501).
+#:
+#: ⚠ **THIS IS THE SAME COMPARISON #499 MADE, RECORDED RATHER THAN RE-RUN.**
+#: While the five surfaces were still live these cases asked each of them for
+#: the same span and asserted the one query agreed. That comparison cannot be
+#: made against a deleted route, and rewriting the cases to assert whatever the
+#: one query happens to say would be a test that could never fail. So the
+#: figures those routes returned are written down here, where a reader can see
+#: them and check the arithmetic, and each case that used to compare now
+#: asserts against the number its route stated. **A change to the composition
+#: fails here exactly as it failed before.**
+#:
+#: Derived from the fixture, and every one of them checkable by hand:
+#: the tenant-wide cost is the three postings' supplier costs; the revenue is
+#: the three postings' billed totals plus a whole month of a monthly
+#: subscription plus a supplied record spanning exactly that month.
+TENANT_COST = 400_000 + 400_000 + 250_000
+TENANT_USAGE_REVENUE = 1_000_000 + 1_000_000 + 600_000
+SUBSCRIPTION_FOR_MARCH = 31_000_000
+SUPPLIED_FOR_MARCH = 3_100_000
+TENANT_REVENUE = (TENANT_USAGE_REVENUE + SUBSCRIPTION_FOR_MARCH
+                  + SUPPLIED_FOR_MARCH)
+#: The per-customer split the list route returned, as `(revenue, cost)` pairs.
+#: The first customer's revenue is its usage plus the subscription, the second's
+#: is its usage plus the figure the tenant supplied. ⚠ The rows come back keyed
+#: by the customer's IDENTITY rather than by the tenant's own external id, which
+#: is what `field:customer` groups and what the list route returned, so the test
+#: builds the lookup from the fixture's own rows.
+FIRST_CUSTOMER = (1_000_000 + 1_000_000 + SUBSCRIPTION_FOR_MARCH,
+                  400_000 + 400_000)
+SECOND_CUSTOMER = (600_000 + SUPPLIED_FOR_MARCH, 250_000)
+
+
 @pytest.mark.django_db
 class TestOneRequestAnswersWhatFiveDefinitionsAnsweredBefore:
-    """AC 1: the same tenant-wide totals the tenant-wide margin route returned,
-    and the same per-customer rows the per-customer margin list returned, FROM
-    ONE DEFINITION.
+    """AC 1: the tenant-wide totals the tenant-wide margin route returned, and
+    the per-customer rows the per-customer margin list returned, FROM ONE
+    DEFINITION — and now from the only definition, because both routes are gone
+    (#501).
 
     The fixture holds all three revenue sources at once — a Stripe subscription,
     a figure the tenant supplied and the usage UBB priced — because a query that
-    composed only two of them would agree with the old routes on a tenant that
-    happened to have only two.
+    composed only two of them would have agreed with the old routes on a tenant
+    that happened to have only two.
     """
 
     @pytest.fixture(autouse=True)
@@ -166,97 +201,83 @@ class TestOneRequestAnswersWhatFiveDefinitionsAnsweredBefore:
             recognition_method=RECOGNITION_METHOD_STRAIGHT_LINE,
             source_reference="inv-1")
 
-    #: ⚠ **THE TWO SURFACES DISAGREE ABOUT WHETHER `end_date` IS INCLUSIVE, AND
-    #: THE PARITY COMPARISON HAS TO SPAN-ALIGN THEM RATHER THAN PRETEND.**
-    #:
-    #: The margin routes bound the window at the START of their end date
-    #: (`margin_endpoints._window` into `get_per_customer_cost_totals`, which
-    #: filters `effective_at__lt=utc_day_start(end)`); metering's analytics
-    #: surfaces bound it at the NEXT midnight and say so at the site — *inclusive
-    #: date end == strict bound at the next UTC midnight*. The one query takes
-    #: metering's, which is the documented convention, the one a caller expects
-    #: of a field called `end_date`, and the one its own filters already used.
-    #:
-    #: So the comparison below asks each surface for the same half-open span,
-    #: spelled the way that surface spells it. **That divergence is itself a
-    #: fifth definition of these two numbers** — it is why a 31-day month read
-    #: one way and 30 days read the other — and it is the kind of thing the
-    #: collapse removes. The ticket that deletes these routes inherits a real
-    #: behavioural change for any caller passing an explicit end date, and this
-    #: is where that is written down.
-    OLD_WINDOW = {"start_date": OPENS.isoformat(), "end_date": NEXT.isoformat()}
-
     def _window(self):
         return {"start_date": OPENS.isoformat(), "end_date": CLOSES.isoformat()}
 
-    def _old_summary(self):
-        return Client().get(SUMMARY, self.OLD_WINDOW,
-                            HTTP_AUTHORIZATION=f"Bearer {self.key}").json()
+    def test_the_end_date_is_inclusive_and_the_boundary_day_is_inside_it(self):
+        """⚠ THE BEHAVIOURAL CHANGE THE COLLAPSE CARRIES, PINNED ON THE SURFACE
+        THAT SURVIVED IT.
 
-    def test_the_end_date_is_inclusive_here_and_exclusive_on_the_old_route(self):
-        """The premise the comparison rests on, MEASURED and not assumed — and
-        the finding the collapse inherits, in one case.
+        The deleted margin routes bounded a window at the START of their end
+        date (`margin_endpoints._window` into a read contract filtering
+        `effective_at__lt=utc_day_start(end)`); metering's analytics surfaces
+        bound it at the NEXT midnight, and said so at the site — *inclusive date
+        end == strict bound at the next UTC midnight*. **That divergence was
+        itself one of the five definitions**: the same literal dates gave a
+        31-day month on one surface and 30 on the other, and a caller comparing
+        them saw a discrepancy neither response could explain.
 
-        The discriminating fixture is a posting ON the end date. The old route
-        bounds at the START of its end date and drops it; this one bounds at the
-        next midnight and keeps it. Asking both for the same literal dates
-        therefore produces two different costs, which is the whole point.
+        The one query takes metering's reading, which is the documented
+        convention and the one a caller expects of a field called `end_date`. So
+        **any caller that passed an explicit end date to a margin route sees one
+        more day in the answer now**, and the discriminating fixture is a posting
+        ON that day: it is inside this answer, and it was outside theirs.
         """
         a_posting(self.tenant, self.one, "on-the-boundary",
                   effective_at=datetime(2026, 3, 31, 12, 0,
                                         tzinfo=dt_timezone.utc),
                   provider_cost_micros=777_000)
-        dates = {"start_date": OPENS.isoformat(), "end_date": CLOSES.isoformat()}
-        mine = measure_of(ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
-                              **dates).json(),
-                          ANALYTICS_MEASURE_SUPPLIER_COGS)["amount_micros"]
-        theirs = Client().get(
-            SUMMARY, dates,
-            HTTP_AUTHORIZATION=f"Bearer {self.key}").json()["provider_cost_micros"]
-        assert mine - theirs == 777_000, (
-            "the two surfaces must differ by exactly the boundary day's cost; "
-            "if they agree, one of the two conventions has moved")
-        # And the one query says which window it applied, so the difference is
-        # readable from the answer rather than inferred.
-        assert ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
-                   **dates).json()["period_end"] == CLOSES.isoformat()
+        body = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                   **self._window()).json()
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["amount_micros"] == TENANT_COST + 777_000, (
+            "the boundary day must be INSIDE an inclusive end date; the routes "
+            "this replaced excluded it, and that difference is the point")
+        # And the answer says which window it applied, so the reading is
+        # readable from the response rather than inferred from a convention.
+        assert body["period_end"] == CLOSES.isoformat()
 
-    def test_the_tenant_wide_totals_agree_with_the_route_it_replaces(self):
-        old = self._old_summary()
+    def test_the_tenant_wide_totals_are_the_ones_the_summary_route_stated(self):
         new = ask(self.key, measures=MONEY, basis=MARGIN_REVENUE_BASIS,
                   **self._window()).json()
         assert measure_of(new, ANALYTICS_MEASURE_SUPPLIER_COGS
-                          )["amount_micros"] == old["provider_cost_micros"]
+                          )["amount_micros"] == TENANT_COST
         assert measure_of(new, ANALYTICS_MEASURE_CUSTOMER_REVENUE
-                          )["amount_micros"] == old["total_revenue_micros"]
+                          )["amount_micros"] == TENANT_REVENUE
         assert measure_of(new, ANALYTICS_MEASURE_GROSS_MARGIN
-                          )["amount_micros"] == old["gross_margin_micros"]
+                          )["amount_micros"] == TENANT_REVENUE - TENANT_COST
 
     def test_the_fixture_is_not_degenerate(self):
-        """The guard the comparison above rests on: three sources, all non-zero
-        and all different. Two equal figures agree for free."""
-        old = self._old_summary()
-        assert old["subscription_revenue_micros"] > 0
-        assert old["supplied_revenue_micros"] > 0
-        assert old["usage_revenue_micros"] > 0
-        assert old["gross_margin_micros"] != old["total_revenue_micros"]
+        """The guard the assertions above rest on: three revenue sources, all
+        non-zero and all different, and a margin that is not the revenue.
 
-    def test_the_per_customer_rows_agree_with_the_list_it_replaces(self):
-        old = Client().get(PER_CUSTOMER, self.OLD_WINDOW,
-                           HTTP_AUTHORIZATION=f"Bearer {self.key}").json()
+        It reads the constants rather than the answer, because its whole job is
+        to say that the numbers being compared are capable of disagreeing.
+        """
+        assert SUBSCRIPTION_FOR_MARCH > 0
+        assert SUPPLIED_FOR_MARCH > 0
+        assert TENANT_USAGE_REVENUE > 0
+        assert len({SUBSCRIPTION_FOR_MARCH, SUPPLIED_FOR_MARCH,
+                    TENANT_USAGE_REVENUE}) == 3
+        assert TENANT_COST > 0 and TENANT_REVENUE != TENANT_COST
+
+    def test_the_per_customer_rows_are_the_ones_the_list_route_stated(self):
+        expected = {str(self.one.id): FIRST_CUSTOMER,
+                    str(self.two.id): SECOND_CUSTOMER}
         new = ask(self.key, measures=MONEY, group_by=["field:customer"],
                   basis=MARGIN_REVENUE_BASIS, **self._window()).json()
-        was = {row["customer_id"]: row for row in old["customers"]}
+        seen = {}
         for index, row in enumerate(new["rows"]):
-            before = was[row["grouping_field_value"][0]]
-            assert measure_of(new, ANALYTICS_MEASURE_CUSTOMER_REVENUE, index
-                              )["amount_micros"] == (
-                before["subscription_revenue_micros"]
-                + before["supplied_revenue_micros"]
-                + before["usage_revenue_micros"])
+            customer_id = row["grouping_field_value"][0]
+            seen[customer_id] = (
+                measure_of(new, ANALYTICS_MEASURE_CUSTOMER_REVENUE, index
+                           )["amount_micros"],
+                measure_of(new, ANALYTICS_MEASURE_SUPPLIER_COGS, index
+                           )["amount_micros"])
+            revenue, cost = expected[customer_id]
             assert measure_of(new, ANALYTICS_MEASURE_GROSS_MARGIN, index
-                              )["amount_micros"] == before["gross_margin_micros"]
-        assert len(new["rows"]) == len(was) == 2
+                              )["amount_micros"] == revenue - cost
+        assert seen == expected
 
     def test_the_answer_always_states_the_basis_it_served(self):
         served = ask(self.key, measures=MONEY, **self._window()).json()
@@ -518,6 +539,135 @@ class TestTheCountAndTheChargeItMustNotCount:
         """Not `(unattributed)`, which is what the surfaces this replaces put
         both kinds of absence under."""
         assert self._rows()[None][0] == "not_applicable"
+
+
+@pytest.mark.django_db
+class TestGroupingAxesAndTheUnitOfWorkFilter:
+    """The capabilities the usage analytics report carried, on the query that
+    replaced it (#501).
+
+    ⚠ **THESE CASES WERE WRITTEN AGAINST THAT ROUTE** — a tenant's own declared
+    key as a grouping axis, a reserved axis beside it, a word the tenant never
+    declared refused, a correlation identifier refused as an axis while working
+    as a FILTER, and containment rolling a tree up. They moved here whole, and
+    two of them changed answer rather than shape:
+
+    * an absent value on a reserved axis is no longer a `(unattributed)` string.
+      It is a null value with a STATUS beside it, which is what lets *nobody
+      recorded a value* and *the question does not apply to these rows* be two
+      different facts;
+    * a word the tenant never declared is refused against the discovery
+      contract rather than against a hard-coded list of reserved names, which is
+      why a correlation identifier is refused by the same rule rather than by a
+      special case about correlation identifiers.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fixture(self):
+        self.tenant, self.key = a_tenant(fields=["region"])
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="c1")
+        self.parent = Task.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            balance_snapshot_micros=0, task_type="invoice_batch")
+        self.child = Task.objects.create(
+            tenant=self.tenant, customer=self.customer, parent=self.parent,
+            balance_snapshot_micros=0, task_type="ocr")
+        # The two reserved axes are two ALTITUDES of one declared kind of work
+        # (#407): the root's lands on the top-level column, the leaf's on the
+        # contained one, and a unit with no parent contributes to neither.
+        for index, (task, region, cost) in enumerate((
+                (self.parent, "eu-west-1", 1_000),
+                (self.child, "eu-west-1", 2_000),
+                (self.child, "us-east-1", 4_000))):
+            a_posting(self.tenant, self.customer, f"k{index}",
+                      provider="aws_textract", event_type="ocr_page",
+                      task_id=task.id, task_type="invoice_batch",
+                      subtask_type=task.task_type if task.parent_id else "",
+                      grouping_field_1=region,
+                      provider_cost_micros=cost, billed_cost_micros=cost * 2)
+        self.window = {"start_date": OPENS.isoformat(),
+                       "end_date": CLOSES.isoformat()}
+
+    def _cost_by_axis(self, body):
+        return {row["grouping_field_value"][0]:
+                measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS,
+                           index)["amount_micros"]
+                for index, row in enumerate(body["rows"])}
+
+    def test_a_tenant_can_group_by_a_key_it_declared_itself(self):
+        body = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                   group_by=["field:region"], **self.window).json()
+        assert self._cost_by_axis(body) == {"eu-west-1": 3_000,
+                                            "us-east-1": 4_000}
+
+    def test_a_reserved_axis_says_which_absence_a_blank_row_is(self):
+        """The case that changed answer. The report this replaced put the
+        parent's blank contained-kind under `(unattributed)`, beside every other
+        kind of absence; here the value is null and the status says the value
+        was never recorded — which is the truth about a unit that has no parent,
+        and is a different fact from *this question does not apply*."""
+        body = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                   group_by=["field:subtask_type"], **self.window).json()
+        assert self._cost_by_axis(body) == {"ocr": 6_000, None: 1_000}
+        blank = next(row for row in body["rows"]
+                     if row["grouping_field_value"] == [None])
+        assert blank["grouping_field_value_status"] == ["not_recorded"]
+
+    def test_a_word_this_tenant_never_declared_is_refused(self):
+        response = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                       group_by=["field:nope"], **self.window)
+        assert response.status_code == 422
+        assert "nope" in response.json()["detail"]
+
+    def test_a_correlation_identifier_is_not_a_grouping_axis(self):
+        """It would build a bucket per unit of work, which is why it was refused
+        on the route this replaces (design D9). Here it is refused by the
+        general rule instead: the discovery contract does not offer it, and
+        nothing a tenant can declare is named that."""
+        response = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                       group_by=["field:task_id"], **self.window)
+        assert response.status_code == 422
+
+    def test_but_it_filters_to_one_unit_of_work(self):
+        body = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                   task_id=str(self.parent.id), **self.window).json()
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["amount_micros"] == 1_000
+
+    def test_and_contained_work_rolls_the_tree_up(self):
+        body = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                   task_id=str(self.parent.id), include_subtasks="true",
+                   **self.window).json()
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["amount_micros"] == 7_000
+
+    def test_a_grouped_answer_reconciles_to_the_ungrouped_one(self):
+        """⚠ **NO POSTING IS SILENTLY DROPPED BY A GROUPING**, moved here from
+        the class that asserted it against the report this replaced (#501).
+
+        The discriminating fixture is the row whose axis value is BLANK. A
+        grouping that quietly excluded it would answer a smaller total than the
+        same question ungrouped, and a reader comparing the two would find a
+        difference neither answer explained. It is a row like any other, with a
+        null value and a status saying which absence it is — which is the same
+        reconciliation the sentinel string bought, plus the fact it could not
+        state.
+        """
+        whole = measure_of(
+            ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                **self.window).json(),
+            ANALYTICS_MEASURE_SUPPLIER_COGS)["amount_micros"]
+        grouped = ask(self.key, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                      group_by=["field:subtask_type"], **self.window).json()
+        parts = [measure_of(grouped, ANALYTICS_MEASURE_SUPPLIER_COGS,
+                            index)["amount_micros"]
+                 for index in range(len(grouped["rows"]))]
+
+        assert None in [row["grouping_field_value"][0]
+                        for row in grouped["rows"]], (
+            "no blank-valued row, so this reconciles for the wrong reason")
+        assert sum(parts) == whole == 7_000
 
 
 @pytest.mark.django_db

@@ -20,7 +20,20 @@ describe("BillingPage", () => {
     renderPage();
 
     // Section headings.
-    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    //
+    // ⚠ **BY ROLE, NOT BY TEXT, BECAUSE "Revenue" NOW NAMES TWO THINGS ON
+    // THIS PAGE (#501).** The section is titled Revenue and — since the
+    // one economic query answers revenue from one definition — so is the
+    // first tile inside it, which used to be "Billed". A page-wide
+    // `findByText("Revenue")` therefore matches ONE node until the query
+    // resolves and TWO afterwards, and `findBy*` throws on multiple matches:
+    // the assertion would pass or fail purely on whether the fixture landed
+    // before the first poll. `apps/ui/CLAUDE.md` names this hazard — two
+    // concepts sharing a word — and its remedy is to scope the query, which
+    // for a heading is to ask for the heading.
+    expect(
+      await screen.findByRole("heading", { name: "Revenue" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Customer spend pool default")).toBeInTheDocument();
     // The default is the seats' alone, and the card says so in words (slice 6 §4).
     expect(screen.getByText(/It reaches seats only: a business with no pool of its own has none/)).toBeInTheDocument();
@@ -47,14 +60,19 @@ describe("BillingPage", () => {
 
   // #330: the window's supplier total is a FLOOR whenever it holds events UBB
   // could not cost, and the markup beside it is then a ceiling — billed minus
-  // the RESOLVED cost, which is the backend's own statement about that figure
-  // (`get_revenue_analytics`). The mock puts uncosted events on today, so every
+  // the RESOLVED cost, which the contract states on the measure itself since
+  // #501 (`EconomicMeasureOut.status` = `incomplete`, where the figure "is a
+  // bound rather than a total"; it used to be `get_revenue_analytics`, one of
+  // the five definitions that collapsed). The mock puts uncosted events on today, so every
   // default window is partial and both tiles have to say which way they are
   // wrong.
   it("renders a partial window's cost as a floor and its markup as a ceiling", async () => {
     renderPage();
 
-    expect(await screen.findByText("Revenue")).toBeInTheDocument();
+    // By role, for the reason the first case gives: two nodes say "Revenue".
+    expect(
+      await screen.findByRole("heading", { name: "Revenue" }),
+    ).toBeInTheDocument();
     expect(await screen.findByText(/^at least \$/)).toBeInTheDocument();
     expect(screen.getByText(/^at most \$/)).toBeInTheDocument();
     // The note beside them says how many events are missing and which way the

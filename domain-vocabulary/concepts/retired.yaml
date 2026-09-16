@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,896 of 2,327 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,867 of 2,298 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2412,6 +2412,33 @@ measurement_key:
     # registry summary this ticket DOES edit is `measure_status`'s, not the
     # measure concept's, and the new module's prose says "six calendar years"
     # and "in days" where "units of time" was the sentence that wanted writing.
+    #
+    # 2026-09-16, #501 (nine published reports collapse into the one economic
+    # query): 1,896 of 2,327 -> 1,867 of 2,298 tracked files (`units` 44 files
+    # / 122 occurrences, UNMOVED for the SEVENTH consecutive ticket). ⚠ **THE
+    # LARGEST FALL THIS DENOMINATOR HAS TAKEN, AND ALMOST ALL OF IT IS
+    # GENERATED CODE.** 33 files left and 4 arrived, every one of the 37 in the
+    # swept set, so both totals move by the same 29 and no exclusion count
+    # moves — no migration again, the fourth ticket of this slice without one,
+    # and for the plainest reason there is: deleting a route deletes no column.
+    #
+    # THE 33 ARE NOT 33 DECISIONS. Three are backend test modules that tested
+    # deleted routes; the other THIRTY are the SDK's generated core regenerating
+    # against a contract nine paths shorter — nine route modules and twenty-one
+    # response models, none of them written by hand and none of them removable
+    # while its path stood. The four that arrived are the console's shared
+    # module for reading the one query, the test module that owns what the
+    # collapse deleted and what survived it, and the generated pair for the one
+    # route this ticket ADDS.
+    #
+    # ⚠ A FALL IS STILL THE DIRECTION THAT NEEDS NO INVESTIGATION, and this one
+    # needs a sentence anyway, because a denominator that falls by 29 could
+    # hide a numerator falling with it. It did not: the count was re-taken over
+    # the new swept set and is the same 44 files and 122 occurrences. None of
+    # the 33 deleted files contained the word and none of the 4 added ones does
+    # — which is what you would expect of a word retired as a POSTING'S FIELD
+    # when the commit's subject is published reports, and is recorded because
+    # expecting it is not the same as having checked.
 
     - term: units
       retired_as: >-

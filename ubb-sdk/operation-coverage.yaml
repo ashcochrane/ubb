@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 163
-  unwrapped: 85
-  wrapped: 78
-  generated_only: 85
+  operations: 155
+  unwrapped: 82
+  wrapped: 73
+  generated_only: 82
   not_yet_wrapped: 0
 
 operations:
@@ -165,10 +165,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/billing.py::BillingClient.refund
-  - operation_id: api_v1_billing_endpoints_revenue_analytics
-    method: GET
-    path: /api/v1/billing/analytics/revenue
-    disposition: generated_only
   - operation_id: api_v1_billing_endpoints_void_grant
     method: POST
     path: /api/v1/billing/customers/{customer_id}/grants/{grant_id}/void
@@ -284,10 +280,6 @@ operations:
   - operation_id: api_v1_me_endpoints_get_transactions
     method: GET
     path: /api/v1/me/transactions
-    disposition: generated_only
-  - operation_id: api_v1_me_endpoints_get_usage_summary
-    method: GET
-    path: /api/v1/me/usage-summary
     disposition: generated_only
   - operation_id: api_v1_me_endpoints_list_grants
     method: GET
@@ -427,18 +419,6 @@ operations:
     method: GET
     path: /api/v1/metering/analytics/tasks
     disposition: generated_only
-  - operation_id: api_v1_metering_endpoints_usage_analytics
-    method: GET
-    path: /api/v1/metering/analytics/usage
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.usage_analytics
-  - operation_id: api_v1_metering_endpoints_usage_timeseries
-    method: GET
-    path: /api/v1/metering/analytics/usage/timeseries
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.usage_timeseries
   - operation_id: api_v1_metering_endpoints_withdraw_cost_book
     method: DELETE
     path: /api/v1/metering/pricing/cost-books/{book_id}
@@ -499,6 +479,10 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/client.py::UBBClient.get_business
+  - operation_id: api_v1_platform_endpoints_get_customer
+    method: GET
+    path: /api/v1/platform/customers/{customer_id}
+    disposition: generated_only
   - operation_id: api_v1_sandbox_endpoints_reset_sandbox
     method: POST
     path: /api/v1/sandbox/reset
@@ -805,12 +789,6 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/metering.py::MeteringClient.get_business_margin
-  - operation_id: apps_subscriptions_api_margin_endpoints_customer_margin
-    method: GET
-    path: /api/v1/margin/customers/{customer_id}
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_customer_margin
   - operation_id: apps_subscriptions_api_margin_endpoints_get_supplied_revenue
     method: GET
     path: /api/v1/margin/customers/{customer_id}/supplied-revenue
@@ -819,26 +797,6 @@ operations:
     method: GET
     path: /api/v1/margin/threshold
     disposition: generated_only
-  - operation_id: apps_subscriptions_api_margin_endpoints_list_margin
-    method: GET
-    path: /api/v1/margin/customers
-    disposition: generated_only
-  - operation_id: apps_subscriptions_api_margin_endpoints_margin_by_grouping_field
-    method: GET
-    path: /api/v1/margin/by-grouping-field
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_by_grouping_field
-  - operation_id: apps_subscriptions_api_margin_endpoints_margin_summary
-    method: GET
-    path: /api/v1/margin/summary
-    disposition: generated_only
-  - operation_id: apps_subscriptions_api_margin_endpoints_margin_trend
-    method: GET
-    path: /api/v1/margin/customers/{customer_id}/trend
-    disposition: wrapped
-    wrapped_by:
-      - ubb-sdk/ubb/metering.py::MeteringClient.get_margin_trend
   - operation_id: apps_subscriptions_api_margin_endpoints_margin_unprofitable
     method: GET
     path: /api/v1/margin/unprofitable

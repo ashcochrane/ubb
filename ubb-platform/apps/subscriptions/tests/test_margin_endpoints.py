@@ -9,7 +9,9 @@ from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.services.usage_service import UsageService
 from core.vocabulary import (
-    PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_STRAIGHT_LINE)
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_SUPPLIER_COGS, PRICING_STATUS_UNKNOWN,
+    RECOGNITION_METHOD_STRAIGHT_LINE, REVENUE_BASIS_RECOGNISED)
 
 
 class MarginEndpointsTest(TestCase):
@@ -36,27 +38,57 @@ class MarginEndpointsTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
 
     def test_metering_tenant_can_access_margin(self):
-        r = self.http.get("/api/v1/margin/summary", **self._auth())
+        """The gate, on a surface this module still owns.
+
+        It asked the tenant-wide margin total until #501 collapsed that route;
+        the claim is about the PRODUCT check rather than about the report, so it
+        moved to the alerting list beside it — which is gated identically and is
+        one of the surfaces §14 keeps.
+        """
+        r = self.http.get("/api/v1/margin/unprofitable", **self._auth())
         assert r.status_code == 200  # NOT gated behind subscriptions product
+
+    def _measure(self, body, measure):
+        return next(entry for entry in body["rows"][0]["measures"]
+                    if entry["measure"] == measure)
+
+    def _one_customers_margin(self):
+        """This customer's economics, month to date, on the surface that
+        answers it since #501 — the one query, filtered."""
+        response = self.http.get(
+            "/api/v1/metering/analytics/economics",
+            {"measures": [ANALYTICS_MEASURE_SUPPLIER_COGS,
+                          ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                          ANALYTICS_MEASURE_GROSS_MARGIN],
+             "customer_id": str(self.customer.id),
+             "basis": REVENUE_BASIS_RECOGNISED},
+            **self._auth())
+        assert response.status_code == 200, response.content
+        return response.json()
 
     def test_supply_revenue_and_read_the_customers_margin(self):
         """The workflow the retired recurring pair used to serve (#496).
 
         It is the same journey — state what this customer pays you, then read
         the margin — through the record that says which period the figure was
-        about and where it came from. ⚠ **AND THE MARGIN NAMES THE SOURCE**:
-        the supplied figure is its own field on the response, so the total
-        beside it can be taken apart by whoever reads it, which is the thing
-        the retired pair made impossible.
+        about and where it came from.
+
+        ⚠ **WHERE THE SOURCE IS NAMED CHANGED WITH THE COLLAPSE (#501), AND
+        THAT IS WORTH STATING RATHER THAN QUIETLY DROPPING.** One customer's
+        margin used to publish a field per revenue source, so the total could be
+        taken apart on the same response. The one economic query answers
+        `customer_revenue` as ONE measure from one definition — which is the
+        point of it — so the way to take a total apart is to ask the
+        supplied-revenue read, which names the figure, its basis, its period and
+        its source reference. Both halves are asserted below, because the
+        journey is only served if both work.
 
         ⚠ **THE READ IS MONTH-TO-DATE, SO THE EXPECTED SHARE IS COMPUTED, NOT
-        TYPED.** This route's default window runs from the first of the month
-        to tomorrow, and a supplied figure reaches margin on the `recognised`
-        basis — the retired accrual's own day-proration. Hard-coding the whole
-        month's amount here would pass only on the last day of a month, and a
-        hard-coded fraction would rot on the first of the next one. The
-        arithmetic below is the route's own, which is what makes this case
-        calendar-proof rather than calendar-lucky.
+        TYPED.** The default window runs from the first of the month through
+        today, and a supplied figure reaches margin on the `recognised` basis —
+        the retired accrual's own day-proration. Hard-coding the whole month's
+        amount would pass only on the last day of a month, and a hard-coded
+        fraction would rot on the first of the next one.
         """
         today = timezone.now().date()
         period_start = today.replace(day=1)
@@ -74,36 +106,46 @@ class MarginEndpointsTest(TestCase):
             content_type="application/json", **self._auth())
         assert r.status_code == 200, r.content
 
-        r = self.http.get(f"/api/v1/margin/customers/{self.customer.id}", **self._auth())
-        assert r.status_code == 200
-        b = r.json()
         days_in_period = (period_end - period_start).days
         days_read = (today + datetime.timedelta(days=1) - period_start).days
         expected_supplied = 500_000_000 * days_read // days_in_period
 
-        assert b["provider_cost_micros"] == 1_000_000
-        assert b["usage_billed_micros"] == 1_300_000
-        assert b["supplied_revenue_micros"] == expected_supplied
-        assert b["subscription_revenue_micros"] == 0
+        body = self._one_customers_margin()
+        assert self._measure(
+            body, ANALYTICS_MEASURE_SUPPLIER_COGS)["amount_micros"] == 1_000_000
         # Both revenue sources reach the margin, and the billed usage is one of
         # them for this tenant as for any other (#497): the switch that used to
-        # strike it out is deleted, so the margin is supplied + billed - cost.
-        assert b["usage_revenue_micros"] == 1_300_000
-        assert (b["gross_margin_micros"]
-                == expected_supplied + 1_300_000 - 1_000_000)
-        assert b["total_revenue_micros"] == expected_supplied + 1_300_000
+        # strike it out is deleted, so the revenue is supplied + billed.
+        assert self._measure(
+            body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)["amount_micros"] == (
+            expected_supplied + 1_300_000)
+        assert self._measure(
+            body, ANALYTICS_MEASURE_GROSS_MARGIN)["amount_micros"] == (
+            expected_supplied + 1_300_000 - 1_000_000)
+
+        # And the total can still be taken apart, on the read that owns the
+        # figure: the supplied share, under the basis it was attributed on,
+        # with the reference that says where the number came from.
+        supplied = self.http.get(
+            f"/api/v1/margin/customers/{self.customer.id}/supplied-revenue",
+            {"basis": REVENUE_BASIS_RECOGNISED}, **self._auth()).json()
+        assert supplied["totals"] == [{"currency": "usd",
+                                       "amount_micros": expected_supplied}]
+        assert supplied["records"][0]["source_reference"] == "INV-9001"
 
     def test_a_customer_with_no_supplied_figure_reads_nothing_supplied(self):
         """The other posture, which must stay first-class (#153 §3.2).
 
-        A cost-tracking-only tenant is not a tenant that earned nothing — but
-        this surface has no state to say so with, so what it owes is a zero
-        that cannot be mistaken for a supplied figure, and the read that DOES
-        answer the question. Both are asserted, because asserting only the
-        first would bless the zero.
+        A cost-tracking-only tenant is not a tenant that earned nothing. The
+        margin surface has no state to say so with — its revenue measure is one
+        figure from one definition — so what answers the question is the
+        supplied-revenue read, and an EMPTY list of totals there is how
+        `unknown` is served. Asserting the margin alone would bless a number
+        that cannot distinguish *supplied nothing* from *supplied zero*.
         """
-        r = self.http.get(f"/api/v1/margin/customers/{self.customer.id}", **self._auth())
-        assert r.json()["supplied_revenue_micros"] == 0
+        body = self._one_customers_margin()
+        assert self._measure(
+            body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)["amount_micros"] == 1_300_000
 
         r = self.http.get(
             f"/api/v1/margin/customers/{self.customer.id}/supplied-revenue",
@@ -124,68 +166,19 @@ class MarginEndpointsTest(TestCase):
             path, data=json.dumps({"recurring_amount_micros": 1}),
             content_type="application/json", **self._auth()).status_code == 404
 
-    def test_list_all_customer_margins(self):
-        # #86 sweep: the root margin list moved from GET /margin to the explicit
-        # GET /margin/customers segment — proving the named subpaths (/summary,
-        # /by-grouping-field, ...) are no longer shadowed by a bare mount root.
-        r = self.http.get("/api/v1/margin/customers", **self._auth())
-        self.assertEqual(r.status_code, 200, r.content)
-        body = r.json()
-        self.assertIn("customers", body)
-        self.assertTrue(
-            any(c["customer_id"] == str(self.customer.id) for c in body["customers"]))
-
-    def test_customer_margin_trend_new_path(self):
-        # #86 sweep: GET /margin/{customer_id}/trend -> /margin/customers/{id}/trend
-        # (the bare-{customer_id} shadow is gone; a UUID no longer competes with
-        # /summary et al. at the mount root).
-        r = self.http.get(
-            f"/api/v1/margin/customers/{self.customer.id}/trend", **self._auth())
-        self.assertEqual(r.status_code, 200, r.content)
-        self.assertEqual(r.json()["customer_id"], str(self.customer.id))
-        self.assertIn("points", r.json())
-
-    def test_by_grouping_field_provider(self):
-        # Ported off the old `provider: int` pseudo-flag (#128 rework) to the
-        # real group_by string.
-        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=provider", **self._auth())
-        assert r.status_code == 200
-        rows = r.json()["rows"]
-        assert any(row["grouping_field_value"] == "openai"
-                   and row["margin_micros"] == 300_000 for row in rows)
-
-    def test_by_grouping_field_unknown_group_by_is_422(self):
-        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=nope", **self._auth())
-        assert r.status_code == 422
-
-    def test_by_grouping_field_publishes_what_the_margin_excluded(self):
-        """The DECLARED row of the three rollups reaches the tenant whole (#327).
-
-        A margin over a cost total missing an event is a ceiling on a margin,
-        and this is the only one of the three rollups over these axes whose row
-        is a schema — so it is the only one where an unnamed key is silently
-        DROPPED rather than merely undocumented. Both review axes found this
-        row shedding the count on the way out.
-
-        The provider group is partial and the row still states the margin it
-        can: 1,300,000 billed against the 1,000,000 UBB knows it paid, with one
-        event's cost excluded.
-        """
-        from apps.metering.usage.models import Posting
-
-        Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, idempotency_key="i3",
-            provider="openai", billed_cost_micros=0, provider_cost_micros=None,
-            costing_status="unresolved", unresolved_reason="cost_rate_missing")
-
-        r = self.http.get("/api/v1/margin/by-grouping-field?group_by=provider",
-                          **self._auth())
-        assert r.status_code == 200
-        row = next(x for x in r.json()["rows"]
-                   if x["grouping_field_value"] == "openai")
-        assert row["provider_cost_micros"] == 1_000_000
-        assert row["margin_micros"] == 300_000
-        assert row["unresolved_event_count"] == 1
+    # THE LIST, THE TREND AND THE THREE GROUPED-BREAKDOWN CASES WERE HERE AND
+    # ARE GONE WITH THEIR ROUTES (#501). Two of them existed only to prove a
+    # #86 path move — that a named subpath was no longer shadowed by a bare
+    # mount root — and both of the paths they pinned have now left the contract
+    # entirely, which is a stronger statement than either was making.
+    #
+    # The behaviour they covered is asserted where it now lives: the
+    # per-customer rows and the grouped breakdown in
+    # `api/v1/tests/test_the_one_economic_query.py`, each against the figures
+    # these routes returned, and the per-group completeness count in
+    # `api/v1/tests/test_a_cost_total_says_what_it_excluded.py`. That the nine
+    # paths answer nothing at all is
+    # `api/v1/tests/test_the_collapse_and_what_survived_it.py`.
 
     def test_threshold_get_default_and_put(self):
         r = self.http.get("/api/v1/margin/threshold", **self._auth())
@@ -201,10 +194,18 @@ class MarginEndpointsTest(TestCase):
         r = self.http.get("/api/v1/margin/unprofitable", **self._auth())
         assert r.status_code == 200 and r.json()["customers"] == []
 
+    #: The read this module still owns that resolves a window, so the bound the
+    #: collapsed reports shared is still asserted here. ⚠ The one query has its
+    #: OWN case for the same ceiling, and the two differ: this one bounds only
+    #: where both dates were sent, and that one bounds the RESOLVED span, which
+    #: is the escape #499 closed and #501 took away with the routes that had it.
+    A_WINDOWED_READ = "/api/v1/margin/customers/{}/supplied-revenue"
+
     def test_window_over_366_days_refused(self):
         """An explicit report window longer than 366 days → 422 problem+json."""
         r = self.http.get(
-            "/api/v1/margin/summary?start_date=2024-01-01&end_date=2025-06-01",
+            self.A_WINDOWED_READ.format(self.customer.id)
+            + "?start_date=2024-01-01&end_date=2025-06-01",
             **self._auth())
         assert r.status_code == 422, r.content
         assert r["Content-Type"] == "application/problem+json"
@@ -215,6 +216,7 @@ class MarginEndpointsTest(TestCase):
     def test_window_exactly_366_days_allowed(self):
         """The boundary itself (one leap year, 366 days) is accepted."""
         r = self.http.get(
-            "/api/v1/margin/summary?start_date=2024-01-01&end_date=2025-01-01",
+            self.A_WINDOWED_READ.format(self.customer.id)
+            + "?start_date=2024-01-01&end_date=2025-01-01",
             **self._auth())
         assert r.status_code == 200, r.content

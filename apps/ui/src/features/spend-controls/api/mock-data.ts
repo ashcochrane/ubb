@@ -54,7 +54,7 @@ import type {
   FamilyTotalsRow,
   ItemisedEventRow,
   ItemisedEvents,
-  MarginCustomers,
+  CustomerChoice,
   UtilisationAndHeadroom,
   WalletPolicyEpisodeRow,
 } from "./types";
@@ -584,32 +584,7 @@ export const POOL_STATUS_ACME: CustomerSpendPoolStatus = spendPoolAssessment({
  * margin row, as the margin list carries them. The margin figures are the
  * customers feature's July story restated for the same two ids.
  */
-export const MOCK_MARGIN_CUSTOMERS: MarginCustomers = {
-  period: { start: "2026-07-01", end: "2026-07-31" },
-  customers: [
-    {
-      customer_id: CUSTOMER_ACME,
-      usage_billed_micros: 1_247_000_000,
-      usage_revenue_micros: 1_247_000_000,
-      subscription_revenue_micros: 240_000_000,
-      supplied_revenue_micros: 0,
-      provider_cost_micros: 945_500_000,
-      gross_margin_micros: 541_500_000,
-      margin_percentage: 36.4,
-      unresolved_event_count: 0,
-      unpriced_event_count: 0,
-    },
-    {
-      customer_id: CUSTOMER_LUNA,
-      usage_billed_micros: 61_000_000,
-      usage_revenue_micros: 61_000_000,
-      subscription_revenue_micros: 0,
-      supplied_revenue_micros: 0,
-      provider_cost_micros: 72_400_000,
-      gross_margin_micros: -11_400_000,
-      margin_percentage: -18.7,
-      unresolved_event_count: 1,
-      unpriced_event_count: 0,
-    },
-  ],
-};
+export const MOCK_CUSTOMER_CHOICES: CustomerChoice[] = [
+  { customer_id: CUSTOMER_ACME },
+  { customer_id: CUSTOMER_LUNA },
+];

@@ -23,13 +23,11 @@ from apps.subscriptions.economics.models import (
     CustomerEconomics, MarginThresholdConfig, TenantSuppliedRevenue)
 from apps.subscriptions.economics.revenue import (
     DEFAULT_REVENUE_BASIS, SuppliedRevenueService)
-from apps.subscriptions.economics.services import (
-    MARGIN_REVENUE_BASIS, MarginService, total_revenue_micros)
+from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.api.margin_schemas import (
-    MarginThresholdIn, MarginThresholdOut,
-    MarginSummaryOut, MarginByGroupingFieldOut, UnprofitableOut, MarginListOut,
-    CustomerMarginOut, MarginTrendOut, BusinessMarginOut, RevenueBasis,
-    SuppliedRevenueWindowOut, TenantSuppliedRevenueIn, TenantSuppliedRevenueOut)
+    MarginThresholdIn, MarginThresholdOut, UnprofitableOut, BusinessMarginOut,
+    RevenueBasis, SuppliedRevenueWindowOut, TenantSuppliedRevenueIn,
+    TenantSuppliedRevenueOut)
 
 margin_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
@@ -59,102 +57,26 @@ def _window(start_date, end_date):
     return s, today + timedelta(days=1)  # month-to-date (inclusive of today)
 
 
-@margin_router.get("/summary", response=MarginSummaryOut)
-@role_floor(READ)
-def margin_summary(request, start_date: date = None, end_date: date = None):
-    _product_check(request)
-    s, e = _window(start_date, end_date)
-    tenant = request.auth.tenant
-    from apps.metering.queries import get_per_customer_cost_totals
-    from apps.subscriptions.economics.revenue import RevenueService
-    rows = get_per_customer_cost_totals(tenant.id, s, e)
-    total_provider = total_billed = total_sub = total_usage_rev = 0
-    # THE THIRD SOURCE, ADDED UP UNDER ITS OWN NAME (#496). It travels beside
-    # the Stripe total rather than inside it, all the way to the wire, so a
-    # reader of this response can say which of the two a figure came from.
-    total_supplied = 0
-    # WHAT THE TENANT-WIDE COST TOTAL LEFT OUT, ADDED UP LIKE THE COST (#328).
-    # Each row the read contract returns carries its own count, and a loop that
-    # took the money and dropped the caveat would publish a floor as a figure —
-    # the same defect as an `or 0`, one product further out. This is the one
-    # place the count could go missing on this route, because the loop is where
-    # the rows stop being rows.
-    total_unresolved = 0
-    # AND WHAT THE BILLED TOTALS LEFT OUT (#351), on the same terms and for the
-    # same reason: the read contract's rows each carry their own count, and a
-    # loop that took the money and dropped the caveat would publish a floor as a
-    # figure. Two accumulators because the two counts are about different
-    # postings and bound the margin below in opposite directions.
-    total_unpriced = 0
-    for r in rows:
-        total_provider += r["provider_cost_micros"]
-        total_unresolved += r[UNRESOLVED_EVENT_COUNT_KEY]
-        total_billed += r["billed_cost_micros"]
-        total_unpriced += r[UNPRICED_EVENT_COUNT_KEY]
-        total_sub += RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
-        # One query per customer, like the Stripe accrual above it — this adds
-        # a second read to a loop that already had one rather than a new shape.
-        # The loop itself is what slice 7's one economic query replaces.
-        total_supplied += SuppliedRevenueService.attributed_total(
-            tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
-        # EVERY ROW'S BILLED TOTAL IS REVENUE (#497). A per-customer setting
-        # used to decide whether this line ran at all, which made a tenant-wide
-        # revenue figure depend on who raises the invoices rather than on what
-        # was sold. `_compose` carries the argument.
-        #
-        # ⚠ THE TICKET SAYS "THE COMPOSITION BRANCH" AND THE TREE HAD THREE
-        # COPIES OF IT — that one, this loop, and the per-customer list below.
-        # All three are gone; the duplication itself is what the collapse
-        # (slice 7 §1) removes, by leaving one query where three loops are.
-        total_usage_rev += r["billed_cost_micros"]
-    total_revenue = total_revenue_micros(total_sub, total_supplied, total_usage_rev)
-    margin = total_revenue - total_provider
-    return {
-        "period": {"start": s.isoformat(), "end": e.isoformat()},
-        "subscription_revenue_micros": total_sub,
-        "supplied_revenue_micros": total_supplied,
-        "usage_billed_micros": total_billed,
-        "usage_revenue_micros": total_usage_rev,
-        "provider_cost_micros": total_provider,
-        UNRESOLVED_EVENT_COUNT_KEY: total_unresolved,
-        UNPRICED_EVENT_COUNT_KEY: total_unpriced,
-        "total_revenue_micros": total_revenue,
-        "gross_margin_micros": margin,
-        "margin_percentage": round(margin / total_revenue * 100, 2) if total_revenue else 0.0,
-        "customer_count": len(rows),
-    }
-
-
-@margin_router.get("/by-grouping-field",
-                   response={200: MarginByGroupingFieldOut, 422: ProblemOut})
-@role_floor(READ)
-def margin_by_grouping_field(request, group_by: str = "provider",
-                             tag_key: str = None,
-                             start_date: date = None, end_date: date = None):
-    """Margin by any Grouping Field the tenant has declared.
-
-    Replaces the old `provider: int` / `product: int` pseudo-flags, which could
-    not reach event_type at all despite get_dimensional_margin supporting it."""
-    _product_check(request)
-    s, e = _window(start_date, end_date)
-    from apps.metering.queries import get_dimensional_margin
-    if tag_key:
-        rows = get_dimensional_margin(request.auth.tenant.id, tag_key=tag_key, start_date=s, end_date=e)
-    else:
-        from apps.platform.grouping_fields.queries import slot_map
-
-        col = group_by
-        if group_by not in ("provider", "event_type", "task_type", "subtask_type"):
-            col = slot_map(request.auth.tenant.id).get(group_by)
-            if col is None:
-                raise Problem("validation_error",
-                              f"{group_by!r} is not a declared grouping field")
-        try:
-            rows = get_dimensional_margin(request.auth.tenant.id, group_by=col,
-                                          start_date=s, end_date=e)
-        except ValueError as exc:
-            raise Problem("validation_error", str(exc))
-    return 200, {"period": {"start": s.isoformat(), "end": e.isoformat()}, "rows": rows}
+# THE TENANT-WIDE MARGIN TOTAL AND THE GROUPED MARGIN BREAKDOWN WERE HERE AND
+# ARE GONE (#501, slice 7 §1) — two of the nine routes the one economic query
+# replaces, and two of the five backend definitions of revenue and margin it
+# leaves as one.
+#
+# The total was the DEGENERATE CASE of that query — three money measures, no
+# grouping, no bucket — computed here by a loop that read a per-customer cost
+# rollup and added two more reads per customer to it. The breakdown was a
+# DUPLICATE of the metering rollup a different product already served: the same
+# rows and the same arithmetic over a silently different revenue basis, which is
+# how one period got two margin figures. Both are now
+# `GET /metering/analytics/economics`, the total with no `group_by` and the
+# breakdown with one.
+#
+# ⚠ AND THE COUNT OF UNPROFITABLE CUSTOMERS DID NOT DIE WITH THE TOTAL. It is
+# read from the alerting record, never from a margin figure, so it belongs with
+# the alerting surfaces that keep their own contracts (slice 7 §8, §14) — it is
+# below, on `/unprofitable`, and
+# `api/v1/tests/test_the_collapse_and_what_survived_it.py` is what says so from
+# outside.
 
 
 @margin_router.get("/unprofitable", response=UnprofitableOut)
@@ -372,12 +294,14 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
     """
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    # ⚠ `DEFAULT_REVENUE_BASIS`, NOT `MARGIN_REVENUE_BASIS` — this module
-    # imports both and they are different values on purpose. This route lets a
-    # caller CHOOSE and names what it served, so its fallback is the view that
-    # invents nothing. The margin surfaces choose nothing and publish no basis
-    # field, so theirs honours each record's own recognition method instead;
-    # `services.py` argues it where it is set.
+    # ⚠ `DEFAULT_REVENUE_BASIS` IS THIS ROUTE'S FALLBACK AND IT IS NOT THE ONLY
+    # BASIS IN THE SYSTEM. This route lets a caller CHOOSE and names what it
+    # served, so its fallback is the view that invents nothing. The margin
+    # surfaces this module used to carry chose nothing and published no basis
+    # field, so they honoured each record's own recognition method instead —
+    # the constant that says so lives in `services.py`, which argues it where
+    # it is set, and the one economic query (#501) took over the choosing and
+    # names what it served on every answer.
     chosen = basis or DEFAULT_REVENUE_BASIS
     if chosen not in REVENUE_BASIS_VALUES:
         raise Problem(
@@ -430,73 +354,19 @@ def business_margin(request, external_id: str, start_date: date = None, end_date
     return MarginService.compute_business(request.auth.tenant.id, biz, s, e)
 
 
-@margin_router.get("/customers/{customer_id}/trend", response=MarginTrendOut)
-@role_floor(READ)
-def margin_trend(request, customer_id: UUID, periods: int = 6):
-    _product_check(request)
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    rows = CustomerEconomics.objects.filter(
-        tenant=request.auth.tenant, customer=customer).order_by("-period_start")[:max(1, min(periods, 36))]
-    return {"customer_id": str(customer.id), "points": [{
-        "period_start": r.period_start.isoformat(),
-        "provider_cost_micros": r.provider_cost_micros,
-        # Per POINT: a trend whose completeness varied month to month and said
-        # so once at the top would be answering about the wrong months (#328).
-        UNRESOLVED_EVENT_COUNT_KEY: r.unresolved_event_count,
-        UNPRICED_EVENT_COUNT_KEY: r.unpriced_event_count,
-        "usage_billed_micros": r.usage_billed_micros,
-        "subscription_revenue_micros": r.subscription_revenue_micros,
-        "supplied_revenue_micros": r.supplied_revenue_micros,
-        "gross_margin_micros": r.gross_margin_micros,
-        "margin_percentage": float(r.margin_percentage),
-    } for r in reversed(list(rows))]}
-
-
-@margin_router.get("/customers/{customer_id}", response=CustomerMarginOut)
-@role_floor(READ)
-def customer_margin(request, customer_id: UUID, start_date: date = None, end_date: date = None):
-    _product_check(request)
-    customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
-    s, e = _window(start_date, end_date)
-    data = MarginService.compute_live(request.auth.tenant.id, customer.id, s, e)
-    data["external_id"] = customer.external_id
-    data["period"] = {"start": s.isoformat(), "end": e.isoformat()}
-    return data
-
-
-@margin_router.get("/customers", response=MarginListOut)
-@role_floor(READ)
-def list_margin(request, start_date: date = None, end_date: date = None):
-    _product_check(request)
-    s, e = _window(start_date, end_date)
-    tenant = request.auth.tenant
-    from apps.metering.queries import get_per_customer_cost_totals
-    from apps.subscriptions.economics.revenue import RevenueService
-    rows = get_per_customer_cost_totals(tenant.id, s, e)
-    out = []
-    for r in rows:
-        sub = RevenueService.accrued_subscription_revenue(tenant.id, r["customer_id"], s, e)
-        supplied = SuppliedRevenueService.attributed_total(
-            tenant.id, r["customer_id"], s, e, MARGIN_REVENUE_BASIS)
-        # The row's own billed total, for every customer (#497) — see the
-        # summary loop above and `_compose` for the argument.
-        usage_rev = r["billed_cost_micros"]
-        revenue = total_revenue_micros(sub, supplied, usage_rev)
-        margin = revenue - r["provider_cost_micros"]
-        out.append({"customer_id": str(r["customer_id"]),
-                    "subscription_revenue_micros": sub,
-                    "supplied_revenue_micros": supplied,
-                    "usage_billed_micros": r["billed_cost_micros"],
-                    "usage_revenue_micros": usage_rev,
-                    "provider_cost_micros": r["provider_cost_micros"],
-                    # Per row, because one customer's unresolved cost says
-                    # nothing about another's (#327's shape, carried out to the
-                    # wire here). The margin beside it is a ceiling wherever
-                    # this is non-zero.
-                    UNRESOLVED_EVENT_COUNT_KEY: r[UNRESOLVED_EVENT_COUNT_KEY],
-                    # And per row for the revenue half (#351), which bounds the
-                    # margin the other way: an excluded price makes it a floor.
-                    UNPRICED_EVENT_COUNT_KEY: r[UNPRICED_EVENT_COUNT_KEY],
-                    "gross_margin_micros": margin,
-                    "margin_percentage": round(margin / revenue * 100, 2) if revenue else 0.0})
-    return {"period": {"start": s.isoformat(), "end": e.isoformat()}, "customers": out}
+# THE PER-CUSTOMER MARGIN LIST, ONE CUSTOMER'S MARGIN AND ONE CUSTOMER'S
+# MARGIN TREND WERE HERE AND ARE GONE (#501, slice 7 §1) — three more of the
+# nine, and with the two above this module gives up five of them.
+#
+# The list is `group_by=field:customer` on the one query with the revenue
+# measures asked for; one customer's margin is the same question with
+# `customer_id=` as a filter; and the trend is `bucket=month`. ⚠ THE TREND ALSO
+# STOPS READING THE ALERTING SNAPSHOT, which is the point of it rather than a
+# side effect: a stored figure is a cache of facts that move when a supplier
+# cost resolves late, and a reporting surface reading one publishes a number UBB
+# already knows is wrong (slice 7 §8). The one query derives every point at read
+# time.
+#
+# What the business rollup above keeps is a TREE, and that is why it is still
+# here: per-seat rows nested under a business are a different shape from a
+# group-by table, and giving the table a customer axis does not produce one.

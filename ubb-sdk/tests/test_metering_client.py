@@ -717,121 +717,25 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(mock_get.call_args.args[0],
                          "/api/v1/metering/pricing/cost-books")
 
-    # ---- usage_analytics ----
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_analytics_url_and_params(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"rows": []})
-        result = self.client.usage_analytics(customer_id="c", tag_key="agent")
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
-        params = call_args.kwargs["params"]
-        self.assertEqual(params["customer_id"], "c")
-        self.assertEqual(params["tag_key"], "agent")
-        self.assertEqual(result, {"rows": []})
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_analytics_dimensions_sent_as_repeated_params(self, mock_get):
-        """dimensions list is forwarded as-is so httpx encodes repeated params.
-
-        THE ROW KEY BELOW IS THE ENGINE'S, SPELLED AS THE ENGINE SPELLS IT.
-        `/analytics/usage` returns an open dict and this client returns it
-        untouched, so the fixture is a transcript rather than a shape the SDK
-        chose. Renaming it here would make the test disagree with the server
-        while passing, which is the one thing a fixture must never do — the
-        key moves when the engine moves it, and this file follows.
-
-        **IT HAS NOW MOVED (#312).** The engine writes `grouping_field_value`,
-        which is what the DECLARED margin row has published all along, and this
-        transcript follows in the same release rather than a later one. The
-        pin that makes this a transcript rather than a guess is
-        `api/v1/tests/test_analytics_dimensions.py`, which asserts the whole row
-        against the running route.
-        """
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "total_events": 1,
-            "breakdowns": {"product_id": [{"grouping_field_value": "search",
-                                           "event_count": 1,
-                                           "total_provider_cost_micros": 300_000,
-                                           "total_billed_cost_micros": 500_000}]},
-        })
-        result = self.client.usage_analytics(
-            customer_id="c1",
-            dimensions=["product_id", "service_id", "tag:region"],
-        )
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage")
-        params = call_args.kwargs["params"]
-        # dimensions list is passed straight through — httpx will repeat the key
-        self.assertEqual(params["dimensions"], ["product_id", "service_id", "tag:region"])
-        self.assertEqual(params["customer_id"], "c1")
-        # breakdowns dict is returned transparently
-        self.assertIn("breakdowns", result)
-        self.assertIn("product_id", result["breakdowns"])
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_analytics_no_dimensions_no_key(self, mock_get):
-        """When dimensions is omitted the key must not appear in the request params."""
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"total_events": 0})
-        self.client.usage_analytics()
-        params = mock_get.call_args.kwargs["params"]
-        self.assertNotIn("dimensions", params)
-
-    # ---- usage_timeseries ----
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_timeseries_url_and_params(self, mock_get):
-        """usage_timeseries sends correct path and query parameters."""
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "granularity": "day",
-            "group_by": "",
-            "series": [
-                {"bucket": "2026-06-01", "provider_cost_micros": 100_000,
-                 "billed_cost_micros": 150_000, "markup_micros": 50_000, "event_count": 1},
-            ],
-        })
-        result = self.client.usage_timeseries(
-            granularity="day",
-            start_date="2026-06-01",
-            end_date="2026-07-01",
-            customer_id="cust_1",
-        )
-        call_args = mock_get.call_args
-        self.assertEqual(call_args.args[0], "/api/v1/metering/analytics/usage/timeseries")
-        params = call_args.kwargs["params"]
-        self.assertEqual(params["granularity"], "day")
-        self.assertEqual(params["start_date"], "2026-06-01")
-        self.assertEqual(params["end_date"], "2026-07-01")
-        self.assertEqual(params["customer_id"], "cust_1")
-        self.assertNotIn("group_by", params)
-        self.assertEqual(result["granularity"], "day")
-        self.assertEqual(len(result["series"]), 1)
-        self.assertEqual(result["series"][0]["provider_cost_micros"], 100_000)
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_timeseries_group_by_forwarded(self, mock_get):
-        """group_by param is forwarded when provided."""
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "granularity": "hour", "group_by": "provider", "series": [],
-        })
-        self.client.usage_timeseries(granularity="hour", group_by="provider")
-        params = mock_get.call_args.kwargs["params"]
-        self.assertEqual(params["granularity"], "hour")
-        self.assertEqual(params["group_by"], "provider")
-
-    @patch("ubb.metering.httpx.Client.get")
-    def test_usage_timeseries_omits_none_params(self, mock_get):
-        """start_date/end_date/customer_id/group_by are omitted when None."""
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "granularity": "day", "group_by": "", "series": [],
-        })
-        self.client.usage_timeseries()
-        params = mock_get.call_args.kwargs["params"]
-        self.assertNotIn("start_date", params)
-        self.assertNotIn("end_date", params)
-        self.assertNotIn("customer_id", params)
-        self.assertNotIn("group_by", params)
-
+    # ---- THE ANALYTICS CASES ARE GONE (#501) ----
+    #
+    # Six of them covered two methods: the cost-and-margin report and the
+    # day-or-hour series. They asserted the paths, the query parameters, that a
+    # list of axes went out as REPEATED parameters rather than one comma-joined
+    # one, and that a `None` parameter was omitted rather than sent as the
+    # string "None".
+    #
+    # Both methods went with their routes, and the one economic query that
+    # replaced them has no ergonomic wrapper yet — so there is nothing here to
+    # assert those properties about. ⚠ **THE REPEATED-PARAMETER PROPERTY IS THE
+    # ONE WORTH CARRYING FORWARD**: the replacement takes repeated `measures`
+    # and repeated `group_by`, so whichever ticket writes the wrapper owes a
+    # case saying so, and this note is where it will be looked for.
+    #
+    # What their deletion could have lost — that a hand-written method resolves
+    # to an operation the contract really publishes — is a general property held
+    # over EVERY method by the git-root contract suite's
+    # `test_sdk_operations.py`, not one this file asserted six times.
 
     # ---- NO MARKUP METHODS (#369) ----
     #

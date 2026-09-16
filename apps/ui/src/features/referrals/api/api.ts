@@ -3,9 +3,15 @@
 // operations declare only their 200 in the schema, and runtime errors still
 // arrive as problem+json.
 
-import { marginApi, referralsApi } from "@/api/client";
+import { meteringApi, referralsApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
+import {
+  customerIdsIn,
+  FIELD_AXIS,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
+
 
 import type {
   AnalyticsEarningsOut,
@@ -15,7 +21,7 @@ import type {
   EarningsOut,
   EarningsPeriodParams,
   LedgerEntryOut,
-  MarginCustomerRow,
+  CustomerChoice,
   PayoutExportOut,
   ProgramCreateRequest,
   ProgramOut,
@@ -139,11 +145,17 @@ export async function getReferralLedger(
 // --- Customer picker (margin namespace) --------------------------------------
 
 /**
- * Feed for the "register referrer" customer picker. Margin may be
- * unavailable (subscriptions product off) — callers must tolerate failure
- * and fall back to the free UUID input.
+ * Feed for the "register referrer" customer picker. The read may be
+ * unavailable (metering product off) — callers must tolerate failure and fall
+ * back to the free UUID input.
  */
-export async function listMarginCustomers(): Promise<MarginCustomerRow[]> {
-  const result = unwrap(await marginApi.GET("/customers"));
-  return result.customers;
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
+  const answer = unwrap(
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: { measures: [SUPPLIER_COGS], group_by: [FIELD_AXIS("customer")] },
+      },
+    }),
+  );
+  return customerIdsIn(answer).map((customer_id) => ({ customer_id }));
 }

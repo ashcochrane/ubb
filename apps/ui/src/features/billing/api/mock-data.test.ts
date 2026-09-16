@@ -65,7 +65,7 @@ describe("buildDailyRows", () => {
     expect(first).toEqual({
       day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       provider_cost_micros: expect.any(Number),
-      billed_cost_micros: expect.any(Number),
+      revenue_micros: expect.any(Number),
       event_count: expect.any(Number),
       unresolved_event_count: expect.any(Number),
       unpriced_event_count: expect.any(Number),
@@ -106,7 +106,7 @@ describe("buildDailyRows", () => {
     const rows = buildDailyRows();
 
     for (const [i, row] of rows.entries()) {
-      expect(row.billed_cost_micros).toBeGreaterThan(row.provider_cost_micros);
+      expect(row.revenue_micros).toBeGreaterThan(row.provider_cost_micros);
       const previous = rows[i - 1];
       if (previous) {
         expect(Date.parse(row.day) - Date.parse(previous.day)).toBe(86_400_000);
@@ -114,7 +114,7 @@ describe("buildDailyRows", () => {
     }
 
     const provider = rows.reduce((sum, row) => sum + row.provider_cost_micros, 0);
-    const billed = rows.reduce((sum, row) => sum + row.billed_cost_micros, 0);
+    const billed = rows.reduce((sum, row) => sum + row.revenue_micros, 0);
     expect(billed / provider).toBeGreaterThan(1.2);
     expect(billed / provider).toBeLessThan(1.4);
   });

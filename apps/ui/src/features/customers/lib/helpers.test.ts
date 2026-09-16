@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { MOCK_MARGIN_ROWS } from "../api/mock-data";
+import { MOCK_CUSTOMER_ECONOMICS } from "../api/mock-data";
+import { toCustomerRows } from "../api/types";
+import { mockCustomerList } from "../api/mock-data";
 import {
   filterMarginRows,
-  listRowRevenueMicros,
   microsToUnits,
   parseAlertLevels,
   shortId,
@@ -33,52 +34,52 @@ describe("money conversion", () => {
   });
 });
 
-describe("margin list sorting and filtering", () => {
-  it("derives list-row revenue as subscription + supplied + usage revenue", () => {
-    const acme = MOCK_MARGIN_ROWS[0]!;
-    expect(listRowRevenueMicros(acme)).toBe(
-      acme.subscription_revenue_micros +
-        acme.supplied_revenue_micros +
-        acme.usage_revenue_micros,
-    );
-  });
+//: The roster as the console receives it — one answer, narrowed once, so a
+//: fixture here cannot describe a row no server produces.
+const ROWS = toCustomerRows(
+  mockCustomerList({ start_date: "2026-07-01", end_date: "2026-07-31" }),
+);
 
-  // ⚠ THE ASSERTION ABOVE RESTATES THE FUNCTION, so it cannot tell a
-  // three-way sum from a two-way one while every fixture supplies nothing.
-  // This one names the figures (#496). The customer it describes is billed
-  // outside UBB: leaving its supplied revenue out would show it on the margin
-  // list earning a fifth of what it earns, and nothing else here would fail.
-  it("counts what the tenant supplied, not just what UBB billed", () => {
-    const row = {
-      ...MOCK_MARGIN_ROWS[0]!,
-      subscription_revenue_micros: 0,
-      supplied_revenue_micros: 400_000_000,
-      // Both, together: since #497 the wire cannot carry one without the
-      // other, and `listRowRevenueMicros` reading only the revenue side is
-      // no reason for a fixture to describe a row nobody can serve.
-      usage_billed_micros: 100_000_000,
-      usage_revenue_micros: 100_000_000,
-    };
-    expect(listRowRevenueMicros(row)).toBe(500_000_000);
+describe("margin list sorting and filtering", () => {
+  // ⚠ `listRowRevenueMicros` AND ITS TWO CASES ARE GONE (#501). They asserted
+  // that a row's revenue was its subscription share plus its supplied share
+  // plus its billed usage, because the list route published the three and no
+  // total. The one economic query answers `customer_revenue` from one
+  // definition and the row carries it, so there is no sum left to get wrong —
+  // and the case that named the supplied share, which existed because a
+  // three-way sum could not be told from a two-way one, has nothing to
+  // distinguish.
+  it("reads a row's own revenue total", () => {
+    expect(ROWS).toHaveLength(MOCK_CUSTOMER_ECONOMICS.length);
+    expect(ROWS[0]?.total_revenue_micros).toBe(MOCK_CUSTOMER_ECONOMICS[0]?.[1]);
   });
 
   it("sorts descending by the chosen measure", () => {
-    const byRevenue = sortMarginRows(MOCK_MARGIN_ROWS, "revenue");
-    const revenues = byRevenue.map(listRowRevenueMicros);
+    const byRevenue = sortMarginRows(ROWS, "revenue");
+    const revenues = byRevenue.map((row) => row.total_revenue_micros);
     expect(revenues).toEqual([...revenues].sort((a, b) => b - a));
 
-    const byPct = sortMarginRows(MOCK_MARGIN_ROWS, "margin_pct");
+    const byPct = sortMarginRows(ROWS, "margin_pct");
     const pcts = byPct.map((row) => row.margin_percentage);
     expect(pcts).toEqual([...pcts].sort((a, b) => b - a));
   });
 
+  // ⚠ A ROW WITH NO MARGIN SORTS LAST RATHER THAN AS ZERO — the comparator
+  // coercing would file a customer UBB cannot report on among the ones it can.
+  it("files a customer with no margin last", () => {
+    const withAGap = [
+      ...ROWS,
+      { ...ROWS[0]!, customer_id: "gap", gross_margin_micros: null },
+    ];
+    expect(
+      sortMarginRows(withAGap, "margin").at(-1)?.customer_id,
+    ).toBe("gap");
+  });
+
   it("filters on customer_id substring, case-insensitively", () => {
-    const hits = filterMarginRows(MOCK_MARGIN_ROWS, "1F0C9C4E");
+    const hits = filterMarginRows(ROWS, "1F0C9C4E");
     expect(hits).toHaveLength(1);
-    expect(filterMarginRows(MOCK_MARGIN_ROWS, "")).toHaveLength(
-      MOCK_MARGIN_ROWS.length,
-    );
-    expect(filterMarginRows(MOCK_MARGIN_ROWS, "zzz")).toHaveLength(0);
+    expect(filterMarginRows(ROWS, "")).toHaveLength(ROWS.length);
   });
 });
 

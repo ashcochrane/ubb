@@ -3,7 +3,7 @@
 // typed by a named component schema — the referrals slice has NO untyped
 // (additionalProperties) responses, so no local narrowing interfaces exist.
 
-import type { MarginSchemas, ReferralSchemas } from "@/api/types";
+import type { ReferralSchemas } from "@/api/types";
 
 export type ProgramOut = ReferralSchemas["ProgramOut"];
 export type ProgramCreateRequest = ReferralSchemas["ProgramCreateRequest"];
@@ -29,7 +29,18 @@ export type AttributeResponse = ReferralSchemas["AttributeResponse"];
 export type StatusResponse = ReferralSchemas["StatusResponse"];
 
 /** Row of GET /margin/customers — used only to feed the customer picker. */
-export type MarginCustomerRow = MarginSchemas["CustomerMarginListRow"];
+/**
+ * One choice in a customer picker.
+ *
+ * ⚠ **IT WAS A MARGIN ROW AND IS AN IDENTITY (#501).** This feature read the
+ * per-customer margin list for the ids alone — every money field on it was
+ * ignored here — and that route is gone with the other eight the one economic
+ * query replaced. Grouping that query by the customer axis answers the same
+ * question and nothing more, which is the shape this always wanted.
+ */
+export interface CustomerChoice {
+  customer_id: string;
+}
 
 /** Query params for GET /referrals/analytics/earnings. */
 export interface EarningsPeriodParams {

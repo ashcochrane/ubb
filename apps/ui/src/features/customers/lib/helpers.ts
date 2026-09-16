@@ -1,6 +1,7 @@
 // Pure helpers for the customers feature (no React, no IO).
 
-import type { CustomerMarginListRow } from "../api/types";
+import type { CustomerEconomics } from "../api/types";
+import { descendingWithAbsencesLast } from "@/lib/economic-query";
 
 /** Shorten a UUID for table display: "1f0c9c4e-8f2a-…" → "1f0c9c4e". */
 export function shortId(id: string): string {
@@ -19,22 +20,12 @@ export function microsToUnits(micros: number): string {
   return Number.isInteger(units) ? String(units) : units.toFixed(6).replace(/0+$/, "");
 }
 
-/** The list rows lack total_revenue_micros — derive it the way the detail does.
- *
- * ALL THREE SOURCES, and the third is why this reads as a list rather than a
- * pair (#496). A tenant that bills its customers outside UBB states what it
- * earned, and that figure is revenue as much as a Stripe subscription is —
- * summing only the first two would hand exactly that tenant the "no revenue"
- * answer the retired customer-level switch used to give, from a helper nobody
- * would think to look in.
- */
-export function listRowRevenueMicros(row: CustomerMarginListRow): number {
-  return (
-    row.subscription_revenue_micros +
-    row.supplied_revenue_micros +
-    row.usage_revenue_micros
-  );
-}
+// ⚠ `listRowRevenueMicros` IS GONE (#501). It summed a row's three revenue
+// fields — a subscription share, a supplied share and billed usage — because
+// the list route published no total and this console had to add them up, with
+// a fourth source added later going missing until somebody noticed. The one
+// economic query answers `customer_revenue` from one definition and the row
+// carries it, so there is nothing left to sum.
 
 export type CustomerSort = "revenue" | "margin" | "margin_pct";
 
@@ -46,23 +37,28 @@ export const CUSTOMER_SORT_OPTIONS: { value: CustomerSort; label: string }[] = [
 
 /** Sort a copy of the rows descending by the chosen measure. */
 export function sortMarginRows(
-  rows: CustomerMarginListRow[],
+  rows: CustomerEconomics[],
   sort: CustomerSort,
-): CustomerMarginListRow[] {
-  const measure = (row: CustomerMarginListRow): number =>
+): CustomerEconomics[] {
+  // The order is `descendingWithAbsencesLast`'s, shared with the dashboard's
+  // table: a row stating no margin sorts LAST rather than as zero. Only the
+  // extractor is this table's, because only the row type differs.
+  const measure = (row: CustomerEconomics): number | null =>
     sort === "revenue"
-      ? listRowRevenueMicros(row)
+      ? row.total_revenue_micros
       : sort === "margin"
         ? row.gross_margin_micros
-        : row.margin_percentage;
-  return [...rows].sort((a, b) => measure(b) - measure(a));
+        : row.gross_margin_micros === null
+          ? null
+          : row.margin_percentage;
+  return [...rows].sort(descendingWithAbsencesLast(measure));
 }
 
 /** Client-side search: match on customer_id (the list rows carry no external_id). */
 export function filterMarginRows(
-  rows: CustomerMarginListRow[],
+  rows: CustomerEconomics[],
   query: string,
-): CustomerMarginListRow[] {
+): CustomerEconomics[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return rows;
   return rows.filter((row) => row.customer_id.toLowerCase().includes(needle));

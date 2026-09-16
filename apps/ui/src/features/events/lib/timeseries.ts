@@ -56,7 +56,7 @@ export function pivotTimeseries(
     return {
       data: points.map((point) => ({
         bucket: point.bucket,
-        billed: point.billed_cost_micros,
+        billed: point.revenue_micros,
         provider: point.provider_cost_micros,
         [UNRESOLVED_COUNT_KEY]: point.unresolved_event_count,
       })),
@@ -71,7 +71,7 @@ export function pivotTimeseries(
   const totals = new Map<string, number>();
   for (const point of points) {
     const value = groupValueOf(point);
-    totals.set(value, (totals.get(value) ?? 0) + point.billed_cost_micros);
+    totals.set(value, (totals.get(value) ?? 0) + point.revenue_micros);
   }
   const ranked = [...totals.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -103,7 +103,7 @@ export function pivotTimeseries(
     const key = paintedSet.has(value) ? `d:${value}` : OTHER_KEY;
     const current = row[key];
     row[key] =
-      (typeof current === "number" ? current : 0) + point.billed_cost_micros;
+      (typeof current === "number" ? current : 0) + point.revenue_micros;
   }
 
   const data = [...byBucket.values()].sort((a, b) =>

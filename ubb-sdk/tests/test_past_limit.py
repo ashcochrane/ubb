@@ -72,15 +72,18 @@ class UsageFiltersTest(unittest.TestCase):
         self.assertEqual(params["episode_seq"], 3)
         self.assertEqual(page.data[0].stop_context, _CTX)
 
-    @patch("ubb.metering.httpx.Client.get")
-    def test_analytics_passes_past_limit_filters(self, mock_get):
-        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"total_events": 0})
-        self.client.usage_analytics(past_limit=True, stop_scope="customer",
-                                    episode_seq=1)
-        params = mock_get.call_args.kwargs["params"]
-        self.assertEqual(params["past_limit"], True)
-        self.assertEqual(params["stop_scope"], "customer")
-        self.assertEqual(params["episode_seq"], 1)
+    # ⚠ THE SECOND CASE HERE ASSERTED THE SAME TRIO ON THE ANALYTICS REPORT, AND
+    # IT IS DELETED WITH IT (#501). The report is one of nine that collapsed
+    # into `GET /metering/analytics/economics`, which takes all three filters —
+    # so the CAPABILITY did not go anywhere, only this client's handle on it,
+    # and the handle is a later ticket's to write. Rewriting the case against
+    # the generated operation would assert that a generated module passes
+    # through what it was generated to pass through, which is a test of the
+    # generator; the platform suite holds the real proof, that the trio narrows
+    # the one query's answer the way it narrows this one's.
+    #
+    # What survives above is the case worth keeping: the trio on the EVENT LIST,
+    # which is a hand-written call that still exists and still has to send them.
 
 
 class NegativeSinceTest(unittest.TestCase):

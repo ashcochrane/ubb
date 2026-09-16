@@ -58,11 +58,12 @@ CANONICAL = ("grouping-field", "grouping_field")
 #: **method AND path** (ADR-0007 §4), plus the operation identifier that names
 #: its generated module.
 #:
-#: The margin breakdown route is listed last because it is the member a reader
-#: is most likely to think does not belong. It does: slice 7 later absorbs it
-#: into a five-endpoint collapse, so this slice renames a route that slice will
-#: then take — churn that was weighed and decided by the ledger's ownership
-#: rule, which lets a debt move earlier and never later.
+#: ⚠ **THE FAMILY WAS FOUR AND IS THREE (#501).** The margin breakdown route was
+#: the member a reader was most likely to think did not belong, and it did:
+#: slice 2 renamed a route it knew slice 7 would take away, which the ledger's
+#: ownership rule allows — a debt may move earlier and never later. Slice 7 has
+#: now taken it, so the churn that was weighed is spent and the family is the
+#: registry's own three operations.
 FAMILY = frozenset({
     ("put", "/api/v1/metering/grouping-fields",
      "api_v1_metering_endpoints_declare_grouping_fields"),
@@ -70,8 +71,6 @@ FAMILY = frozenset({
      "api_v1_metering_endpoints_list_grouping_fields"),
     ("get", "/api/v1/metering/grouping-fields/{key}/values",
      "api_v1_metering_endpoints_list_grouping_field_values"),
-    ("get", "/api/v1/margin/by-grouping-field",
-     "apps_subscriptions_api_margin_endpoints_margin_by_grouping_field"),
 })
 
 
@@ -111,20 +110,24 @@ class TheRouteFamilyIsPublishedUnderTheCanonicalNounTest(TestCase):
             _operations_answering_to_the_canonical_noun(self.document),
             set(FAMILY))
 
-    def test_the_breakdown_row_names_the_value_rather_than_the_axis(self):
+    def test_the_grouped_row_names_the_value_rather_than_the_axis(self):
         """The vacuity guard, half one: the document read is the real one.
 
         An equality over a set collected from a document that failed to load,
         or whose schemas were renamed out from under the collector, would pass
-        in silence. So name the schema this ticket reshaped and prove it
-        carries the property that replaced the retired one.
+        in silence. So name the schema that carries the property and prove it
+        is there.
 
-        The property is the ledger's own `expected` for this site. Why a row
-        names the value and not the axis is argued once, on the schema itself
-        in `apps/subscriptions/api/margin_schemas.py`, rather than repeated
-        wherever the name shows up.
+        ⚠ **IT NAMED THE MARGIN BREAKDOWN'S ROW UNTIL #501 DELETED IT**, which
+        is the failure this guard exists to catch happening to the guard itself.
+        The property outlived the schema: the one economic query's row declares
+        it, so the claim is now made against the surface that publishes it, and
+        against the only one — which is what the collapse was for.
+
+        Why a row names the value and not the axis is argued once, on the schema
+        itself, rather than repeated wherever the name shows up.
         """
-        row = self.document["components"]["schemas"]["GroupingFieldMarginRow"]
+        row = self.document["components"]["schemas"]["EconomicRowOut"]
         self.assertIn("grouping_field_value", row["properties"])
 
     def test_the_collector_would_catch_a_fifth_operation(self):

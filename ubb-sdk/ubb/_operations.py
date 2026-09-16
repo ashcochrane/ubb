@@ -108,10 +108,6 @@ API_V1_BILLING_ENDPOINTS_REFUND_USAGE = Operation(
     'api_v1_billing_endpoints_refund_usage',
     'post',
     '/api/v1/billing/customers/{customer_id}/refund')
-API_V1_BILLING_ENDPOINTS_REVENUE_ANALYTICS = Operation(
-    'api_v1_billing_endpoints_revenue_analytics',
-    'get',
-    '/api/v1/billing/analytics/revenue')
 API_V1_BILLING_ENDPOINTS_VOID_GRANT = Operation(
     'api_v1_billing_endpoints_void_grant',
     'post',
@@ -292,14 +288,6 @@ API_V1_METERING_ENDPOINTS_TASK_ANALYTICS = Operation(
     'api_v1_metering_endpoints_task_analytics',
     'get',
     '/api/v1/metering/analytics/tasks')
-API_V1_METERING_ENDPOINTS_USAGE_ANALYTICS = Operation(
-    'api_v1_metering_endpoints_usage_analytics',
-    'get',
-    '/api/v1/metering/analytics/usage')
-API_V1_METERING_ENDPOINTS_USAGE_TIMESERIES = Operation(
-    'api_v1_metering_endpoints_usage_timeseries',
-    'get',
-    '/api/v1/metering/analytics/usage/timeseries')
 API_V1_METERING_ENDPOINTS_WITHDRAW_COST_BOOK = Operation(
     'api_v1_metering_endpoints_withdraw_cost_book',
     'delete',
@@ -324,8 +312,6 @@ API_V1_ME_ENDPOINTS_GET_INVOICES = Operation(
     'api_v1_me_endpoints_get_invoices', 'get', '/api/v1/me/invoices')
 API_V1_ME_ENDPOINTS_GET_TRANSACTIONS = Operation(
     'api_v1_me_endpoints_get_transactions', 'get', '/api/v1/me/transactions')
-API_V1_ME_ENDPOINTS_GET_USAGE_SUMMARY = Operation(
-    'api_v1_me_endpoints_get_usage_summary', 'get', '/api/v1/me/usage-summary')
 API_V1_ME_ENDPOINTS_LIST_GRANTS = Operation(
     'api_v1_me_endpoints_list_grants', 'get', '/api/v1/me/grants')
 API_V1_ME_ENDPOINTS_LIST_SUBSCRIPTION_INVOICES = Operation(
@@ -352,6 +338,10 @@ API_V1_PLATFORM_ENDPOINTS_GET_BUSINESS = Operation(
     'api_v1_platform_endpoints_get_business',
     'get',
     '/api/v1/platform/accounts/business/{external_id}')
+API_V1_PLATFORM_ENDPOINTS_GET_CUSTOMER = Operation(
+    'api_v1_platform_endpoints_get_customer',
+    'get',
+    '/api/v1/platform/customers/{customer_id}')
 API_V1_SANDBOX_ENDPOINTS_RESET_SANDBOX = Operation(
     'api_v1_sandbox_endpoints_reset_sandbox', 'post', '/api/v1/sandbox/reset')
 API_V1_SPEND_CONTROL_ENDPOINTS_STOPS_AND_BREACHES = Operation(
@@ -536,10 +526,6 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_BUSINESS_MARGIN = Operation(
     'apps_subscriptions_api_margin_endpoints_business_margin',
     'get',
     '/api/v1/margin/business/{external_id}')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_CUSTOMER_MARGIN = Operation(
-    'apps_subscriptions_api_margin_endpoints_customer_margin',
-    'get',
-    '/api/v1/margin/customers/{customer_id}')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_SUPPLIED_REVENUE = Operation(
     'apps_subscriptions_api_margin_endpoints_get_supplied_revenue',
     'get',
@@ -548,22 +534,6 @@ APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_GET_THRESHOLD = Operation(
     'apps_subscriptions_api_margin_endpoints_get_threshold',
     'get',
     '/api/v1/margin/threshold')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_LIST_MARGIN = Operation(
-    'apps_subscriptions_api_margin_endpoints_list_margin',
-    'get',
-    '/api/v1/margin/customers')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_BY_GROUPING_FIELD = Operation(
-    'apps_subscriptions_api_margin_endpoints_margin_by_grouping_field',
-    'get',
-    '/api/v1/margin/by-grouping-field')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_SUMMARY = Operation(
-    'apps_subscriptions_api_margin_endpoints_margin_summary',
-    'get',
-    '/api/v1/margin/summary')
-APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_TREND = Operation(
-    'apps_subscriptions_api_margin_endpoints_margin_trend',
-    'get',
-    '/api/v1/margin/customers/{customer_id}/trend')
 APPS_SUBSCRIPTIONS_API_MARGIN_ENDPOINTS_MARGIN_UNPROFITABLE = Operation(
     'apps_subscriptions_api_margin_endpoints_margin_unprofitable',
     'get',

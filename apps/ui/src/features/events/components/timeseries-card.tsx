@@ -18,7 +18,6 @@ import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { dimensionLabel, TIMESERIES_GROUP_BY } from "@/lib/labels";
 
 import { useUsageTimeseries } from "../api/queries";
-import { asTimeseriesPoints } from "../api/types";
 import { pivotTimeseries } from "../lib/timeseries";
 
 const UsageTimeseriesChart = lazy(() => import("./usage-timeseries-chart"));
@@ -43,10 +42,7 @@ export function TimeseriesCard({
     group_by: groupBy,
   });
 
-  const points = useMemo(
-    () => asTimeseriesPoints(query.data?.series ?? []),
-    [query.data],
-  );
+  const points = useMemo(() => query.data ?? [], [query.data]);
   const pivot = useMemo(
     () => pivotTimeseries(points, groupBy !== undefined),
     [points, groupBy],

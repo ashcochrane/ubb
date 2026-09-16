@@ -399,11 +399,14 @@ class TheClaimedCostIsAcceptedAnywhereTest(_RecordingCase):
                     claimed_provider_cost_micros=CLAIMED)
 
         response = self.http.get(
-            "/api/v1/metering/analytics/usage",
+            "/api/v1/metering/analytics/economics",
+            {"measures": "supplier_cogs"},
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
         self.assertEqual(response.status_code, 200, response.content)
-        self.assertEqual(response.json()["total_provider_cost_micros"], 4_000)
+        cost = next(entry for entry in response.json()["rows"][0]["measures"]
+                    if entry["measure"] == "supplier_cogs")
+        self.assertEqual(cost["amount_micros"], 4_000)
 
 
 class TheWholeRequestIsPublishedTest(SimpleTestCase):
@@ -501,6 +504,14 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         the per-family totals row publish the price a posting has — the
         response side of the line again, on the one report whose subject is
         what was spent past a stop.
+
+        SEVEN SINCE #501, AND THE FALL IS THE POINT RATHER THAN A CORRECTION.
+        The grouped margin row and the per-Event-Type usage row went with the
+        routes that served them, so two of the nine response schemas carrying
+        this property are gone. The one economic query publishes the same money
+        under a MEASURE's own name with a state beside it, which is why nothing
+        on this list replaces them: the property name itself is what the
+        collapse stopped using for a total.
         """
         self.assertNotIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertNotIn(
@@ -509,9 +520,8 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         carrying = {name for name, schema in self.schemas.items()
                     if "billed_cost_micros" in schema.get("properties", {})}
         self.assertEqual(carrying, {
-            "GroupingFieldMarginRow", "RecordUsageResponse",
-            "UnresolvedQueueRow", "UsageEventDetailOut", "UsageEventOut",
-            "UsageMetricOut", "ItemisedEventRow", "ItemisedEventsOut",
+            "RecordUsageResponse", "UnresolvedQueueRow", "UsageEventDetailOut",
+            "UsageEventOut", "ItemisedEventRow", "ItemisedEventsOut",
             "SpendControlFamilyTotalsRow"})
 
 

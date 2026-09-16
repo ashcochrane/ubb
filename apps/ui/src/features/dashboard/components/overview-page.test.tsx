@@ -49,8 +49,17 @@ describe("OverviewPage", () => {
     // only be lower.
     expect(screen.getByText("at least $563.60")).toBeInTheDocument();
     expect(screen.getByText("at most 33.9% margin")).toBeInTheDocument();
-    expect(screen.getByText("Customers with usage")).toBeInTheDocument();
-    // Events total from the windowed usage analytics.
+    // ⚠ **AWAITED, NOT READ SYNCHRONOUSLY, AND THE REASON IS #501.** This
+    // card used to read `customer_count` off the SAME response as the three
+    // above it — the deleted margin summary published the count as a field,
+    // so awaiting the revenue figure guaranteed the count had arrived too.
+    // Counting customers is now the row count of the window grouped by the
+    // customer axis, which is a SECOND request, so the card arrives on its own
+    // schedule and a synchronous read races it. (It is not a second round trip:
+    // the economics table below asks the identical question and shares the
+    // cache entry. It is a second PROMISE, which is what matters here.)
+    expect(await screen.findByText("Customers with usage")).toBeInTheDocument();
+    // Events total, back on the first response.
     expect(await screen.findByText("93.6k")).toBeInTheDocument();
   });
 

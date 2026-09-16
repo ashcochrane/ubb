@@ -11,29 +11,24 @@ import {
   CUSTOMER_A_ID,
   CUSTOMER_B_ID,
   CUSTOMER_C_ID,
-  CUSTOMER_MARGIN_BY_ID,
-  MARGIN_CUSTOMERS,
-  MARGIN_PERIOD,
+  CUSTOMER_CHOICES,
   TASK_KILLED_ID,
   type MockEvent,
 } from "./mock-data";
 import {
   asStopContextEntries,
-  WIRE_GROUP_VALUE_KEY,
   type AnalyticsParams,
   type CloseTaskResult,
-  type CustomerMargin,
-  type MarginCustomers,
+  type CustomerChoice,
   type RefundBody,
   type RefundResult,
   type TaskOutcome,
   type TimeseriesParams,
-  type UsageAnalytics,
+  type Economics,
   type UsageEventDetail,
   type UsageEventRow,
   type UsageListFilters,
   type UsagePage,
-  type UsageTimeseries,
 } from "./types";
 
 const KNOWN_CUSTOMERS = new Set([CUSTOMER_A_ID, CUSTOMER_B_ID, CUSTOMER_C_ID]);
@@ -216,47 +211,17 @@ export async function getUsageEvent(eventId: string): Promise<UsageEventDetail> 
   return match.detail;
 }
 
-interface GroupTotals {
-  event_count: number;
-  billed: number;
-  provider: number;
-}
+// ⚠ THE TWO HELPERS THAT BUILT THE REPORT'S BREAKDOWN BLOCKS WERE HERE AND
+// ARE GONE (#501). One grouped events by an axis and the other emitted the
+// older `by_*` row shape, with its own key for a customer and its own name for
+// billed cost. The one economic query answers a grouping when it is asked for
+// one, in a row the contract declares — so a mock has one row shape to build
+// rather than two that had to agree.
 
-function groupBy(
-  events: MockEvent[],
-  keyOf: (detail: UsageEventDetail) => string,
-): Map<string, GroupTotals> {
-  const groups = new Map<string, GroupTotals>();
-  for (const event of events) {
-    const key = keyOf(event.detail);
-    if (key === "") continue;
-    const totals = groups.get(key) ?? { event_count: 0, billed: 0, provider: 0 };
-    totals.event_count += 1;
-    totals.billed = addKnownCost(totals.billed, event.detail.billed_cost_micros);
-    totals.provider = addKnownCost(
-      totals.provider, event.detail.provider_cost_micros);
-    groups.set(key, totals);
-  }
-  return groups;
-}
-
-function legacyRows(
-  groups: Map<string, GroupTotals>,
-  keyName: string,
-): Array<Record<string, unknown>> {
-  return [...groups.entries()]
-    .sort((a, b) => b[1].billed - a[1].billed)
-    .map(([key, totals]) => ({
-      [keyName]: key,
-      event_count: totals.event_count,
-      total_cost_micros: totals.billed,
-      total_provider_cost_micros: totals.provider,
-    }));
-}
 
 export async function getUsageAnalytics(
   params: AnalyticsParams,
-): Promise<UsageAnalytics> {
+): Promise<Economics> {
   await mockDelay();
   const filters: UsageListFilters = {
     past_limit: params.past_limit,
@@ -276,23 +241,50 @@ export async function getUsageAnalytics(
     billed = addKnownCost(billed, event.detail.billed_cost_micros);
     provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
+  const unresolved = countUnresolved(events);
+  const unpriced = countUnpriced(events);
   return {
-    total_events: events.length,
-    total_billed_cost_micros: billed,
-    total_provider_cost_micros: provider,
-    unresolved_event_count: countUnresolved(events),
-    unpriced_event_count: countUnpriced(events),
-    usage_markup_margin_micros: billed - provider,
-    by_provider: legacyRows(groupBy(events, (d) => d.provider), "provider"),
-    by_event_type: legacyRows(groupBy(events, (d) => d.event_type), "event_type"),
-    by_customer: [],
-    by_task_type: legacyRows(
-      groupBy(events, (d) => d.grouping_fields["dim1"] ?? ""),
-      "task_type",
-    ),
-    by_tag: [],
-    breakdowns: {},
-  };
+    period_start: params.start_date,
+    period_end: params.end_date,
+    group_by: [],
+    bucket: null,
+    basis: "recorded",
+    economic_data_available_from: "2020-07-01",
+    measurement_data_available_from: "2026-01-01",
+    // ⚠ ONE ROW, ALWAYS. An ungrouped, unbucketed question has exactly one —
+    // zeros over an empty window, which is a measured zero rather than an
+    // absence — so the page never has to handle an empty list here.
+    rows: [{
+      bucket_start: null,
+      grouping_field_value: [],
+      grouping_field_value_status: [],
+      measures: [
+        {
+          measure: "supplier_cogs",
+          amount_micros: provider,
+          status: unresolved ? "incomplete" : "known",
+          unresolved_event_count: unresolved,
+        },
+        {
+          measure: "customer_revenue",
+          amount_micros: billed,
+          status: unpriced ? "incomplete" : "known",
+          unpriced_event_count: unpriced,
+        },
+        {
+          measure: "gross_margin",
+          amount_micros: billed - provider,
+          status: unresolved || unpriced ? "incomplete" : "known",
+        },
+        {
+          measure: "recorded_events",
+          event_count: events.length,
+          status: "known",
+        },
+      ],
+    }],
+    context: [],
+  } as Economics;
 }
 
 function dimensionValue(detail: UsageEventDetail, groupKey: string): string {
@@ -311,7 +303,7 @@ function dimensionValue(detail: UsageEventDetail, groupKey: string): string {
 
 export async function getUsageTimeseries(
   params: TimeseriesParams,
-): Promise<UsageTimeseries> {
+): Promise<Economics> {
   await mockDelay();
   const events = ALL_EVENTS.filter(
     (event) =>
@@ -335,41 +327,66 @@ export async function getUsageTimeseries(
     bucket.count += 1;
     buckets.set(key, bucket);
   }
-  const series = [...buckets.entries()]
+  const rows = [...buckets.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, totals]) => {
       const [bucket = "", groupValue] = key.split("|");
-      const row: Record<string, unknown> = {
-        bucket,
-        provider_cost_micros: totals.provider,
-        billed_cost_micros: totals.billed,
-        markup_micros: totals.billed - totals.provider,
-        event_count: totals.count,
+      const provider = totals.provider;
+      const billed = totals.billed;
+      const unresolved = 0;
+      const unpriced = 0;
+      return {
+        bucket_start: bucket,
+        // ⚠ POSITIONAL, aligned with the `group_by` the answer echoes: a
+        // grouped question carries one value, an ungrouped one carries none.
+        grouping_field_value: groupValue === undefined ? [] : [groupValue],
+        grouping_field_value_status:
+          groupValue === undefined ? [] : ["recorded"],
+      measures: [
+        {
+          measure: "supplier_cogs",
+          amount_micros: provider,
+          status: unresolved ? "incomplete" : "known",
+          unresolved_event_count: unresolved,
+        },
+        {
+          measure: "customer_revenue",
+          amount_micros: billed,
+          status: unpriced ? "incomplete" : "known",
+          unpriced_event_count: unpriced,
+        },
+        {
+          measure: "gross_margin",
+          amount_micros: billed - provider,
+          status: unresolved || unpriced ? "incomplete" : "known",
+        },
+        ...(params.group_by
+          ? []
+          : [{
+              measure: "recorded_events",
+              event_count: totals.count,
+              status: "known",
+            }]),
+        ],
       };
-      // Emitted under the key the backend still uses, taken by reference from
-      // the narrowing module rather than re-spelled here.
-      if (groupValue !== undefined) row[WIRE_GROUP_VALUE_KEY] = groupValue;
-      return row;
     });
   return {
-    granularity: "day",
-    group_by: params.group_by ?? "",
-    series,
-  };
+    period_start: params.start_date,
+    period_end: params.end_date,
+    group_by: params.group_by ? [`field:${params.group_by}`] : [],
+    bucket: "day",
+    basis: "recorded",
+    economic_data_available_from: "2020-07-01",
+    measurement_data_available_from: "2026-01-01",
+    rows,
+    context: [],
+  } as unknown as Economics;
 }
 
-export async function listMarginCustomers(): Promise<MarginCustomers> {
-  await mockDelay();
-  return { customers: MARGIN_CUSTOMERS, period: MARGIN_PERIOD };
-}
 
-export async function getCustomerMargin(
-  customerId: string,
-): Promise<CustomerMargin> {
+export async function listCustomerChoices(): Promise<CustomerChoice[]> {
   await mockDelay();
-  const margin = CUSTOMER_MARGIN_BY_ID[customerId];
-  if (!margin) throw notFound("No customer with that id.");
-  return margin;
+  return CUSTOMER_CHOICES.map((row) => ({ ...row }));
 }
 
 // --- Mutations (session-coherent state) ------------------------------------

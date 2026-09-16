@@ -66,7 +66,7 @@ export function buildDailyRows(): RevenueDailyRow[] {
     rows.push({
       day: date.toISOString().slice(0, 10),
       provider_cost_micros: provider,
-      billed_cost_micros: billed,
+      revenue_micros: billed,
       event_count: Math.round((provider / 1200) * (0.8 + noise(i + 900) * 0.4)),
       // TODAY IS THE ONE INCOMPLETE DAY, and it is today on purpose (#330).
       // A supplier cost that has not arrived is a fact about the day still in

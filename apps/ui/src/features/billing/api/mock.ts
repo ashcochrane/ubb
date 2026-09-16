@@ -20,7 +20,7 @@ import type {
   DebitRequest,
   PostpaidConfig,
   PostpaidConfigIn,
-  RevenueAnalyticsResponse,
+  Economics,
   TenantUsageInvoicePage,
 } from "./types";
 
@@ -36,40 +36,55 @@ let transactionSeq = 4200;
 
 const ALL_DAILY_ROWS = buildDailyRows();
 
-export async function getRevenueAnalytics(range: {
+export async function getRevenueWindow(range: {
   start_date?: string;
   end_date?: string;
-}): Promise<RevenueAnalyticsResponse> {
+}): Promise<Economics> {
   await mockDelay();
   const daily = rowsInRange(ALL_DAILY_ROWS, range);
-  const totalProvider = daily.reduce((sum, row) => sum + row.provider_cost_micros, 0);
-  const totalBilled = daily.reduce((sum, row) => sum + row.billed_cost_micros, 0);
   return {
-    // The real endpoint returns untyped objects here; spreading keeps the
-    // mock honest about that shape.
-    daily: daily.map((row) => ({ ...row })),
-    total_provider_cost_micros: totalProvider,
-    // SUMMED FROM THE ROWS RATHER THAN STATED (#330). The window's count is
-    // the sum of its days' counts on the server too, so a mock that wrote its
-    // own would be a second definition — and would go on saying "nothing was
-    // excluded" whatever the rows said. The fixture puts uncosted events on
-    // today, so every window ending today is partial and the tiles below it
-    // read "at least".
-    unresolved_event_count: daily.reduce(
-      (sum, row) => sum + row.unresolved_event_count,
-      0,
-    ),
-    total_billed_cost_micros: totalBilled,
-    // The price half's count, summed from the rows on the same argument
-    // (#351). The daily fixtures resolve every price, so this window is
-    // complete on the revenue side and a floor on the cost side — which is the
-    // asymmetry two counts exist to express.
-    unpriced_event_count: daily.reduce(
-      (sum, row) => sum + (row.unpriced_event_count ?? 0),
-      0,
-    ),
-    total_markup_micros: totalBilled - totalProvider,
-  };
+    period_start: range.start_date ?? "",
+    period_end: range.end_date ?? "",
+    group_by: [],
+    bucket: "day",
+    basis: "recorded",
+    economic_data_available_from: "2020-07-01",
+    measurement_data_available_from: "2026-01-01",
+    // ⚠ THE WINDOW'S TOTALS ARE NOT A FIELD ANY MORE, AND THAT IS THE POINT.
+    // The report this replaced published its own totals beside its day rows,
+    // which was a second definition of the same sum; the one query answers the
+    // buckets and the console adds them up, so the two cannot disagree.
+    rows: daily.map((row) => ({
+      bucket_start: `${row.day}T00:00:00+00:00`,
+      grouping_field_value: [],
+      grouping_field_value_status: [],
+      measures: [
+        {
+          measure: "supplier_cogs",
+          amount_micros: row.provider_cost_micros,
+          status: row.unresolved_event_count ? "incomplete" : "known",
+          unresolved_event_count: row.unresolved_event_count,
+        },
+        {
+          measure: "customer_revenue",
+          amount_micros: row.revenue_micros,
+          status: row.unpriced_event_count ? "incomplete" : "known",
+          unpriced_event_count: row.unpriced_event_count,
+        },
+        {
+          measure: "gross_margin",
+          amount_micros: row.revenue_micros - row.provider_cost_micros,
+          status: row.unresolved_event_count ? "incomplete" : "known",
+        },
+        {
+          measure: "recorded_events",
+          event_count: row.event_count,
+          status: "known",
+        },
+      ],
+    })),
+    context: [],
+  } as Economics;
 }
 
 export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {

@@ -1,8 +1,9 @@
 // Real API calls for the billing feature. Every call goes through `unwrap`
 // so failures always reject with a typed ApiProblem.
 
-import { billingApi } from "@/api/client";
+import { billingApi, meteringApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
+import { EVERY_MEASURE } from "@/lib/economic-query";
 
 import type {
   CustomerSpendPool,
@@ -12,17 +13,29 @@ import type {
   DebitRequest,
   PostpaidConfig,
   PostpaidConfigIn,
-  RevenueAnalyticsResponse,
+  Economics,
   TenantUsageInvoicePage,
 } from "./types";
 
-export async function getRevenueAnalytics(range: {
+/** The window's revenue and cost, day by day.
+ *
+ *  ⚠ ON THE METERING PREFIX, because that is where the postings both figures
+ *  are read from live. The billing route this replaced was a second definition
+ *  of the same two numbers over the same rows (#501). */
+export async function getRevenueWindow(range: {
   start_date?: string;
   end_date?: string;
-}): Promise<RevenueAnalyticsResponse> {
+}): Promise<Economics> {
   return unwrap(
-    await billingApi.GET("/analytics/revenue", {
-      params: { query: { start_date: range.start_date, end_date: range.end_date } },
+    await meteringApi.GET("/analytics/economics", {
+      params: {
+        query: {
+          start_date: range.start_date,
+          end_date: range.end_date,
+          measures: [...EVERY_MEASURE],
+          bucket: "day",
+        },
+      },
     }),
   );
 }

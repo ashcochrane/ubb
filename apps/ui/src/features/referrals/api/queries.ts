@@ -121,7 +121,7 @@ export function usePayoutExport(enabled: boolean) {
 export function useMarginCustomerPicker(enabled: boolean) {
   return useQuery({
     queryKey: referralKeys.marginCustomerPicker,
-    queryFn: () => referralsApi.listMarginCustomers(),
+    queryFn: () => referralsApi.listCustomerChoices(),
     enabled,
     staleTime: 60_000,
     retry: 0,

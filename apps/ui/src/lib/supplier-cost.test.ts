@@ -53,8 +53,10 @@ describe("supplierCostTotal", () => {
 
 describe("marginBound", () => {
   // The backend states this rather than the console inferring it: a markup is
-  // billed minus the RESOLVED supplier cost, "so where the count is non-zero it
-  // is an upper bound rather than a figure" (`get_revenue_analytics`).
+  // billed minus the RESOLVED supplier cost, and the contract says so on the
+  // measure itself: `EconomicMeasureOut.status` reads `incomplete` when "the
+  // figure is a bound rather than a total" (#501 — it used to be
+  // `get_revenue_analytics`, one of the five definitions that collapsed).
   it("renders a margin beside a whole cost as the plain amount", () => {
     expect(marginBound(9_000_000, WHOLE, "usd")).toBe("$9.00");
   });

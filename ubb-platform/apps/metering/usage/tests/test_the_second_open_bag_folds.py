@@ -343,15 +343,25 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         self.tenant, self.customer = _tenant_and_customer()
 
     def test_the_bag_is_not_a_groupable_column(self):
-        """The margin breakdown's `group_by` is a closed list of resolved
-        columns, and the open bag is not one of them — nor is any key inside
+        """The one economic query's axes are the ones the discovery contract
+        publishes, and the open bag is not one of them — nor is any key inside
         it, which is the whole difference between a declared axis and a bag.
+
+        ⚠ IT ASKED THE GROUPED MARGIN UNTIL #501 DELETED IT, and the claim moved
+        to the query that replaced it rather than dying with the surface: the
+        axis word carries its own kind now, so the bag's name is refused twice
+        over — as a kind nobody declared, and as a field nobody declared.
         """
-        from apps.metering.queries import get_dimensional_margin
+        from apps.metering.queries import economics, grouping_axis
+        from core.vocabulary import (
+            ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_MEASURE_SUPPLIER_COGS)
         for named in (SURVIVING_COLUMN, f"{SURVIVING_COLUMN}__department"):
             with self.subTest(group_by=named):
                 with self.assertRaises(ValueError):
-                    get_dimensional_margin(self.tenant.id, group_by=named)
+                    economics(self.tenant.id,
+                              measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                              group_by=[grouping_axis(
+                                  ANALYTICS_GROUPING_KIND_FIELD, named)])
 
     def test_the_bag_is_not_a_declarable_grouping_field_target(self):
         """A declared Grouping Field binds a tenant key to a physical SLOT.

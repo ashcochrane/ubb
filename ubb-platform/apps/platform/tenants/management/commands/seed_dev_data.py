@@ -209,7 +209,9 @@ class Command(BaseCommand):
         self.stdout.write(f'# Per-customer cost analytics')
         self.stdout.write(
             f'curl -H "Authorization: Bearer {raw_key}" '
-            f'"http://localhost:8001/api/v1/metering/analytics/usage?customer_id={customer.id}"\n')
+            f'"http://localhost:8001/api/v1/metering/analytics/economics'
+            f'?measures=supplier_cogs&measures=customer_revenue'
+            f'&measures=gross_margin&customer_id={customer.id}"\n')
         self.stdout.write(f'# Me balance (widget JWT)')
         self.stdout.write(
             f'curl -H "Authorization: Bearer {widget_token}" '

@@ -29,8 +29,18 @@ export type CeilingUtilisationRow = RootSchemas["CeilingUtilisationRow"];
 /** The pool's status pair for the customer the filter names — the billing feature's own shape, re-published here. */
 export type CustomerSpendPoolStatus = RootSchemas["CustomerSpendPoolStatusOut"];
 
-/** The margin list, read for the customer filter's choices — the same raw shape the events feature caches. */
-export type MarginCustomers = RootSchemas["MarginListOut"];
+/**
+ * One choice in a customer picker.
+ *
+ * ⚠ **IT WAS A MARGIN ROW AND IS AN IDENTITY (#501).** This feature read the
+ * per-customer margin list for the ids alone — every money field on it was
+ * ignored here — and that route is gone with the other eight the one economic
+ * query replaced. Grouping that query by the customer axis answers the same
+ * question and nothing more, which is the shape this always wanted.
+ */
+export interface CustomerChoice {
+  customer_id: string;
+}
 
 /**
  * The filters `GET /spend-controls/stops-and-breaches` takes, as the console

@@ -660,29 +660,23 @@ class UBBClient:
             usage_line_item_group_by, consolidate_with_subscription)
 
     # ---- margin delegates ----
-
-    def get_customer_margin(self, customer_id, start_date=None, end_date=None):
-        return self._require_metering().get_customer_margin(customer_id, start_date, end_date)
-
-    def get_margin_by_grouping_field(self, *, group_by="provider", tag_key=None,
-                                     start_date=None, end_date=None):
-        return self._require_metering().get_margin_by_grouping_field(
-            group_by=group_by, tag_key=tag_key,
-            start_date=start_date, end_date=end_date)
+    #
+    # THREE OF THEM WENT WITH THE ROUTES THEY FORWARDED TO (#501) — one
+    # customer's margin, the grouped breakdown and the trend. What replaces
+    # them is one economic query, named by MEASURES and AXES rather than by a
+    # route; `ubb/metering.py` carries the mapping from each removed call to the
+    # request that answers it.
+    #
+    # ⚠ AND TWO DEAD ONES WENT WITH THEM THAT NO TICKET HAD NOTICED. The
+    # recurring revenue pair's delegates outlived the methods they forwarded to
+    # (#496 removed those and left these), so calling either raised
+    # `AttributeError` from inside the client rather than answering anything —
+    # a facade that forwards to nothing is worse than one that does not forward
+    # at all, because it looks callable. `tests/test_margin_client.py` now
+    # asserts the absence on BOTH objects, which is what would have caught it.
 
     def get_unprofitable_customers(self, period_start=None):
         return self._require_metering().get_unprofitable_customers(period_start)
-
-    def get_margin_trend(self, customer_id, periods=6):
-        return self._require_metering().get_margin_trend(customer_id, periods)
-
-    def set_customer_revenue(self, customer_id, recurring_amount_micros, interval="month",
-                             currency="usd", effective_from=None, effective_to=None):
-        return self._require_metering().set_customer_revenue(
-            customer_id, recurring_amount_micros, interval, currency, effective_from, effective_to)
-
-    def get_customer_revenue(self, customer_id):
-        return self._require_metering().get_customer_revenue(customer_id)
 
     # ---- NO MARKUP DELEGATES (#369) ----
     #

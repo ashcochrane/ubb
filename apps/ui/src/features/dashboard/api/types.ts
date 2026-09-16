@@ -1,16 +1,37 @@
 // Dashboard (CFO overview) API shapes.
 //
 // Typed responses come straight from the generated schema map. The contract
-// leaves four surfaces untyped (additionalProperties: true); their concrete
+// leaves three surfaces untyped (additionalProperties: true); their concrete
 // runtime shapes are backend-verified and hand-typed below, each with a single
 // narrowing function — the only place a cast-like assertion may live.
+//
+// ⚠ **FIVE OF THIS FEATURE'S READS WERE FIVE SEPARATE ROUTES AND ARE NOW ONE
+// QUESTION (#501)**: the margin summary, the per-customer margin list, the
+// usage report, its timeseries and the billing revenue report. What that
+// changed here is the shape of what arrives — a row per bucket per group, each
+// carrying one entry per requested MEASURE — so the narrowings below turn one
+// answer into the three views this feature has always rendered rather than
+// turning four answers into four.
+//
+// Money stays in integer micros end-to-end; only percentages (display-only)
+// use floats.
 
-import type {
-  BillingSchemas,
-  MarginSchemas,
-  MeteringSchemas,
-  TenantSchemas,
-} from "@/api/types";
+import type { MeteringSchemas, MarginSchemas, TenantSchemas } from "@/api/types";
+import {
+  amountOn,
+  axisValueOn,
+  completenessOn,
+  CUSTOMER_REVENUE,
+  eventsOn,
+  GROSS_MARGIN,
+  marginPercentOf,
+  measureOn,
+  onlyRow,
+  orZero,
+  SUPPLIER_COGS,
+  type EconomicRow,
+  type EconomicsAnswer,
+} from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
 
 /** A fully resolved inclusive date window (YYYY-MM-DD, UTC). */
@@ -19,14 +40,9 @@ export type Window = Required<DateRange>;
 // ---------------------------------------------------------------------------
 // Generated (fully typed) responses
 
-export type MarginSummary = MarginSchemas["MarginSummaryOut"];
-export type MarginCustomerList = MarginSchemas["MarginListOut"];
-export type MarginCustomerRow = MarginSchemas["CustomerMarginListRow"];
+export type Economics = EconomicsAnswer;
 export type Unprofitable = MarginSchemas["UnprofitableOut"];
 export type UnprofitableRow = MarginSchemas["UnprofitableCustomerRow"];
-export type UsageAnalytics = MeteringSchemas["UsageAnalyticsResponse"];
-export type UsageTimeseries = MeteringSchemas["UsageTimeseriesResponse"];
-export type RevenueAnalytics = BillingSchemas["RevenueAnalyticsResponse"];
 export type ApiKeyList = TenantSchemas["ApiKeyListResponse"];
 export type PricingBookList = MeteringSchemas["PaginatedPricingBooks"];
 
@@ -53,65 +69,61 @@ export const BREAKDOWN_DIMENSIONS = [
 export type BreakdownDimension = (typeof BREAKDOWN_DIMENSIONS)[number];
 
 // ---------------------------------------------------------------------------
-// Untyped-in-schema responses — hand-typed + narrowed
-// [backend-verified shape — see discovery spec]
+// Narrowed views of the one query
 
 /**
- * One row of `RevenueAnalyticsResponse.daily` (ordered by day asc).
+ * The window's economics for the whole workspace — the ungrouped, unbucketed
+ * answer, which always has exactly one row.
  *
- * `unresolved_event_count` is that day's OWN completeness — how many of its
- * events carry a supplier cost UBB never learned. Per row rather than per
- * window because a reader hovering one point is asking about that point.
+ * ⚠ `gross_margin_micros` IS NULLABLE AND ITS NULL IS NOT A ZERO. A margin UBB
+ * cannot state is absent rather than small; the two counts beside it say how
+ * far the figures that ARE stated can be off, in opposite directions.
  */
-export interface RevenueDailyRow {
+export interface TenantEconomics {
+  provider_cost_micros: number;
+  total_revenue_micros: number;
+  gross_margin_micros: number | null;
+  margin_percentage: number;
+  unresolved_event_count: number;
+  unpriced_event_count: number;
+  /** Recorded work in the window. Null where the answer did not ask for it —
+   *  a grouped question cannot, because a count across rows that mix Event
+   *  Types is the comparison the server refuses to answer. */
+  event_count: number | null;
+}
+
+/** One customer's row of the same answer, grouped by the customer axis. */
+export interface CustomerEconomicsRow extends TenantEconomics {
+  /** The customer's identity, which is what that axis groups. */
+  customer_id: string;
+}
+
+/** One point of the revenue-vs-cost chart, from a day-bucketed answer. */
+export interface RevenueCostPoint {
   day: string; // YYYY-MM-DD
-  provider_cost_micros: number;
-  billed_cost_micros: number;
+  revenue_micros: number;
+  provider_micros: number;
+  margin_micros: number | null;
   event_count: number;
+  /**
+   * That day's own uncosted events. It rides the point rather than the chart
+   * because the answer is per bucket, and because the point is what the
+   * tooltip is handed: a count kept beside the series would caveat every day
+   * for one day's missing invoice.
+   */
   unresolved_event_count: number;
 }
 
-/** One row of `UsageTimeseriesResponse.series` (ordered by bucket asc). */
-export interface TimeseriesRow {
-  bucket: string; // ISO datetime, day-truncated at granularity=day
-  provider_cost_micros: number;
-  billed_cost_micros: number;
-  markup_micros: number;
-  event_count: number;
-  unresolved_event_count: number;
-}
-
-/** One row of a `UsageAnalyticsResponse.breakdowns` entry. */
+/** One bar of the cost breakdown, from an answer grouped by one axis.
+ *
+ *  ⚠ NO EVENT COUNT, and `api.ts` carries the reason: a count compared across
+ *  rows that mix Event Types is the comparison the server refuses. */
 export interface BreakdownRow {
   /** The value of the axis this row is grouped by, or null when unset. */
   group_value: string | null;
-  event_count: number;
   total_provider_cost_micros: number;
-  total_billed_cost_micros: number;
+  total_revenue_micros: number;
 }
-
-/**
- * The key the backend puts a grouped value under on an untyped breakdown row.
- * It is NOT this console's word for it — `BreakdownRow.group_value` is — and it
- * is spelled here, once, because the row is untyped.
- *
- * **This constant is what #280 predicted would be the only console site to
- * move, and #312 is the release that moved it.** `api/v1/metering_endpoints.py`
- * now writes the property the DECLARED `/margin/by-grouping-field` rows have
- * always published, so all three rollups agree on one word. Server and console
- * moved in the same commit on purpose: renaming this read alone would have
- * rendered every bar "(unattributed)" against a live server while every console
- * test still passed.
- *
- * The rows are `additionalProperties: true` in the contract, so the generated
- * types cannot carry the name and a fixture cannot be type-checked into
- * matching it. `economics.test.ts` pins the pairing with a representative
- * payload instead.
- *
- * Exported so this feature's mock emits the same key the narrowing reads —
- * a mock that spelled it separately could drift from the backend silently.
- */
-export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
 /**
  * GET /connect/status — untyped `dict` in the schema.
@@ -125,94 +137,87 @@ export interface ConnectStatus {
   onboarded: boolean;
 }
 
-function num(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function economicsOf(row: EconomicRow | undefined): TenantEconomics {
+  const revenue = orZero(amountOn(row, CUSTOMER_REVENUE));
+  const margin = amountOn(row, GROSS_MARGIN);
+  return {
+    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    total_revenue_micros: revenue,
+    gross_margin_micros: margin,
+    margin_percentage: marginPercentOf(revenue, margin),
+    event_count: eventsOn(row),
+    ...completenessOn(row),
+  };
 }
 
-function str(value: unknown): string {
-  return typeof value === "string" ? value : "";
+/** The workspace's totals for the window. */
+export function toTenantEconomics(answer: Economics): TenantEconomics {
+  return economicsOf(onlyRow(answer));
 }
 
-/** Narrow the untyped `daily` rows of the revenue analytics response. */
-export function toRevenueDailyRows(response: RevenueAnalytics): RevenueDailyRow[] {
-  return response.daily.map((row) => ({
-    day: str(row["day"]),
-    provider_cost_micros: num(row["provider_cost_micros"]),
-    billed_cost_micros: num(row["billed_cost_micros"]),
-    event_count: num(row["event_count"]),
-    // `num`'s zero default means "this row left nothing out" — a claim, not a
-    // shrug. It stands only because the server writes the count on every row
-    // it emits; a row arriving without one is a backend regression rather than
-    // a shape this narrowing is entitled to answer for.
-    unresolved_event_count: num(row["unresolved_event_count"]),
-  }));
-}
-
-/** Narrow the untyped `series` rows of the usage timeseries response. */
-export function toTimeseriesRows(response: UsageTimeseries): TimeseriesRow[] {
-  return response.series.map((row) => ({
-    bucket: str(row["bucket"]),
-    provider_cost_micros: num(row["provider_cost_micros"]),
-    billed_cost_micros: num(row["billed_cost_micros"]),
-    markup_micros: num(row["markup_micros"]),
-    event_count: num(row["event_count"]),
-    unresolved_event_count: num(row["unresolved_event_count"]),
+/** One row per customer, from an answer grouped by the customer axis. */
+export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
+  return answer.rows.map((row) => ({
+    customer_id: axisValueOn(row) ?? "",
+    ...economicsOf(row),
   }));
 }
 
 /**
- * Narrow the breakdown rows for one axis. Prefers the uniform `breakdowns` map
- * (present when the grouping param was sent); falls back to the legacy `by_*`
- * arrays, which have two sharp edges: `by_customer` rows key the value as the
- * literal Django lookup `customer__external_id`, and all `by_*` rows call
- * billed cost `total_cost_micros` (the name drops "billed").
+ * Chart points from a day-bucketed answer.
+ *
+ * ⚠ The bucket's opening instant is an ISO datetime and the chart's key is a
+ * calendar day, so the day is its first ten characters. A bucketed answer
+ * always carries one — a posting's own instant is never absent — which is why
+ * this narrows without a fallback.
  */
-export function toBreakdownRows(
-  analytics: UsageAnalytics,
-  groupBy: BreakdownDimension,
-): BreakdownRow[] {
-  const fromBreakdowns = analytics.breakdowns[groupBy];
-  if (Array.isArray(fromBreakdowns)) {
-    return fromBreakdowns.map((raw) => {
-      const row = (typeof raw === "object" && raw !== null ? raw : {}) as Record<
-        string,
-        unknown
-      >;
-      const value = row[WIRE_GROUP_VALUE_KEY];
-      return {
-        group_value: typeof value === "string" ? value : null,
-        event_count: num(row["event_count"]),
-        total_provider_cost_micros: num(row["total_provider_cost_micros"]),
-        total_billed_cost_micros: num(row["total_billed_cost_micros"]),
-      };
-    });
-  }
+export function toRevenueCostPoints(answer: Economics): RevenueCostPoint[] {
+  return answer.rows.map((row) => ({
+    day: (row.bucket_start ?? "").slice(0, 10),
+    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
+    provider_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    margin_micros: amountOn(row, GROSS_MARGIN),
+    event_count: orZero(eventsOn(row)),
+    unresolved_event_count: completenessOn(row).unresolved_event_count,
+  }));
+}
 
-  const legacyRows: Array<Record<string, unknown>> =
-    groupBy === "provider"
-      ? analytics.by_provider
-      : groupBy === "event_type"
-        ? analytics.by_event_type
-        : groupBy === "task_type"
-          ? analytics.by_task_type
-          : analytics.by_customer;
-  const valueKey = groupBy === "customer" ? "customer__external_id" : groupBy;
-  return legacyRows.map((row) => {
-    const value = row[valueKey];
-    return {
-      group_value: typeof value === "string" ? value : null,
-      event_count: num(row["event_count"]),
-      total_provider_cost_micros: num(row["total_provider_cost_micros"]),
-      // Legacy rows name billed cost `total_cost_micros`.
-      total_billed_cost_micros: num(row["total_cost_micros"]),
-    };
-  });
+/**
+ * Breakdown rows from an answer grouped by one axis.
+ *
+ * ⚠ **A NULL VALUE IS A ROW LIKE ANY OTHER AND MUST NOT BE DROPPED.** The
+ * report this replaced bucketed every absence under one `(unattributed)`
+ * string; the row now carries `null` with a status saying whether the value was
+ * never recorded or whether the question does not apply to those rows. The bar
+ * chart renders the absence as a heading either way, and what the two statuses
+ * mean is the rendering ticket's to show.
+ */
+export function toBreakdownRows(answer: Economics): BreakdownRow[] {
+  return answer.rows.map((row) => ({
+    group_value: axisValueOn(row),
+    total_provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+    total_revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
+  }));
+}
+
+/** How many customers the window's usage reached — the row count of the answer
+ *  grouped by the customer axis, which is what "customers with usage" meant on
+ *  the summary route that published it as a field. */
+export function customerCount(answer: Economics): number {
+  return answer.rows.length;
+}
+
+/** Whether a row states a margin at all — the one thing a caller must ask
+ *  before rendering one, and the reason `gross_margin_micros` is nullable. */
+export function statesAMargin(row: EconomicRow | undefined): boolean {
+  return measureOn(row, GROSS_MARGIN)?.amount_micros != null;
 }
 
 /** Narrow the untyped connect-status body ("" sentinel = no account). */
 export function toConnectStatus(raw: Record<string, unknown>): ConnectStatus {
   return {
-    account_id: str(raw["account_id"]),
+    account_id:
+      typeof raw["account_id"] === "string" ? raw["account_id"] : "",
     charges_enabled: raw["charges_enabled"] === true,
     onboarded: raw["onboarded"] === true,
   };

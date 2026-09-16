@@ -2,9 +2,13 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
+import {
+  marginUnavailableAtThisGrain,
+  statedMargin,
+} from "@/lib/economic-scenarios";
 
 import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
-import type { CustomerMarginOut } from "../api/types";
+import type { CustomerEconomics } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
 import { CustomerDetailPage } from "./customer-detail-page";
@@ -24,7 +28,8 @@ describe("CustomerDetailPage — overview", () => {
     // external_id big in the header; UUID shown in mono alongside.
     expect(await screen.findByText("acme-corp", undefined, SLOW)).toBeInTheDocument();
     expect(screen.getByText(CUS_ACME)).toBeInTheDocument();
-    // Overview economics from GET /margin/customers/{id}.
+    // Overview economics from the one query, filtered to this customer
+    // (#501 — it was `GET /margin/customers/{id}`).
     expect(await screen.findByText("$541.50", undefined, SLOW)).toBeInTheDocument();
     // getAllBy — the async business-rollup table repeats the label as a
     // column header once it loads, so a single-match query is timing-fragile.
@@ -50,58 +55,73 @@ describe("CustomerDetailPage — overview", () => {
   });
 
   // ⚠ A FIXTURE THE MOCK DOES NOT AUTHOR, and that is what makes this case
-  // able to fail. Every margin detail the customers mock serves has
-  // `supplied_revenue_micros: 0`, and a zero cannot tell a three-way sum from
-  // a two-way one — the exact shape #496 was caught by. All three sources
-  // here are non-zero and distinct, so dropping any one of the cards, or
-  // wiring one to the wrong field, changes what this asserts.
-  it("breaks the total revenue into three sources that add up to it", async () => {
-    const SUBSCRIPTION = 100_000_000;
-    const SUPPLIED = 250_000_000;
-    const USAGE = 40_000_000;
-    const COST = 90_000_000;
-    const margin: CustomerMarginOut = {
+  // able to fail: it narrows with the module, so a mock-authored one would
+  // keep passing across exactly the change this is about.
+  //
+  // ⚠ **THE THREE-SOURCE BREAKDOWN IT USED TO ASSERT IS GONE (#501).** It named
+  // a subscription share, a supplied share and billed usage, all non-zero and
+  // distinct, so that dropping a card or wiring one to the wrong field changed
+  // the result. The one economic query answers `customer_revenue` from ONE
+  // definition and publishes no split, so there are no three cards to add up —
+  // and asserting that the console does not invent one is what is left worth
+  // asserting.
+  it("states the total revenue it is given, and invents no split of it", async () => {
+    const margin: CustomerEconomics = {
       customer_id: CUS_ACME,
-      external_id: "not-a-business",
-      period: { start: "2026-07-01", end: "2026-07-24" },
+      ...statedMargin(90_000_000, 390_000_000),
       event_count: 12,
-      subscription_revenue_micros: SUBSCRIPTION,
-      supplied_revenue_micros: SUPPLIED,
-      usage_billed_micros: USAGE,
-      // ONE FIGURE UNDER TWO NAMES SINCE #497. The customer-level switch that
-      // could make these differ is deleted, so a fixture that moved only one
-      // of them would describe a response the server cannot produce.
-      usage_revenue_micros: USAGE,
-      provider_cost_micros: COST,
-      unresolved_event_count: 0,
-      unpriced_event_count: 0,
-      total_revenue_micros: SUBSCRIPTION + SUPPLIED + USAGE,
-      gross_margin_micros: SUBSCRIPTION + SUPPLIED + USAGE - COST,
-      margin_percentage: 76.92,
     };
 
     renderWithProviders(
       <OverviewTab
         customerId={CUS_ACME}
         margin={margin}
+        externalId="not-a-business"
         range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
       />,
     );
 
-    // The headline, and the three cards that explain it.
     expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
-    expect(screen.getByText("Subscription revenue")).toBeInTheDocument();
-    expect(screen.getByText("$100.00")).toBeInTheDocument();
-    expect(screen.getByText("Supplied revenue")).toBeInTheDocument();
-    expect(screen.getByText("$250.00")).toBeInTheDocument();
-    expect(screen.getByText("Usage billed")).toBeInTheDocument();
-    expect(screen.getByText("$40.00")).toBeInTheDocument();
+    for (const gone of [
+      "Subscription revenue",
+      "Supplied revenue",
+      "Usage billed",
+      "Usage counted as revenue",
+    ]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
+  });
 
-    // ⚠ AND THERE IS NO FOURTH CARD. A separate "counted as revenue" figure
-    // existed only because the deleted switch could answer "none of it"; with
-    // it gone that card showed the same number as the one above it, and two
-    // cards showing one number is how a reader stops trusting either.
-    expect(screen.queryByText("Usage counted as revenue")).not.toBeInTheDocument();
+  // ⚠ AND A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS $0.00.
+  // `gross_margin_micros` is nullable on the one query — a margin it cannot
+  // attribute at the grain asked for has no figure at all — and a currency
+  // zero here would be the silent zero this whole programme exists to delete.
+  //
+  // ⚠ **THE STATE IS COMPOSED FROM `economic-scenarios.ts`, NOT WRITTEN OUT
+  // HERE** (§9.2). Written by hand, the null and the zero percentage beside
+  // it are two independent numbers a later edit can separate — and a fixture
+  // pairing a null margin with a plausible-looking share would let a renderer
+  // show a percentage for a figure it refuses to show. The scenario refuses to
+  // be built that way; the fixture is still one the MOCK does not author, which
+  // is what makes this case able to fail.
+  it("renders an absent margin as an absence rather than as zero", async () => {
+    const margin: CustomerEconomics = {
+      customer_id: CUS_ACME,
+      ...marginUnavailableAtThisGrain(90_000_000, 390_000_000),
+      event_count: 12,
+    };
+
+    renderWithProviders(
+      <OverviewTab
+        customerId={CUS_ACME}
+        margin={margin}
+        externalId="not-a-business"
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
   });
 
   it("shows the not-found state for an unknown customer", async () => {
