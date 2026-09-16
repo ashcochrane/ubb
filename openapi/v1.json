@@ -2561,6 +2561,195 @@
         "title": "EarningsOut",
         "type": "object"
       },
+      "EconomicMeasureOut": {
+        "description": "One requested measure on one row: its amount, and what that amount is\nworth.\n\n\u26a0 **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS\nOWN.** A measure whose inputs are still resolving carries a bound and says\nso here; a measure that could not be attributed at the requested grain\ncarries whatever part of itself could be placed \u2014 or, for a margin, nothing\nat all \u2014 and says so here. A reader that took the figure and dropped this\nfield would publish a floor as a total, which is the defect the whole\nsurface exists to end.",
+        "properties": {
+          "amount_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Micros"
+          },
+          "event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Count"
+          },
+          "measure": {
+            "enum": [
+              "supplier_cogs",
+              "customer_revenue",
+              "gross_margin",
+              "recorded_events"
+            ],
+            "title": "Measure",
+            "type": "string",
+            "x-ubb-concept": "analytics_measure"
+          },
+          "status": {
+            "description": "What this measure's figure is worth: 'known' where every input resolved; 'incomplete' where some input is still unresolved, so the figure is a bound rather than a total and the count beside it says how far off it can be; and 'unavailable_at_requested_grain' where a figure exists that cannot be attributed this finely. Under that last one a revenue figure is the part that COULD be placed and the rest is listed in 'context', while a margin is null outright \u2014 there is no such thing as a partial margin. \u26a0 None of the three is ever a stand-in for a figure: a zero here is a measured zero, and where UBB has no figure at all the field is null.",
+            "title": "Status",
+            "type": "string"
+          },
+          "unpriced_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Event Count"
+          },
+          "unresolved_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Event Count"
+          }
+        },
+        "required": [
+          "measure",
+          "status"
+        ],
+        "title": "EconomicMeasureOut",
+        "type": "object"
+      },
+      "EconomicRowOut": {
+        "description": "One bucket of the answer: what it groups, and each measure asked for.\n\n\u26a0 **THE GROUPED VALUES ARE POSITIONAL, ALIGNED WITH THE REQUEST'S OWN\n`group_by`**, which the response echoes so the alignment is readable from\nthe answer alone. The request already named the axes; repeating them once\nper row would say the same thing over and over, and the row key itself is\nsettled vocabulary (`docs/adr/0005-declared-grouping-fields.md:191`).",
+        "properties": {
+          "bucket_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket Start"
+          },
+          "grouping_field_value": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Grouping Field Value",
+            "type": "array"
+          },
+          "grouping_field_value_status": {
+            "description": "Why this row has no value on the axis in the same position, where it has none: 'recorded' means the value beside it is the axis's value, 'not_recorded' means these events could have carried one and did not, and 'not_applicable' means this kind of row never carries one \u2014 a charge raised for a delivered piece of work names no supplier and no event type. The two absences are different facts and only one of them has a remedy.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Grouping Field Value Status",
+            "type": "array"
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/EconomicMeasureOut"
+            },
+            "title": "Measures",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grouping_field_value",
+          "grouping_field_value_status",
+          "measures"
+        ],
+        "title": "EconomicRowOut",
+        "type": "object"
+      },
+      "EconomicsOut": {
+        "description": "What this tenant's AI work cost, what it earned, and the difference.\n\nOne definition of two numbers, over any filters, at any declared grouping\naxes, at hour, day or month. The request is echoed back \u2014 the measures are\non each row, and the axes and the bucket are here \u2014 because a row's values\nare positional and a response a reader cannot align is a response a reader\nwill align wrongly.",
+        "properties": {
+          "basis": {
+            "enum": [
+              "recorded",
+              "recognised"
+            ],
+            "title": "Basis",
+            "type": "string",
+            "x-ubb-concept": "revenue_basis"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The time grain the rows are bucketed at \u2014 'hour', 'day' or 'month' \u2014 or null where the whole period is one row.",
+            "title": "Bucket"
+          },
+          "context": {
+            "items": {
+              "$ref": "#/components/schemas/RevenueContextOut"
+            },
+            "title": "Context",
+            "type": "array"
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Group By",
+            "type": "array"
+          },
+          "period_end": {
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/EconomicRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "group_by",
+          "bucket",
+          "basis",
+          "rows",
+          "context"
+        ],
+        "title": "EconomicsOut",
+        "type": "object"
+      },
       "EventCategoryIn": {
         "properties": {
           "key": {
@@ -6950,6 +7139,55 @@
           "daily"
         ],
         "title": "RevenueAnalyticsResponse",
+        "type": "object"
+      },
+      "RevenueContextOut": {
+        "description": "Revenue that exists and could not be placed at the requested grouping.\n\n\u26a0 **IT IS HERE PRECISELY SO THAT NO MARGIN CAN BE DRAWN OVER IT SILENTLY.**\nA subscription and a figure a tenant supplied are statements about a\ncustomer over a period; neither names a supplier, an event type or an event,\nso spreading one across an operational axis would invent a boundary the\nrecord never asserted. Rather than distribute it, bucket it as unattributed\nor drop it, the query states it here with the axes at which asking again\nWOULD produce a margin.",
+        "properties": {
+          "amount_micros": {
+            "title": "Amount Micros",
+            "type": "integer"
+          },
+          "attributable_axes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attributable Axes",
+            "type": "array"
+          },
+          "attributable_bucket": {
+            "description": "The finest time grain this money can honestly be placed at \u2014 'hour', 'day' or 'month'. A question bucketed more finely than this cannot attribute it, because the record behind it declares no finer a span.",
+            "title": "Attributable Bucket",
+            "type": "string"
+          },
+          "customer_id": {
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "source": {
+            "description": "Where a revenue figure came from: 'subscription' for a Stripe subscription UBB mirrors, 'tenant_supplied' for a figure the tenant recorded itself. They are kept apart so a reader of a revenue number can say which kind of money it is.",
+            "title": "Source",
+            "type": "string"
+          },
+          "window_end": {
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "customer_id",
+          "amount_micros",
+          "window_start",
+          "window_end",
+          "attributable_axes",
+          "attributable_bucket"
+        ],
+        "title": "RevenueContextOut",
         "type": "object"
       },
       "RuleTermsOut": {
@@ -13867,6 +14105,266 @@
           }
         ],
         "summary": "Get Usage Summary"
+      }
+    },
+    "/api/v1/metering/analytics/economics": {
+      "get": {
+        "description": "What your AI work cost, what it earned, and the difference \u2014 one answer\nfrom one definition.\n\nAsk for one or more `measures`, group by zero or more axes from\n`/metering/analytics/grouping-options`, and bucket by `hour`, `day` or\n`month`. Every filter composes with every grouping.\n\n**Requesting no measure is refused rather than defaulted**: a default\nmeasure set is how a caller ends up aggregating three different things to\ndraw one line.\n\n**A row's grouped values are positional**, in the order the axes were sent,\nand the response echoes `group_by` so the alignment is readable from the\nanswer alone. Where a row has no value on an axis, the entry beside it says\nwhether the value was never recorded or whether the question does not apply\nto that kind of row.\n\n**Each measure carries its own state and the state is part of the answer.**\nA margin UBB cannot attribute at the grain you asked for is absent rather\nthan small, and the revenue that could not be placed is listed under\n`context` with the axes at which asking again would produce one.\n\n`basis` picks how revenue a tenant supplied is spread over the span it\ndeclares: `recorded` places each amount whole on the day its record opens\nand is the default, `recognised` spreads it by the record's own method. The\nanswer always states which it served.\n\nExplicit date windows are bounded: 366 days, and 92 for an hourly question,\nbecause the ceiling is about how many buckets one answer may carry. The\nresponse echoes the period it applied, so a caller who left the window to\nthe default can see what it was.\n\nCodes: `validation_error` for a request that will not parse or a window past\nthe bound; `unanswerable_combination` for a well-formed question this\nsurface declines to answer subtly wrongly, whose message says what to ask\ninstead.",
+        "operationId": "api_v1_metering_endpoints_query_economics",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "measures",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Measures",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Group By",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bucket"
+            }
+          },
+          {
+            "in": "query",
+            "name": "basis",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Basis"
+            }
+          },
+          {
+            "in": "query",
+            "name": "customer_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Customer Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "task_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_subtasks",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Subtasks",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "where",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Where",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "past_limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Past Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stop_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stop Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "episode_seq",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Episode Seq"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EconomicsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Query Economics"
       }
     },
     "/api/v1/metering/analytics/grouping-options": {

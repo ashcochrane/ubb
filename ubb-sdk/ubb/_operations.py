@@ -278,6 +278,10 @@ API_V1_METERING_ENDPOINTS_PUBLISH_BOOK_PUBLISH = Operation(
     'api_v1_metering_endpoints_publish_book_publish',
     'post',
     '/api/v1/metering/pricing/books/{book_id}/publishes/{publish_id}/publish')
+API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS = Operation(
+    'api_v1_metering_endpoints_query_economics',
+    'get',
+    '/api/v1/metering/analytics/economics')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE = Operation(
     'api_v1_metering_endpoints_record_usage', 'post', '/api/v1/metering/usage')
 API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH = Operation(

@@ -32,6 +32,8 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.metering.usage.models import Posting
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_RECORDED_EVENTS,
     ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_ROLLUP_EVENT_CATEGORY,
     ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
 )
@@ -205,11 +207,30 @@ class TestTheMeasurementRollupShipsNarrowed:
         return next(o for o in read(key).json()["options"]
                     if o["key"] == "rollup:measurement_concept")
 
-    def test_it_declares_the_component_grain_cost_unsupported_with_its_reason(self):
+    def test_it_declares_every_money_measure_unsupported_with_its_reason(self):
+        """⚠ **#499 COMPLETED THIS DECLARATION AND THIS CASE MOVED WITH IT.**
+        It used to pin the list at the supplier cost alone, because #498 could
+        name only one measure without making the read the measure concept's
+        serving consumer and paying #499's ledger entry by mention. The reason
+        was never about cost: UBB holds an amount per POSTING on both sides of
+        the margin, so revenue at this grain repeats one event's price once per
+        quantity, and a margin over two repeated figures repeats it twice.
+        """
         refused = self._measurement_rollup()["unsupported_measures"]
-        assert [r["measure"] for r in refused] == [ANALYTICS_MEASURE_SUPPLIER_COGS]
-        assert "per posting" in refused[0]["reason"]
-        assert "measurement" in refused[0]["reason"]
+        assert [r["measure"] for r in refused] == [
+            ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+            ANALYTICS_MEASURE_GROSS_MARGIN]
+        for entry in refused:
+            assert "per posting" in entry["reason"] or "per measurement" in entry["reason"]
+            assert "measurement" in entry["reason"]
+
+    def test_the_count_is_what_survives_the_narrowing(self):
+        """The axis is not refused outright, which would be the shortfall §7
+        rules against: the count reaches it, because it counts the POSTINGS a
+        heading reaches rather than the measurement records."""
+        refused = {r["measure"] for r in
+                   self._measurement_rollup()["unsupported_measures"]}
+        assert ANALYTICS_MEASURE_RECORDED_EVENTS not in refused
 
     def test_it_resolves_at_the_measurement_grain_and_groups_quantities_there(self):
         """It groups measurement RECORDS rather than events, which is why the

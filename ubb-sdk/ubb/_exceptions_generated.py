@@ -200,6 +200,11 @@ class TaskStartRefusedError(ConflictError):
     CODE = 'task_start_refused'
 
 
+class UnanswerableCombinationError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'unanswerable_combination'
+
+
 class UnsupportedCurrencyError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'unsupported_currency'
@@ -261,6 +266,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'task_already_terminal': TaskAlreadyTerminalError,
     'task_pricing_mode_conflicts_with_parent': TaskPricingModeConflictsWithParentError,
     'task_start_refused': TaskStartRefusedError,
+    'unanswerable_combination': UnanswerableCombinationError,
     'unsupported_currency': UnsupportedCurrencyError,
     'validation_error': ValidationError,
     'would_overdraw': WouldOverdrawError,
@@ -316,6 +322,7 @@ __all__ = [
     'TaskAlreadyTerminalError',
     'TaskPricingModeConflictsWithParentError',
     'TaskStartRefusedError',
+    'UnanswerableCombinationError',
     'UnsupportedCurrencyError',
     'ValidationError',
     'WouldOverdrawError',

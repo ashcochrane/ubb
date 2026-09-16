@@ -40,10 +40,16 @@
       ]
     },
     "analytics_measure": {
-      "advertised": false,
-      "backend_serves": "1 of 4 values",
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "supplier_cogs",
+        "customer_revenue",
+        "gross_margin",
+        "recorded_events"
+      ]
     },
     "analytics_rollup": {
       "advertised": true,
@@ -160,7 +166,7 @@
     },
     "measure_status": {
       "advertised": false,
-      "backend_serves": "0 of 4 values",
+      "backend_serves": "3 of 4 values",
       "kind": "closed",
       "representation": "enum"
     },

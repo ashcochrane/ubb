@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,883 of 2,314 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,893 of 2,324 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2364,6 +2364,34 @@ measurement_key:
     # generalises: a docstring about what a rollup groups wants to say "every
     # unit of work", and the safe spellings are that one, "contained work" and
     # "each whole unit". No occurrence of the plural survives into the commit.
+    #
+    # 2026-09-16, #499 (the one economic analytics query and its four
+    # measures): 1,883 of 2,314 -> 1,893 of 2,324 tracked files (`units` 44
+    # files / 122 occurrences, UNMOVED for the fifth consecutive ticket). TEN
+    # files arrived and every one is SWEPT, so both totals move by the same ten
+    # and no exclusion count moves at all — the second ticket of this slice to
+    # add no migration, and for the same reason: the query DERIVES, so there is
+    # no column to add. They are: three test modules, one driving the query
+    # through its route, one holding the claims no route can express (where each
+    # measure came from, that the subtraction is at the bucket, and that the
+    # rebuild reads no key out of the open bag), and one on the revenue half at
+    # its own product's read contract; and SEVEN generated SDK core modules,
+    # which is #495's arithmetic again — one operation module for the new route,
+    # FOUR model modules (the answer, its row, one row's measure and the context
+    # beside it), and TWO enum modules, one per closed concept a schema carries.
+    # ⚠ The second enum module is `revenue_basis`, a concept advertised two
+    # tickets ago: one module per SCHEMA carrying a closed concept, not one per
+    # concept, so a surface that merely states an existing vocabulary still
+    # moves this count.
+    # ⚠ THE PLURAL WAS REACHED FOR AGAIN AND CAUGHT AGAIN, in prose about what
+    # the count measure counts — "records at the tenant's declared granularity
+    # rather than units of work" is the REGISTRY's own sentence and the registry
+    # may spell it, but a docstring restating it may not. The rewrite says
+    # "counts records" and names the granularity, which is the better sentence
+    # anyway. ⚠ And the measure concept's registry SUMMARY is UNCHANGED, which
+    # this ticket owed explicitly: it renders into three generated files and is
+    # one of exactly two summaries that legitimately spell this denominator, so
+    # rewording it would move the numerator on three surfaces at once.
 
     - term: units
       retired_as: >-

@@ -1,0 +1,808 @@
+"""The one economic query at the read contract (#499, slice 7 §2–§5, §10, §15).
+
+**What is asserted HERE rather than through a route**, because the slice's seam
+rule puts everything a caller can observe on the route and the route module does
+that:
+
+* **Each measure aggregated from its own canonical source**, which is a claim
+  about where a number came from and not about the number. A route can show the
+  totals agree; only this can show they were not all read off one column.
+* **Margin as a bucket-level subtraction.** The wire carries the result either
+  way; what distinguishes the two is whether a subtraction ever happened per
+  row, and that is visible here.
+* **The BOUNDARY of the count's comparison rule**, which is a property of the
+  whole request: what has to be shown is the one shape refused against the three
+  that must not be, and a route can express one of the four at a time.
+* **The revenue rows this product does not hold**, whose absence the query
+  refuses — a request no caller can make, because the route always supplies them.
+* **The list of axes a charge posting cannot carry**, pinned against a charge
+  actually projected, so the day the projection learns to carry one the constant
+  goes red instead of quietly answering `not_applicable` about it.
+* **That the rebuild reads no key out of the open bag** — a claim about the
+  absence of a capability, which no response can show.
+
+⚠ **AND WHAT IS DELIBERATELY NOT HERE.** The three bucket grains, the refusal
+codes and the charge exclusion on the wire are driven through the ROUTE and were
+removed from this module rather than kept as a second copy: the slice's seam rule
+reserves this file for what a route cannot express, and a duplicate proves only
+that two tests agree with each other.
+
+⚠ **THIS MODULE NEVER SPELLS THE PARAMETERS THIS VOCABULARY REPLACES.** The
+registry retires them, the sweep refuses a living file that names one, and a new
+file spelling one fails before any of this runs.
+"""
+import ast
+import inspect
+import uuid
+from datetime import date, datetime, timezone as dt_timezone
+
+from django.test import TestCase
+
+from apps.metering import queries
+from apps.metering.pricing.models import Charge
+from apps.metering.pricing.services.charge_projection import project_the_charge
+from apps.metering.queries import (
+    AXES_A_CHARGE_POSTING_CANNOT_CARRY, BUCKET_DAY, ECONOMIC_MEASURES,
+    GROUPED_VALUE_KEY, GROUPED_VALUE_STATUS_KEY, EconomicFilters,
+    VALUE_NOT_APPLICABLE, VALUE_NOT_RECORDED, VALUE_RECORDED, economic_refusal,
+    economics, grouping_axis,
+)
+from apps.metering.usage.models import Posting, PostingMeasurement
+from apps.platform.customers.models import Customer
+from apps.platform.event_types.models import (
+    EventType, Measurement, MeasurementConcept)
+from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.tenants.models import Tenant
+from apps.platform.work.models import Task
+from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.vocabulary import (
+    ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+    ANALYTICS_MEASURE_GROSS_MARGIN, ANALYTICS_MEASURE_RECORDED_EVENTS,
+    ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
+    COSTING_METHOD_CALCULATED, COSTING_STATUS_KNOWN,
+    COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE, MEASURE_STATUS_KNOWN,
+    MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN, PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
+    UNRESOLVED_REASON_COST_RATE_MISSING, USAGE_EVENT_KIND_TASK_CHARGE,
+)
+
+CUSTOMER_AXIS = grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "customer")
+PROVIDER_AXIS = grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "provider")
+EVENT_TYPE_AXIS = grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "event_type")
+MEASUREMENT_ROLLUP = grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP,
+                                   ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT)
+ALL_FOUR = list(ECONOMIC_MEASURES)
+MONEY = [ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+         ANALYTICS_MEASURE_GROSS_MARGIN]
+
+#: The half-open window every fixture below records into, stated once.
+WINDOW = (date(2026, 3, 1), date(2026, 3, 31))
+MARCH = datetime(2026, 3, 10, 9, 30, tzinfo=dt_timezone.utc)
+
+
+def a_posting(tenant, customer, key, **overrides):
+    """One recorded posting, priced and costed unless a case says otherwise.
+
+    The defaults make both sides RESOLVED and DIFFERENT, so a measure that
+    echoed its input instead of computing would answer wrongly: a fixture where
+    the price equals the cost makes the margin equal zero whatever the code
+    does, and every assertion about it is then satisfiable by the wrong number.
+    """
+    fields = {"tenant": tenant, "customer": customer, "idempotency_key": key,
+              "effective_at": MARCH, "provider": "openai",
+              "event_type": "chat.completion",
+              "provider_cost_micros": 400_000,
+              "costing_status": COSTING_STATUS_KNOWN,
+              "billed_cost_micros": 1_000_000,
+              "pricing_status": PRICING_STATUS_KNOWN}
+    fields.update(overrides)
+    return Posting.objects.create(**fields)
+
+
+def measure_of(answer, measure, row=0):
+    """One measure off one row of an answer, by name rather than by position."""
+    for entry in answer["rows"][row]["measures"]:
+        if entry["measure"] == measure:
+            return entry
+    raise AssertionError(f"{measure!r} is not in the answer's row {row}")
+
+
+class EachMeasureComesFromItsOwnSourceTest(TestCase):
+    """§3: the measures no longer share an origin, so each is aggregated from
+    its own canonical fact source.
+
+    The discriminating fixture is a charge posting beside a metered one. It
+    carries revenue and no supplier cost and is not work — so a query that read
+    all four measures off one grouped aggregate over one column answers at least
+    one of them wrongly, whichever column it chose.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "i1")
+        a_posting(cls.tenant, cls.customer, "i2")
+        task = Task.objects.create(tenant=cls.tenant, customer=cls.customer,
+                                   balance_snapshot_micros=0)
+        charge = Charge.objects.create(
+            tenant=cls.tenant, task=task, amount_micros=2_500_000,
+            currency="usd", agreed_price_line_id=uuid.uuid4(), book_version=1,
+            resolved_at=MARCH, charged_at=MARCH, idempotency_key="charge-1")
+        cls.projected = project_the_charge(charge)
+
+    def _answer(self):
+        return economics(self.tenant.id, measures=ALL_FOUR,
+                         filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                         contributed_revenue=())
+
+    def test_the_count_excludes_the_charge_posting_kind(self):
+        """§10: a Task must not count its own invoice as work."""
+        assert measure_of(self._answer(),
+                          ANALYTICS_MEASURE_RECORDED_EVENTS)["event_count"] == 2
+
+    def test_the_count_includes_the_recorded_postings_it_does_not_exclude(self):
+        """THE OTHER DIRECTION, and it is the half that makes the first one
+        evidence. An exclusion that excluded everything would satisfy the test
+        above exactly as the right one does."""
+        Posting.objects.filter(kind=USAGE_EVENT_KIND_TASK_CHARGE).delete()
+        assert measure_of(self._answer(),
+                          ANALYTICS_MEASURE_RECORDED_EVENTS)["event_count"] == 2
+
+    def test_revenue_includes_the_charge_the_count_excluded(self):
+        """The same row is not work and IS money, which is the whole reason the
+        two measures cannot share a source."""
+        assert measure_of(self._answer(),
+                          ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                          )["amount_micros"] == 2_000_000 + 2_500_000
+
+    def test_cost_is_the_supplier_side_and_not_the_customer_side(self):
+        assert measure_of(self._answer(),
+                          ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["amount_micros"] == 800_000
+
+    def test_only_the_requested_measures_are_answered(self):
+        answer = economics(self.tenant.id,
+                           measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+        assert [entry["measure"] for entry in answer["rows"][0]["measures"]] == [
+            ANALYTICS_MEASURE_SUPPLIER_COGS]
+
+
+class TheChargePostingsBlankAxesArePinnedToItsWriterTest(TestCase):
+    """The constant that decides `not_applicable`, held to a projected charge.
+
+    A hand-built `Posting` would prove nothing here: the claim is about what the
+    PROJECTION writes, so the fixture projects one and reads the row back.
+    """
+
+    def test_exactly_the_declared_axes_come_out_blank_on_a_projection(self):
+        tenant = Tenant.objects.create(name="T", products=["metering"])
+        customer = Customer.objects.create(tenant=tenant, external_id="c1")
+        task = Task.objects.create(tenant=tenant, customer=customer,
+                                   task_type="summarise",
+                                   balance_snapshot_micros=0)
+        charge = Charge.objects.create(
+            tenant=tenant, task=task, amount_micros=1_000_000, currency="usd",
+            agreed_price_line_id=uuid.uuid4(), book_version=1,
+            resolved_at=MARCH, charged_at=MARCH, idempotency_key="charge-1")
+        posting = project_the_charge(charge)
+
+        blank = {name for name, _ in queries.ALWAYS_PRESENT_AXES
+                 if name != "customer" and not getattr(posting, name)}
+        assert blank == set(AXES_A_CHARGE_POSTING_CANNOT_CARRY), (
+            "a projection's blank axes have moved, so the list that decides "
+            "`not_applicable` now answers about the wrong ones")
+        # The non-subjects, named so an omission cannot read as deliberate: the
+        # kind of work IS copied from the Charge and is a real value.
+        assert posting.task_type == "summarise"
+
+
+class AnAbsentValueSaysWhichOfTwoThingsItMeansTest(TestCase):
+    """§5's second prohibition: *we do not know which provider* and *the
+    question does not apply* are two different facts and get two different
+    statuses.
+
+    The fixture puts both in one answer at once, which is the only shape that
+    can tell a correct implementation from one that picked a single sentinel.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "i1", provider="openai")
+        a_posting(cls.tenant, cls.customer, "i2", provider="")
+        task = Task.objects.create(tenant=cls.tenant, customer=cls.customer,
+                                   balance_snapshot_micros=0)
+        project_the_charge(Charge.objects.create(
+            tenant=cls.tenant, task=task, amount_micros=1_000_000,
+            currency="usd", agreed_price_line_id=uuid.uuid4(), book_version=1,
+            resolved_at=MARCH, charged_at=MARCH, idempotency_key="charge-1"))
+
+    def test_the_two_absences_are_two_rows_with_two_statuses(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]), contributed_revenue=())
+        seen = {(row[GROUPED_VALUE_KEY][0], row[GROUPED_VALUE_STATUS_KEY][0])
+                for row in answer["rows"]}
+        assert seen == {("openai", VALUE_RECORDED),
+                        (None, VALUE_NOT_RECORDED),
+                        (None, VALUE_NOT_APPLICABLE)}
+
+    def test_neither_absence_is_dropped_from_the_totals(self):
+        """§5's third prohibition, at the row level: the surfaces this replaces
+        excluded a blank axis from the grouped query altogether, so the money on
+        those rows left the answer without saying so."""
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]), contributed_revenue=())
+        grouped = sum(measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                                 row=index)["amount_micros"]
+                      for index in range(len(answer["rows"])))
+        whole = economics(self.tenant.id, measures=MONEY,
+                          filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                          contributed_revenue=())
+        assert grouped == measure_of(
+            whole, ANALYTICS_MEASURE_CUSTOMER_REVENUE)["amount_micros"]
+
+
+class TheMarginIsSubtractedAtTheBucketTest(TestCase):
+    """§3/#153 §2: margin is a bucket-level subtraction, never a row-level one.
+
+    The discriminating fixture is a bucket holding one event that earned revenue
+    and one that was never going to. A row-level subtraction gives the second a
+    NEGATIVE margin of its own; the bucket-level one gives the bucket a single
+    difference between two totals, and the two answers differ.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "earns",
+                  provider_cost_micros=400_000, billed_cost_micros=1_000_000)
+        a_posting(cls.tenant, cls.customer, "never-earns",
+                  provider_cost_micros=300_000, billed_cost_micros=None,
+                  pricing_status=PRICING_STATUS_UNKNOWN)
+
+    def test_the_bucket_states_one_difference_between_two_totals(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=())
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["amount_micros"] == 1_000_000 - 700_000
+
+    def test_a_margin_exists_once_per_bucket_and_not_once_per_event(self):
+        """The SHAPE claim beside the arithmetic one: a margin belongs to a
+        bucket, so nothing smaller than a bucket publishes one.
+
+        Two postings, one bucket, ONE margin. A row-level subtraction is not
+        distinguishable from a bucket-level one by arithmetic — summation is
+        linear — so what tells them apart is whether anything smaller than a
+        bucket ever carries a margin at all, and nothing here does.
+        """
+        answer = economics(self.tenant.id, measures=MONEY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=())
+        assert Posting.objects.filter(tenant=self.tenant).count() == 2
+        assert len(answer["rows"]) == 1
+        margins = [entry for row in answer["rows"] for entry in row["measures"]
+                   if entry["measure"] == ANALYTICS_MEASURE_GROSS_MARGIN]
+        assert len(margins) == 1
+
+
+class AMarginIsOnlyAsCompleteAsBothItsInputsTest(TestCase):
+    """§15's ruling: `gross_margin`'s state is derived from BOTH inputs, never
+    from the revenue side alone.
+
+    ⚠ The fixture is the one the NON-GOAL describes: a posting whose price the
+    resolver was confident about over a supplier cost nobody has learned. That
+    is reachable today — the pricing service consults the costing status only
+    inside its margin-over-cost branch — and #473 owns the fix. What this pins
+    is that the composite does not inherit the confident half's state.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "i1",
+                  provider_cost_micros=None,
+                  costing_status=COSTING_STATUS_UNRESOLVED,
+                  unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING,
+                  billed_cost_micros=1_000_000,
+                  pricing_status=PRICING_STATUS_KNOWN)
+
+    def test_the_revenue_side_reads_known(self):
+        """The premise, asserted rather than assumed: without it the test below
+        would pass over a margin that was incomplete for the other reason."""
+        answer = economics(self.tenant.id, measures=MONEY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=())
+        assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                          )["status"] == MEASURE_STATUS_KNOWN
+
+    def test_the_margin_reads_incomplete_anyway_with_the_unresolved_count(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=())
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["status"] == MEASURE_STATUS_INCOMPLETE
+        assert measure_of(answer, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )[UNRESOLVED_EVENT_COUNT_KEY] == 1
+
+
+class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
+    """§5: margin is defined at a bucket only when every revenue component in
+    that bucket is attributable at that bucket's grain.
+
+    The contributed rows stand in for the revenue this product does not hold;
+    they declare a customer and nothing operational, which is exactly what a
+    subscription and a supplied figure declare.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "i1")
+
+    def _contributed(self):
+        return [{"window_start": WINDOW[0], "window_end": WINDOW[1],
+                 "customer_id": str(self.customer.id), "source": "subscription",
+                 "amount_micros": 9_000_000, "attributable_axes": ("customer",),
+                 "finest_bucket": BUCKET_DAY}]
+
+    def test_bucketed_more_finely_than_the_record_it_is_not_placed_either(self):
+        """Time is the exception and it is not an unconditional one: a figure
+        whose record declares a span in whole days cannot be placed inside an
+        hour, so the margin is withheld exactly as at an operational axis."""
+        answer = economics(self.tenant.id, measures=MONEY, bucket="hour",
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["amount_micros"] is None
+        assert answer["context"][0]["attributable_bucket"] == BUCKET_DAY
+
+    def test_bucketed_at_the_records_own_grain_it_is_placed(self):
+        """The guard on the case above: a day bucket is exactly as fine as the
+        record's span, so it places and produces a margin."""
+        answer = economics(self.tenant.id, measures=MONEY, bucket=BUCKET_DAY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        assert answer["context"] == []
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["status"] == MEASURE_STATUS_KNOWN
+
+    def test_grouped_by_customer_the_coarse_revenue_is_part_of_the_margin(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                          )["amount_micros"] == 1_000_000 + 9_000_000
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["status"] == MEASURE_STATUS_KNOWN
+        assert answer["context"] == []
+
+    def test_grouped_by_provider_it_is_neither_distributed_nor_bucketed(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        revenue = measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert revenue["status"] == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
+        # NOT DISTRIBUTED: the row states the revenue it can attribute and no
+        # share of the rest. NOT ZERO either — the posting revenue is real.
+        assert revenue["amount_micros"] == 1_000_000
+        # NOT AN UNATTRIBUTED BUCKET: there is no extra row holding the money.
+        assert len(answer["rows"]) == 1
+
+    def test_grouped_by_provider_no_margin_is_published_at_all(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        margin = measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert margin["status"] == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
+        assert margin["amount_micros"] is None, (
+            "a margin UBB cannot attribute at this grain is not a small margin")
+
+    def test_the_money_it_could_not_place_is_named_rather_than_dropped(self):
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        assert [row["amount_micros"] for row in answer["context"]] == [9_000_000]
+        assert answer["context"][0]["attributable_axes"] == [CUSTOMER_AXIS]
+
+    def test_two_grains_do_not_differ_by_the_contributed_revenue(self):
+        """The acceptance criterion in one assertion: the finer question must
+        not answer a margin that is the coarser one MINUS the money it could not
+        place — which is the shape a silent drop produces."""
+        coarse = economics(self.tenant.id, measures=MONEY,
+                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           contributed_revenue=self._contributed())
+        fine = economics(self.tenant.id, measures=MONEY,
+                         group_by=[PROVIDER_AXIS],
+                         filters=EconomicFilters(start_date=WINDOW[0],
+                                                 end_date=WINDOW[1]),
+                         contributed_revenue=self._contributed())
+        coarse_margin = measure_of(coarse, ANALYTICS_MEASURE_GROSS_MARGIN)
+        fine_margin = measure_of(fine, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert coarse_margin["amount_micros"] == 10_000_000 - 400_000
+        assert fine_margin["amount_micros"] is None
+        assert fine_margin["amount_micros"] != (
+            coarse_margin["amount_micros"] - 9_000_000)
+
+    def test_a_customer_with_revenue_and_no_usage_gets_a_row(self):
+        """⚠ **A DELIBERATE DIFFERENCE FROM THE PER-CUSTOMER LIST THIS
+        REPLACES, AND IT IS THE FIX RATHER THAN A DIVERGENCE.**
+
+        That list is built by walking the customers who have POSTINGS, so a
+        customer whose tenant supplied revenue for a period in which UBB metered
+        nothing is absent from it altogether — the same hole #495 records at
+        `customer_ids_with_revenue_in`, which exists because a period sweep has
+        to union the two sides. Here the revenue rows make their own groups, so
+        the customer appears with a real revenue, a zero cost and a margin.
+        """
+        quiet = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        contributed = self._contributed() + [
+            {"window_start": WINDOW[0], "window_end": WINDOW[1],
+             "customer_id": str(quiet.id), "source": "subscription",
+             "amount_micros": 4_000_000, "attributable_axes": ("customer",),
+             "finest_bucket": BUCKET_DAY}]
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]), contributed_revenue=contributed)
+        rows = {row[GROUPED_VALUE_KEY][0]: index
+                for index, row in enumerate(answer["rows"])}
+        assert str(quiet.id) in rows
+        index = rows[str(quiet.id)]
+        assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE, index
+                          )["amount_micros"] == 4_000_000
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN, index
+                          )["amount_micros"] == 4_000_000
+
+    def test_with_nothing_contributed_the_finer_grain_answers_a_margin(self):
+        """The guard that stops the rule reading as *no margin when grouped*.
+        A tenant with no revenue outside its postings gets one at every grain."""
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
+                                                   end_date=WINDOW[1]), contributed_revenue=())
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["status"] == MEASURE_STATUS_KNOWN
+
+
+class ForgettingTheContributedRevenueIsRefusedTest(TestCase):
+    """A revenue measure over rows this product does not hold is a question this
+    module cannot answer alone, and the absence of the argument says so.
+
+    A default of "none" would make *there was no subscription revenue* and *I
+    forgot to ask* the same request, and the second answers a confident margin
+    short by a subscription.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+
+    def test_a_revenue_measure_without_the_rows_raises(self):
+        with self.assertRaisesRegex(ValueError, "contributed_revenue"):
+            economics(self.tenant.id,
+                      measures=[ANALYTICS_MEASURE_CUSTOMER_REVENUE])
+
+    def test_a_margin_without_the_rows_raises(self):
+        with self.assertRaisesRegex(ValueError, "contributed_revenue"):
+            economics(self.tenant.id,
+                      measures=[ANALYTICS_MEASURE_GROSS_MARGIN])
+
+    def test_stating_that_there_are_none_is_a_different_request(self):
+        answer = economics(self.tenant.id,
+                           measures=[ANALYTICS_MEASURE_CUSTOMER_REVENUE],
+                           contributed_revenue=())
+        assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                          )["amount_micros"] == 0
+
+    def test_a_measure_that_needs_no_revenue_needs_no_rows(self):
+        answer = economics(self.tenant.id,
+                           measures=[ANALYTICS_MEASURE_SUPPLIER_COGS])
+        assert measure_of(answer, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["amount_micros"] == 0
+
+    def test_the_degenerate_preset_answers_over_an_empty_window(self):
+        """An ungrouped, unbucketed question has exactly one row whatever the
+        window holds: *what did all of this cost* is answered "nothing" when
+        nothing happened, not with silence."""
+        answer = economics(self.tenant.id, measures=ALL_FOUR,
+                           contributed_revenue=())
+        assert len(answer["rows"]) == 1
+        assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["amount_micros"] == 0
+
+    def test_a_grouped_question_over_an_empty_window_invents_no_group(self):
+        """The other half, and it is a different rule: a row of a grouped answer
+        IS a group, so there is none to answer with."""
+        answer = economics(self.tenant.id, measures=MONEY,
+                           group_by=[PROVIDER_AXIS], contributed_revenue=())
+        assert answer["rows"] == []
+
+
+class TheCountsComparisonRuleIsAWholeRequestPropertyTest(TestCase):
+    """§10's comparison rule, and the four shapes that decide it.
+
+    ⚠ **HERE RATHER THAN ON THE ROUTE BECAUSE THE RULE IS A PROPERTY OF THE
+    WHOLE REQUEST**, so what has to be shown is the BOUNDARY between the shapes
+    it refuses and the three it must not — and the route can express one of
+    those four at a time while this reads the deciding function directly. The
+    refused shape itself is driven through the route too, where its published
+    code and message are what a caller acts on.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        GroupingField.objects.create(tenant=cls.tenant, key="region",
+                                     slot="grouping_field_1", scope="event")
+
+    def test_a_count_across_groups_that_mix_event_types_is_refused(self):
+        refusal = economic_refusal(
+            self.tenant.id, measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            axes=[PROVIDER_AXIS])
+        assert refusal is not None
+        assert EVENT_TYPE_AXIS in refusal
+
+    def test_the_same_count_is_answered_with_the_event_type_beside_it(self):
+        assert economic_refusal(
+            self.tenant.id, measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            axes=[PROVIDER_AXIS, EVENT_TYPE_AXIS]) is None
+
+    def test_an_ungrouped_count_compares_with_nothing_and_is_answered(self):
+        assert economic_refusal(
+            self.tenant.id, measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            axes=[]) is None
+
+    def test_the_money_measures_are_not_caught_by_the_count_rule(self):
+        """The rule is about a count, so the guard that it did not widen into
+        every measure is worth its own case."""
+        assert economic_refusal(self.tenant.id, measures=MONEY,
+                                axes=[PROVIDER_AXIS]) is None
+
+
+class TheBucketBoundaryIsTheOneThingARouteCannotShowTest(TestCase):
+    """§16's bucketing, reduced to the two claims no response can carry.
+
+    ⚠ **THE THREE GRAINS THEMSELVES ARE DRIVEN THROUGH THE ROUTE**, which is the
+    slice's seam rule — what is left here is the two PREMISES underneath them.
+    The absence rule is vacuous for time (`Posting.effective_at` is NOT NULL, so
+    a bucket key is never absent where an axis value routinely is), and the
+    boundary is a UTC one, which is the only thing holding the database's
+    truncation and this module's Python fold to the same idea of a day.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        a_posting(cls.tenant, cls.customer, "march",
+                  effective_at=datetime(2026, 3, 2, 1, 0,
+                                        tzinfo=dt_timezone.utc))
+        a_posting(cls.tenant, cls.customer, "march-later",
+                  effective_at=datetime(2026, 3, 2, 5, 0,
+                                        tzinfo=dt_timezone.utc))
+        a_posting(cls.tenant, cls.customer, "later-march",
+                  effective_at=datetime(2026, 3, 20, 1, 0,
+                                        tzinfo=dt_timezone.utc))
+
+    def test_a_bucket_key_can_never_be_absent(self):
+        """The premise the paragraph above rests on, read off the model."""
+        assert Posting._meta.get_field("effective_at").null is False
+
+    def test_a_bucket_boundary_is_a_utc_one(self):
+        """⚠ THE TWO HALVES OF THE BUCKETING AGREE ONLY BECAUSE THE PROJECT IS
+        IN UTC, AND NOTHING ELSE SAYS SO.
+
+        The posting aggregate truncates in the DATABASE, at `settings.TIME_ZONE`;
+        the contributed revenue is placed in PYTHON, by `_bucket_of`, which
+        truncates at UTC because every window in this module opens at a UTC
+        midnight. Move the project off UTC and the two start disagreeing by the
+        offset — silently, with every chart still rendering. This is what would
+        go red.
+        """
+        from django.conf import settings
+        assert settings.TIME_ZONE == "UTC" and settings.USE_TZ
+        opens = a_posting(self.tenant, self.customer, "edge",
+                          effective_at=datetime(2026, 3, 5, 0, 0,
+                                                tzinfo=dt_timezone.utc))
+        before = a_posting(self.tenant, self.customer, "edge-before",
+                           effective_at=datetime(2026, 3, 4, 23, 59,
+                                                 tzinfo=dt_timezone.utc))
+        answer = economics(self.tenant.id, measures=MONEY, bucket=BUCKET_DAY,
+                           filters=EconomicFilters(start_date=date(2026, 3, 4),
+                                                   end_date=date(2026, 3, 5)),
+                           contributed_revenue=())
+        # Two postings a minute apart land in two buckets, which they only do
+        # if the boundary is UTC midnight: the pair straddles it by 60 seconds,
+        # so any offset at all would put both on one side.
+        assert (opens.effective_at - before.effective_at).total_seconds() == 60
+        assert {row["bucket_start"][:10] for row in answer["rows"]} == {
+            "2026-03-04", "2026-03-05"}
+
+
+class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
+    """§7's narrowing, completed: every MONEY measure is refused at the heading
+    over the quantities beneath an event, and the count is what survives.
+
+    #498 could name only one of the three — naming all of them would have made
+    the discovery read the measure concept's serving consumer and paid this
+    ticket's entry by mention — and said so at the time. The other two are
+    declared here, and the count keeps one meaning by counting POSTINGS.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.tenant = Tenant.objects.create(name="T", products=["metering"])
+        cls.customer = Customer.objects.create(tenant=cls.tenant,
+                                               external_id="c1")
+        cls.concept = MeasurementConcept.objects.create(
+            tenant=cls.tenant, key="input_size")
+        cls.event_type = EventType.objects.create(
+            tenant=cls.tenant, key="chat.completion",
+            costing_method=COSTING_METHOD_CALCULATED)
+        for code in ("prompt_tokens", "cached_prompt_tokens"):
+            Measurement.objects.create(
+                event_type=cls.event_type, code=code, unit=UNIT_TOKEN,
+                source_kind=SOURCE_KIND_CALLER_SUPPLIED, concept=cls.concept)
+        cls.measured_twice = a_posting(cls.tenant, cls.customer, "i1")
+        PostingMeasurement.objects.create(
+            posting=cls.measured_twice, recorded_at=MARCH,
+            measurements={"prompt_tokens": 600, "cached_prompt_tokens": 40})
+        cls.measured_once = a_posting(cls.tenant, cls.customer, "i2")
+        PostingMeasurement.objects.create(
+            posting=cls.measured_once, recorded_at=MARCH,
+            measurements={"prompt_tokens": 100})
+
+    def test_every_money_measure_is_refused_at_this_heading_by_name(self):
+        for measure in MONEY:
+            refusal = economic_refusal(self.tenant.id, measures=[measure],
+                                       axes=[MEASUREMENT_ROLLUP])
+            assert refusal is not None, measure
+            assert measure in refusal and MEASUREMENT_ROLLUP in refusal
+
+    def test_the_count_counts_postings_and_not_measurement_records(self):
+        """One posting measured two ways under ONE heading is one event. A
+        count over the child records would answer three here."""
+        answer = economics(
+            self.tenant.id,
+            measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
+            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+        assert len(answer["rows"]) == 1
+        assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
+                                                        "chat.completion"]
+        assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
+                          )["event_count"] == 2
+
+    def test_a_quantity_nobody_filed_is_absent_rather_than_a_sentinel(self):
+        Measurement.objects.filter(code="prompt_tokens").update(concept=None)
+        answer = economics(
+            self.tenant.id,
+            measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
+            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+        # Only the posting carrying the still-filed quantity is left, and the
+        # unfiled one produced no heading of its own.
+        assert [row[GROUPED_VALUE_KEY][0] for row in answer["rows"]] == [
+            "input_size"]
+        assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
+                          )["event_count"] == 1
+
+    def test_a_charge_projection_never_reaches_this_heading(self):
+        """A charge projection never reaches this axis, and the reason is
+        structural rather than an exclusion this path remembered to apply.
+
+        A quantity is filed under a heading by the PAIR of an Event Type and a
+        code, and a projection names no Event Type — so its quantities are the
+        quantities of nothing declared, they are filed under no heading, and an
+        identity with no heading is absent rather than present under a sentinel.
+        The count is therefore unmoved in both directions: the projection adds
+        no row of its own AND does not join anybody else's.
+        """
+        task = Task.objects.create(tenant=self.tenant, customer=self.customer,
+                                   balance_snapshot_micros=0)
+        charge = project_the_charge(Charge.objects.create(
+            tenant=self.tenant, task=task, amount_micros=1_000_000,
+            currency="usd", agreed_price_line_id=uuid.uuid4(), book_version=1,
+            resolved_at=MARCH, charged_at=MARCH, idempotency_key="charge-1"))
+        PostingMeasurement.objects.create(
+            posting=charge, recorded_at=MARCH,
+            measurements={"prompt_tokens": 5})
+        answer = economics(
+            self.tenant.id,
+            measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
+            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+        assert len(answer["rows"]) == 1
+        assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
+                                                        "chat.completion"]
+        assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
+                          )["event_count"] == 2
+        # The premise, so the paragraph fails rather than ages: an Event Type
+        # key is what the pair is keyed on, and a projection has none.
+        assert charge.event_type == ""
+
+    def test_the_axis_cannot_be_an_equality_filter(self):
+        with self.assertRaisesRegex(ValueError, "equality filter"):
+            economics(self.tenant.id,
+                      measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
+                      group_by=[EVENT_TYPE_AXIS],
+                      filters=EconomicFilters(
+                          field_filters=[(MEASUREMENT_ROLLUP, "input_size")]))
+
+
+class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
+    """The widening slice 7 was named as closing, closed by construction.
+
+    A prior slice folded a narrowly validated bag into the one open bag, which
+    widened what could reach a grouping surface: a key-driven chart could be
+    handed arbitrary JSON rather than a short string. The remedy recorded at the
+    time was that the capability MOVES onto the declared grouping contract when
+    this query rebuilds it — and this is the rebuild.
+
+    ⚠ **A BEHAVIOURAL CHECK WOULD PROVE NOTHING HERE.** The claim is that there
+    is no such parameter, and a request carrying one that the query does not
+    declare is discarded before anything runs — so passing a bag key and finding
+    the answer unchanged passes identically against a query that reads one. The
+    claim is therefore read off the signature and off the function's own source.
+    """
+
+    def test_the_query_takes_no_free_text_key_parameter(self):
+        taken = (set(inspect.signature(economics).parameters)
+                 | set(EconomicFilters._fields))
+        assert "field_filters" in taken, (
+            "a declared equality filter is the bounded replacement, so its "
+            "absence would make this whole assertion vacuous")
+        assert not [name for name in taken
+                    if "bag" in name or "meta" in name], taken
+
+    def test_no_function_this_query_calls_reads_the_bag(self):
+        """The stronger half: the module still holds a bag-reading rollup that
+        the routes this slice collapses call, so the claim has to be about THIS
+        query's own reachable source rather than about the file."""
+        source = ast.parse(inspect.getsource(queries))
+        by_name = {node.name: node for node in ast.walk(source)
+                   if isinstance(node, ast.FunctionDef)}
+        reached, frontier = set(), ["economics"]
+        while frontier:
+            name = frontier.pop()
+            if name in reached or name not in by_name:
+                continue
+            reached.add(name)
+            frontier += [call.func.id for call in ast.walk(by_name[name])
+                         if isinstance(call, ast.Call)
+                         and isinstance(call.func, ast.Name)]
+        assert len(reached) >= 8, (
+            f"only {sorted(reached)} was reached, so this proves nothing")
+        for name in sorted(reached):
+            spelled = {node.attr for node in ast.walk(by_name[name])
+                       if isinstance(node, ast.Attribute)}
+            spelled |= {node.id for node in ast.walk(by_name[name])
+                        if isinstance(node, ast.Name)}
+            assert "KeyTextTransform" not in spelled, name
+            assert not [word for word in spelled if word.startswith("metadata")], (
+                f"{name} reads the open bag")
+
+    def test_the_bag_reading_rollup_beside_it_is_still_there(self):
+        """The vacuity guard on the case above: if the module stopped holding a
+        bag-reading function at all, that test would pass for the wrong reason
+        and stop being evidence about this query."""
+        assert "KeyTextTransform" in inspect.getsource(
+            queries.get_dimensional_margin)

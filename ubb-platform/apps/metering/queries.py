@@ -28,11 +28,12 @@ Consumers:
 """
 import uuid
 from datetime import date, datetime
-from typing import Iterator, TypedDict
+from typing import Iterator, NamedTuple, TypedDict
 
 from django.db.models import Sum, Count
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import TruncDate
+from django.db.models.functions import (
+    TruncDate, TruncDay, TruncHour, TruncMonth)
 
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import (
@@ -44,11 +45,19 @@ from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD,
     ANALYTICS_GROUPING_KIND_ROLLUP,
     ANALYTICS_GROUPING_KIND_VALUES,
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+    ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_RECORDED_EVENTS,
     ANALYTICS_MEASURE_SUPPLIER_COGS,
+    ANALYTICS_MEASURE_VALUES,
     ANALYTICS_ROLLUP_EVENT_CATEGORY,
     ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
     ANALYTICS_ROLLUP_VALUES,
+    MEASURE_STATUS_INCOMPLETE,
+    MEASURE_STATUS_KNOWN,
+    MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     PRICING_STATUS_WAIVED,
+    USAGE_EVENT_KIND_TASK_CHARGE,
 )
 from apps.platform.grouping_fields.models import (
     RESERVED_KEYS, SCOPE_CHOICES, SLOT_CHOICES)
@@ -1434,11 +1443,39 @@ assert {name for name, _ in ALWAYS_PRESENT_AXES} == set(RESERVED_KEYS), (
 #: event's whole cost across every measurement that event contains. That is not
 #: a narrower answer, it is a wrong one — a tenant reading it would see the same
 #: money once per quantity — and refusing is what stops it.
+#: ⚠ **EVERY MONEY MEASURE IS REFUSED HERE, AND #498 COULD ONLY NAME ONE OF
+#: THEM.** The reason above is about money and not about cost: UBB holds an
+#: amount per POSTING on both sides of the margin, so a customer price at this
+#: grain is the same event's revenue repeated once per quantity exactly as a
+#: supplier cost would be, and a margin over two repeated figures repeats the
+#: error twice. The commit that shipped this axis could name only ONE measure —
+#: naming all of them would have made the discovery read the measure concept's
+#: serving consumer and paid #499's entry by mention, which is the vacuous form
+#: both tickets forbid — and it said so at the time. The set those exceptions
+#: are exceptions to arrives with the query that computes the measures, so the
+#: declaration is completed here, by the ticket that can afford it.
+#:
+#: **The count is what survives, and it keeps one meaning.** It counts the
+#: POSTINGS carrying at least one quantity filed under a heading — not the
+#: measurement records — so `recorded_events` still means what it means
+#: everywhere else. A posting measured two ways under one heading is one event;
+#: a posting measured under two headings is one event in each row, which is
+#: what grouping by a many-valued join means and is why these rows do not add
+#: up to the ungrouped total. That is a property of the question, not a defect
+#: of the answer, and the response says so rather than hiding it.
 MEASUREMENT_ROLLUP_UNSUPPORTED = (
     (ANALYTICS_MEASURE_SUPPLIER_COGS,
      "UBB records supplier cost per posting and not per measurement, so a cost "
      "at this grain could only be produced by repeating one event's whole cost "
      "against every quantity that event was measured by."),
+    (ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+     "UBB records customer revenue per posting and not per measurement, so "
+     "revenue at this grain could only be produced by repeating one event's "
+     "whole price against every quantity that event was measured by."),
+    (ANALYTICS_MEASURE_GROSS_MARGIN,
+     "A margin at this grain would be the difference between two figures UBB "
+     "holds per posting and not per measurement, so it would repeat one "
+     "event's whole economics against every quantity it was measured by."),
 )
 
 #: The rollup axes, each with the grain it resolves at and the measures it
@@ -1684,3 +1721,872 @@ def rollup_membership(tenant_id, rollup) -> dict:
     if rollup not in readers:
         raise ValueError(f"{rollup!r} is not a declared rollup axis")
     return readers[rollup](tenant_id)
+
+
+# ---------------------------------------------------------------------------
+# THE ONE ECONOMIC QUERY (#499 — slice 7 §2, §3, §5, §10, §15)
+#
+# IT IS AN ECONOMIC QUERY AND NOT A POSTING-GRAIN ONE, AND THAT DISTINCTION IS
+# THE DESIGN. The measures below no longer share an origin, so each is
+# aggregated from its OWN canonical fact source and combined with another only
+# where their scopes are compatible. Everything this module did before could
+# start from one queryset over one table and add columns; this cannot, and a
+# reader who assumes it can will produce exactly the figure the slice exists to
+# delete — a margin computed row by row over events that were never going to
+# carry revenue.
+# ---------------------------------------------------------------------------
+
+#: THE FOUR THINGS THIS QUERY MEASURES, held by reference so the registry stays
+#: the one place they are named.
+#:
+#: The whole set, and the completeness is the point: the answer a caller gets
+#: back is built by asking each of these for its own amount and its own state,
+#: so a fifth arriving in the registry with no line here would be a measure this
+#: module silently never answers. The guard beneath says so loudly instead.
+ECONOMIC_MEASURES = (
+    ANALYTICS_MEASURE_SUPPLIER_COGS,
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+    ANALYTICS_MEASURE_GROSS_MARGIN,
+    ANALYTICS_MEASURE_RECORDED_EVENTS,
+)
+
+assert set(ECONOMIC_MEASURES) == ANALYTICS_MEASURE_VALUES, (
+    "every declared measure needs a line in ECONOMIC_MEASURES")
+
+#: The measures denominated in money, which is what makes them subtractable and
+#: what makes them refusable at a grain UBB holds no money at.
+MONEY_MEASURES = (ANALYTICS_MEASURE_SUPPLIER_COGS,
+                  ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                  ANALYTICS_MEASURE_GROSS_MARGIN)
+
+#: The time grains a caller may bucket at, and the truncation each one is.
+#:
+#: UBB owns this set and the registry declares no concept for it, on the terms
+#: `GROUPING_GRAINS` above takes for its own: the contract does not RESTATE the
+#: set, the field publishes as a plain string whose meaning the schema states in
+#: prose, and this stays the one place the values live.
+BUCKET_HOUR, BUCKET_DAY, BUCKET_MONTH = "hour", "day", "month"
+ECONOMIC_BUCKETS = (BUCKET_HOUR, BUCKET_DAY, BUCKET_MONTH)
+_BUCKET_TRUNCATIONS = {BUCKET_HOUR: TruncHour, BUCKET_DAY: TruncDay,
+                       BUCKET_MONTH: TruncMonth}
+
+assert set(_BUCKET_TRUNCATIONS) == set(ECONOMIC_BUCKETS), (
+    "every bucket a caller may ask for needs a truncation to be answered with")
+
+#: What a row says about the value it groups, BESIDE the value itself.
+#:
+#: ⚠ **TWO DIFFERENT FACTS USED TO SHARE ONE BUCKET, AND THIS IS THE PAIR THAT
+#: SEPARATES THEM** (§5's second prohibition). The surfaces this query replaces
+#: put every absent value under one `(unattributed)` heading, which conflates
+#: *we do not know which provider* with *the question does not apply to these
+#: rows at all* — and one of the two has a remedy (record it) while the other
+#: never will. A charge projection names no Event Type by construction, because
+#: a row wearing an Event Type nobody declared would be quarantined at the
+#: catalogue; asking which Event Type it was is not a question with a missing
+#: answer.
+#:
+#: The value is present exactly when the status is `recorded`, so a reader never
+#: has to decide what an empty string meant.
+GROUPED_VALUE_STATUS_KEY = "grouping_field_value_status"
+VALUE_RECORDED = "recorded"
+VALUE_NOT_RECORDED = "not_recorded"
+VALUE_NOT_APPLICABLE = "not_applicable"
+GROUPED_VALUE_STATUSES = (VALUE_RECORDED, VALUE_NOT_RECORDED,
+                          VALUE_NOT_APPLICABLE)
+
+#: The axes a charge posting cannot carry a value on, whatever the tenant does.
+#:
+#: DERIVED FROM THE PROJECTION'S OWN WRITER AND PINNED AGAINST IT. All three are
+#: facts a RECORDING states about a metered call, and a charge projection is not
+#: one: it is money owed for a delivered piece of work.
+#: `pricing/services/charge_projection.py` sets the Event Type to the empty
+#: string deliberately — a synthetic row wearing an Event Type nobody declared
+#: would be quarantined at the catalogue — and never sets a supplier or the
+#: contained kind of work at all, because the Charge it projects carries
+#: neither. The TOP-level kind of work it does carry, copied off the Charge,
+#: which is why that axis is not here.
+#:
+#: What a projection does carry beyond that is the declared grouping slots,
+#: copied off the Charge, so a blank one there is an absence like anybody's and
+#: reads `not_recorded` exactly as it would on a metered posting.
+#:
+#: It is a list here and a test there:
+#: `apps/metering/tests/test_the_one_economic_query.py` projects an actual
+#: Charge and asserts that exactly these axes come out blank on it, so the day
+#: the projection learns to carry one of them this list goes red rather than
+#: quietly answering `not_applicable` about a value that is now recordable.
+#: That test wrote this list rather than the other way round — the first draft
+#: was one axis short.
+AXES_A_CHARGE_POSTING_CANNOT_CARRY = ("provider", "event_type", "subtask_type")
+
+#: The measure states this query can reach, worst last.
+#:
+#: ⚠ **THREE OF THE REGISTRY'S FOUR, AND THE FOURTH IS NAMED RATHER THAN
+#: QUIETLY ABSENT.** `not_applicable` says the measure does not apply here, and
+#: nothing this query does produces that: a combination a measure cannot answer
+#: is REFUSED against the discovery contract before any row is built, which is
+#: §7's whole mechanism, so the answer never contains a measure that does not
+#: apply to it. The state arrives with the surface that can produce one.
+#:
+#: The ORDER is the precedence, and it runs from most to least informative about
+#: the number beside it: a measure that cannot be attributed at this grain is
+#: saying the figure is not the answer at all, which outranks a figure that is a
+#: real bound. Ranking the other way would let a bound hide an inattributable
+#: total.
+MEASURE_STATES_WORST_LAST = (MEASURE_STATUS_KNOWN, MEASURE_STATUS_INCOMPLETE,
+                             MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN)
+
+#: THE ABSENCE OF THE REVENUE ARGUMENT, WHICH IS NOT THE SAME AS AN EMPTY ONE.
+#:
+#: A sentinel rather than `None` because `None` is a value a caller arrives at
+#: by accident — a variable that was never set, a `dict.get` that missed — and
+#: this is the one argument where *I did not think about it* must not be
+#: readable as *there was none*, because the second answers a confident margin
+#: that is short by a subscription. Asking whether the argument is PRESENT
+#: rather than whether it is truthy is also what stops an empty list, a zero and
+#: a `False` from all becoming the same request.
+_NOTHING_WAS_CONTRIBUTED = object()
+
+class EconomicFilters(NamedTuple):
+    """What one economic question is asked ABOUT, as one value.
+
+    ELEVEN VALUES THAT TRAVEL TOGETHER AND NOWHERE SEPARATELY — from the route,
+    through the query, into the one function that narrows the postings. Passed
+    loose they made a sixteen-parameter call whose order no reader could hold,
+    and every surface that adopts this query in the tickets after it would have
+    copied that call. Named, they also give the count's comparison rule
+    something to ASK: a request pinned to one Event Type holds it constant in
+    every row however it is grouped, which loose parameters could not express
+    because the rule never saw them.
+
+    Every field defaults, because a question with no filters at all is the
+    ordinary tenant-wide one rather than a special case.
+    """
+
+    #: The window, inclusive of its end date — the reading every analytics
+    #: surface in this module takes, and a strict bound at the NEXT midnight.
+    start_date: object = None
+    end_date: object = None
+    customer_id: object = None
+    event_type: str = None
+    task_type: str = None
+    #: The unit of work, and whether the work contained in it is in scope.
+    task_id: object = None
+    include_subtasks: bool = False
+    #: The three stop-context filters, which compose with every grouping: what
+    #: was spent past a stop, in one scope, in one episode.
+    past_limit: bool = None
+    stop_scope: str = None
+    episode_seq: int = None
+    #: The tenant's own declared axes, pinned to a value: `(axis word, value)`
+    #: pairs, where the axis word is one the discovery contract publishes.
+    field_filters: tuple = ()
+
+
+
+#: WHAT A ROW HOLDS WHERE THE MEASURE HAS NO FIGURE TO STATE.
+#:
+#: `None`, never zero, and never the number the measure would have been if the
+#: missing half were nothing (#153 §8.5). A margin UBB cannot attribute at the
+#: requested grain is not a small margin.
+NO_FIGURE = None
+
+
+class EconomicQuestionRefused(ValueError):
+    """A question this surface will not answer, raised where a sentence cannot
+    be returned.
+
+    A `ValueError` SUBCLASS, on `usage_service.EffectiveAtError`'s precedent and
+    for its reason: the read contract's own door returns a sentence, and this is
+    what the query raises when a caller reaches it without having asked. Its own
+    type is what lets the composition layer catch THE REFUSAL rather than
+    catching `ValueError` — which would turn any incidental one into a 422
+    carrying an internal message to a tenant.
+    """
+
+
+def economic_refusal(tenant_id, *, measures, axes, event_type=None,
+                     surface=SURFACE_ANALYTICS) -> str | None:
+    """Why this economic question may not be answered, or ``None`` where it may.
+
+    Everything :func:`grouping_refusal` refuses, plus the two refusals that are
+    about the MEASURE SET rather than about one axis, and which therefore cannot
+    be declared per axis on the discovery contract:
+
+    ⚠ **REQUESTING NO MEASURE IS REFUSED, NEVER DEFAULTED.** A default measure
+    set is how a caller ends up aggregating three different things to draw one
+    line; the question *what did this cost, what did it earn, what is the
+    difference* has to be asked before it can be answered.
+
+    ⚠ **AND A COUNT MAY NOT BE COMPARED ACROSS GROUPS THAT MIX EVENT TYPES.**
+    `recorded_events` counts records at the tenant's own declared granularity,
+    so two rows are only comparable where each is confined to one Event Type or
+    one heading over Event Types — otherwise a tenant metering one Event Type
+    per token and another per request reads the first as ten thousand times the
+    second. #154 §14 is explicit that the NAME makes the honest reading
+    available and does not make the dishonest comparison impossible, and that
+    the grouping constraint is the actual protection. So the constraint is
+    stated here, against the discovery contract's own axes, because it is a
+    property of the whole request and not of any one axis: grouping by provider
+    is honest the moment the Event Type is grouped beside it, and a per-axis
+    declaration could not say that.
+
+    **TIME BUCKETS ARE NOT GROUPS FOR THIS PURPOSE AND THE DIFFERENCE IS REAL.**
+    Every bucket of a bucketed query mixes Event Types the same way, so the
+    comparison across them is like with like — which is exactly what the rule is
+    protecting and not what it forbids.
+
+    **AN UNGROUPED TOTAL IS ONE ROW AND COMPARES WITH NOTHING**, so it is
+    answered. What stops a caller putting it on a slide as a headline is the
+    measure's own name, which is #154 §14's own division of labour and the half
+    it says the rename does buy.
+
+    ⚠ **A FILTER HOLDS THE EVENT TYPE AS STEADY AS A GROUPING DOES, AND NOT
+    ASKING ABOUT IT WAS A FALSE REFUSAL.** A request pinned to one Event Type
+    has that type constant in every row by construction, however it is grouped —
+    so refusing it would have turned down the single most honest shape of the
+    question a caller can ask. `event_type` is the filter the route takes, and
+    it is passed in here for exactly this.
+    """
+    if not measures:
+        return ("an economic question names the measures it asks for; "
+                f"send one or more of {', '.join(sorted(ECONOMIC_MEASURES))}")
+    for measure in measures:
+        if measure not in ECONOMIC_MEASURES:
+            return (f"{measure!r} is not an economic measure; "
+                    f"send one or more of {', '.join(sorted(ECONOMIC_MEASURES))}")
+    refusal = grouping_refusal(tenant_id, axes=axes, measures=measures,
+                               surface=surface)
+    if refusal is not None:
+        return refusal
+    if (ANALYTICS_MEASURE_RECORDED_EVENTS in measures and axes
+            and not event_type
+            and not _keeps_the_event_type_constant(axes)):
+        return (f"{ANALYTICS_MEASURE_RECORDED_EVENTS!r} counts records at the "
+                "granularity each Event Type declares, so rows that mix Event "
+                "Types are not comparable; group by "
+                f"{grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, 'event_type')!r} "
+                "or "
+                f"{grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP, ANALYTICS_ROLLUP_EVENT_CATEGORY)!r} "
+                "beside the axes you asked for, filter to one event_type, or "
+                "drop the measure")
+    return None
+
+
+def _keeps_the_event_type_constant(axes) -> bool:
+    """Whether this grouping confines each row to one Event Type or one heading
+    over Event Types.
+
+    The two axes that do are read off the vocabulary rather than spelled: the
+    always-present Event Type field, and the rollup whose join is over Event
+    Types. A third way of holding the Event Type steady would have to be added
+    to the vocabulary first, and would be found here.
+    """
+    holds = {grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "event_type"),
+             grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP,
+                           ANALYTICS_ROLLUP_EVENT_CATEGORY)}
+    return bool(holds & set(axes))
+
+
+def economics(tenant_id, *, measures, group_by=(), bucket=None,
+              filters=None, basis=None,
+              contributed_revenue=_NOTHING_WAS_CONTRIBUTED) -> dict:
+    """What this tenant's AI work cost, what it earned, and the difference.
+
+    ONE definition of two numbers, answered over any filters, at any declared
+    grouping axes, at hour, day or month — replacing the five backend
+    definitions the surfaces above it each carried a copy of.
+
+    ``measures``
+        one or more of :data:`ECONOMIC_MEASURES`. Requesting none is refused by
+        :func:`economic_refusal` rather than defaulted, and every caller runs
+        that first.
+    ``group_by``
+        zero or more axis words from the discovery contract, each carrying its
+        kind. A row holds its values POSITIONALLY under `grouping_field_value`,
+        aligned with the words the caller sent — the request already named the
+        axes and repeating them once per row would say the same thing over and
+        over (`docs/adr/0005-declared-grouping-fields.md` settles the row key
+        itself).
+    ``bucket``
+        ``hour``, ``day``, ``month``, or ``None`` for the whole period as one
+        row. Bucketing sits on the same aggregate as the grouping and takes the
+        same absence rule, which is vacuous for time and stated so rather than
+        implied: a posting's `effective_at` is NOT NULL, so no bucket key is
+        ever absent, where an axis value routinely is.
+    ``filters``
+        an :class:`EconomicFilters` — what the question is asked ABOUT. Absent
+        means the ordinary tenant-wide question rather than a special case.
+    ``contributed_revenue``
+        the revenue rows this product does not hold — see below. Passing
+        nothing is a different request from passing none, and the default is
+        neither: it is refused where a revenue measure was asked for.
+
+    ⚠ **EACH MEASURE IS AGGREGATED FROM ITS OWN CANONICAL SOURCE**, and the
+    sources genuinely differ:
+
+    * ``recorded_events`` — postings, EXCLUDING the charge posting kind.
+    * ``supplier_cogs`` — the supplier-cost pair on those same postings.
+    * ``customer_revenue`` — the customer-price pair on postings, which is where
+      a Charge lands 1:1 as a projection, PLUS the contributed rows, which are
+      neither postings nor this product's.
+    * ``gross_margin`` — revenue MINUS cost, at the bucket, never at a row.
+
+    ⚠ **MARGIN IS A BUCKET-LEVEL SUBTRACTION, NEVER A ROW-LEVEL ONE** (#153 §2).
+    A row-level subtraction produces a per-event margin for an event that was
+    never going to carry revenue, which is the figure this whole slice exists to
+    delete. Every total on both sides is aggregated first and the subtraction
+    happens once, over the two aggregates a row will actually state.
+
+    ⚠ **THE SCOPE RULE: margin is defined at a bucket only when every revenue
+    component in that bucket is attributable at that bucket's grain** (§5).
+    Where it is not, this answers the cost, answers the revenue it CAN
+    attribute, names what it could not in `context`, and publishes NO margin.
+    Three prohibitions hold it up, each with a live counterexample on the
+    surfaces this replaces:
+
+    * **Never distribute** across an operational axis. Allocating a
+      customer-month revenue figure across providers pro-rata by cost produces a
+      hypothetical, not an observation. So a contributed row is folded into a
+      row's revenue only where every grouped axis is one the row itself declares
+      it can be attributed at, and is otherwise reported beside the answer.
+    * **Never bucket as unattributed.** See `GROUPED_VALUE_STATUSES`.
+    * **Never silently drop.** The coarse revenue appears in `context` so the
+      tenant can see the money exists and understand why no margin is drawn.
+
+    **Time is the sole exception, it is explicit, and it is not unconditional.**
+    A contributed row is attributed to the window it is asked about, because the
+    record it came from declares its own span — interpolation inside a stated
+    boundary. It declares no provider, no Event Type and no event, so spreading
+    it along an operational axis would invent a boundary the record never
+    asserted. ⚠ **And it declares that span in whole days**, so a question
+    bucketed by hour is finer than the record itself and withholds the margin
+    exactly as an operational axis does: interpolating inside a declared
+    boundary is one thing, manufacturing a precision nobody stated is another.
+    Each row names the finest bucket it goes to and this asks it.
+
+    ⚠ **THE REVENUE THIS PRODUCT DOES NOT HOLD ARRIVES AS DATA, AND NOT PASSING
+    IT IS REFUSED RATHER THAN READ AS ZERO.** A tenant's Stripe subscriptions
+    and the figures it supplies itself belong to another product, and ADR-001
+    forbids this module reaching for either — rightly, since on a service split
+    metering would not have them. So the composition layer reads them from that
+    product's own read contract and hands them over, each row saying whose it
+    is, which window it lands in, where it came from and what it can be
+    attributed at. A default of "none" would make *there was no subscription
+    revenue* and *I forgot to ask* the same request, and the second one answers
+    a confident margin that is short by a subscription — so the absence of the
+    argument is a `ValueError` and only an explicitly empty sequence means
+    there was none.
+
+    ⚠ **NON-GOAL — A CONFIDENT PRICE OVER AN UNRESOLVED COST (§15).** The
+    pricing service consults the costing status only inside its margin-over-cost
+    branch; every other path returns a confident price, that amount becomes a
+    Charge, and the charge projection writes BOTH statuses as known onto the
+    posting this sums for revenue. So a revenue measure here can read `known`
+    over a cost nobody resolved. **#473 owns the fix and this query does not
+    open the pricing service.** What it owes instead is honesty about the
+    composite: `gross_margin`'s state is derived from BOTH inputs, so where the
+    cost side is incomplete the margin is incomplete whatever the revenue side
+    says. That is the honest rendering of a dishonest input, not a repair of it.
+    """
+    measures = tuple(measures)
+    axes = tuple(group_by)
+    filters = filters or EconomicFilters()
+    refusal = economic_refusal(tenant_id, measures=measures, axes=axes,
+                               event_type=filters.event_type)
+    if refusal is not None:
+        raise EconomicQuestionRefused(refusal)
+    if bucket is not None and bucket not in ECONOMIC_BUCKETS:
+        raise EconomicQuestionRefused(
+            f"{bucket!r} is not a bucket; send one of "
+            f"{', '.join(ECONOMIC_BUCKETS)}")
+    wants_revenue = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                          ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
+    if wants_revenue and contributed_revenue is _NOTHING_WAS_CONTRIBUTED:
+        # ⚠ NOT a refusal of the QUESTION — the question is fine and the caller
+        # is the one that is wrong — so it raises the bare `ValueError` and the
+        # composition layer does NOT translate it into a tenant-facing 422.
+        raise ValueError(
+            "a revenue measure needs the revenue rows this product does not "
+            "hold; pass contributed_revenue=() to state that there are none")
+    contributions = ([] if contributed_revenue is _NOTHING_WAS_CONTRIBUTED
+                     else list(contributed_revenue))
+
+    plans = [_axis_plan(tenant_id, word) for word in axes]
+    postings = _economic_postings(tenant_id, filters)
+
+    if any(plan["rollup"] == ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT
+           for plan in plans):
+        groups = _measurement_grouped(tenant_id, postings, plans, bucket)
+    else:
+        groups = _posting_grouped(tenant_id, postings, plans, bucket)
+
+    attributable = _contributions_are_attributable(axes, contributions, bucket)
+    if attributable and contributions:
+        _fold_contributions_in(groups, plans, contributions, bucket)
+    if not groups and not axes and bucket is None:
+        # ⚠ AN UNGROUPED, UNBUCKETED QUESTION ALWAYS HAS EXACTLY ONE ROW, and
+        # over an empty window that row is zeros. *What did all of this cost*
+        # has the answer "nothing" when nothing happened, and answering it with
+        # SILENCE would make the degenerate preset — three measures, no
+        # grouping, no bucket — the one shape of this query that can return no
+        # answer at all. A grouped or bucketed question is different in kind:
+        # its rows are the groups that exist, and inventing one would be
+        # inventing a group.
+        groups[(None, ())] = _empty_group()
+
+    rows = [_economic_row(key, group, measures=measures,
+                          attributable=attributable or not contributions)
+            for key, group in sorted(groups.items(), key=_row_order)]
+    return {
+        "group_by": list(axes),
+        "bucket": bucket,
+        "basis": basis,
+        "rows": rows,
+        "context": ([] if attributable
+                    else _context_rows(contributions, axes)),
+    }
+
+
+def _economic_postings(tenant_id, filters):
+    """Every posting the question is asked about, and nothing else.
+
+    The filters the one query takes, applied in one place, so the five surfaces
+    it replaces stop each having their own idea of what a filter means. The stop
+    context trio compose with everything else exactly as they always did: a
+    request can total what was spent past a stop, grouped by provider, bucketed
+    by day, and each filter narrows the same set.
+    """
+    from apps.metering.usage.models import Posting
+
+    qs = Posting.objects.filter(tenant_id=tenant_id)
+    if filters.start_date:
+        qs = qs.filter(effective_at__gte=utc_day_start(filters.start_date))
+    if filters.end_date:
+        # Inclusive date end == strict bound at the NEXT UTC midnight, which is
+        # what every window in this module means by an end date.
+        qs = qs.filter(effective_at__lt=utc_next_day_start(filters.end_date))
+    if filters.customer_id:
+        qs = qs.filter(customer_id=filters.customer_id)
+    if filters.event_type:
+        qs = qs.filter(event_type=filters.event_type)
+    if filters.task_type:
+        qs = qs.filter(task_type=filters.task_type)
+    if filters.past_limit is not None:
+        qs = qs.filter(stop_context__isnull=not filters.past_limit)
+    if filters.stop_scope is not None:
+        qs = qs.filter(
+            stop_context__contains=[{"stop_scope": filters.stop_scope}])
+    if filters.episode_seq is not None:
+        qs = qs.filter(
+            stop_context__contains=[{"episode_seq": filters.episode_seq}])
+    if filters.task_id is not None:
+        from apps.platform.work.models import Task
+        ids = [filters.task_id]
+        if filters.include_subtasks:
+            # Containment is a single level, so the whole tree is this one
+            # indexed read — the same shape the event listing uses.
+            ids += list(Task.objects.filter(
+                tenant_id=tenant_id, parent_id=filters.task_id
+            ).values_list("id", flat=True))
+        qs = qs.filter(task_id__in=ids)
+    for word, value in filters.field_filters:
+        plan = _axis_plan(tenant_id, word)
+        if plan["column"] is None:
+            raise EconomicQuestionRefused(
+                f"{word!r} groups records beneath an event and cannot be an "
+                "equality filter on the events themselves")
+        qs = qs.filter(**{plan["column"]: value})
+    return qs
+
+
+def _axis_plan(tenant_id, word) -> dict:
+    """How one request word is answered: the column to group, and the fold after.
+
+    A declared field resolves to its slot through the registry, an always-present
+    axis to its own column, and a rollup to the column its join starts from plus
+    the membership that folds it. The measurement rollup has no column at all —
+    it groups records beneath an event rather than the event — which is why it
+    takes a different aggregate and cannot be an equality filter.
+    """
+    from apps.platform.grouping_fields.queries import slot_map
+
+    parsed = parse_grouping_axis(word)
+    if parsed is None:
+        raise ValueError(f"{word!r} names no grouping kind")
+    kind, name = parsed
+    if kind == ANALYTICS_GROUPING_KIND_ROLLUP:
+        if name == ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT:
+            return {"word": word, "column": None, "rollup": name,
+                    "membership": None, "field": None}
+        return {"word": word, "column": "event_type", "rollup": name,
+                "membership": rollup_membership(tenant_id, name),
+                "field": "event_type"}
+    if name in RESERVED_KEYS:
+        # The customer is grouped by IDENTITY, which is what the per-customer
+        # margin list this replaces returned and what a caller can look a
+        # customer up by. Its external id is the tenant's own word for the same
+        # row and belongs to the surface that renders it.
+        column = "customer_id" if name == "customer" else name
+        return {"word": word, "column": column, "rollup": None,
+                "membership": None, "field": name}
+    slot = slot_map(tenant_id).get(name)
+    if slot is None:
+        raise ValueError(f"{word!r} is not a grouping axis this tenant has "
+                         "declared")
+    return {"word": word, "column": slot, "rollup": None, "membership": None,
+            "field": name}
+
+
+def _posting_grouped(tenant_id, postings, plans, bucket) -> dict:
+    """The money and the count, grouped by the requested axes and the bucket.
+
+    ⚠ **THE POSTING KIND IS ALWAYS A GROUP KEY AND IS ALWAYS FOLDED AWAY
+    AFTERWARDS**, which buys two separate things in one aggregate. It is what
+    lets `recorded_events` exclude the charge posting kind while the money
+    measures keep it — a Task must not count its own invoice as work, and its
+    invoice is nonetheless revenue. And it is what tells an absent value's two
+    causes apart, because whether an axis APPLIES to a row is a fact about the
+    kind of row it is.
+    """
+    # The columns are named in `values()` directly and the alias a row publishes
+    # is only ever POSITIONAL, in Python. An annotation per axis would have to
+    # invent a name, and any name it invented could collide with the model field
+    # it was aliasing — which Django answers with a `ValueError` naming neither
+    # the axis nor the request that asked for it.
+    columns = [plan["column"] for plan in plans]
+    grouped = (postings
+               .values("kind", *columns,
+                       **({"bucket_start": _BUCKET_TRUNCATIONS[bucket](
+                           "effective_at")} if bucket is not None else {}))
+               .annotate(
+                   event_count=Count("id"),
+                   **cost_total_annotations(SUPPLIER_COST,
+                                            key="provider_cost_micros"),
+                   **cost_total_annotations(CUSTOMER_PRICE,
+                                            key="billed_cost_micros"))
+               .order_by())
+
+    groups = {}
+    for raw in grouped:
+        row = carry_cost_total(SUPPLIER_COST, dict(raw),
+                               key="provider_cost_micros")
+        row = carry_cost_total(CUSTOMER_PRICE, row, key="billed_cost_micros")
+        values = tuple(_grouped_value(plan, row[plan["column"]], row["kind"])
+                       for plan in plans)
+        _accumulate(groups, (row.get("bucket_start"), values), row)
+    return groups
+
+
+def _measurement_grouped(tenant_id, postings, plans, bucket) -> dict:
+    """The count, grouped by a heading over the quantities beneath an event.
+
+    ⚠ **IT COUNTS POSTINGS AND NOT MEASUREMENT RECORDS**, which is what keeps
+    `recorded_events` meaning one thing on every axis: a posting measured two
+    ways under one heading is one event. It is also why the rows of such a query
+    do not add up to the ungrouped total — a posting whose quantities sit under
+    two headings is one event in each row — and that is a property of asking a
+    many-valued question rather than a defect in the answer.
+
+    ⚠ **THE FOLD IS IN PYTHON AND THAT IS THE COST §7 NARROWED THE AXIS OVER.**
+    The heading a quantity sits under is a map keyed by the PAIR of an Event
+    Type and a code, and the quantities themselves live in a bag on the child
+    record, so no `GROUP BY` can reach them. The per-call window bound is what
+    keeps it finite today; the row that makes this cheap is #513's, by name.
+
+    The clock is the POSTING's, not the child record's. The child carries the
+    moment its quantities were recorded, which for rows folded out of their
+    posting long predates them; an economic question is asked about when the
+    work was effective, and one query answers on one clock.
+    """
+    from apps.metering.usage.models import PostingMeasurement
+
+    membership = rollup_membership(tenant_id,
+                                   ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT)
+    other = [plan for plan in plans
+             if plan["rollup"] != ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT]
+    fields = ["posting_id", "posting__kind", "posting__event_type",
+              "posting__effective_at", "measurements"]
+    fields += [f"posting__{plan['column']}" for plan in other]
+
+    seen = {}
+    for record in (PostingMeasurement.objects
+                   .filter(posting__in=postings).values(*fields).iterator()):
+        headings = {membership[(record["posting__event_type"], code)]
+                    for code in record["measurements"]
+                    if (record["posting__event_type"], code) in membership}
+        if not headings:
+            # A quantity nobody has filed is absent rather than present under a
+            # sentinel — the kernel's own rule for this map, and §5's second
+            # prohibition one layer down.
+            continue
+        kind = record["posting__kind"]
+        bucket_start = _bucket_of(record["posting__effective_at"], bucket)
+        for heading in headings:
+            values = []
+            for plan in plans:
+                if plan["rollup"] == ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT:
+                    values.append((heading, VALUE_RECORDED))
+                else:
+                    values.append(_grouped_value(
+                        plan, record[f"posting__{plan['column']}"], kind))
+            seen.setdefault((bucket_start, tuple(values)), set()).add(
+                (record["posting_id"], kind))
+
+    groups = {}
+    for key, postings_seen in seen.items():
+        counted = sum(1 for _, kind in postings_seen
+                      if kind != USAGE_EVENT_KIND_TASK_CHARGE)
+        groups[key] = _empty_group()
+        groups[key][ANALYTICS_MEASURE_RECORDED_EVENTS] = counted
+    return groups
+
+
+def _bucket_of(moment, bucket):
+    """Which bucket a moment falls in, matching the database truncation.
+
+    Python-side because the measurement fold is Python-side; the two have to
+    agree, so this states the same three truncations the aggregate uses rather
+    than a fourth idea of what a month is.
+    """
+    if bucket is None:
+        return None
+    if bucket == BUCKET_HOUR:
+        return moment.replace(minute=0, second=0, microsecond=0)
+    if bucket == BUCKET_DAY:
+        return moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    return moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _grouped_value(plan, raw, kind) -> tuple:
+    """One axis's value for one group, and what the row says about it.
+
+    Returns the ``(value, status)`` pair the row publishes positionally. A
+    rollup's value is the heading its column's value is filed under, and an
+    identity nobody has filed has no heading — which is an absence like any
+    other and not a sentinel heading of its own.
+    """
+    value = raw
+    if plan["membership"] is not None:
+        value = plan["membership"].get(raw)
+    if value not in (None, ""):
+        return (str(value), VALUE_RECORDED)
+    if (kind == USAGE_EVENT_KIND_TASK_CHARGE
+            and plan["field"] in AXES_A_CHARGE_POSTING_CANNOT_CARRY):
+        return (None, VALUE_NOT_APPLICABLE)
+    return (None, VALUE_NOT_RECORDED)
+
+
+def _empty_group() -> dict:
+    """One group's accumulators, all of them present from the start.
+
+    Every key exists whether or not a row contributed to it, because a measure
+    that reads its own total with `.get` cannot tell a group that summed to zero
+    from one the aggregate never reached.
+    """
+    return {ANALYTICS_MEASURE_RECORDED_EVENTS: 0,
+            "provider_cost_micros": 0, UNRESOLVED_EVENT_COUNT_KEY: 0,
+            "posting_revenue_micros": 0, UNPRICED_EVENT_COUNT_KEY: 0,
+            "contributed_revenue_micros": 0}
+
+
+def _accumulate(groups, key, row) -> None:
+    """Fold one aggregate row into its group.
+
+    ⚠ The count excludes the charge posting kind and the money does not, which
+    is the whole reason the kind was a group key: **a Task must not count its
+    own invoice as work**, and that invoice is still revenue the tenant earned.
+    """
+    group = groups.setdefault(key, _empty_group())
+    if row["kind"] != USAGE_EVENT_KIND_TASK_CHARGE:
+        group[ANALYTICS_MEASURE_RECORDED_EVENTS] += row["event_count"]
+    group["provider_cost_micros"] += row["provider_cost_micros"]
+    group[UNRESOLVED_EVENT_COUNT_KEY] += row[UNRESOLVED_EVENT_COUNT_KEY]
+    group["posting_revenue_micros"] += row["billed_cost_micros"]
+    group[UNPRICED_EVENT_COUNT_KEY] += row[UNPRICED_EVENT_COUNT_KEY]
+
+
+def _contributions_are_attributable(axes, contributions, bucket) -> bool:
+    """Whether every contributed row can be placed at the requested grain.
+
+    ⚠ **THE ROWS SAY WHAT THEY CAN BE ATTRIBUTED AT AND THIS ASKS THEM**, rather
+    than holding a list of the other product's axes. An ungrouped question
+    places everything by construction; a question grouped only by axes every row
+    admits places everything too; anything else does not, and no amount of
+    arithmetic makes it.
+
+    ⚠ **TIME IS THE EXCEPTION AND IT IS NOT AN UNCONDITIONAL ONE.** Distributing
+    a figure inside the span its own record declares is interpolation; placing
+    it at a grain FINER than that span is manufacturing a precision the record
+    never stated. Each row names the finest bucket it goes to, so a question
+    bucketed more finely than that withholds the margin exactly as an
+    operational axis does — rather than landing a month's subscription at
+    midnight and calling it an hourly figure.
+    """
+    if not contributions:
+        return True
+    admitted = set.intersection(*[
+        {grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, name)
+         for name in row["attributable_axes"]}
+        for row in contributions])
+    if not set(axes) <= admitted:
+        return False
+    if bucket is None:
+        return True
+    coarsest = max(ECONOMIC_BUCKETS.index(row["finest_bucket"])
+                   for row in contributions)
+    return ECONOMIC_BUCKETS.index(bucket) >= coarsest
+
+
+def _fold_contributions_in(groups, plans, contributions, bucket) -> None:
+    """Add each contributed row to the group its window and its customer name.
+
+    Only ever called where every row is attributable, so there is no branch here
+    deciding to drop one — a function that could silently drop revenue is the
+    third prohibition wearing a helper's clothes.
+    """
+    # ⚠ EVERY AXIS PRESENT HERE IS ONE THE ROWS ADMIT, which is what being
+    # called at all means — so there is no "some other axis" case to write, and
+    # writing one would have produced a value-less row claiming a RECORDED
+    # status, against this module's own rule that the value is present exactly
+    # when the status says `recorded`. Asserted rather than branched on, so the
+    # day a contribution admits a second axis this fails loudly instead of
+    # quietly filing the money under a blank.
+    assert all(plan["field"] == "customer" and plan["rollup"] is None
+               for plan in plans), (
+        "a contribution is only folded in where every grouped axis is one it "
+        "declares it can be attributed at")
+    for row in contributions:
+        bucket_start = (_bucket_of(_as_moment(row["window_start"]), bucket)
+                        if bucket is not None else None)
+        values = tuple((row["customer_id"], VALUE_RECORDED) for _ in plans)
+        key = (bucket_start, values)
+        group = groups.setdefault(key, _empty_group())
+        group["contributed_revenue_micros"] += row["amount_micros"]
+
+
+def _as_moment(day):
+    """A window's opening date as the UTC instant the aggregate would bucket."""
+    return utc_day_start(day)
+
+
+def _context_rows(contributions, axes) -> list[dict]:
+    """The revenue that exists and could not be placed at this grouping.
+
+    ⚠ **THE THIRD PROHIBITION, WHICH IS THE ONE WITH NOTHING TO SHOW FOR IT
+    ANYWHERE ELSE.** Never distributing and never bucketing as unattributed both
+    leave a visible mark in the answer; silently dropping leaves none, and a
+    tenant looking at a chart with no margin on it has no way to tell whether
+    there was no money or whether UBB declined to place it. So the money is
+    presented beside the answer, with whose it is, where it came from, and the
+    axes at which asking again WOULD produce a margin.
+    """
+    rows = []
+    for row in contributions:
+        rows.append({
+            "source": row["source"],
+            "customer_id": row["customer_id"],
+            "amount_micros": row["amount_micros"],
+            "window_start": row["window_start"].isoformat(),
+            "window_end": row["window_end"].isoformat(),
+            "attributable_axes": [
+                grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, name)
+                for name in row["attributable_axes"]],
+            # The other half of the remedy, and it is a different one: where
+            # the question was bucketed too finely rather than grouped too
+            # operationally, changing the axes would not help and this says so.
+            "attributable_bucket": row["finest_bucket"],
+        })
+    return rows
+
+
+def _row_order(item):
+    """Rows in a stable, readable order: oldest bucket first, then by value.
+
+    A tuple of `(value, status)` pairs sorts on the value and then on the status,
+    and a `None` value cannot be compared with a string — so absences sort after
+    everything recorded, together, which is where a reader expects them.
+    """
+    (bucket_start, values), _ = item
+    return (bucket_start.isoformat() if bucket_start is not None else "",
+            tuple((value is None, value or "", status)
+                  for value, status in values))
+
+
+def _economic_row(key, group, *, measures, attributable) -> dict:
+    """One row of the answer: what it groups, and each requested measure.
+
+    The subtraction happens HERE and only here, over the two totals this row
+    will actually state — which is what "a bucket-level subtraction" means in
+    code rather than in prose.
+    """
+    bucket_start, values = key
+    revenue = (group["posting_revenue_micros"]
+               + group["contributed_revenue_micros"])
+    cost_state = (MEASURE_STATUS_INCOMPLETE
+                  if group[UNRESOLVED_EVENT_COUNT_KEY]
+                  else MEASURE_STATUS_KNOWN)
+    if not attributable:
+        revenue_state = MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
+    elif group[UNPRICED_EVENT_COUNT_KEY]:
+        revenue_state = MEASURE_STATUS_INCOMPLETE
+    else:
+        revenue_state = MEASURE_STATUS_KNOWN
+
+    # ⚠ THE COUNT DOES NOT SHARE THE MONEY'S FIELD, AND THE MEASURE'S OWN NAME
+    # IS WHAT SAYS WHICH ONE IT FILLS. Three of the four are denominated in
+    # micros and the fourth is a number of records; putting a count in a field
+    # whose name ends `_micros` would be a hundredth-of-a-cent reading of two,
+    # which is the kind of quiet unit error this whole programme is about. So
+    # each measure fills exactly one, and the other is null.
+    built = {
+        ANALYTICS_MEASURE_SUPPLIER_COGS: {
+            "amount_micros": group["provider_cost_micros"],
+            "status": cost_state,
+            UNRESOLVED_EVENT_COUNT_KEY: group[UNRESOLVED_EVENT_COUNT_KEY]},
+        ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
+            "amount_micros": revenue,
+            "status": revenue_state,
+            UNPRICED_EVENT_COUNT_KEY: group[UNPRICED_EVENT_COUNT_KEY]},
+        ANALYTICS_MEASURE_RECORDED_EVENTS: {
+            "event_count": group[ANALYTICS_MEASURE_RECORDED_EVENTS],
+            "status": MEASURE_STATUS_KNOWN},
+        ANALYTICS_MEASURE_GROSS_MARGIN: _margin(
+            revenue, group["provider_cost_micros"],
+            revenue_state=revenue_state, cost_state=cost_state),
+    }
+    return {
+        "bucket_start": (bucket_start.isoformat()
+                         if bucket_start is not None else None),
+        GROUPED_VALUE_KEY: [value for value, _ in values],
+        GROUPED_VALUE_STATUS_KEY: [status for _, status in values],
+        # IN THE REGISTRY'S ORDER RATHER THAN THE REQUEST'S, and every row of
+        # every answer therefore lists them the same way. A caller reads a
+        # measure by its own name — that is what the name on each entry is for
+        # — so honouring the request's order would buy nothing and would make
+        # two requests for the same four measures answer in two shapes.
+        "measures": [{"measure": measure, **built[measure]}
+                     for measure in ECONOMIC_MEASURES if measure in measures],
+    }
+
+
+def _margin(revenue, cost, *, revenue_state, cost_state) -> dict:
+    """Revenue minus cost, and what the difference is worth.
+
+    ⚠ **ITS STATE IS DERIVED FROM BOTH INPUTS, NEVER FROM THE REVENUE SIDE
+    ALONE** (§15). Where the cost side is incomplete the margin is incomplete
+    whatever the revenue side says — which matters precisely because the revenue
+    side CAN read `known` over a cost nobody resolved, since the pricing service
+    returns a confident price outside its margin-over-cost branch and the charge
+    projection writes both statuses as known. #473 owns that; this states it
+    rather than hiding it.
+
+    Where either side cannot be attributed at this grain there is no margin at
+    all — not a small one, and not one computed from the half that could be
+    placed — so the figure is absent and the state says why.
+    """
+    state = max((revenue_state, cost_state),
+                key=MEASURE_STATES_WORST_LAST.index)
+    if state == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN:
+        return {"amount_micros": NO_FIGURE, "status": state}
+    return {"amount_micros": revenue - cost, "status": state}

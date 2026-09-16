@@ -1080,27 +1080,20 @@ entries:
   # and a commit that paid one and left the other would have had to publish
   # half a vocabulary.
 
-  - id: g2-backend-analytics_measure
-    gate: G2
-    site: ubb-platform/apps/metering/queries.py::analytics_measure
-    expected: analytics_measure
-    found: 1 of 4 values
-    owner_slice: slice_7
-    reason: >-
-      This consumer spells these values inline rather than importing them from
-      `core.vocabulary`, and declares no enumeration of its own — so paying
-      this adds an import rather than replacing a list. The three measures and
-      the event count are what slice 7 rebuilds the analytics surface around
-      (#145, #141's unknown-revenue rule).
-      ⚠ 0 -> 1 in #498, and the one is a REFUSAL rather than a measure. The
-      grouping contract declares the supplier cost unsupported on the
-      measurement rollup, with its reason, because UBB records that cost per
-      posting and not per measurement — so the discovery read names that one
-      value in order to refuse it. What remains this entry's is the whole of it
-      and is unchanged: the module that COMPUTES the four is the one economic
-      query, and a read that listed all four in order to describe them would
-      have paid this by mention, which is the vacuous form the pairing with the
-      G4 twin below exists to catch.
+  # ⚠ `g2-backend-analytics_measure` IS PAID AND ITS ENTRY IS DELETED (#499),
+  # with its G4 twin in the same commit — the pairing `g2-backend-analytics_
+  # grouping_kind` records one block below is the same one, for the same reason:
+  # `test_every_advertised_concept_reaches_the_contract` refuses a concept the
+  # backend serves that declares an `openapi` consumer and marks no field.
+  #
+  # PAID BY COMPUTATION AND NOT BY MENTION, which is the distinction both this
+  # entry and #498's carried and neither could make on its own. `queries.py`
+  # now aggregates each of the four from its own canonical source, subtracts
+  # the margin at the bucket, and states each measure's own status — so the
+  # values are held because something DECIDES with them. #498 moved it 0 -> 1
+  # by naming one value in order to REFUSE it on an axis, said at the time that
+  # naming all four to describe them would be the vacuous form, and left the
+  # payment here. This is that payment.
 
   - id: g2-backend-audit_action
     gate: G2
@@ -1168,7 +1161,7 @@ entries:
     gate: G2
     site: ubb-platform/apps/metering/queries.py::measure_status
     expected: measure_status
-    found: 0 of 4 values
+    found: 3 of 4 values
     owner_slice: slice_7
     reason: >-
       This consumer spells these values inline rather than importing them from
@@ -1176,6 +1169,16 @@ entries:
       this adds an import rather than replacing a list. A measure that is
       unavailable at the requested grain must never render as zero (#141,
       #147). Slice 7 rebuilds the analytics surface that has to say so.
+      ⚠ 0 -> 3 in #499, a RE-STATEMENT and not a payment. The one economic
+      query computes three of the four: `known`, `incomplete` and the
+      unavailable-at-this-grain value. It reaches `not_applicable` never, and
+      that is a property of the design rather than an omission — a combination
+      a measure cannot answer is REFUSED against the discovery contract before
+      any row is built, so an answer never contains a measure that does not
+      apply to it. The state arrives with a surface that can produce one, and
+      the entry is paid by the ticket that adds the FIFTH value and computes
+      all five in one commit — which is also why this must not be read as
+      four-of-five in advance.
 
   # ⚠ `pricing_mode` REACHED 2 OF 2 ON THE BACKEND IN #414 and its entry is
   # deleted. It was the odd one in this family: every other G2 entry excuses a
@@ -1447,24 +1450,18 @@ entries:
   # node itself would admit `null` under `anyOf` and refuse it under `enum`.
   # Two entries out of the seeding, and its floor comes down by two.
 
-  - id: g4-openapi-analytics_measure
-    gate: G4
-    site: openapi/v1.json::analytics_measure
-    expected: analytics_measure
-    found: 1 of 4 values
-    owner_slice: slice_7
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds only some of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. Slice 7 rebuilds the analytics surface these three measures and the
-      event count are computed for. The metadata appears in that slice.
-      ⚠ 0 -> 1 in #498, tracking its backend twin above: the grouping contract
-      names the supplier cost in order to declare it unsupported on the
-      measurement rollup. A partial hold is still a hold of nothing the document
-      may say — the refusal is served on a plain string beside the axis, not as
-      an advertised value — so the excuse this entry records is unchanged and
-      only its extent moves.
+  # ⚠ `g4-openapi-analytics_measure` WAS HERE AND IS PAID (#499), in the same
+  # commit as its backend G2 twin above and for the reason the block at the head
+  # of this section gives: the pairing is not optional. The marker sits on each
+  # answer row's own `measure` field, on a plain string node — every measure is
+  # one of the four and none of them is nullable, so no union is involved — and
+  # the export writes a real `enum` there. One entry out of the seeding, and its
+  # floor comes down by one.
+  #
+  # ⚠ ITS SIBLING `g4-openapi-measure_status` DOES NOT MOVE WITH IT, and that is
+  # the point of tracking the two separately: the one query computes three of
+  # that concept's four states, a partial hold advertises nothing, and the field
+  # carrying it ships as a plain string with a written `description` instead.
 
   - id: g4-openapi-audit_action
     gate: G4
@@ -1507,15 +1504,21 @@ entries:
     gate: G4
     site: openapi/v1.json::measure_status
     expected: measure_status
-    found: 0 of 4 values
+    found: 3 of 4 values
     owner_slice: slice_7
     reason: >-
       The contract may not advertise these values while the backend consumer
-      holds 0 of 4 of them: the spec would publish the agreed vocabulary on a
+      holds only some of them: the spec would publish the agreed vocabulary on a
       field that still returns the one it replaces, and a consumer can act on
       that. Slice 7 rebuilds the analytics surface, where a measure that is
       unavailable must never render as a zero (#141, #147). The metadata
       appears in that slice.
+      ⚠ 0 -> 3 in #499, tracking its backend twin above and for the same reason
+      a partial hold changes nothing here: the one economic query serves the
+      state on every measure of every row, as a plain string carrying a written
+      `description`, because a document that enumerated four values over a
+      consumer holding three would be publishing a value nothing can answer
+      with. The fifth value and the marker arrive together.
 
   # ⚠ `pricing_mode` IS ADVERTISED SINCE #414 and its entry is deleted. This
   # entry excused the contract for carrying no metadata while the backend

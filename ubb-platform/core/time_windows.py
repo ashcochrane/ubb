@@ -10,9 +10,19 @@ from datetime import date, datetime, time, timedelta, timezone
 
 
 # #78: computed reports are cursor-exempt but parameter-bounded — the one
-# ceiling an explicit report window may span (366 = one leap year; the
-# hourly timeseries keeps its own tighter 92).
+# ceiling an explicit report window may span (366 = one leap year; an hourly
+# report keeps its own tighter one below).
 REPORT_WINDOW_MAX_DAYS = 366
+
+# THE TIGHTER CEILING AN HOURLY REPORT SPANS, because the bound is really about
+# how many BUCKETS a report may produce and an hour is twenty-four times a day:
+# 366 days by hour is nearly nine thousand rows in one response.
+#
+# NAMED HERE RATHER THAN SPELLED AT EACH ROUTE (#499). It was a literal in two
+# places in one route, and the one economic query is a third asker — a rule
+# spelled three times is three answers to *how far back may an hourly question
+# reach*, and the first one to move would move alone.
+HOURLY_REPORT_WINDOW_MAX_DAYS = 92
 
 
 def utc_day_start(d: date) -> datetime:

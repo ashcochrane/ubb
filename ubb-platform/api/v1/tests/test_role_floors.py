@@ -267,7 +267,17 @@ _WRITE_ROUTES = {
 # default's: this publishes no amount, and the axes it lists are the tenant's
 # own declarations, which the registry read next door already serves at the
 # same floor. Not carved and not exempt, so the exempt count is untouched.
-_EXPECTED_FLOORED = 152
+#
+# 152 + 1 = 153 in #499, phase B's second arrival: the one economic query —
+# `GET /metering/analytics/economics`, one path and one operation, at the READ
+# floor. The carve's default for a GET, and the argument here is the one that
+# matters most on this surface: it is the widest READ in the system, answering
+# what every customer cost and earned, and it still decides nothing — it writes
+# nothing, registers nothing, and moves no window. A finance operator building a
+# chart is exactly who asks it, and the discovery read it validates every request
+# against sits at the same floor one line above. Not carved and not exempt, so
+# the exempt count is untouched.
+_EXPECTED_FLOORED = 153
 _EXPECTED_EXEMPT = 10
 
 

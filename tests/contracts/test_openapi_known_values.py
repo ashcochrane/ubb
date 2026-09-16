@@ -1194,7 +1194,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # basis I invented". So the marker documents a refusal that already exists
     # instead of creating one, and ADR-0007 §3 wants it there. #465's
     # `control_family` filter is the live precedent for the placement.
-    "revenue_basis": Published(2, ENUM),
+    # ⚠ 2 -> 3 IN #499: the one economic query states the basis it served on
+    # every answer, which is the same rule one surface over — a figure whose
+    # basis is unstated is the unlabelled proration slice 7 §5 exists to end, so
+    # the field is required rather than optional and the marker is plain.
+    "revenue_basis": Published(3, ENUM),
     # #498 (slice 7 §6/§7) — THE FIRST PAIR THE CONTRACT ADVERTISES FROM ONE
     # SCHEMA NODE'S WORTH OF ROW, and the first whose backend G2 twins were paid
     # by COMPUTATION rather than by re-sourcing a list. The discovery contract
@@ -1216,6 +1220,23 @@ CONCEPTS_IN_THE_CONTRACT = {
     # generator that reads this contract does the second.
     "analytics_grouping_kind": Published(1, ENUM),  # GroupingOptionOut.kind
     "analytics_rollup": Published(1, ENUM),         # GroupingOptionOut.rollup
+    # #499 (slice 7 §2/§3) — WHICH OF THE FOUR A ROW IS MEASURING, and the
+    # first concept in this map whose G2 twin was paid by a module that COMPUTES
+    # its values rather than by one that holds them.
+    #
+    # ⚠ ONE NODE, AND IT IS ON THE MEASURE ROW RATHER THAN ON THE ANSWER. Every
+    # row of an economic answer carries a LIST of measures and each names itself,
+    # because a response with a fixed field per measure has to put something in
+    # the fields a caller did not ask for, and whatever it puts there is a number
+    # nobody computed. So the marker sits where the name is — plain and required,
+    # since a measure is always one of the four and never absent.
+    #
+    # ⚠ ITS SIBLING `measure_status` IS DELIBERATELY NOT HERE. The same rows
+    # carry a state per measure, that concept declares four values and the query
+    # computes three, and the contract may not advertise a concept its backend
+    # consumer holds only some of — so the state ships as a plain string with a
+    # written `description` and the marker arrives with the fifth value.
+    "analytics_measure": Published(1, ENUM),  # EconomicMeasureOut.measure
 }
 
 
@@ -1668,8 +1689,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # has a basis of its own — the unlabelled proration this slice exists to
     # end, wearing a label.
     placed("revenue_basis",
-           {"SuppliedRevenueWindowOut",
+           {"EconomicsOut", "SuppliedRevenueWindowOut",
             "/api/v1/margin/customers/{customer_id}/supplied-revenue"})
+
+    # WHICH OF THE FOUR A ROW MEASURES, on the measure row and on nothing else.
+    # The answer's own schema does NOT carry it: an answer is a set of measures
+    # rather than one, so a marker at that level would be saying the whole
+    # response had a measure of its own.
+    placed("analytics_measure", {"EconomicMeasureOut"})
 
     # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
     # ONE. Both on the discovery contract's row and on nothing else, which is
@@ -2506,6 +2533,13 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # the read contract, which now COMPUTES what a tenant may group by rather
     # than naming the values, and both are marked on the row that computation
     # publishes. Two entries out, two steps down.
-    assert len(_entries(programme)) >= 5, (
+    # 5 -> 4 in #499: `analytics_measure`, the tenth, and the first paid by a
+    # module that COMPUTES the concept's values rather than one that holds
+    # them — each measure is aggregated from its own canonical source, so the
+    # four are held because something decides with them. Its sibling
+    # `measure_status` stays: the same query computes three of that concept's
+    # four states, and a document naming four over a consumer holding three is
+    # the defect this seeding exists to stop. One entry out, one step down.
+    assert len(_entries(programme)) >= 4, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")
