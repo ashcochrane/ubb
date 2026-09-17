@@ -18,21 +18,24 @@ vi.mock("./usage-timeseries-chart", () => ({
 
 const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
-/** One row of the discovery contract; the overrides are untyped so that a value
- *  newer than this build's generated union can be handed to it (see
- *  `lib/grouping-axis.test.ts`, which explains why that is reachable). */
+/** One row of the discovery contract. The BASE is typed; only the overrides
+ *  escape, so that a value newer than this build's generated union can be
+ *  handed to it — see `lib/grouping-axis.test.ts`, which explains why that is
+ *  reachable and why casting the whole literal would have given away the half
+ *  worth keeping. */
+const BASE_AXIS: GroupingOption = {
+  key: "field:provider",
+  kind: FIELD_KIND,
+  label: "",
+  rollup: null,
+  source_grain: "event",
+  supported_surfaces: ["analytics"],
+  unsupported_measures: [],
+  max_cardinality: null,
+};
+
 function axis(key: string, over: Record<string, unknown> = {}): GroupingOption {
-  return {
-    key,
-    kind: FIELD_KIND,
-    label: "",
-    rollup: null,
-    source_grain: "event",
-    supported_surfaces: ["analytics"],
-    unsupported_measures: [],
-    max_cardinality: null,
-    ...over,
-  } as GroupingOption;
+  return { ...BASE_AXIS, key, ...over } as GroupingOption;
 }
 
 const field = (name: string, label = "") =>
@@ -121,8 +124,14 @@ describe("the group-by picker's axis list", () => {
 
     expect(offered.length).toBeGreaterThan(1);
     for (const text of offered) {
+      // The slot token itself, and the shape the deleted map gave it — a noun
+      // with a slot NUMBER after it, which is the tell that a console was
+      // wording a storage location rather than an axis somebody declared.
+      // ⚠ Written as a shape rather than spelled out: the singular of the word
+      // that map was named for is a retired term under a SPREAD ceiling, and a
+      // new file spelling it fails the sweep before any payment is attempted.
       expect(text).not.toMatch(/\bdim\d\b/i);
-      expect(text).not.toMatch(/Dimension \d/);
+      expect(text).not.toMatch(/^\S+\s\d+$/);
     }
   });
 

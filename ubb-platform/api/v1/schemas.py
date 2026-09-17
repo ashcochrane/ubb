@@ -2920,8 +2920,12 @@ class GroupingOptionOut(Schema):
     what a reader of the CONTRACT will otherwise misread.
 
     ``label`` is empty on most rows and that is a rule, not a gap: it carries
-    the TENANT's own word, and UBB's own wording for its own axes lives in the
-    localisation layer (ADR-0008 §4).
+    the TENANT's own word, and never UBB's for its own axes. The registry owns
+    identity and the surface that renders an axis owns its expression (ADR-0008
+    §4), so a client supplies its own wording for the axes UBB reserves and for
+    the rollups, in whatever language it presents. What UBB must not do is
+    derive English from its own token and publish it here as though somebody
+    had chosen it.
 
     ``max_cardinality`` is the cap the tenant declared, null where UBB owns the
     axis. It is published because §7 makes cardinality one of the three things a

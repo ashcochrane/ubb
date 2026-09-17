@@ -295,9 +295,17 @@ function axisValue(detail: UsageEventDetail, requestWord: string): string {
   // ten slots that exist, and had to be extended by hand for each one.
   //
   // ⚠ THE AXIS ARRIVES AS THE REQUEST WORD NOW, KIND AND ALL (#506), because
-  // the picker reads it off the discovery contract. A rollup would be a join
-  // this fixture cannot perform, so it groups every posting under the axis's
-  // own name rather than inventing categories UBB would have had to declare.
+  // the picker reads it off the discovery contract, and the kind comes off
+  // before the lookup.
+  //
+  // ⚠ **A ROLLUP THEREFORE FALLS THROUGH TO "(unattributed)", AND THAT IS A
+  // LIMIT OF THIS FIXTURE RATHER THAN OF THE ANSWER.** A rollup is a JOIN — a
+  // controlled mapping from an event type or a measurement to a broader
+  // classification — and these seeds carry no such mapping to join to. So in
+  // mock mode picking one draws a single series under the unattributed name.
+  // The alternative is inventing categories UBB would have had to declare,
+  // which is the one thing a fixture for this vocabulary must not do; whoever
+  // gives the seeds an event-category mapping can delete this paragraph.
   const axis = axisNameOf(requestWord);
   const value =
     axis === "provider"

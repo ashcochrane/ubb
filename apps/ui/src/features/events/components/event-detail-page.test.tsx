@@ -142,11 +142,14 @@ describe("EventDetailPage", () => {
       "Recorded at",
       "Event type",
       "Provider",
-      // The mock tenant's declared keys are still spelled for the slots,
-      // because the group-by picker's axis list is slice 7's debt and has to
-      // keep matching them — `mock-data.ts` says so at the map that builds
-      // these. What matters here is that they are the tenant's keys and each
-      // is its own row, not what this tenant happened to call them.
+      // These are the mock tenant's OWN declared keys. They were spelled for
+      // the physical slots until #506, and only because the group-by picker
+      // offered a list with slot names in it — a fixture bent to fit a defect,
+      // which `mock-data.ts` said in terms at the map that builds them. The
+      // picker reads the tenant's declared axes now, so the fixture is free to
+      // say what such a tenant would really declare. What matters here is
+      // unchanged: each declared key is its own row, labelled with the
+      // tenant's word, whatever this tenant happened to call them.
       "workflow",
       "deployment",
       "cohort",

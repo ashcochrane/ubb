@@ -57,3 +57,36 @@ export function GroupingAxisLabel({ option }: { option: GroupingOption }) {
     </span>
   );
 }
+
+/**
+ * Whatever a picker is currently set to, in words wherever there are any.
+ *
+ * ⚠ **HERE RATHER THAN IN THE PICKER, BECAUSE IT DECIDES THE OPEN-SET QUESTION
+ * A SECOND TIME.** A Select prints the raw VALUE in its trigger unless told
+ * otherwise, and under this vocabulary that value is a whole request word —
+ * `rollup:event_category` in a chart's own header. Resolving it means asking
+ * again what to do with an axis nothing has words for, and `apps/ui/CLAUDE.md`
+ * is explicit that a second rendering of that rule inside a feature is a defect
+ * because two copies drift and one of them will humanise. So the answer lives
+ * beside the list's, and both go through the one helper.
+ *
+ * An axis that is not on offer is not a defect to hide: a bookmark predates a
+ * retirement, a link comes from another workspace. The surface asking for it
+ * will answer for itself; this says what was asked for, marked.
+ */
+export function SelectedGroupingAxis({
+  axes,
+  value,
+  none,
+}: {
+  axes: readonly GroupingOption[];
+  value: string;
+  /** The value that means "no grouping", and the words for it. */
+  none: { readonly value: string; readonly label: string };
+}) {
+  if (value === none.value) return <>{none.label}</>;
+  const selected = axes.find((option) => option.key === value);
+  return selected
+    ? <GroupingAxisLabel option={selected} />
+    : <OpenSetValue labelKeys={NO_DECLARED_VALUES} value={value} />;
+}

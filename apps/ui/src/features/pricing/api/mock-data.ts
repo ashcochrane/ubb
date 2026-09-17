@@ -21,6 +21,8 @@
 // my prices" demonstrates nothing. So the drafts below are offsets and the
 // rules are dates.
 
+import { MOCK_DECLARED_AXIS_KEYS } from "@/hooks/use-grouping-options";
+
 import type {
   BookPublish,
   CostBook,
@@ -44,25 +46,22 @@ export function daysFromNow(days: number): string {
  * the API. A fixture that declared six would leave the console demonstrating
  * exactly the gap the slice closed, and the editor's slot list is driven off
  * this registry rather than off a hand-written list for the same reason.
+ *
+ * ⚠ **THE KEYS THEMSELVES ARE NOT WRITTEN HERE ANY MORE (#506).** They are the
+ * mock workspace's declared axes, and the group-by picker reads the same
+ * workspace's discovery contract — so a tenant that declared `model` to this
+ * surface and something else to that one would be two tenants wearing one name.
+ * That is not hypothetical: it is exactly what let the picker offer slot names
+ * for years. One list, and the rows each surface needs are built from it.
  */
-export const MOCK_GROUPING_FIELDS: GroupingFieldDef[] = [
-  "model",
-  "region",
-  "environment",
-  "team",
-  "workflow",
-  "channel",
-  "tier",
-  "deployment",
-  "pipeline",
-  "cohort",
-].map((key, index) => ({
-  key,
-  slot: `grouping_field_${index + 1}`,
-  scope: "usage_event",
-  max_cardinality: 200,
-  retired: false,
-}));
+export const MOCK_GROUPING_FIELDS: GroupingFieldDef[] =
+  MOCK_DECLARED_AXIS_KEYS.map((key, index) => ({
+    key,
+    slot: `grouping_field_${index + 1}`,
+    scope: "usage_event",
+    max_cardinality: 200,
+    retired: false,
+  }));
 
 /**
  * A rule fixture, written with only the selectors this feature's story

@@ -13,8 +13,10 @@ import { lazy, Suspense, useMemo } from "react";
 import { ChartCard } from "@/components/shared/chart-card";
 import { ChartLegend } from "@/components/shared/chart-legend";
 import { ErrorCard } from "@/components/shared/error-card";
-import { GroupingAxisLabel } from "@/components/shared/grouping-axis-label";
-import { OpenSetValue } from "@/components/shared/open-set-value";
+import {
+  GroupingAxisLabel,
+  SelectedGroupingAxis,
+} from "@/components/shared/grouping-axis-label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -29,8 +31,6 @@ import {
   useGroupingOptions,
 } from "@/hooks/use-grouping-options";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import type { GroupingOption } from "@/lib/grouping-axis";
-import { NO_DECLARED_VALUES } from "@/lib/localisation";
 
 import { useUsageTimeseries } from "../api/queries";
 import { pivotTimeseries } from "../lib/timeseries";
@@ -38,6 +38,7 @@ import { pivotTimeseries } from "../lib/timeseries";
 const UsageTimeseriesChart = lazy(() => import("./usage-timeseries-chart"));
 
 const NO_GROUPING = "none";
+const NO_GROUPING_LABEL = "No grouping";
 
 export function TimeseriesCard({
   window,
@@ -51,6 +52,14 @@ export function TimeseriesCard({
   onGroupByChange: (groupBy: string | undefined) => void;
 }) {
   const currency = useTenantCurrency();
+  // ⚠ NO SKELETON AND NO ERROR CARD ON THE AXIS LIST, WHICH IS A CHOICE. While
+  // the discovery contract is in flight, or if it fails, the picker offers only
+  // "No grouping" — and the card it heads goes on rendering the ungrouped
+  // answer, which is the thing a reader came for. Grouping is a refinement, so
+  // failing the whole chart over the list of refinements available would be a
+  // worse answer than showing the chart. What it must never do is state
+  // something false, and an empty list does not: it offers nothing rather than
+  // claiming this tenant has nothing.
   const axes = optionsForSurface(useGroupingOptions().data, ANALYTICS_SURFACE);
   const query = useUsageTimeseries({
     ...window,
@@ -102,11 +111,17 @@ export function TimeseriesCard({
                 or another workspace's) falls to the open-set rule rather than
                 to a word that would be a guess. */}
             <SelectValue>
-              {(value: string) => <SelectedAxis axes={axes} value={value} />}
+              {(value: string) => (
+                <SelectedGroupingAxis
+                  axes={axes}
+                  value={value}
+                  none={{ value: NO_GROUPING, label: NO_GROUPING_LABEL }}
+                />
+              )}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={NO_GROUPING}>No grouping</SelectItem>
+            <SelectItem value={NO_GROUPING}>{NO_GROUPING_LABEL}</SelectItem>
             {axes.map((option) => (
               <SelectItem key={option.key} value={option.key}>
                 <GroupingAxisLabel option={option} />
@@ -141,19 +156,3 @@ export function TimeseriesCard({
   );
 }
 
-/** Whatever the picker is currently set to, in words wherever there are any. */
-function SelectedAxis({
-  axes,
-  value,
-}: {
-  axes: readonly GroupingOption[];
-  value: string;
-}) {
-  if (value === NO_GROUPING) return <>No grouping</>;
-  const selected = axes.find((option) => option.key === value);
-  if (selected) return <GroupingAxisLabel option={selected} />;
-  // Not on offer for this tenant. The chart below is asking for it and the
-  // server will say what it thinks; what this must not do is invent a name,
-  // so the token shows as itself, marked.
-  return <OpenSetValue labelKeys={NO_DECLARED_VALUES} value={value} />;
-}

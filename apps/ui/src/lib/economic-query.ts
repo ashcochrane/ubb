@@ -54,7 +54,7 @@ export const EVERY_MEASURE = [...MONEY_MEASURES, RECORDED_EVENTS] as const;
  *  the server tells them apart and the caller does not have to.
  *
  *  ⚠ **THIS IS FOR A CALL SITE THAT NAMES ITS OWN AXIS, NEVER FOR A PICKER.**
- *  Seven of the eight call sites ask for `field:customer` because grouping by
+ *  All but one of its call sites ask for `field:customer`, because grouping by
  *  the customer IS the question they are asking. A surface OFFERING a choice of
  *  axes reads them off the discovery contract, where the request word arrives
  *  already built and may be a rollup (#506) — prefixing one of those again

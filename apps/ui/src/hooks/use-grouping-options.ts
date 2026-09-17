@@ -27,7 +27,7 @@ import { meteringApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 import { API_PROVIDER, mockDelay } from "@/lib/api-provider";
 import { ANALYTICS_ROLLUP_VALUES } from "@/lib/vocabulary";
-import type { GroupingOption } from "@/lib/grouping-axis";
+import type { GroupingOption, UbbAxis } from "@/lib/grouping-axis";
 import { axisRequestWord, FIELD_KIND, ROLLUP_KIND } from "@/lib/grouping-axis";
 
 /** The surface an axis is being offered for, as the contract spells it. */
@@ -70,6 +70,25 @@ function mockOption(over: Partial<GroupingOption> & { key: string }): GroupingOp
 }
 
 /**
+ * The grain each axis UBB reserves resolves at.
+ *
+ * ⚠ **A `Record` OVER THE CONSOLE'S OWN UNION RATHER THAN A LIST, so the five
+ * are not written out a third time.** `UBB_AXIS_TITLES` is the set, and
+ * `tests/contracts/test_grouping_axis_vocabulary.py` holds that set equal to
+ * the server's `RESERVED_KEYS` — so a sixth reserved axis reddens there AND
+ * fails `tsc` here, instead of being a word the mock quietly never offers.
+ * Which grain each one resolves at is the server's `ALWAYS_PRESENT_AXES`,
+ * mirrored because a fixture has to state it and nothing generates it.
+ */
+const RESERVED_AXIS_GRAIN: Record<UbbAxis, string> = {
+  customer: "event",
+  provider: "event",
+  event_type: "event",
+  task_type: "task",
+  subtask_type: "subtask",
+};
+
+/**
  * What each rollup axis answers for, where it is not the ordinary case.
  *
  * The measurement-concept rollup ships with the supplier cost declared
@@ -107,16 +126,11 @@ const ROLLUP_MOCK_DETAIL: Record<
  * fields, then the rollups, in the order the server returns them.
  */
 export const MOCK_GROUPING_OPTIONS: GroupingOption[] = [
-  ...(["customer", "provider", "event_type"] as const).map((key) =>
-    mockOption({ key: axisRequestWord({ kind: FIELD_KIND, name: key }) })),
-  mockOption({
-    key: axisRequestWord({ kind: FIELD_KIND, name: "task_type" }),
-    source_grain: "task",
-  }),
-  mockOption({
-    key: axisRequestWord({ kind: FIELD_KIND, name: "subtask_type" }),
-    source_grain: "subtask",
-  }),
+  ...(Object.keys(RESERVED_AXIS_GRAIN) as UbbAxis[]).map((axis) =>
+    mockOption({
+      key: axisRequestWord({ kind: FIELD_KIND, name: axis }),
+      source_grain: RESERVED_AXIS_GRAIN[axis],
+    })),
   ...MOCK_DECLARED_AXIS_KEYS.map((key) =>
     mockOption({
       key: axisRequestWord({ kind: FIELD_KIND, name: key }),
@@ -175,20 +189,9 @@ export function optionsForSurface(
     (option) => option.supported_surfaces.includes(surface));
 }
 
-/**
- * The axes that can answer a given measure, with the refusals dropped.
- *
- * Capability is declared BY EXCEPTION — every measure not named in
- * `unsupported_measures` is accepted and answers with its own state — so this
- * reads the exceptions rather than an enumerated supported set. There is no
- * supported set to read: listing one would make this read the measure
- * concept's serving consumer, which is a debt the query that COMPUTES the
- * measures owns.
- */
-export function optionsSupporting(
-  options: readonly GroupingOption[],
-  measure: string,
-): GroupingOption[] {
-  return options.filter((option) =>
-    !option.unsupported_measures.some((entry) => entry.measure === measure));
-}
+// ⚠ NARROWING BY MEASURE IS DELIBERATELY NOT HERE YET. Each row carries
+// `unsupported_measures`, and capability is declared BY EXCEPTION — every
+// measure not named is accepted and answers with its own state. Writing the
+// filter now would be a helper with no caller, and the surface that will want
+// it is the one that renders the five measure states (#510); it can own the
+// reading of those exceptions along with the states they produce.
