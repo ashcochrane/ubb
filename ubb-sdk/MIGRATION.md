@@ -728,12 +728,21 @@ filters that narrow without grouping:
 
 **What did NOT collapse, deliberately.**
 
-- `GET /api/v1/metering/customers/{customer_id}/usage` still returns **paginated event rows**,
-  with its two-part
-  label filter — the key and the value you tagged events with — unchanged. It lists events; it is
-  not a measure, and a query that returns measures cannot return it. (The two query parameters are
-  named descriptively here rather than spelled, because the key half is a retired term this
-  guide's own surface is still being cleared of; the call's signature spells them.)
+- `GET /api/v1/metering/customers/{customer_id}/usage` still returns **paginated event rows**, at
+  the same path, with the same response and the same pagination. It lists events; it is not a
+  measure, and a query that returns measures cannot return it.
+
+  ⚠ **Its two-part label filter is RENAMED, and this is the one breaking edge on a route that
+  otherwise did not move.** The pair is now `metadata_key` / `metadata_value`, naming the bag it
+  reads; it used to carry the analytics grouping word, which read as an *axis* over a bag that is
+  deliberately never groupable. `MeteringClient.get_usage` spells the new pair, so a call passing
+  the old keyword arguments raises `TypeError` — rename them and nothing else changes.
+
+  ⚠ **If you call the route over raw HTTP, read this twice.** An unknown query parameter is
+  **discarded, not rejected**, so a request still sending the old pair does not fail — it comes back
+  **unfiltered**, with every posting for that customer rather than the ones you asked for. The page
+  looks healthy and is simply wider than you wanted. Grep your callers for the old names rather than
+  waiting for an error.
 - The **unprofitable-customer count** still stands, on `GET /api/v1/margin/unprofitable` — an
   alerting surface reading the alerting record, which is a different question from "what did this
   cost and earn".

@@ -91,6 +91,17 @@ class RiskService:
         injected, and the ceiling is protection from your own agent. Where no
         rung answers, a request is a ceiling nobody else set, and it stands.
 
+        ⚠ **THIS MODULE SPEAKS TWO VOCABULARIES AND THE SEAM IS DELIBERATE**
+        (#504, slice 7 phase B1). The parameter is `grouping_values` — the word
+        the caller one frame up already used — but the service and error
+        classes it calls, and the `required_*` key it reads off a policy, still
+        carry the registry's pre-#155 noun. ADR-0005 records that state and its
+        reason: the service class, the error class and two constraint names
+        were left alone because renaming a constraint is a drop-and-create of a
+        load-bearing unique index, which ADR-0007 §1 refuses. The published
+        field is a separate matter and is phase B2's. What moved here is only
+        what could move without touching the wire or an index.
+
         ⚠ IT ADMITS THE GROUPING VALUES, WHICH IS A WRITE. A caller that only
         needs to know what a declaration binds to — a repeated start comparing
         itself against the unit it may be replaying — must use

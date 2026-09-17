@@ -424,8 +424,14 @@ entries:
       the day it lands. All three controls were mutation-checked: dropping a
       reserved axis and readmitting a rollup each turn it red.
 
-      ⚠⚠ THE ELEVEN LEFT ARE ONE FACT — THE PUBLISHED FIELD STILL SPELLS IT —
-      AND THIS IS THE CORRECT RESTING STATE FOR PHASE B1, NOT A RESIDUE. Ten
+      ⚠⚠ THE ELEVEN LEFT ARE ONE FACT — THE PUBLISHED FIELD STILL SPELLS IT.
+      ⚠ **AC6 ASKED FOR ALL THREE GROUPING-FAMILY BACKEND COLUMNS AT ZERO AND
+      #504 DELIVERED ONE OF THE THREE** — the free-text key filter, which
+      reached zero on three surfaces at once. This entry stands at 11 and the
+      invoice-line entry below stands at 4, and BOTH are the same fact wearing
+      the same reason. Saying "two of three" would be wrong: #503 took the
+      invoice-line term behind the wire, which is not the same as taking its
+      backend column to zero, and the number in that entry says so. Ten
       are the wire and its route tests (`api/v1/schemas.py` declares the bag on
       the recording and task requests and the registry's own body,
       `metering_endpoints.py` and `task_endpoints.py` read it off the payload

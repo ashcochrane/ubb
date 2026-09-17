@@ -140,7 +140,7 @@ class GetPeriodTotalsTest(TestCase):
         assert totals["total_provider_cost_micros"] == 0
 
 
-class GetCustomerUsageForPeriodTest(TestCase):
+class GetCustomerPostingsForPeriodTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
@@ -298,7 +298,7 @@ class CrossProductReadContractTest(TestCase):
         self.assertIsNone(get_posting_effective_at("evt-1"))   # legacy non-UUID id
         self.assertIsNone(get_posting_effective_at(uuid.uuid4()))
 
-    def test_customer_ids_with_usage_single_and_list_tenant(self):
+    def test_customer_ids_with_postings_single_and_list_tenant(self):
         from apps.metering.queries import get_customer_ids_with_postings
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         # zero-billed usage still counts (existence-based, no billed filter)
@@ -415,7 +415,7 @@ class CrossProductReadContractTest(TestCase):
                           for label, billed, unpriced in rows},
                          {"chat": (100, 1), "batch": (50, 0)})
 
-    def test_iter_billable_usage_events_shape_and_basis(self):
+    def test_iter_billable_postings_shape_and_basis(self):
         from datetime import timedelta
         from apps.metering.queries import iter_billable_postings
         now = timezone.now()

@@ -183,9 +183,11 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/uni
 # NOT FLAGGED FOR SLICE 7, AND THE DISTINCTION IS DELIBERATE. Slice 7 owns the
 # GROUPING vocabulary that still reads keys out of this bag — the keyed
 # analytics parameter, the keyed margin breakdown and the key-driven invoice
-# line labels (`g7-backend-tag_key`, `g7-backend-usage_line_item_group_by`).
-# None of those three surfaces changed shape here; only the column beneath them
-# moved. Slice 2 folded the field, slice 7 migrates the capability.
+# line labels. None of those three surfaces changed shape here; only the column
+# beneath them moved. Slice 2 folded the field, slice 7 migrates the capability.
+# (This paragraph named two ledger entries by id until #504 PAID one of them —
+# `g7-backend-tag_key` is gone, so the ids are described rather than cited. The
+# claim above is unchanged and still true: what slice 2 moved was the column.)
 GET /api/v1/metering/usage/{event_id} removed the optional property `tags` from the response with the `200` status
 POST /api/v1/metering/usage removed the request property `tags`
 POST /api/v1/metering/usage/batch removed the request property `events/items/tags`
@@ -591,11 +593,21 @@ PATCH /api/v1/tenant/config removed the request property `default_task_provider_
 # rather than reading as an AXIS over a bag ADR-0005 keeps deliberately
 # ungroupable - which is why the word was retired rather than merely moved.
 #
-# WARN rather than ERR because both are OPTIONAL query parameters: removing
-# one relaxes what a caller must send and cannot break a reader of the
-# response. #411 settled that the split is about DIRECTION - a response
-# property the contract promised is ERR, a request property is WARN - and
-# these are the weaker case again, having never been required.
+# WARN rather than ERR is oasdiff's own classification and #411's rule agrees
+# with it: the split is about DIRECTION - a response property the contract
+# promised is ERR, a request property is WARN - and these are the weaker case
+# again, having never been required.
+#
+# ⚠ BUT THE USUAL WARN ARGUMENT ("it only relaxes what a caller must send")
+# UNDERSTATES THIS ONE, AND THE BLOCK SAYS SO RATHER THAN LEANING ON IT. These
+# are FILTER parameters, and django-ninja DISCARDS an undeclared query
+# parameter instead of refusing it. So a raw-HTTP caller still sending the old
+# pair gets 200 and every posting for that customer rather than the subset it
+# asked for - a silently WIDER answer, not an error. Nothing on the response
+# breaks, which is why it is not ERR, but "cannot hurt a caller" would be a
+# false sentence to file here. The SDK's wrapper was renamed in the same commit
+# for exactly this reason (a stale wrapper would have compiled and quietly
+# over-returned), and `ubb-sdk/MIGRATION.md` warns raw-HTTP callers explicitly.
 #
 # THE ROUTE IS NOT COLLAPSED AND MUST NOT BE. It returns paginated event
 # ROWS, and no parameter combination of the one economic query returns event

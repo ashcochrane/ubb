@@ -293,7 +293,7 @@ class PostingPrice(TypedDict):
 
 
 def get_posting_price(posting_id: str,
-                         tenant_id: str | None = None) -> PostingPrice | None:
+                      tenant_id: str | None = None) -> PostingPrice | None:
     """One posting's customer price and the status that qualifies it.
 
     Returns `None` — and ONLY `None` — when there is no such posting. If
@@ -332,7 +332,7 @@ def get_posting_price(posting_id: str,
 def get_customer_postings_for_period(
     tenant_id: str, customer_id: str, period_start: date, period_end: date,
 ) -> list[PostingCost]:
-    """Get per-event usage data for a customer in a period.
+    """Get per-posting economic data for a customer in a period.
 
     Returns list of dicts with billed_cost_micros, pricing_status,
     provider_cost_micros and costing_status. Used by referrals reconciliation.
@@ -487,7 +487,7 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
 
 
 def get_posting_effective_at(posting_id) -> datetime | None:
-    """Get a usage event's effective_at timestamp. Returns datetime or None.
+    """Get a posting's effective_at timestamp. Returns datetime or None.
 
     Tolerates malformed (non-UUID) ids by returning None — the UUID is
     validated BEFORE the DB query so a legacy id (e.g. "evt-1" in old
@@ -879,8 +879,8 @@ def clear_backfill_dirty_period(marker_id) -> None:
 
 
 def iter_billable_postings(tenant_id, since: datetime, before: datetime,
-                               basis: str = "effective") -> Iterator[dict]:
-    """Iterate billable events (billed_cost_micros > 0) in [since, before).
+                           basis: str = "effective") -> Iterator[dict]:
+    """Iterate billable postings (billed_cost_micros > 0) in [since, before).
 
     since/before are aware datetimes (NOT dates — no day-snapping here).
     basis="effective" windows on effective_at; basis="created" windows on

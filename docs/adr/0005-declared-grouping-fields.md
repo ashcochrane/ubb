@@ -226,10 +226,12 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     pin it provided is not lost: `api/v1/tests/test_the_one_economic_query.py` asserts the declared
     row, and the schema itself is now the pin the open rollups never had.
   - **The second of the three ad-hoc label reads is gone too.** `tag_key` driving the `by_tag`
-    breakdown died with the report; the remaining two survive exactly as the bullet describes them —
-    `tag_key` + `tag_value` FILTERING a customer's postings on `/customers/{id}/usage`, and the
-    invoice-line grouping parameter labelling postpaid invoice lines. Both are still slice 7's to
-    rename and neither is a grouping axis, which is why no route removal will clear them.
+    breakdown died with the report. ⚠ **This bullet used to say the remaining two survived "exactly
+    as the bullet describes them", and #504 made that half false**: the filter pair on
+    `/customers/{id}/usage` is now `metadata_key` / `metadata_value`, naming the bag it reads. The
+    invoice-line grouping parameter took the declared vocabulary behind the wire in #503 and its
+    published field is phase B2's. Neither was ever a grouping axis, which is why no route removal
+    could clear either and both had to be renamed on a live surface.
 
 - **#503 (slice 7 §11) — the third ad-hoc label read is gone, and it is the one that mattered most.**
   The invoice-line grouping parameter now takes one axis of the declared vocabulary
