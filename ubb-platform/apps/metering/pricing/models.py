@@ -255,9 +255,12 @@ class Rate(BaseModel):
     # --- The fourteen selector columns (design D3) ---
     # "" means WILDCARD here (it means "not set" on a Posting). Among rates
     # matching an event, the winner has the most non-empty selectors. This is
-    # the ONE matching semantic — the old JSONB `dimensions` subset match and
-    # the exact-equality provider/event_type match were two different rules on
-    # one query.
+    # the ONE matching semantic — the retired JSONB selector bag was matched by
+    # SUBSET while the provider/event_type columns beside it were matched by
+    # exact equality, which was two different rules running on one query.
+    # (The bag's own name is the analytics grouping word slice 7 retires; it is
+    # described here rather than spelled, and `test_rate_selectors.py` holds its
+    # absence to the column TYPE so no bag returns under a newer word.)
     provider = models.CharField(max_length=100, blank=True, default="", db_index=True)
     event_type = models.CharField(max_length=100, blank=True, default="", db_index=True)
     task_type = models.CharField(max_length=64, blank=True, default="")

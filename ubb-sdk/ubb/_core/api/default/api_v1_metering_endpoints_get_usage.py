@@ -19,8 +19,8 @@ def _get_kwargs(
     *,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
-    tag_key: None | str | Unset = UNSET,
-    tag_value: None | str | Unset = UNSET,
+    metadata_key: None | str | Unset = UNSET,
+    metadata_value: None | str | Unset = UNSET,
     task_id: None | str | Unset = UNSET,
     include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
@@ -43,19 +43,19 @@ def _get_kwargs(
 
     params["limit"] = limit
 
-    json_tag_key: None | str | Unset
-    if isinstance(tag_key, Unset):
-        json_tag_key = UNSET
+    json_metadata_key: None | str | Unset
+    if isinstance(metadata_key, Unset):
+        json_metadata_key = UNSET
     else:
-        json_tag_key = tag_key
-    params["tag_key"] = json_tag_key
+        json_metadata_key = metadata_key
+    params["metadata_key"] = json_metadata_key
 
-    json_tag_value: None | str | Unset
-    if isinstance(tag_value, Unset):
-        json_tag_value = UNSET
+    json_metadata_value: None | str | Unset
+    if isinstance(metadata_value, Unset):
+        json_metadata_value = UNSET
     else:
-        json_tag_value = tag_value
-    params["tag_value"] = json_tag_value
+        json_metadata_value = metadata_value
+    params["metadata_value"] = json_metadata_value
 
     json_task_id: None | str | Unset
     if isinstance(task_id, Unset):
@@ -131,8 +131,8 @@ def sync_detailed(
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
-    tag_key: None | str | Unset = UNSET,
-    tag_value: None | str | Unset = UNSET,
+    metadata_key: None | str | Unset = UNSET,
+    metadata_value: None | str | Unset = UNSET,
     task_id: None | str | Unset = UNSET,
     include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
@@ -146,8 +146,8 @@ def sync_detailed(
         customer_id (str):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
-        tag_key (None | str | Unset):
-        tag_value (None | str | Unset):
+        metadata_key (None | str | Unset):
+        metadata_value (None | str | Unset):
         task_id (None | str | Unset):
         include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
@@ -167,8 +167,8 @@ def sync_detailed(
         customer_id=customer_id,
 cursor=cursor,
 limit=limit,
-tag_key=tag_key,
-tag_value=tag_value,
+metadata_key=metadata_key,
+metadata_value=metadata_value,
 task_id=task_id,
 include_subtasks=include_subtasks,
 past_limit=past_limit,
@@ -189,8 +189,8 @@ def sync(
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
-    tag_key: None | str | Unset = UNSET,
-    tag_value: None | str | Unset = UNSET,
+    metadata_key: None | str | Unset = UNSET,
+    metadata_value: None | str | Unset = UNSET,
     task_id: None | str | Unset = UNSET,
     include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
@@ -204,8 +204,8 @@ def sync(
         customer_id (str):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
-        tag_key (None | str | Unset):
-        tag_value (None | str | Unset):
+        metadata_key (None | str | Unset):
+        metadata_value (None | str | Unset):
         task_id (None | str | Unset):
         include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
@@ -226,8 +226,8 @@ def sync(
 client=client,
 cursor=cursor,
 limit=limit,
-tag_key=tag_key,
-tag_value=tag_value,
+metadata_key=metadata_key,
+metadata_value=metadata_value,
 task_id=task_id,
 include_subtasks=include_subtasks,
 past_limit=past_limit,
@@ -242,8 +242,8 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
-    tag_key: None | str | Unset = UNSET,
-    tag_value: None | str | Unset = UNSET,
+    metadata_key: None | str | Unset = UNSET,
+    metadata_value: None | str | Unset = UNSET,
     task_id: None | str | Unset = UNSET,
     include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
@@ -257,8 +257,8 @@ async def asyncio_detailed(
         customer_id (str):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
-        tag_key (None | str | Unset):
-        tag_value (None | str | Unset):
+        metadata_key (None | str | Unset):
+        metadata_value (None | str | Unset):
         task_id (None | str | Unset):
         include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
@@ -278,8 +278,8 @@ async def asyncio_detailed(
         customer_id=customer_id,
 cursor=cursor,
 limit=limit,
-tag_key=tag_key,
-tag_value=tag_value,
+metadata_key=metadata_key,
+metadata_value=metadata_value,
 task_id=task_id,
 include_subtasks=include_subtasks,
 past_limit=past_limit,
@@ -300,8 +300,8 @@ async def asyncio(
     client: AuthenticatedClient,
     cursor: None | str | Unset = UNSET,
     limit: int | Unset = 50,
-    tag_key: None | str | Unset = UNSET,
-    tag_value: None | str | Unset = UNSET,
+    metadata_key: None | str | Unset = UNSET,
+    metadata_value: None | str | Unset = UNSET,
     task_id: None | str | Unset = UNSET,
     include_subtasks: bool | Unset = False,
     past_limit: bool | None | Unset = UNSET,
@@ -315,8 +315,8 @@ async def asyncio(
         customer_id (str):
         cursor (None | str | Unset):
         limit (int | Unset):  Default: 50.
-        tag_key (None | str | Unset):
-        tag_value (None | str | Unset):
+        metadata_key (None | str | Unset):
+        metadata_value (None | str | Unset):
         task_id (None | str | Unset):
         include_subtasks (bool | Unset):  Default: False.
         past_limit (bool | None | Unset):
@@ -337,8 +337,8 @@ async def asyncio(
 client=client,
 cursor=cursor,
 limit=limit,
-tag_key=tag_key,
-tag_value=tag_value,
+metadata_key=metadata_key,
+metadata_value=metadata_value,
 task_id=task_id,
 include_subtasks=include_subtasks,
 past_limit=past_limit,

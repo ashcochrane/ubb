@@ -652,7 +652,7 @@ class MeteringClient:
         return from_wire(CloseTaskResponse, r.json())
 
     def get_usage(self, customer_id: str, cursor: str | None = None, limit: int = 20,
-                  tag_key: str | None = None, tag_value: str | None = None,
+                  metadata_key: str | None = None, metadata_value: str | None = None,
                   past_limit: bool | None = None, stop_scope: str | None = None,
                   episode_seq: int | None = None) -> PaginatedResponse[UsageEventOut]:
         """Get usage history via GET /api/v1/metering/customers/{customer_id}/usage.
@@ -664,10 +664,10 @@ class MeteringClient:
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor
-        if tag_key is not None:
-            params["tag_key"] = tag_key
-        if tag_value is not None:
-            params["tag_value"] = tag_value
+        if metadata_key is not None:
+            params["metadata_key"] = metadata_key
+        if metadata_value is not None:
+            params["metadata_value"] = metadata_value
         if past_limit is not None:
             params["past_limit"] = past_limit
         if stop_scope is not None:

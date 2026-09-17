@@ -135,7 +135,7 @@ def reconcile_usage_drawdowns():
     its effective timestamp; the (tenant, created_at) index supports the scan."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
-    from apps.metering.queries import iter_billable_usage_events
+    from apps.metering.queries import iter_billable_postings
     from apps.billing.wallets import operations as wallet_ops
     from apps.billing.wallets.models import Wallet, WalletTransaction
 
@@ -144,7 +144,7 @@ def reconcile_usage_drawdowns():
     since = now - LOOKBACK
     repaired = 0
     for tenant in Tenant.objects.filter(billing_mode="prepaid", is_active=True):
-        for ev in iter_billable_usage_events(tenant.id, since, settled_before, basis="created"):
+        for ev in iter_billable_postings(tenant.id, since, settled_before, basis="created"):
             owner_id = ev["billing_owner_id"]
             if owner_id is None:  # defensive: pre-backfill row -> re-resolve via the shared resolver (parity with the live path)
                 cust = Customer.objects.filter(id=ev["customer_id"]).first()

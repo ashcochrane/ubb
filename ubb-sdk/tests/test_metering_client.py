@@ -326,14 +326,14 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(call_kwargs.kwargs["params"]["limit"], 10)
 
     @patch("ubb.metering.httpx.Client.get")
-    def test_get_usage_with_tag_filter(self, mock_get):
+    def test_get_usage_with_metadata_filter(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [], "next_cursor": None, "has_more": False,
         })
-        self.client.get_usage(customer_id="cust_1", tag_key="project", tag_value="proj_1")
+        self.client.get_usage(customer_id="cust_1", metadata_key="project", metadata_value="proj_1")
         call_kwargs = mock_get.call_args
-        self.assertEqual(call_kwargs.kwargs["params"]["tag_key"], "project")
-        self.assertEqual(call_kwargs.kwargs["params"]["tag_value"], "proj_1")
+        self.assertEqual(call_kwargs.kwargs["params"]["metadata_key"], "project")
+        self.assertEqual(call_kwargs.kwargs["params"]["metadata_value"], "proj_1")
 
     # ---- error handling ----
 

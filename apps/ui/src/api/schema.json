@@ -13581,7 +13581,7 @@
           },
           {
             "in": "query",
-            "name": "tag_key",
+            "name": "metadata_key",
             "required": false,
             "schema": {
               "anyOf": [
@@ -13592,12 +13592,12 @@
                   "type": "null"
                 }
               ],
-              "title": "Tag Key"
+              "title": "Metadata Key"
             }
           },
           {
             "in": "query",
-            "name": "tag_value",
+            "name": "metadata_value",
             "required": false,
             "schema": {
               "anyOf": [
@@ -13608,7 +13608,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Tag Value"
+              "title": "Metadata Value"
             }
           },
           {

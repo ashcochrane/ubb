@@ -226,10 +226,12 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     pin it provided is not lost: `api/v1/tests/test_the_one_economic_query.py` asserts the declared
     row, and the schema itself is now the pin the open rollups never had.
   - **The second of the three ad-hoc label reads is gone too.** `tag_key` driving the `by_tag`
-    breakdown died with the report; the remaining two survive exactly as the bullet describes them —
-    `tag_key` + `tag_value` FILTERING a customer's postings on `/customers/{id}/usage`, and the
-    invoice-line grouping parameter labelling postpaid invoice lines. Both are still slice 7's to
-    rename and neither is a grouping axis, which is why no route removal will clear them.
+    breakdown died with the report. ⚠ **This bullet used to say the remaining two survived "exactly
+    as the bullet describes them", and #504 made that half false**: the filter pair on
+    `/customers/{id}/usage` is now `metadata_key` / `metadata_value`, naming the bag it reads. The
+    invoice-line grouping parameter took the declared vocabulary behind the wire in #503 and its
+    published field is phase B2's. Neither was ever a grouping axis, which is why no route removal
+    could clear either and both had to be renamed on a live surface.
 
 - **#503 (slice 7 §11) — the third ad-hoc label read is gone, and it is the one that mattered most.**
   The invoice-line grouping parameter now takes one axis of the declared vocabulary
@@ -256,6 +258,26 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     above that line would silently move what it points at. That is a fair criticism of the citation
     rather than of the bullets; it is left for the ticket that next has reason to regenerate the
     description.
+
+- **Amended by slice 7 (#504): the first of the three ad-hoc label reads is renamed, and the
+  Consequences bullet naming all three is now out of date by one.** That bullet says the three are
+  *"spelled here as the wire spells them today"* and that *"slice 7 owns renaming them"*. Slice 7
+  has now renamed the first: the pair filtering a customer's postings on `/customers/{id}/usage`
+  names the bag it reads (`metadata_key` / `metadata_value`) rather than reading as an axis over a
+  bag this ADR keeps deliberately ungroupable. The route KEEPS its own contract — it is a filter
+  surface and returns paginated event rows, which no parameter combination of the one economic query
+  returns — so what moved is four lines of request vocabulary and the generated followers of it,
+  and the path count did not change.
+  - **The second and third are accounted for.** The second — the key-driven breakdown on the usage
+    report and on the margin breakdown — **died with its routes** in #501 rather than being renamed,
+    which is the one disposition that bullet does not anticipate. The third, the invoice-line one,
+    took the declared grouping vocabulary BEHIND the wire in #503; its published field still spells
+    the retired word and is phase B2's, per slice 7 §21's ruling that only one of the four surfaces
+    can move independently.
+  - **The bullet above is left standing rather than rewritten**, for the reason the note above it
+    gives: it sits above the line a published field description cites, and correcting it in place
+    would move what that citation points at. The claim a reader needs — which of the three are done
+    and by what — is here instead.
 
 ## Deferred findings tracked against this ADR
 

@@ -61,9 +61,9 @@ class StartPolicy(NamedTuple):
 
 class RiskService:
     @staticmethod
-    def resolve_start_policy(tenant, *, task_type, dimensions,
+    def resolve_start_policy(tenant, *, task_type, grouping_values,
                              requested_ceiling_micros, is_subtask):
-        """Validate the declared kind of work + dimensions and resolve the
+        """Validate the declared kind of work + grouping values and resolve the
         ceiling — the WHOLE ladder, in one call, for every start.
 
         ``task_type`` is the caller's declared kind of work at EITHER altitude
@@ -90,6 +90,17 @@ class RiskService:
         and the start call is made by agent code that may be generated or
         injected, and the ceiling is protection from your own agent. Where no
         rung answers, a request is a ceiling nobody else set, and it stands.
+
+        ⚠ **THIS MODULE SPEAKS TWO VOCABULARIES AND THE SEAM IS DELIBERATE**
+        (#504, slice 7 phase B1). The parameter is `grouping_values` — the word
+        the caller one frame up already used — but the service and error
+        classes it calls, and the `required_*` key it reads off a policy, still
+        carry the registry's pre-#155 noun. ADR-0005 records that state and its
+        reason: the service class, the error class and two constraint names
+        were left alone because renaming a constraint is a drop-and-create of a
+        load-bearing unique index, which ADR-0007 §1 refuses. The published
+        field is a separate matter and is phase B2's. What moved here is only
+        what could move without touching the wire or an index.
 
         ⚠ IT ADMITS THE GROUPING VALUES, WHICH IS A WRITE. A caller that only
         needs to know what a declaration binds to — a repeated start comparing
@@ -127,12 +138,12 @@ class RiskService:
         # ADR-0006 §3 uses as its worked example.
         scope = "subtask" if is_subtask else "task"
         try:
-            slot_values = DimensionService.admit(tenant, dimensions or {}, scope=scope)
+            slot_values = DimensionService.admit(tenant, grouping_values or {}, scope=scope)
         except DimensionError as exc:
             raise ValueError(str(exc)) from exc
 
         if policy:
-            supplied = set((dimensions or {}).keys())
+            supplied = set((grouping_values or {}).keys())
             missing = [d for d in policy["required_dimensions"] if d not in supplied]
             if missing:
                 raise ValueError(

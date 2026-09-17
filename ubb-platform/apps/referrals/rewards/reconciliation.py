@@ -21,9 +21,9 @@ def reconcile_referral(referral, period_start, period_end):
 
     Reads via metering query interface — no direct model import.
     """
-    from apps.metering.queries import get_customer_usage_for_period
+    from apps.metering.queries import get_customer_postings_for_period
 
-    events = get_customer_usage_for_period(
+    events = get_customer_postings_for_period(
         referral.tenant_id, referral.referred_customer_id,
         period_start, period_end,
     )
