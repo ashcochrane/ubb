@@ -76,16 +76,25 @@ export interface CustomerChoice {
   customer_id: string;
 }
 
-/** Composable filters for the per-customer usage list. */
+/**
+ * Composable filters for the per-customer usage list.
+ *
+ * ⚠ **EVERY KEY IS THE WIRE'S OWN (#507).** The pair naming the open bag used
+ * to be the exception, spelled with the analytics grouping word while the route
+ * published something else, and `api.ts` mapped between the two. The mapping is
+ * gone: each key here is the query parameter it becomes, so the generated query
+ * type refuses a drift at the call site instead of the server quietly dropping
+ * a parameter it does not recognise and answering with every row (#504).
+ */
 export interface UsageListFilters {
-  tag_key?: string;
-  tag_value?: string;
+  metadata_key?: string;
+  metadata_value?: string;
   past_limit?: boolean;
   stop_scope?: string;
   episode_seq?: number;
 }
 
-/** Window + filters for GET /metering/analytics/usage. */
+/** Window + filters for the one economic query, ungrouped and unbucketed. */
 export interface AnalyticsParams {
   start_date: string;
   end_date: string;
@@ -95,7 +104,7 @@ export interface AnalyticsParams {
   episode_seq?: number;
 }
 
-/** Window + grouping for GET /metering/analytics/usage/timeseries (day). */
+/** Window + one optional axis for the same query, bucketed by day. */
 export interface TimeseriesParams {
   start_date: string;
   end_date: string;

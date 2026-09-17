@@ -2,6 +2,7 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   marginBound,
   marginPercentBound,
@@ -46,7 +47,7 @@ export function StatRow({ window, currency }: StatRowProps) {
     return (
       <ErrorCard
         error={summary.error}
-        title="Couldn't load the margin summary"
+        title="Couldn't load this window's economics"
         onRetry={() => void summary.refetch()}
       />
     );
@@ -87,7 +88,7 @@ export function StatRow({ window, currency }: StatRowProps) {
         label="Gross margin"
         value={
           view.margin_micros === null
-            ? "—"
+            ? ABSENT_LABEL
             : marginBound(view.margin_micros, summary.data, currency)
         }
         subtitle={
@@ -96,13 +97,27 @@ export function StatRow({ window, currency }: StatRowProps) {
             : `${marginPercentBound(view.margin_pct, summary.data)} margin`
         }
       />
+      {/* ⚠ A COUNT THAT DID NOT ARRIVE IS NOT A COUNT OF NONE. Since the card
+          became a SECOND promise (#501) its answer can fail on its own, and
+          `data?.length ?? 0` rendered that failure as a workspace with no
+          customers — the silent zero the card two along refuses in the same
+          grid, arriving here through a query state rather than through a
+          measure. The whole row does not fail with it: the four figures beside
+          it answered, and a failed refinement is worth less than they are. */}
       {customers.isPending ? (
         <Skeleton className="h-[104px] rounded-md" />
       ) : (
         <StatCard
           variant="raised"
           label="Customers with usage"
-          value={(customers.data?.length ?? 0).toLocaleString()}
+          value={
+            customers.isError
+              ? ABSENT_LABEL
+              : (customers.data?.length ?? 0).toLocaleString()
+          }
+          subtitle={
+            customers.isError ? "not available for this window" : undefined
+          }
         />
       )}
       <StatCard

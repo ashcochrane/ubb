@@ -624,10 +624,14 @@ entries:
   # AXIS over a bag ADR-0005 keeps deliberately ungroupable — which is the whole
   # reason the word was retired rather than merely moved.
   #
-  # ⚠ THE CONSOLE'S ENTRY DOES NOT DIE WITH THEM. Only the call site moved
-  # there, because the query type comes from the generated contract and would
-  # not compile against the old spelling; the events feature's own filter
-  # vocabulary is #507's, and its entry is decremented rather than paid.
+  # ⚠ THE CONSOLE'S ENTRY DID NOT DIE WITH THEM. Only the call site moved there,
+  # because the query type comes from the generated contract and would not
+  # compile against the old spelling; the events feature's own filter vocabulary
+  # was #507's, and that commit paid it in full one phase later — its tombstone
+  # is in the G7 console section below. The DOCS entry is the last of the four
+  # and no ticket of this slice names it: both its sites are in ADR-0005, and
+  # one of them sits ABOVE the line a published schema description cites by
+  # number, so it cannot be edited where it stands.
 
   # `g7-backend-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split). It stood at 15 files, the largest of the four surfaces, and the
@@ -805,30 +809,22 @@ entries:
   # site was the legacy adapter's `stopReasonLabel`, deleted with its own
   # entry below.
 
-  - id: g7-console-tag_key
-    gate: G7
-    site: console::tag_key
-    expected: analytics_grouping_kind
-    found: 7 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind that read from the open bag. Slice 7's grouping
-      contract declares what may be grouped on, which is the capability
-      the bag deliberately does not have.
-
-      8 -> 7 in #504, AND THE ONE THAT WENT IS THE ONLY ONE THAT HAD TO. Phase
-      B1 renamed the published pair on the per-customer event list, so the
-      generated contract snapshot stopped carrying the old spelling and the
-      feature's CALL SITE had to move with it or stop compiling — the query type
-      is generated, and an unknown key there is a type error rather than a
-      silent one. The decrement is therefore forced by the backend's payment
-      rather than an early instalment on this surface's own.
-
-      ⚠ THE SEVEN LEFT ARE THE EVENTS FEATURE'S OWN FILTER VOCABULARY and are
-      #507's, where the filters and the search take the renamed request
-      vocabulary with the rest of the feature. The call site now maps the
-      feature's key onto the wire's in one place, with a comment saying so, and
-      that mapping is what #507 deletes.
+  # `g7-console-tag_key` WAS HERE AND IS PAID IN FULL (#507, slice 7 phase B3),
+  # at the 7 files its own reason named: the events feature's filter vocabulary,
+  # from the zod schema that reads it out of the URL, through the filter bar,
+  # the page that pairs it and the type the call site takes, to the mock that
+  # applies it. The mapping #504 left at the call site — the feature's key onto
+  # the wire's, in one place, with a comment saying so — is deleted, so every
+  # key in the bag is now the query parameter it becomes and a drift is a type
+  # error rather than a parameter the server quietly drops.
+  #
+  # The words moved with the vocabulary: the label reads "Metadata", which is
+  # what the bag is called on the wire, on the event's own detail page and in
+  # the tenant's own head. A saved URL under the old spelling keeps working and
+  # loses its filter — an unknown search key is dropped, so the ledger opens
+  # unfiltered with both inputs visibly empty, which is the same answer #506
+  # gave a stale grouping bookmark and is only tolerable because this filter is
+  # on the screen.
 
   # `g7-console-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split), at the same 2 files as its contained-work twin above and in the

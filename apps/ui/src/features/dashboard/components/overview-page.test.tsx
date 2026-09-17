@@ -34,10 +34,15 @@ function renderWithClient(ui: ReactElement) {
 }
 
 describe("OverviewPage", () => {
-  it("renders the stat row from the margin summary and analytics", async () => {
+  it("renders the stat row from the one query", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
-    // Total revenue / COGS / margin% from the mock margin summary.
+    // ⚠ THIS CASE NAMED A ROUTE THAT NO LONGER EXISTS UNTIL #507. It said the
+    // three figures below came "from the margin summary" — one of the nine
+    // reports #501 collapsed, and one of the reads slice 7 §8 severs from the
+    // margin snapshot. They are the window's own economics now, ungrouped, and
+    // the card after them is the same question grouped by the customer axis.
+    // Total revenue / COGS / margin% for the window.
     // ⚠ $764.90 UNTIL #497: the window total excluded nova-ai's $88.00 of
     // billed usage, which the deleted customer-level switch did not count as
     // revenue. Every customer's billed usage is revenue now, so the total is
@@ -66,8 +71,10 @@ describe("OverviewPage", () => {
   it("lists top customers with shortened ids and a view-all link", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
-    // Margin list rows have no external_id — the table shows short UUIDs
-    // (acme-corp has the highest revenue in the shared mock roster).
+    // The customer axis groups by IDENTITY and publishes no external id — a
+    // tenant's own word for a row belongs to the surface that renders it — so
+    // the table shows short UUIDs (acme-corp has the highest revenue in the
+    // shared mock roster).
     expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
     expect(screen.getByText("View all customers")).toBeInTheDocument();
     // nova-ai's gross margin renders bounded: it is the one customer in the
@@ -117,5 +124,31 @@ describe("OverviewPage", () => {
     expect(await screen.findByText("openai")).toBeInTheDocument();
     // Lifetime events > 0 in the mock story → the workspace is not new.
     expect(screen.queryByText("Get started with UBB")).not.toBeInTheDocument();
+  });
+
+  // ⚠ THREE OF THE FOUR FAMILIAR EXPERIENCES, PINNED AS ARRIVING WITHOUT A
+  // CLICK (#507). Slice 7 collapsed nine reports into one query and owes that
+  // none of them became a query a tenant has to build: a revenue overview,
+  // margin by customer and cost by provider are console COMPOSITIONS over the
+  // one contract, with no preset concept on the API to ship them. This renders
+  // the page and touches nothing — the three arrive, the breakdown already on
+  // the provider axis, which is what "still one click" means.
+  //
+  // ⚠ THE FOURTH IS NOT PINNED ANYWHERE AND THAT IS SAID RATHER THAN IMPLIED:
+  // the monthly margin trend renders on a customer's own overview tab, and no
+  // test in this console asserts that it renders at all. It is #508's row in
+  // §19 and its rendering assertion belongs with that work.
+  it("composes the revenue overview, margin by customer and cost by provider with no interaction", async () => {
+    renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
+
+    expect(
+      await screen.findByText("Revenue vs provider cost"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Customer economics")).toBeInTheDocument();
+    expect(screen.getByText("Cost breakdown")).toBeInTheDocument();
+    // The breakdown's axis is already the provider one, unpressed by anybody.
+    expect(
+      screen.getByRole("button", { name: "Provider", pressed: true }),
+    ).toBeInTheDocument();
   });
 });

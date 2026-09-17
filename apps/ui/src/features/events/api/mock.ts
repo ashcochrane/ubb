@@ -162,12 +162,15 @@ function matchesFilters(
   ) {
     return false;
   }
-  if (filters.tag_key !== undefined && filters.tag_value !== undefined) {
-    // Filtering is what the open bag is for, and what survived the fold.
-    // The parameter names keep the analytics spelling they are published
-    // under; that vocabulary is slice 7's to migrate.
+  if (
+    filters.metadata_key !== undefined &&
+    filters.metadata_value !== undefined
+  ) {
+    // Filtering is what the open bag is for, and what survived the fold — and
+    // the pair is named for the bag it reads rather than for a grouping axis,
+    // on this side exactly as on the wire (#504, #507).
     const bag = detail.metadata ?? {};
-    if (bag[filters.tag_key] !== filters.tag_value) return false;
+    if (bag[filters.metadata_key] !== filters.metadata_value) return false;
   }
   return true;
 }

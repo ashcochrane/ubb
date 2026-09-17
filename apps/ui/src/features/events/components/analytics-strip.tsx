@@ -1,6 +1,8 @@
-// Window totals in both denominations + markup margin, from the analytics
-// rollup. Honors the customer scope and the past-limit filters (the API
-// composes them into the totals); tag filters apply to the ledger only.
+// Window totals in both denominations + gross margin, from the one economic
+// query (#501 — and the margin card's own note below says why that figure is no
+// longer "markup margin"). Honors the customer scope and the past-limit filters
+// (the API composes them into the totals); the metadata filter applies to the
+// ledger only.
 
 import { ErrorCard } from "@/components/shared/error-card";
 import { StatCard } from "@/components/shared/stat-card";
@@ -18,10 +20,10 @@ import type { AnalyticsParams } from "../api/types";
 
 export function AnalyticsStrip({
   params,
-  tagFilterActive,
+  metadataFilterActive,
 }: {
   params: AnalyticsParams;
-  tagFilterActive: boolean;
+  metadataFilterActive: boolean;
 }) {
   const currency = useTenantCurrency();
   const analytics = useUsageAnalytics(params);
@@ -87,10 +89,10 @@ export function AnalyticsStrip({
           subtitle="Revenue minus provider cost"
         />
       </div>
-      {tagFilterActive && (
+      {metadataFilterActive && (
         <p className="text-[11px] text-text-muted">
-          Totals cover the window and stop filters — the tag filter applies to
-          the table below only.
+          Totals cover the window and stop filters — the metadata filter applies
+          to the table below only.
         </p>
       )}
     </div>

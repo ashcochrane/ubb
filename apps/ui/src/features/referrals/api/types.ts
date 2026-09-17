@@ -28,7 +28,6 @@ export type AttributeRequest = ReferralSchemas["AttributeRequest"];
 export type AttributeResponse = ReferralSchemas["AttributeResponse"];
 export type StatusResponse = ReferralSchemas["StatusResponse"];
 
-/** Row of GET /margin/customers — used only to feed the customer picker. */
 /**
  * One choice in a customer picker.
  *
