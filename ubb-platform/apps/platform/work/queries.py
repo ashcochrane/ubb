@@ -60,10 +60,10 @@ def task_type_policy(tenant_id, key, kind) -> dict | None:
             "uncapped": row["uncapped"],
             "silence_window_seconds": row["silence_window_seconds"],
             "absolute_deadline_seconds": row["absolute_deadline_seconds"],
-            # THE ROW KEY IS THE REGISTRY'S WORD AND THE COLUMN IS NOT, and
-            # this line is one of exactly two places the two are spelled
-            # together (the other is the write path in
-            # `api/v1/task_type_endpoints.py`). The wire took the word in
+            # THE ROW KEY IS THE REGISTRY'S WORD AND THE COLUMN IS NOT. The
+            # two are spelled together in exactly three places: this line,
+            # `declared_task_types` below, and the write path in
+            # `api/v1/task_type_endpoints.py`. The wire took the word in
             # #505; moving the column is a migration and belongs to the
             # cutover, so a reader meets the bridge here rather than
             # discovering it from a `.values()` list further up.

@@ -4,10 +4,12 @@ import logging
 from datetime import datetime
 
 import httpx
+from attrs import fields as _attrs_fields
 
 from ubb import _operations as ops
 from ubb.exceptions import (
     TaskOutcomeRequired, UBBConnectionError, UBBStopRequested,
+    UBBValidationError,
 )
 from ubb._http import raise_for_status
 from ubb._models import from_wire, list_from_wire, page_from_wire
@@ -57,6 +59,9 @@ from ubb import vocabulary
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
+#: The REQUEST model, imported for its field names alone — see
+#: `_declared_recording_keys` below.
+from ubb._core.models.record_usage_request import RecordUsageRequest
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.start_task_response import StartTaskResponse
 from ubb._core.models.task_detail_out import TaskDetailOut
@@ -125,6 +130,23 @@ def measure_on(row: EconomicRowOut, measure: str) -> EconomicMeasureOut | None:
         if str(entry.measure) == measure:
             return entry
     return None
+
+
+def _declared_recording_keys() -> frozenset[str]:
+    """Every key the published recording request declares, plus this SDK's
+    one ergonomic alias.
+
+    READ OFF THE GENERATED MODEL, never listed here. A list in this module
+    would be a second copy of the contract that agrees with it until one of
+    them moves — and the one that moves is always the contract, which
+    regenerates under CI's drift gate while a hand-typed set does not.
+
+    ``recorded_at`` is the alias: callers name it and `record_batch` puts it
+    on the wire as the published field, so it is admissible input that the
+    published model does not declare."""
+    return frozenset(
+        {f.name for f in _attrs_fields(RecordUsageRequest)
+         if f.name != "additional_properties"} | {"recorded_at"})
 
 
 def _serialize_recorded_at(value):
@@ -554,6 +576,13 @@ class MeteringClient:
         ``customer_id``); a per-event ``recorded_at`` is serialized to
         ``effective_at`` (naive datetimes raise ValueError before any HTTP).
 
+        ⚠ **A KEY THE RECORDING REQUEST DOES NOT PUBLISH RAISES**
+        ``UBBValidationError``, before any HTTP, naming the item's index and
+        the keys that are published. It is the protection ``record_usage``
+        gets for free from being keyword-only: UBB DROPS an undeclared key
+        rather than refusing it, so without this a renamed or mistyped key
+        records the event attributed to nothing and answers 200.
+
         Items succeed or fail INDEPENDENTLY — the response is always HTTP 200
         with per-item results aligned positionally to ``events``. On a network
         failure, retry the WHOLE batch: per-item idempotency keys make a full
@@ -568,8 +597,27 @@ class MeteringClient:
         history, and it records all of it. Honour the per-item scope in your
         own loop; ``record_usage`` is the call that raises.
         """
+        declared = _declared_recording_keys()
         wire_events = []
-        for ev in events:
+        for index, ev in enumerate(events):
+            # ⚠ A KEY THE REQUEST DOES NOT PUBLISH IS REFUSED HERE RATHER THAN
+            # DROPPED ON THE SERVER (#505). `record_usage` is keyword-only, so
+            # a name it does not take is a `TypeError` naming itself; this call
+            # takes dicts and had no such protection, and the server does not
+            # supply one — django-ninja DISCARDS an undeclared body key instead
+            # of refusing it. So a mistyped or renamed key here used to record
+            # an event attributed to nothing, with a 200 and no error anywhere,
+            # a hundred at a time. Refusing restores the parity the two calls
+            # should have had all along, and it refuses BEFORE any HTTP, like
+            # the naive-datetime check below it.
+            undeclared = sorted(set(ev) - declared)
+            if undeclared:
+                raise UBBValidationError(
+                    f"events[{index}] carries {undeclared}, which the "
+                    "recording request does not publish. UBB drops an "
+                    "undeclared key rather than refusing it, so this would "
+                    "have recorded an event attributed to nothing. The keys "
+                    f"it publishes are {sorted(declared)}.")
             ev = dict(ev)
             recorded_at = ev.pop("recorded_at", None)
             if recorded_at is not None:

@@ -111,8 +111,7 @@ def sync_detailed(
 
     `422 validation_error` answers a kind this registry does not recognise, a
     `required_grouping_fields` entry you have not declared as a grouping field,
-    or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -171,8 +170,7 @@ def sync(
 
     `422 validation_error` answers a kind this registry does not recognise, a
     `required_grouping_fields` entry you have not declared as a grouping field,
-    or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -226,8 +224,7 @@ async def asyncio_detailed(
 
     `422 validation_error` answers a kind this registry does not recognise, a
     `required_grouping_fields` entry you have not declared as a grouping field,
-    or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -286,8 +283,7 @@ async def asyncio(
 
     `422 validation_error` answers a kind this registry does not recognise, a
     `required_grouping_fields` entry you have not declared as a grouping field,
-    or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:

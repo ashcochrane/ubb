@@ -990,10 +990,14 @@ entries:
   # were SIX PUBLISHED PROPERTIES plus the two `required_*` fields beside
   # them, every one declared in `ubb-platform/api/v1/schemas.py`, so the
   # document lost the word by regeneration the moment the backend renamed the
-  # fields. Eleven schemas now publish `grouping_fields` and they publish ONE
+  # fields. TWELVE schemas now publish `grouping_fields` and they publish ONE
   # concept between them — which was the real defect, and it predates the
-  # ledger: two of those eleven have carried the word since #277, so the
+  # ledger: two of those twelve have carried the word since #277, so the
   # contract had been publishing two spellings of one object for six slices.
+  # (Counted with the document's own walker, not by hand: six schemas already
+  # carried it and six took it here. Two more carry
+  # `required_grouping_fields`, which is a different token and a different
+  # count.)
   #
   # ⚠ The entry could not have been paid by regeneration ALONE, which is what
   # the ticket as written assumed. None of the eight properties sits on a
@@ -1001,6 +1005,21 @@ entries:
   # so `export_openapi.py` would have rewritten the document unchanged in this
   # respect. The backend rename came into scope by a ruling on the ticket, not
   # by an accident of scoping.
+  #
+  # ⚠⚠ WHAT THIS ENTRY NEVER COUNTED, SAID HERE SO THE ZERO IS NOT READ AS
+  # MORE THAN IT IS. Four COMPONENT NAMES on this document still spell the
+  # SINGULAR — `DimensionDefIn`, `DimensionDefOut`, `DimensionRegistryIn`,
+  # `DimensionRegistryOut`. The sweep matches whole lowercase tokens, so a
+  # Pascal-cased name was never in this entry's extent and none is being
+  # dodged; `coding-standards.md` §Vocabulary is the standing instruction to
+  # grep for exactly that by hand, and this is that grep, recorded.
+  #
+  # They are DELIBERATELY not renamed. The singular is a different concept
+  # (`grouping_field_value`), its own ledger entry was retired in #312, and
+  # `DimensionService` / `DimensionValue` / `dimension_slots` are the same
+  # family and far wider — so renaming only the four publishable ones would be
+  # a partial cosmetic change that costs four component-level contract breaks
+  # and pays no gate. It wants a ticket, not a corner of this one.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON THE CONTRACT IN #370 and its entry is
   # deleted — see the note on the backend side. One file, and it was the wire

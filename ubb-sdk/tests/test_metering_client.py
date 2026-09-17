@@ -5,6 +5,7 @@ import httpx
 from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
+    UBBValidationError,
 )
 from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 # ⚠ THE CLOSE'S VALUES ARE NAMED, NEVER SPELLED, on the same footing as the
@@ -991,3 +992,105 @@ class TheOneEconomicQueryTest(unittest.TestCase):
         self.assertEqual(
             group_by_field(declared.key), "field:model",
             "a row's key is what goes inside the axis builder")
+
+
+class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
+    """`record_batch` refuses a key the recording request does not publish (#505).
+
+    ⚠ **THIS IS THE ONE WRAPPER PATH WHERE THE RENAME WAS SILENT.**
+    `record_usage` is keyword-only, so a name it does not take is a `TypeError`
+    that names itself. `record_batch` takes DICTS, and UBB drops an undeclared
+    body key rather than refusing it — so a batch item carrying a renamed or
+    mistyped key recorded an event attributed to nothing, answered 200, and said
+    so nowhere. A hundred at a time.
+    """
+
+    def setUp(self):
+        self.client = MeteringClient(api_key="ubb_live_test123",
+                                     base_url="http://localhost:8001")
+
+    def tearDown(self):
+        self.client.close()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_an_undeclared_key_is_refused_before_any_http(self, mock_post):
+        """Before the call, not after: the point is that nothing is recorded.
+
+        ⚠ THE MOCK ANSWERS SUCCESSFULLY ON PURPOSE. With the guard removed
+        this call has to REACH the server and come back fine, so the test
+        fails with `UBBValidationError not raised` — which is the defect.
+        Left unconfigured, the mock blows up inside `_http.py` instead and
+        the failure describes a mock rather than a missing refusal.
+        """
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [{"accepted": True, "event_id": "evt_1"},
+                        {"accepted": True, "event_id": "evt_2"}]})
+        with self.assertRaises(UBBValidationError) as caught:
+            self.client.record_batch([
+                {"customer_id": "c1", "idempotency_key": "i1",
+                 "provider_cost_micros": 1_000},
+                {"customer_id": "c1", "idempotency_key": "i2",
+                 "a_key_the_request_does_not_publish": {"model": "gpt-4"}},
+            ])
+        mock_post.assert_not_called()
+        message = str(caught.exception)
+        self.assertIn("events[1]", message,
+                      "the message names WHICH item, because a batch is a hundred long")
+        self.assertIn("a_key_the_request_does_not_publish", message)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_every_published_key_is_admitted(self, mock_post):
+        """The guard must not refuse the request's own vocabulary. Read off the
+        generated model, so it cannot drift from what the contract publishes —
+        and asserted as a WHOLE BODY, because a guard that admitted most keys
+        and dropped one would pass a per-key check."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [{"accepted": True, "event_id": "evt_1"}]})
+        self.client.record_batch([{
+            "customer_id": "c1", "idempotency_key": "i1",
+            "provider_cost_micros": 1_000, "claimed_provider_cost_micros": 2_000,
+            "currency": "usd", "event_type": "completion", "provider": "openai",
+            "measurements": {"tokens": 10}, "metadata": {"run": "nightly"},
+            "grouping_fields": {"model": "gpt-4"},
+            "task_id": "11111111-1111-1111-1111-111111111111",
+            "effective_at": "2026-01-01T00:00:00+00:00",
+        }])
+        (sent,) = mock_post.call_args.kwargs["json"]["events"]
+        self.assertEqual(sent["grouping_fields"], {"model": "gpt-4"})
+        self.assertEqual(sent["metadata"], {"run": "nightly"})
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_sdk_s_own_alias_is_admitted_and_translated(self, mock_post):
+        """`recorded_at` is this SDK's ergonomic name and the request publishes
+        `effective_at`. The guard has to admit the alias it itself translates,
+        which is why the derived set is the model's fields PLUS that one name."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "results": [{"accepted": True, "event_id": "evt_1"}]})
+        self.client.record_batch([{
+            "customer_id": "c1", "idempotency_key": "i1",
+            "recorded_at": datetime(2026, 1, 1, tzinfo=timezone.utc)}])
+        (sent,) = mock_post.call_args.kwargs["json"]["events"]
+        self.assertNotIn("recorded_at", sent)
+        self.assertEqual(sent["effective_at"], "2026-01-01T00:00:00+00:00")
+
+    def test_the_admitted_set_is_the_contract_s_and_not_a_copy(self):
+        """The control on the derivation. A hand-typed set here would agree with
+        the contract until one of them moved, and the one that moves is the
+        contract — it regenerates under CI's drift gate and a literal does not.
+
+        Pinned as a LITERAL because that is what the set IS today; the claim that
+        it comes from the model is the assertion below it, where comparing
+        against the generated class is the claim rather than a tautology."""
+        from ubb.metering import _declared_recording_keys
+        from ubb._core.models.record_usage_request import RecordUsageRequest
+        from attrs import fields as attrs_fields
+
+        assert _declared_recording_keys() == {
+            "customer_id", "idempotency_key", "claimed_provider_cost_micros",
+            "currency", "effective_at", "event_type", "grouping_fields",
+            "measurements", "metadata", "provider", "provider_cost_micros",
+            "task_id", "recorded_at",
+        }
+        published = {f.name for f in attrs_fields(RecordUsageRequest)
+                     if f.name != "additional_properties"}
+        assert _declared_recording_keys() - {"recorded_at"} == published

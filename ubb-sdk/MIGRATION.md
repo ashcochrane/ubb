@@ -771,8 +771,7 @@ The routes pre-date the launch tag, so the removals are recorded in the break bl
 
 ---
 
-## 17. The one query gets its handle, and the declared grouping bag takes the registry's
-word (slice 7, #505 — pre-live)
+## 17. The one query gets its handle, and the grouping bag takes the registry's word (slice 7, #505 — pre-live)
 
 ### The five deleted calls, mapped onto the one that replaces them
 
@@ -816,6 +815,19 @@ moved with it. It is the keyword that carried the analytics grouping word — th
 programme is retiring everywhere — and it is the only bag on either call that is not
 `metadata`. You do not have to guess which: passing the old name raises `TypeError` and
 **Python names it for you**. Rename it and nothing else changes.
+
+⚠ **`record_batch` IS THE EXCEPTION, AND IT USED TO BE THE DANGEROUS ONE.** It takes
+dicts rather than keyword arguments, so Python could not name anything and UBB drops a
+body key it does not publish rather than refusing it — a batch item carrying the old
+key recorded an event **attributed to nothing**, answered `200`, and said so nowhere,
+a hundred at a time. **#505 closes that**: `record_batch` now raises
+`UBBValidationError` before any HTTP for any key the recording request does not
+publish, naming the item's index and listing the keys that are valid. The set is read
+off the generated request model, so it cannot drift from the contract.
+
+That is a behaviour change on its own account: a batch item carrying a key UBB used to
+ignore — `product_id`, say — is now refused by the client instead of being silently
+dropped by the server. Drop the key.
 
 The word is the one **both responses have used since #277**: `RecordUsageResponse` and
 `UsageEventDetailOut` have keyed this same object under `grouping_fields` all along, so until

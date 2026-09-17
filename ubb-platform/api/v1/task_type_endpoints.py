@@ -132,8 +132,7 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
 
     `422 validation_error` answers a kind this registry does not recognise, a
     `required_grouping_fields` entry you have not declared as a grouping field,
-    or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
     """
     # THE WHOLE BODY IS ONE TRANSACTION, so a request whose fourth declaration

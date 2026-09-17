@@ -181,9 +181,8 @@ class RecordUsageRequest(Schema):
     idempotency_key: str = Field(min_length=1, max_length=500)
     # THE ONE OPEN BAG (#273). Free-form labelling: filterable and readable,
     # never grouped, never priced, never unit attribution. Anything you want to
-    # slice or price on is a declared grouping field's key. The second bag
-    # that used to sit further down this schema folded into this one, and its
-    # name
+    # slice or price on is a declared grouping field's key. The second bag that
+    # used to sit further down this schema folded into this one, and its name
     # went with it — it advertised a grouping capability this bag deliberately
     # does not have. Keys are yours: UBB stores and returns them as authored.
     metadata: dict = Field(default_factory=dict)
@@ -1436,6 +1435,18 @@ def task_out(t, keys):
         # falling back to the slot would publish the one name the shape exists
         # to keep private. Unset slots are omitted because "" is the column's
         # "not set" and a caller should not have to tell it from a real value.
+        #
+        # ⚠ THE RULE IS REUSED AND THE CODE IS NOT, which is a duplication worth
+        # naming rather than hiding. `grouping_fields_for` resolves the registry
+        # ITSELF, once per row — right for the recording ack, wrong for a
+        # fifty-row page — and it lives in `apps/metering/usage/`, while the row
+        # being projected here is the KERNEL's. Calling it would put a kernel
+        # row's projection inside a product. The shared home is
+        # `apps/platform/grouping_fields/`, beside `keys_by_slot`, and moving
+        # both callers onto it is a refactor with no ticket behind it — so it is
+        # recorded here rather than done in a phase that only owns the wire.
+        # The two RATE serialisers below are a third shape and deliberately so:
+        # they exclude the reserved axes and let a missing slot RAISE.
         "grouping_fields": {keys[slot]: value for slot, _ in SLOT_CHOICES
                             if (value := getattr(t, slot)) and slot in keys},
         "created_at": t.created_at.isoformat(),
@@ -3299,9 +3310,14 @@ class TaskTypeIn(Schema):
     absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
     #: WHICH DECLARED GROUPING FIELDS A START OF THIS KIND MUST CARRY, by the
     #: tenant's own declared key. The column behind it is still spelled the way
-    #: #277 left it; the wire takes the registry's word here and the column is
-    #: the cutover slice's to move, which is why `apps/platform/work/queries.py`
-    #: names both once and nothing else does.
+    #: #277 left it; the wire takes the registry's word here and moving the
+    #: column is a migration the cutover owns.
+    #:
+    #: THE TWO SPELLINGS MEET IN THREE PLACES AND NOWHERE ELSE — both row
+    #: serialisers in `apps/platform/work/queries.py`, and the write path in
+    #: `api/v1/task_type_endpoints.py`. Each says so where it stands, because
+    #: a bridge a reader has to discover from a `.values()` list is a bridge
+    #: they will cross without noticing.
     required_grouping_fields: list[str] = Field(default_factory=list,
                                                 max_length=6)
     #: THREE ANSWERS, NOT TWO, WHICH IS WHY IT IS NULLABLE WITH NO DEFAULT.

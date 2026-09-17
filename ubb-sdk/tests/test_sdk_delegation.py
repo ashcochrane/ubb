@@ -276,7 +276,7 @@ class TestRecordUsageSignatureParity:
         assert compared > 0  # the walk compared something
 
 
-class TestCloseTaskSignatureParity:
+class TestFacadeSignatureParity:
     """`UBBClient.close_task` must be a non-lossy passthrough too (#409).
 
     ⚠ THIS IS THE PARITY CHECK THE CLASS ABOVE ALREADY HAD FOR `record_usage`,

@@ -507,6 +507,8 @@ answer = client.query_economics(
     start_date="2026-01-01", end_date="2026-01-31")
 for row in answer.rows:
     margin = measure_on(row, vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN)
+    if margin is None:
+        continue                      # this row did not carry that measure
     if str(margin.status) != vocabulary.MEASURE_STATUS_KNOWN:
         continue                      # a bound, or no figure at all
     print(row.grouping_field_value, margin.amount_micros)
