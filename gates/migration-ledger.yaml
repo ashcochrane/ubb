@@ -351,7 +351,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 15 files
+    found: 11 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -405,6 +405,41 @@ entries:
       REGISTRY's word rather than on the report's — the distinction the
       boundary paragraph above drew between an axis and a value, arrived at
       from the other side.
+
+      15 -> 11 in #504, AND THE FOUR THAT WENT ARE EXACTLY THE SITES THAT ARE
+      NOT THE PUBLISHED WORD. The pricing app's two — a comment in
+      `pricing/models.py` describing the retired JSONB selector bag, and the
+      selector test that named it — plus the start gate's keyword-only
+      parameter in `gating/services/risk_service.py`, which took
+      `grouping_values` (the word its own caller already used one call earlier),
+      and two comments in the registry's own `grouping_fields/models.py`, one of
+      which was additionally citing a ROUTE PATH that #278 renamed away.
+      ⚠ The selector test was not merely re-worded: it named two retired
+      spellings and asserted their absence, which says nothing about a bag
+      arriving under a third. It now pins `Rate.SELECTORS` as a whole set
+      against the registry's own slot vocabulary, refuses any selector that is a
+      JSON container BY TYPE, and refuses every value of
+      `ANALYTICS_ROLLUP_VALUES` by reference — so #145 §5 and #147 §2 are held
+      by derivation rather than by literal, and a rollup coined later is covered
+      the day it lands. All three controls were mutation-checked: dropping a
+      reserved axis and readmitting a rollup each turn it red.
+
+      ⚠⚠ THE ELEVEN LEFT ARE ONE FACT — THE PUBLISHED FIELD STILL SPELLS IT —
+      AND THIS IS THE CORRECT RESTING STATE FOR PHASE B1, NOT A RESIDUE. Ten
+      are the wire and its route tests (`api/v1/schemas.py` declares the bag on
+      the recording and task requests and the registry's own body,
+      `metering_endpoints.py` and `task_endpoints.py` read it off the payload
+      and echo it, and seven route test modules send or assert it as the wire
+      spells it); the eleventh is a DATED CHANGELOG entry describing a pricing
+      API that no longer exists, which is history and stays. Renaming the
+      published field regenerates the contract, the SDK's ten files and the
+      console's three — slice 7 §21 rules that the contract and the SDK are
+      phase B2 and the console phase B3, and that only ONE of the four surfaces
+      can move independently. It is the same shape the invoice-line entry
+      records, and it is why this entry could not reach zero in the ticket that
+      took the other two grouping terms' backend columns there: the free-text
+      key filter's last backend sites were a request vocabulary slice 7 §1
+      explicitly hands this phase, and the registry's word is not.
 
   # ⚠ THE TWO MARKUP AUDIT ACTIONS REACHED ZERO ON EVERY SURFACE AND ALL FIVE
   # OF THEIR ENTRIES ARE DELETED (#369) — backend (3 files and 2 files), console
@@ -522,43 +557,33 @@ entries:
   # Refused in every swept backend file now, and the docs seat died in
   # #470, so the word is refused on every swept surface there is.
 
-  - id: g7-backend-tag_key
-    gate: G7
-    site: backend::tag_key
-    expected: analytics_grouping_kind
-    found: 2 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind that read from the open bag. Slice 7's grouping
-      contract declares what may be grouped on, which is the capability
-      the bag deliberately does not have.
-
-      8 -> 3 in #501, and the five that went are the grouping half in its
-      entirety: the two analytics endpoint test modules, `apps/metering/
-      queries.py` where the revenue and timeseries rollups grouped on it, the
-      scale test that built rows for them, and `margin_endpoints.py`'s grouped
-      breakdown. Every one died with a route the collapse deletes.
-
-      ⚠ **THE THREE LEFT ARE A FILTER, NOT A GROUPING**, and that is the whole
-      of what this entry now owes. `GET /metering/customers/{customer_id}/usage`
-      — the per-customer
-      event list, which survives the collapse and must — takes `tag_key` and
-      `tag_value` as a pair and narrows the rows to events carrying that key,
-      and the two remaining test files exercise the open bag underneath it.
-      A filter holds a value as constant as a grouping does, so the word is as
-      wrong here as it was there; what it is NOT is a request to group, which
-      means the one economic query cannot absorb it and no route removal will
-      clear it. It is a rename on a surviving route, and it is still slice 7's.
-
-      3 -> 2 in #503, WHICH DID NOT OWN THIS ENTRY AND MOVED IT ANYWAY. The
-      postpaid aggregate parity suite held a `tag_key` local in its reference
-      implementation of the retired invoice-line reader; #503 deleted that
-      reader, so the mirror of it went too. `found:` fails in BOTH directions,
-      so a ticket paying one word has to re-take the per-site file list for
-      every word and diff it — this decrement was found that way and by nothing
-      else. What the entry still owes is unchanged: the filter pair on the
-      per-customer event list, and the one test module that exercises the bag
-      underneath it.
+  # `g7-backend-tag_key` WAS HERE AND IS PAID (#504, slice 7 phase B1), and so
+  # are its SDK and CONTRACT twins below — the three reached zero in one commit
+  # because they were one fact read from three sides: a pair of query
+  # parameters on the per-customer event list, and the generated followers of
+  # that one published pair.
+  #
+  # 8 -> 3 in #501: the five that went were the grouping half in its entirety —
+  # the two analytics endpoint test modules, `apps/metering/queries.py` where
+  # the revenue and timeseries rollups grouped on it, the scale test that built
+  # rows for them, and `margin_endpoints.py`'s grouped breakdown. Every one died
+  # with a route the collapse deleted. 3 -> 2 in #503, when the postpaid parity
+  # suite's inlined reference implementation went with the reader it mirrored.
+  #
+  # THE LAST TWO WERE THE FILTER, AND THE FILTER IS NOT A GROUPING SURFACE.
+  # ADR-0005 files it as the first of three ad-hoc label reads that predate the
+  # bounded-keyspace rule and survive it, and slice 7 §1 rules that this route
+  # KEEPS its own contract and renames only its request vocabulary: it returns
+  # paginated event ROWS, and no parameter combination of the one economic query
+  # returns event rows. The pair now names the bag it actually reads
+  # (`metadata_key` / `metadata_value`), because the retired spelling read as an
+  # AXIS over a bag ADR-0005 keeps deliberately ungroupable — which is the whole
+  # reason the word was retired rather than merely moved.
+  #
+  # ⚠ THE CONSOLE'S ENTRY DOES NOT DIE WITH THEM. Only the call site moved
+  # there, because the query type comes from the generated contract and would
+  # not compile against the old spelling; the events feature's own filter
+  # vocabulary is #507's, and its entry is decremented rather than paid.
 
   # `g7-backend-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split). It stood at 15 files, the largest of the four surfaces, and the
@@ -782,12 +807,26 @@ entries:
     gate: G7
     site: console::tag_key
     expected: analytics_grouping_kind
-    found: 8 files
+    found: 7 files
     owner_slice: slice_7
     reason: >-
       A grouping kind that read from the open bag. Slice 7's grouping
       contract declares what may be grouped on, which is the capability
       the bag deliberately does not have.
+
+      8 -> 7 in #504, AND THE ONE THAT WENT IS THE ONLY ONE THAT HAD TO. Phase
+      B1 renamed the published pair on the per-customer event list, so the
+      generated contract snapshot stopped carrying the old spelling and the
+      feature's CALL SITE had to move with it or stop compiling — the query type
+      is generated, and an unknown key there is a type error rather than a
+      silent one. The decrement is therefore forced by the backend's payment
+      rather than an early instalment on this surface's own.
+
+      ⚠ THE SEVEN LEFT ARE THE EVENTS FEATURE'S OWN FILTER VOCABULARY and are
+      #507's, where the filters and the search take the renamed request
+      vocabulary with the rest of the feature. The call site now maps the
+      feature's key onto the wire's in one place, with a comment saying so, and
+      that mapping is what #507 deletes.
 
   # `g7-console-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split), at the same 2 files as its contained-work twin above and in the
@@ -913,16 +952,12 @@ entries:
   # regeneration rather than by an edit.
 
 
-  - id: g7-openapi-tag_key
-    gate: G7
-    site: openapi::tag_key
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind that read from the open bag. Slice 7's grouping
-      contract declares what may be grouped on, which is the capability
-      the bag deliberately does not have.
+  # `g7-openapi-tag_key` WAS HERE AND IS PAID (#504, slice 7 phase B1), at its
+  # one file and by regeneration: the pair of query parameters it counted was
+  # the published half of the backend entry above, so `export_openapi.py`
+  # cleared it the moment the route's signature took the bag's own word. Four
+  # lines of the contract moved and the path count did not — a renamed query
+  # parameter on a route slice 7 §1 rules KEEPS its contract.
 
   # `g7-openapi-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split), at the same 1 file and by the same regeneration as its
@@ -1096,34 +1131,24 @@ entries:
   # the routes, which is the ordinary shape: a generated module only leaves
   # when its operation does.
 
-  - id: g7-sdk-tag_key
-    gate: G7
-    site: sdk::tag_key
-    expected: analytics_grouping_kind
-    found: 3 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind that read from the open bag. Slice 7's grouping
-      contract declares what may be grouped on, which is the capability
-      the bag deliberately does not have.
-
-      7 -> 3 in #501, and the four divide into two different kinds of payment.
-      THREE WENT WITH THE ROUTES: the generated modules for the usage report and
-      the grouped margin breakdown, and `client.py`, whose delegates for those
-      calls are deleted with the methods behind them. THE FOURTH IS THE README,
-      which documented the deleted report's own parameter — a quick-start
-      describing a method that no longer exists is not a naming debt, it is a
-      wrong document, and rewriting that section paid this site as a
-      side-effect. The migration guide's entry for this ticket names the two
-      surviving parameters DESCRIPTIVELY rather than spelling them, on the rule
-      #497 set on this surface: a guide that spells a retired word re-opens a
-      site the same commit is closing.
-
-      The three left are the same FILTER the backend entry describes, seen from
-      the client: the generated module for `GET /metering/customers/{customer_id}/usage`, the
-      hand-written wrapper that passes the pair through, and the test that
-      exercises it. The event list survives the collapse deliberately, so this
-      is a rename on a live call rather than a debt any deletion will clear.
+  # `g7-sdk-tag_key` WAS HERE AND IS PAID (#504, slice 7 phase B1), at its last
+  # 3 files. 7 -> 3 had happened in #501, where three went with their routes
+  # (the generated modules for the usage report and the grouped margin
+  # breakdown, and `client.py`'s delegates) and the fourth was the README, whose
+  # quick-start documented a method that no longer existed — a wrong document
+  # rather than a naming debt, paid as a side-effect of correcting it.
+  #
+  # THE LAST THREE WERE THE FILTER SEEN FROM THE CLIENT, and this entry is the
+  # clearest case in the family of a debt no deletion could ever have cleared:
+  # the event list survives the collapse deliberately (slice 7 §1), so the call
+  # is live and the only way out was the rename. The generated module for
+  # `GET /metering/customers/{customer_id}/usage` regenerated from the moved
+  # contract; the hand-written wrapper and its test took the bag's word by hand,
+  # in the same commit, because a wrapper still sending the old spelling would
+  # have gone on compiling while the server silently ignored it — django-ninja
+  # DISCARDS an undeclared query parameter, so the filter would have returned
+  # every row rather than failing. That is the failure this entry existed to
+  # prevent, and it is why the SDK half could not wait for phase B2.
 
 
   - id: g7-sdk-usage_line_item_group_by

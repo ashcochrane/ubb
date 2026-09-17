@@ -576,8 +576,18 @@ Metering's plain-data read contract (period totals, the one economic query and t
 that says what may be asked of it, per-customer cost totals, billing-owner billed total, backfill
 markers) — never returns ORM objects. Five separate definitions of revenue and margin stood here
 until #501; `economics` is the one that replaced them, and what it can be grouped by comes from
-`grouping_options` rather than from a list each reader kept for itself. The remaining function names
-still carry the pre-#155 noun; the rename is slice 7's, with the row keys it serves.
+`grouping_options` rather than from a list each reader kept for itself. **The function names took
+the ratified noun in #504**, with the row keys they serve: the five readers that spelled the
+pre-#155 usage-event noun are now `get_posting_price`, `get_posting_effective_at`,
+`get_customer_postings_for_period`, `get_customer_ids_with_postings` and `iter_billable_postings`,
+and the two row types beside them are `PostingPrice` and `PostingCost`.
+⚠ **The price half is deliberately not called a cost.** `get_posting_price` serves
+`billed_cost_micros` and `pricing_status` — the customer-price pair — and the old name said "cost"
+for both halves, collapsing the one distinction **Billed cost** above asks a reader to hold.
+_Avoid_: reading the two surviving published spellings as a second concept — `UsageEventOut` /
+`UsageEventDetailOut` are a contract surface whose slice has not come (slice 7 §1 keeps the
+per-customer event list's own contract), and `usage_event_id` on the unresolved-queue rows is a
+published row key, not an internal name.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
 **Customer liability**:

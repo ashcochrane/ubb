@@ -20,7 +20,7 @@ def reconcile_customer_spend_pool_counters():
     from apps.platform.customers.models import Customer
     from apps.billing.gating.models import CustomerSpendPool
     from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService, _period
-    from apps.metering.queries import get_customer_ids_with_usage
+    from apps.metering.queries import get_customer_ids_with_postings
 
     _label, start, end = _period()
     ids = set(CustomerSpendPool.objects.filter(customer__isnull=False, cap_micros__gt=0)
@@ -28,7 +28,7 @@ def reconcile_customer_spend_pool_counters():
     default_tenants = list(CustomerSpendPool.objects.filter(customer__isnull=True, cap_micros__gt=0)
                            .values_list("tenant_id", flat=True))
     if default_tenants:
-        ids |= set(get_customer_ids_with_usage(default_tenants, start, end))
+        ids |= set(get_customer_ids_with_postings(default_tenants, start, end))
     ids |= set(Customer.all_objects.filter(
         status="suspended", suspension_reason=reasons.CUSTOMER_SPEND_POOL,
     ).values_list("id", flat=True))
@@ -49,7 +49,7 @@ def _per_owner_reconcile(tenant):
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.customer_spend_pool_service import _period
-    from apps.metering.queries import get_customer_ids_with_usage
+    from apps.metering.queries import get_customer_ids_with_postings
     from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
 
     flag_realigned = 0
@@ -60,7 +60,7 @@ def _per_owner_reconcile(tenant):
     try:
         if tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID:
             _label, start, end = _period()
-            cust_ids = list(get_customer_ids_with_usage(tenant.id, start, end))
+            cust_ids = list(get_customer_ids_with_postings(tenant.id, start, end))
             owners = {c.resolve_billing_owner().id
                       for c in Customer.all_objects.filter(id__in=cust_ids)}
         else:
@@ -69,7 +69,7 @@ def _per_owner_reconcile(tenant):
         # P6b deadlock fix: ALSO reconcile OWNERS suspended at their pool
         # that have NO current-month usage. A suspended owner is
         # start-gate-blocked, so it never appears in
-        # get_customer_ids_with_usage — and the pool pass (its only
+        # get_customer_ids_with_postings — and the pool pass (its only
         # un-suspend path; credit() clears the floor's line only) would never
         # run, stranding it suspended forever past month rollover. In every
         # mode since #459; a pooled SEAT suspended by its own level is not an

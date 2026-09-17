@@ -90,9 +90,9 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         # for a malformed id (e.g. "evt-1" in tests) — it validates the UUID
         # BEFORE the DB query, so it can never raise DataError inside the
         # atomic block. Falls back to now() below.
-        from apps.metering.queries import get_usage_event_effective_at
+        from apps.metering.queries import get_posting_effective_at
         if evt.event_id:
-            eff = get_usage_event_effective_at(evt.event_id)
+            eff = get_posting_effective_at(evt.event_id)
     basis = eff.date() if eff else timezone.now().date()
     period_start, period_end = _period_bounds_for(basis)
 

@@ -76,12 +76,12 @@ def close_postpaid_usage_periods():
     """Monthly: push each postpaid customer's prior-month usage to Stripe."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
-    from apps.metering.queries import get_customer_ids_with_usage
+    from apps.metering.queries import get_customer_ids_with_postings
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 
     start, end = _prior_month()
     for tenant in Tenant.objects.filter(billing_mode="postpaid", is_active=True):
-        cust_ids = get_customer_ids_with_usage(tenant.id, start, end)
+        cust_ids = get_customer_ids_with_postings(tenant.id, start, end)
         targets = set()
         for c in Customer.all_objects.filter(id__in=list(cust_ids)):
             targets.add(c.parent_id if (c.account_type == "seat" and c.parent_id) else c.id)

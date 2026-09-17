@@ -274,7 +274,7 @@ class PlannerIndexProofTest(TestCase):
         self._assert_range_served_by(qs, "idx_usage_customer_effective")
 
     def test_billable_created_window_served_by_tenant_created_index(self):
-        """F4.2: the created-basis iter_billable_usage_events query shape
+        """F4.2: the created-basis iter_billable_postings query shape
         (drawdown repair scans by ARRIVAL time) must be served by the
         (tenant, created_at) composite — the index added alongside the
         caller-timestamp work — with the created_at bounds as an Index Cond."""

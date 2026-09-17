@@ -257,6 +257,26 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     rather than of the bullets; it is left for the ticket that next has reason to regenerate the
     description.
 
+- **Amended by slice 7 (#504): the first of the three ad-hoc label reads is renamed, and the
+  Consequences bullet naming all three is now out of date by one.** That bullet says the three are
+  *"spelled here as the wire spells them today"* and that *"slice 7 owns renaming them"*. Slice 7
+  has now renamed the first: the pair filtering a customer's postings on `/customers/{id}/usage`
+  names the bag it reads (`metadata_key` / `metadata_value`) rather than reading as an axis over a
+  bag this ADR keeps deliberately ungroupable. The route KEEPS its own contract — it is a filter
+  surface and returns paginated event rows, which no parameter combination of the one economic query
+  returns — so what moved is four lines of request vocabulary and the generated followers of it,
+  and the path count did not change.
+  - **The second and third are accounted for.** The second — the key-driven breakdown on the usage
+    report and on the margin breakdown — **died with its routes** in #501 rather than being renamed,
+    which is the one disposition that bullet does not anticipate. The third, the invoice-line one,
+    took the declared grouping vocabulary BEHIND the wire in #503; its published field still spells
+    the retired word and is phase B2's, per slice 7 §21's ruling that only one of the four surfaces
+    can move independently.
+  - **The bullet above is left standing rather than rewritten**, for the reason the note above it
+    gives: it sits above the line a published field description cites, and correcting it in place
+    would move what that citation points at. The claim a reader needs — which of the three are done
+    and by what — is here instead.
+
 ## Deferred findings tracked against this ADR
 
 Minor findings surfaced during review and out of scope for the task that raised them, recorded here

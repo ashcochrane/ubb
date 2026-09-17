@@ -38,8 +38,13 @@ export async function listUsage(
         query: {
           cursor,
           limit: 50,
-          tag_key: filters.tag_key,
-          tag_value: filters.tag_value,
+          // THE WIRE NAMES THE BAG SINCE #504 (slice 7 phase B1); the filter
+          // object's own keys are the events feature's internal vocabulary and
+          // are #507's to rename with the rest of the feature. Only the call
+          // site had to move here, because the query type comes from the
+          // generated contract and would not compile against the old spelling.
+          metadata_key: filters.tag_key,
+          metadata_value: filters.tag_value,
           past_limit: filters.past_limit,
           stop_scope: filters.stop_scope,
           episode_seq: filters.episode_seq,

@@ -146,11 +146,21 @@ class TheBagIsFilterableTest(TestCase):
     @skipUnlessDBFeature("supports_json_field_contains")
     @patch("apps.platform.events.tasks.process_single_event")
     def test_the_bag_filters_the_usage_list(self, mock_process):
-        """FILTERING IS WHAT SURVIVED THE FOLD.
+        """FILTERING IS WHAT SURVIVED THE FOLD, AND IT NOW NAMES THE BAG.
 
-        The query parameters keep the analytics spelling they are published
-        under — that vocabulary is slice 7's to migrate — and they now read
-        the surviving bag.
+        The query parameters carried the analytics grouping spelling until
+        #504 (slice 7 phase B1) migrated them, which is what the previous
+        revision of this docstring said would happen. They name `metadata`
+        now — the bag they actually read — because the retired pair read as
+        a grouping axis, and ADR-0005's whole point is that this bag is
+        filterable and readable and NEVER groupable.
+
+        ⚠ **THE ROUTE KEEPS ITS OWN CONTRACT** (slice 7 §1). This is a filter
+        surface, not a grouping one: it returns paginated event ROWS, and no
+        parameter combination of the one economic query returns event rows.
+        So the assertions below are about the rows AND the page, not only
+        about the count — collapsing this route is the failure mode the
+        rename must not reach.
         """
         for i, dept in enumerate(["sales", "engineering", "sales"]):
             self.client.post(
@@ -168,12 +178,30 @@ class TheBagIsFilterableTest(TestCase):
 
         response = self.client.get(
             f"/api/v1/metering/customers/{self.customer.id}/usage"
-            "?tag_key=department&tag_value=sales",
+            "?metadata_key=department&metadata_value=sales",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body["data"]), 2)
+        # A PAGE OF EVENT ROWS, which is the thing collapsing this route would
+        # take away: every row carries the bag it was filtered on, and the
+        # envelope carries the cursor that makes it a page.
+        self.assertIn("next_cursor", body)
+        for row in body["data"]:
+            self.assertEqual(row["metadata"], {"department": "sales"})
+            self.assertIn("effective_at", row)
+
+        # AND THE FILTER IS A FILTER: the other value is reachable through the
+        # same pair, so the two assertions above are not passing on a read that
+        # ignores the parameters entirely.
+        other = self.client.get(
+            f"/api/v1/metering/customers/{self.customer.id}/usage"
+            "?metadata_key=department&metadata_value=engineering",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+        self.assertEqual(other.status_code, 200)
+        self.assertEqual(len(other.json()["data"]), 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_a_stale_caller_is_accepted_and_its_labels_are_dropped(

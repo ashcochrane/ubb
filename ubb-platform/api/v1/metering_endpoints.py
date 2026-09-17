@@ -402,7 +402,7 @@ def _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq):
 @metering_router.get("/customers/{customer_id}/usage", response=PaginatedUsageResponse)
 @role_floor(READ)
 def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50,
-              tag_key: str = None, tag_value: str = None,
+              metadata_key: str = None, metadata_value: str = None,
               task_id: UUIDIdentifier = None, include_subtasks: bool = False,
               past_limit: bool = None, stop_scope: str = None,
               episode_seq: int = None):
@@ -412,10 +412,13 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
 
     qs = customer.postings.all()
     # FILTERING is what the open bag is for, and it is what survived the fold
-    # in #273 — the parameter names are the analytics vocabulary slice 7 owns
-    # and are deliberately left spelled as they are published.
-    if tag_key and tag_value:
-        qs = qs.filter(metadata__contains={tag_key: tag_value})
+    # in #273. The pair NAMES THE BAG since #504 (slice 7 phase B1): it used to
+    # carry the analytics grouping word, which read as an axis on a bag ADR-0005
+    # keeps deliberately ungroupable, and this route is a filter surface rather
+    # than a grouping one — which is why slice 7 renames its request vocabulary
+    # and leaves its route and its response alone (slice 7 §1).
+    if metadata_key and metadata_value:
+        qs = qs.filter(metadata__contains={metadata_key: metadata_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
     qs = _apply_task_filter(qs, request.auth.tenant, task_id, include_subtasks)
 

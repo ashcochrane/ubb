@@ -313,9 +313,9 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
     def prepare(wallet, owner):
         from apps.billing.wallets.grants import GrantLedger
         from apps.billing.wallets.models import WalletTransaction
-        from apps.metering.queries import get_usage_event_cost
+        from apps.metering.queries import get_posting_price
 
-        row = get_usage_event_cost(usage_event_id, tenant_id=tenant.id)
+        row = get_posting_price(usage_event_id, tenant_id=tenant.id)
         if row is None:
             return OpResult(outcome="refused", balance_micros=wallet.balance_micros,
                             refusal_code=USAGE_EVENT_NOT_FOUND)

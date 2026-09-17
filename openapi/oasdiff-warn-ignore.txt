@@ -582,3 +582,27 @@ PATCH /api/v1/tenant/config removed the request property `default_task_provider_
 # carry, so both lines suppressed nothing and would have failed the gate as
 # inert entries. The rename this block records is still true of the
 # successors' bodies.
+
+# 2026-09-17 - Slice 7 (#504): the per-customer event list renames its
+# request vocabulary and KEEPS its route (slice 7 §1). The free-text label
+# filter is one of the three ad-hoc label reads ADR-0005 files as predating
+# the bounded-keyspace rule and surviving it, and the ADR says in terms that
+# slice 7 owns renaming them. The pair now names the bag it actually reads
+# rather than reading as an AXIS over a bag ADR-0005 keeps deliberately
+# ungroupable - which is why the word was retired rather than merely moved.
+#
+# WARN rather than ERR because both are OPTIONAL query parameters: removing
+# one relaxes what a caller must send and cannot break a reader of the
+# response. #411 settled that the split is about DIRECTION - a response
+# property the contract promised is ERR, a request property is WARN - and
+# these are the weaker case again, having never been required.
+#
+# THE ROUTE IS NOT COLLAPSED AND MUST NOT BE. It returns paginated event
+# ROWS, and no parameter combination of the one economic query returns event
+# rows; collapsing it would remove the only per-customer event listing on the
+# contract. Four lines of the spec moved and the path count did not.
+#
+# Both directions were run. The pair EXISTS at `api-v1-launch`, so the
+# cumulative gate reports both and neither line is inert.
+GET /api/v1/metering/customers/{customer_id}/usage deleted the `query` request parameter `tag_key`
+GET /api/v1/metering/customers/{customer_id}/usage deleted the `query` request parameter `tag_value`

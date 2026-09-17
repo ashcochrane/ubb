@@ -17,9 +17,9 @@ HTTP calls. All callers remain untouched.
 
 Consumers:
 - apps/billing/tenant_billing/services.py → get_period_totals()
-- apps/referrals/rewards/reconciliation.py → get_customer_usage_for_period()
-- apps/billing/gating/tasks.py → get_customer_ids_with_usage()
-- apps/billing/invoicing/tasks.py → get_customer_ids_with_usage()
+- apps/referrals/rewards/reconciliation.py → get_customer_postings_for_period()
+- apps/billing/gating/tasks.py → get_customer_ids_with_postings()
+- apps/billing/invoicing/tasks.py → get_customer_ids_with_postings()
 - apps/billing/invoicing/services/postpaid_service.py → get_customer_cost_totals(),
   get_billed_totals_by_customer(), get_customer_billed_breakdown()
 - api/v1/billing_endpoints.py → grouping_refusal(), invoice_line_cardinality_warning()
@@ -27,8 +27,8 @@ Consumers:
   grouping axis against this tenant's own discovery contract and warns on its
   cardinality at the moment it is chosen (#503). A BILLING surface reached
   through this read contract, which is the only channel ADR-001 allows
-- apps/billing/wallets/tasks.py → iter_billable_usage_events()
-- apps/subscriptions/handlers.py → get_usage_event_effective_at()
+- apps/billing/wallets/tasks.py → iter_billable_postings()
+- apps/subscriptions/handlers.py → get_posting_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
   clear_backfill_dirty_period() (the ack half of the marker contract),
   get_customer_cost_totals() (the repair a marker's consumer runs first, #502)
@@ -168,27 +168,39 @@ class PeriodTotals(TypedDict):
     unresolved_event_count: int
 
 
-#: STILL SPELLS THE RETIRED NOUN, DELIBERATELY, AND NOBODY OWNS IT YET (#269).
+#: TWO OF #269's THREE SURVIVING GROUPS ARE PAID (#504, slice 7 phase B1); THE
+#: THIRD IS ON THE PUBLISHED CONTRACT AND STAYS.
 #:
 #: #269 renamed the model and its table; it did not rename the *names built on*
-#: the model, and the ticket says so — "the model, the table, the two neighbours
-#: that reference it, and the tests that name it". Three groups survive the
-#: rename and they are not in the same position:
+#: the model, and the ticket said so — "the model, the table, the two neighbours
+#: that reference it, and the tests that name it". Three groups survived that
+#: rename, in three different positions, and only one of them is still here:
 #:
 #:   * `UsageEventOut` / `UsageEventDetailOut` (`api/v1/schemas.py`) are on the
 #:     PUBLISHED contract. Renaming a schema is a contract break, and ADR-0007 §3
 #:     forbids doing it twice on one field — so it happens once, deliberately,
-#:     in whichever slice rebuilds that surface.
-#:   * `iter_billable_usage_events` and `get_usage_event_cost` are `queries.py`
-#:     read-contract entry points, consumed across a product boundary
-#:     (`apps/billing/wallets/`). Renaming them is a same-commit change on both
-#:     sides, cheap but out of #269's stated extent.
-#:   * This TypedDict is neither: it is internal to metering and it names a
-#:     thing that is now called something else. It is the one of the three with
-#:     no reason to wait, and it is recorded here rather than renamed only
-#:     because #269 declined to widen — a later reader should treat it as
-#:     payable, not as a decision.
-class UsageEventCost(TypedDict):
+#:     in whichever slice rebuilds that surface. ⚠ **Still true, and not this
+#:     slice's**: slice 7 §1 rules that the per-customer event list KEEPS its
+#:     own contract, so the surface those two schemas serve is not being rebuilt
+#:     here and the one deliberate rename has nowhere to happen yet.
+#:   * The read-contract entry points — now `iter_billable_postings`,
+#:     `get_posting_price`, `get_posting_effective_at`,
+#:     `get_customer_postings_for_period` and `get_customer_ids_with_postings` —
+#:     were consumed across a product boundary, so renaming them was a
+#:     same-commit change on both sides: cheap, but out of #269's stated extent
+#:     and therefore left to the slice that owns the read contract's names.
+#:   * This TypedDict and `PostingPrice` beside it were neither: internal to
+#:     metering, naming a thing that is now called something else, and recorded
+#:     as *payable, not a decision*. Paid here with the entry points, because a
+#:     row type and the function returning it drift apart the moment one moves.
+#:
+#: ⚠ **The rename took the row keys as its authority, which is why the price
+#: half is not called a cost.** `get_posting_price` serves `billed_cost_micros`
+#: and `pricing_status` — the customer-price pair and nothing else — while this
+#: type carries both pairs. The old name said "cost" for both, which is the one
+#: distinction `apps/metering/CONTEXT.md` asks a reader to hold: cost is
+#: observed, price is decided.
+class PostingCost(TypedDict):
     #: `None` where UBB could not resolve a customer price (#351), exactly as
     #: the supplier half below has been since #317. A PER-EVENT row, so it
     #: carries no count either — `pricing_status` is what a caller adding these
@@ -269,7 +281,7 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
     }
 
 
-class UsageEventPrice(TypedDict):
+class PostingPrice(TypedDict):
     #: `None` where UBB could not resolve a customer price (#351). Zero still
     #: means priced at exactly nothing.
     billed_cost_micros: int | None
@@ -280,8 +292,8 @@ class UsageEventPrice(TypedDict):
     pricing_status: str
 
 
-def get_usage_event_cost(usage_event_id: str,
-                         tenant_id: str | None = None) -> UsageEventPrice | None:
+def get_posting_price(posting_id: str,
+                         tenant_id: str | None = None) -> PostingPrice | None:
     """One posting's customer price and the status that qualifies it.
 
     Returns `None` — and ONLY `None` — when there is no such posting. If
@@ -299,7 +311,7 @@ def get_usage_event_cost(usage_event_id: str,
     """
     from apps.metering.usage.models import Posting
 
-    qs = Posting.objects.filter(id=usage_event_id)
+    qs = Posting.objects.filter(id=posting_id)
     if tenant_id is not None:
         qs = qs.filter(tenant_id=tenant_id)
     return qs.values("billed_cost_micros", "pricing_status").first()
@@ -317,9 +329,9 @@ def get_usage_event_cost(usage_event_id: str,
 # reader has to bound for themselves.
 
 
-def get_customer_usage_for_period(
+def get_customer_postings_for_period(
     tenant_id: str, customer_id: str, period_start: date, period_end: date,
-) -> list[UsageEventCost]:
+) -> list[PostingCost]:
     """Get per-event usage data for a customer in a period.
 
     Returns list of dicts with billed_cost_micros, pricing_status,
@@ -474,7 +486,7 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
 # exactly the capability it does not have.
 
 
-def get_usage_event_effective_at(usage_event_id) -> datetime | None:
+def get_posting_effective_at(posting_id) -> datetime | None:
     """Get a usage event's effective_at timestamp. Returns datetime or None.
 
     Tolerates malformed (non-UUID) ids by returning None — the UUID is
@@ -484,15 +496,15 @@ def get_usage_event_effective_at(usage_event_id) -> datetime | None:
     from apps.metering.usage.models import Posting
 
     try:
-        uuid.UUID(str(usage_event_id))
+        uuid.UUID(str(posting_id))
     except (ValueError, TypeError):
         return None
-    return Posting.objects.filter(id=usage_event_id).values_list(
+    return Posting.objects.filter(id=posting_id).values_list(
         "effective_at", flat=True
     ).first()
 
 
-def get_customer_ids_with_usage(tenant_id, period_start: date, period_end: date) -> list:
+def get_customer_ids_with_postings(tenant_id, period_start: date, period_end: date) -> list:
     """Distinct customer ids with ANY usage in [period_start, period_end).
 
     Existence-based: deliberately does NOT filter on billed_cost_micros
@@ -866,7 +878,7 @@ def clear_backfill_dirty_period(marker_id) -> None:
     BackfillDirtyPeriod.objects.filter(id=marker_id).delete()
 
 
-def iter_billable_usage_events(tenant_id, since: datetime, before: datetime,
+def iter_billable_postings(tenant_id, since: datetime, before: datetime,
                                basis: str = "effective") -> Iterator[dict]:
     """Iterate billable events (billed_cost_micros > 0) in [since, before).
 

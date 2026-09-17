@@ -279,7 +279,7 @@ def start_task(request, payload: StartTaskRequest):
         try:
             policy = RiskService.resolve_start_policy(
                 tenant, task_type=payload.task_type,
-                dimensions=payload.dimensions,
+                grouping_values=payload.dimensions,
                 requested_ceiling_micros=payload.task_cogs_ceiling_micros,
                 is_subtask=parent is not None)
         except ValueError as exc:

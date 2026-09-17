@@ -61,9 +61,9 @@ class StartPolicy(NamedTuple):
 
 class RiskService:
     @staticmethod
-    def resolve_start_policy(tenant, *, task_type, dimensions,
+    def resolve_start_policy(tenant, *, task_type, grouping_values,
                              requested_ceiling_micros, is_subtask):
-        """Validate the declared kind of work + dimensions and resolve the
+        """Validate the declared kind of work + grouping values and resolve the
         ceiling — the WHOLE ladder, in one call, for every start.
 
         ``task_type`` is the caller's declared kind of work at EITHER altitude
@@ -127,12 +127,12 @@ class RiskService:
         # ADR-0006 §3 uses as its worked example.
         scope = "subtask" if is_subtask else "task"
         try:
-            slot_values = DimensionService.admit(tenant, dimensions or {}, scope=scope)
+            slot_values = DimensionService.admit(tenant, grouping_values or {}, scope=scope)
         except DimensionError as exc:
             raise ValueError(str(exc)) from exc
 
         if policy:
-            supplied = set((dimensions or {}).keys())
+            supplied = set((grouping_values or {}).keys())
             missing = [d for d in policy["required_dimensions"] if d not in supplied]
             if missing:
                 raise ValueError(

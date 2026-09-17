@@ -62,7 +62,7 @@ RESERVED_KEYS = ("provider", "event_type", "task_type", "subtask_type",
                  "customer")
 
 # Correlation identifiers (D9): unbounded by construction, so they are filter
-# parameters and may never be declared as dimensions.
+# parameters and may never be declared as grouping fields.
 #
 # The list lost a member in #411, and it left because the FIELD left: the
 # second caller-supplied correlation value is gone from the recording request,
@@ -124,8 +124,11 @@ class GroupingFieldValue(BaseModel):
     """The distinct-value ledger backing the cardinality cap (D4).
 
     One row per (tenant, key, value) ever admitted. Also the read model for
-    `GET /dimensions/{key}/values`, which is what a tenant dashboard needs to
-    build a filter dropdown.
+    `GET /api/v1/metering/grouping-fields/{key}/values`, which is what a tenant
+    dashboard needs to build a filter dropdown. (The path spelled the retired
+    analytics grouping word until #278 renamed the route family; this docstring
+    still carried the old one until #504 — a stale path in a docstring is the
+    one kind of retired spelling no gate reads as a claim.)
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="grouping_field_values")

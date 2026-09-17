@@ -71,7 +71,7 @@ def _op_registry(tenant, customer, wallet):
 
     def seeded_refund():
         # A refund mirrors the looked-up cost: fake the metering read.
-        with patch("apps.metering.queries.get_usage_event_cost",
+        with patch("apps.metering.queries.get_posting_price",
                    return_value={"billed_cost_micros": 2_000_000, "pricing_status": "known"}):
             return wallet_ops.refund_usage(
                 customer_id=customer.id, tenant=tenant,
@@ -254,7 +254,7 @@ class TestRefusals:
         t = _tenant()
         c = _customer(t)
         _wallet(c, balance=1_000_000)
-        with patch("apps.metering.queries.get_usage_event_cost",
+        with patch("apps.metering.queries.get_posting_price",
                    return_value=None):
             result = wallet_ops.refund_usage(
                 customer_id=c.id, tenant=t, usage_event_id=uuid.uuid4(),
@@ -276,7 +276,7 @@ class TestRefusals:
         t = _tenant()
         c = _customer(t)
         _wallet(c, balance=1_000_000)
-        with patch("apps.metering.queries.get_usage_event_cost",
+        with patch("apps.metering.queries.get_posting_price",
                    return_value={"billed_cost_micros": None,
                                  "pricing_status": "unknown"}):
             result = wallet_ops.refund_usage(
@@ -365,7 +365,7 @@ class TestReplays:
         _wallet(c, balance=0)
         event_id = uuid.uuid4()
         key = str(uuid.uuid4())
-        with patch("apps.metering.queries.get_usage_event_cost",
+        with patch("apps.metering.queries.get_posting_price",
                    return_value={"billed_cost_micros": 2_000_000, "pricing_status": "known"}):
             first = wallet_ops.refund_usage(
                 customer_id=c.id, tenant=t, usage_event_id=event_id,
@@ -481,7 +481,7 @@ class TestExpiryPlacement:
         elif op_name == "withdraw":
             wallet_ops.withdraw(amount_micros=1_000_000, **kwargs)
         elif op_name == "refund_usage":
-            with patch("apps.metering.queries.get_usage_event_cost",
+            with patch("apps.metering.queries.get_posting_price",
                        return_value={"billed_cost_micros": 1_000_000, "pricing_status": "known"}):
                 wallet_ops.refund_usage(usage_event_id=uuid.uuid4(), **kwargs)
         elif op_name == "draw_down_usage":
@@ -645,7 +645,7 @@ class TestMoneyRules:
         wallet_ops.draw_down_usage(customer_id=c.id, tenant=t,
                                    usage_event_id=event_id,
                                    billed_cost_micros=4_000_000)
-        with patch("apps.metering.queries.get_usage_event_cost",
+        with patch("apps.metering.queries.get_posting_price",
                    return_value={"billed_cost_micros": 4_000_000, "pricing_status": "known"}):
             result = wallet_ops.refund_usage(
                 customer_id=c.id, tenant=t, usage_event_id=event_id,
