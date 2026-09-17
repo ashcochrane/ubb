@@ -24,10 +24,11 @@ Four claims, and they are independent of each other:
   posting's timestamp, exactly as under any other regime. *The price was
   promised, the cost is observed.*
 
-⚠ THE WIRE KEY FOR THE GROUPING BAG IS NEVER SPELLED HERE. It is retired
-vocabulary under a spread ceiling another slice owns, so this module says what
-it means through `declared_grouping_values`, whose own docstring records the
-technique.
+The grouping bag reaches the wire here through `declared_grouping_values`, which
+names what the bag IS rather than which key it lands under. ⚠ IT USED TO BE
+COMPULSORY AND IS NOW A PREFERENCE: that key was retired vocabulary under a
+spread ceiling, and #505 took it to zero. The helper's own docstring records
+which of its two reasons survived.
 
 **THE PREPAID RESERVATION IS BUILT SINCE #461** (slice 6 §5): §16's first
 obligation — take a durable reservation for the pinned price, atomically with

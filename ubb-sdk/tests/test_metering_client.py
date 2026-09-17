@@ -23,6 +23,15 @@ from ubb.vocabulary import (
 )
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.economics_out import EconomicsOut
+from ubb._core.models.economic_row_out import EconomicRowOut
+from ubb._core.models.economic_measure_out import EconomicMeasureOut
+from ubb._core.models.grouping_option_out import GroupingOptionOut
+# The measures, the rollups and the five measure states are reached BY
+# MODULE rather than imported one by one: a test naming fifteen constants
+# in its import block is a test nobody reads the top of.
+from ubb import vocabulary
+from ubb.metering import group_by_field, group_by_rollup, measure_on
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -154,23 +163,25 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(body["metadata"], {"project": "proj_1"})
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_with_dimensions(self, mock_post):
-        """dimensions is distinct from the open bag: declared, rate-card/
-        analytics-selecting values, not free-form labels — plumbed the same
-        way."""
+    def test_record_usage_with_grouping_fields(self, mock_post):
+        """The declared bag is distinct from the open one: rate-selecting and
+        groupable values, not free-form labels — plumbed the same way. The
+        keyword and the wire key took the registry's own word in #505, which
+        is what both responses have called this same object since #277.
+        """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3b", "new_balance_micros": 7_000_000, "suspended": False,
             "costing_status": "known", "pricing_status": "known",
         })
         self.client.record_usage(
             customer_id="cust_1", idempotency_key="i3b",
-            provider_cost_micros=1_000_000, dimensions={"service": "alpha"},
+            provider_cost_micros=1_000_000, grouping_fields={"service": "alpha"},
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertEqual(body["dimensions"], {"service": "alpha"})
+        self.assertEqual(body["grouping_fields"], {"service": "alpha"})
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_record_usage_omitted_dimensions_not_in_body(self, mock_post):
+    def test_record_usage_omitted_grouping_fields_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3c", "new_balance_micros": 7_000_000, "suspended": False,
             "costing_status": "known", "pricing_status": "known",
@@ -180,7 +191,7 @@ class MeteringClientTest(unittest.TestCase):
             provider_cost_micros=1_000_000,
         )
         body = mock_post.call_args.kwargs["json"]
-        self.assertNotIn("dimensions", body)
+        self.assertNotIn("grouping_fields", body)
 
     # ---- recorded_at (F4.2) ----
 
@@ -576,11 +587,11 @@ class MeteringClientTest(unittest.TestCase):
             "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
         })
         task = self.client.start_task("c1", "k1", task_type="render",
-                                      dimensions={"region": "eu"})
+                                      grouping_fields={"region": "eu"})
         self.assertEqual(mock_post.call_args.args[0], "/api/v1/tasks")
         self.assertEqual(mock_post.call_args.kwargs["json"], {
             "customer_id": "c1", "idempotency_key": "k1",
-            "task_type": "render", "dimensions": {"region": "eu"},
+            "task_type": "render", "grouping_fields": {"region": "eu"},
         })
         self.assertEqual(task.task_id, "task_1")
 
@@ -601,7 +612,11 @@ class MeteringClientTest(unittest.TestCase):
             "ceiling_status": CEILING_STATUS_INDETERMINATE,
             "ceiling_used_percentage": 35,
             "ceiling_remaining_micros": 3_250_000,
-            "dimensions": {"grouping_field_1": "eu"},
+            # KEYED BY THE TENANT'S OWN DECLARED KEY (#505), never by the
+            # physical slot. The fixture is `task_out` as the wire sends it,
+            # and a fixture still carrying the column name would be asserting
+            # against a response the server has stopped sending.
+            "grouping_fields": {"region": "eu"},
             "created_at": "2026-09-02T09:00:00+00:00",
             "completed_at": "2026-09-02T09:30:00+00:00",
         }
@@ -753,3 +768,226 @@ class MeteringClientTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TheOneEconomicQueryTest(unittest.TestCase):
+    """`query_economics` and `grouping_options` (#505, slice 7 §18).
+
+    One handle replaced five — the two analytics reads and the three margin
+    reads #501 deleted — and the discovery read beside it says what a tenant
+    may ask it. What is asserted here is the REQUEST these produce and the
+    ANSWER they hand back, because between those two everything is generated.
+    """
+
+    def setUp(self):
+        self.client = MeteringClient(api_key="ubb_live_test123",
+                                     base_url="http://localhost:8001")
+
+    def tearDown(self):
+        self.client.close()
+
+    @staticmethod
+    def _an_answer(**overrides) -> dict:
+        """`api/v1/schemas.py::EconomicsOut`, as the wire sends it."""
+        body = {
+            "period_start": "2026-01-01", "period_end": "2026-01-31",
+            "group_by": ["field:model"], "bucket": None,
+            "basis": vocabulary.REVENUE_BASIS_RECORDED,
+            "economic_data_available_from": "2020-01-01",
+            "measurement_data_available_from": "2025-07-01",
+            "rows": [], "context": [],
+        }
+        body.update(overrides)
+        return body
+
+    # ---- the request ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_it_names_the_operation_and_sends_every_axis_of_the_question(self, mock_get):
+        """The route is named through the generated operation registry, never
+        spelled here, and every keyword reaches the wire under its own name."""
+        mock_get.return_value = MagicMock(status_code=200,
+                                          json=lambda: self._an_answer())
+        self.client.query_economics(
+            measures=[vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN],
+            group_by=[group_by_field("model"),
+                      group_by_rollup(vocabulary.ANALYTICS_ROLLUP_EVENT_CATEGORY)],
+            start_date="2026-01-01", end_date="2026-01-31", bucket="day",
+            basis=vocabulary.REVENUE_BASIS_RECOGNISED, customer_id="c1",
+            event_type="completion", task_type="render", task_id="t1",
+            include_subtasks=True, where=["field:model=gpt-4"],
+            past_limit=True, stop_scope="customer", episode_seq=2)
+
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/metering/analytics/economics")
+        self.assertEqual(mock_get.call_args.kwargs["params"], {
+            "measures": ["gross_margin"],
+            "group_by": ["field:model", "rollup:event_category"],
+            "start_date": "2026-01-01", "end_date": "2026-01-31",
+            "bucket": "day", "basis": "recognised", "customer_id": "c1",
+            "event_type": "completion", "task_type": "render",
+            "task_id": "t1", "include_subtasks": True,
+            "where": ["field:model=gpt-4"], "past_limit": True,
+            "stop_scope": "customer", "episode_seq": 2,
+        })
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_an_unasked_filter_is_absent_rather_than_null(self, mock_get):
+        """A query parameter sent as `None` is a parameter sent. The minimal
+        question carries its measures and nothing else."""
+        mock_get.return_value = MagicMock(status_code=200,
+                                          json=lambda: self._an_answer())
+        self.client.query_economics(
+            measures=[vocabulary.ANALYTICS_MEASURE_RECORDED_EVENTS])
+        self.assertEqual(mock_get.call_args.kwargs["params"],
+                         {"measures": ["recorded_events"]})
+
+    def test_a_question_naming_no_measure_does_not_compile(self):
+        """`measures` is keyword-only and REQUIRED, because it is required on
+        the wire: a default measure set is how a caller ends up aggregating
+        three different things to draw one line."""
+        with self.assertRaises(TypeError):
+            self.client.query_economics()
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_it_does_not_hold_its_own_list_of_valid_measures(self, mock_get):
+        """`docs/conventions/sdk-wrap.md`: never let the client hold its own
+        list of valid values — let the route 422.
+
+        A measure UBB has never heard of reaches the server, which is the only
+        thing that knows. A client that raised here would break its callers
+        the day UBB coins a fifth measure, and would be a second copy of a set
+        the registry already owns.
+        """
+        mock_get.return_value = MagicMock(status_code=200,
+                                          json=lambda: self._an_answer())
+        self.client.query_economics(measures=["a_measure_ubb_does_not_have"])
+        self.assertEqual(mock_get.call_args.kwargs["params"]["measures"],
+                         ["a_measure_ubb_does_not_have"])
+
+    # ---- the answer, and its states ----
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_the_answer_is_parsed_through_the_generated_model(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200,
+                                          json=lambda: self._an_answer())
+        answer = self.client.query_economics(
+            measures=[vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN])
+        self.assertIsInstance(answer, EconomicsOut)
+        self.assertEqual(answer.period_start, "2026-01-01")
+        self.assertEqual(answer.group_by, ["field:model"])
+        self.assertEqual(str(answer.basis), "recorded")
+        self.assertEqual(answer.economic_data_available_from, "2020-01-01")
+        self.assertEqual(answer.measurement_data_available_from, "2025-07-01")
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_a_measure_keeps_its_state_and_its_absent_figure_stays_absent(self, mock_get):
+        """⚠ THE STATE IS THE POINT, AND A MISSING FIGURE IS NOT A ZERO.
+
+        A margin UBB cannot attribute at the requested grain has NO figure —
+        there is no such thing as a partial margin — and it says so in its
+        state. A wrapper that coerced the absent amount to `0` would publish
+        "this customer broke exactly even" as a measured fact. Both halves are
+        pinned: the state arrives, and the figure is still `None`.
+        """
+        row = {
+            "bucket_start": None,
+            "grouping_field_value": ["gpt-4"],
+            "grouping_field_value_status": ["known"],
+            "measures": [
+                {"measure": "gross_margin", "amount_micros": None,
+                 "status": vocabulary.MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN},
+                {"measure": "supplier_cogs", "amount_micros": 4_200_000,
+                 "status": vocabulary.MEASURE_STATUS_INCOMPLETE,
+                 "unresolved_event_count": 3},
+            ],
+        }
+        mock_get.return_value = MagicMock(
+            status_code=200, json=lambda: self._an_answer(rows=[row]))
+
+        (answered,) = self.client.query_economics(
+            measures=[vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN,
+                      vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS]).rows
+
+        margin = measure_on(answered, vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN)
+        self.assertIsNone(margin.amount_micros)
+        self.assertEqual(str(margin.status),
+                         vocabulary.MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN)
+
+        cost = measure_on(answered, vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS)
+        self.assertEqual(cost.amount_micros, 4_200_000)
+        self.assertEqual(str(cost.status), vocabulary.MEASURE_STATUS_INCOMPLETE)
+        self.assertEqual(cost.unresolved_event_count, 3)
+
+    def test_reading_a_measure_hands_back_the_measure_and_never_the_number(self):
+        """The shape is the control. `measure_on` returns the whole measure, so
+        there is no call on this surface that yields a figure with its state
+        stripped off — which is the one-line way to publish a bound as a
+        total."""
+        row = EconomicRowOut.from_dict({
+            "bucket_start": None, "grouping_field_value": [],
+            "grouping_field_value_status": [],
+            "measures": [{"measure": "customer_revenue",
+                          "amount_micros": 9_000_000,
+                          "status": vocabulary.MEASURE_STATUS_KNOWN}],
+        })
+        found = measure_on(row, vocabulary.ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        self.assertIsInstance(found, EconomicMeasureOut)
+        self.assertIsNone(
+            measure_on(row, vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN),
+            "a measure the row does not carry is absent, never a zero")
+
+    # ---- the axis words, and the discovery read ----
+
+    def test_an_axis_carries_its_own_kind(self):
+        """⚠ THE ANSWERS ARE LITERALS HERE, NOT THE CONSTANTS THE FUNCTIONS USE.
+
+        Asserting `group_by_field("model") == f"{ANALYTICS_GROUPING_KIND_FIELD}:model"`
+        would restate the implementation one import away and could not fail.
+        These say the words. The separate claim — that the prefixes ARE the
+        registry's values — is the test below, where comparing against the
+        registry is the claim rather than a tautology.
+        """
+        self.assertEqual(group_by_field("model"), "field:model")
+        self.assertEqual(group_by_field("provider"), "field:provider")
+        self.assertEqual(group_by_rollup("event_category"), "rollup:event_category")
+        self.assertEqual(group_by_rollup("measurement_concept"),
+                         "rollup:measurement_concept")
+
+    def test_the_two_prefixes_are_the_registry_s_own_values(self):
+        """The agreement, as its own claim: the kind an axis carries is the
+        generated vocabulary's, held by reference, so a kind renamed in the
+        registry renames it here and a client cannot drift from the server."""
+        self.assertEqual(
+            {group_by_field("k").split(":")[0], group_by_rollup("k").split(":")[0]},
+            vocabulary.ANALYTICS_GROUPING_KIND_VALUES)
+
+    @patch("ubb.metering.httpx.Client.get")
+    def test_the_discovery_read_names_its_operation_and_parses_its_rows(self, mock_get):
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"options": [
+            {"key": "model", "kind": "field", "rollup": None, "label": "Model",
+             "source_grain": "posting", "supported_surfaces": ["economics"],
+             "max_cardinality": 100, "unsupported_measures": []},
+            {"key": "event_category", "kind": "rollup",
+             "rollup": "event_category", "label": "",
+             "source_grain": "posting", "supported_surfaces": ["economics"],
+             "max_cardinality": None, "unsupported_measures": [
+                 {"measure": "customer_revenue", "reason": "nothing to attribute"}]},
+        ]})
+        options = self.client.grouping_options()
+
+        self.assertEqual(mock_get.call_args.args[0],
+                         "/api/v1/metering/analytics/grouping-options")
+        self.assertEqual([o.key for o in options], ["model", "event_category"])
+        declared, rolled_up = options
+        self.assertIsInstance(declared, GroupingOptionOut)
+        self.assertEqual(str(declared.kind),
+                         vocabulary.ANALYTICS_GROUPING_KIND_FIELD)
+        self.assertEqual(declared.max_cardinality, 100)
+        self.assertEqual(str(rolled_up.kind),
+                         vocabulary.ANALYTICS_GROUPING_KIND_ROLLUP)
+        self.assertEqual([str(u.measure) for u in rolled_up.unsupported_measures],
+                         ["customer_revenue"])
+        self.assertEqual(
+            group_by_field(declared.key), "field:model",
+            "a row's key is what goes inside the axis builder")

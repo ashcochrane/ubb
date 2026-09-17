@@ -39,9 +39,9 @@ version: 1
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
   operations: 155
-  unwrapped: 82
-  wrapped: 73
-  generated_only: 82
+  unwrapped: 80
+  wrapped: 75
+  generated_only: 80
   not_yet_wrapped: 0
 
 operations:
@@ -388,7 +388,9 @@ operations:
   - operation_id: api_v1_metering_endpoints_list_grouping_options
     method: GET
     path: /api/v1/metering/analytics/grouping-options
-    disposition: generated_only
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.grouping_options
   - operation_id: api_v1_metering_endpoints_list_pricing_books
     method: GET
     path: /api/v1/metering/pricing/pricing-books
@@ -402,7 +404,9 @@ operations:
   - operation_id: api_v1_metering_endpoints_query_economics
     method: GET
     path: /api/v1/metering/analytics/economics
-    disposition: generated_only
+    disposition: wrapped
+    wrapped_by:
+      - ubb-sdk/ubb/metering.py::MeteringClient.query_economics
   - operation_id: api_v1_metering_endpoints_record_usage
     method: POST
     path: /api/v1/metering/usage

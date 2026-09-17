@@ -32,16 +32,11 @@ class StartTaskResponse:
     creates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a
     caller replaying an attempt that has since run up cost.
 
-    ⚠ AND THE DECLARED GROUPING VALUES ARE NOT ECHOED, for two reasons that
-    point the same way. The caller just sent them, and a start that pinned
-    something else would say so by refusing rather than by handing back a
-    corrected bag. The second is a constraint rather than a preference and is
-    recorded because it decided a published surface: that bag's wire key is
-    retired vocabulary under a spread ceiling another slice owns, and every
-    schema publishing it mints one more generated SDK module that counts
-    against the ceiling — so a third copy of the property would fail the sweep
-    for a debt this commit does not own. #358 is the precedent, in the same
-    direction.
+    ⚠ AND THE DECLARED GROUPING VALUES ARE NOT ECHOED. You just sent them,
+    and a start that pinned something else says so by REFUSING rather than by
+    handing back a corrected bag — so an echo could only ever repeat your own
+    request back to you. The unit read one call away carries them as UBB holds
+    them, keyed by your own declared key.
 
         Attributes:
             created_at (str):

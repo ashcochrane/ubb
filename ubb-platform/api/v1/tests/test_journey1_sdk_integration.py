@@ -72,7 +72,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
     tenant = Tenant.objects.create(name="J1", products=["metering"])
     _, raw_key = TenantApiKey.create_key(tenant)
     customer = Customer.objects.create(tenant=tenant, external_id="acme")
-    # dimensions= now resolves through the registry (#128 rework); an
+    # grouping_fields= now resolves through the registry (#128 rework); an
     # identity declaration (key == slot) lets a declared dim1 value stay
     # groupable by "dim1".
     GroupingField.objects.create(tenant=tenant, key="dim1", slot="grouping_field_1", scope="event")
@@ -116,7 +116,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         #     Drive the SDK's real record_usage() over HTTP: real route, real response
         #     contract, real (tolerant) deserialization into RecordUsageResult.
         res = client.record_usage(customer_id=str(customer.id),
-                                  idempotency_key="i1", dimensions={"dim1": "search"},
+                                  idempotency_key="i1", grouping_fields={"dim1": "search"},
                                   measurements={"input_tokens": 1000})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2

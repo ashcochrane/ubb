@@ -1,5 +1,12 @@
 from ubb.client import UBBClient
-from ubb.metering import MeteringClient, StartedTask
+# `group_by_field` / `group_by_rollup` build one grouping axis out of the
+# registry's own kind values, and `measure_on` reads one measure off a row
+# WITH ITS STATE (#505). They are functions rather than methods because they
+# touch no transport: the first two shape a request before it is made, the
+# third reads an answer after it has arrived.
+from ubb.metering import (
+    MeteringClient, StartedTask, group_by_field, group_by_rollup, measure_on,
+)
 from ubb.billing import BillingClient
 from ubb.subscriptions import SubscriptionsClient
 from ubb.referrals import ReferralsClient
@@ -28,6 +35,15 @@ from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
+# The one economic query's answer, and the discovery read beside it (#505).
+# `EconomicRowOut` and `EconomicMeasureOut` are here because a caller holds
+# them directly: a row is what `measure_on` reads and a measure is what it
+# answers with, so a type annotation on either would otherwise have to reach
+# into `_core`.
+from ubb._core.models.economics_out import EconomicsOut
+from ubb._core.models.economic_row_out import EconomicRowOut
+from ubb._core.models.economic_measure_out import EconomicMeasureOut
+from ubb._core.models.grouping_option_out import GroupingOptionOut
 
 # Shell-owned ergonomic types: the pagination container and the batch
 # aggregate. The small hand results that once covered untyped 200s were
@@ -77,9 +93,13 @@ __all__ = [
     "GrantOut", "RefundResponse", "StatusResponse",
     "TopUpCheckoutResponse",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
+    # the one economic query and its discovery read (#505)
+    "EconomicsOut", "EconomicRowOut", "EconomicMeasureOut", "GroupingOptionOut",
     # shell-owned types, and the handle a start answers with (#422)
     "PaginatedResponse", "BatchItemResult", "BatchResult",
     "StartedTask",
+    # shaping an economic question, and reading one measure out of its answer
+    "group_by_field", "group_by_rollup", "measure_on",
     # base exception surface, plus the one control signal that sits OUTSIDE
     # Exception (UBBStopRequested — the spend stop, #421); the missing
     # declaration (TaskOutcomeRequired, #422) is an ordinary UBBError

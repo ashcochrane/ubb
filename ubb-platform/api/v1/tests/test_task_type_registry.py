@@ -46,7 +46,8 @@ class TestTaskTypeRegistry:
         self.tenant = Tenant.objects.create(name="T", products=["metering"])
         self.key, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
-        # required_dimensions is validated against the Grouping Field registry
+        # required_grouping_fields is validated against the Grouping Field
+        # registry
         # (slot_map) — "region" must exist before a kind of work can require it.
         GroupingField.objects.create(tenant=self.tenant, key="region",
                                      slot="grouping_field_1", scope="task")
@@ -76,7 +77,7 @@ class TestTaskTypeRegistry:
         r = self._declare(
             {"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
              "task_cogs_ceiling_micros": 5_000_000,
-             "required_dimensions": ["region"]},
+             "required_grouping_fields": ["region"]},
             {"key": "ocr", "kind": TASK_TYPE_KIND_SUBTASK,
              "task_cogs_ceiling_micros": 2_000_000})
         assert r.status_code == 200
@@ -103,7 +104,8 @@ class TestTaskTypeRegistry:
         # "region" is pre-declared in setup_method; "customer_tier" is not —
         # the point of this test is that an UNdeclared key is rejected.
         r = self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
-                           "required_dimensions": ["customer_tier"], "uncapped": True})
+                           "required_grouping_fields": ["customer_tier"],
+                           "uncapped": True})
         assert r.status_code == 422
         assert "not declared" in r.json()["detail"]
 
@@ -122,7 +124,7 @@ class TestTaskTypeRegistry:
             {"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
              "task_cogs_ceiling_micros": 5_000_000},
             {"key": "ocr", "kind": TASK_TYPE_KIND_SUBTASK,
-             "required_dimensions": ["undeclared_dim"], "uncapped": True})
+             "required_grouping_fields": ["undeclared_dim"], "uncapped": True})
         assert r.status_code == 422
         assert TaskType.objects.filter(tenant=self.tenant).count() == 0
 
@@ -553,11 +555,11 @@ class TestTheRegistryMintsNoThirdPublishMechanism:
         assert set(TaskTypeIn.model_fields) == {
             "key", "kind", "pricing_mode", "task_cogs_ceiling_micros",
             "uncapped", "silence_window_seconds", "absolute_deadline_seconds",
-            "required_dimensions", "retired"}
+            "required_grouping_fields", "retired"}
         assert set(TaskTypeOut.model_fields) == {
             "key", "kind", "pricing_mode", "task_cogs_ceiling_micros",
             "uncapped", "silence_window_seconds", "absolute_deadline_seconds",
-            "required_dimensions", "retired", "retired_at"}
+            "required_grouping_fields", "retired", "retired_at"}
 
     def test_the_registry_is_mounted_at_the_root(self):
         """The mount, read off the assembled API rather than off this module.

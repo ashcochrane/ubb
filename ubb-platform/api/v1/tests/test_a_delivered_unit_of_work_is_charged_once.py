@@ -41,10 +41,13 @@ record asserted here, and the two that follow are projections OF it — which is
 the whole reason it is a first-class row rather than a system-generated posting
 nobody could correct.
 
-⚠ **THE WIRE KEY FOR THE GROUPING BAG IS NEVER SPELLED HERE**, for the reason
-`test_an_agreed_price_is_pinned_before_the_work_runs.py` gives at length: it is
-retired vocabulary under a spread ceiling another slice owns, so this module
-says what it means through `declared_grouping_values`.
+The grouping bag reaches the wire here through `declared_grouping_values`, which
+names what the bag IS rather than which key it lands under. ⚠ IT USED TO BE
+COMPULSORY AND IS NOW A PREFERENCE: that key was retired vocabulary under a
+spread ceiling, so spelling it made this module one more file on the entry.
+#505 took the word to zero and nothing refuses it anywhere now — the helper is
+kept for what its NAME says, and `test_metering_endpoints.py` records that
+choice where the helper is defined.
 """
 import json
 import uuid

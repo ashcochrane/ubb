@@ -19,12 +19,13 @@ and they are independent of each other:
 * **TODAY'S CREATION PATH IS GONE, NOT REDIRECTED.** The affordability call
   registers nothing, and the flag that drove it is not there to be sent.
 
-⚠ THE WIRE KEY FOR THE GROUPING BAG IS NEVER SPELLED HERE. It is retired
-vocabulary under a spread ceiling another slice owns, at sixteen files, and a
-seventeenth fails the sweep — so this module says what it means through
-`declared_grouping_values`, whose own docstring records the technique, and the
-one assertion about that field's NAME reads the name back out of the same
-helper rather than restating it.
+The grouping bag reaches the wire here through `declared_grouping_values`, which
+names what the bag IS rather than which key it lands under. ⚠ IT USED TO BE
+COMPULSORY AND IS NOW A PREFERENCE: that key was retired vocabulary under a
+spread ceiling — at sixteen files, where a seventeenth failed the sweep — and
+#505 took it to zero. The one assertion about that field's NAME used to read
+the name back out of the helper for the same reason; it says the name itself
+now, which is the stronger pin, and its own docstring explains why.
 """
 import json
 import uuid
@@ -481,14 +482,18 @@ class TestARepeatThatContradictsIsRefused(StartTestBase):
         assert body["field"] == "task_cogs_ceiling_micros"
 
     def test_a_differing_grouping_value_names_that_field(self):
-        """⚠ THE EXPECTED NAME IS READ BACK OUT OF THE HELPER THAT OWNS THE
-        SPELLING, never restated here — this bag's wire key is another slice's
-        retired word under a spread ceiling, and a literal in this module
-        would be one more file on it."""
+        """⚠ THE EXPECTED NAME IS A LITERAL AGAIN (#505), AND THAT IS THE POINT.
+
+        It used to be read back out of the helper that owns the spelling,
+        because this bag's wire key was a retired word under a spread ceiling
+        and a literal here would have been one more file on the entry. The wire
+        now takes the registry's own word, so the pin can say the answer — and
+        a pin that says its answer is the stronger one: read out of the helper,
+        this could only catch the map and the helper disagreeing, and both
+        moving together would have gone green."""
         self._claimed(**declared_grouping_values({A_GROUPING_KEY: "eu"}))
         body = self._repeat(**declared_grouping_values({A_GROUPING_KEY: "us"}))
-        [wire_key] = declared_grouping_values({})
-        assert body["field"] == wire_key
+        assert body["field"] == "grouping_fields"
 
     def test_a_repeat_that_changes_altitude_names_the_parent_not_the_bag(self):
         """⚠ THE CHEAP FIELDS ARE COMPARED BEFORE THE ONE THAT READS THE

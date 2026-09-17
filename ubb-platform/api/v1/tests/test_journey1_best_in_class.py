@@ -130,16 +130,17 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
     try:
         # ---- 1b. declare this tenant's slicing axes (design D1) — the ONE
         # vocabulary that rate selection AND analytics grouping both read.
-        # "service"/"agent" are event-scoped dimensions bound to dim2/dim3 and
-        # are sent as `dimensions=` on each usage call (Task 9 retired the old
-        # label-lifting; the open bag is free-form only). "product" is bound
-        # to dim1 the same way — declared and sent via `dimensions=` (the
+        # "service"/"agent" are event-scoped grouping fields bound to dim2/dim3
+        # and are sent as `grouping_fields=` on each usage call (Task 9 retired
+        # the old label-lifting; the open bag is free-form only). "product" is
+        # bound
+        # to dim1 the same way — declared and sent via `grouping_fields=` (the
         # legacy product_id wire field is gone; the only path onto dim1 is a
         # declared grouping field) — and GROUPING speaks declared keys (Task 15),
         # so dim1 needs a key to be addressable. Driven over the real HTTP
         # route, matching this test's style for every route the SDK doesn't
         # wrap yet. ----
-        _put(api, "/api/v1/metering/grouping-fields", {"dimensions": [
+        _put(api, "/api/v1/metering/grouping-fields", {"grouping_fields": [
             {"key": "product", "slot": "grouping_field_1", "scope": "event"},
             {"key": "service", "slot": "grouping_field_2", "scope": "event"},
             {"key": "agent", "slot": "grouping_field_3", "scope": "event"},
@@ -185,16 +186,17 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             res = client.record_usage(
                 customer_id=str(c1.id), idempotency_key=f"i{i}",
                 measurements={"tokens": 100},
-                # "product"/"service"/"agent" are all DECLARED dimensions
+                # "product"/"service"/"agent" are all DECLARED grouping fields
                 # (dim1/dim2/dim3) — what the cost card selects on and the
                 # breakdown below groups by. The open bag (`metadata` —
                 # free-form, never priced or grouped, still stored) is covered
                 # directly by apps/metering/usage/tests/test_the_open_bag.py
-                # and api/v1/tests/test_usage_dimensions.py::
-                # test_the_open_bag_no_longer_becomes_dimensions -- no response
+                # and api/v1/tests/test_usage_grouping_fields.py::
+                # test_the_open_bag_no_longer_becomes_a_grouping_field -- no
+                # response
                 # field exposes it here to assert against, so this journey test
                 # does not duplicate that coverage.
-                dimensions={"product": product, "service": service, "agent": agent})
+                grouping_fields={"product": product, "service": service, "agent": agent})
             # Server computed COGS from the matching dimensional cost card.
             assert res.provider_cost_micros == expected_cost[service], (i, service)
             assert res.uncosted_measurement_keys == []   # tokens HAS a matching card
@@ -219,7 +221,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
             customer_id=str(c1.id), idempotency_key="i_unattr",
             event_type=UNATTRIBUTED_EVENT_TYPE,
             provider_cost_micros=COST_UNATTR,
-            # Deliberately no product/service/agent dimensions, so all three
+            # Deliberately no product/service/agent grouping values, so all three
             # slot columns are empty strings on the stored event.
         )
         assert unattr_res.provider_cost_micros == COST_UNATTR
@@ -249,10 +251,12 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # ---- 4. multi-axis COGS breakdown via the SDK (no client joins) ----
         #
         # ⚠ ONE QUERY WHERE THERE WERE TWO ROUTES AND FIVE METHODS (#501), and
-        # reached through the SDK's generated operation rather than an ergonomic
-        # one: the methods this step used went with their routes, and the handle
-        # that replaces them is a later ticket's. It is still the SDK talking to
-        # the server, which is what this journey is about.
+        # reached through the SDK's OWN HANDLE since #505 built it. This step
+        # used to drive the generated operation directly and pick a measure's
+        # figure out of the row by hand, because there was no ergonomic call to
+        # make; it is the only place in the tree where the handle meets a real
+        # server rather than a mocked transport, so it is worth exercising it
+        # the way an integrator would.
         #
         # ⚠ AND AN ABSENT VALUE IS NO LONGER A SENTINEL STRING. The three events
         # with no service, product or agent used to be bucketed under one
@@ -260,7 +264,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # absent; the row now carries `None` with a status beside it. The
         # reconciliation this step exists to prove is unchanged: every breakdown
         # still sums to the same grand total.
-        from ubb import _operations as ops
+        from ubb import group_by_field, measure_on, vocabulary
 
         # ⚠ AND THE WINDOW IS NAMED, WHICH THE OLD CALL DID NOT HAVE TO DO. The
         # report this step used read every posting a tenant had ever recorded
@@ -274,18 +278,23 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         JOURNEY_MONTH = ("2026-01-01", "2026-01-31")
 
         def _breakdown(axis):
-            response = client._request(
-                *ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
-                params=[("measures", "supplier_cogs"),
-                        ("customer_id", str(c1.id)),
-                        ("start_date", JOURNEY_MONTH[0]),
-                        ("end_date", JOURNEY_MONTH[1]),
-                        ("group_by", f"field:{axis}")])
-            assert response.status_code == 200, response.text
-            return {row["grouping_field_value"][0]:
-                    next(entry["amount_micros"] for entry in row["measures"]
-                         if entry["measure"] == "supplier_cogs")
-                    for row in response.json()["rows"]}
+            answer = client.query_economics(
+                measures=[vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS],
+                customer_id=str(c1.id),
+                start_date=JOURNEY_MONTH[0], end_date=JOURNEY_MONTH[1],
+                group_by=[group_by_field(axis)])
+            # ⚠ THE MEASURE, NEVER THE NUMBER. `measure_on` hands back the
+            # whole measure and this line takes the figure off it one step
+            # later, which is the shape that keeps `status` in front of a
+            # reader. Every figure below is `known`; a row whose margin could
+            # not be attributed would carry no figure at all, and summing
+            # `amount_micros` blind is how that becomes a zero.
+            return {row.grouping_field_value[0]:
+                    measure_on(
+                        row,
+                        vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS
+                    ).amount_micros
+                    for row in answer.rows}
 
         #: The unattributed heading, as the one query spells it.
         NOTHING_RECORDED = None
@@ -314,21 +323,22 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # The SAME query, bucketed — which is the collapse working: one surface
         # answers the grouping and the bucketing together rather than two
         # answering them apart and agreeing by luck.
-        response = client._request(
-            *ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
-            params=[("measures", "supplier_cogs"),
-                    ("customer_id", str(c1.id)),
-                    ("start_date", JOURNEY_MONTH[0]),
-                    ("end_date", JOURNEY_MONTH[1]),
-                    ("group_by", "field:service"), ("bucket", "day")])
-        assert response.status_code == 200, response.text
-        rows = response.json()["rows"]
-        assert len({row["bucket_start"] for row in rows}) == 3, rows
+        answer = client.query_economics(
+            measures=[vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS],
+            customer_id=str(c1.id),
+            start_date=JOURNEY_MONTH[0], end_date=JOURNEY_MONTH[1],
+            group_by=[group_by_field("service")], bucket="day")
+        rows = answer.rows
+        assert len({row.bucket_start for row in rows}) == 3, rows
+        # The answer echoes what it served, so the request and the reading
+        # of it cannot drift apart silently.
+        assert answer.bucket == "day"
+        assert answer.group_by == ["field:service"]
         ts_by_service = {}
         for row in rows:
-            service = row["grouping_field_value"][0]
-            cost = next(entry["amount_micros"] for entry in row["measures"]
-                        if entry["measure"] == "supplier_cogs")
+            service = row.grouping_field_value[0]
+            cost = measure_on(
+                row, vocabulary.ANALYTICS_MEASURE_SUPPLIER_COGS).amount_micros
             ts_by_service[service] = ts_by_service.get(service, 0) + cost
         assert ts_by_service == by_service == {
             "alpha": 800, "beta": 2000, NOTHING_RECORDED: COST_UNATTR}
@@ -395,7 +405,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         recorded = client.record_usage(
             customer_id=str(c1.id),
             idempotency_key="i_uncosted", measurements={"unmatched_metric": 5},
-            dimensions={"service": "alpha"})
+            grouping_fields={"service": "alpha"})
         assert recorded.costing_status == "unresolved"
         assert recorded.provider_cost_micros is None
         assert recorded.uncosted_measurement_keys == ["unmatched_metric"]

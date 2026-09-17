@@ -247,7 +247,8 @@ rows disagree about where a value came from. (ADR-0005)
 
 **Task type**:
 A tenant's declared kind of work, carrying server-side policy (a COGS ceiling, a **Silence
-window**, an **Absolute deadline**, `required_dimensions`, and a **Pricing mode**) rather than
+window**, an **Absolute deadline**, `required_grouping_fields`, and a **Pricing
+mode**) rather than
 being a bare label; immutable on a `Task` once created. **One
 column carries it at either altitude** — a `Task` and a `Subtask` declare their kind in the same
 place and `Task.parent` is the only thing that says which altitude a row is at.

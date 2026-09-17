@@ -13,7 +13,7 @@ from typing import cast
 from uuid import UUID
 
 if TYPE_CHECKING:
-  from ..models.start_task_request_dimensions import StartTaskRequestDimensions
+  from ..models.start_task_request_grouping_fields import StartTaskRequestGroupingFields
   from ..models.start_task_request_metadata_type_0 import StartTaskRequestMetadataType0
 
 
@@ -36,8 +36,8 @@ class StartTaskRequest:
         Attributes:
             customer_id (UUID):
             idempotency_key (str):
-            dimensions (StartTaskRequestDimensions | Unset):
             external_task_id (str | Unset):  Default: ''.
+            grouping_fields (StartTaskRequestGroupingFields | Unset):
             metadata (None | StartTaskRequestMetadataType0 | Unset):
             parent_task_id (None | Unset | UUID):
             task_cogs_ceiling_micros (int | None | Unset):
@@ -46,8 +46,8 @@ class StartTaskRequest:
 
     customer_id: UUID
     idempotency_key: str
-    dimensions: StartTaskRequestDimensions | Unset = UNSET
     external_task_id: str | Unset = ''
+    grouping_fields: StartTaskRequestGroupingFields | Unset = UNSET
     metadata: None | StartTaskRequestMetadataType0 | Unset = UNSET
     parent_task_id: None | Unset | UUID = UNSET
     task_cogs_ceiling_micros: int | None | Unset = UNSET
@@ -59,17 +59,17 @@ class StartTaskRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.start_task_request_dimensions import StartTaskRequestDimensions
+        from ..models.start_task_request_grouping_fields import StartTaskRequestGroupingFields
         from ..models.start_task_request_metadata_type_0 import StartTaskRequestMetadataType0
         customer_id = str(self.customer_id)
 
         idempotency_key = self.idempotency_key
 
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
-
         external_task_id = self.external_task_id
+
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         metadata: dict[str, Any] | None | Unset
         if isinstance(self.metadata, Unset):
@@ -106,10 +106,10 @@ class StartTaskRequest:
             "customer_id": customer_id,
             "idempotency_key": idempotency_key,
         })
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
         if external_task_id is not UNSET:
             field_dict["external_task_id"] = external_task_id
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if metadata is not UNSET:
             field_dict["metadata"] = metadata
         if parent_task_id is not UNSET:
@@ -125,7 +125,7 @@ class StartTaskRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.start_task_request_dimensions import StartTaskRequestDimensions
+        from ..models.start_task_request_grouping_fields import StartTaskRequestGroupingFields
         from ..models.start_task_request_metadata_type_0 import StartTaskRequestMetadataType0
         d = dict(src_dict)
         customer_id = UUID(d.pop("customer_id"))
@@ -135,17 +135,17 @@ class StartTaskRequest:
 
         idempotency_key = d.pop("idempotency_key")
 
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: StartTaskRequestDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
-        else:
-            dimensions = StartTaskRequestDimensions.from_dict(_dimensions)
-
-
-
-
         external_task_id = d.pop("external_task_id", UNSET)
+
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: StartTaskRequestGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
+        else:
+            grouping_fields = StartTaskRequestGroupingFields.from_dict(_grouping_fields)
+
+
+
 
         def _parse_metadata(data: object) -> None | StartTaskRequestMetadataType0 | Unset:
             if data is None:
@@ -210,8 +210,8 @@ class StartTaskRequest:
         start_task_request = cls(
             customer_id=customer_id,
             idempotency_key=idempotency_key,
-            dimensions=dimensions,
             external_task_id=external_task_id,
+            grouping_fields=grouping_fields,
             metadata=metadata,
             parent_task_id=parent_task_id,
             task_cogs_ceiling_micros=task_cogs_ceiling_micros,

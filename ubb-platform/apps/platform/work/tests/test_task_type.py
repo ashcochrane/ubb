@@ -45,7 +45,10 @@ class TestTaskType:
             "uncapped": False,
             "silence_window_seconds": 1200,
             "absolute_deadline_seconds": 7200,
-            "required_dimensions": ["region"],
+            # THE ROW KEY IS THE WIRE'S WORD AND THE KWARG ABOVE IS THE
+            # COLUMN'S. `task_type_policy` is where the two are bridged, and
+            # this assertion is what holds the bridge to the read side of it.
+            "required_grouping_fields": ["region"],
             "retired": False,
         }
 

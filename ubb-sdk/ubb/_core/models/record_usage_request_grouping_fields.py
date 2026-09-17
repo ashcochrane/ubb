@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="TaskDetailOutDimensions")
+T = TypeVar("T", bound="RecordUsageRequestGroupingFields")
 
 
 
 @_attrs_define
-class TaskDetailOutDimensions:
+class RecordUsageRequestGroupingFields:
     """ 
      """
 
@@ -41,12 +41,12 @@ class TaskDetailOutDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        task_detail_out_dimensions = cls(
+        record_usage_request_grouping_fields = cls(
         )
 
 
-        task_detail_out_dimensions.additional_properties = d
-        return task_detail_out_dimensions
+        record_usage_request_grouping_fields.additional_properties = d
+        return record_usage_request_grouping_fields
 
     @property
     def additional_keys(self) -> list[str]:

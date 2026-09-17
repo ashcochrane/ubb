@@ -165,13 +165,34 @@ class TestMeteringDelegation:
         self.client.close()
 
     def test_get_usage_delegates(self):
+        """Every filter reaches the metering client under its own name — the
+        five the facade used to drop included (#505). A signature check says
+        the keyword is accepted; only this says it is forwarded, which is the
+        half that reaches a caller."""
         expected = PaginatedResponse(data=[], next_cursor=None, has_more=False)
         self.client.metering.get_usage = MagicMock(return_value=expected)
-        result = self.client.get_usage("cust1", limit=25)
+        result = self.client.get_usage("cust1", limit=25,
+                                       metadata_key="run",
+                                       metadata_value="nightly",
+                                       past_limit=True,
+                                       stop_scope="customer",
+                                       episode_seq=3)
         self.client.metering.get_usage.assert_called_once_with(
-            "cust1", cursor=None, limit=25,
+            "cust1", cursor=None, limit=25, metadata_key="run",
+            metadata_value="nightly", past_limit=True, stop_scope="customer",
+            episode_seq=3,
         )
         assert result is expected
+
+    def test_the_two_layers_page_the_same_way(self):
+        """One client, one answer. The facade defaulted to 50 and the metering
+        client to 20, so the same call returned a different number of rows
+        depending which of the two objects a caller happened to hold — and
+        both layers are public. Pinned as a LITERAL rather than read off the
+        other signature, because a comparison between the two is what the
+        parity guard makes and this is the number itself."""
+        assert inspect.signature(
+            UBBClient.get_usage).parameters["limit"].default == 20
 
     def test_record_usage_forwards_metrics_backdating_and_stop(self):
         """The facade passes the richer metering params through, and works
@@ -262,31 +283,81 @@ class TestCloseTaskSignatureParity:
     AND ITS ABSENCE HERE COST A REAL BUG. When the close gained its required
     `outcome`, the facade went on calling the metering client with a task id
     alone — a `TypeError` on every call through `UBBClient`, with the whole SDK
-    suite green because nothing exercised the facade's close at all. Generalised
-    rather than copied: one list, both methods, so the third facade method to
-    grow an argument is covered on the day it does.
+    suite green because nothing exercised the facade's close at all.
+
+    ⚠⚠ **AND THE GENERALISATION WAS A HAND-WRITTEN LIST, WHICH IS THE SAME
+    DEFECT ONE LEVEL UP (#505).** #409 wrote *"so the third facade method to
+    grow an argument is covered on the day it does"* — true only of a method
+    somebody remembered to list. `get_usage` was never listed, and it had been
+    dropping five filters and serving a different page size through the two
+    layers of one client. The set is DERIVED now: every public method both
+    classes declare. The old list survives as the vacuity floor below, because
+    a derivation that quietly returns nothing passes every assertion in this
+    class.
     """
 
-    #: (facade method, metering method) pairs the facade must mirror in full.
-    #: Params intentionally NOT mirrored go in `KNOWN_DIVERGENCES` with a
-    #: comment; there are none today for any of them. The unit-of-work
-    #: surface joined in #422: the start, and the three reads that arrived
-    #: with it.
-    PASSTHROUGHS = ("record_usage", "close_task", "start_task", "get_task",
-                    "list_tasks", "list_subtasks")
-    KNOWN_DIVERGENCES: set = set()
+    #: The floor the derivation must clear. These are the methods the guard
+    #: was written for, and naming them is what makes an empty or broken walk
+    #: fail loudly instead of passing in silence.
+    NAMED_IN_ADVANCE = frozenset({"record_usage", "close_task", "start_task",
+                                  "get_task", "list_tasks", "list_subtasks",
+                                  "get_usage", "query_economics",
+                                  "grouping_options"})
+
+    #: `(method, parameter)` pairs the facade deliberately does not mirror.
+    #: Empty, and it should stay that way: a facade that narrows its lower
+    #: client is a facade that hides a capability.
+    KNOWN_DIVERGENCES: frozenset = frozenset()
+
+    @staticmethod
+    def passthroughs():
+        """Every public method BOTH clients declare."""
+        return sorted(
+            name for name in vars(MeteringClient)
+            if not name.startswith("_")
+            and callable(getattr(MeteringClient, name))
+            and hasattr(UBBClient, name))
+
+    def test_the_derivation_reaches_every_method_it_was_written_for(self):
+        """The vacuity guard. A walk over an empty set proves nothing, and a
+        walk that silently stopped reaching a method is the exact failure this
+        class exists to prevent."""
+        assert self.NAMED_IN_ADVANCE <= set(self.passthroughs())
 
     def test_every_facade_passthrough_accepts_every_lower_param(self):
-        for method in self.PASSTHROUGHS:
+        for method in self.passthroughs():
             facade = inspect.signature(getattr(UBBClient, method)).parameters
             lower = inspect.signature(getattr(MeteringClient, method)).parameters
             for name in lower:
-                if name == "self" or name in self.KNOWN_DIVERGENCES:
+                if name == "self" or (method, name) in self.KNOWN_DIVERGENCES:
                     continue
                 assert name in facade, (
                     f"UBBClient.{method} is missing '{name}', which "
                     f"MeteringClient.{method} accepts"
                 )
+
+    def test_every_facade_passthrough_keeps_every_lower_default(self):
+        """Presence is not enough — a default is behaviour, and two defaults
+        for one parameter mean one client answers the same call two ways
+        depending which layer you hold. That is what `get_usage` was doing
+        with its page size."""
+        empty = inspect.Parameter.empty
+        compared = 0
+        for method in self.passthroughs():
+            facade = inspect.signature(getattr(UBBClient, method)).parameters
+            lower = inspect.signature(getattr(MeteringClient, method)).parameters
+            for name, param in lower.items():
+                if name == "self" or (method, name) in self.KNOWN_DIVERGENCES:
+                    continue
+                if param.default is empty or name not in facade:
+                    continue
+                assert facade[name].default == param.default, (
+                    f"UBBClient.{method} defaults '{name}' to "
+                    f"{facade[name].default!r}, but MeteringClient.{method} "
+                    f"defaults it to {param.default!r}"
+                )
+                compared += 1
+        assert compared > 0
 
     def test_the_facade_close_actually_forwards_the_declaration(self):
         """A signature can match while the body drops an argument, which is a
@@ -313,6 +384,53 @@ class TestCloseTaskSignatureParity:
         client.metering.close_task = MagicMock()
         with pytest.raises(TypeError):
             client.close_task("task_1")
+        client.close()
+
+    def test_the_facade_economic_query_forwards_every_axis_of_the_question(self):
+        """The one query reaches the metering client whole. A question that
+        arrived with its measures and lost its grouping would answer 200 with
+        one row, which is a plausible answer to a different question — so the
+        forwarding is asserted argument by argument."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        sentinel = object()
+        client.metering.query_economics = MagicMock(return_value=sentinel)
+
+        result = client.query_economics(
+            measures=["gross_margin"], group_by=["field:model"],
+            start_date="2026-01-01", end_date="2026-01-31", bucket="day",
+            basis="recognised", customer_id="c1", event_type="completion",
+            task_type="render", task_id="t1", include_subtasks=True,
+            where=["field:model=gpt-4"], past_limit=True,
+            stop_scope="customer", episode_seq=2)
+
+        assert result is sentinel
+        _, kwargs = client.metering.query_economics.call_args
+        assert kwargs == {
+            "measures": ["gross_margin"], "group_by": ["field:model"],
+            "start_date": "2026-01-01", "end_date": "2026-01-31",
+            "bucket": "day", "basis": "recognised", "customer_id": "c1",
+            "event_type": "completion", "task_type": "render",
+            "task_id": "t1", "include_subtasks": True,
+            "where": ["field:model=gpt-4"], "past_limit": True,
+            "stop_scope": "customer", "episode_seq": 2,
+        }
+        client.close()
+
+    def test_the_facade_requires_a_measure_too(self):
+        """No default at either layer: a default measure set is how a caller
+        ends up aggregating three different things to draw one line."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        client.metering.query_economics = MagicMock()
+        with pytest.raises(TypeError):
+            client.query_economics()
+        client.close()
+
+    def test_the_facade_discovery_read_forwards(self):
+        """The read that says what may be grouped by, through the facade."""
+        client = UBBClient(api_key="test", metering=True, billing=False)
+        sentinel = object()
+        client.metering.grouping_options = MagicMock(return_value=sentinel)
+        assert client.grouping_options() is sentinel
         client.close()
 
     def test_the_facade_start_forwards_the_declaration_and_hands_back_the_handle(self):

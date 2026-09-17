@@ -28,6 +28,25 @@ from ubb.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE,
     TASK_STATUS_VALUES,
 )
+# THE TWO GROUPING KINDS, BY NAME, BECAUSE THIS MODULE BUILDS A VALUE OUT
+# OF THEM (#505, slice 7 §18). An economic question names an axis as one
+# word carrying its own kind — `field:<your key>` or `rollup:<UBB's>` — and
+# `group_by_field` / `group_by_rollup` below are where that word is made, so
+# the prefix is the registry's constant rather than a colon typed into a
+# format string.
+#
+# ⚠ THE OTHER TWO CONCEPTS ARE REACHED BY MODULE, NOT RE-EXPORTED
+# (`vocabulary.ANALYTICS_MEASURE_*`, `vocabulary.MEASURE_STATUS_*`) — the
+# spelling `docs/conventions/sdk-wrap.md` prescribes and the one the stop
+# reasons above already follow. They are the CALLER's values: a measure is
+# what you ask for and a state is what you branch on, and this module needs
+# neither of them to build a request. Naming them here would be a second
+# copy of every name, and using them to reject one would be the client
+# holding its own list of valid values, which that convention forbids: an
+# unrecognised measure is the route's 422 to answer, not this method's.
+from ubb.vocabulary import (
+    ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
+)
 # WHY A STOP FIRED — the bounds the registry knows are reached BY MODULE
 # (`vocabulary.REASON_CODE_*`, the spelling `docs/conventions/sdk-wrap.md`
 # prescribes; a re-export here would be a second copy of every name), and
@@ -45,6 +64,67 @@ from ubb._core.models.task_out import TaskOut
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.pricing_book_out import PricingBookOut
 from ubb._core.models.cost_book_out import CostBookOut
+from ubb._core.models.economics_out import EconomicsOut
+from ubb._core.models.economic_measure_out import EconomicMeasureOut
+from ubb._core.models.economic_row_out import EconomicRowOut
+from ubb._core.models.grouping_option_out import GroupingOptionOut
+
+
+def group_by_field(key: str) -> str:
+    """One grouping axis over a key YOU declared — `field:<key>`.
+
+    An economic question names its axes as single words that carry their own
+    kind, because a field and a rollup have materially different cardinality
+    and query cost and hiding that behind identical-looking strings is how a
+    chart times out. `key` is one of your own declared grouping fields, or
+    one of the axes every tenant has; ask
+    `MeteringClient.grouping_options()` which this tenant may use.
+
+    ⚠ NOTHING IS VALIDATED HERE. An axis this tenant may not group by is the
+    route's 422 to answer — it knows the registry and this function does not."""
+    return f"{ANALYTICS_GROUPING_KIND_FIELD}:{key}"
+
+
+def group_by_rollup(rollup: str) -> str:
+    """One grouping axis over an aggregation UBB owns — `rollup:<name>`.
+
+    A rollup is a taxonomy UBB maintains one level above what you declare;
+    you assign members to it, the axis itself is UBB's. The names it takes
+    are `vocabulary.ANALYTICS_ROLLUP_*`, reached by module for the reason
+    given at the import above, and `grouping_options()` lists the ones this
+    tenant can actually use — which is not the same question, because a
+    rollup with no members assigned answers nothing."""
+    return f"{ANALYTICS_GROUPING_KIND_ROLLUP}:{rollup}"
+
+
+def measure_on(row: EconomicRowOut, measure: str) -> EconomicMeasureOut | None:
+    """One measure off one row — the FIGURE AND ITS STATE TOGETHER, or `None`
+    where the row does not carry that measure at all.
+
+    ⚠ **IT HANDS BACK THE MEASURE AND NEVER THE NUMBER, AND THAT IS THE
+    WHOLE POINT** (#505, slice 7 §18). Every figure on this surface comes
+    with a `status` saying what it is worth: `incomplete` means the number
+    is a BOUND and the count beside it says how far off it can be;
+    `unavailable_at_requested_grain` means a margin could not be attributed
+    this finely and is null outright, while a revenue at that same state is
+    the part that COULD be placed with the rest in the answer's `context`;
+    `unavailable_outside_retention_horizon` means there is no figure at all
+    and `available_from` says when the series can start.
+
+    A convenience returning `amount_micros` alone would let a caller publish
+    a floor as a total in one line, which is the defect the whole surface
+    exists to end — so there is no such convenience here, deliberately, and
+    this is the shape that replaces it. Branch on `.status` against
+    `vocabulary.MEASURE_STATUS_*`; a zero in `amount_micros` is a MEASURED
+    zero and where UBB has no figure the field is null.
+
+    Measures are matched by name (`vocabulary.ANALYTICS_MEASURE_*`) rather
+    than by position, because a row carries exactly the measures the request
+    asked for and a caller should not have to count."""
+    for entry in row.measures:
+        if str(entry.measure) == measure:
+            return entry
+    return None
 
 
 def _serialize_recorded_at(value):
@@ -340,7 +420,7 @@ class MeteringClient:
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
-                     dimensions: dict | None = None,
+                     grouping_fields: dict | None = None,
                      metadata: dict | None = None,
                      task_id: str | None = None,
                      measurements: dict | None = None,
@@ -363,12 +443,12 @@ class MeteringClient:
         get the original event back. Your own correlation strings belong in
         ``metadata``, where the keys are yours.
 
-        ``dimensions``: declared EVENT-scoped grouping field values (the
+        ``grouping_fields``: declared EVENT-scoped grouping field values (the
         tenant's registry, ``PUT /api/v1/metering/grouping-fields``) — what
-        rate cards select on and analytics group by. The keyword still spells
-        the registry's old name because the request property does; the route
-        moved to the canonical one and the property follows in the slice that
-        owns it.
+        rate cards select on and analytics group by. ⚠ THE KEYWORD CHANGED IN
+        #505 and the old one is not accepted: the request property took the
+        registry's own word, which is what both responses have called this
+        same object all along, so a round trip no longer needs a translation.
 
         Distinct from ``metadata``, the one open bag: free-form labelling,
         filterable and readable, never consulted for pricing or grouping. The
@@ -448,8 +528,8 @@ class MeteringClient:
             body["measurements"] = measurements
         if currency is not None:
             body["currency"] = currency
-        if dimensions is not None:
-            body["dimensions"] = dimensions
+        if grouping_fields is not None:
+            body["grouping_fields"] = grouping_fields
         if event_type:
             body["event_type"] = event_type
         if provider:
@@ -523,7 +603,7 @@ class MeteringClient:
                    task_type: str | None = None,
                    parent_task_id: str | None = None,
                    task_cogs_ceiling_micros: int | None = None,
-                   dimensions: dict | None = None,
+                   grouping_fields: dict | None = None,
                    external_task_id: str | None = None,
                    metadata: dict | None = None) -> StartedTask:
         """Register a unit of work via POST /api/v1/tasks, and get the same
@@ -544,9 +624,9 @@ class MeteringClient:
         contained work under a running unit through this same call — there
         is one start shape, not two. ``task_cogs_ceiling_micros`` caps what
         the unit may spend at the supplier, never higher than the kind of
-        work allows. ``dimensions`` is the declared grouping bag at this
-        altitude, under the keyword ``record_usage`` already uses because the
-        request property spells it. ``external_task_id`` is a free-text label
+        work allows. ``grouping_fields`` is the declared grouping bag at this
+        altitude, under the keyword ``record_usage`` also uses, and it was
+        renamed with that one in #505. ``external_task_id`` is a free-text label
         reusable across attempts; ``metadata`` is your own key-values,
         readable back and never consulted for pricing. Neither of the last
         two is pinned: a replay carrying different values is still a replay,
@@ -569,8 +649,8 @@ class MeteringClient:
             body["parent_task_id"] = parent_task_id
         if task_cogs_ceiling_micros is not None:
             body["task_cogs_ceiling_micros"] = task_cogs_ceiling_micros
-        if dimensions is not None:
-            body["dimensions"] = dimensions
+        if grouping_fields is not None:
+            body["grouping_fields"] = grouping_fields
         if external_task_id is not None:
             body["external_task_id"] = external_task_id
         if metadata is not None:
@@ -680,19 +760,117 @@ class MeteringClient:
     # ONE CUSTOMER'S MARGIN AND THE GROUPED MARGIN BREAKDOWN WERE HERE AND ARE
     # GONE (#501), with the routes they called. Nine published routes collapsed
     # into one economic query, and the same request that used to name a route
-    # now names MEASURES and AXES: what a customer cost is
-    # `measures=supplier_cogs` filtered to that customer, and a breakdown is the
-    # same question with `group_by=field:<axis>` beside it.
+    # now names MEASURES and AXES — `query_economics` below is that request, and
+    # #505 is the ticket that gave it an ergonomic call. What a customer cost is
+    # `measures=[supplier_cogs]` filtered to that customer; a breakdown is the
+    # same question with `group_by=[group_by_field(...)]` beside it; the trend is
+    # the same question with `bucket="month"`. `MIGRATION.md` §17 maps each of
+    # the five removed calls onto the request that answers it.
     #
     # ⚠ THE KEYED HALF HAS NO REPLACEMENT AND THAT IS THE RULING. The breakdown
     # also grouped by a key read out of the open metadata bag; the declared
     # grouping contract publishes what a tenant may group by, and an unbounded
-    # keyspace is exactly the capability it does not have.
-    #
-    # There is no ergonomic call for the replacement here YET. The operation is
-    # reachable through the generated client and the disposition manifest
-    # records it as such, which is a declared gap rather than an omission;
-    # `MIGRATION.md` names the replacement for anyone arriving at these methods.
+    # keyspace is exactly the capability it does not have. `grouping_options()`
+    # is where a caller finds out what it does have.
+
+    def grouping_options(self) -> list[GroupingOptionOut]:
+        """What this tenant may group an economic question by, via
+        GET /api/v1/metering/analytics/grouping-options.
+
+        The discovery read beside `query_economics`: the axes every tenant
+        has, this tenant's own declared grouping fields, and the rollups
+        with members assigned — each with the grain it is recorded at, the
+        surfaces it is supported on, the cardinality cap where the tenant
+        set one, and the measures it CANNOT answer, with the reason.
+
+        ⚠ **COMPUTED FOR THIS TENANT, NEVER A SHIPPED LIST**, which is why
+        this is a call and not a constant. The axis names are partly the
+        tenant's own words; a client holding its own copy would be holding
+        a list only the server can know. Unpaginated and bounded by
+        construction — the always-present axes, at most ten declared
+        fields, and the two rollups.
+
+        Each row's `key` is what goes inside `group_by_field()` or
+        `group_by_rollup()`, and `kind` says which of the two it is
+        (`vocabulary.ANALYTICS_GROUPING_KIND_*`)."""
+        r = self._request(
+            *ops.API_V1_METERING_ENDPOINTS_LIST_GROUPING_OPTIONS)
+        return list_from_wire(GroupingOptionOut, r.json()["options"])
+
+    def query_economics(self, *, measures: list[str],
+                        group_by: list[str] | None = None,
+                        start_date: str | None = None,
+                        end_date: str | None = None,
+                        bucket: str | None = None,
+                        basis: str | None = None,
+                        customer_id: str | None = None,
+                        event_type: str | None = None,
+                        task_type: str | None = None,
+                        task_id: str | None = None,
+                        include_subtasks: bool | None = None,
+                        where: list[str] | None = None,
+                        past_limit: bool | None = None,
+                        stop_scope: str | None = None,
+                        episode_seq: int | None = None) -> EconomicsOut:
+        """What your AI work cost, what it earned, and the difference — one
+        answer from one definition, via
+        GET /api/v1/metering/analytics/economics.
+
+        THE ONE QUERY HANDLE THAT REPLACES FIVE (#501, #505). Ask for one or
+        more `measures` (`vocabulary.ANALYTICS_MEASURE_*`), group by zero or
+        more axes built with `group_by_field()` / `group_by_rollup()`, and
+        bucket by `hour`, `day` or `month`. Every filter composes with every
+        grouping, so the five calls this replaced are five shapes of one
+        request rather than five definitions of revenue.
+
+        ⚠ **`measures` IS REQUIRED AND HAS NO DEFAULT HERE BECAUSE IT HAS
+        NONE ON THE WIRE.** A default measure set is how a caller ends up
+        aggregating three different things to draw one line, so the route
+        refuses a question that names no measure and this keyword is
+        keyword-only and mandatory rather than quietly filled in.
+
+        ⚠ **THE WINDOW DEFAULTS TO THE CURRENT MONTH TO DATE**, not to all
+        time. Name `start_date` and `end_date` unless the question really is
+        about now — a caller who leaves them out and expects history gets a
+        well-formed answer with no rows. The response echoes the period it
+        applied, so what was served is always readable off the answer.
+
+        ⚠ **EVERY MEASURE CARRIES ITS OWN STATE AND THE STATE IS PART OF THE
+        ANSWER.** Read a figure with `measure_on(row, name)`, which hands
+        back the measure rather than the number; a figure taken without its
+        `status` can be a bound published as a total. A row's grouped values
+        are POSITIONAL, aligned with the `group_by` the response echoes.
+
+        `basis` picks how revenue you supplied is spread over the span it
+        declares — `recorded` places each amount whole on the day its record
+        opens and is the default, `recognised` spreads it by the record's own
+        method — and the answer always states which it served.
+
+        `where` narrows by a declared axis as `<axis>=<value>`, spelled as
+        the grouping options spell it. A window past the per-request bound
+        (366 days, or 92 for an hourly question) is a 422; so is a measure
+        name that is not one. A well-formed question this surface declines
+        to answer subtly wrongly answers `unanswerable_combination`, whose
+        message says what to ask instead."""
+        params: dict = {"measures": measures}
+        if group_by is not None:
+            params["group_by"] = group_by
+        if where is not None:
+            params["where"] = where
+        for name, value in (("start_date", start_date), ("end_date", end_date),
+                            ("bucket", bucket), ("basis", basis),
+                            ("customer_id", customer_id),
+                            ("event_type", event_type),
+                            ("task_type", task_type), ("task_id", task_id),
+                            ("include_subtasks", include_subtasks),
+                            ("past_limit", past_limit),
+                            ("stop_scope", stop_scope),
+                            ("episode_seq", episode_seq)):
+            if value is not None:
+                params[name] = value
+        r = self._request(*ops.API_V1_METERING_ENDPOINTS_QUERY_ECONOMICS,
+                          params=params)
+        return from_wire(EconomicsOut, r.json())
 
     def get_unprofitable_customers(self, period_start=None):
         params = {"period_start": period_start} if period_start else {}

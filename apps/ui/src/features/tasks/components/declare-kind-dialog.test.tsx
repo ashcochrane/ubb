@@ -199,7 +199,7 @@ describe("DeclareKindDialog", () => {
     expect(after.find((kind) => kind.key === KIND_EVENT_PRICED_KEY)).toMatchObject({
       task_cogs_ceiling_micros: 2_000_000,
       silence_window_seconds: 600,
-      required_dimensions: ["model"],
+      required_grouping_fields: ["model"],
     });
   });
 

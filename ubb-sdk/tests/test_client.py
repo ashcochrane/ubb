@@ -158,8 +158,14 @@ class UBBClientTest(unittest.TestCase):
         expected = PaginatedResponse(data=[], next_cursor=None, has_more=False)
         self.client.metering.get_usage = MagicMock(return_value=expected)
         self.client.get_usage(customer_id="c1", cursor="cur_abc", limit=10)
+        # The five filters #505 added to this passthrough travel as None when
+        # unasked for, which is the shape a FULL passthrough has: the facade
+        # forwards every parameter it accepts rather than only the ones set,
+        # so the metering client applies its own defaults in one place.
         self.client.metering.get_usage.assert_called_once_with(
-            "c1", cursor="cur_abc", limit=10,
+            "c1", cursor="cur_abc", limit=10, metadata_key=None,
+            metadata_value=None, past_limit=None, stop_scope=None,
+            episode_seq=None,
         )
 
     # --- create_top_up (delegates to billing) ---

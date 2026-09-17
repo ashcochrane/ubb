@@ -351,7 +351,7 @@ entries:
     gate: G7
     site: backend::dimensions
     expected: analytics_grouping_kind
-    found: 11 files
+    found: 1 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -446,6 +446,44 @@ entries:
       took the other two grouping terms' backend columns there: the free-text
       key filter's last backend sites were a request vocabulary slice 7 §1
       explicitly hands this phase, and the registry's word is not.
+
+      11 -> 1 in #505, AND THE ONE LEFT IS NOT A DEBT. The eleven were one
+      fact — the published field — and phase B2 renamed it, which is the
+      phase the paragraph above said it belonged to. Six schemas and two
+      `required_*` fields took `grouping_fields` / `required_grouping_fields`:
+      the recording request, the start request, the two task reads, the
+      registry's own request and response, and the kind-of-work declaration
+      in both directions. The word chose itself — `RecordUsageResponse` and
+      `UsageEventDetailOut` have keyed this same object under it since #277,
+      so the contract had been publishing TWO SPELLINGS OF ONE CONCEPT and a
+      round trip read as a translation. The three endpoint modules, the
+      registry's read contract and seven route test modules followed, and one
+      of those test modules is renamed with its subject.
+
+      ⚠ THE RENAME FORCED A KEY-SHAPE CHANGE IT DID NOT ASK FOR, and that is
+      worth recording because it is the sort of thing a route-scoped plan
+      misses. `TaskOut` published this bag keyed by the PHYSICAL SLOT while
+      the two posting reads published it keyed by the tenant's own declared
+      key. Different names hid that; one name would have published two key
+      vocabularies under one word, which is worse than what was there before.
+      So the task reads are re-keyed here, through the projection
+      `apps/metering/usage/grouping.py` argues for — the move the field's own
+      comment had said was coming since ticket 20.
+
+      THE ONE FILE LEFT IS `ubb-platform/docs/CHANGELOG-pricing-api.md`, a
+      DATED entry describing a pricing API that no longer exists. It is
+      history and it stays: rewriting a changelog to spell a word the release
+      it records did not use would make the record false to make a counter
+      zero. The entry therefore stands at 1 and will not reach 0 by any edit
+      worth making; the debt it named is paid.
+
+      ⚠ THE COLUMN BEHIND `required_grouping_fields` IS STILL SPELLED THE OLD
+      WAY, deliberately. Moving it is a migration and belongs to the cutover;
+      the wire and the kernel's read contract took the word, and the two
+      places that bridge them — `apps/platform/work/queries.py` and the
+      declaration route's write path — each say so at the line a reader meets
+      them. The column name is invisible to this sweep (it is one token,
+      `required_` and all), so no gate is owed and none is being dodged.
 
   # ⚠ THE TWO MARKUP AUDIT ACTIONS REACHED ZERO ON EVERY SURFACE AND ALL FIVE
   # OF THEIR ENTRIES ARE DELETED (#369) — backend (3 files and 2 files), console
@@ -666,7 +704,7 @@ entries:
     gate: G7
     site: console::dimensions
     expected: analytics_grouping_kind
-    found: 3 files
+    found: 1 files
     owner_slice: slice_7
     reason: >-
       The plural named an analytics grouping capability, not a value.
@@ -716,6 +754,22 @@ entries:
       more. The console side of this entry is therefore done as an ANALYTICS
       debt and open only as a REGISTRY one, which is exactly the shape the
       backend entry took in the same commit.
+
+      3 -> 1 in #505, and NEITHER of the two was a console decision. The
+      committed schema mirror is generated from the contract, so it lost the
+      word the moment the published field took the registry's; and the
+      pricing feature's single unwrap of the registry envelope had to move in
+      the SAME COMMIT, because the console's query types are generated and an
+      envelope key that no longer exists is a compile error rather than a
+      choice. That is #322's coupling read from the other side: a contract
+      change and the console's reaction to it cannot be split.
+
+      THE ONE LEFT IS THE LABEL MODULE'S OWN LIST, and it is phase B3's by
+      §21's own phase table. It is a COMMENT describing a grouping capability
+      two routes #501 deleted used to have, so it is stale on its own terms
+      as well as retired — but the label map and its narrowing constants are
+      named as one piece of work and splitting them would leave the console
+      half-migrated across two tickets.
 
   - id: g7-console-meter_only
     gate: G7
@@ -931,16 +985,22 @@ entries:
       than after what it grouped. Slice 7's collapse replaces it.
 
 
-  - id: g7-openapi-dimensions
-    gate: G7
-    site: openapi::dimensions
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
+  # ⚠ THE CONTRACT'S ENTRY FOR THE AXIS WORD WAS HERE AND IS PAID (#505,
+  # slice 7 phase B2), at its one file. Its occurrences were never prose: they
+  # were SIX PUBLISHED PROPERTIES plus the two `required_*` fields beside
+  # them, every one declared in `ubb-platform/api/v1/schemas.py`, so the
+  # document lost the word by regeneration the moment the backend renamed the
+  # fields. Eleven schemas now publish `grouping_fields` and they publish ONE
+  # concept between them — which was the real defect, and it predates the
+  # ledger: two of those eleven have carried the word since #277, so the
+  # contract had been publishing two spellings of one object for six slices.
+  #
+  # ⚠ The entry could not have been paid by regeneration ALONE, which is what
+  # the ticket as written assumed. None of the eight properties sits on a
+  # route this phase touches — the nine collapsed routes were already gone —
+  # so `export_openapi.py` would have rewritten the document unchanged in this
+  # respect. The backend rename came into scope by a ruling on the ticket, not
+  # by an accident of scoping.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON THE CONTRACT IN #370 and its entry is
   # deleted — see the note on the backend side. One file, and it was the wire
@@ -1026,52 +1086,36 @@ entries:
   # no server produces.
 
 
-  - id: g7-sdk-dimensions
-    gate: G7
-    site: sdk::dimensions
-    expected: analytics_grouping_kind
-    found: 10 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
-      The nineteenth file was `ubb-sdk/ubb/_operations.py` — the same
-      generated registry, for the same reason as the singular above.
-      #278 cleared FIVE of these, and the OWNER does not move: slice 7 still
-      owes what is left. The five are the three generated modules for the
-      registry routes, that generated registry, and the generated coverage
-      manifest — all of which carried the plural only because a published path
-      spelled it, and all of which regenerated when #278 renamed the family.
-      Slice 2 may clear the plural where it names the registry route family
-      (#193 §G5); it leaves the plural where it names a grouping axis, which is
-      every one of the remaining files. A recorded extent that overstates is
-      an excuse with no upper bound, so the number comes down in the commit
-      that cleared them.
-
-      13 -> 11 in #373, by a slice-4 commit and not by slice 7 doing any work.
-      The two files are the SDK's hand-written result type and the test fixture
-      that built one; the plural was a field on that type, naming the grouping
-      bag a rule pinned. The type went with the three methods that produced it
-      (the G17 family, paid in the same commit), so the plural left with it.
-      The ratchet permits an entry to fall from anywhere and the sweep REQUIRES
-      it — an entry may not overstate — so the decrement belongs here even
-      though the owner does not move. Slice 7 still owes the eleven, all of
-      them grouping axes.
-
-      11 -> 10 in #501, and unlike the two decrements above this is the owner's
-      own commit. The file is the generated module for `GET /metering/analytics/
-      usage`, deleted when the route left the contract and the client
-      regenerated. It carried the plural as the breakdown query parameter —
-      generated, never hand-written, which is why it could not be paid before
-      the route was.
-
-      The ten left are NOT grouping axes, and the sentence above needs that
-      correction rather than a restatement: they are the declared registry's
-      generated models, the recording and task payloads that carry a tenant's
-      declared keys, and the README and hand-written client that describe them.
-      What slice 7 owes here is the registry's word, on surfaces no route
-      removal reaches.
+  # ⚠ `g7-sdk-dimensions` WAS HERE AND IS PAID (#505, slice 7 phase B2), at
+  # its last 10 files, and the descent is worth keeping because the entry's
+  # own account of what remained was corrected twice on the way down — by
+  # #373 and again by #501, each time because a file left for a reason the
+  # previous paragraph had not anticipated.
+  #
+  # SIX WENT BY REGENERATION and four by hand. The six are generated model
+  # modules — the registry's request and response, the recording and start
+  # payloads, and the two task reads — which carried the word only because a
+  # published property spelled it, so renaming the property renamed them and
+  # four per-property sub-modules with it. The four hand-written ones are the
+  # serialisation point (`ubb/metering.py`), the facade it delegates from
+  # (`ubb/client.py`), the client's own test module and the README: a keyword
+  # argument on two methods, at two layers, and the two documents that show
+  # them being called.
+  #
+  # ⚠ THE KEYWORD COULD NOT HAVE WAITED FOR ITS OWN TICKET, for the reason
+  # #504 recorded one ticket earlier and in the other direction: django-ninja
+  # DROPS a body key no schema declares rather than refusing it. A wrapper
+  # still posting the old name would have gone on compiling while every event
+  # it recorded was attributed to NOTHING — a 200, an empty grouping bag, and
+  # no error anywhere. A half-done rename of a FILTER over-returns; a
+  # half-done rename of a WRITE BAG loses the attribution, which is worse and
+  # is unrecoverable once the postings are written.
+  #
+  # The migration guide names the retired keyword DESCRIPTIVELY rather than
+  # spelling it (#497's rule), which is not evasion here: passing the old name
+  # raises `TypeError` and Python names it in the message, so the caller is
+  # told by the interpreter rather than by a doc that would have cost this
+  # entry its last file.
 
   - id: g7-sdk-meter_only
     gate: G7

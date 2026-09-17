@@ -19,6 +19,7 @@ import pytest
 from django.test import Client
 
 from apps.platform.customers.models import Customer
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
@@ -38,6 +39,12 @@ class TestTaskReads:
         return self.client.get(path, HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
 
     def _tree(self):
+        # The declaration is what gives slot one a name to be published
+        # under: a unit's grouping values are keyed by the tenant's own word
+        # since #505, and a slot the registry cannot name is omitted rather
+        # than published under its column name.
+        GroupingField.objects.create(tenant=self.tenant, key="region",
+                                     slot="grouping_field_1", scope="task")
         parent = Task.objects.create(
             tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,
             task_type="invoice_batch", grouping_field_1="eu-west-1",
@@ -57,7 +64,7 @@ class TestTaskReads:
         body = r.json()
         assert body["task_type"] == "invoice_batch"
         assert body["total_provider_cost_micros"] == 2_010_000
-        assert body["dimensions"] == {"grouping_field_1": "eu-west-1"}
+        assert body["grouping_fields"] == {"region": "eu-west-1"}
         assert len(body["subtasks"]) == 1
         # ONE FIELD, at either altitude (#407): the contained unit's declared
         # kind is read off the same property as its parent's, and it is
@@ -65,6 +72,44 @@ class TestTaskReads:
         assert body["subtasks"][0]["task_type"] == "ocr"
         assert body["subtasks"][0]["parent_task_id"] == str(parent.id)
         assert "subtask_type" not in body["subtasks"][0]
+
+    def test_a_slot_the_registry_cannot_name_is_omitted(self):
+        """A unit's grouping values are keyed by the tenant's own declared key
+        (#505), so a value in a slot no declaration names has no key to be
+        published under — and the answer is to omit it, never to fall back to
+        the column name.
+
+        That is the rule `apps/metering/usage/grouping.py` argues for a posting
+        and this surface now follows: the slot is UBB's identity for the
+        binding, and publishing it would hand a tenant the one name the shape
+        exists to keep private. The state is reachable — a declaration deleted
+        outright rather than retired leaves exactly this row.
+
+        Slot one is declared by the fixture and slot two is not, so the two
+        halves of the rule are read off ONE response: a named slot published
+        under the tenant's word, an unnamed one absent."""
+        parent = self._tree()
+        parent.grouping_field_2 = "an-undeclared-value"
+        parent.save(update_fields=["grouping_field_2"])
+        body = self._get(f"/api/v1/tasks/{parent.id}").json()
+        assert body["grouping_fields"] == {"region": "eu-west-1"}
+
+    def test_a_unit_with_no_grouping_values_carries_an_empty_object(self):
+        """Empty, never absent and never null — the shape the two posting
+        responses have carried since #277, now answered the same way here."""
+        parent = self._tree()
+        parent.grouping_field_1 = ""
+        parent.save(update_fields=["grouping_field_1"])
+        body = self._get(f"/api/v1/tasks/{parent.id}").json()
+        assert body["grouping_fields"] == {}
+
+    def test_the_listing_keys_by_the_declared_key_too(self):
+        """The collection reads the registry ONCE for the page rather than once
+        per row, which is a different code path from the detail read above and
+        so needs its own case."""
+        self._tree()
+        rows = self._get("/api/v1/tasks").json()["data"]
+        assert [r["grouping_fields"] for r in rows] == [{"region": "eu-west-1"}]
 
     def test_list_returns_top_level_tasks_only(self):
         self._tree()

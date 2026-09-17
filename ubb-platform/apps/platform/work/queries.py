@@ -60,7 +60,14 @@ def task_type_policy(tenant_id, key, kind) -> dict | None:
             "uncapped": row["uncapped"],
             "silence_window_seconds": row["silence_window_seconds"],
             "absolute_deadline_seconds": row["absolute_deadline_seconds"],
-            "required_dimensions": row["required_dimensions"] or [],
+            # THE ROW KEY IS THE REGISTRY'S WORD AND THE COLUMN IS NOT, and
+            # this line is one of exactly two places the two are spelled
+            # together (the other is the write path in
+            # `api/v1/task_type_endpoints.py`). The wire took the word in
+            # #505; moving the column is a migration and belongs to the
+            # cutover, so a reader meets the bridge here rather than
+            # discovering it from a `.values()` list further up.
+            "required_grouping_fields": row["required_dimensions"] or [],
             # WHETHER, AND NOT WHEN. A start gate asks only whether this kind of
             # work may still be started; the instant is a fact for a reader
             # reconciling what changed, and it is carried by the registry read
@@ -78,7 +85,8 @@ def declared_task_types(tenant_id) -> list[dict]:
          "uncapped": r["uncapped"],
          "silence_window_seconds": r["silence_window_seconds"],
          "absolute_deadline_seconds": r["absolute_deadline_seconds"],
-         "required_dimensions": r["required_dimensions"] or [],
+         # The same bridge as `task_type_policy` above, for the same reason.
+         "required_grouping_fields": r["required_dimensions"] or [],
          # BOTH, AND THEY ARE ONE COLUMN READ TWICE. `retired` is the predicate
          # a caller branches on; `retired_at` is WHEN, which a boolean throws
          # away — and when is what the frozen regime leans on, because

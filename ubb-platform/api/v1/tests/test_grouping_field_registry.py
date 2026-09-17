@@ -26,32 +26,32 @@ class TestGroupingFieldRegistry:
 
     def test_put_declares_dimensions(self):
         r = self._put("/api/v1/metering/grouping-fields",
-                       {"dimensions": [
+                       {"grouping_fields": [
                            {"key": "region", "slot": "grouping_field_1", "scope": "task",
                             "max_cardinality": 20},
                            {"key": "model", "slot": "grouping_field_2", "scope": "event"}]})
         assert r.status_code == 200
         assert GroupingField.objects.filter(tenant=self.tenant).count() == 2
 
-    def test_get_lists_declared_dimensions(self):
+    def test_get_lists_declared_grouping_fields(self):
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task", max_cardinality=20)
         r = self._get("/api/v1/metering/grouping-fields")
         assert r.status_code == 200
-        assert r.json()["dimensions"] == [
+        assert r.json()["grouping_fields"] == [
             {"key": "region", "slot": "grouping_field_1", "scope": "task",
              "max_cardinality": 20, "retired": False}]
 
     def test_reserved_key_is_422(self):
         r = self._put("/api/v1/metering/grouping-fields",
-                       {"dimensions": [
+                       {"grouping_fields": [
                            {"key": "provider", "slot": "grouping_field_1", "scope": "event"}]})
         assert r.status_code == 422
         assert "reserved" in r.json()["detail"]
 
     def test_task_id_as_dimension_is_422(self):
         r = self._put("/api/v1/metering/grouping-fields",
-                       {"dimensions": [
+                       {"grouping_fields": [
                            {"key": "task_id", "slot": "grouping_field_1", "scope": "event"}]})
         assert r.status_code == 422
         assert "correlation" in r.json()["detail"]
@@ -66,7 +66,7 @@ class TestGroupingFieldRegistry:
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task")
         r = self._put("/api/v1/metering/grouping-fields",
-                       {"dimensions": [
+                       {"grouping_fields": [
                            {"key": "product", "slot": "grouping_field_1", "scope": "event"}]})
         assert r.status_code == 422
         assert "grouping_field_1" in r.json()["detail"]

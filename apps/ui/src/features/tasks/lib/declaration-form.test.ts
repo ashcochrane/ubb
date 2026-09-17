@@ -20,7 +20,7 @@ const STANDING: KindOfWork = {
   uncapped: false,
   silence_window_seconds: 300,
   absolute_deadline_seconds: null,
-  required_dimensions: ["model"],
+  required_grouping_fields: ["model"],
   retired: true,
   retired_at: "2026-06-30T09:00:00Z",
 };
@@ -52,7 +52,7 @@ describe("the declaration a form states", () => {
       uncapped: false,
       silence_window_seconds: 300,
       absolute_deadline_seconds: null,
-      required_dimensions: ["model"],
+      required_grouping_fields: ["model"],
       retired: true,
     });
   });
@@ -60,7 +60,7 @@ describe("the declaration a form states", () => {
   it("starts a new kind with no grouping fields and not retired", () => {
     expect(
       toDeclaration({ ...formDefaults(), key: "podcast-cut", pricing_mode: "fixed", ceiling: "2" }),
-    ).toMatchObject({ key: "podcast-cut", pricing_mode: "fixed", required_dimensions: [], retired: false });
+    ).toMatchObject({ key: "podcast-cut", pricing_mode: "fixed", required_grouping_fields: [], retired: false });
   });
 
   it("states uncapped the way the wire states it: the flag, and no figure beside it", () => {

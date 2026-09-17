@@ -25,6 +25,8 @@ from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
+from ubb._core.models.economics_out import EconomicsOut
+from ubb._core.models.grouping_option_out import GroupingOptionOut
 
 if TYPE_CHECKING:  # the annotation only; the client itself is imported lazily
     from ubb.metering import StartedTask
@@ -172,7 +174,7 @@ class UBBClient:
                    task_type: str | None = None,
                    parent_task_id: str | None = None,
                    task_cogs_ceiling_micros: int | None = None,
-                   dimensions: dict | None = None,
+                   grouping_fields: dict | None = None,
                    external_task_id: str | None = None,
                    metadata: dict | None = None) -> StartedTask:
         """Register a unit of work via POST /api/v1/tasks and get a handle to
@@ -188,7 +190,8 @@ class UBBClient:
             customer_id, idempotency_key, task_type=task_type,
             parent_task_id=parent_task_id,
             task_cogs_ceiling_micros=task_cogs_ceiling_micros,
-            dimensions=dimensions, external_task_id=external_task_id,
+            grouping_fields=grouping_fields,
+            external_task_id=external_task_id,
             metadata=metadata)
 
     def get_task(self, task_id: str) -> TaskDetailOut:
@@ -216,7 +219,7 @@ class UBBClient:
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
-                     dimensions: dict | None = None,
+                     grouping_fields: dict | None = None,
                      metadata: dict | None = None,
                      task_id: str | None = None,
                      measurements: dict | None = None,
@@ -263,7 +266,7 @@ class UBBClient:
             provider=provider,
             event_type=event_type,
             currency=currency,
-            dimensions=dimensions,
+            grouping_fields=grouping_fields,
             metadata=metadata,
             task_id=task_id,
             measurements=measurements,
@@ -580,9 +583,31 @@ class UBBClient:
         return self._require_billing().get_balance(customer_id)
 
     def get_usage(self, customer_id: str, cursor: str | None = None,
-                  limit: int = 50) -> PaginatedResponse[UsageEventOut]:
-        """Get usage history. Requires metering product."""
-        return self._require_metering().get_usage(customer_id, cursor=cursor, limit=limit)
+                  limit: int = 20,
+                  metadata_key: str | None = None,
+                  metadata_value: str | None = None,
+                  past_limit: bool | None = None,
+                  stop_scope: str | None = None,
+                  episode_seq: int | None = None
+                  ) -> PaginatedResponse[UsageEventOut]:
+        """Get usage history. Requires metering product.
+
+        ⚠ IT WAS A LOSSY PASSTHROUGH UNTIL #505, and nothing said so. Five
+        filters the metering client accepts were unreachable through this
+        facade — the open bag's key/value pair, and the three that narrow to
+        events that landed past a spend stop — and the page size defaulted to
+        50 here against 20 one layer down, so one client answered the same
+        call two ways depending which object you held. Both are corrected
+        here rather than declared: there is no argument for either, and the
+        parity guard that now derives its own list is what found them.
+
+        ``past_limit=True`` returns only events that landed past a stop;
+        ``stop_scope`` / ``episode_seq`` narrow to a scope or one episode."""
+        return self._require_metering().get_usage(
+            customer_id, cursor=cursor, limit=limit,
+            metadata_key=metadata_key, metadata_value=metadata_value,
+            past_limit=past_limit, stop_scope=stop_scope,
+            episode_seq=episode_seq)
 
     def create_top_up(self, customer_id: str, amount_micros: int, *,
                       success_url: str, cancel_url: str,
@@ -664,8 +689,11 @@ class UBBClient:
     # THREE OF THEM WENT WITH THE ROUTES THEY FORWARDED TO (#501) — one
     # customer's margin, the grouped breakdown and the trend. What replaces
     # them is one economic query, named by MEASURES and AXES rather than by a
-    # route; `ubb/metering.py` carries the mapping from each removed call to the
-    # request that answers it.
+    # route, and #505 gave it the two delegates above: `query_economics` and
+    # the discovery read that says what may be grouped by. `ubb/metering.py`
+    # carries the mapping from each removed call to the request that answers
+    # it, and `MIGRATION.md` §17 states it for a reader who never saw these
+    # methods.
     #
     # ⚠ AND TWO DEAD ONES WENT WITH THEM THAT NO TICKET HAD NOTICED. The
     # recurring revenue pair's delegates outlived the methods they forwarded to
@@ -674,6 +702,45 @@ class UBBClient:
     # a facade that forwards to nothing is worse than one that does not forward
     # at all, because it looks callable. `tests/test_margin_client.py` now
     # asserts the absence on BOTH objects, which is what would have caught it.
+
+    def grouping_options(self) -> list[GroupingOptionOut]:
+        """What this tenant may group an economic question by — a full
+        passthrough to ``MeteringClient.grouping_options()``, which carries
+        the rules."""
+        return self._require_metering().grouping_options()
+
+    def query_economics(self, *, measures: list[str],
+                        group_by: list[str] | None = None,
+                        start_date: str | None = None,
+                        end_date: str | None = None,
+                        bucket: str | None = None,
+                        basis: str | None = None,
+                        customer_id: str | None = None,
+                        event_type: str | None = None,
+                        task_type: str | None = None,
+                        task_id: str | None = None,
+                        include_subtasks: bool | None = None,
+                        where: list[str] | None = None,
+                        past_limit: bool | None = None,
+                        stop_scope: str | None = None,
+                        episode_seq: int | None = None) -> EconomicsOut:
+        """What your AI work cost, what it earned, and the difference — a
+        full passthrough to ``MeteringClient.query_economics()``, which
+        carries the rules (kept in signature parity, defaults included, by
+        ``test_sdk_delegation``).
+
+        The one query that replaced the five margin and analytics calls
+        this facade used to forward. ``measures`` is required, the window
+        defaults to the current month to date, and every measure carries
+        its own state — read one with ``ubb.metering.measure_on``."""
+        return self._require_metering().query_economics(
+            measures=measures, group_by=group_by, start_date=start_date,
+            end_date=end_date, bucket=bucket, basis=basis,
+            customer_id=customer_id, event_type=event_type,
+            task_type=task_type, task_id=task_id,
+            include_subtasks=include_subtasks, where=where,
+            past_limit=past_limit, stop_scope=stop_scope,
+            episode_seq=episode_seq)
 
     def get_unprofitable_customers(self, period_start=None):
         return self._require_metering().get_unprofitable_customers(period_start)

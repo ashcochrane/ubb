@@ -186,10 +186,10 @@ function KindOfWorkCard({
             {
               label: "Required grouping fields",
               value:
-                kind.required_dimensions.length === 0
+                kind.required_grouping_fields.length === 0
                   ? "None"
-                  : kind.required_dimensions.map(tenantDefinedLabel).join(", "),
-              mono: kind.required_dimensions.length > 0,
+                  : kind.required_grouping_fields.map(tenantDefinedLabel).join(", "),
+              mono: kind.required_grouping_fields.length > 0,
             },
           ]}
         />

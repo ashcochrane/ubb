@@ -163,7 +163,7 @@ export function toDeclaration(
     uncapped: values.uncapped,
     silence_window_seconds: fieldToSeconds(values.silence_window_seconds),
     absolute_deadline_seconds: fieldToSeconds(values.absolute_deadline_seconds),
-    required_dimensions: existing ? [...existing.required_dimensions] : [],
+    required_grouping_fields: existing ? [...existing.required_grouping_fields] : [],
     retired: existing?.retired ?? false,
   };
 }

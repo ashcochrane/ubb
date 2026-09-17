@@ -17,17 +17,18 @@ read its actual subject.
 
 **The positive half of the ticket is not here.** That a posting's grouping
 values arrive keyed by the tenant's own declared key is proved end to end in
-`test_usage_dimensions.py`, beside the write path they are declared through, and
-the projection behind them in
+`test_usage_grouping_fields.py`, beside the write path they are declared
+through, and the projection behind them in
 `apps/metering/usage/tests/test_grouping_values_are_keyed_by_the_tenants_own_key.py`.
 
 The round trip lives in an EXISTING file rather than a new one because posting
-usage through the API means naming the declared-values request field and the
-caller correlation identifier, whose words are both retired under other slices'
-ledger entries. A new file naming them would push those recorded extents wider,
-which the sweep refuses — a debt is a finite migration plan, not a licence for
-the word to reach further while it stands. The projection file is new and
-therefore names neither.
+usage through the API meant naming two fields whose words were retired under
+other slices' ledger entries, and a new file naming them would have pushed
+those recorded extents wider — a debt is a finite migration plan, not a licence
+for the word to reach further while it stands. ⚠ ONE OF THE TWO IS NO LONGER
+SUCH A FIELD: #505 gave the declared-values request field the registry's own
+word, so only the caller correlation identifier still argues for the placement.
+One reason of the two is still a reason, and the file has not moved.
 """
 import json
 import re

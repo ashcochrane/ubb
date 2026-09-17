@@ -183,7 +183,7 @@ from .rate_out_rate_structure import RateOutRateStructure
 from .ready_response import ReadyResponse
 from .ready_response_checks import ReadyResponseChecks
 from .record_usage_request import RecordUsageRequest
-from .record_usage_request_dimensions import RecordUsageRequestDimensions
+from .record_usage_request_grouping_fields import RecordUsageRequestGroupingFields
 from .record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
 from .record_usage_request_metadata import RecordUsageRequestMetadata
 from .record_usage_response import RecordUsageResponse
@@ -222,7 +222,7 @@ from .seats_in import SeatsIn
 from .spend_control_family_totals_row import SpendControlFamilyTotalsRow
 from .spend_control_family_totals_row_control_family import SpendControlFamilyTotalsRowControlFamily
 from .start_task_request import StartTaskRequest
-from .start_task_request_dimensions import StartTaskRequestDimensions
+from .start_task_request_grouping_fields import StartTaskRequestGroupingFields
 from .start_task_request_metadata_type_0 import StartTaskRequestMetadataType0
 from .start_task_response import StartTaskResponse
 from .start_task_response_status import StartTaskResponseStatus
@@ -241,12 +241,12 @@ from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
 from .task_detail_out import TaskDetailOut
 from .task_detail_out_ceiling_status import TaskDetailOutCeilingStatus
-from .task_detail_out_dimensions import TaskDetailOutDimensions
+from .task_detail_out_grouping_fields import TaskDetailOutGroupingFields
 from .task_detail_out_outcome_reason_type_0 import TaskDetailOutOutcomeReasonType0
 from .task_detail_out_status import TaskDetailOutStatus
 from .task_out import TaskOut
 from .task_out_ceiling_status import TaskOutCeilingStatus
-from .task_out_dimensions import TaskOutDimensions
+from .task_out_grouping_fields import TaskOutGroupingFields
 from .task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from .task_out_status import TaskOutStatus
 from .task_type_in import TaskTypeIn
@@ -514,7 +514,7 @@ __all__ = (
     "ReadyResponse",
     "ReadyResponseChecks",
     "RecordUsageRequest",
-    "RecordUsageRequestDimensions",
+    "RecordUsageRequestGroupingFields",
     "RecordUsageRequestMeasurementsType0",
     "RecordUsageRequestMetadata",
     "RecordUsageResponse",
@@ -553,7 +553,7 @@ __all__ = (
     "SpendControlFamilyTotalsRow",
     "SpendControlFamilyTotalsRowControlFamily",
     "StartTaskRequest",
-    "StartTaskRequestDimensions",
+    "StartTaskRequestGroupingFields",
     "StartTaskRequestMetadataType0",
     "StartTaskResponse",
     "StartTaskResponseStatus",
@@ -572,12 +572,12 @@ __all__ = (
     "TaskAnalyticsRow",
     "TaskDetailOut",
     "TaskDetailOutCeilingStatus",
-    "TaskDetailOutDimensions",
+    "TaskDetailOutGroupingFields",
     "TaskDetailOutOutcomeReasonType0",
     "TaskDetailOutStatus",
     "TaskOut",
     "TaskOutCeilingStatus",
-    "TaskOutDimensions",
+    "TaskOutGroupingFields",
     "TaskOutOutcomeReasonType0",
     "TaskOutStatus",
     "TaskTypeIn",

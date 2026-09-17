@@ -65,7 +65,7 @@ Do **not** pass `provider_cost_micros` when you want the engine to price it.
 res = client.record_usage(
     customer_id="cust-uuid-here",
     idempotency_key="idem-abc-123",
-    dimensions={"product_id": "search"},
+    grouping_fields={"product_id": "search"},
     measurements={"input_tokens": 1000},
 )
 
@@ -460,7 +460,7 @@ client.list_pricing_books(cursor=None, limit=None)
 client.record_usage(customer_id: str, idempotency_key: str, *,
     provider_cost_micros=None, claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
-    dimensions=None, metadata=None, task_id=None, measurements=None,
+    grouping_fields=None, metadata=None, task_id=None, measurements=None,
     recorded_at=None, raise_on_stop=True)      # a stop verdict raises UBBStopRequested
 
 # record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected,
@@ -471,7 +471,7 @@ client.record_batch(events: list[dict])
 #                             a clean exit with no declaration raises TaskOutcomeRequired)
 client.start_task(customer_id: str, idempotency_key: str, *,
     task_type=None, parent_task_id=None, task_cogs_ceiling_micros=None,
-    dimensions=None, external_task_id=None, metadata=None)
+    grouping_fields=None, external_task_id=None, metadata=None)
 
 # close_task  → CloseTaskResponse  (the primitive the handle's three methods delegate to)
 client.close_task(task_id: str, outcome: str, *, outcome_reason=None, reason_detail=None)
@@ -481,9 +481,37 @@ client.get_task(task_id: str)
 client.list_tasks(*, cursor=None, limit=None, customer_id=None, task_type=None, status=None)
 client.list_subtasks(task_id: str, *, cursor=None, limit=None)
 
-# The cost-analytics reads are DELETED (#501) and no signature replaces them here:
-# nine reports collapsed into GET /api/v1/metering/analytics/economics, which this
-# client does not wrap yet. See §3 above and MIGRATION.md §16.
+# ONE QUERY REPLACED NINE REPORTS (#501) AND NOW HAS A HANDLE (#505). Ask for
+# measures, group by zero or more axes, bucket by hour/day/month; every filter
+# composes with every grouping. `measures` is required and the window defaults
+# to the CURRENT MONTH TO DATE — name the dates unless the question is about now.
+#
+# query_economics  -> EconomicsOut
+client.query_economics(*, measures: list[str], group_by=None,
+    start_date=None, end_date=None, bucket=None, basis=None,
+    customer_id=None, event_type=None, task_type=None, task_id=None,
+    include_subtasks=None, where=None,
+    past_limit=None, stop_scope=None, episode_seq=None)
+
+# grouping_options  -> list[GroupingOptionOut]   what THIS tenant may group by
+client.grouping_options()
+
+# Building an axis, and reading one measure WITH ITS STATE. A measure's figure
+# is never the whole answer: `status` says whether it is a total, a bound, or
+# absent — and a figure read without it can publish a floor as a total.
+from ubb import group_by_field, group_by_rollup, measure_on, vocabulary
+
+answer = client.query_economics(
+    measures=[vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN],
+    group_by=[group_by_field("model")],
+    start_date="2026-01-01", end_date="2026-01-31")
+for row in answer.rows:
+    margin = measure_on(row, vocabulary.ANALYTICS_MEASURE_GROSS_MARGIN)
+    if str(margin.status) != vocabulary.MEASURE_STATUS_KNOWN:
+        continue                      # a bound, or no figure at all
+    print(row.grouping_field_value, margin.amount_micros)
+
+# See MIGRATION.md §17 for the five deleted calls mapped onto this one.
 ```
 
 ## RecordUsageResponse fields

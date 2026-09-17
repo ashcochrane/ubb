@@ -14,16 +14,16 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RecordUsageRequestDimensions")
+T = TypeVar("T", bound="TaskOutGroupingFields")
 
 
 
 @_attrs_define
-class RecordUsageRequestDimensions:
+class TaskOutGroupingFields:
     """ 
      """
 
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -41,21 +41,21 @@ class RecordUsageRequestDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        record_usage_request_dimensions = cls(
+        task_out_grouping_fields = cls(
         )
 
 
-        record_usage_request_dimensions.additional_properties = d
-        return record_usage_request_dimensions
+        task_out_grouping_fields.additional_properties = d
+        return task_out_grouping_fields
 
     @property
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

@@ -181,8 +181,9 @@ class RecordUsageRequest(Schema):
     idempotency_key: str = Field(min_length=1, max_length=500)
     # THE ONE OPEN BAG (#273). Free-form labelling: filterable and readable,
     # never grouped, never priced, never unit attribution. Anything you want to
-    # slice or price on is a declared `dimensions` key. The second bag that
-    # used to sit further down this schema folded into this one, and its name
+    # slice or price on is a declared grouping field's key. The second bag
+    # that used to sit further down this schema folded into this one, and its
+    # name
     # went with it — it advertised a grouping capability this bag deliberately
     # does not have. Keys are yours: UBB stores and returns them as authored.
     metadata: dict = Field(default_factory=dict)
@@ -238,11 +239,18 @@ class RecordUsageRequest(Schema):
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
     provider: Optional[str] = Field(default=None, max_length=100)
-    # Declared EVENT-scoped grouping field values (design D1/D6). Keys must be in the
-    # tenant's GroupingField registry and declared at event scope; task- and
+    # Declared EVENT-scoped grouping field values (design D1/D6). Keys must be in
+    # the tenant's GroupingField registry and declared at event scope; task- and
     # subtask-scoped values are set at the start-gate and inherited, not sent
     # here. Values are cardinality-capped on write.
-    dimensions: dict = Field(default_factory=dict)
+    #
+    # ⚠ THE WORD IS THE ONE BOTH RESPONSES ALREADY USE (#505, slice 7 phase B2).
+    # `RecordUsageResponse` and `UsageEventDetailOut` have keyed this same object
+    # by the tenant's own declared key under this name since #277, so until now
+    # the contract published two spellings of one concept and a round trip read
+    # as a translation. It is the same flat `{key: value}` object in both
+    # directions and it now says so.
+    grouping_fields: dict = Field(default_factory=dict)
     # When the usage economically happened. Must be timezone-aware; bounded by
     # the tenant's backfill window. Omitted = now (server clock).
     effective_at: Optional[datetime] = None
@@ -1371,14 +1379,32 @@ class TaskOut(Schema):
     ceiling_status: CeilingStatus
     ceiling_used_percentage: Optional[int] = None
     ceiling_remaining_micros: Optional[int] = None
-    dimensions: dict = Field(default_factory=dict)
+    #: This unit's declared grouping values, keyed by the tenant's own declared
+    #: key — the SAME object `RecordUsageResponse` and `UsageEventDetailOut`
+    #: publish under this name, and typed the same way for the same reason.
+    #:
+    #: ⚠ IT WAS KEYED BY THE PHYSICAL SLOT UNTIL #505 (slice 7 phase B2), and
+    #: the rename is what forced the keying. Renaming the property alone would
+    #: have put one published word on two different key vocabularies — a reader
+    #: holding a unit and one of its events would have had to know that only one
+    #: of the two answers in words the tenant chose. The comment this replaces
+    #: said the read side was "being moved to match" the posting reads; it is
+    #: moved. `apps/metering/usage/grouping.py` argues the shape in full.
+    grouping_fields: dict[str, str] = Field(default_factory=dict)
     created_at: str
     completed_at: Optional[str] = None
 
 
-def task_out(t):
+def task_out(t, keys):
     """TaskOut's serializer — the per-unit cost receipt, read straight off the
-    materialized rollups the accumulate primitive maintains."""
+    materialized rollups the accumulate primitive maintains.
+
+    ``keys`` is `keys_by_slot` for this tenant, resolved ONCE BY THE CALLER and
+    passed in — the house pattern `inherited_rule_out` below already follows.
+    It is a required argument rather than a default this function could fill,
+    because every caller here serialises a COLLECTION: a default would read as
+    convenience and cost one registry query per row.
+    """
     return {
         "task_id": str(t.id),
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
@@ -1398,15 +1424,20 @@ def task_out(t):
         "agreed_price_micros": t.agreed_price_micros,
         # Derived on the row, read here — one derivation, not a second.
         **ceiling_fields(t.ceiling_assessment),
-        # A FREE-FORM OBJECT, so its keys are data and not contract: the
-        # published document types this as an object and names no property, and
-        # #276 renaming the columns therefore renames the keys here without
-        # touching the schema. That is also why widening it to ten costs the
-        # contract nothing. Ticket 20 replaces the physical slot with the
-        # tenant's own declared key, which is the shape the read side is being
-        # moved to match.
-        "dimensions": {slot: getattr(t, slot) for slot, _ in SLOT_CHOICES
-                       if getattr(t, slot)},
+        # KEYED BY THE TENANT'S OWN DECLARED KEY, never by the slot. The slot is
+        # UBB's identity for the binding and nobody chose "slot four", so a
+        # response naming it asks an integrator to carry a mapping UBB already
+        # holds — `apps/metering/usage/grouping.py` is the ruling and the
+        # posting reads have followed it since #277.
+        #
+        # A slot the registry cannot name is omitted rather than published under
+        # its column name, which is that module's rule too: a declaration
+        # deleted outright leaves a value with no key to publish it under, and
+        # falling back to the slot would publish the one name the shape exists
+        # to keep private. Unset slots are omitted because "" is the column's
+        # "not set" and a caller should not have to tell it from a real value.
+        "grouping_fields": {keys[slot]: value for slot, _ in SLOT_CHOICES
+                            if (value := getattr(t, slot)) and slot in keys},
         "created_at": t.created_at.isoformat(),
         "completed_at": t.completed_at.isoformat() if t.completed_at else None,
     }
@@ -1466,7 +1497,9 @@ class StartTaskRequest(Schema):
     #: Declared grouping field values at task/subtask scope, inherited by every
     #: event in this unit's tree (design D6). Keys must be declared; values are
     #: cardinality-capped on write.
-    dimensions: dict = Field(default_factory=dict)
+    #:
+    #: The recording request's own bag carries the argument for the word.
+    grouping_fields: dict = Field(default_factory=dict)
     #: The caller's own free-form bag, carried and returned. Not pinned: a
     #: replay carrying different metadata is still a replay, and the original's
     #: bag stands.
@@ -1480,13 +1513,14 @@ class StartTaskRequest(Schema):
 #: WHETHER a repeated start contradicts the unit it is replaying and names the
 #: fact that differs in its own terms; a caller needs the field of the request
 #: it just sent. The map lives beside the request that declares those fields,
-#: which is also the only file on this side already licensed to spell the
-#: grouping bag's retired wire key.
+#: which is what keeps the two vocabularies one edit apart: a wire key renamed
+#: in this module is renamed here in the same diff or the conflict names a
+#: field the caller never sent.
 PINNED_FIELD_ON_THE_WIRE = {
     work_services.PINNED_PARENT: "parent_task_id",
     work_services.PINNED_TASK_TYPE: "task_type",
     work_services.PINNED_COST_CEILING: "task_cogs_ceiling_micros",
-    work_services.PINNED_GROUPING_VALUES: "dimensions",
+    work_services.PINNED_GROUPING_VALUES: "grouping_fields",
 }
 
 
@@ -1500,17 +1534,24 @@ class StartTaskResponse(Schema):
     creates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a
     caller replaying an attempt that has since run up cost.
 
-    ⚠ AND THE DECLARED GROUPING VALUES ARE NOT ECHOED, for two reasons that
-    point the same way. The caller just sent them, and a start that pinned
-    something else would say so by refusing rather than by handing back a
-    corrected bag. The second is a constraint rather than a preference and is
-    recorded because it decided a published surface: that bag's wire key is
-    retired vocabulary under a spread ceiling another slice owns, and every
-    schema publishing it mints one more generated SDK module that counts
-    against the ceiling — so a third copy of the property would fail the sweep
-    for a debt this commit does not own. #358 is the precedent, in the same
-    direction.
+    ⚠ AND THE DECLARED GROUPING VALUES ARE NOT ECHOED. You just sent them,
+    and a start that pinned something else says so by REFUSING rather than by
+    handing back a corrected bag — so an echo could only ever repeat your own
+    request back to you. The unit read one call away carries them as UBB holds
+    them, keyed by your own declared key.
     """
+    # ⚠ THE SECOND REASON THIS BAG IS NOT ECHOED HAS EXPIRED, and it is in a
+    # comment now rather than in the docstring above — which is the published
+    # schema description, so it reached every tenant reading the contract and
+    # every reader of the generated SDK model. It was that the bag's wire key
+    # was retired vocabulary under a spread ceiling, and every schema
+    # publishing it minted one more generated SDK module counting against that
+    # ceiling, so a third copy would have failed the sweep for a debt the
+    # commit did not own (#358 was the precedent, in the same direction).
+    # #505 took that word to zero on the contract and in the SDK, so the
+    # constraint is gone. THE ANSWER IS UNCHANGED: the first reason was always
+    # the real one, and adding the property now would be a new published field
+    # justified by nothing but the disappearance of an objection.
 
     task_id: str
     #: Set when this is contained work — the running unit it was registered
@@ -2770,8 +2811,8 @@ class DimensionDefIn(Schema):
 
 
 class DimensionRegistryIn(Schema):
-    dimensions: list[DimensionDefIn] = Field(min_length=1,
-                                             max_length=len(SLOT_CHOICES))
+    grouping_fields: list[DimensionDefIn] = Field(
+        min_length=1, max_length=len(SLOT_CHOICES))
 
 
 class DimensionDefOut(Schema):
@@ -2783,7 +2824,7 @@ class DimensionDefOut(Schema):
 
 
 class DimensionRegistryOut(Schema):
-    dimensions: list[DimensionDefOut]
+    grouping_fields: list[DimensionDefOut]
 
 
 class GroupingFieldValuesOut(Schema):
@@ -3256,7 +3297,13 @@ class TaskTypeIn(Schema):
     #: rejected. Zero is refused rather than read, because a zero-length
     #: deadline and a disabled one are two readings and only one is a window.
     absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
-    required_dimensions: list[str] = Field(default_factory=list, max_length=6)
+    #: WHICH DECLARED GROUPING FIELDS A START OF THIS KIND MUST CARRY, by the
+    #: tenant's own declared key. The column behind it is still spelled the way
+    #: #277 left it; the wire takes the registry's word here and the column is
+    #: the cutover slice's to move, which is why `apps/platform/work/queries.py`
+    #: names both once and nothing else does.
+    required_grouping_fields: list[str] = Field(default_factory=list,
+                                                max_length=6)
     #: THREE ANSWERS, NOT TWO, WHICH IS WHY IT IS NULLABLE WITH NO DEFAULT.
     #: `true` retires, `false` brings back, and omitting it leaves the row where
     #: it is — the answer every caller who has never heard of this field gives,
@@ -3302,7 +3349,7 @@ class TaskTypeOut(Schema):
     uncapped: bool
     silence_window_seconds: Optional[int] = None
     absolute_deadline_seconds: Optional[int] = None
-    required_dimensions: list[str]
+    required_grouping_fields: list[str]
     retired: bool
     #: WHEN, BESIDE THE PREDICATE, AND BOTH ARE SERVED FROM ONE COLUMN.
     #: `retired` is what a caller branches on and it was here first; this is the
