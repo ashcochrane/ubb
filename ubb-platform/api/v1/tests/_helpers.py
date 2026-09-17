@@ -16,9 +16,12 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from django.test import Client
+
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.platform.customers.models import Customer
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
@@ -78,8 +81,6 @@ def a_tenant(name="T", *, fields=()):
     scaffolding a second one by hand is what `docs/conventions/testing.md` calls
     out by name.
     """
-    from apps.platform.grouping_fields.models import GroupingField
-
     tenant = Tenant.objects.create(name=name, products=["metering"])
     for position, key in enumerate(fields, start=1):
         GroupingField.objects.create(tenant=tenant, key=key,
@@ -96,8 +97,6 @@ def ask(raw_key, **params):
     one, which is the shape the route declares and the only shape that carries
     an axis order.
     """
-    from django.test import Client
-
     query = []
     for name, value in params.items():
         if isinstance(value, (list, tuple)):

@@ -120,6 +120,20 @@ class TestAPeriodOutsideTheRepairHorizon:
         before = self._answer()
         assert measure_of(before, ANALYTICS_MEASURE_SUPPLIER_COGS
                           )["amount_micros"] == 0
+        # ⚠ THE MARGIN'S OWN BEFORE-VALUE IS CAPTURED, not inferred from the
+        # cost beside it. "It moved" is a claim about two readings of the SAME
+        # figure, and asserting only the after-value would pass against an
+        # implementation that had answered 600,000 all along.
+        #
+        # It is a FIGURE and not a null, which is the distinction `incomplete`
+        # draws against `unavailable_at_requested_grain`: UBB can attribute this
+        # margin to this window, and what it cannot do is promise the cost side
+        # is whole — so the number stands with its count beside it, as a bound
+        # rather than a total. The bound is the revenue, because the cost total
+        # it was taken against was a floor of nothing.
+        margin_before = measure_of(before, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert margin_before["amount_micros"] == BILLED
+        assert margin_before["status"] == MEASURE_STATUS_INCOMPLETE
 
         assert settle_provider_cost(
             posting_id=self.posting.pk,
@@ -133,3 +147,6 @@ class TestAPeriodOutsideTheRepairHorizon:
         margin = measure_of(after, ANALYTICS_MEASURE_GROSS_MARGIN)
         assert margin["status"] == MEASURE_STATUS_KNOWN
         assert margin["amount_micros"] == BILLED - RESOLVED_COST
+        # The figure MOVED, by exactly the cost that resolved into a month
+        # closed six months ago. This is the assertion the whole module is for.
+        assert margin["amount_micros"] != margin_before["amount_micros"]

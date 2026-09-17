@@ -30,7 +30,22 @@ Callers float it at the wire, where the precision question is a different one.
 **This module reads; it never writes.** The flag's write stays with the evaluator
 that decides it (`services.py`), beside the transition rule that is the only
 reason the column exists.
+
+⚠ **AND THIS MODULE IS ITSELF GUARDED**, because a door that re-publishes the
+columns it was built to enclose is the obvious way round the rule: a reporting
+surface importing `state_of` would read a stored margin without ever naming
+`CustomerEconomics`. The test module walks production for who imports from here
+as well as for who names the record, so widening this seam is a line in a diff
+rather than something nobody notices.
+
+⚠ **THE ROW SHAPES ARE NOT THE COLUMN'S.** `customer_id` is a `str` because
+every consumer of it — a webhook payload, a JSON body — wants one, while
+`period_start` stays a `date` because its consumers do arithmetic on it before
+anything renders it. And the percentage is `margin_pct` rather than the column's
+name, because what leaves here is a fact about an alarm rather than a copy of a
+column, and the payloads have always called it that.
 """
+from apps.subscriptions.economics.models import CustomerEconomics
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 
 
@@ -64,8 +79,6 @@ def look_back(tenant_id, customer_id, period_start, *, periods) -> list[dict]:
     for when the customer has not existed that long, which is the honest answer
     — "below for three periods running" is not true of a customer with two.
     """
-    from apps.subscriptions.economics.models import CustomerEconomics
-
     rows = CustomerEconomics.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
         period_start__lte=period_start).order_by("-period_start")[:periods]
@@ -79,8 +92,6 @@ def period_before(tenant_id, customer_id, period_start) -> dict | None:
     be read as one: a customer with no earlier period has no rise to compute,
     and dividing by a cost UBB never held would invent one.
     """
-    from apps.subscriptions.economics.models import CustomerEconomics
-
     row = (CustomerEconomics.objects
            .filter(tenant_id=tenant_id, customer_id=customer_id,
                    period_start__lt=period_start)
@@ -100,8 +111,6 @@ def flagged_in(tenant_id, period_start) -> list[dict]:
     Each row carries the tenant's own word for the customer beside UBB's id,
     because the surface is read by somebody who is about to go and talk to them.
     """
-    from apps.subscriptions.economics.models import CustomerEconomics
-
     rows = CustomerEconomics.objects.filter(
         tenant_id=tenant_id, period_start=period_start, is_unprofitable=True
     ).select_related("customer").order_by("period_start")

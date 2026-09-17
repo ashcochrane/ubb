@@ -12,7 +12,7 @@ from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KE
 from core.exceptions import MisalignedAmount
 from core.money import SUPPORTED_CURRENCIES, assert_aligned
 from core.problems import Problem, ProblemOut
-from core.time_windows import REPORT_WINDOW_MAX_DAYS, month_bounds
+from core.time_windows import REPORT_WINDOW_MAX_DAYS, closed_months
 from core.vocabulary import (
     AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED, PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_VALUES, REVENUE_BASIS_VALUES)
@@ -301,6 +301,15 @@ def _the_period_it_states_is_stale(record):
     That is also the honest shape: one channel says *this customer's month is
     stale*, whatever made it stale, and one consumer rebuilds it.
 
+    ⚠ **EVERY CLOSED MONTH THE RECORD'S SPAN TOUCHES, NOT THE ONE IT OPENS
+    IN.** The margin surfaces read supplied revenue under the RECOGNISED basis
+    (`economics/services.py:MARGIN_REVENUE_BASIS`), and a spreading recognition
+    method puts part of the amount in every month of the span — so a record
+    covering a quarter, supplied today, leaves two of its three months stale at
+    any age if only the first is marked. `closed_months` is where that rule is
+    stated; a record that is an instant rather than a span declares no
+    `period_end` and names one month or none.
+
     ⚠ **OUTSIDE THE WRITE'S TRANSACTION, DELIBERATELY.** The figure is recorded
     and audited whether or not a cache rebuild is queued; a marker is a request,
     and a request that could fail the statement it follows would make a
@@ -308,13 +317,10 @@ def _the_period_it_states_is_stale(record):
     """
     from apps.metering.queries import mark_backfill_dirty_period
 
-    period_start, _ = month_bounds(record.period_start)
-    if period_start >= month_bounds(timezone.now())[0]:
-        # The open month is snapshotted daily and swept hourly; a marker for it
-        # is one the consumer would skip without acking until the month rolls.
-        return
-    mark_backfill_dirty_period(record.tenant_id, record.customer_id,
-                               period_start)
+    for period_start in closed_months(record.period_start, record.period_end,
+                                      now=timezone.now()):
+        mark_backfill_dirty_period(record.tenant_id, record.customer_id,
+                                   period_start)
 
 
 @margin_router.get(

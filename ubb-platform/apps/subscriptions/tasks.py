@@ -75,14 +75,20 @@ def repair_one_accumulator(tenant_id, customer_id, period_start, period_end,
                            totals) -> bool:
     """Set one period's accumulator to what the posting ledger says.
 
-    Returns whether anything moved, which is the drift both callers report.
-    `totals` is a row of the metering read contract's cost totals, or
-    `_NOTHING_IN_THE_PERIOD` where the ledger has none.
+    Returns whether anything moved. `reconcile_cost_accumulators` counts that as
+    its drift; the marker path ignores it, because a marker is a statement that
+    the period changed and the repair finding nothing to do does not make the
+    re-snapshot after it unnecessary. `totals` is a row of the metering read
+    contract's cost totals, or `_NOTHING_IN_THE_PERIOD` where the ledger has
+    none.
 
-    ⚠ **THE PERIOD END IS WRITTEN WITHOUT BEING COMPARED**, which is deliberate
-    and not an oversight: it is the calendar's answer rather than the ledger's,
-    so a row differing only there is a row whose stored bound was wrong, and
-    correcting it silently is right. Drift is about the figures.
+    ⚠ **DRIFT IS ABOUT THE FIGURES, AND `period_end` IS NOT ONE.** It is the
+    calendar's answer rather than the ledger's, so it is written along with any
+    repair but never compared — which means a row whose ONLY difference is a
+    wrong stored bound is left alone, exactly as the reconcile this was lifted
+    out of left it alone. Correcting that would be a real improvement and a
+    different ticket's: it would move this task's drift count, which is a
+    logged figure somebody may be watching.
     """
     from apps.subscriptions.economics.models import CustomerCostAccumulator
 

@@ -4,6 +4,14 @@ This module provides the ONLY approved way for other products
 (billing, subscriptions, referrals) to read metering data.
 Functions return plain dicts, never ORM instances.
 
+⚠ ONE DECLARED EXCEPTION, AND IT IS NOT A READ: the `BackfillDirtyPeriod`
+marker contract — `mark_backfill_dirty_period*` and
+`clear_backfill_dirty_period` — writes rows. ADR-001 §3 carries the reason: the
+marker table is metering's and the things that make a month stale are not all
+metering's, so the alternative is another product reaching for a metering model.
+The whole contract stays in one module, both halves together. Everything else
+here returns plain data and writes nothing.
+
 If metering becomes a separate service, these functions become
 HTTP calls. All callers remain untouched.
 
@@ -618,6 +626,52 @@ def mark_backfill_dirty_period(tenant_id, customer_id, period_start) -> None:
                 period_start=period_start)
     except IntegrityError:
         pass
+
+
+def mark_backfill_dirty_period_for_posting(posting_id) -> None:
+    """Declare the CLOSED month one posting lands in stale (#502, slice 7 §8).
+
+    **The two doors a posting's money columns may move through after the fact
+    are the same act twice**, and this is the half they share. A supplier cost
+    settled long after the call and a customer price resolved long after it are
+    each one ADR-0007 §2 conditional update on an existing posting, at an
+    instant that may sit inside a month that closed — and each moves a figure
+    two per-customer monthly caches are built from. Instrumenting one and not
+    the other is how a cache stops being repairable on the cost side and stays
+    unrepairable on the revenue side.
+
+    ⚠ **THE PRICE HALF MATTERS FOR THE SAME REASON THE COST HALF DOES, POINTING
+    THE OTHER WAY.** An excluded cost makes a margin a CEILING; an excluded
+    price makes it a FLOOR. The customer named unprofitable on a floor is the
+    one who might have been fine all along, so a late price is the resolution
+    most worth letting reach a closed period.
+
+    ⚠ **The CURRENT month is deliberately not marked.** Markers are only ever
+    written for months that have closed — the hourly repair and the daily
+    snapshot both cover the open one, and the consumer skips a non-prior marker
+    without acking it.
+
+    Nothing about the resolution depends on this succeeding: it is a request to
+    rebuild a cache, read after the statement that moved the columns has already
+    committed to its own outcome.
+    """
+    from django.utils import timezone
+
+    from apps.metering.usage.models import Posting
+    from core.time_windows import closed_months
+
+    row = (Posting.objects.filter(pk=posting_id)
+           .values("tenant_id", "customer_id", "effective_at").first())
+    # Unreachable from either resolution door, which reaches here only after its
+    # conditional update matched exactly one row. Kept because this is a
+    # contract function and its callers are not all written yet: answering
+    # "nothing to invalidate" for a posting that is not there beats raising
+    # inside a caller that has already moved the money columns.
+    if row is None:
+        return
+    for period_start in closed_months(row["effective_at"], now=timezone.now()):
+        mark_backfill_dirty_period(row["tenant_id"], row["customer_id"],
+                                   period_start)
 
 
 def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:

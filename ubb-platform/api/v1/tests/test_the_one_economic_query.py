@@ -28,8 +28,7 @@ from apps.metering.pricing.models import Charge
 from apps.metering.pricing.services.charge_projection import project_the_charge
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from apps.platform.grouping_fields.models import GroupingField
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS

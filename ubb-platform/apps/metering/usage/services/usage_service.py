@@ -8,7 +8,7 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.crossing import ceiling_fields
-from core.time_windows import month_bounds
+from core.time_windows import closed_months, month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     TRIGGER_SOURCE_USAGE_INGEST)
@@ -647,20 +647,19 @@ class UsageService:
             owner=inp.owner_row, tenant=tenant,
             opened_episodes=live.get("stop_episodes_opened"))
         if inp.effective_at is not None:
-            eff_month_start = month_bounds(inp.effective_at)[0]
-            if eff_month_start < month_bounds(inp.now)[0]:
-                # Backfill into a PRIOR month: mark the period stale so the
-                # hourly resnapshot task rebuilds its cached economics. Same
-                # transaction as the event; the marker write's own
-                # savepoint-IntegrityError-swallow (billing/handlers.py
-                # pattern) absorbs the unique-marker race.
-                #
-                # ⚠ ONE WRITER FOR THE MARKER, and this stopped being its only
-                # cause in #502: a supplier cost settling into a closed month
-                # and a figure a tenant supplies late say exactly the same thing
-                # about the same period, so all three ask through the read
-                # contract rather than each spelling the create.
-                from apps.metering.queries import mark_backfill_dirty_period
+            # Backfill into a CLOSED month: mark the period stale so the hourly
+            # resnapshot task rebuilds its cached economics. Same transaction as
+            # the event; the marker write's own savepoint-IntegrityError-swallow
+            # (billing/handlers.py pattern) absorbs the unique-marker race.
+            #
+            # ⚠ ONE WRITER AND ONE RULE FOR THE MARKER, and this stopped being
+            # its only cause in #502: a supplier cost settling into a closed
+            # month, a customer price resolving into one, and a figure a tenant
+            # supplies late all say the same thing about the same period. Which
+            # months a fact reaches into is `closed_months`, so no caller is
+            # trusted to remember that the open month is never marked.
+            from apps.metering.queries import mark_backfill_dirty_period
+            for eff_month_start in closed_months(inp.effective_at, now=inp.now):
                 mark_backfill_dirty_period(tenant.id, customer.id,
                                            eff_month_start)
         write_event(UsageRecorded(

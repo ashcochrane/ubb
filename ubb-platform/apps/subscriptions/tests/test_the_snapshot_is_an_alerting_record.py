@@ -34,6 +34,8 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.metering.pricing.services.cost_settlement import settle_provider_cost
+from apps.metering.pricing.services.price_resolution import (
+    PriceResolution, resolve_customer_price)
 from apps.metering.usage.models import BackfillDirtyPeriod, Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -44,7 +46,8 @@ from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.tasks import (
     RESNAPSHOT_MARKER_MIN_AGE, resnapshot_dirty_periods)
 from core.vocabulary import (
-    COSTING_STATUS_UNRESOLVED, RECOGNITION_METHOD_ON_RECEIPT,
+    COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED, PRICING_STATUS_UNKNOWN,
+    RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     WEBHOOK_EVENT_TYPE_CUSTOMER_UNPROFITABLE,
     WEBHOOK_EVENT_TYPE_PROVIDER_COST_SPIKE)
@@ -81,11 +84,28 @@ THE_ALERTING_RECORDS_OWN_MODULES = {
         "re-exports it with the app's other models",
 }
 
+#: EVERY PRODUCTION MODULE THAT MAY READ THROUGH THE DOOR, and what it is doing
+#: there. The map above would be satisfied by a reporting surface that imported
+#: `state_of` and never named the record — the door re-publishes the very columns
+#: it encloses, so widening WHO MAY WALK THROUGH IT has to be a line in a diff
+#: too, or the seam is a formality.
+THE_ALERTING_DOORS_CALLERS = {
+    "apps/subscriptions/economics/services.py":
+        "the evaluator — reads the state, the look-back and the period before",
+    "apps/subscriptions/api/margin_endpoints.py":
+        "the unprofitable list — the alerting surface #153 §8.3 keeps",
+}
+
 #: The cross-product read contract, named on its own because it is where a
 #: reporting read of this record would live: other products and the API layer
 #: read subscriptions through it and nowhere else. Two of its functions served
 #: the snapshot's margin columns and are severed here.
 THE_READ_CONTRACT = "apps/subscriptions/queries.py"
+
+#: The door itself, as a dotted path, because that is how an importer spells it,
+#: and as a repo path, because the door naturally mentions itself.
+THE_ALERTING_DOOR = "apps.subscriptions.economics.alerting"
+ALERTING_DOOR_PATH = "apps/subscriptions/economics/alerting.py"
 
 #: What those two answered, and what answers it now. Spelled out so the
 #: assertion below fails with the capability rather than with a name.
@@ -123,6 +143,29 @@ def _names_in(path: Path) -> set[str]:
     return names
 
 
+def _imports_the_door(path: Path) -> bool:
+    """Whether one module IMPORTS the alerting door, in either spelling.
+
+    ⚠ **A SUBSTRING SEARCH IS WRONG IN BOTH DIRECTIONS HERE, AND THE FIRST DRAFT
+    WAS.** It matched the read contract's TOMBSTONE, which names the door in
+    prose to say where the record went — a mention, not a read — and it missed
+    the evaluator, which spells the import `from apps.subscriptions.economics
+    import alerting` and so never writes the dotted path at all. What is being
+    asked is who can call through the door, which is a question about imports.
+    """
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.ImportFrom):
+            if node.module == THE_ALERTING_DOOR:
+                return True
+            if (node.module == THE_ALERTING_DOOR.rsplit(".", 1)[0]
+                    and any(alias.name == "alerting" for alias in node.names)):
+                return True
+        elif isinstance(node, ast.Import):
+            if any(alias.name == THE_ALERTING_DOOR for alias in node.names):
+                return True
+    return False
+
+
 def _production_modules():
     for root in SEARCH_ROOTS:
         for path in sorted((PLATFORM_ROOT / root).rglob("*.py")):
@@ -157,6 +200,23 @@ class TestNoReportingSurfaceReadsAMarginFigureFromIt:
             "figure that moves after the period closes — ask "
             "GET /metering/analytics/economics instead. Roles: "
             f"{THE_ALERTING_RECORDS_OWN_MODULES}")
+
+    def test_only_the_alerting_modules_walk_through_the_door(self):
+        """The hole the map above leaves, closed at its own address.
+
+        `alerting.py` hands back the record's margin columns as plain data. A
+        reporting surface that imported `state_of` would therefore read a stored
+        margin without ever naming `CustomerEconomics`, satisfy the walk above
+        and be exactly the defect this module exists to refuse. So who imports
+        the door is asked as well as who names the record.
+        """
+        found = {relative: path for relative, path in _production_modules()
+                 if relative != ALERTING_DOOR_PATH and _imports_the_door(path)}
+        assert sorted(found) == sorted(THE_ALERTING_DOORS_CALLERS), (
+            "The alerting record's door hands back margin figures, so a module "
+            "importing it is reading one. It is either an alerting surface or "
+            "a report that should ask GET /metering/analytics/economics. "
+            f"Roles: {THE_ALERTING_DOORS_CALLERS}")
 
     def test_the_read_contract_serves_nothing_off_it(self):
         """Said at its own address as well as by the walk above.
@@ -311,7 +371,28 @@ class TestTheCacheIsInvalidatableAtAnyAge:
     by nothing but the month having closed: a settlement writes one whatever its
     age, and consuming one repairs the accumulator from the posting ledger
     before re-snapshotting, so the three-month horizon is not in the path at
-    all.
+    all. Three causes write one marker — a cost settled late, a price resolved
+    late, and a figure a tenant supplied about a month that closed — and each
+    has its case below.
+
+    ⚠ **ONE INPUT HAS NO MARKER AND CANNOT HAVE ONE, WHICH IS STATED RATHER THAN
+    LEFT TO BE DISCOVERED.** `subscription_revenue_micros` comes from
+    `RevenueService.accrued_subscription_revenue`, which is NOMINAL: it reads the
+    mirrored subscription's amount and interval and never its dates, so the same
+    row values every window it is ever asked about. Change the mirror and every
+    month back to the beginning is re-valued — there is no bounded set of months
+    to name, and a marker per subscription change would mean marking all of
+    history.
+
+    That is not a gap in the channel; it is the same argument §8 makes about
+    cost, one step further. A figure with no per-period fact behind it should
+    not be frozen into a per-period row at all, and the REPORTED subscription
+    revenue already is not: it is derived at read time from the same row, so a
+    tenant reading `GET /metering/analytics/economics` sees the mirror as it
+    stands. What can go stale is the alerting record's copy, and what that costs
+    is an alarm computed against a subscription amount that has since changed.
+    **The rows are #190's**, and this is one of the reasons the cutover is the
+    right place to decide what a period keeps.
     """
 
     @pytest.fixture(autouse=True)
@@ -388,6 +469,78 @@ class TestTheCacheIsInvalidatableAtAnyAge:
         assert econ.unresolved_event_count == 0
         assert econ.gross_margin_micros == 250_000
         assert BackfillDirtyPeriod.objects.count() == 0
+
+    def test_a_price_resolving_late_marks_its_closed_period_too(self):
+        """THE SYMMETRIC DOOR, and the one a review found uninstrumented.
+
+        A customer price resolves through its own conditional update, exactly as
+        a supplier cost settles through its own, and it moves the SAME cached
+        figures — `usage_billed_micros`, and through it the margin the flag is
+        raised on. Instrumenting the cost door alone leaves a cache repairable
+        in one direction only.
+
+        ⚠ AND THIS IS THE DIRECTION THAT CAN CLEAR AN ALARM. An excluded cost
+        makes a margin a ceiling, an excluded price makes it a FLOOR — so the
+        customer named unprofitable while a price was missing is the one who may
+        have been fine all along.
+        """
+        posting = Posting.objects.create(
+            tenant=self.tenant, customer=self.customer, idempotency_key="k2",
+            event_type="chat.completion", provider_cost_micros=250_000,
+            costing_status=COSTING_STATUS_KNOWN, billed_cost_micros=None,
+            pricing_status=PRICING_STATUS_UNKNOWN,
+            effective_at=datetime.datetime(
+                self.closed_period.year, self.closed_period.month, 15, 12,
+                tzinfo=datetime.timezone.utc))
+        econ = self._a_flagged_period(cost=250_000, billed=0, unresolved=0)
+        assert econ.gross_margin_micros == -250_000
+
+        assert resolve_customer_price(
+            posting_id=posting.pk,
+            billed_cost_micros=1_000_000) is PriceResolution.RESOLVED
+        self._consume_the_markers()
+
+        econ.refresh_from_db()
+        assert econ.usage_billed_micros == 1_000_000
+        assert econ.gross_margin_micros == 750_000
+
+    def test_a_supplied_span_marks_every_closed_month_it_touches(self):
+        """A record is ONE row and may be several months (#502).
+
+        The margin surfaces read supplied revenue under the recognised basis, so
+        a spreading method puts part of a quarter's amount in each of its three
+        months. Marking only the month the span opens in would leave the other
+        two stale at any age — the defect the marker channel exists to prevent,
+        arriving through the channel itself.
+        """
+        _, raw_key = TenantApiKey.create_key(self.tenant)
+        opens = self.closed_period
+        closes = self.closes
+        for _ in range(2):
+            closes = (closes + datetime.timedelta(days=32)).replace(day=1)
+
+        response = Client().post(
+            f"/api/v1/margin/customers/{self.customer.id}/supplied-revenue",
+            data={"amount_micros": 3_000_000, "currency": "usd",
+                  "period_start": opens.isoformat(),
+                  "period_end": closes.isoformat(),
+                  "recognition_method": RECOGNITION_METHOD_STRAIGHT_LINE,
+                  "source_reference": "INV-QUARTER-1"},
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {raw_key}")
+
+        assert response.status_code == 200, response.content
+        marked = set(BackfillDirtyPeriod.objects.filter(
+            tenant=self.tenant, customer=self.customer
+        ).values_list("period_start", flat=True))
+        # All three months of the span, and the span's exclusive end does not
+        # reach into the month it lands on.
+        month, expected = opens, set()
+        while month < closes:
+            expected.add(month)
+            month = (month + datetime.timedelta(days=32)).replace(day=1)
+        assert len(expected) == 3
+        assert marked == expected
 
     def test_a_figure_the_tenant_supplies_late_marks_its_period_too(self):
         """The other input, and it is not a posting at all.
