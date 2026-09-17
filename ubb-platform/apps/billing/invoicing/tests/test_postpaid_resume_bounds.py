@@ -296,11 +296,24 @@ class TestFrozenLineSnapshot:
             Posting.objects.filter(id=ev.id).update(
                 effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
 
+    def _a_declared_axis(self, t):
+        """The axis these events carry, as the tenant's own declared field.
+
+        Since #503 the stored grouping is an axis of the one vocabulary rather
+        than a column name, so the fixture has to declare the field the slot
+        holds — which is the registry's rule and not this suite's subject.
+        """
+        from apps.platform.grouping_fields.services import DimensionService
+        DimensionService.declare(t, key="product", slot="grouping_field_1",
+                                 scope="event")
+        return "field:product"
+
     def test_resume_after_group_by_flip_creates_zero_new_items(self):
         from apps.billing.invoicing.models import PostpaidUsageConfig
         t = _charge_ready_tenant()
         c = _customer(t)
-        cfg = PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="")
+        axis = self._a_declared_axis(t)
+        cfg = PostpaidUsageConfig.objects.create(tenant=t, invoice_line_grouping="")
         self._events(t, c)
         # Attempt 1: the single ungrouped line is pinned, then the finalize crashes.
         with _stripe() as m:
@@ -313,7 +326,7 @@ class TestFrozenLineSnapshot:
         assert m.item_create.call_count == 1
         # Tenant flips grouping mid-retry: re-aggregating would now yield TWO
         # lines and shift every line_index.
-        cfg.usage_line_item_group_by = "dim1"
+        cfg.invoice_line_grouping = axis
         cfg.save()
         # Resume: frozen lines, the pinned item recovered — ZERO new items.
         with _stripe(retrieve=_stripe_invoice(id="in_new", status="draft", rec=rec),
@@ -333,7 +346,8 @@ class TestFrozenLineSnapshot:
         from apps.billing.invoicing.models import PostpaidUsageConfig
         t = _charge_ready_tenant()
         c = _customer(t)
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
+        PostpaidUsageConfig.objects.create(
+            tenant=t, invoice_line_grouping=self._a_declared_axis(t))
         self._events(t, c)
         with _stripe() as m:
             PostpaidUsageService.push_customer_period(t, c, PS, PE)

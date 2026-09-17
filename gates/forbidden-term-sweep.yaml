@@ -370,7 +370,13 @@ exclusions:
     # reason the rule's own totals fall by TWO terms rather than one: the switch's
     # ledger sites and its audit action's are paid in the same commit, taking the
     # sweep from **6 terms in 24 sites → 4 in 19**.
-    files: 264
+    # 264 → 265 in #503: one migration, renaming the postpaid invoice-line
+    # grouping column onto the one vocabulary and carrying every stored value
+    # with it. It is the exclusion's worked example twice over — the
+    # `RenameField(old_name=...)` that has to spell the retired word, and a
+    # `RunPython` that has to recognise the two readings the old column had in
+    # order to carry each to what it actually meant.
+    files: 265
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

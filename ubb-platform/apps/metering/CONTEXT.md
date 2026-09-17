@@ -580,6 +580,22 @@ until #501; `economics` is the one that replaced them, and what it can be groupe
 still carry the pre-#155 noun; the rename is slice 7's, with the row keys it serves.
 _Avoid_: importing metering models from another product; go through `queries.py`.
 
+**Customer liability**:
+Whether a posting is something a customer OWES for — the question that decides whether it becomes an
+invoice line. `waived` and `not_applicable` prices carry none, so they produce no line at all; only
+revenue state decides, never the amount and never the cost. It is answered here rather than in
+billing because both halves of an invoice — the per-seat totals and the grouped breakdown — read it,
+and a second copy is how the two come to disagree about what a customer owes.
+(`apps/metering/queries.py:INVOICE_LINE_STATES_WITH_NO_LIABILITY`)
+_Avoid_: reading it as a completeness caveat. A price UBB could not resolve IS a liability and stays
+in, counted — that is `unpriced_event_count`, a different fact entirely.
+
+**Invoice-line heading**:
+The word a grouped invoice line is charged under, which an absent value still needs — the one place
+this read contract deliberately answers differently from `economics`, which carries a null and a
+status saying WHY there is no value. A customer disputes a heading; a chart reads a state.
+(`apps/metering/queries.py:INVOICE_LINE_OTHER`)
+
 **usage.recorded**:
 The event emitted on every recorded posting — the backbone consumed by billing drawdown,
 subscriptions economics, and referrals rewards.

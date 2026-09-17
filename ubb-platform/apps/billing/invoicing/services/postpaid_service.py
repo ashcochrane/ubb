@@ -50,7 +50,32 @@ class PostpaidUsageService:
         """(total_micros, [(label, amount_micros), ...]); lines ALWAYS sum to total.
         A BUSINESS aggregates across its seats with one line per seat (external_id).
         All metering reads go through the apps.metering.queries contract; the
-        seat-label mapping, "(other)"/"(seat)" merge and presentation sort stay here."""
+        seat-label mapping, "(other)"/"(seat)" merge and presentation sort stay here.
+
+        ⚠ **THE GROUPING IS AN AXIS OF THE ONE VOCABULARY** (#503, slice 7 §11),
+        not a key — `PostpaidUsageConfig.invoice_line_grouping` holds a word the
+        tenant's own discovery contract publishes, and the route that writes it
+        refuses anything else.
+
+        ⚠ **A STORED WORD THAT HAS SINCE STOPPED BEING AN AXIS RAISES, AND THE
+        PERIOD CLOSE FAILS LOUDLY RATHER THAN RE-GROUPING QUIETLY.** That is a
+        decision, not an oversight. Falling back to no grouping would bill the
+        right TOTAL under the wrong shape without anyone being told — which is
+        the silent fall-through this ticket deleted, wearing a better hat. It is
+        also close to unreachable: the registry RETIRES a declared field rather
+        than deleting it and retired fields stay groupable (ADR-0005 D8), the
+        rollups are a closed set UBB owns, and the write surface refuses
+        anything else. If it does happen, the failure lands on the path built
+        for exactly this — bounded retries, then `failed_permanent` with its
+        outbox alert — so an operator is told rather than a customer surprised.
+
+        **WHICH POSTINGS BECOME LINES IS THE READ CONTRACT'S RULE AND NOT
+        THIS METHOD'S.** A waived charge and a metered call under a fixed-price
+        unit of work carry no customer liability, so they produce no line —
+        argued at `apps.metering.queries.
+        INVOICE_LINE_STATES_WITH_NO_LIABILITY`, applied to both the per-seat and
+        the grouped read, and stated in one place so the two halves of an
+        invoice cannot disagree about what a customer owes."""
         if customer.account_type == "business":
             from apps.platform.customers.models import Customer
             from apps.metering.queries import get_billed_totals_by_customer
@@ -76,7 +101,7 @@ class PostpaidUsageService:
 
         from apps.billing.invoicing.models import PostpaidUsageConfig
         cfg = PostpaidUsageConfig.objects.filter(tenant=tenant).first()
-        group_by = cfg.usage_line_item_group_by if cfg else ""
+        group_by = cfg.invoice_line_grouping if cfg else ""
 
         if not group_by:
             from apps.metering.queries import get_customer_cost_totals
@@ -178,9 +203,9 @@ class PostpaidUsageService:
                 return rec
             # Freeze-at-first-claim: line_index identity is positional over the
             # aggregation sort, so re-aggregating on a retry (after the tenant
-            # flips usage_line_item_group_by) would diff the WRONG indices and
-            # overbill a resumed invoice. The first claim pins the lines; every
-            # later attempt consumes the frozen snapshot by construction.
+            # flips the invoice-line grouping axis) would diff the WRONG indices
+            # and overbill a resumed invoice. The first claim pins the lines;
+            # every later attempt consumes the frozen snapshot by construction.
             if rec.line_snapshot:
                 lines = [(label, amount) for label, amount in rec.line_snapshot]
                 total = sum(amount for _, amount in lines)

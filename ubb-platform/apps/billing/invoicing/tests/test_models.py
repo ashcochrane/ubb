@@ -19,4 +19,4 @@ class TestPostpaidModels:
                                             amount_micros=1_000_000)
         assert inv.line_items.count() == 1
         cfg = PostpaidUsageConfig.objects.create(tenant=t)
-        assert cfg.usage_line_item_group_by == ""
+        assert cfg.invoice_line_grouping == ""

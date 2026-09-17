@@ -227,9 +227,30 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     row, and the schema itself is now the pin the open rollups never had.
   - **The second of the three ad-hoc label reads is gone too.** `tag_key` driving the `by_tag`
     breakdown died with the report; the remaining two survive exactly as the bullet describes them —
-    `tag_key` + `tag_value` FILTERING a customer's postings on `/customers/{id}/usage`, and
-    `usage_line_item_group_by` labelling postpaid invoice lines. Both are still slice 7's to rename
-    and neither is a grouping axis, which is why no route removal will clear them.
+    `tag_key` + `tag_value` FILTERING a customer's postings on `/customers/{id}/usage`, and the
+    invoice-line grouping parameter labelling postpaid invoice lines. Both are still slice 7's to
+    rename and neither is a grouping axis, which is why no route removal will clear them.
+
+- **#503 (slice 7 §11) — the third ad-hoc label read is gone, and it is the one that mattered most.**
+  The invoice-line grouping parameter now takes one axis of the declared vocabulary
+  (`field:<declared field>` or `rollup:<axis>`), validated at the moment a tenant configures it
+  against the same per-tenant discovery contract analytics reads. The bullet above calls an
+  unbounded free-text keyspace driving an invoice line label the sharpest case of the rule this ADR
+  exists to state — *"an unbounded free-text keyspace that can become a chart is one that can drive
+  an invoice line label"* — and it was also **the only one of the three a paying customer reads**.
+  Two things went with it: the open bag can no longer reach an invoice line at all, and the silent
+  fall-through that grouped an unrecognised configuration by the first slot is a refusal.
+  - **What the parameter is called on the wire has NOT changed here.** The column beneath it has;
+    the published request and response field keep their names until the phase that regenerates the
+    contract and the SDK from the backend, which is the ordering §21 of that slice fixes. So this
+    document still disagrees with no running server, which is the bullet above's own reason for
+    spelling the wire's word rather than the intended one.
+  - **The per-axis cardinality cap this ADR declares (D4) became a real control on one surface.** It
+    was stored and read by nothing; the invoice surface now warns a tenant at CONFIGURATION time
+    when the axis they chose has already recorded more distinct values than the maximum they
+    declared for it. It warns rather than refuses, because D4 calls the cap *a keyspace guard, not
+    an invariant* — and warning at invoice time would mean the first anyone hears of it is an
+    invoice that has already reached a customer.
   - This note is appended rather than written into the bullets above because a published field
     description cites this file by LINE NUMBER (`EconomicRowOut`, `api/v1/schemas.py`), and editing
     above that line would silently move what it points at. That is a fair criticism of the citation

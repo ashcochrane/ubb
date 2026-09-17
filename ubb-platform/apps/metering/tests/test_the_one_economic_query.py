@@ -752,6 +752,13 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
                           field_filters=[(MEASUREMENT_ROLLUP, "input_size")]))
 
 
+#: The open bag's column, spelled ONCE so the cases below cannot look for one
+#: word while the model carries another. Held to the model by
+#: `test_the_open_bag_is_still_called_what_these_cases_look_for`, which is what
+#: makes a literal safe here.
+THE_OPEN_BAG = "metadata"
+
+
 class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
     """The widening slice 7 was named as closing, closed by construction.
 
@@ -778,14 +785,17 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
                     if "bag" in name or "meta" in name], taken
 
     def test_no_function_this_query_calls_reads_the_bag(self):
-        """The stronger half: the module still holds a bag-reading rollup, so
-        the claim has to be about THIS query's own reachable source rather than
-        about the file.
+        """The stronger half, about THIS query's own reachable source.
 
-        ⚠ **THE ONE IT HOLDS IS NO LONGER THE GROUPED MARGIN.** That one went
-        with its route (#501); what is left is the invoice-line breakdown, which
-        is a BILLING surface reached through this read contract and is a later
-        ticket's to migrate. The guard below names it.
+        ⚠ **IT USED TO BE THE ONLY ALTITUDE THE CLAIM COULD BE MADE AT**, because
+        the module still held a bag-reading rollup beside the query — the
+        grouped margin until #501 took it with its route, then the invoice-line
+        breakdown until #503 moved it onto the declared vocabulary. Neither is
+        left, so the module-wide case below now says something strictly
+        stronger; this one survives because it asks a different question — not
+        *does anything read the bag* but *can this query reach anything that
+        does* — and it is the one that fails first when a bag read arrives on a
+        path into the query.
         """
         source = ast.parse(inspect.getsource(queries))
         by_name = {node.name: node for node in ast.walk(source)
@@ -810,21 +820,61 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
             assert not [word for word in spelled if word.startswith("metadata")], (
                 f"{name} reads the open bag")
 
-    def test_the_bag_reading_rollup_beside_it_is_still_there(self):
-        """The vacuity guard on the case above: if the module stopped holding a
-        bag-reading function at all, that test would pass for the wrong reason
-        and stop being evidence about this query.
+    def test_no_function_in_this_module_reads_the_bag_at_all(self):
+        """THE CASE ABOVE, RE-ARGUED AT THE ONLY ALTITUDE LEFT (#503, §11).
 
-        ⚠ **IT POINTED AT THE GROUPED MARGIN UNTIL #501 DELETED IT**, which is
-        exactly the failure this guard exists to catch — the subject going away
-        and the case above staying green over nothing. The invoice-line
-        breakdown is the bag-reading rollup this module still holds, and it is
-        the last one: when the ticket that migrates it lands, this guard goes
-        red rather than quiet, and the case above should then be re-argued
-        rather than re-pointed.
+        Its vacuity guard used to point at the invoice-line breakdown — the last
+        bag-reading function this module held — and said in terms that *when the
+        ticket that migrates it lands, this guard goes red rather than quiet,
+        and the case above should then be re-argued rather than re-pointed.*
+        #503 migrated it, and this is the re-argument.
+
+        **What can no longer be said is "this query does not read the bag,
+        unlike its neighbour".** There is no neighbour. So the claim moves up to
+        the module: metering's read contract reads the open bag NOWHERE, which
+        is a stronger fact than the one it replaces and the one ADR-0005 has
+        wanted since it closed the hatch — *filterable and readable, never
+        groupable*, with the one remaining reader of it being the per-customer
+        event list's FILTER, which lives at the route and not here.
+
+        The reachability walk above still earns its keep: it is about which
+        functions this query can reach, and it would still catch a bag read
+        arriving on a path into the query before this case caught it arriving
+        anywhere.
         """
-        assert "KeyTextTransform" in inspect.getsource(
-            queries.get_customer_billed_breakdown)
+        source = ast.parse(inspect.getsource(queries))
+        functions = [node for node in ast.walk(source)
+                     if isinstance(node, ast.FunctionDef)]
+        assert len(functions) >= 30, (
+            f"only {len(functions)} functions were walked, so this proves "
+            "nothing about a module of this size")
+        for function in functions:
+            spelled = {node.attr for node in ast.walk(function)
+                       if isinstance(node, ast.Attribute)}
+            spelled |= {node.id for node in ast.walk(function)
+                        if isinstance(node, ast.Name)}
+            assert "KeyTextTransform" not in spelled, function.name
+            assert not [word for word in spelled
+                        if word.startswith(THE_OPEN_BAG)], (
+                f"{function.name} reads the open bag")
+
+    def test_the_open_bag_is_still_called_what_these_cases_look_for(self):
+        """THE VACUITY GUARD, AND IT IS NOW ABOUT THE WORD RATHER THAN A
+        NEIGHBOUR.
+
+        With nothing left reading the bag, the way the two cases above go quiet
+        is no longer *the subject was deleted* — it is *the test is looking for
+        the wrong word*. Rename the column and every assertion about it passes
+        over a module that reads the bag under its new name, with nothing
+        raising.
+
+        The word cannot be DERIVED — the whole claim is that nothing names it,
+        so there is nothing to read it off — so it is typed once and held to the
+        model here. `get_field` raises `FieldDoesNotExist` rather than returning
+        a falsy value, which is what makes this an assertion rather than a
+        truthiness check on an object that is always truthy.
+        """
+        assert Posting._meta.get_field(THE_OPEN_BAG).name == THE_OPEN_BAG
 
 
 class WhichClockGovernsARowTest(TestCase):

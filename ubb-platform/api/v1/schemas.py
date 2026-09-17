@@ -1788,6 +1788,15 @@ class PostpaidConfigIn(Schema):
     # "" clears group_by; an explicit False turns consolidation off.
     # F5.5 Fix 2: group_by used to default to "" which silently overwrote the
     # current value on every partial PUT that omitted it.
+    #
+    # ⚠ **THE VALUE IS AN AXIS, NOT A KEY, SINCE #503** (slice 7 §11): one word
+    # of the same grouping vocabulary every analytics surface takes
+    # (`field:<declared field>` or `rollup:<axis>`), refused at the route
+    # against this tenant's own discovery contract. **The FIELD NAME is the one
+    # thing here that has not moved**, and deliberately: renaming a published
+    # field regenerates the spec and the SDK, which is the later phase's work,
+    # so the backend column carries the new name and this carries the old one
+    # until then.
     usage_line_item_group_by: Optional[str] = None
     # F5.5 opt-in; None = leave unchanged (a group_by-only PUT must never
     # silently switch a tenant's consolidation mode off).

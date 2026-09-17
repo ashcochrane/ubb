@@ -445,6 +445,34 @@ _Avoid_: confusing it with a Stripe invoice — UBB pushes the lines; Stripe own
 **Line-item push**:
 The claim → Stripe → record flow that aggregates usage into lines and finalizes the Stripe invoice.
 
+**Invoice-line grouping**:
+The one axis a tenant's usage invoice is broken into lines by — a word of the SAME grouping
+vocabulary every analytics surface uses (`field:<declared field>` or `rollup:<axis>`), or empty for
+one line per period. It is chosen from the tenant's own discovery contract, reached through
+metering's `queries.py` read contract, which is the only channel ADR-001 allows here.
+(`apps/billing/invoicing/models.py:PostpaidUsageConfig.invoice_line_grouping`)
+_Avoid_: the retired free-text key, which named a `Metadata` bag key and otherwise fell through to
+the first declared slot — the third of ADR-0005's ad-hoc label reads, and the only one a paying
+customer read. **Rollups are actively preferred**: fewer, more meaningful lines.
+
+**Money-only lines**:
+The rule that an invoice line exists where a customer owes something. A **waived** charge and every
+metered call under a **fixed-price Task** carry no liability, so they produce no line at all — a
+fixed-price Task is ONE line, labelled by that Task, and its constituent calls are none. A tenant
+still sees the waived money on the exposure report, which is where a decision with a real loss
+behind it belongs.
+_Avoid_: reading it as "drop the zero rows". It is decided by revenue STATE, never by amount, and
+**cost state never delays, blocks or alters a customer-facing line** — an unresolved supplier cost
+is read nowhere in building one.
+
+**Invoice-line cardinality warning**:
+What UBB tells a tenant, at the moment they choose an axis, when that axis has already recorded more
+distinct values than the maximum they declared for it (ADR-0005 D4). A warning and never a refusal —
+the cap is a keyspace guard, not an invariant — recorded on the audit feed beside the change that
+provoked it.
+_Avoid_: deferring it to invoice time, which is the failure it exists to prevent: the first anyone
+hears of a 5,000-line invoice should not be the customer receiving one.
+
 **Consolidation**:
 Pinning usage lines onto the owner's subscription-renewal invoice instead of minting a standalone
 one.

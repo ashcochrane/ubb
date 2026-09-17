@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from typing import Optional
 from uuid import UUID
@@ -38,6 +39,8 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 billing_router = Router(auth=ApiKeyAuth())
+
+logger = logging.getLogger("ubb.billing")
 
 _product_check = ProductAccess("billing")
 
@@ -764,13 +767,29 @@ def list_tenant_usage_invoices(request, period: str = None,
     return page(qs, cursor, limit, serialize=tenant_usage_invoice_out)
 
 
+#: WHERE THE CONFIGURATION-TIME CARDINALITY WARNING IS PUBLISHED (#503, §11).
+#:
+#: ⚠ **THE AUDIT FEED IS A TENANT-READABLE SURFACE, WHICH IS WHY IT CAN CARRY
+#: THIS.** `GET /audit/records` is at the READ floor for every principal and
+#: `AuditRecordOut.metadata` is an open dict, so a warning recorded beside the
+#: choice that provoked it reaches the tenant through a route that already
+#: exists — and it reaches them attached to the act, which is what "at
+#: configuration time" means. A response field would say the same thing; it
+#: would also move the published contract in the phase that regenerates the SDK
+#: from it (§21's B2), so the same warning would ship twice or not at all.
+#:
+#: It is a WARNING and never a refusal: the declared maximum is a keyspace bound
+#: the tenant set on their own axis, not an invariant UBB may bill against.
+CARDINALITY_WARNING_KEY = "invoice_line_cardinality_warning"
+
+
 @billing_router.get("/postpaid-config", response=PostpaidConfigOut)
 @role_floor(READ)
 def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     cfg = PostpaidUsageConfig.objects.filter(tenant=request.auth.tenant).first()
-    return {"usage_line_item_group_by": cfg.usage_line_item_group_by if cfg else "",
+    return {"usage_line_item_group_by": cfg.invoice_line_grouping if cfg else "",
             "consolidate_with_subscription": cfg.consolidate_with_subscription if cfg else False}
 
 
@@ -778,22 +797,57 @@ def get_postpaid_config(request):
 @role_floor(ADMIN)
 @records_audit("postpaid_config.set")
 def put_postpaid_config(request, payload: PostpaidConfigIn):
+    # ⚠ THE INVOICE-LINE GROUPING IS AN AXIS OF THE ONE VOCABULARY (#503, slice 7
+    # §11), reached through metering's `queries.py` read contract — the only
+    # channel ADR-001 allows between these two products, and the reason a ticket
+    # plan scoped by analytics route would miss this surface entirely.
+    #
+    # ⚠ THE PUBLISHED FIELD KEEPS ITS NAME HERE AND THE COLUMN DOES NOT. What a
+    # tenant SENDS is contract vocabulary and renaming it regenerates the spec
+    # and the SDK, which is phase B2's work (§21) and not this ticket's; what the
+    # column HOLDS is a backend fact and changed with its meaning. The mapping
+    # between the two lives in this function, deliberately in one place.
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
+    from apps.metering.queries import (
+        SURFACE_INVOICE_LINES, grouping_refusal, invoice_line_cardinality_warning)
+
+    tenant = request.auth.tenant
     # F5.5 Fix 2: both fields use None sentinel — only write the fields that
     # were explicitly provided in the PUT body.
     defaults = {}
-    if payload.usage_line_item_group_by is not None:
-        defaults["usage_line_item_group_by"] = payload.usage_line_item_group_by
+    chosen_axis = payload.usage_line_item_group_by
+    if chosen_axis is not None:
+        if chosen_axis:
+            # ⚠ ONE CODE, DECIDED STRUCTURALLY. Every way this can fail — a word
+            # with no kind, an axis this tenant never declared, an axis that
+            # cannot honestly label money — is a stored value UBB would have to
+            # bill against, and the remedy for all three is to send a different
+            # one. The refusal's own sentence says which it was; the code does
+            # not depend on reading it.
+            refusal = grouping_refusal(tenant.id, axes=[chosen_axis],
+                                       surface=SURFACE_INVOICE_LINES)
+            if refusal is not None:
+                raise Problem("validation_error", refusal)
+        defaults["invoice_line_grouping"] = chosen_axis
     if payload.consolidate_with_subscription is not None:
         defaults["consolidate_with_subscription"] = payload.consolidate_with_subscription
     with transaction.atomic():
         cfg, _ = PostpaidUsageConfig.objects.update_or_create(
-            tenant=request.auth.tenant, defaults=defaults)
+            tenant=tenant, defaults=defaults)
+        metadata = {"usage_line_item_group_by": cfg.invoice_line_grouping,
+                    "consolidate_with_subscription": cfg.consolidate_with_subscription}
+        warning = (invoice_line_cardinality_warning(tenant.id,
+                                                    cfg.invoice_line_grouping)
+                   if cfg.invoice_line_grouping else None)
+        if warning is not None:
+            logger.warning("postpaid.invoice_line_cardinality", extra={"data": {
+                "tenant_id": str(tenant.id),
+                "axis": cfg.invoice_line_grouping, "warning": warning}})
+            metadata[CARDINALITY_WARNING_KEY] = warning
         audit_record(
-            action="postpaid_config.set", tenant_id=request.auth.tenant.id,
-            resource_type="postpaid_config", resource_id=request.auth.tenant.id,
-            metadata={"usage_line_item_group_by": cfg.usage_line_item_group_by,
-                      "consolidate_with_subscription": cfg.consolidate_with_subscription})
-    return {"usage_line_item_group_by": cfg.usage_line_item_group_by,
+            action="postpaid_config.set", tenant_id=tenant.id,
+            resource_type="postpaid_config", resource_id=tenant.id,
+            metadata=metadata)
+    return {"usage_line_item_group_by": cfg.invoice_line_grouping,
             "consolidate_with_subscription": cfg.consolidate_with_subscription}

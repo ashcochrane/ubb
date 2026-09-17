@@ -526,7 +526,7 @@ entries:
     gate: G7
     site: backend::tag_key
     expected: analytics_grouping_kind
-    found: 3 files
+    found: 2 files
     owner_slice: slice_7
     reason: >-
       A grouping kind that read from the open bag. Slice 7's grouping
@@ -550,6 +550,16 @@ entries:
       means the one economic query cannot absorb it and no route removal will
       clear it. It is a rename on a surviving route, and it is still slice 7's.
 
+      3 -> 2 in #503, WHICH DID NOT OWN THIS ENTRY AND MOVED IT ANYWAY. The
+      postpaid aggregate parity suite held a `tag_key` local in its reference
+      implementation of the retired invoice-line reader; #503 deleted that
+      reader, so the mirror of it went too. `found:` fails in BOTH directions,
+      so a ticket paying one word has to re-take the per-site file list for
+      every word and diff it — this decrement was found that way and by nothing
+      else. What the entry still owes is unchanged: the filter pair on the
+      per-customer event list, and the one test module that exercises the bag
+      underneath it.
+
   # `g7-backend-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split). It stood at 15 files, the largest of the four surfaces, and the
   # word is now refused in every swept file rather than counted. Replaced by
@@ -568,11 +578,29 @@ entries:
     gate: G7
     site: backend::usage_line_item_group_by
     expected: analytics_grouping_kind
-    found: 11 files
+    found: 4 files
     owner_slice: slice_7
     reason: >-
       A grouping kind named after the invoice line it produced rather
       than after what it grouped. Slice 7's collapse replaces it.
+
+      11 -> 4 in #503, and what went is everything BEHIND the wire. The stored
+      column, the service that reads it, the read contract's parameter and the
+      five test modules that built or asserted on them all now carry the
+      invoice-line grouping AXIS instead — one word of the same vocabulary
+      every chart uses, validated at configuration time against the tenant's own
+      discovery contract. The free-text key that drove invoice line labels is
+      gone, and with it the silent fall-through that grouped an unrecognised
+      configuration by the first slot.
+
+      ⚠ **THE FOUR LEFT ARE ALL ONE FACT: THE PUBLISHED FIELD STILL SPELLS IT.**
+      `api/v1/schemas.py` declares it on the postpaid config request and
+      response, `api/v1/billing_endpoints.py` maps it onto the renamed column,
+      and two route test modules send it as the wire spells it today. Renaming a
+      published field regenerates the contract and the SDK, which is phase B2's
+      work and not phase B1's (slice 7 §21) — so this is the correct resting
+      state for the backend column, not a residue, and it clears in one edit
+      when the contract moves.
 
   # `g7-console-budget` WAS HERE AND IS PAID (#468, slice 6, the console
   # stage of §20 with the catalogue's #464 already landed): the two features'

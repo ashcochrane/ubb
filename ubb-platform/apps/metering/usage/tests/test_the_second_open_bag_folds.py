@@ -370,17 +370,16 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         from apps.platform.grouping_fields.models import SLOT_CHOICES
         assert SURVIVING_COLUMN not in dict(SLOT_CHOICES)
 
-    def test_naming_the_bag_as_an_invoice_line_grouping_falls_back_to_a_column(
-            self):
-        """Being handed the bag's own name does not make the line-label reader
-        read the bag — but READ HOW IT GETS THERE BEFORE TRUSTING THIS.
+    def test_naming_the_bag_as_an_invoice_line_grouping_is_refused(self):
+        """THE SILENT FALL-THROUGH THIS TEST RECORDED IS CLOSED (#503, §11).
 
-        It is not a refusal. That reader recognises the `tag:` prefix and
-        otherwise falls through to `dim1`, so an unrecognised grouping is
-        silently grouped by a column the caller did not name. The bag is not
-        read, which is what this test is entitled to claim; the silent
-        fallback underneath is a defect in a slice-7-owned surface, recorded
-        here rather than repaired here.
+        It used to say: *the reader recognises the `tag:` prefix and otherwise
+        falls through to `dim1`, so an unrecognised grouping is silently grouped
+        by a column the caller did not name* — and that *the silent fallback
+        underneath is a defect in a slice-7-owned surface, recorded here rather
+        than repaired here.* This is the repair. The bag is still not read, and
+        it is no longer read as something else either: a word the discovery
+        contract does not publish is refused.
         """
         from apps.metering.queries import get_customer_billed_breakdown
         from datetime import date
@@ -390,29 +389,38 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
             billed_cost_micros=500_000, grouping_field_1="chat",
             metadata={"seat": "alice"})
 
-        rows = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, date(2020, 1, 1),
-            date(2100, 1, 1), group_by=SURVIVING_COLUMN)
+        # The MESSAGE, not just the type: `_axis_plan` raises its own
+        # `ValueError` further in, so a bare type check would pass over the read
+        # contract falling over rather than refusing.
+        with self.assertRaisesRegex(ValueError, "names no grouping kind"):
+            get_customer_billed_breakdown(
+                self.tenant.id, self.customer.id, date(2020, 1, 1),
+                date(2100, 1, 1), group_by=SURVIVING_COLUMN)
 
-        # dim1, not the bag: "chat" rather than "alice". A row reading
-        # "(other)" would have passed on an empty dim1 without distinguishing
-        # "grouped by the wrong column" from "read nothing at all".
-        # The third element is #351's per-line completeness count, zero here
-        # because this posting's price is resolved.
-        self.assertEqual(rows, [("chat", 500_000, 0)])
+    def test_a_nested_value_can_no_longer_reach_the_label_path(self):
+        """THE WIDENING THE FOLD OPENED, CLOSED (#503, slice 7 §11).
 
-    def test_a_nested_value_reaches_the_label_path_unconstrained(self):
-        """WHAT THE FOLD WIDENED, RUN RATHER THAN ASSERTED AWAY.
+        This test used to RUN the widening rather than assert it away: the
+        retiring bag was validated flat `str -> str` on the recording path, the
+        survivor never was, and a key-driven invoice line label could therefore
+        be handed a serialised object where it used to be handed a short string.
+        Nothing was ever mis-metered by it and no money moved — the label was
+        ugly and unbounded, on the one surface a paying customer reads.
 
-        The retiring bag was validated flat `str -> str` on the recording
-        path. The survivor never was, and nesting is a real use of it — so a
-        key-driven invoice line label can now be handed a serialised object
-        where it used to be handed a short string. Nothing is mis-metered and
-        no money moves; the label is ugly and unbounded.
+        It said *this is the widening slice 7 closes when it moves grouping onto
+        the declared contract, pinned here so that closing it is a change to a
+        red test rather than a discovery.* It is closed by there being no key to
+        hand: an invoice line's axis is one the tenant declared, and a
+        declaration binds a key to a SLOT, which the test above shows the bag
+        can never be.
 
-        This is the widening slice 7 closes when it moves grouping onto the
-        declared contract. It is pinned here so that closing it is a change to
-        a red test rather than a discovery.
+        ⚠ **THE REFUSAL IS THE SAME ONE ITS SIBLING ABOVE GETS, AND THAT IS THE
+        RESULT RATHER THAN A WEAKNESS IN THE TEST.** The bag used to have a
+        reader of its own on this surface — a `tag:` prefix the label path
+        recognised — and what closed the widening is that the prefix is now
+        just a word naming no kind, handled by the same sentence as any other.
+        The nested value is kept as the fixture because it is the thing that
+        used to get through; it can no longer get as far as being serialised.
         """
         from apps.metering.queries import get_customer_billed_breakdown
         from datetime import date
@@ -422,10 +430,11 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
             billed_cost_micros=500_000,
             metadata={"request": {"model": "gpt-5", "stream": True}})
 
-        rows = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, date(2020, 1, 1),
-            date(2100, 1, 1), group_by="tag:request")
-
-        (label, amount, _unpriced), = rows
-        self.assertEqual(amount, 500_000)
-        self.assertIn("gpt-5", label)   # a JSON object, serialised as a label
+        with self.assertRaisesRegex(ValueError, "names no grouping kind") as raised:
+            get_customer_billed_breakdown(
+                self.tenant.id, self.customer.id, date(2020, 1, 1),
+                date(2100, 1, 1), group_by="tag:request")
+        # Nothing of the bag reached the message: a refusal that echoed the
+        # serialised object back would be the same unbounded string arriving one
+        # surface further along.
+        assert "gpt-5" not in str(raised.exception)

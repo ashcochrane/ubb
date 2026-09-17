@@ -22,6 +22,11 @@ Consumers:
 - apps/billing/invoicing/tasks.py → get_customer_ids_with_usage()
 - apps/billing/invoicing/services/postpaid_service.py → get_customer_cost_totals(),
   get_billed_totals_by_customer(), get_customer_billed_breakdown()
+- api/v1/billing_endpoints.py → grouping_refusal(), invoice_line_cardinality_warning()
+  — the postpaid config's write surface, which validates the invoice-line
+  grouping axis against this tenant's own discovery contract and warns on its
+  cardinality at the moment it is chosen (#503). A BILLING surface reached
+  through this read contract, which is the only channel ADR-001 allows
 - apps/billing/wallets/tasks.py → iter_billable_usage_events()
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
@@ -45,7 +50,6 @@ from datetime import date, datetime
 from typing import Iterator, NamedTuple, TypedDict
 
 from django.db.models import Count
-from django.db.models.fields.json import KeyTextTransform
 from django.db.models.functions import TruncDay, TruncHour, TruncMonth
 from django.utils import timezone
 
@@ -76,6 +80,7 @@ from core.vocabulary import (
     MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
     MEASURE_STATUS_VALUES,
+    PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_WAIVED,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
@@ -505,6 +510,46 @@ def get_customer_ids_with_usage(tenant_id, period_start: date, period_end: date)
     ).values_list("customer_id", flat=True).distinct())
 
 
+#: THE CUSTOMER-PRICE STATES THAT CARRY NO LIABILITY, AND THEREFORE NO INVOICE
+#: LINE (#503, slice 7 §11).
+#:
+#: **A customer's invoice depends on revenue state only.** Both of these null
+#: the amount and both are genuine zeroes rather than missing information — the
+#: asymmetry `core.amount_status_pairs` argues for the completeness count — so a
+#: total over them is already right. What is NOT already right is the LINE: a
+#: group exists because a row produced it, so a posting nobody owes anything for
+#: mints a heading on a customer's invoice with nothing under it.
+#:
+#: * `not_applicable` is every metered call beneath a fixed-price unit of work.
+#:   The unit's own Charge is the liability and it projects one posting of its
+#:   own, so rendering the calls as zero-revenue lines sends a customer hundreds
+#:   of lines that say nothing. §11 is explicit that this is **worse on an
+#:   invoice than on a dashboard**, where the same rows are a legitimate answer
+#:   to *what work was done*.
+#: * `waived` is a charge somebody decided not to pursue. There is no liability,
+#:   so there is nothing to put on an invoice — and it must not vanish with the
+#:   line: the loss it represents is reported by :func:`get_waived_loss`, which
+#:   is the tenant's exposure surface and reads the same postings.
+#:
+#: ⚠ **`unknown` IS DELIBERATELY NOT HERE.** A price UBB could not resolve is a
+#: liability it failed to put a number on, not an absent one, and dropping those
+#: rows would silently shrink an invoice. They stay in, contribute nothing, and
+#: are COUNTED — which is what makes a line a floor that says so (#351).
+INVOICE_LINE_STATES_WITH_NO_LIABILITY = (PRICING_STATUS_WAIVED,
+                                         PRICING_STATUS_NOT_APPLICABLE)
+
+
+def _carrying_customer_liability(postings):
+    """The postings an invoice line may be built from, filtered in one place.
+
+    Both invoice reads below apply the same rule and a second copy is how the
+    per-seat lines and the grouped lines come to disagree about what a customer
+    owes.
+    """
+    return postings.exclude(
+        pricing_status__in=INVOICE_LINE_STATES_WITH_NO_LIABILITY)
+
+
 def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
                                   period_end: date) -> dict:
     """Sum(billed_cost_micros) per customer over [period_start, period_end).
@@ -523,14 +568,22 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
     all is a policy question this ticket does not decide** — #329 answered the
     equivalent one for supplier cost by refusing the close, and the number that
     question needs is now present rather than absent.
+
+    ⚠ **A SEAT WHOSE EVERY POSTING CARRIES NO LIABILITY IS ABSENT, NOT PRESENT
+    WITH A ZERO** (#503). This is the per-seat half of the invoice, so the rule
+    at `INVOICE_LINE_STATES_WITH_NO_LIABILITY` applies here exactly as it does
+    to the grouped half: a seat that only ever ran work under a fixed-price unit
+    owes nothing of its own, and a zero line against its name on a customer's
+    invoice is a line that should not have been drawn. The TOTAL is unmoved —
+    those rows summed to nothing before they were excluded.
     """
     from apps.metering.usage.models import Posting
 
-    rows = (Posting.objects.filter(
+    rows = (_carrying_customer_liability(Posting.objects.filter(
         tenant_id=tenant_id, customer_id__in=list(customer_ids),
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
-    ).values("customer_id").annotate(
+    )).values("customer_id").annotate(
         **cost_total_annotations(CUSTOMER_PRICE, key="total")).order_by())
     return {r["customer_id"]:
             {"billed_cost_micros": carry_cost_total(
@@ -539,59 +592,153 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
             for r in rows}
 
 
+#: THE HEADING AN INVOICE LINE TAKES WHERE THE AXIS HAS NO VALUE TO PUT ON IT.
+#:
+#: ⚠ **THIS IS WHERE THE INVOICE AND THE ANALYTICS CONTRACT DELIBERATELY PART**,
+#: and both readings are right for their own surface. `economics` carries a null
+#: value with `GROUPED_VALUE_STATUS_KEY` beside it, which says WHY there is no
+#: value — the distinction #501 bought and the thing a chart must not hide. An
+#: invoice cannot use it: a customer is charged under a HEADING, and a line with
+#: no heading is a line nobody can dispute. So an absent value keeps a word here
+#: rather than a status, and the two never become one rule.
+INVOICE_LINE_OTHER = "(other)"
+
+
 def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
                                   period_end: date, group_by: str) -> list[tuple]:
-    """Billed totals for ONE customer grouped by "tag:<key>" or the first slot.
+    """Billed totals for ONE customer, grouped by one axis of §6's vocabulary.
 
     Returns UNSORTED, aggregated [(label, billed_micros, unpriced_event_count),
     ...] triples (the caller owns presentation order). The third element is
     #351's, and it is on the tuple for the reason `get_billed_totals_by_customer`
     above gives at length: these are invoice lines, so a line that is a floor and
-    says nothing is money not charged. Postpaid invoice-line label semantics:
-    a missing key, an absent bag, a JSON-null or EMPTY-STRING value, and
-    an empty slot value ALL collapse into "(other)" — unlike the analytics
-    contract, which since #501 is `economics` and does not treat "" as a value
-    at all: a row with nothing on an axis carries a null there and a
-    `not_recorded` state beside it, which says WHY there is no value rather
-    than inventing a heading for it. An invoice line still needs a heading a
-    reader can be charged under, which is what keeps "(other)" here.
-    SQL GROUP BY pushdown; NULL and "" groups are merged into "(other)"
-    post-query.
+    says nothing is money not charged.
 
-    ``group_by`` IS ONLY READ FOR ITS "tag:" PREFIX. Anything else means the
-    first slot, whatever the stored configuration spells — which is why #276
-    renaming that column changed no stored value and needed no rewrite of
-    ``PostpaidUsageConfig``. A tenant configured against the old spelling still
-    gets the first slot, exactly as before.
+    ⚠ **``group_by`` IS AN AXIS FROM :func:`grouping_options`, NOT A KEY** (#503,
+    slice 7 §11). It took a free-text `"tag:<key>"` reading of the open bag, and
+    anything else meant the first slot whatever the stored configuration spelled
+    — the third of ADR-0005's ad-hoc label reads, the sharpest of its three
+    free-text hatches, *and the only one a paying customer reads*. An unbounded
+    key driving invoice line labels is how a 5,000-line invoice happens; a silent
+    fall-through to a column nobody named is how a tenant is billed under
+    headings they never chose. Both are gone: a word this tenant's discovery
+    contract does not publish for the invoice surface is REFUSED, with the same
+    sentence every other surface refuses it with.
+
+    **The lines are money-only, and the rule is the revenue state's.** Postings
+    carrying no customer liability are excluded before anything is grouped —
+    `INVOICE_LINE_STATES_WITH_NO_LIABILITY` argues each one — so a fixed-price
+    unit of work is ONE line, labelled by that unit, and the metered calls
+    beneath it are none at all. **An unresolved SUPPLIER COST never delays,
+    blocks or alters any of this**: it is read nowhere in this function, which is
+    the whole of §11's rule underneath, and the cost's own completeness lives on
+    the surfaces that report cost.
+
+    Label semantics are the invoice's rather than the analytics contract's: a
+    NULL, an empty slot value and an identity filed under no rollup heading ALL
+    collapse into `INVOICE_LINE_OTHER`, which argues why. SQL GROUP BY pushdown;
+    the collapse and the rollup's fold happen post-query, over at most as many
+    rows as the axis has values.
     """
     from apps.metering.usage.models import Posting
 
-    qs = Posting.objects.filter(
+    refusal = grouping_refusal(tenant_id, axes=[group_by],
+                               surface=SURFACE_INVOICE_LINES)
+    if refusal is not None:
+        raise ValueError(refusal)
+    # ⚠ THE REFUSAL ABOVE IS ALSO WHAT GUARANTEES `plan["column"]` IS A COLUMN.
+    # The one axis with none is the measurement rollup, which groups records
+    # BENEATH an event — and `_option` leaves it off this surface's list for
+    # that reason, so it never reaches here. That is the discovery contract
+    # deciding availability rather than this function keeping a second list,
+    # which is §5.4's rule; it is written down because the coupling is real and
+    # a reader would otherwise have to find it.
+    plan = _axis_plan(tenant_id, group_by)
+
+    rows = (_carrying_customer_liability(Posting.objects.filter(
         tenant_id=tenant_id, customer_id=customer_id,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
-    )
-    if group_by.startswith("tag:"):
-        # The key-driven invoice line labels are slice 7's surface, left where
-        # #273 found them — only the column underneath moved, with the fold.
-        rows = (qs.annotate(label=KeyTextTransform(group_by[4:], "metadata"))
-                .values("label")
-                .annotate(**cost_total_annotations(CUSTOMER_PRICE, key="total"))
-                .order_by())
-        raw_key = "label"
-    else:  # the first slot
-        rows = (qs.values("grouping_field_1")
-                .annotate(**cost_total_annotations(CUSTOMER_PRICE, key="total"))
-                .order_by())
-        raw_key = "grouping_field_1"
+    )).values(plan["column"])
+      .annotate(**cost_total_annotations(CUSTOMER_PRICE, key="total"))
+      .order_by())
     merged: dict = {}
     counts: dict = {}
     for r in rows:
-        label = r[raw_key] or "(other)"  # NULL and "" both collapse, then merge
         row = carry_cost_total(CUSTOMER_PRICE, dict(r), key="total")
+        label = _invoice_line_label(plan, row[plan["column"]])
         merged[label] = merged.get(label, 0) + row["total"]
         counts[label] = counts.get(label, 0) + row[UNPRICED_EVENT_COUNT_KEY]
     return [(label, billed, counts[label]) for label, billed in merged.items()]
+
+
+def _invoice_line_label(plan, raw) -> str:
+    """The heading one group is charged under.
+
+    A rollup's heading is what its identity is filed under, resolved through the
+    membership the plan carries — and an identity nobody has filed has no
+    heading, which lands in `INVOICE_LINE_OTHER` exactly as an empty column
+    does. Both are *this line has no value on the chosen axis*, which is one
+    fact on an invoice however many ways a chart needs to tell it apart.
+    """
+    value = raw
+    if plan["membership"] is not None:
+        value = plan["membership"].get(raw)
+    return INVOICE_LINE_OTHER if value in (None, "") else str(value)
+
+
+def invoice_line_cardinality_warning(tenant_id, axis) -> str | None:
+    """What a tenant should be told about this axis BEFORE it bills on it.
+
+    ⚠ **CARDINALITY IS THE ONE OF §7's THREE REFUSAL GROUNDS THE DISCOVERY
+    CONTRACT CANNOT DECIDE**, and :func:`grouping_refusal` says so in terms: the
+    cap is a number the tenant declared and how many lines an axis produces is a
+    count over their postings, which only a query that runs them can know. So the
+    cap travels on the row and this is the invoice surface's half of deciding
+    with it.
+
+    **It warns, and it warns at CONFIGURATION time.** Refusing would be wrong —
+    the tenant declared the cap as a keyspace bound, not as an invariant, and a
+    period that happens to exceed it is not a period UBB may decline to bill.
+    Warning at invoice time would be worse than useless: the first anyone hears
+    of it is a 5,000-line invoice that has already gone to a customer. The
+    moment a tenant can still act on it is the moment they choose the axis.
+
+    ⚠ **A ROLLUP AND AN ALWAYS-PRESENT AXIS ANSWER `None`, AND THAT IS NOT AN
+    OMISSION.** `max_cardinality` is a cap the TENANT declared on an axis they
+    declared; UBB's own axes carry none, so there is no maximum to exceed and
+    nothing honest to say. The row's own `max_cardinality` is what decides,
+    which keeps the rule in one place.
+
+    The count is of distinct values RECORDED, over this tenant's whole history
+    rather than over one period, because the question is what the axis *could*
+    produce and a quiet month is not evidence. Blank values do not count: they
+    are one `INVOICE_LINE_OTHER` line between them however many rows carry them,
+    so counting them as values would overstate by as many as there are kinds of
+    blank. They are dropped in PYTHON rather than excluded in SQL, which keeps
+    this true of a column of any type — the axes with a cap are all declared
+    text slots today, and an `.exclude(column="")` would raise the day one of
+    them is not. The scan stops a few past the cap, because the answer is only
+    ever compared against it and the two kinds of blank need room.
+    """
+    from apps.metering.usage.models import Posting
+
+    option = {row["key"]: row for row in grouping_options(tenant_id)}.get(axis)
+    if option is None or option["max_cardinality"] is None:
+        return None
+    ceiling = option["max_cardinality"]
+    plan = _axis_plan(tenant_id, axis)
+    values = (Posting.objects.filter(tenant_id=tenant_id)
+              .values_list(plan["column"], flat=True)
+              .distinct().order_by()[:ceiling + 3])
+    found = len({value for value in values if value not in (None, "")})
+    if found <= ceiling:
+        return None
+    return (f"{axis!r} has recorded more than {ceiling} distinct values, which "
+            f"is the maximum this tenant declared for it — an invoice grouped "
+            f"by it will carry more than {ceiling} lines. Group by a rollup for "
+            f"fewer, more meaningful lines, or raise the axis's declared "
+            f"maximum.")
 
 
 def mark_backfill_dirty_period(tenant_id, customer_id, period_start) -> None:

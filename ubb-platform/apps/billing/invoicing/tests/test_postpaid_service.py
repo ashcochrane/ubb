@@ -31,8 +31,10 @@ class TestAggregate:
         assert lines == [("", 1_000_000)]
 
     def test_group_by_product_with_other_bucket(self):
+        from apps.platform.grouping_fields.services import DimensionService
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="dim1")
+        DimensionService.declare(t, key="product", slot="grouping_field_1", scope="event")
+        PostpaidUsageConfig.objects.create(tenant=t, invoice_line_grouping="field:product")
         self._events(t, c)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
         assert total == 1_000_000
@@ -40,18 +42,26 @@ class TestAggregate:
         labels = dict(lines)
         assert labels["chat"] == 800_000 and labels["(other)"] == 200_000
 
-    def test_group_by_tag_with_other_bucket(self):
+    def test_group_by_an_always_present_axis_with_other_bucket(self):
+        """The free-text bag reading was HERE and is gone (#503, slice 7 §11).
+
+        It grouped invoice lines by a key of the open bag, which the discovery
+        contract does not publish as an axis and #273 had already closed for
+        grouping. An always-present axis is the same shape of claim — a value
+        every posting carries, and an "(other)" heading for the ones that
+        do not — over a word the contract really does offer.
+        """
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        PostpaidUsageConfig.objects.create(tenant=t, usage_line_item_group_by="tag:seat")
+        PostpaidUsageConfig.objects.create(tenant=t, invoice_line_grouping="field:provider")
         Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
-            provider_cost_micros=1, billed_cost_micros=500_000, metadata={"seat": "alice"},
+            provider_cost_micros=1, billed_cost_micros=500_000, provider="openai",
             effective_at=MID)
         Posting.objects.create(tenant=t, customer=c, idempotency_key="i2",
-            provider_cost_micros=1, billed_cost_micros=300_000, metadata={},  # no label
+            provider_cost_micros=1, billed_cost_micros=300_000, provider="",  # no label
             effective_at=MID)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
         assert total == 800_000 and sum(a for _, a in lines) == 800_000
-        assert dict(lines)["alice"] == 500_000 and dict(lines)["(other)"] == 300_000
+        assert dict(lines)["openai"] == 500_000 and dict(lines)["(other)"] == 300_000
 
 
 @pytest.mark.django_db

@@ -67,12 +67,13 @@ class NulByteTest(DataErrorPinBase):
         # The write rolled back with the transaction — nothing half-created.
         self.assertFalse(Customer.objects.filter(tenant=self.tenant).exists())
 
-    def test_nul_byte_in_postpaid_config_is_a_422_problem(self):
-        response = self._request(
-            "PUT", "/api/v1/billing/postpaid-config",
-            {"usage_line_item_group_by": "x\x00y"},
-        )
-        self.assert_data_error_problem(response)
+    # ⚠ **THE POSTPAID-CONFIG REPRO WAS HERE AND IS GONE (#503, slice 7 §11),
+    # AND THE LANE IS STILL PINNED BY THE TEST ABOVE.** That field took a
+    # free-text key; it now takes one axis of a closed per-tenant vocabulary, so
+    # a value carrying a NUL byte is refused by the route before any driver sees
+    # it — a different 422 with a different detail, which is the field doing its
+    # job rather than this lane losing a case. The customer's external id is
+    # still the open string the shape needs and is the surviving repro.
 
 
 class IntegerOverflowTest(DataErrorPinBase):
@@ -91,19 +92,26 @@ class IntegerOverflowTest(DataErrorPinBase):
 
 class LengthOverflowTest(DataErrorPinBase):
     """Shape 3 — a doc-legal open string overflowing a varchar column: the
-    postpaid-config repro (``usage_line_item_group_by`` is varchar(64)).
+    customer-create repro (``Customer.external_id`` is varchar(255)).
 
-    This used to repro on the plan-creation ``interval`` field, but the
-    plan-as-kernel work (2026-07-27) closed that field to a
-    ``Literal["month", "year"]`` — "quarterly" is now doc-illegal and never
-    reaches the DB, so it no longer exercises this DataError lane."""
+    ⚠ **THIS SHAPE HAS NOW LOST TWO VEHICLES TO THE SAME KIND OF CHANGE, AND
+    THAT IS WORTH READING AS A PATTERN RATHER THAN AS TWO ACCIDENTS.** It first
+    repro'd on the plan-creation ``interval`` field until the plan-as-kernel
+    work (2026-07-27) closed that field to a ``Literal["month", "year"]``; it
+    then repro'd on the postpaid invoice-line grouping until #503 closed THAT
+    field to one axis of a per-tenant vocabulary. Each time, a field stopped
+    being a doc-legal open string because closing it was the right thing to do —
+    so the lane needs a vehicle that is open **because the value is genuinely
+    the caller's**, which a customer's own identifier is and a UBB vocabulary
+    never will be again."""
 
-    def test_varchar_overflow_in_postpaid_group_by_is_a_422_problem(self):
+    def test_varchar_overflow_in_customer_external_id_is_a_422_problem(self):
         response = self._request(
-            "PUT", "/api/v1/billing/postpaid-config",
-            {"usage_line_item_group_by": "x" * 65},
+            "POST", "/api/v1/platform/customers", {"external_id": "x" * 256},
         )
         self.assert_data_error_problem(response)
+        # The write rolled back with the transaction — nothing half-created.
+        self.assertFalse(Customer.objects.filter(tenant=self.tenant).exists())
 
 
 class OnlyDataErrorTakesTheValidationLaneTest(TestCase):

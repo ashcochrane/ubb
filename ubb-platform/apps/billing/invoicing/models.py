@@ -87,7 +87,7 @@ class CustomerUsageInvoice(BaseModel):
     rebill_generation = models.PositiveIntegerField(default=0)
     # Frozen-at-first-claim aggregation: [[label, amount_micros], ...]. Pinned in
     # Phase 1 of the first push attempt so line_index identity is stable across
-    # retries even if the tenant flips usage_line_item_group_by mid-retry.
+    # retries even if the tenant flips the invoice-line grouping axis mid-retry.
     line_snapshot = models.JSONField(default=list, blank=True)
     residual_micros = models.BigIntegerField(default=0)
     # F1.1: the carry-in reserved (take-and-zero) from the owner's residual
@@ -112,9 +112,16 @@ class CustomerUsageInvoice(BaseModel):
 
 class UsageInvoiceLineItem(BaseModel):
     usage_invoice = models.ForeignKey(CustomerUsageInvoice, on_delete=models.CASCADE, related_name="line_items")
-    # The value of whichever axis `usage_line_item_group_by` names, or "" when
-    # the tenant groups nothing — the same thing the analytics rollups publish
-    # under this name. Internal: no schema declares it and no route returns it.
+    # The value of whichever axis `PostpaidUsageConfig.invoice_line_grouping`
+    # names, or "" when the tenant groups nothing. Internal: no schema declares
+    # it and no route returns it.
+    #
+    # ⚠ **IT SHARES THE ANALYTICS ROW'S NAME AND NOT ITS TREATMENT OF ABSENCE**
+    # (#312 settled the name; #503 is where the two part). `economics` carries a
+    # null value with a status beside it saying WHY there is none; a line on an
+    # invoice needs a heading a customer can be charged under, so an absent
+    # value lands here as `queries.INVOICE_LINE_OTHER`, which argues it. Same
+    # concept, same word for it, one deliberate divergence.
     grouping_field_value = models.CharField(max_length=255, blank=True, default="")
     amount_micros = models.BigIntegerField(default=0)
     stripe_invoice_item_id = models.CharField(max_length=255, blank=True, default="")
@@ -148,7 +155,18 @@ class PostpaidResidualLedger(BaseModel):
 
 class PostpaidUsageConfig(BaseModel):
     tenant = models.OneToOneField("tenants.Tenant", on_delete=models.CASCADE, related_name="postpaid_config")
-    usage_line_item_group_by = models.CharField(max_length=64, blank=True, default="")
+    # HOW THIS TENANT'S INVOICE LINES ARE GROUPED — one axis of the SAME
+    # vocabulary every chart uses (#503, slice 7 §11), spelled as
+    # `apps.metering.queries.grouping_axis` spells it, or "" for one line per
+    # period. It held a free-text key until slice 7: a bounded axis the tenant
+    # declared is the whole difference between an invoice a customer can read
+    # and the 5,000-line one ADR-0005 names.
+    #
+    # ⚠ **THE WIDTH IS NO LONGER WHAT BOUNDS IT.** `api/v1/billing_endpoints.py`
+    # refuses any value this tenant's discovery contract does not publish for
+    # the invoice surface, so the column holds one of a closed per-tenant set
+    # and the length limit is a backstop rather than the rule.
+    invoice_line_grouping = models.CharField(max_length=64, blank=True, default="")
     # F5.5 opt-in: at period close, pin the usage lines onto the billing
     # owner's subscription-renewal DRAFT invoice (one Stripe invoice per
     # period) instead of minting a standalone usage invoice. Standalone stays
