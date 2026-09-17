@@ -4,6 +4,14 @@ This module provides the ONLY approved way for other products
 (billing, subscriptions, referrals) to read metering data.
 Functions return plain dicts, never ORM instances.
 
+⚠ ONE DECLARED EXCEPTION, AND IT IS NOT A READ: the `BackfillDirtyPeriod`
+marker contract — `mark_backfill_dirty_period*` and
+`clear_backfill_dirty_period` — writes rows. ADR-001 §3 carries the reason: the
+marker table is metering's and the things that make a month stale are not all
+metering's, so the alternative is another product reaching for a metering model.
+The whole contract stays in one module, both halves together. Everything else
+here returns plain data and writes nothing.
+
 If metering becomes a separate service, these functions become
 HTTP calls. All callers remain untouched.
 
@@ -17,7 +25,12 @@ Consumers:
 - apps/billing/wallets/tasks.py → iter_billable_usage_events()
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),
-  clear_backfill_dirty_period() (the ack half of the marker contract)
+  clear_backfill_dirty_period() (the ack half of the marker contract),
+  get_customer_cost_totals() (the repair a marker's consumer runs first, #502)
+- apps/subscriptions/api/margin_endpoints.py → mark_backfill_dirty_period()
+  (the write half: a figure a tenant supplies about a month that has closed
+  makes that month's cached economics stale, exactly as a late supplier cost
+  does, #502)
 - api/v1/metering_endpoints.py → get_unresolved_queue(),
   get_projected_adjustment(), get_waived_loss() (the three recovery reads, #364),
   and economics() with grouping_options() beside it — the one economic query
@@ -581,13 +594,101 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     return [(label, billed, counts[label]) for label, billed in merged.items()]
 
 
-def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
-    """Pending backfill markers (plain dicts, oldest first).
+def mark_backfill_dirty_period(tenant_id, customer_id, period_start) -> None:
+    """Declare one customer's CLOSED month stale. Idempotent (#502, slice 7 §8).
 
-    Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written by
-    record_usage when an event backfills into a PRIOR calendar month; consumed
-    by subscriptions' resnapshot_dirty_periods, which acks each marker via
+    The second deliberate WRITE half of the marker contract, and the reason it
+    exists on this side of the boundary: the marker table is metering's, and a
+    period's economics go stale for reasons that are not (`apps/subscriptions`
+    may not reach for the model, ADR-001). A tenant that bills its customers
+    elsewhere can state what it earned in a month that closed long ago, and
+    revenue is half of every margin the evaluator flags on — so a figure
+    supplied late has to be able to reach the same rebuild a late supplier cost
+    does.
+
+    **The caller decides the period has closed**, because what counts as closed
+    is the caller's own question: the recording path asks it of an event's
+    effective month and the supplied-revenue write asks it of a record's stated
+    period. Writing a marker for an open month is harmless but pointless — the
+    consumer skips a non-prior marker without acking it.
+    """
+    from django.db import IntegrityError, transaction
+
+    from apps.metering.usage.models import BackfillDirtyPeriod
+
+    try:
+        # The savepoint-IntegrityError-swallow the recording path uses on the
+        # same unique key: a marker already pending for this period is the same
+        # request made twice.
+        with transaction.atomic():
+            BackfillDirtyPeriod.objects.create(
+                tenant_id=tenant_id, customer_id=customer_id,
+                period_start=period_start)
+    except IntegrityError:
+        pass
+
+
+def mark_backfill_dirty_period_for_posting(posting_id) -> None:
+    """Declare the CLOSED month one posting lands in stale (#502, slice 7 §8).
+
+    **The two doors a posting's money columns may move through after the fact
+    are the same act twice**, and this is the half they share. A supplier cost
+    settled long after the call and a customer price resolved long after it are
+    each one ADR-0007 §2 conditional update on an existing posting, at an
+    instant that may sit inside a month that closed — and each moves a figure
+    two per-customer monthly caches are built from. Instrumenting one and not
+    the other is how a cache stops being repairable on the cost side and stays
+    unrepairable on the revenue side.
+
+    ⚠ **THE PRICE HALF MATTERS FOR THE SAME REASON THE COST HALF DOES, POINTING
+    THE OTHER WAY.** An excluded cost makes a margin a CEILING; an excluded
+    price makes it a FLOOR. The customer named unprofitable on a floor is the
+    one who might have been fine all along, so a late price is the resolution
+    most worth letting reach a closed period.
+
+    ⚠ **The CURRENT month is deliberately not marked.** Markers are only ever
+    written for months that have closed — the hourly repair and the daily
+    snapshot both cover the open one, and the consumer skips a non-prior marker
+    without acking it.
+
+    Nothing about the resolution depends on this succeeding: it is a request to
+    rebuild a cache, read after the statement that moved the columns has already
+    committed to its own outcome.
+    """
+    from django.utils import timezone
+
+    from apps.metering.usage.models import Posting
+    from core.time_windows import closed_months
+
+    row = (Posting.objects.filter(pk=posting_id)
+           .values("tenant_id", "customer_id", "effective_at").first())
+    # Unreachable from either resolution door, which reaches here only after its
+    # conditional update matched exactly one row. Kept because this is a
+    # contract function and its callers are not all written yet: answering
+    # "nothing to invalidate" for a posting that is not there beats raising
+    # inside a caller that has already moved the money columns.
+    if row is None:
+        return
+    for period_start in closed_months(row["effective_at"], now=timezone.now()):
+        mark_backfill_dirty_period(row["tenant_id"], row["customer_id"],
+                                   period_start)
+
+
+def list_backfill_dirty_periods(created_before: datetime | None = None) -> list[dict]:
+    """Pending markers for periods whose cached economics are stale (plain
+    dicts, oldest first).
+
+    Each: {"id", "tenant_id", "customer_id", "period_start" (date)}. Written
+    whenever a fact behind a CLOSED month's cached figures moves — an event
+    backfilled into a prior month by record_usage, a supplier cost settled long
+    after the call, a figure the tenant supplied late — and consumed by
+    subscriptions' resnapshot_dirty_periods, which acks each marker via
     clear_backfill_dirty_period() AFTER its snapshot work succeeds.
+
+    ⚠ **THE NAME IS NARROWER THAN THE MEANING AND THE MEANING IS THE WIDER ONE.**
+    Backfilled usage was the first cause and is no longer the only one; renaming
+    the record is a migration nothing here needs, so the sentence above is the
+    authority on what a marker says.
 
     created_before: only markers created strictly before this aware datetime.
     The consumer passes now − its settle horizon so a marker is never acked

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,867 of 2,298 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,870 of 2,301 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2439,6 +2439,25 @@ measurement_key:
     # — which is what you would expect of a word retired as a POSTING'S FIELD
     # when the commit's subject is published reports, and is recorded because
     # expecting it is not the same as having checked.
+    #
+    # 2026-09-17, #502 (the margin snapshot is demoted to alerting state):
+    # 1,867 of 2,298 -> 1,870 of 2,301 tracked files (`units` 44 files / 122
+    # occurrences, UNMOVED for the EIGHTH consecutive ticket). Three files
+    # arrived and none left: the alerting record's one reading door, the module
+    # that asserts the demotion in both directions, and the module that watches
+    # a closed period's reported margin move when its facts resolve. Both
+    # totals move by the same three and no exclusion count moves — no migration
+    # again, the fifth ticket of this slice without one, because demoting a
+    # record changes who reads it rather than what it holds.
+    #
+    # ⚠ A RISE IS THE DIRECTION THAT OWES AN ACCOUNT, and this one's is that
+    # none of the three new files spells the word. Two of them are ABOUT a
+    # metered quantity's totals at one remove — what a cached cost total left
+    # out, and what a cost measure could not include — which is the
+    # neighbourhood the retired sense lived in, so the near miss was real and
+    # was declined: the prose says "postings", "events" and "records" where the
+    # plural would have been the lazy noun. Checked rather than assumed, by
+    # re-taking the count over the new swept set.
 
     - term: units
       retired_as: >-

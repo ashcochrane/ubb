@@ -51,13 +51,18 @@ _Avoid_: pushing deltas — always full state.
 
 ## Unit economics / margin
 
-**Customer economics**:
-The per-customer, per-month margin snapshot — revenue minus provider cost — with a gross margin and
-an `is_unprofitable` flag. Revenue is three sources: the Stripe subscription accrual, tenant-supplied
-revenue, and billed usage — the third for **every** customer since #497, because which postings
-carry customer revenue is a fact each posting states (#147 §7) rather than one a customer-level
-setting could override. Each source is its own column, so a figure read off it can say which kind of
-money it is.
+**Customer economics** — **THE ALERTING RECORD, AND NOT A MARGIN RECORD** (#502, slice 7 §8):
+The per-customer, per-month record the margin evaluator remembers with: an `is_unprofitable` flag,
+the figures each flag was raised on, and the period before this one to compare against. Revenue is
+three sources: the Stripe subscription accrual, tenant-supplied revenue, and billed usage — the
+third for **every** customer since #497, because which postings carry customer revenue is a fact
+each posting states (#147 §7) rather than one a customer-level setting could override. Each source
+is its own column, so a figure read off it can say which kind of money it is.
+**No reporting surface may read a margin figure from it**: margin is derived at read time from
+postings, Charges and revenue records, and a closed period's reported cost and margin move when its
+facts resolve — so a stored figure is a cache of facts that have since moved. The one door onto what
+it remembers is `apps/subscriptions/economics/alerting.py`; the report is
+`GET /metering/analytics/economics`.
 (`apps/subscriptions/economics/models.py:CustomerEconomics`)
 
 **Cost accumulator**:
@@ -100,8 +105,13 @@ The transition-guarded conditions that emit `customer.unprofitable` (below the m
 for N consecutive periods) / `provider.cost_spike` (a period-over-period cost jump).
 
 **Resnapshot**:
-Refreshing a prior month's margin snapshot after backfilled usage dirtied it, by consuming
-metering's backfill-dirty-period markers once the accumulator has settled.
+Rebuilding a CLOSED month's two per-customer caches — the cost accumulator and the alerting record —
+by consuming metering's dirty-period markers once the accumulator's dispatches have settled. The
+accumulator is repaired from the posting ledger first, so a marker works **at any age**: the hourly
+sweep covers three calendar months, and the marker channel covers everything older. **Caches
+survive; authorities do not** — a marker is written by anything that can change the inputs, whether
+that is usage backfilled into a prior month, a supplier cost settled long after the call, or a
+figure the tenant supplied about a month that closed (#502).
 
 ## Ports & events
 

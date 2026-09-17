@@ -55,9 +55,21 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
      (`apps/billing/queries.py` was promoted to the shared list for the F4.2 backfill
      closed-period guard: metering's `record_usage` consults
      `is_usage_period_closed()` before accepting a backdated `effective_at`.
-     `apps/metering/queries.py` additionally carries one deliberate *consume*
-     function — `clear_backfill_dirty_period()` — the ack half of the
-     `BackfillDirtyPeriod` marker contract consumed by subscriptions.)
+     `apps/metering/queries.py` additionally carries the `BackfillDirtyPeriod`
+     marker contract, which is **not** read-only and is the one declared
+     exception to the sentence above. It began as a single deliberate *consume*
+     function, `clear_backfill_dirty_period()` — the ack half of the marker
+     subscriptions consumes. **#502 added the produce half**,
+     `mark_backfill_dirty_period()` and its posting-addressed sibling
+     `mark_backfill_dirty_period_for_posting()`, because a marker stopped having
+     one cause: usage backfilled into a closed month, a supplier cost settled
+     long after the call, a customer price resolved long after it, and a figure
+     a tenant supplies about a month that has closed all say the same thing
+     about the same period. The marker table is metering's and two of those
+     causes are not, so the alternative was subscriptions reaching for a
+     metering model — which is the boundary this ADR exists to hold. The whole
+     marker contract stays in one module, writes included, and every other
+     function here returns plain data and writes nothing.)
    - **Platform lifecycle hooks** — the `customers/hooks.py` registry above, for synchronous
      reactions to platform-owned lifecycle changes.
    - **Per-pair `ports.py` modules** — an explicit, documented call surface one product exposes

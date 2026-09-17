@@ -222,25 +222,38 @@ class MarginService:
 
     @staticmethod
     def evaluate_and_emit(econ):
-        """Set is_unprofitable + emit margin webhooks, at most once per period (transition-safe)."""
+        """Set is_unprofitable + emit margin webhooks, at most once per period (transition-safe).
+
+        ⚠ **EVERY FIGURE UNDER BOTH ALARMS IS READ THROUGH `alerting`, WHICH IS
+        WHAT RE-SOURCES THEM** (#502, slice 7 §8). The record these come off is
+        the margin snapshot DEMOTED: no reporting surface may take a margin
+        figure from it, because a stored figure is a cache of facts that move
+        after a period closes. What travels on these two payloads is a fact
+        about an ALARM — the number the flag was raised on, which the tenant is
+        entitled to be told exactly as it stood — and reading it through the
+        alerting record's own door is what keeps the two kinds of read
+        distinguishable now that only one of them is allowed.
+        """
         from decimal import Decimal
         from django.db import transaction
         from apps.platform.events.outbox import write_event
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.schemas import CustomerUnprofitable, ProviderCostSpike
-        from apps.subscriptions.economics.models import CustomerEconomics
+        from apps.subscriptions.economics import alerting
 
         cfg = MarginService._threshold(econ.tenant_id, econ.customer_id)
         min_pct = Decimal(cfg.min_margin_pct) if cfg else Decimal("0")
         spike_pct = Decimal(cfg.provider_cost_spike_pct) if cfg else Decimal("25")
         consecutive = cfg.consecutive_periods if cfg else 1
 
+        this_period = alerting.state_of(econ)
         # This period's prior flag (from the last snapshot of THIS period); emit only on transition.
-        prev_flag = econ.is_unprofitable
-        recent = list(CustomerEconomics.objects.filter(
-            tenant_id=econ.tenant_id, customer_id=econ.customer_id,
-            period_start__lte=econ.period_start).order_by("-period_start")[:consecutive])
-        below = len(recent) >= consecutive and all(e.margin_percentage < min_pct for e in recent)
+        prev_flag = this_period["is_unprofitable"]
+        recent = alerting.look_back(
+            econ.tenant_id, econ.customer_id, econ.period_start,
+            periods=consecutive)
+        below = len(recent) >= consecutive and all(
+            state["margin_pct"] < min_pct for state in recent)
 
         if below != prev_flag:
             econ.is_unprofitable = below
@@ -248,14 +261,15 @@ class MarginService:
         if below and not prev_flag:
             with transaction.atomic():
                 write_event(CustomerUnprofitable(
-                    tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
-                    period_start=econ.period_start.isoformat(),
-                    gross_margin_micros=econ.gross_margin_micros,
-                    margin_pct=float(econ.margin_percentage), threshold_pct=float(min_pct)))
+                    tenant_id=str(econ.tenant_id),
+                    customer_id=this_period["customer_id"],
+                    period_start=this_period["period_start"].isoformat(),
+                    gross_margin_micros=this_period["gross_margin_micros"],
+                    margin_pct=float(this_period["margin_pct"]),
+                    threshold_pct=float(min_pct)))
 
-        prev = (CustomerEconomics.objects.filter(
-            tenant_id=econ.tenant_id, customer_id=econ.customer_id,
-            period_start__lt=econ.period_start).order_by("-period_start").first())
+        prev = alerting.period_before(
+            econ.tenant_id, econ.customer_id, econ.period_start)
         # AN UNRESOLVED PREVIOUS COST IS NOT A SPIKE OF ANY SIZE (#328).
         #
         # The comparison is a RATIO and the previous period is its denominator.
@@ -272,21 +286,25 @@ class MarginService:
         # a floor understates the rise, so a threshold crossed on one has really
         # been crossed. What the consumer gets told is that the number under the
         # alarm is a lower bound — see the count on the payload below.
-        if prev and prev.provider_cost_micros > 0 and not prev.unresolved_event_count:
-            rise = (Decimal(econ.provider_cost_micros - prev.provider_cost_micros)
-                    / Decimal(prev.provider_cost_micros) * 100)
+        if (prev and prev["provider_cost_micros"] > 0
+                and not prev[UNRESOLVED_EVENT_COUNT_KEY]):
+            rise = (Decimal(this_period["provider_cost_micros"]
+                            - prev["provider_cost_micros"])
+                    / Decimal(prev["provider_cost_micros"]) * 100)
             if rise >= spike_pct:
                 already = OutboxEvent.objects.filter(
                     event_type=ProviderCostSpike.EVENT_TYPE, tenant_id=econ.tenant_id,
-                    payload__customer_id=str(econ.customer_id),
-                    payload__period_start=econ.period_start.isoformat()).exists()
+                    payload__customer_id=this_period["customer_id"],
+                    payload__period_start=this_period["period_start"].isoformat()
+                ).exists()
                 if not already:
                     with transaction.atomic():
                         write_event(ProviderCostSpike(
-                            tenant_id=str(econ.tenant_id), customer_id=str(econ.customer_id),
-                            period_start=econ.period_start.isoformat(),
-                            prev_provider_cost_micros=prev.provider_cost_micros,
-                            current_provider_cost_micros=econ.provider_cost_micros,
-                            unresolved_event_count=econ.unresolved_event_count,
-                            prev_margin_pct=float(prev.margin_percentage),
-                            current_margin_pct=float(econ.margin_percentage)))
+                            tenant_id=str(econ.tenant_id),
+                            customer_id=this_period["customer_id"],
+                            period_start=this_period["period_start"].isoformat(),
+                            prev_provider_cost_micros=prev["provider_cost_micros"],
+                            current_provider_cost_micros=this_period["provider_cost_micros"],
+                            unresolved_event_count=this_period[UNRESOLVED_EVENT_COUNT_KEY],
+                            prev_margin_pct=float(prev["margin_pct"]),
+                            current_margin_pct=float(this_period["margin_pct"])))

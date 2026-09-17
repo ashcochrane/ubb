@@ -1,133 +1,24 @@
-from datetime import date
-
 import pytest
 from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.queries import (
-    get_customer_economics,
-    get_economics_summary,
-    get_customer_subscription,
-)
+from apps.subscriptions.queries import get_customer_subscription
 from apps.subscriptions.models import StripeSubscription
 
-
-@pytest.mark.django_db
-class TestGetCustomerEconomics:
-    def test_returns_none_when_no_data(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
-        customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        result = get_customer_economics(
-            tenant.id, customer.id,
-            date(2026, 1, 1), date(2026, 2, 1),
-        )
-        assert result is None
-
-
-@pytest.mark.django_db
-class TestGetEconomicsSummary:
-    def test_returns_zeros_when_no_data(self):
-        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
-        result = get_economics_summary(
-            tenant.id,
-            date(2026, 1, 1), date(2026, 2, 1),
-        )
-        assert result == {
-            "subscription_revenue_micros": 0,
-            "supplied_revenue_micros": 0,
-            "usage_billed_micros": 0,
-            "provider_cost_micros": 0,
-            # A window with no snapshots excluded nothing — the empty sum is
-            # complete, and this is the zero that says so (#328).
-            "unresolved_event_count": 0,
-            # And the revenue half's own empty sum (#351).
-            "unpriced_event_count": 0,
-            "total_margin_micros": 0,
-            "customer_count": 0,
-        }
-
-    def test_aggregates_multiple_customers(self):
-        from apps.subscriptions.economics.models import CustomerEconomics
-
-        tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
-        c1 = Customer.objects.create(tenant=tenant, external_id="c1")
-        c2 = Customer.objects.create(tenant=tenant, external_id="c2")
-
-        CustomerEconomics.objects.create(
-            tenant=tenant, customer=c1,
-            period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
-            subscription_revenue_micros=100_000_000,
-            usage_billed_micros=30_000_000,
-            provider_cost_micros=20_000_000,
-            gross_margin_micros=110_000_000,
-            margin_percentage=70,
-        )
-        CustomerEconomics.objects.create(
-            tenant=tenant, customer=c2,
-            period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
-            subscription_revenue_micros=200_000_000,
-            # ⚠ ONLY THE SECOND CUSTOMER SUPPLIES REVENUE, so the two sources
-            # sum to two different totals (#496). Equal fixtures would pass
-            # against an implementation that summed one column twice, which is
-            # the same property the two counts below are fixtured for.
-            supplied_revenue_micros=50_000_000,
-            usage_billed_micros=80_000_000,
-            provider_cost_micros=60_000_000,
-            # One of the two customers' months excluded a cost, so the tenant's
-            # total is a floor by exactly that much (#328).
-            unresolved_event_count=3,
-            # And a DIFFERENT number of its months' events had no resolved
-            # price (#351). Different on purpose: two counts summing to two
-            # different totals is the property, and equal fixtures would pass
-            # against an implementation that summed one column twice.
-            unpriced_event_count=2,
-            gross_margin_micros=220_000_000,
-            margin_percentage=60,
-        )
-
-        result = get_economics_summary(
-            tenant.id,
-            date(2026, 1, 1), date(2026, 2, 1),
-        )
-        assert result == {
-            "subscription_revenue_micros": 300_000_000,
-            "supplied_revenue_micros": 50_000_000,
-            "usage_billed_micros": 110_000_000,
-            "provider_cost_micros": 80_000_000,
-            "unresolved_event_count": 3,
-            "unpriced_event_count": 2,
-            "total_margin_micros": 330_000_000,
-            "customer_count": 2,
-        }
-
-    def test_this_totals_completeness_is_inherited_rather_than_measured(self):
-        """Why this one total's count comes from a column (#327, #328).
-
-        Every supplier-cost total in the tree reports the count of postings it
-        excluded, because the posting's column is nullable and SQL skips nulls
-        silently. This total does not sum that column — it sums a monthly
-        SNAPSHOT of it, which cannot be unknown, so null-skipping can never
-        reach it and its own `Sum` is complete by construction. #327 therefore
-        left it a single figure rather than publishing a zero nothing computed.
-
-        What changed in #328 is upstream: the accumulator these snapshots are
-        built from now counts the costs it could not add, and the snapshot
-        freezes that count. So the pair here is REAL and inherited — the sum of
-        numbers each row measured — rather than derived from the nullness of
-        anything in this query.
-
-        Both halves are asserted, because either one going false would make the
-        read contract's docstring wrong in a different way: if the cost column
-        became nullable the figure would need a count of its OWN, and if the
-        count column went away there would be nothing to inherit.
-        """
-        from apps.subscriptions.economics.models import CustomerEconomics
-
-        cost = CustomerEconomics._meta.get_field("provider_cost_micros")
-        assert cost.null is False
-        count = CustomerEconomics._meta.get_field("unresolved_event_count")
-        assert count.null is False
+# THE TWO SNAPSHOT READS' TESTS WERE HERE AND ARE GONE WITH THEM (#502, slice 7
+# §8): one customer's stored margin row, and the tenant-wide total aggregated
+# off the stored margin columns. Both are now `GET /metering/analytics/economics`
+# — the first with `customer_id=` as a filter, the second with no grouping — and
+# `api/v1/tests/test_a_closed_period_restates_when_its_facts_resolve.py` is where
+# that answer is proved to move when a closed period's facts do.
+#
+# One claim outlived its reason and moved rather than going with them: that the
+# stored cost column and its count are `NOT NULL`. It used to be why the
+# tenant-wide `Sum` could report a total without reporting a floor; it is now
+# what keeps the cost-spike ratio from dividing by an unknown, and it is
+# asserted in `test_the_snapshot_is_an_alerting_record.py` beside the evaluator
+# that depends on it.
 
 
 @pytest.mark.django_db

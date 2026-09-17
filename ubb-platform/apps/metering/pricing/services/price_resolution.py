@@ -29,6 +29,15 @@ caller sweeping a backlog needs:
   it represents is reported as money rather than repaired;
 * `not_applicable` — no customer revenue arises at this level at all.
 
+⚠ **AND LIKE ITS TWIN, A RESOLUTION HERE DECLARES A CLOSED MONTH STALE** (#502,
+slice 7 §8). The two per-customer monthly caches are built from these postings,
+and a price learned long after the call lands at the instant the call happened.
+The direction matters and is the opposite of the cost side's: an excluded cost
+makes a margin a CEILING, an excluded price makes it a FLOOR — so **the customer
+named unprofitable on a floor is the one who might have been fine all along**,
+and a late price is the resolution most worth letting reach a period that has
+closed. `queries.mark_backfill_dirty_period_for_posting` is the shared half.
+
 Collapsing the last two would throw away exactly the distinction ruling 12c
 exists to draw.
 
@@ -47,6 +56,7 @@ separable ticket and is recorded here rather than left as an absence.**
 """
 import enum
 
+from apps.metering.queries import mark_backfill_dirty_period_for_posting
 from apps.metering.usage.models import Posting
 from core.vocabulary import (
     PRICING_STATUS_KNOWN,
@@ -123,6 +133,7 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
                         **completes_the_record))
 
     if affected == 1:
+        mark_backfill_dirty_period_for_posting(posting_id)
         return PriceResolution.RESOLVED
 
     if affected > 1:

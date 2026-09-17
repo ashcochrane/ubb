@@ -27,9 +27,20 @@ was built in: proved and defended before there was anything to come through it,
 so the first caller could not invent its own. A run learns a cost by re-resolving
 the posting at its own instant and settles it here, one posting at a time, and it
 hands over the completed receipt so the record and the columns move together.
+
+⚠ **AND BECAUSE IT IS THE ONE DOOR, IT IS ALSO WHERE A CLOSED PERIOD IS DECLARED
+STALE** (#502, slice 7 §8). A settlement lands the amount at the instant the call
+happened, which may be inside a month that closed long ago, and two per-customer
+monthly caches are built from these postings.
+`queries.mark_backfill_dirty_period_for_posting` marks that month so they are
+rebuilt at any age. **`price_resolution.py` does the identical thing for the same
+reason**, which is why the marking lives in neither module: the two doors are one
+act twice, and instrumenting one of them is how a cache comes to be repairable on
+the cost side and not on the revenue side.
 """
 import enum
 
+from apps.metering.queries import mark_backfill_dirty_period_for_posting
 from apps.metering.usage.models import Posting
 from core.vocabulary import COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED
 
@@ -110,6 +121,7 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
                         **completes_the_record))
 
     if affected == 1:
+        mark_backfill_dirty_period_for_posting(posting_id)
         return Settlement.SETTLED
 
     if affected > 1:

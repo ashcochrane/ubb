@@ -28,13 +28,15 @@ from apps.metering.pricing.models import Charge
 from apps.metering.pricing.services.charge_projection import project_the_charge
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from apps.platform.grouping_fields.models import GroupingField
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS
 from apps.subscriptions.models import StripeSubscription
 from api.v1.schemas import EconomicMeasureOut, EconomicsOut, MeasureStatus
+# The route, the tenant it takes and the two readers of its answer moved to the
+# shared helpers when #502 gave them a second module to serve.
+from api.v1.tests._helpers import ECONOMICS, a_tenant, ask, measure_of
 from core.auth import READ
 from core.retention import (
     AVAILABLE_FROM_FIELD, ECONOMIC_HORIZON_FIELD, ECONOMIC_RETENTION_YEARS,
@@ -53,8 +55,6 @@ from core.vocabulary import (
     REVENUE_BASIS_RECORDED, UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
-ECONOMICS = "/api/v1/metering/analytics/economics"
-
 #: The window every fixture records into: one whole calendar month, so the
 #: coarse revenue's own span and the question's period are the same shape.
 OPENS, CLOSES = date(2026, 3, 1), date(2026, 3, 31)
@@ -64,21 +64,6 @@ ALL_FOUR = [ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
             ANALYTICS_MEASURE_GROSS_MARGIN, ANALYTICS_MEASURE_RECORDED_EVENTS]
 MONEY = [ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
          ANALYTICS_MEASURE_GROSS_MARGIN]
-
-
-def a_tenant(name="T", *, fields=()):
-    """A metering tenant and a raw key for it.
-
-    `products=["metering"]` is not optional — the route is product-gated, so a
-    tenant without it answers 403 rather than 200, which reads as an auth bug.
-    """
-    tenant = Tenant.objects.create(name=name, products=["metering"])
-    for position, key in enumerate(fields, start=1):
-        GroupingField.objects.create(tenant=tenant, key=key,
-                                     slot=f"grouping_field_{position}",
-                                     scope="event")
-    _, raw_key = TenantApiKey.create_key(tenant)
-    return tenant, raw_key
 
 
 def a_posting(tenant, customer, key, **overrides):
@@ -97,25 +82,6 @@ def a_posting(tenant, customer, key, **overrides):
               "pricing_status": PRICING_STATUS_KNOWN}
     fields.update(overrides)
     return Posting.objects.create(**fields)
-
-
-def ask(raw_key, **params):
-    """One economic question, with the measures and axes repeated properly."""
-    query = []
-    for name, value in params.items():
-        if isinstance(value, (list, tuple)):
-            query += [(name, entry) for entry in value]
-        elif value is not None:
-            query.append((name, value))
-    return Client().get(ECONOMICS, query,
-                        HTTP_AUTHORIZATION=f"Bearer {raw_key}")
-
-
-def measure_of(body, measure, row=0):
-    for entry in body["rows"][row]["measures"]:
-        if entry["measure"] == measure:
-            return entry
-    raise AssertionError(f"{measure!r} is not in row {row} of the answer")
 
 
 def describe(path):
