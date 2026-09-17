@@ -366,8 +366,13 @@ class CrossProductReadContractTest(TestCase):
         every other surface refuses an unknown axis with.
         """
         from apps.metering.queries import get_customer_billed_breakdown
+        # ⚠ THE MESSAGE IS ASSERTED AND NOT JUST THE TYPE, because TWO
+        # `ValueError`s sit on this path — the discovery contract's refusal and
+        # `_axis_plan`'s own — and a bare type check cannot tell a refused
+        # request from the read contract falling over behind it.
         for word in ("tag:seat", "dim1"):
-            with self.subTest(word=word), self.assertRaises(ValueError):
+            with self.subTest(word=word), self.assertRaisesRegex(
+                    ValueError, "names no grouping kind"):
                 get_customer_billed_breakdown(
                     self.tenant.id, self.customer.id, self.start, self.end, word)
 

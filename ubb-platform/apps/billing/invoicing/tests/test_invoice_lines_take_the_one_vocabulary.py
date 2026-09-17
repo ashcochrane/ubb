@@ -149,11 +149,19 @@ class TestTheAxisComesFromTheDiscoveryContract:
 class TestAFixedPriceUnitOfWorkIsOneLine:
     """AC2 — one line labelled by that unit; its constituent calls produce none.
 
-    ⚠ **THE TEST THAT WOULD FAIL IF THEY RENDERED AS ZERO** is the one below
-    that counts the lines, not the one that reads the amount: rendering the
-    constituents as zero-revenue lines leaves every amount correct and the
-    invoice a hundred lines longer, which is the defect §11 names — *worse on an
-    invoice than on a dashboard*.
+    ⚠⚠ **THE AXIS IS PART OF THE EVIDENCE, AND THE OBVIOUS ONE PROVES NOTHING.**
+    A charge projection copies `task_type` off the unit of work, so on
+    `field:task_type` the unit and its calls share ONE heading — and a
+    zero-revenue constituent folds into it, leaving the line count and the
+    amount both exactly right. That test passes with the money-only rule
+    DELETED, which was this class's first draft and was caught by running it
+    against the deleted rule rather than by reading it.
+
+    So the two claims are asserted on two axes, and each says which it is for:
+    `field:task_type` is where the LABEL is legible, and `field:event_type` — an
+    axis a charge projection cannot carry a value on, while every metered call
+    can — is where the calls WOULD appear as their own heading if they appeared
+    at all. Only the second can fail the way the criterion requires.
     """
 
     def _a_fixed_price_unit(self, tenant, customer, *, constituents):
@@ -163,9 +171,11 @@ class TestAFixedPriceUnitOfWorkIsOneLine:
         for index in range(constituents):
             # What #418 writes under a fixed-price unit: the call happened, the
             # supplier was paid, and the customer owes nothing FOR IT — the
-            # unit's own price is the liability.
+            # unit's own price is the liability. The Event Type is what tells
+            # these rows from the projection beside them: a charge posting
+            # carries none by construction (`AXES_A_CHARGE_POSTING_CANNOT_CARRY`).
             a_posting(tenant, customer, f"call-{index}", task=task,
-                      task_type="summarise",
+                      task_type="summarise", event_type="chat",
                       billed_cost_micros=None,
                       pricing_status=PRICING_STATUS_NOT_APPLICABLE,
                       not_applicable_reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
@@ -175,7 +185,10 @@ class TestAFixedPriceUnitOfWorkIsOneLine:
             resolved_at=MID, charged_at=MID, idempotency_key="charge-1")
         return project_the_charge(charge)
 
-    def test_the_unit_is_one_line_and_its_calls_are_none(self):
+    def test_the_unit_is_one_line_labelled_by_that_unit(self):
+        """The LABEL half. It cannot fail if the calls rendered as zero — they
+        would land under this very heading — which is why the case below exists
+        and why this one does not claim to be the proof."""
         tenant = a_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         grouped_by(tenant, grouping_axis(ANALYTICS_GROUPING_KIND_FIELD,
@@ -188,19 +201,29 @@ class TestAFixedPriceUnitOfWorkIsOneLine:
         assert lines == [("summarise", 2_500_000)]
         assert total == 2_500_000
 
-    def test_a_hundred_calls_still_produce_a_one_line_invoice(self):
-        """THE CLAIM AT THE SCALE THAT MAKES IT MATTER. Three constituents
-        rendering as zero would look like a rounding detail; a hundred is the
-        invoice §11 describes."""
+    def test_a_hundred_calls_render_no_line_of_their_own(self):
+        """THE CRITERION'S OWN TEST — *one that would fail if they rendered as
+        zero* — and it does: with the money-only rule removed this answers
+        `[("(other)", 2_500_000), ("chat", 0)]`.
+
+        At the scale that makes it matter. Three constituents rendering as zero
+        would look like a rounding detail; a hundred is the invoice §11
+        describes, and the amounts would all still be right.
+        """
         tenant = a_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         grouped_by(tenant, grouping_axis(ANALYTICS_GROUPING_KIND_FIELD,
-                                         "task_type"))
+                                         "event_type"))
         self._a_fixed_price_unit(tenant, customer, constituents=100)
 
-        _, lines = PostpaidUsageService.aggregate_lines(tenant, customer, PS, PE)
+        total, lines = PostpaidUsageService.aggregate_lines(
+            tenant, customer, PS, PE)
 
-        assert len(lines) == 1
+        # The charge projection carries no Event Type, so the one line an
+        # invoice can be charged under is "(other)" — and "chat", the hundred
+        # calls' own heading, is absent rather than present at zero.
+        assert lines == [("(other)", 2_500_000)]
+        assert total == 2_500_000
 
     def test_the_calls_are_present_and_it_is_their_STATE_that_excludes_them(self):
         """THE OTHER DIRECTION, without which the test above is satisfied by an

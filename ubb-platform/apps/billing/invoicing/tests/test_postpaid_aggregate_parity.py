@@ -145,9 +145,18 @@ class TestGroupByBranchParity:
     def test_a_declared_fields_many_values_are_byte_identical(self):
         """THE FIXTURE THE BAG TEST USED TO CARRY, ON THE AXIS THAT REPLACED IT.
 
-        Six postings, one of them under no value at all, across two headings —
-        the adversarial shape was never about the bag, it was about how many
-        ways a value can be absent and whether they all land in one line.
+        ⚠ **IT IS ADVERSARIAL ON MERGING NOW RATHER THAN ON ABSENCE, AND THAT IS
+        A REAL LOSS WORTH NAMING.** The bag had FOUR ways to have no value — a
+        missing key, an absent bag, an empty dict, a JSON-null — and the old
+        fixture ran one posting through each to prove they all landed in one
+        line. A declared slot has ONE, the empty string (`NULL` being
+        unreachable on a `blank=True, default=""` column), so that variety has
+        nowhere left to come from: it went with the unbounded keyspace, which is
+        the point of the change rather than a gap in its testing.
+
+        What survives is the half that still has teeth: six postings across two
+        headings with four of them valueless, so the merge, the total and the
+        sort are all still held to the pre-F3.2 loop.
         """
         t = Tenant.objects.create(name="T", billing_mode="postpaid",
                                   products=["metering", "billing"])

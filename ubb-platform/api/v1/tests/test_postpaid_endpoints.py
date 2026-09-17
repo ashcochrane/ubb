@@ -1,5 +1,6 @@
 import json
 from django.test import TestCase, Client
+from api.v1.billing_endpoints import CARDINALITY_WARNING_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 
@@ -98,6 +99,8 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         self.http = Client()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"])
+        # `max_cardinality=2` is the whole fixture for the warning cases below:
+        # the default is 100, which no reasonable fixture reaches.
         DimensionService.declare(self.tenant, key="region",
                                  slot="grouping_field_1", scope="event",
                                  max_cardinality=2)
@@ -154,11 +157,20 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         assert r.json()["usage_line_item_group_by"] == "field:region"
 
     def test_an_axis_inside_its_declared_maximum_warns_about_nothing(self):
+        """Two values against a declared maximum of two: at the cap and not past
+        it, which is the boundary a `>` and a `>=` disagree about.
+
+        The whole metadata is asserted rather than just the warning's absence,
+        so a warning arriving under some OTHER key would fail here too.
+        """
         self._a_posting("i1", "emea")
         self._a_posting("i2", "apac")
 
         assert self._put("field:region").status_code == 200
-        assert "invoice_line_cardinality_warning" not in self._last_audit_metadata()
+        assert self._last_audit_metadata() == {
+            "usage_line_item_group_by": "field:region",
+            "consolidate_with_subscription": False,
+        }
 
     def test_an_axis_past_its_declared_maximum_warns_AT_configuration_time(self):
         """The whole point of the timing: the tenant hears it while choosing,
@@ -175,16 +187,20 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
 
         assert response.status_code == 200
         assert response.json()["usage_line_item_group_by"] == "field:region"
-        warning = self._last_audit_metadata()["invoice_line_cardinality_warning"]
+        warning = self._last_audit_metadata()[CARDINALITY_WARNING_KEY]
         assert "more than 2 distinct values" in warning
 
-    def test_the_warning_is_not_deferred_to_the_invoice(self):
-        """The claim the test above cannot make on its own: the same tenant, the
-        same axis, and NO postings yet — so nothing warns. The warning tracks
-        what the axis has recorded rather than firing on the choice itself,
-        which is what makes its arrival informative."""
+    def test_the_warning_counts_what_is_recorded_and_not_the_choice_itself(self):
+        """⚠ **A NARROWING OF THE CRITERION, ASSERTED RATHER THAN LEFT
+        IMPLICIT.** #503 asks UBB to warn when an axis *could produce* more lines
+        than the declared maximum; what it measures is how many distinct values
+        the axis HAS recorded. So a tenant who picks a wide axis before
+        recording anything against it is not warned, and hears about it the
+        first time they re-save afterwards.
+
+        That is the honest reading — "could" over a tenant's own history rather
+        than over every value they might one day send, which is unknowable — and
+        it is pinned here so the limit is a decision rather than a surprise.
+        """
         assert self._put("field:region").status_code == 200
-        assert self._last_audit_metadata() == {
-            "usage_line_item_group_by": "field:region",
-            "consolidate_with_subscription": False,
-        }
+        assert CARDINALITY_WARNING_KEY not in self._last_audit_metadata()

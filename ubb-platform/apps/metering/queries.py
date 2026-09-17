@@ -22,6 +22,11 @@ Consumers:
 - apps/billing/invoicing/tasks.py → get_customer_ids_with_usage()
 - apps/billing/invoicing/services/postpaid_service.py → get_customer_cost_totals(),
   get_billed_totals_by_customer(), get_customer_billed_breakdown()
+- api/v1/billing_endpoints.py → grouping_refusal(), invoice_line_cardinality_warning()
+  — the postpaid config's write surface, which validates the invoice-line
+  grouping axis against this tenant's own discovery contract and warns on its
+  cardinality at the moment it is chosen (#503). A BILLING surface reached
+  through this read contract, which is the only channel ADR-001 allows
 - apps/billing/wallets/tasks.py → iter_billable_usage_events()
 - apps/subscriptions/handlers.py → get_usage_event_effective_at()
 - apps/subscriptions/tasks.py → list_backfill_dirty_periods(),

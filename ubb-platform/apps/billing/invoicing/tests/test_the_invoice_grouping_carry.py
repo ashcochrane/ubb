@@ -125,12 +125,17 @@ class TheCarryReadsWhatEachValueDidTest(TestCase):
         machine — and `field:field:region` would parse as an axis named
         `field:region`, which is a refusal a reader could not explain.
 
-        It reaches the first slot, which is what the pre-#503 reader would have
-        done with it, and lands on the axis bound there.
+        ⚠ **THE SLOT IS BOUND TO A DIFFERENT KEY ON PURPOSE.** Binding it to
+        `region` would make *leave this value alone* and *carry it to the first
+        slot* the same answer, so the case would pass over either behaviour and
+        prove neither. Bound to `zone`, the two answers differ and the assertion
+        picks one: it reaches the first slot, which is what the pre-#503 reader
+        did with anything it did not recognise, and lands on the axis really
+        bound there.
         """
-        DimensionService.declare(self.tenant, key="region",
+        DimensionService.declare(self.tenant, key="zone",
                                  slot="grouping_field_1", scope="event")
-        assert self._stored("field:region") == "field:region"
+        assert self._stored("field:region") == "field:zone"
 
     def test_one_tenants_declaration_does_not_carry_anothers_config(self):
         """The carry is per tenant, which a `GroupingField` lookup that forgot

@@ -866,10 +866,15 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
         is no longer *the subject was deleted* — it is *the test is looking for
         the wrong word*. Rename the column and every assertion about it passes
         over a module that reads the bag under its new name, with nothing
-        raising. So the name is read off the model rather than typed here, and
-        renaming it turns this red instead.
+        raising.
+
+        The word cannot be DERIVED — the whole claim is that nothing names it,
+        so there is nothing to read it off — so it is typed once and held to the
+        model here. `get_field` raises `FieldDoesNotExist` rather than returning
+        a falsy value, which is what makes this an assertion rather than a
+        truthiness check on an object that is always truthy.
         """
-        assert Posting._meta.get_field(THE_OPEN_BAG)
+        assert Posting._meta.get_field(THE_OPEN_BAG).name == THE_OPEN_BAG
 
 
 class WhichClockGovernsARowTest(TestCase):

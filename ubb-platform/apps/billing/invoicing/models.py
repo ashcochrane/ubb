@@ -113,9 +113,15 @@ class CustomerUsageInvoice(BaseModel):
 class UsageInvoiceLineItem(BaseModel):
     usage_invoice = models.ForeignKey(CustomerUsageInvoice, on_delete=models.CASCADE, related_name="line_items")
     # The value of whichever axis `PostpaidUsageConfig.invoice_line_grouping`
-    # names, or "" when the tenant groups nothing — the same thing the analytics
-    # rollups publish under this name. Internal: no schema declares it and no
-    # route returns it.
+    # names, or "" when the tenant groups nothing. Internal: no schema declares
+    # it and no route returns it.
+    #
+    # ⚠ **IT SHARES THE ANALYTICS ROW'S NAME AND NOT ITS TREATMENT OF ABSENCE**
+    # (#312 settled the name; #503 is where the two part). `economics` carries a
+    # null value with a status beside it saying WHY there is none; a line on an
+    # invoice needs a heading a customer can be charged under, so an absent
+    # value lands here as `queries.INVOICE_LINE_OTHER`, which argues it. Same
+    # concept, same word for it, one deliberate divergence.
     grouping_field_value = models.CharField(max_length=255, blank=True, default="")
     amount_micros = models.BigIntegerField(default=0)
     stripe_invoice_item_id = models.CharField(max_length=255, blank=True, default="")

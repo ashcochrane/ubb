@@ -389,7 +389,10 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
             billed_cost_micros=500_000, grouping_field_1="chat",
             metadata={"seat": "alice"})
 
-        with self.assertRaises(ValueError):
+        # The MESSAGE, not just the type: `_axis_plan` raises its own
+        # `ValueError` further in, so a bare type check would pass over the read
+        # contract falling over rather than refusing.
+        with self.assertRaisesRegex(ValueError, "names no grouping kind"):
             get_customer_billed_breakdown(
                 self.tenant.id, self.customer.id, date(2020, 1, 1),
                 date(2100, 1, 1), group_by=SURVIVING_COLUMN)
@@ -410,6 +413,14 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
         hand: an invoice line's axis is one the tenant declared, and a
         declaration binds a key to a SLOT, which the test above shows the bag
         can never be.
+
+        ⚠ **THE REFUSAL IS THE SAME ONE ITS SIBLING ABOVE GETS, AND THAT IS THE
+        RESULT RATHER THAN A WEAKNESS IN THE TEST.** The bag used to have a
+        reader of its own on this surface — a `tag:` prefix the label path
+        recognised — and what closed the widening is that the prefix is now
+        just a word naming no kind, handled by the same sentence as any other.
+        The nested value is kept as the fixture because it is the thing that
+        used to get through; it can no longer get as far as being serialised.
         """
         from apps.metering.queries import get_customer_billed_breakdown
         from datetime import date
@@ -419,7 +430,11 @@ class TheBagIsNotAGroupingAxisTest(TestCase):
             billed_cost_micros=500_000,
             metadata={"request": {"model": "gpt-5", "stream": True}})
 
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, "names no grouping kind") as raised:
             get_customer_billed_breakdown(
                 self.tenant.id, self.customer.id, date(2020, 1, 1),
                 date(2100, 1, 1), group_by="tag:request")
+        # Nothing of the bag reached the message: a refusal that echoed the
+        # serialised object back would be the same unbounded string arriving one
+        # surface further along.
+        assert "gpt-5" not in str(raised.exception)

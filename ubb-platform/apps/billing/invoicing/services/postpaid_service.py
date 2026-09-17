@@ -55,9 +55,19 @@ class PostpaidUsageService:
         ⚠ **THE GROUPING IS AN AXIS OF THE ONE VOCABULARY** (#503, slice 7 §11),
         not a key — `PostpaidUsageConfig.invoice_line_grouping` holds a word the
         tenant's own discovery contract publishes, and the route that writes it
-        refuses anything else. A stored word that has since stopped being an
-        axis raises out of the read contract rather than quietly grouping by
-        something the tenant did not choose.
+        refuses anything else.
+
+        ⚠ **A STORED WORD THAT HAS SINCE STOPPED BEING AN AXIS RAISES, AND THE
+        PERIOD CLOSE FAILS LOUDLY RATHER THAN RE-GROUPING QUIETLY.** That is a
+        decision, not an oversight. Falling back to no grouping would bill the
+        right TOTAL under the wrong shape without anyone being told — which is
+        the silent fall-through this ticket deleted, wearing a better hat. It is
+        also close to unreachable: the registry RETIRES a declared field rather
+        than deleting it and retired fields stay groupable (ADR-0005 D8), the
+        rollups are a closed set UBB owns, and the write surface refuses
+        anything else. If it does happen, the failure lands on the path built
+        for exactly this — bounded retries, then `failed_permanent` with its
+        outbox alert — so an operator is told rather than a customer surprised.
 
         **WHICH POSTINGS BECOME LINES IS THE READ CONTRACT'S RULE AND NOT
         THIS METHOD'S.** A waived charge and a metered call under a fixed-price
