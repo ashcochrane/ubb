@@ -1,6 +1,14 @@
 // Ledger filters, all URL-backed: past-limit toggle, stop scope, episode
-// number, and a tag key/value pair. Text inputs commit on blur or Enter so
+// number, and a metadata key/value pair. Text inputs commit on blur or Enter so
 // typing doesn't refetch per keystroke.
+//
+// ⚠ **THE PAIR IS NAMED FOR THE BAG IT READS, IN THE COPY AS WELL AS IN THE
+// STATE (#507).** It carried the analytics grouping word on every surface from
+// the URL to the label, and a tenant reading "Tag" here had no way to connect
+// it to the metadata their own events carry — which is the bag this actually
+// filters, named that way on the wire since #504 and on the event's own detail
+// page long before. A key is whatever the TENANT wrote, so the inputs stay free
+// text: there is no catalogue to offer and nothing here to word for them.
 
 import { useState } from "react";
 
@@ -68,8 +76,8 @@ export interface FilterPatch {
   past_limit?: boolean;
   stop_scope?: EventsSearch["stop_scope"];
   episode_seq?: number;
-  tag_key?: string;
-  tag_value?: string;
+  metadata_key?: string;
+  metadata_value?: string;
 }
 
 export function EventFilters({
@@ -83,8 +91,8 @@ export function EventFilters({
     search.past_limit !== undefined ||
     search.stop_scope !== undefined ||
     search.episode_seq !== undefined ||
-    search.tag_key !== undefined ||
-    search.tag_value !== undefined;
+    search.metadata_key !== undefined ||
+    search.metadata_value !== undefined;
 
   return (
     <div className="flex flex-wrap items-end gap-4">
@@ -152,27 +160,30 @@ export function EventFilters({
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="filter-tag-key" className="text-[11px] text-text-muted">
-          Tag
+        <Label
+          htmlFor="filter-metadata-key"
+          className="text-[11px] text-text-muted"
+        >
+          Metadata
         </Label>
         <div className="flex items-center gap-1">
           <CommitInput
-            id="filter-tag-key"
-            value={search.tag_key ?? ""}
+            id="filter-metadata-key"
+            value={search.metadata_key ?? ""}
             placeholder="key"
             className="h-8 w-[110px] text-[12px]"
             onCommit={(next) =>
-              onChange({ tag_key: next === "" ? undefined : next })
+              onChange({ metadata_key: next === "" ? undefined : next })
             }
           />
           <span className="text-[12px] text-text-muted">=</span>
           <CommitInput
-            id="filter-tag-value"
-            value={search.tag_value ?? ""}
+            id="filter-metadata-value"
+            value={search.metadata_value ?? ""}
             placeholder="value"
             className="h-8 w-[110px] text-[12px]"
             onCommit={(next) =>
-              onChange({ tag_value: next === "" ? undefined : next })
+              onChange({ metadata_value: next === "" ? undefined : next })
             }
           />
         </div>
@@ -187,8 +198,8 @@ export function EventFilters({
               past_limit: undefined,
               stop_scope: undefined,
               episode_seq: undefined,
-              tag_key: undefined,
-              tag_value: undefined,
+              metadata_key: undefined,
+              metadata_value: undefined,
             })
           }
         >
@@ -196,9 +207,10 @@ export function EventFilters({
         </Button>
       )}
 
-      {(search.tag_key === undefined) !== (search.tag_value === undefined) && (
+      {(search.metadata_key === undefined) !==
+        (search.metadata_value === undefined) && (
         <p className="w-full text-[11px] text-text-muted">
-          Both a tag key and a value are needed for the tag filter to apply.
+          Both a metadata key and a value are needed for this filter to apply.
         </p>
       )}
     </div>

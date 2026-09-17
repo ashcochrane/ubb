@@ -1,8 +1,8 @@
 // The event ledger: analytics strip + daily chart for the window, and a
-// per-customer ledger with past-limit/tag filters. All state is URL-backed —
-// the route passes `search` down and receives changes back. The report of
-// what was spent past a stop no longer renders here (#466): it is Stops and
-// breaches, on the Spend controls tab and on the customer's Usage tab.
+// per-customer ledger with past-limit and metadata filters. All state is
+// URL-backed — the route passes `search` down and receives changes back. The
+// report of what was spent past a stop no longer renders here (#466): it is
+// Stops and breaches, on the Spend controls tab and on the customer's Usage tab.
 
 import { Users } from "lucide-react";
 
@@ -57,18 +57,19 @@ export function EventsPage({
   const update = (patch: Partial<EventsSearch>) =>
     onSearchChange({ ...search, ...patch });
 
-  // Tag filters only apply as a pair (the API ignores a lone key/value).
-  const tagPairActive =
-    search.tag_key !== undefined && search.tag_value !== undefined;
+  // The metadata filter only applies as a pair (the API ignores a lone
+  // key/value).
+  const metadataPairActive =
+    search.metadata_key !== undefined && search.metadata_value !== undefined;
   const filters: UsageListFilters = {
-    tag_key: tagPairActive ? search.tag_key : undefined,
-    tag_value: tagPairActive ? search.tag_value : undefined,
+    metadata_key: metadataPairActive ? search.metadata_key : undefined,
+    metadata_value: metadataPairActive ? search.metadata_value : undefined,
     past_limit: search.past_limit,
     stop_scope: search.stop_scope,
     episode_seq: search.episode_seq,
   };
   const anyFilterActive =
-    tagPairActive ||
+    metadataPairActive ||
     search.past_limit !== undefined ||
     search.stop_scope !== undefined ||
     search.episode_seq !== undefined;
@@ -98,7 +99,7 @@ export function EventsPage({
           stop_scope: search.stop_scope,
           episode_seq: search.episode_seq,
         }}
-        tagFilterActive={tagPairActive}
+        metadataFilterActive={metadataPairActive}
       />
 
       <TimeseriesCard
@@ -169,8 +170,8 @@ export function EventsPage({
                             past_limit: undefined,
                             stop_scope: undefined,
                             episode_seq: undefined,
-                            tag_key: undefined,
-                            tag_value: undefined,
+                            metadata_key: undefined,
+                            metadata_value: undefined,
                           }),
                       }
                     : undefined

@@ -34,10 +34,15 @@ function renderWithClient(ui: ReactElement) {
 }
 
 describe("OverviewPage", () => {
-  it("renders the stat row from the margin summary and analytics", async () => {
+  it("renders the stat row from the one query", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
-    // Total revenue / COGS / margin% from the mock margin summary.
+    // ⚠ THIS CASE NAMED A ROUTE THAT NO LONGER EXISTS UNTIL #507. It said the
+    // three figures below came "from the margin summary" — one of the nine
+    // reports #501 collapsed, and one of the reads slice 7 §8 severs from the
+    // margin snapshot. They are the window's own economics now, ungrouped, and
+    // the card after them is the same question grouped by the customer axis.
+    // Total revenue / COGS / margin% for the window.
     // ⚠ $764.90 UNTIL #497: the window total excluded nova-ai's $88.00 of
     // billed usage, which the deleted customer-level switch did not count as
     // revenue. Every customer's billed usage is revenue now, so the total is
@@ -66,8 +71,10 @@ describe("OverviewPage", () => {
   it("lists top customers with shortened ids and a view-all link", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
-    // Margin list rows have no external_id — the table shows short UUIDs
-    // (acme-corp has the highest revenue in the shared mock roster).
+    // The customer axis groups by IDENTITY and publishes no external id — a
+    // tenant's own word for a row belongs to the surface that renders it — so
+    // the table shows short UUIDs (acme-corp has the highest revenue in the
+    // shared mock roster).
     expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
     expect(screen.getByText("View all customers")).toBeInTheDocument();
     // nova-ai's gross margin renders bounded: it is the one customer in the

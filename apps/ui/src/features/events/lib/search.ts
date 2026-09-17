@@ -11,8 +11,17 @@ export const STOP_SCOPES = ["task", "subtask", "customer"] as const;
 
 export const eventsSearchSchema = dateRangeSearchSchema.extend({
   customer_id: z.string().min(1).optional().catch(undefined),
-  tag_key: z.string().min(1).optional().catch(undefined),
-  tag_value: z.string().min(1).optional().catch(undefined),
+  // ⚠ **THE PAIR NAMES THE BAG IT READS, AND THE URL IS PART OF THAT (#507).**
+  // It carried the analytics grouping word until now — an axis word over a bag
+  // ADR-0005 keeps deliberately ungroupable — while the route it reaches has
+  // named the bag since #504. A bookmark saved under the old spelling keeps
+  // working and loses its filter: an unknown search key is dropped here, so the
+  // ledger opens unfiltered with both inputs visibly empty, which is a state a
+  // reader can see and correct. That is the same answer `group_by` below gives
+  // a stale bookmark, and it is only tolerable because this filter is on the
+  // screen; the wire-level version of it is the silent widening #504 recorded.
+  metadata_key: z.string().min(1).optional().catch(undefined),
+  metadata_value: z.string().min(1).optional().catch(undefined),
   past_limit: z.boolean().optional().catch(undefined),
   stop_scope: z.enum(STOP_SCOPES).optional().catch(undefined),
   episode_seq: z.number().int().nonnegative().optional().catch(undefined),

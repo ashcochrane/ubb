@@ -10,8 +10,8 @@ describe("eventsSearchSchema", () => {
       stop_scope: "customer",
       episode_seq: 3,
       group_by: "field:provider",
-      tag_key: "env",
-      tag_value: "prod",
+      metadata_key: "env",
+      metadata_value: "prod",
       start_date: "2026-07-01",
       end_date: "2026-07-23",
     });
@@ -19,6 +19,29 @@ describe("eventsSearchSchema", () => {
     expect(parsed.stop_scope).toBe("customer");
     expect(parsed.episode_seq).toBe(3);
     expect(parsed.group_by).toBe("field:provider");
+    // The pair this case has always SET and never read back. It names the bag
+    // it filters since #507, which is the word the route has published since
+    // #504 — and a case that sets a key it never asserts would have passed
+    // through the rename without noticing it.
+    expect(parsed.metadata_key).toBe("env");
+    expect(parsed.metadata_value).toBe("prod");
+  });
+
+  // ⚠ WHAT A BOOKMARK FROM BEFORE #507 MEETS. A key this schema does not
+  // declare is dropped rather than forwarded, so a saved URL naming the filter
+  // pair the way the analytics grouping vocabulary named it opens the ledger
+  // unfiltered, with both inputs empty on the screen. Pinned on a key that is
+  // merely unknown rather than on the retired spelling: the claim is about the
+  // MECHANISM every stale key meets, and spelling the retired one here would
+  // keep a word in this file that this commit takes out of the whole feature.
+  it("drops a filter key it does not declare rather than forwarding it", () => {
+    const parsed = eventsSearchSchema.parse({
+      metadata_key: "env",
+      some_retired_spelling: "prod",
+    });
+
+    expect(parsed.metadata_key).toBe("env");
+    expect(parsed).not.toHaveProperty("some_retired_spelling");
   });
 
   it("keeps a rollup axis, which is as legal a group-by as a field", () => {

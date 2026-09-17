@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,878 of 2,310 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,880 of 2,312 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2502,6 +2502,24 @@ measurement_key:
     # "options", "values" and "postings" throughout, and where a whole set was
     # meant they say "the set". Checked by re-taking the count over the new
     # swept set rather than assumed from care.
+    #
+    # 2026-09-17, #507 (the events feature's filter vocabulary, and the
+    # overview's severance from the margin snapshot): 1,878 of 2,310 -> 1,880 of
+    # 2,312 tracked files (`units` 44 files / 122 occurrences, UNMOVED for the
+    # ELEVENTH consecutive ticket). TWO files arrived and none left, and both
+    # totals move by the same two: a rendering test for the ledger's filter bar,
+    # which had none at all and is part of how its key pair kept a retired word
+    # right through the slice retiring it everywhere else, and a check over the
+    # overview's own sources holding the alerting read to exactly one surface.
+    # Both are ordinary source, so no exclusion moves.
+    #
+    # ⚠ A RISE OWES AN ACCOUNT, and this one's is that the near miss was there
+    # and was declined twice. Both arrivals are about COUNTING things in a
+    # group — filtered rows, and the surfaces holding a read — which is the
+    # shape #328 and #412 each wrote the retired plural into. They say "rows",
+    # "surfaces", "files", "hooks" and "calls"; where a whole set was meant they
+    # say "the set", and where one item was meant they say "one". Checked by
+    # re-taking the count over the new swept set rather than assumed from care.
 
     - term: units
       retired_as: >-
