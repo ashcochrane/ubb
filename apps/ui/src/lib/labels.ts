@@ -31,6 +31,8 @@
 
 import {
   AFFORDABILITY_REASON_KNOWN_VALUES,
+  ANALYTICS_GROUPING_KIND_VALUES,
+  ANALYTICS_ROLLUP_VALUES,
   CEILING_STATUS_VALUES,
   CONTROL_FAMILY_VALUES,
   COSTING_METHOD_VALUES,
@@ -431,31 +433,41 @@ export const CONTROL_FAMILIES = CONTROL_FAMILY_VALUES;
 // authority was right. An entry cannot outlive its debt whoever owns it
 // (#283), and an owner slice may move earlier but never later.
 
-// Allowed grouping dimensions for usage analytics + timeseries.
-export const ANALYTICS_DIMENSIONS = [
-  "provider",
-  "event_type",
-  "customer",
-  "dim1",
-  "dim2",
-  "dim3",
-] as const;
-export const TIMESERIES_GROUP_BY = [
-  "provider",
-  "event_type",
-  "dim1",
-  "dim2",
-  "dim3",
-] as const;
+// THE TWO HAND-WRITTEN AXIS LISTS AND THE MAP WORDING THEM WERE HERE AND ARE
+// GONE (#506, slice 7 section 19). Which axes a tenant may group by is that
+// tenant's own answer, computed per tenant and read off the discovery contract
+// (`useGroupingOptions`); a list shipped to every console could only ever be
+// UBB's guess at it, and three of the six words this map held were `dim1`-
+// `dim3` — the physical slots, offered as axes no tenant had ever declared.
+//
+// Only the map had a ledger seat. The two lists beside it had none, so nothing
+// would have failed had they been left: the console would simply have gone on
+// offering slot names for axes that no longer exist, which is why they fall
+// here with it. The words that survive are in `@/lib/grouping-axis`, the
+// module that turns one row of that contract into a name.
+//
+// What stays is the two VALUE SETS below, which is the shape a paid concept
+// leaves behind.
 
-export const dimensionLabel = legacyLabelMap({
-  provider: "Provider",
-  event_type: "Event type",
-  customer: "Customer",
-  dim1: "Dimension 1",
-  dim2: "Dimension 2",
-  dim3: "Dimension 3",
-});
+// Whether a grouping axis is a column on the event or a join to a declared
+// rollup — the registry's two, held BY REFERENCE (#506), on exactly the terms
+// `CONTROL_FAMILIES` above sets: `domain-vocabulary/` names THIS FILE as the
+// console's consumer of `analytics_grouping_kind`, so re-homing the list is a
+// registry edit rather than a console one. Nothing here, and no map.
+//
+// ⚠ **AND NOTHING IMPORTS IT FROM HERE, WHICH IS THE POINT RATHER THAN AN
+// OVERSIGHT.** `@/lib/grouping-axis` reads the generated constant directly, as
+// this file's own header and `apps/ui/CLAUDE.md` both instruct — the adapter's
+// importer set is a ratchet that may only shrink, so a migrated concept that
+// pulled new files in here would be spreading the thing being retired. The
+// alias is what the registry's census reads; the work is done next door.
+export const ANALYTICS_GROUPING_KINDS = ANALYTICS_GROUPING_KIND_VALUES;
+
+// The aggregation axes UBB itself owns, one level above what the tenant
+// declares — held BY REFERENCE (#506) for the same reason and on the same
+// terms. The tenant assigns members to them; the axes themselves are UBB's,
+// which is exactly why this set can be shipped and the field list cannot.
+export const ANALYTICS_ROLLUPS = ANALYTICS_ROLLUP_VALUES;
 
 // ---------------------------------------------------------------------------
 // Audit

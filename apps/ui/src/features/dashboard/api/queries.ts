@@ -22,7 +22,7 @@ import {
   toRevenueCostPoints,
   toTenantEconomics,
   type ApiKeyList,
-  type BreakdownDimension,
+  type BreakdownAxis,
   type BreakdownRow,
   type ConnectStatus,
   type CustomerEconomicsRow,
@@ -52,7 +52,7 @@ export function useTenantEconomics(
  */
 export function useGroupedEconomics(
   window: Window,
-  groupBy: BreakdownDimension,
+  groupBy: BreakdownAxis,
 ): UseQueryResult<BreakdownRow[]> {
   return useQuery({
     queryKey: [

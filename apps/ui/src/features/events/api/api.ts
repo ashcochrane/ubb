@@ -90,7 +90,11 @@ export async function getUsageTimeseries(
           ...window,
           bucket: "day",
           measures: group_by ? [...MONEY_MEASURES] : [...EVERY_MEASURE],
-          ...(group_by ? { group_by: [FIELD_AXIS(group_by)] } : {}),
+          // ⚠ NOT PREFIXED HERE ANY MORE (#506). The picker's value IS the
+          // request word, kind and all, because it came off the discovery
+          // contract — and it has to be, since a rollup is as offerable as a
+          // field and this call site cannot know which it was handed.
+          ...(group_by ? { group_by: [group_by] } : {}),
         },
       },
     }),

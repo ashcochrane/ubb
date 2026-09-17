@@ -147,9 +147,9 @@ describe("EventDetailPage", () => {
       // keep matching them — `mock-data.ts` says so at the map that builds
       // these. What matters here is that they are the tenant's keys and each
       // is its own row, not what this tenant happened to call them.
-      "dim1",
-      "dim2",
-      "dim3",
+      "workflow",
+      "deployment",
+      "cohort",
     ]);
   });
 

@@ -140,9 +140,9 @@ interface DetailSeed {
   created_at?: string;
   event_type?: string;
   provider?: string;
-  dim1?: string;
-  dim2?: string;
-  dim3?: string;
+  workflow?: string;
+  deployment?: string;
+  cohort?: string;
   /**
    * The customer price and its status, as ONE object (#351).
    *
@@ -236,9 +236,9 @@ interface ChargeSeed extends ChargeTerms {
   task_id: string;
   created_at?: string;
   /** The grouping values the Charge froze at the moment the money became owed. */
-  dim1?: string;
-  dim2?: string;
-  dim3?: string;
+  workflow?: string;
+  deployment?: string;
+  cohort?: string;
 }
 
 /**
@@ -268,23 +268,24 @@ export function correlationId(
  * The posting's grouping values, keyed by the declared key with unset slots
  * omitted, exactly as the API now answers (#277).
  *
- * The keys stay spelled for the slots, and that is FORCED rather than lazy:
- * this mock tenant's declared keys have to match `TIMESERIES_GROUP_BY` in
- * `@/lib/labels`, which the group-by picker offers and which still lists
- * `dim1`/`dim2`/`dim3`. That list and the `dimensionLabel` map beside it are
- * the analytics grouping vocabulary, and both are recorded in the migration
- * ledger as slice 7's. Renaming the keys here without it would leave the
- * picker asking for an axis no posting carries, and every bar would read
- * "(unattributed)".
+ * ⚠ **THESE WERE THE PHYSICAL SLOT NAMES UNTIL #506, AND THE PICKER IS WHY.**
+ * The group-by picker offered a list written into `@/lib/labels` with three
+ * slot names in it, so this mock tenant had to declare its keys under the same
+ * names or every bar would have read "(unattributed)" — a fixture bent to fit
+ * a defect. The picker now reads the tenant's own declared axes off the
+ * discovery contract, so the mock tenant declares its own words, and the three
+ * below are the three of `MOCK_DECLARED_AXIS_KEYS` these fixtures report on.
+ * The values chose them: workflows, deployments and a cohort is what they
+ * always were.
  */
 function groupingFieldsOf(
-  seed: Pick<DetailSeed, "dim1" | "dim2" | "dim3">,
+  seed: Pick<DetailSeed, "workflow" | "deployment" | "cohort">,
 ): Record<string, string> {
   const groupingFields: Record<string, string> = {};
   for (const [key, value] of [
-    ["dim1", seed.dim1],
-    ["dim2", seed.dim2],
-    ["dim3", seed.dim3],
+    ["workflow", seed.workflow],
+    ["deployment", seed.deployment],
+    ["cohort", seed.cohort],
   ] as const) {
     if (value !== undefined && value !== "") groupingFields[key] = value;
   }
@@ -489,9 +490,9 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-23T09:41:29Z",
       event_type: "chat.completion",
       provider: "openai",
-      dim1: "copilot",
-      dim2: "realtime-api",
-      dim3: "agent-7",
+      workflow: "copilot",
+      deployment: "realtime-api",
+      cohort: "agent-7",
       price: knownPrice(187_500),
       cost: knownCost(142_300),
       // Composed rather than hand-built, because this is the event the
@@ -644,8 +645,8 @@ const FEATURE_EVENTS: MockEvent[] = [
       id: EVENT_TASK_KILL_ID,
       effective_at: "2026-07-21T09:16:05Z",
       created_at: "2026-07-21T09:16:06Z",
-      dim1: "batch",
-      dim2: "batch-worker",
+      workflow: "batch",
+      deployment: "batch-worker",
       price: knownPrice(64_000),
       cost: knownCost(50_000),
       measurements: { input_tokens: 1500, output_tokens: 620 },
@@ -680,8 +681,8 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-21T09:02:45Z",
       event_type: "embedding.create",
       provider: "mistral",
-      dim1: "batch",
-      dim2: "batch-worker",
+      workflow: "batch",
+      deployment: "batch-worker",
       price: knownPrice(38_400),
       cost: knownCost(30_000),
       measurements: { embedding_tokens: 7400 },
@@ -697,7 +698,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       effective_at: "2026-07-06T18:22:40Z",
       created_at: "2026-07-20T10:04:15Z",
       event_type: "embedding.create",
-      dim1: "search-api",
+      workflow: "search-api",
       price: knownPrice(22_400),
       cost: knownCost(17_500),
       measurements: { embedding_tokens: 5200 },
@@ -730,8 +731,8 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-22T14:08:32Z",
       event_type: "transcription.create",
       provider: "deepgram",
-      dim1: "search-api",
-      dim2: "realtime-api",
+      workflow: "search-api",
+      deployment: "realtime-api",
       price: knownPrice(31_000),
       // No Cost Rate matched this quantity at the moment it happened, so there
       // is nothing to record and the receipt says which input is missing —
@@ -767,7 +768,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-06-11T11:27:04Z",
       event_type: "rerank.create",
       provider: "cohere",
-      dim1: "search-api",
+      workflow: "search-api",
       price: unknownPrice(),
       cost: knownCost(19_000),
       measurements: { rerank_documents: 240 },
@@ -789,7 +790,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-06-12T09:41:56Z",
       event_type: "chat.completion",
       provider: "openai",
-      dim1: "support-bot",
+      workflow: "support-bot",
       price: waivedPrice(),
       cost: knownCost(12_500),
       measurements: { input_tokens: 900, output_tokens: 140 },
@@ -817,7 +818,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-06-13T16:08:23Z",
       event_type: "chat.completion",
       provider: "anthropic",
-      dim1: "onboarding",
+      workflow: "onboarding",
       price: priceNotApplicable("fixed_task_pricing"),
       cost: knownCost(8_400),
       measurements: { input_tokens: 610, output_tokens: 95 },
@@ -850,7 +851,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-06-14T10:33:19Z",
       event_type: "retrieval.query",
       provider: "",
-      dim1: "search-api",
+      workflow: "search-api",
       price: knownPrice(15_000),
       cost: costNotApplicable(),
       measurements: { documents_scanned: 1840 },
@@ -870,7 +871,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       id: EVENT_PRUNED_ID,
       effective_at: "2026-05-02T11:27:53Z",
       created_at: "2026-05-02T11:27:54Z",
-      dim1: "copilot",
+      workflow: "copilot",
       price: knownPrice(94_000),
       cost: knownCost(73_000),
       metadata: { env: "prod", team: "search" },
@@ -904,7 +905,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       agreed_price_micros: 2_500_000,
       agreed_price_line_id: FIXED_PRICE_LINE_ID,
       book_version: FIXED_PRICE_BOOK_VERSION,
-      dim1: "batch",
+      workflow: "batch",
     }),
   },
   // -------------------------------------------------------------------------
@@ -931,7 +932,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-24T10:05:32Z",
       event_type: "embedding.create",
       provider: "openai",
-      dim1: "copilot",
+      workflow: "copilot",
       price: knownPrice(38_400),
       cost: knownCost(30_000),
       measurements: { embedding_tokens: 7400 },
@@ -947,7 +948,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-24T10:06:45Z",
       event_type: "embedding.create",
       provider: "openai",
-      dim1: "copilot",
+      workflow: "copilot",
       price: knownPrice(74_000),
       cost: knownCost(30_000),
       measurements: { embedding_tokens: 7400 },
@@ -994,9 +995,9 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       created_at: effective,
       provider,
       event_type: eventType,
-      dim1: PRODUCT_IDS[index % PRODUCT_IDS.length] ?? "copilot",
-      dim2: index % 4 === 0 ? "batch-worker" : "realtime-api",
-      dim3: index % 5 === 0 ? "agent-7" : "",
+      workflow: PRODUCT_IDS[index % PRODUCT_IDS.length] ?? "copilot",
+      deployment: index % 4 === 0 ? "batch-worker" : "realtime-api",
+      cohort: index % 5 === 0 ? "agent-7" : "",
       price: knownPrice(billed),
       cost: knownCost(providerCost),
       measurements: {

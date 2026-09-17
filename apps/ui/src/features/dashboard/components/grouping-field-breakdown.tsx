@@ -2,12 +2,12 @@ import { ChartCard } from "@/components/shared/chart-card";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMicros } from "@/lib/format";
-import { dimensionLabel } from "@/lib/labels";
+import { ubbAxisTitle } from "@/lib/grouping-axis";
 import { cn } from "@/lib/utils";
 
 import {
-  BREAKDOWN_DIMENSIONS,
-  type BreakdownDimension,
+  BREAKDOWN_AXES,
+  type BreakdownAxis,
   type BreakdownRow,
 } from "../api/types";
 import { topWithOther } from "../lib/economics";
@@ -25,8 +25,8 @@ export interface AnalyticsQueryLike {
 
 export interface GroupingFieldBreakdownProps {
   query: AnalyticsQueryLike;
-  groupBy: BreakdownDimension;
-  onGroupByChange: (groupBy: BreakdownDimension) => void;
+  groupBy: BreakdownAxis;
+  onGroupByChange: (groupBy: BreakdownAxis) => void;
   currency: string;
   className?: string;
 }
@@ -44,7 +44,7 @@ export function GroupingFieldBreakdown({
       className={className}
       actions={
         <div className="flex items-center gap-1" role="group" aria-label="Group cost by">
-          {BREAKDOWN_DIMENSIONS.map((option) => (
+          {BREAKDOWN_AXES.map((option) => (
             <button
               key={option}
               type="button"
@@ -57,7 +57,7 @@ export function GroupingFieldBreakdown({
                   : "text-text-muted hover:bg-bg-subtle hover:text-text-primary",
               )}
             >
-              {dimensionLabel(option)}
+              {ubbAxisTitle(option)}
             </button>
           ))}
         </div>
@@ -74,7 +74,7 @@ function BreakdownBody({
   currency,
 }: {
   query: AnalyticsQueryLike;
-  groupBy: BreakdownDimension;
+  groupBy: BreakdownAxis;
   currency: string;
 }) {
   if (query.isPending) {
@@ -144,7 +144,7 @@ function BreakdownBody({
         </div>
       ))}
       <p className="pt-1 text-[11px] text-text-muted">
-        Revenue by {dimensionLabel(groupBy).toLowerCase()}, top 8 shown.
+        Revenue by {ubbAxisTitle(groupBy).toLowerCase()}, top 8 shown.
       </p>
     </div>
   );

@@ -700,77 +700,19 @@ entries:
   # own entry below; the seven stop words are held by reference from the
   # generated vocabulary and rendered through the open-set helper.
 
-  - id: g7-console-dimensions
-    gate: G7
-    site: console::dimensions
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
-      #280 paid eleven of the sixteen early, and the eleven were never
-      this entry's subject: in the console's design exports, flow
-      rationale, vision note and mockups the plural named a pricing card's
-      cost lines — the same thing the singular named in the same
-      sentences — so the two could not be separated, and the ticket's own
-      acceptance list names the vision note, whose ONLY occurrence was a
-      plural. Two more were comments describing identifiers #280 renamed.
-
-      5 -> 4 in #367, which is slice 4 and not this entry's owner. The
-      occurrence that went is THE RATE IDENTITY MESSAGE named below — a
-      user-facing 409 string in the dialog that added a rule immediately,
-      not a comment — and it went because the dialog is deleted with its
-      route. Paying a debt early from another slice is allowed, an owner
-      may move earlier and never later, and the sweep refuses the
-      alternative outright: an entry may not record more files than the
-      tree holds.
-      The four left are the genuine grouping axis: the committed schema
-      mirror, the analytics query parameter and its picker, and the label
-      module's own list.
-
-      STILL 4 AFTER #372, AND ONE OF THEM MOVED. That commit reads this
-      tenant's declared grouping-field registry off the wire, whose envelope
-      names the list with this word — so the word arrives in the pricing
-      feature whatever the console does about it. It is unwrapped ONCE, in the
-      one function whose job is to turn a wire envelope into what the console
-      wants, and the three components that consume it never spell it. The file
-      that made room is the picker's own types module, where the word was PROSE
-      describing an identifier slice 7 renames: the sentence is paid early and
-      the identifier stays, on the terms #280 and #367 already set on this
-      entry — a debt may be paid early from another slice, and an owner may
-      move earlier and never later.
-
-      4 -> 3 in #501, and this one IS slice 7 doing the work it owns. The file
-      is the dashboard feature's real API layer, where the plural was the query
-      parameter asking the usage report for breakdowns. The dashboard now calls
-      the one economic query and asks for `field:` and `rollup:` axes by name,
-      so there is no bag to ask for and nothing to spell.
-
-      The three left are the committed schema mirror, the pricing feature's
-      single unwrap of the declared registry envelope (#372's paragraph above),
-      and the label module's own list — none of them an analytics request any
-      more. The console side of this entry is therefore done as an ANALYTICS
-      debt and open only as a REGISTRY one, which is exactly the shape the
-      backend entry took in the same commit.
-
-      3 -> 1 in #505, and NEITHER of the two was a console decision. The
-      committed schema mirror is generated from the contract, so it lost the
-      word the moment the published field took the registry's; and the
-      pricing feature's single unwrap of the registry envelope had to move in
-      the SAME COMMIT, because the console's query types are generated and an
-      envelope key that no longer exists is a compile error rather than a
-      choice. That is #322's coupling read from the other side: a contract
-      change and the console's reaction to it cannot be split.
-
-      THE ONE LEFT IS THE LABEL MODULE'S OWN LIST, and it is phase B3's by
-      §21's own phase table. It is a COMMENT describing a grouping capability
-      two routes #501 deleted used to have, so it is stale on its own terms
-      as well as retired — but the label map and its narrowing constants are
-      named as one piece of work and splitting them would leave the console
-      half-migrated across two tickets.
-
+  # `g7-console-dimensions` WAS HERE AND IS PAID (#506, slice 7 phase B3), at
+  # `1 -> 0`. The last site was the label module's own COMMENT over two
+  # hand-written axis lists — "Allowed grouping dimensions for usage analytics
+  # + timeseries" — and it went with the lists and the map beside them. Which
+  # axes a tenant may group by is now that tenant's own answer, read off the
+  # discovery contract; there is no list to head and nothing to spell.
+  #
+  # ⚠ THE ENTRY HAD TO GO RATHER THAN DECREMENT. An extent is a ceiling as well
+  # as a floor, so an entry recording one file the tree no longer holds fails
+  # `ledger_extent_overstated` exactly as a new file spelling the word fails
+  # `term_spread`. The word is still refused in every swept file by the
+  # `retired_aliases` entry on `analytics_grouping_kind`, which is what paying
+  # a G7 debt leaves standing: the excuse goes, the retirement does not.
   - id: g7-console-meter_only
     gate: G7
     site: console::meter_only
@@ -1923,17 +1865,25 @@ entries:
   # the customer's Billing tab, the Billing page's default card and the
   # Utilisation and headroom report. The set is closed: no unknown branch.
 
-  - id: g6-map-dimension-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::dimensionLabel
-    expected: analytics_grouping_kind
-    owner_slice: slice_7
-    reason: >-
-      `dimensionLabel` words the six grouping dimensions, three of which are
-      `dim1`–`dim3`. #145 renames the concept to Grouping Field and #153
-      replaces ad-hoc dimensions with `field:`/`rollup:` grouping, so slice 7
-      replaces the whole vocabulary rather than the wording for it.
-
+  # `g6-map-dimension-label` WAS HERE AND IS PAID (#506, slice 7 section 19).
+  # The map is DELETED rather than re-pointed, which is what its own reason
+  # asked for in terms: *slice 7 replaces the whole vocabulary rather than the
+  # wording for it*. Three of the six words it held were `dim1`-`dim3`, the
+  # physical slots offered as axes, and no tenant ever declared one.
+  #
+  # What renders now, per row of the discovery contract: a ROLLUP axis takes
+  # the catalogue's word through `analytics_rollup`'s generated label keys; a
+  # TENANT's axis renders exactly as the tenant declared it, which is the one
+  # thing UBB must never word for them; and UBB's five reserved axes take
+  # authored console copy in `@/lib/grouping-axis`, because the registry
+  # declares concepts by their VALUES and these five are the names of fields.
+  # An axis nothing has a word for renders as the token, MARKED, through the
+  # one open-set helper — never title-cased.
+  #
+  # ⚠ THE TWO NARROWING CONSTANTS ABOVE IT HAD NO SEAT AND FELL WITH IT. They
+  # listed the axes the console offered, slot names among them, so a ticket
+  # that paid this entry and left them would have left the console offering
+  # axes that no longer exist and failed no gate saying so.
   - id: g6-map-enforcement-mode-label
     gate: G6
     site: apps/ui/src/lib/labels.ts::enforcementModeLabel

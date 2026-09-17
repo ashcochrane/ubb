@@ -21,6 +21,7 @@
 // render; the state is on the row for it to read.
 
 import type { MeteringSchemas } from "@/api/types";
+import { axisRequestWord, FIELD_KIND } from "@/lib/grouping-axis";
 
 export type EconomicsAnswer = MeteringSchemas["EconomicsOut"];
 export type EconomicRow = MeteringSchemas["EconomicRowOut"];
@@ -43,17 +44,24 @@ export const MONEY_MEASURES = [
 /** All four — the money plus the count of recorded work. */
 export const EVERY_MEASURE = [...MONEY_MEASURES, RECORDED_EVENTS] as const;
 
-/** The grouping axes this console offers, in the request's own vocabulary.
+/** The request word for a named FIELD axis, where a call site knows which it wants.
  *
- *  Each is `<kind>:<name>`: the kind is what tells a column on the event apart
- *  from a join to a rollup UBB owns, and the server refuses a word that is on
- *  neither list. This builds the `field:` half — the reserved words every
+ *  Each axis is `<kind>:<name>`: the kind is what tells a column on the event
+ *  apart from a join to a rollup UBB owns, and the server refuses a word that
+ *  is on neither list. This builds the `field:` half — the reserved words every
  *  tenant has (`customer`, `provider`, `event_type`, `task_type`,
  *  `subtask_type`) take it as readily as a tenant's own declared key, because
- *  the server tells them apart and the caller does not have to. The picker that
- *  reads a tenant's declared axes off the discovery contract is a later
- *  ticket's; this console names the axis it wants at each call site. */
-export const FIELD_AXIS = (name: string) => `field:${name}`;
+ *  the server tells them apart and the caller does not have to.
+ *
+ *  ⚠ **THIS IS FOR A CALL SITE THAT NAMES ITS OWN AXIS, NEVER FOR A PICKER.**
+ *  Seven of the eight call sites ask for `field:customer` because grouping by
+ *  the customer IS the question they are asking. A surface OFFERING a choice of
+ *  axes reads them off the discovery contract, where the request word arrives
+ *  already built and may be a rollup (#506) — prefixing one of those again
+ *  would name an axis no tenant has. The word is assembled in one place either
+ *  way, in `@/lib/grouping-axis`. */
+export const FIELD_AXIS = (name: string) =>
+  axisRequestWord({ kind: FIELD_KIND, name });
 
 /**
  * A measure's figure where it states one, and zero where it does not.

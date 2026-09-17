@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,872 of 2,304 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,877 of 2,309 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2476,6 +2476,25 @@ measurement_key:
     # "calls" and "constituents" throughout, and the one place a count of
     # things was needed reads "a hundred calls". Checked by re-taking the count
     # over the new swept set rather than assumed from care.
+    #
+    # 2026-09-17, #506 (the console's grouping vocabulary): 1,872 of 2,304 ->
+    # 1,877 of 2,309 tracked files (`units` 44 files / 122 occurrences, UNMOVED
+    # for the TENTH consecutive ticket). FIVE files arrived and none left, and
+    # both totals move by the same five: every arrival is ordinary console
+    # source — the grouping-axis vocabulary and its test, the discovery
+    # contract's hook, the picker's shared label and the picker's own test —
+    # and no migration or frozen document is among them, so no exclusion moves.
+    # #504 and #505 each moved neither total, which is why the paragraph above
+    # this one is #503's.
+    #
+    # ⚠ A RISE OWES AN ACCOUNT, and this one's is that the near miss was real
+    # and was declined. Two of the five are about a chart's AXES and the values
+    # a tenant reports on them, which is the shape the retired plural keeps
+    # arriving through — a count of the things in a group is exactly the
+    # sentence #328 and #412 both wrote. The modules say "axes", "rows",
+    # "options", "values" and "postings" throughout, and where a whole set was
+    # meant they say "the set". Checked by re-taking the count over the new
+    # swept set rather than assumed from care.
 
     - term: units
       retired_as: >-

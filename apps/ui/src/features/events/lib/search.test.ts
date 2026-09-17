@@ -9,7 +9,7 @@ describe("eventsSearchSchema", () => {
       past_limit: true,
       stop_scope: "customer",
       episode_seq: 3,
-      group_by: "provider",
+      group_by: "field:provider",
       tag_key: "env",
       tag_value: "prod",
       start_date: "2026-07-01",
@@ -18,7 +18,16 @@ describe("eventsSearchSchema", () => {
     expect(parsed.past_limit).toBe(true);
     expect(parsed.stop_scope).toBe("customer");
     expect(parsed.episode_seq).toBe(3);
-    expect(parsed.group_by).toBe("provider");
+    expect(parsed.group_by).toBe("field:provider");
+  });
+
+  it("keeps a rollup axis, which is as legal a group-by as a field", () => {
+    // The two kinds share one parameter (§6), so a schema that only ever let
+    // `field:` through would silently drop half the vocabulary — and drop it
+    // the way this one drops nonsense, with no error anywhere.
+    const parsed = eventsSearchSchema.parse({ group_by: "rollup:event_category" });
+
+    expect(parsed.group_by).toBe("rollup:event_category");
   });
 
   it("catches mangled values instead of crashing the route", () => {
@@ -34,6 +43,16 @@ describe("eventsSearchSchema", () => {
     expect(parsed.episode_seq).toBeUndefined();
     expect(parsed.group_by).toBeUndefined();
     expect(parsed.start_date).toBeUndefined();
+  });
+
+  it("drops a bookmark carrying the retired shape rather than forwarding it", () => {
+    // A URL saved before #506 named the axis with no kind, because the call
+    // site prefixed it. Left alone it would reach the server as an axis word
+    // that names nothing, and the chart would render a refusal for a link that
+    // used to work — so it resolves to "no grouping" instead.
+    const parsed = eventsSearchSchema.parse({ group_by: "provider" });
+
+    expect(parsed.group_by).toBeUndefined();
   });
 });
 

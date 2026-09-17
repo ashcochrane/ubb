@@ -26,7 +26,7 @@ import {
 import {
   toConnectStatus,
   type ApiKeyList,
-  type BreakdownDimension,
+  type BreakdownAxis,
   type ConnectStatus,
   type Economics,
   type PricingBookList,
@@ -59,7 +59,7 @@ export async function getTenantEconomics(window: Window): Promise<Economics> {
  */
 export async function getGroupedEconomics(
   window: Window,
-  groupBy: BreakdownDimension,
+  groupBy: BreakdownAxis,
 ): Promise<Economics> {
   return unwrap(
     await meteringApi.GET("/analytics/economics", {

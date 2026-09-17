@@ -5,7 +5,7 @@
 import { z } from "zod";
 
 import { dateRangeSearchSchema } from "@/lib/date-range";
-import { TIMESERIES_GROUP_BY } from "@/lib/labels";
+import { isGroupingAxis } from "@/lib/grouping-axis";
 
 export const STOP_SCOPES = ["task", "subtask", "customer"] as const;
 
@@ -16,7 +16,13 @@ export const eventsSearchSchema = dateRangeSearchSchema.extend({
   past_limit: z.boolean().optional().catch(undefined),
   stop_scope: z.enum(STOP_SCOPES).optional().catch(undefined),
   episode_seq: z.number().int().nonnegative().optional().catch(undefined),
-  group_by: z.enum(TIMESERIES_GROUP_BY).optional().catch(undefined),
+  // ⚠ A SHAPE CHECK, NOT A MEMBERSHIP ONE (#506). Which axes exist is this
+  // tenant's own answer, computed per tenant and read off the discovery
+  // contract, so a URL parser has no list to check against and the server
+  // refuses an axis nobody declared. What this still catches is a URL carrying
+  // the retired shape — a bare axis name the call site used to prefix — which
+  // names no axis at all and would otherwise be forwarded verbatim.
+  group_by: z.string().refine(isGroupingAxis).optional().catch(undefined),
 });
 
 export type EventsSearch = z.infer<typeof eventsSearchSchema>;
