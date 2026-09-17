@@ -5,6 +5,7 @@
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
+import { axisNameOf } from "@/lib/grouping-axis";
 
 import {
   ALL_EVENTS,
@@ -287,17 +288,31 @@ export async function getUsageAnalytics(
   } as Economics;
 }
 
-function dimensionValue(detail: UsageEventDetail, groupKey: string): string {
+function axisValue(detail: UsageEventDetail, requestWord: string): string {
   // The two always-present axes are their own properties; everything else is a
   // declared grouping field, looked up by the tenant's own key (#277). The
   // chain of slot comparisons this replaces could only ever reach three of the
   // ten slots that exist, and had to be extended by hand for each one.
+  //
+  // ⚠ THE AXIS ARRIVES AS THE REQUEST WORD NOW, KIND AND ALL (#506), because
+  // the picker reads it off the discovery contract, and the kind comes off
+  // before the lookup.
+  //
+  // ⚠ **A ROLLUP THEREFORE FALLS THROUGH TO "(unattributed)", AND THAT IS A
+  // LIMIT OF THIS FIXTURE RATHER THAN OF THE ANSWER.** A rollup is a JOIN — a
+  // controlled mapping from an event type or a measurement to a broader
+  // classification — and these seeds carry no such mapping to join to. So in
+  // mock mode picking one draws a single series under the unattributed name.
+  // The alternative is inventing categories UBB would have had to declare,
+  // which is the one thing a fixture for this vocabulary must not do; whoever
+  // gives the seeds an event-category mapping can delete this paragraph.
+  const axis = axisNameOf(requestWord);
   const value =
-    groupKey === "provider"
+    axis === "provider"
       ? detail.provider
-      : groupKey === "event_type"
+      : axis === "event_type"
         ? detail.event_type
-        : (detail.grouping_fields[groupKey] ?? "");
+        : (detail.grouping_fields[axis] ?? "");
   return value === "" ? "(unattributed)" : value;
 }
 
@@ -318,7 +333,7 @@ export async function getUsageTimeseries(
   for (const event of events) {
     const day = `${event.detail.effective_at.slice(0, 10)}T00:00:00Z`;
     const key = params.group_by
-      ? `${day}|${dimensionValue(event.detail, params.group_by)}`
+      ? `${day}|${axisValue(event.detail, params.group_by)}`
       : day;
     const bucket = buckets.get(key) ?? { billed: 0, provider: 0, count: 0 };
     bucket.billed = addKnownCost(bucket.billed, event.detail.billed_cost_micros);
@@ -373,7 +388,9 @@ export async function getUsageTimeseries(
   return {
     period_start: params.start_date,
     period_end: params.end_date,
-    group_by: params.group_by ? [`field:${params.group_by}`] : [],
+    // Echoed exactly as asked, which is what the real answer does — the
+    // request word already carries its kind.
+    group_by: params.group_by ? [params.group_by] : [],
     bucket: "day",
     basis: "recorded",
     economic_data_available_from: "2020-07-01",

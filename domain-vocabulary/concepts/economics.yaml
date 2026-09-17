@@ -810,6 +810,12 @@ analytics_grouping_kind:
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/queries.py
+    # The console renders a picker whose axis list tells a column from a join,
+    # so it HOLDS both names the moment it does (#506). Declared here in the
+    # commit that pays it: a consumer holding a closed set the registry says it
+    # has none of is exactly what G2's census exists to catch.
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json
 
@@ -827,6 +833,13 @@ analytics_rollup:
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/queries.py
+    # The picker offers both rollup axes beside the tenant's own fields and
+    # words each from the catalogue, so the console holds this set too (#506).
+    # The two died together on the backend because one read serves both, and
+    # they arrive together here for the same reason: a rollup axis IS one of
+    # the two kinds, so a picker holding one holds the other.
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json
 

@@ -16,7 +16,7 @@ import {
 } from "./mock-data";
 import type {
   ApiKeyList,
-  BreakdownDimension,
+  BreakdownAxis,
   ConnectStatus,
   Economics,
   PricingBookList,
@@ -31,7 +31,7 @@ export async function getTenantEconomics(window: Window): Promise<Economics> {
 
 export async function getGroupedEconomics(
   window: Window,
-  groupBy: BreakdownDimension,
+  groupBy: BreakdownAxis,
 ): Promise<Economics> {
   await mockDelay();
   return mockGroupedEconomics(window, groupBy);

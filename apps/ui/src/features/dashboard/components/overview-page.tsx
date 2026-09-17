@@ -12,7 +12,7 @@ import { resolveRange, type DateRange } from "@/lib/date-range";
 import { eventsOn, onlyRow } from "@/lib/economic-query";
 
 import { useGroupedEconomics, useLifetimeEconomics } from "../api/queries";
-import type { BreakdownDimension } from "../api/types";
+import type { BreakdownAxis } from "../api/types";
 import { CustomerEconomicsTable } from "./customer-economics-table";
 import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
 import { GettingStartedCard } from "./getting-started-card";
@@ -39,7 +39,7 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
   // asks the same window UNGROUPED for its own totals, which is what lets this
   // one be money-only — a count across rows that mix Event Types is the
   // comparison the server refuses.
-  const [groupBy, setGroupBy] = React.useState<BreakdownDimension>("provider");
+  const [groupBy, setGroupBy] = React.useState<BreakdownAxis>("provider");
   const grouped = useGroupedEconomics(window, groupBy);
 
   // All-time totals decide whether this workspace still looks brand new —

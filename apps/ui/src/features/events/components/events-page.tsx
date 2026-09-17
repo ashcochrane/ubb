@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { resolveRange } from "@/lib/date-range";
-import { TIMESERIES_GROUP_BY } from "@/lib/labels";
+import { isGroupingAxis } from "@/lib/grouping-axis";
 
 import { useUsageLedger } from "../api/queries";
 import type { UsageListFilters } from "../api/types";
@@ -106,9 +106,15 @@ export function EventsPage({
         customerId={customerId}
         groupBy={search.group_by}
         onGroupByChange={(groupBy) =>
-          // Narrow the picker's string back into the schema's grouping enum.
+          // Narrow the picker's string back to something shaped like an axis.
+          // WHICH axes exist is this tenant's answer and the server's to
+          // refuse, so the check here is the request word's SHAPE and not a
+          // list this page keeps (#506).
           update({
-            group_by: TIMESERIES_GROUP_BY.find((option) => option === groupBy),
+            group_by:
+              groupBy !== undefined && isGroupingAxis(groupBy)
+                ? groupBy
+                : undefined,
           })
         }
       />

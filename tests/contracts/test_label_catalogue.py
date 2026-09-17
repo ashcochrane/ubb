@@ -98,10 +98,18 @@ ADAPTER_IMPORTERS = (
     "apps/ui/src/features/customers/components/subscription-tab.tsx",
     "apps/ui/src/features/customers/components/transactions-section.tsx",
     "apps/ui/src/features/customers/components/usage-invoices-section.tsx",
-    "apps/ui/src/features/dashboard/components/grouping-field-breakdown.tsx",
+    # ⚠ FOUR IMPORTERS LEFT IN #506, ALL FOUR ON THE GROUPING VOCABULARY, and
+    # every one of them a conversion rather than a deletion. The breakdown card
+    # and the timeseries card took their axis words from `dimensionLabel`,
+    # deleted with its ledger entry; the events page and the ledger's URL schema
+    # took the axis LIST from the two narrowing constants beside it, which had
+    # no ledger seat and fell with the picker. All four now bind
+    # `@/lib/grouping-axis`, which reads the generated vocabulary and the locale
+    # catalogue — and the two sets the adapter keeps for this concept are held
+    # for the census alone, imported from here by nothing, because this ratchet
+    # is exactly what a migrated concept must not push back up.
     "apps/ui/src/features/developers/components/test-event-response.tsx",
     "apps/ui/src/features/events/components/event-filters.tsx",
-    "apps/ui/src/features/events/components/events-page.tsx",
     # `ledger-table.tsx` LEFT IN #466 as a conversion: its one word — why an
     # event was stopped — came from `stopReasonLabel`, deleted with its ledger
     # entry; the stopped indicator now renders the word through the open-set
@@ -117,8 +125,6 @@ ADAPTER_IMPORTERS = (
     # entry; the panel now binds `@/lib/task-status`, the same binding the
     # runs surface renders. A conversion rather than a deletion: the file
     # still exists, it just no longer reaches the adapter.
-    "apps/ui/src/features/events/components/timeseries-card.tsx",
-    "apps/ui/src/features/events/lib/search.ts",
     # The add-a-rule dialog's line went with the dialog in #367 — its route is
     # deleted, so the file is not an importer that stopped importing but a file
     # that stopped existing. The count keeps meaning what it says.
@@ -412,7 +418,7 @@ def test_every_adapter_export_is_classified(legacy):
         "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "REASON_CODES",
         "ROLES", "SPEND_POOL_ENFORCE_MODES", "TASK_STATUSES", "TRIGGER_SOURCES",
         "USAGE_EVENT_KINDS",
-        "ANALYTICS_DIMENSIONS", "TIMESERIES_GROUP_BY", "WEBHOOK_EVENT_TYPES",
+        "ANALYTICS_GROUPING_KINDS", "ANALYTICS_ROLLUPS", "WEBHOOK_EVENT_TYPES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "

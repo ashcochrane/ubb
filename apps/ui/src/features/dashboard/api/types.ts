@@ -17,6 +17,7 @@
 // use floats.
 
 import type { MeteringSchemas, MarginSchemas, TenantSchemas } from "@/api/types";
+import type { UbbAxis } from "@/lib/grouping-axis";
 import {
   amountOn,
   axisValueOn,
@@ -49,24 +50,28 @@ export type PricingBookList = MeteringSchemas["PaginatedPricingBooks"];
 /**
  * The four breakdown axes the overview picker offers.
  *
- * ⚠ THE IDENTIFIER IS STILL SLICE 7's — only the prose is paid here (#372).
- * The plural that named this axis is retired and its console ledger entry
- * counts the files holding it; the constant below keeps the word, because
- * renaming it is part of the one economic query slice 7 builds and is not
- * something a commit about pricing books gets to decide. What this commit
- * needed was room: the pricing feature reads the tenant's own grouping-field
- * registry off the wire, which puts the word in one more file, and the entry's
- * count is a ceiling on spread as well as a floor. Paying a debt early from
- * another slice is allowed and an owner may move earlier and never later, so
- * the sentence moves now and the identifier moves with its slice.
+ * ⚠ THE IDENTIFIER TOOK ITS SLICE'S WORD IN #506, which is what #372 left for
+ * it: that commit paid the SENTENCE early to make room under a spread ceiling
+ * and said in terms that the identifier moves with its slice. It has.
+ *
+ * ⚠ **FOUR NAMED AXES AND NOT THE TENANT'S WHOLE LIST, WHICH IS A CHOICE
+ * RATHER THAN THE OLD DEFECT.** The group-by picker on the events page reads
+ * every axis this tenant declared off the discovery contract, because exploring
+ * is what that page is for. The overview is a summary: it offers four axes
+ * every workspace has whatever it declares, so the card says the same thing to
+ * a tenant that has declared nothing as to one that has declared ten. What made
+ * the old list a defect was not that it was short — it was that three of its
+ * entries were PHYSICAL SLOTS, offered as axes nobody had declared. Each of
+ * these four is a reserved axis the server always answers for, typed against
+ * the five UBB words so a fifth cannot be added here without one.
  */
-export const BREAKDOWN_DIMENSIONS = [
+export const BREAKDOWN_AXES = [
   "provider",
   "event_type",
   "task_type",
   "customer",
-] as const;
-export type BreakdownDimension = (typeof BREAKDOWN_DIMENSIONS)[number];
+] as const satisfies readonly UbbAxis[];
+export type BreakdownAxis = (typeof BREAKDOWN_AXES)[number];
 
 // ---------------------------------------------------------------------------
 // Narrowed views of the one query
