@@ -14,7 +14,7 @@ from uuid import UUID
 import datetime
 
 if TYPE_CHECKING:
-  from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+  from ..models.record_usage_request_grouping_fields import RecordUsageRequestGroupingFields
   from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
   from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
 
@@ -37,9 +37,9 @@ class RecordUsageRequest:
                 supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
                 treats as cost.
             currency (None | str | Unset):
-            dimensions (RecordUsageRequestDimensions | Unset):
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
+            grouping_fields (RecordUsageRequestGroupingFields | Unset):
             measurements (None | RecordUsageRequestMeasurementsType0 | Unset):
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset):
@@ -51,9 +51,9 @@ class RecordUsageRequest:
     idempotency_key: str
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: None | str | Unset = UNSET
-    dimensions: RecordUsageRequestDimensions | Unset = UNSET
     effective_at: datetime.datetime | None | Unset = UNSET
     event_type: None | str | Unset = UNSET
+    grouping_fields: RecordUsageRequestGroupingFields | Unset = UNSET
     measurements: None | RecordUsageRequestMeasurementsType0 | Unset = UNSET
     metadata: RecordUsageRequestMetadata | Unset = UNSET
     provider: None | str | Unset = UNSET
@@ -66,7 +66,7 @@ class RecordUsageRequest:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+        from ..models.record_usage_request_grouping_fields import RecordUsageRequestGroupingFields
         from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
         customer_id = str(self.customer_id)
@@ -85,10 +85,6 @@ class RecordUsageRequest:
         else:
             currency = self.currency
 
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
-
         effective_at: None | str | Unset
         if isinstance(self.effective_at, Unset):
             effective_at = UNSET
@@ -102,6 +98,10 @@ class RecordUsageRequest:
             event_type = UNSET
         else:
             event_type = self.event_type
+
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         measurements: dict[str, Any] | None | Unset
         if isinstance(self.measurements, Unset):
@@ -146,12 +146,12 @@ class RecordUsageRequest:
             field_dict["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if currency is not UNSET:
             field_dict["currency"] = currency
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
         if effective_at is not UNSET:
             field_dict["effective_at"] = effective_at
         if event_type is not UNSET:
             field_dict["event_type"] = event_type
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if measurements is not UNSET:
             field_dict["measurements"] = measurements
         if metadata is not UNSET:
@@ -169,7 +169,7 @@ class RecordUsageRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.record_usage_request_dimensions import RecordUsageRequestDimensions
+        from ..models.record_usage_request_grouping_fields import RecordUsageRequestGroupingFields
         from ..models.record_usage_request_measurements_type_0 import RecordUsageRequestMeasurementsType0
         from ..models.record_usage_request_metadata import RecordUsageRequestMetadata
         d = dict(src_dict)
@@ -200,16 +200,6 @@ class RecordUsageRequest:
         currency = _parse_currency(d.pop("currency", UNSET))
 
 
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: RecordUsageRequestDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
-        else:
-            dimensions = RecordUsageRequestDimensions.from_dict(_dimensions)
-
-
-
-
         def _parse_effective_at(data: object) -> datetime.datetime | None | Unset:
             if data is None:
                 return data
@@ -238,6 +228,16 @@ class RecordUsageRequest:
             return cast(None | str | Unset, data)
 
         event_type = _parse_event_type(d.pop("event_type", UNSET))
+
+
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: RecordUsageRequestGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
+        else:
+            grouping_fields = RecordUsageRequestGroupingFields.from_dict(_grouping_fields)
+
+
 
 
         def _parse_measurements(data: object) -> None | RecordUsageRequestMeasurementsType0 | Unset:
@@ -315,9 +315,9 @@ class RecordUsageRequest:
             idempotency_key=idempotency_key,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,
-            dimensions=dimensions,
             effective_at=effective_at,
             event_type=event_type,
+            grouping_fields=grouping_fields,
             measurements=measurements,
             metadata=metadata,
             provider=provider,

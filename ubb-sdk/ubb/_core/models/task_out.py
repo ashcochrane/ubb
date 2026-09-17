@@ -15,7 +15,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.task_out_dimensions import TaskOutDimensions
+  from ..models.task_out_grouping_fields import TaskOutGroupingFields
 
 
 
@@ -42,7 +42,7 @@ class TaskOut:
             ceiling_remaining_micros (int | None | Unset):
             ceiling_used_percentage (int | None | Unset):
             completed_at (None | str | Unset):
-            dimensions (TaskOutDimensions | Unset):
+            grouping_fields (TaskOutGroupingFields | Unset):
             outcome_reason (None | TaskOutOutcomeReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             reason_detail (None | str | Unset):
@@ -63,7 +63,7 @@ class TaskOut:
     ceiling_remaining_micros: int | None | Unset = UNSET
     ceiling_used_percentage: int | None | Unset = UNSET
     completed_at: None | str | Unset = UNSET
-    dimensions: TaskOutDimensions | Unset = UNSET
+    grouping_fields: TaskOutGroupingFields | Unset = UNSET
     outcome_reason: None | TaskOutOutcomeReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     reason_detail: None | str | Unset = UNSET
@@ -76,7 +76,7 @@ class TaskOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.task_out_dimensions import TaskOutDimensions
+        from ..models.task_out_grouping_fields import TaskOutGroupingFields
         ceiling_status = self.ceiling_status.value
 
         created_at = self.created_at
@@ -119,9 +119,9 @@ class TaskOut:
         else:
             completed_at = self.completed_at
 
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         outcome_reason: None | str | Unset
         if isinstance(self.outcome_reason, Unset):
@@ -173,8 +173,8 @@ class TaskOut:
             field_dict["ceiling_used_percentage"] = ceiling_used_percentage
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if outcome_reason is not UNSET:
             field_dict["outcome_reason"] = outcome_reason
         if parent_task_id is not UNSET:
@@ -192,7 +192,7 @@ class TaskOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.task_out_dimensions import TaskOutDimensions
+        from ..models.task_out_grouping_fields import TaskOutGroupingFields
         d = dict(src_dict)
         ceiling_status = TaskOutCeilingStatus(d.pop("ceiling_status"))
 
@@ -258,12 +258,12 @@ class TaskOut:
         completed_at = _parse_completed_at(d.pop("completed_at", UNSET))
 
 
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: TaskOutDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: TaskOutGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
         else:
-            dimensions = TaskOutDimensions.from_dict(_dimensions)
+            grouping_fields = TaskOutGroupingFields.from_dict(_grouping_fields)
 
 
 
@@ -334,7 +334,7 @@ class TaskOut:
             ceiling_remaining_micros=ceiling_remaining_micros,
             ceiling_used_percentage=ceiling_used_percentage,
             completed_at=completed_at,
-            dimensions=dimensions,
+            grouping_fields=grouping_fields,
             outcome_reason=outcome_reason,
             parent_task_id=parent_task_id,
             reason_detail=reason_detail,

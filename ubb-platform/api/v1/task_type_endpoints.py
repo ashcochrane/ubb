@@ -111,7 +111,7 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
 
     Idempotent: send the whole vocabulary every time. A kind of work you have
     already declared has its ceiling, its two windows and its
-    `required_dimensions` updated in place.
+    `required_grouping_fields` updated in place.
 
     `pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a
     different one answers `409 pricing_mode_frozen`; to change how a kind of
@@ -131,8 +131,8 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     requests one.
 
     `422 validation_error` answers a kind this registry does not recognise, a
-    `required_dimensions` entry you have not declared as a grouping field, or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    `required_grouping_fields` entry you have not declared as a grouping field,
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
     """
     # THE WHOLE BODY IS ONE TRANSACTION, so a request whose fourth declaration
@@ -152,11 +152,12 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
             # single type column cannot carry.
             if tt.kind not in TASK_TYPE_KIND_VALUES:
                 raise Problem("validation_error", f"invalid kind {tt.kind!r}")
-            missing = [d for d in tt.required_dimensions
+            missing = [d for d in tt.required_grouping_fields
                        if d not in grouping_keys]
             if missing:
                 raise Problem("validation_error",
-                              f"required_dimensions not declared: {missing}")
+                              "required_grouping_fields not declared: "
+                              f"{missing}")
             # A DECLARATION ANSWERS THE CEILING QUESTION EXACTLY ONCE (#453,
             # #150 §8.1). The database holds the same exclusive-or as
             # `ck_task_type_ceiling_or_uncapped`; this is the courtesy that
@@ -202,7 +203,11 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
                     "uncapped": tt.uncapped,
                     "silence_window_seconds": tt.silence_window_seconds,
                     "absolute_deadline_seconds": tt.absolute_deadline_seconds,
-                    "required_dimensions": tt.required_dimensions,
+                    # THE BRIDGE, WRITE SIDE. `apps/platform/work/queries.py`
+                    # is the read side of the same fact: the wire and the
+                    # kernel's read contract spell the registry's word, the
+                    # column still spells #277's, and the cutover moves it.
+                    "required_dimensions": tt.required_grouping_fields,
                     **declaration.retirement_over(standing),
                 })
             # ⚠ THE LOOP READS ITS OWN WRITES, BECAUSE A BODY MAY NAME ONE

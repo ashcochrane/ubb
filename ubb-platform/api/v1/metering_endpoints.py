@@ -288,7 +288,8 @@ def record_sync_item(tenant, item, customers, task_exists):
     # grouping field is THIS item's rejection, same as any other validation
     # failure below, and never reaches record_usage.
     try:
-        dimension_slots = DimensionService.admit(tenant, item.dimensions, scope="event")
+        dimension_slots = DimensionService.admit(
+            tenant, item.grouping_fields, scope="event")
     except DimensionError as exc:
         return _rejected("validation_error", str(exc))
     try:
@@ -337,7 +338,7 @@ def record_usage(request, payload: RecordUsageRequest):
     # record.
     try:
         dimension_slots = DimensionService.admit(
-            request.auth.tenant, payload.dimensions, scope="event")
+            request.auth.tenant, payload.grouping_fields, scope="event")
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
     try:
@@ -1828,13 +1829,13 @@ def declare_grouping_fields(request, payload: DimensionRegistryIn):
     an identical declaration is a no-op. `slot` and `scope` are immutable once
     bound and `max_cardinality` may only be raised (D8)."""
     _product_check(request)
-    from apps.platform.grouping_fields.queries import declared_dimensions
+    from apps.platform.grouping_fields.queries import declared_grouping_fields
     from apps.platform.grouping_fields.services import DimensionError, DimensionService
 
     tenant = request.auth.tenant
     try:
         with transaction.atomic():
-            for d in payload.dimensions:
+            for d in payload.grouping_fields:
                 DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
                                          max_cardinality=d.max_cardinality)
             audit_record(
@@ -1842,14 +1843,19 @@ def declare_grouping_fields(request, payload: DimensionRegistryIn):
                 tenant_id=tenant.id,
                 resource_type="dimension_registry",
                 resource_id=tenant.id,
-                metadata={"dimensions": [
+                # THE AUDIT RECORD NAMES WHAT THE RESPONSE NAMES. `metadata`
+                # is an open object on a tenant-readable feed, so this key
+                # is as published as the body below it; records written
+                # before #505 keep the word they were written with, which
+                # is what an immutable ledger means.
+                metadata={"grouping_fields": [
                     {"key": d.key, "slot": d.slot, "scope": d.scope,
                      "max_cardinality": d.max_cardinality}
-                    for d in payload.dimensions]},
+                    for d in payload.grouping_fields]},
             )
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
-    return 200, {"dimensions": declared_dimensions(tenant.id)}
+    return 200, {"grouping_fields": declared_grouping_fields(tenant.id)}
 
 
 @metering_router.get("/grouping-fields", response=DimensionRegistryOut)
@@ -1857,8 +1863,8 @@ def declare_grouping_fields(request, payload: DimensionRegistryIn):
 def list_grouping_fields(request):
     """This tenant's declared Grouping Field vocabulary."""
     _product_check(request)
-    from apps.platform.grouping_fields.queries import declared_dimensions
-    return {"dimensions": declared_dimensions(request.auth.tenant.id)}
+    from apps.platform.grouping_fields.queries import declared_grouping_fields
+    return {"grouping_fields": declared_grouping_fields(request.auth.tenant.id)}
 
 
 @metering_router.get("/grouping-fields/{key}/values",

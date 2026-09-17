@@ -15,7 +15,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.task_detail_out_dimensions import TaskDetailOutDimensions
+  from ..models.task_detail_out_grouping_fields import TaskDetailOutGroupingFields
   from ..models.task_out import TaskOut
 
 
@@ -43,7 +43,7 @@ class TaskDetailOut:
             ceiling_remaining_micros (int | None | Unset):
             ceiling_used_percentage (int | None | Unset):
             completed_at (None | str | Unset):
-            dimensions (TaskDetailOutDimensions | Unset):
+            grouping_fields (TaskDetailOutGroupingFields | Unset):
             outcome_reason (None | TaskDetailOutOutcomeReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             reason_detail (None | str | Unset):
@@ -65,7 +65,7 @@ class TaskDetailOut:
     ceiling_remaining_micros: int | None | Unset = UNSET
     ceiling_used_percentage: int | None | Unset = UNSET
     completed_at: None | str | Unset = UNSET
-    dimensions: TaskDetailOutDimensions | Unset = UNSET
+    grouping_fields: TaskDetailOutGroupingFields | Unset = UNSET
     outcome_reason: None | TaskDetailOutOutcomeReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     reason_detail: None | str | Unset = UNSET
@@ -79,7 +79,7 @@ class TaskDetailOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.task_detail_out_dimensions import TaskDetailOutDimensions
+        from ..models.task_detail_out_grouping_fields import TaskDetailOutGroupingFields
         from ..models.task_out import TaskOut
         ceiling_status = self.ceiling_status.value
 
@@ -123,9 +123,9 @@ class TaskDetailOut:
         else:
             completed_at = self.completed_at
 
-        dimensions: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.dimensions, Unset):
-            dimensions = self.dimensions.to_dict()
+        grouping_fields: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.grouping_fields, Unset):
+            grouping_fields = self.grouping_fields.to_dict()
 
         outcome_reason: None | str | Unset
         if isinstance(self.outcome_reason, Unset):
@@ -186,8 +186,8 @@ class TaskDetailOut:
             field_dict["ceiling_used_percentage"] = ceiling_used_percentage
         if completed_at is not UNSET:
             field_dict["completed_at"] = completed_at
-        if dimensions is not UNSET:
-            field_dict["dimensions"] = dimensions
+        if grouping_fields is not UNSET:
+            field_dict["grouping_fields"] = grouping_fields
         if outcome_reason is not UNSET:
             field_dict["outcome_reason"] = outcome_reason
         if parent_task_id is not UNSET:
@@ -207,7 +207,7 @@ class TaskDetailOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.task_detail_out_dimensions import TaskDetailOutDimensions
+        from ..models.task_detail_out_grouping_fields import TaskDetailOutGroupingFields
         from ..models.task_out import TaskOut
         d = dict(src_dict)
         ceiling_status = TaskDetailOutCeilingStatus(d.pop("ceiling_status"))
@@ -274,12 +274,12 @@ class TaskDetailOut:
         completed_at = _parse_completed_at(d.pop("completed_at", UNSET))
 
 
-        _dimensions = d.pop("dimensions", UNSET)
-        dimensions: TaskDetailOutDimensions | Unset
-        if isinstance(_dimensions,  Unset):
-            dimensions = UNSET
+        _grouping_fields = d.pop("grouping_fields", UNSET)
+        grouping_fields: TaskDetailOutGroupingFields | Unset
+        if isinstance(_grouping_fields,  Unset):
+            grouping_fields = UNSET
         else:
-            dimensions = TaskDetailOutDimensions.from_dict(_dimensions)
+            grouping_fields = TaskDetailOutGroupingFields.from_dict(_grouping_fields)
 
 
 
@@ -362,7 +362,7 @@ class TaskDetailOut:
             ceiling_remaining_micros=ceiling_remaining_micros,
             ceiling_used_percentage=ceiling_used_percentage,
             completed_at=completed_at,
-            dimensions=dimensions,
+            grouping_fields=grouping_fields,
             outcome_reason=outcome_reason,
             parent_task_id=parent_task_id,
             reason_detail=reason_detail,

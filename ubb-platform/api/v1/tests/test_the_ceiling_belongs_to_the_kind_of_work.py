@@ -62,7 +62,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
     def test_ceiling_comes_from_the_task_type(self):
         self._declare()
         r = self._start(task_type="invoice_batch",
-                        dimensions={"region": "eu-west-1"})
+                        grouping_fields={"region": "eu-west-1"})
         assert r.status_code == 200
         body = r.json()
         assert body["task_cogs_ceiling_micros"] == 5_000_000
@@ -73,7 +73,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
         self._declare()
         r = self._start(task_type="invoice_batch",
                         task_cogs_ceiling_micros=1_000_000,
-                        dimensions={"region": "eu-west-1"})
+                        grouping_fields={"region": "eu-west-1"})
         assert r.status_code == 200
         assert r.json()["task_cogs_ceiling_micros"] == 1_000_000
 
@@ -81,7 +81,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
         self._declare()
         r = self._start(task_type="invoice_batch",
                         task_cogs_ceiling_micros=99_000_000,
-                        dimensions={"region": "eu-west-1"})
+                        grouping_fields={"region": "eu-west-1"})
         assert r.status_code == 422
         assert "exceeds" in r.json()["detail"]
         assert Task.objects.count() == 0

@@ -66,6 +66,7 @@ from django.utils import timezone
 from ninja import Router
 
 from api.v1.pagination import page
+from apps.platform.grouping_fields.queries import keys_by_slot
 from api.v1.schemas import (
     PINNED_FIELD_ON_THE_WIRE, CloseTaskRequest, CloseTaskResponse,
     PaginatedTasks, StartTaskRequest, StartTaskResponse, TaskDetailOut,
@@ -199,7 +200,7 @@ def start_task(request, payload: StartTaskRequest):
                     payload.idempotency_key,
                     parent_task_id=payload.parent_task_id,
                     task_type=payload.task_type,
-                    grouping_values=payload.dimensions,
+                    grouping_values=payload.grouping_fields,
                     task_cogs_ceiling_micros=payload.task_cogs_ceiling_micros,
                 ).conflicting_field_on(claimed, tenant)
             except DimensionError as exc:
@@ -279,7 +280,7 @@ def start_task(request, payload: StartTaskRequest):
         try:
             policy = RiskService.resolve_start_policy(
                 tenant, task_type=payload.task_type,
-                grouping_values=payload.dimensions,
+                grouping_values=payload.grouping_fields,
                 requested_ceiling_micros=payload.task_cogs_ceiling_micros,
                 is_subtask=parent is not None)
         except ValueError as exc:
@@ -474,7 +475,13 @@ def list_tasks(request, cursor: str = None, limit: int = 50,
         qs = qs.filter(task_type=task_type)
     if status:
         qs = qs.filter(status=status)
-    return page(qs, cursor, limit, serialize=task_out, time_field="created_at")
+    # THE REGISTRY IS READ ONCE FOR THE WHOLE PAGE. `task_out` keys a unit's
+    # grouping values by the tenant's own declared key, and resolving that map
+    # inside the serialiser would cost one query per row of a fifty-row page.
+    keys = keys_by_slot(request.auth.tenant.id)
+    return page(qs, cursor, limit,
+                serialize=lambda t: task_out(t, keys),
+                time_field="created_at")
 
 
 @task_router.get("/tasks/{task_id}", response={200: TaskDetailOut, 404: ProblemOut})
@@ -486,8 +493,9 @@ def get_task(request, task_id: UUID):
     events that landed after a kill — so this never aggregates
     ubb_posting. One indexed row read plus its children."""
     task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
-    body = task_out(task)
-    body["subtasks"] = [task_out(s) for s in
+    keys = keys_by_slot(request.auth.tenant.id)
+    body = task_out(task, keys)
+    body["subtasks"] = [task_out(s, keys) for s in
                         task.subtasks.all().order_by("created_at")]
     return 200, body
 
@@ -518,8 +526,10 @@ def list_subtasks(request, task_id: UUID, cursor: str = None, limit: int = 50):
     # for one belonging to somebody else — the same body for three different
     # facts, and the caller could not tell which it had.
     parent = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    keys = keys_by_slot(request.auth.tenant.id)
     return page(Task.objects.filter(parent=parent), cursor, limit,
-                serialize=task_out, time_field="created_at")
+                serialize=lambda t: task_out(t, keys),
+                time_field="created_at")
 
 
 @task_router.post("/tasks/{task_id}/close",

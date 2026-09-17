@@ -38,7 +38,7 @@ function kind(overrides: Partial<KindOfWork> & Pick<KindOfWork, "key">): KindOfW
     uncapped: figure === null,
     silence_window_seconds: null,
     absolute_deadline_seconds: null,
-    required_dimensions: [],
+    required_grouping_fields: [],
     retired: false,
     retired_at: null,
     ...overrides,
@@ -233,7 +233,7 @@ describe("a declaration body", () => {
     key: "document-summary",
     task_cogs_ceiling_micros: 2_000_000,
     silence_window_seconds: 600,
-    required_dimensions: ["model"],
+    required_grouping_fields: ["model"],
   });
   const standingB = kind({
     key: "legacy-ocr",
@@ -245,7 +245,7 @@ describe("a declaration body", () => {
   it("re-declares every standing kind verbatim beside the new one", () => {
     const body = declarationBody(
       [standingA, standingB],
-      { key: "video-render", kind: "task", pricing_mode: "fixed", uncapped: true, required_dimensions: [] },
+      { key: "video-render", kind: "task", pricing_mode: "fixed", uncapped: true, required_grouping_fields: [] },
     );
     expect(body.task_types).toHaveLength(3);
     expect(body.task_types[0]).toEqual({
@@ -256,7 +256,7 @@ describe("a declaration body", () => {
       uncapped: false,
       silence_window_seconds: 600,
       absolute_deadline_seconds: null,
-      required_dimensions: ["model"],
+      required_grouping_fields: ["model"],
       retired: false,
     });
     // The standing kind that declared no figure goes back as what it is —
@@ -272,7 +272,7 @@ describe("a declaration body", () => {
       kind: "task",
       task_cogs_ceiling_micros: 4_000_000,
       uncapped: false,
-      required_dimensions: ["model"],
+      required_grouping_fields: ["model"],
     });
     expect(body.task_types).toHaveLength(2);
     expect(body.task_types[0]).toMatchObject({
@@ -289,7 +289,7 @@ describe("a declaration body", () => {
       key: "document-summary",
       kind: "task",
       uncapped: true,
-      required_dimensions: ["model"],
+      required_grouping_fields: ["model"],
     });
     expect(body.task_types[0]).toMatchObject({
       key: "document-summary",
@@ -305,7 +305,7 @@ describe("a declaration body", () => {
       kind: "subtask",
       task_cogs_ceiling_micros: 250_000,
       uncapped: false,
-      required_dimensions: [],
+      required_grouping_fields: [],
     });
     expect(body.task_types).toHaveLength(2);
     expect(body.task_types[0]).toMatchObject({ kind: "task", task_cogs_ceiling_micros: 2_000_000 });

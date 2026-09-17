@@ -14,16 +14,16 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="TaskOutDimensions")
+T = TypeVar("T", bound="TaskDetailOutGroupingFields")
 
 
 
 @_attrs_define
-class TaskOutDimensions:
+class TaskDetailOutGroupingFields:
     """ 
      """
 
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -41,21 +41,21 @@ class TaskOutDimensions:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        task_out_dimensions = cls(
+        task_detail_out_grouping_fields = cls(
         )
 
 
-        task_out_dimensions.additional_properties = d
-        return task_out_dimensions
+        task_detail_out_grouping_fields.additional_properties = d
+        return task_detail_out_grouping_fields
 
     @property
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

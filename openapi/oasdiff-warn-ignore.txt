@@ -164,7 +164,8 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/uni
 # WHAT THAT DOES *NOT* MEAN, STATED PLAINLY BECAUSE THE FIRST DRAFT OF THIS
 # BLOCK GOT IT BACKWARDS. Removing the property from the schema does not make a
 # stale caller's request fail. django-ninja keeps pydantic's `extra="ignore"`
-# (pinned by `api/v1/tests/test_usage_dimensions.py`), so a caller still posting
+# (pinned by `api/v1/tests/test_usage_grouping_fields.py`), so a caller still
+# posting
 # the retired bag gets a **200 and its labels are silently dropped** — they do
 # not land in the surviving bag. Nothing is mis-metered and no money moves, but
 # labels a caller believes it sent are not there.

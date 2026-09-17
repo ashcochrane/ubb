@@ -41,7 +41,7 @@ class TaskTypeIn:
             absolute_deadline_seconds (int | None | Unset):
             kind (TaskTypeInKind | Unset):  Default: TaskTypeInKind.TASK.
             pricing_mode (None | TaskTypeInPricingModeType0 | Unset):
-            required_dimensions (list[str] | Unset):
+            required_grouping_fields (list[str] | Unset):
             retired (bool | None | Unset):
             silence_window_seconds (int | None | Unset):
             task_cogs_ceiling_micros (int | None | Unset):
@@ -52,7 +52,7 @@ class TaskTypeIn:
     absolute_deadline_seconds: int | None | Unset = UNSET
     kind: TaskTypeInKind | Unset = TaskTypeInKind.TASK
     pricing_mode: None | TaskTypeInPricingModeType0 | Unset = UNSET
-    required_dimensions: list[str] | Unset = UNSET
+    required_grouping_fields: list[str] | Unset = UNSET
     retired: bool | None | Unset = UNSET
     silence_window_seconds: int | None | Unset = UNSET
     task_cogs_ceiling_micros: int | None | Unset = UNSET
@@ -85,9 +85,9 @@ class TaskTypeIn:
         else:
             pricing_mode = self.pricing_mode
 
-        required_dimensions: list[str] | Unset = UNSET
-        if not isinstance(self.required_dimensions, Unset):
-            required_dimensions = self.required_dimensions
+        required_grouping_fields: list[str] | Unset = UNSET
+        if not isinstance(self.required_grouping_fields, Unset):
+            required_grouping_fields = self.required_grouping_fields
 
 
 
@@ -123,8 +123,8 @@ class TaskTypeIn:
             field_dict["kind"] = kind
         if pricing_mode is not UNSET:
             field_dict["pricing_mode"] = pricing_mode
-        if required_dimensions is not UNSET:
-            field_dict["required_dimensions"] = required_dimensions
+        if required_grouping_fields is not UNSET:
+            field_dict["required_grouping_fields"] = required_grouping_fields
         if retired is not UNSET:
             field_dict["retired"] = retired
         if silence_window_seconds is not UNSET:
@@ -183,7 +183,7 @@ class TaskTypeIn:
         pricing_mode = _parse_pricing_mode(d.pop("pricing_mode", UNSET))
 
 
-        required_dimensions = cast(list[str], d.pop("required_dimensions", UNSET))
+        required_grouping_fields = cast(list[str], d.pop("required_grouping_fields", UNSET))
 
 
         def _parse_retired(data: object) -> bool | None | Unset:
@@ -223,7 +223,7 @@ class TaskTypeIn:
             absolute_deadline_seconds=absolute_deadline_seconds,
             kind=kind,
             pricing_mode=pricing_mode,
-            required_dimensions=required_dimensions,
+            required_grouping_fields=required_grouping_fields,
             retired=retired,
             silence_window_seconds=silence_window_seconds,
             task_cogs_ceiling_micros=task_cogs_ceiling_micros,

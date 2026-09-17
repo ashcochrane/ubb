@@ -11,7 +11,7 @@ from apps.platform.work.models import Task
 
 
 @pytest.mark.django_db
-class TestUsageDimensions:
+class TestUsageGroupingFields:
     def setup_method(self):
         # products=[...] is REQUIRED — these routes are gated by _product_check.
         self.tenant = Tenant.objects.create(name="T", products=["metering"])
@@ -42,39 +42,39 @@ class TestUsageDimensions:
         return self.client.post("/api/v1/metering/usage", data=body,
                                 content_type="application/json", **self._api_headers())
 
-    def test_declared_event_dimension_lands_in_its_slot(self):
+    def test_a_declared_event_grouping_field_lands_in_its_slot(self):
         self._declare()
-        r = self._post(dimensions={"model": "gpt-4"})
+        r = self._post(grouping_fields={"model": "gpt-4"})
         assert r.status_code == 200
         assert Posting.objects.get(id=r.json()["event_id"]).grouping_field_2 == "gpt-4"
 
     def test_unknown_grouping_field_is_422(self):
         self._declare()
-        r = self._post(dimensions={"nope": "x"})
+        r = self._post(grouping_fields={"nope": "x"})
         assert r.status_code == 422
         assert "unknown grouping field" in r.json()["detail"]
 
     def test_task_scoped_grouping_field_rejected_on_an_event(self):
         self._declare()
-        r = self._post(dimensions={"region": "eu"})
+        r = self._post(grouping_fields={"region": "eu"})
         assert r.status_code == 422
         assert "scope" in r.json()["detail"]
 
     def test_cardinality_overflow_is_422(self):
         self._declare()
-        self._post(dimensions={"model": "a"})
-        self._post(dimensions={"model": "b"})
+        self._post(grouping_fields={"model": "a"})
+        self._post(grouping_fields={"model": "b"})
         r = self.client.post(
             "/api/v1/metering/usage",
             data={"customer_id": str(self.customer.id),
                   "idempotency_key": "k9", "provider": "openai",
                   "event_type": "completion", "provider_cost_micros": 1,
-                  "dimensions": {"model": "c"}},
+                  "grouping_fields": {"model": "c"}},
             content_type="application/json", **self._api_headers())
         assert r.status_code == 422
         assert "cardinality" in r.json()["detail"]
 
-    def test_the_open_bag_no_longer_becomes_dimensions(self):
+    def test_the_open_bag_no_longer_becomes_a_grouping_field(self):
         """The reserved-label lifting at usage_service.py (dim1/dim2/dim3 from
         ["product"]/["service"]/["agent"]) is deleted: the open bag is
         free-form labelling only (design 'What this deletes')."""
@@ -103,7 +103,7 @@ class TestUsageDimensions:
 
     def test_the_detail_response_keys_the_values_by_the_declared_key(self):
         self._declare()
-        r = self._post(dimensions={"model": "gpt-4"})
+        r = self._post(grouping_fields={"model": "gpt-4"})
         body = self._detail(r.json()["event_id"]).json()
         assert body["grouping_fields"] == {"model": "gpt-4"}
 
@@ -113,7 +113,7 @@ class TestUsageDimensions:
         record response published the second and third — a pair no reader could
         have predicted and no argument ever chose."""
         self._declare()
-        r = self._post(dimensions={"model": "gpt-4"})
+        r = self._post(grouping_fields={"model": "gpt-4"})
         assert r.json()["grouping_fields"] == {"model": "gpt-4"}
 
     def test_the_object_reaches_the_tenth_slot(self):
@@ -123,7 +123,7 @@ class TestUsageDimensions:
         change."""
         GroupingField.objects.create(tenant=self.tenant, key="tier",
                                      slot="grouping_field_10", scope="event")
-        r = self._post(dimensions={"tier": "enterprise"})
+        r = self._post(grouping_fields={"tier": "enterprise"})
         assert r.json()["grouping_fields"] == {"tier": "enterprise"}
 
     def test_the_record_response_shows_what_the_posting_inherited(self):
@@ -136,7 +136,7 @@ class TestUsageDimensions:
         task = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                    balance_snapshot_micros=0,
                                    grouping_field_1="eu-west-1")
-        r = self._post(task_id=str(task.id), dimensions={"model": "gpt-4"})
+        r = self._post(task_id=str(task.id), grouping_fields={"model": "gpt-4"})
         assert r.status_code == 200
         assert r.json()["grouping_fields"] == {"region": "eu-west-1",
                                                "model": "gpt-4"}
@@ -149,7 +149,7 @@ class TestUsageDimensions:
         self._declare()
         GroupingField.objects.create(tenant=self.tenant, key="unused",
                                      slot="grouping_field_3", scope="event")
-        r = self._post(dimensions={"model": "gpt-4"})
+        r = self._post(grouping_fields={"model": "gpt-4"})
         assert r.json()["grouping_fields"] == {"model": "gpt-4"}
 
     def test_a_posting_with_no_grouping_values_carries_an_empty_object(self):
@@ -165,13 +165,13 @@ class TestUsageDimensions:
         the round trip needs no translation table on either side of it."""
         self._declare()
         sent = {"model": "gpt-4"}
-        r = self._post(dimensions=sent)
+        r = self._post(grouping_fields=sent)
         assert r.json()["grouping_fields"] == sent
         assert self._detail(r.json()["event_id"]).json()["grouping_fields"] == sent
 
     def test_neither_response_carries_a_slot_named_property(self):
         self._declare()
-        r = self._post(dimensions={"model": "gpt-4"})
+        r = self._post(grouping_fields={"model": "gpt-4"})
         for body in (r.json(), self._detail(r.json()["event_id"]).json()):
             assert not [k for k in body if k.startswith(("dim", "grouping_field_"))
                         and k != "grouping_fields"], body
@@ -184,9 +184,67 @@ class TestUsageDimensions:
         django-ninja/pydantic silently ignores an undeclared field by default
         (Schema.model_config sets no `extra` override), so a caller still
         sending `product_id` gets a normal 200 with dim1 untouched — NOT a
-        422 — and dim1 comes only from a declared `dimensions` value."""
+        422 — and dim1 comes only from a declared grouping field's value."""
         self._declare()
         r = self._post(product_id="search")
         assert r.status_code == 200
         e = Posting.objects.get(id=r.json()["event_id"])
         assert e.grouping_field_1 == ""
+
+    def test_the_write_side_names_the_bag_the_read_side_already_names(self):
+        """SLICE 7 PHASE B2 — the request key is `grouping_fields`, the word
+        both responses have called this same object since #277.
+
+        ⚠ **THE VALUE ARRIVING IS THE ASSERTION, NEVER THE STATUS.** django-ninja
+        drops a body key the schema does not declare rather than refusing it —
+        `test_product_id_is_gone_from_the_wire_contract` at the foot of this
+        module is the same mechanism measured on a different key — so a request
+        under a key the server has stopped reading answers **200 with an empty
+        bag**. A half-done rename is silent here, and only reading the slot back
+        catches it.
+
+        WHAT PROVES THE OLD KEY LEFT IS NOT IN THIS FILE, deliberately. Re-
+        asserting that the old spelling is inert would mean spelling it, and a
+        file that spells a retired word is a file the ledger's extent for that
+        word has to count — so the assertion would hold the entry open on the
+        very file that proves it closed. ⚠ That is true of the ledger SITE IDs
+        too: an `<area>::<term>` id ends in the bare word and a colon is a token
+        boundary, so naming one in prose costs the same site as using it.
+
+        The two controls that do prove it are mechanical and stronger than a
+        test could be: the forbidden-term sweep takes the contract's entry for
+        this word to zero, which is false while the document declares the old
+        property anywhere at all, and the breaking gate carries a REMOVED entry
+        for it — which goes inert, and therefore fails, if the schema widened to
+        two keys instead of renaming one.
+        """
+        self._declare()
+        r = self._post(grouping_fields={"model": "gpt-4"})
+        assert r.status_code == 200, r.content
+        assert Posting.objects.get(
+            id=r.json()["event_id"]).grouping_field_2 == "gpt-4"
+        assert r.json()["grouping_fields"] == {"model": "gpt-4"}
+        assert self._detail(
+            r.json()["event_id"]).json()["grouping_fields"] == {"model": "gpt-4"}
+
+    def test_the_start_request_declares_one_grouping_bag_and_not_two(self):
+        """A RENAME, NOT A WIDENING — and the pin says the whole answer.
+
+        The set is typed out here rather than read off the class, because a set
+        compared against the model it is a claim about restates the
+        implementation one import away and cannot fail. A key re-added under any
+        spelling turns this red, which is the shape of this defect the route
+        tests above cannot see: a schema declaring two bags answers 200 and
+        lands the right value whichever one a caller sends.
+
+        ⚠ THE RECORDING REQUEST IS NOT PINNED HERE BECAUSE IT IS ALREADY PINNED
+        BETTER. `test_two_request_fields_each_with_one_meaning.py` holds its
+        field set against the class AND against the published document, which is
+        a claim this one cannot make; a second copy here would be a set that
+        agrees with both until one moves. The start request had no such pin, and
+        that absence is what this test is for."""
+        from api.v1.schemas import StartTaskRequest
+        assert set(StartTaskRequest.model_fields) == {
+            "customer_id", "idempotency_key", "external_task_id", "parent_task_id",
+            "task_cogs_ceiling_micros", "task_type", "grouping_fields", "metadata",
+        }

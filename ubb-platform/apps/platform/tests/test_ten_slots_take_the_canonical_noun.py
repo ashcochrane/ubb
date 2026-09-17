@@ -467,14 +467,15 @@ class SlotOrderIsNotAlphabeticalOrderTest(TestCase):
     """
 
     def test_the_tenth_slot_does_not_sort_between_the_first_and_the_second(self):
-        from apps.platform.grouping_fields.queries import declared_dimensions
+        from apps.platform.grouping_fields.queries import declared_grouping_fields
 
         tenant = Tenant.objects.create(name="T")
         for position, slot in enumerate(SLOTS):
             GroupingField.objects.create(
                 tenant=tenant, key=f"key_{position}", slot=slot, scope="event")
 
-        self.assertEqual([row["slot"] for row in declared_dimensions(tenant.id)],
+        self.assertEqual(
+            [row["slot"] for row in declared_grouping_fields(tenant.id)],
                          list(SLOTS))
 
 

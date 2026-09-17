@@ -144,7 +144,8 @@ class RiskService:
 
         if policy:
             supplied = set((grouping_values or {}).keys())
-            missing = [d for d in policy["required_dimensions"] if d not in supplied]
+            missing = [d for d in policy["required_grouping_fields"]
+                       if d not in supplied]
             if missing:
                 raise ValueError(
                     f"{kind} type {key!r} missing required grouping field(s): "

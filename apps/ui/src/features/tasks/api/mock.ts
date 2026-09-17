@@ -25,7 +25,7 @@ import {
 } from "./types";
 
 function copyOf(kind: KindOfWork): KindOfWork {
-  return { ...kind, required_dimensions: [...kind.required_dimensions] };
+  return { ...kind, required_grouping_fields: [...kind.required_grouping_fields] };
 }
 
 let kinds: KindOfWork[] = MOCK_KINDS.map(copyOf);
@@ -112,7 +112,7 @@ function apply(declaration: KindOfWorkDeclaration, now: string): void {
     uncapped,
     silence_window_seconds: declaration.silence_window_seconds ?? null,
     absolute_deadline_seconds: declaration.absolute_deadline_seconds ?? null,
-    required_dimensions: [...(declaration.required_dimensions ?? [])],
+    required_grouping_fields: [...(declaration.required_grouping_fields ?? [])],
     retired,
     retired_at: retiredAt,
   };

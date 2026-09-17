@@ -35,7 +35,7 @@ def keys_by_slot(tenant_id) -> dict:
                 .values_list("slot", "key"))
 
 
-def declared_dimensions(tenant_id) -> list[dict]:
+def declared_grouping_fields(tenant_id) -> list[dict]:
     """Full registry as plain dicts, in slot order.
 
     SLOT ORDER IS NOT ALPHABETICAL ORDER, and it became possible for the two to

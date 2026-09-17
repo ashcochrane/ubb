@@ -25,10 +25,10 @@ T = TypeVar("T", bound="DimensionRegistryOut")
 class DimensionRegistryOut:
     """ 
         Attributes:
-            dimensions (list[DimensionDefOut]):
+            grouping_fields (list[DimensionDefOut]):
      """
 
-    dimensions: list[DimensionDefOut]
+    grouping_fields: list[DimensionDefOut]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -37,10 +37,10 @@ class DimensionRegistryOut:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.dimension_def_out import DimensionDefOut
-        dimensions = []
-        for dimensions_item_data in self.dimensions:
-            dimensions_item = dimensions_item_data.to_dict()
-            dimensions.append(dimensions_item)
+        grouping_fields = []
+        for grouping_fields_item_data in self.grouping_fields:
+            grouping_fields_item = grouping_fields_item_data.to_dict()
+            grouping_fields.append(grouping_fields_item)
 
 
 
@@ -48,7 +48,7 @@ class DimensionRegistryOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "dimensions": dimensions,
+            "grouping_fields": grouping_fields,
         })
 
         return field_dict
@@ -59,18 +59,18 @@ class DimensionRegistryOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.dimension_def_out import DimensionDefOut
         d = dict(src_dict)
-        dimensions = []
-        _dimensions = d.pop("dimensions")
-        for dimensions_item_data in (_dimensions):
-            dimensions_item = DimensionDefOut.from_dict(dimensions_item_data)
+        grouping_fields = []
+        _grouping_fields = d.pop("grouping_fields")
+        for grouping_fields_item_data in (_grouping_fields):
+            grouping_fields_item = DimensionDefOut.from_dict(grouping_fields_item_data)
 
 
 
-            dimensions.append(dimensions_item)
+            grouping_fields.append(grouping_fields_item)
 
 
         dimension_registry_out = cls(
-            dimensions=dimensions,
+            grouping_fields=grouping_fields,
         )
 
 

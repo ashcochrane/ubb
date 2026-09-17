@@ -695,8 +695,10 @@ saying what may be asked of it.
 `.get_margin_by_grouping_field` and `.get_margin_trend`, together with the `UBBClient` delegates
 for the last three and the DTOs `CustomerMarginOut`, `GroupingFieldMarginRow` and
 `MarginTrendPointOut`. The generated core carries the replacement operation
-(`api_v1_metering_endpoints_query_economics`); **the hand-written handle for it is the next SDK
-ticket's**, which is why this section maps questions onto a request rather than onto a method.
+(`api_v1_metering_endpoints_query_economics`); **the hand-written handle for it landed in the
+very next SDK ticket** — see §17, which maps each of the five deleted calls onto the call that
+answers it. This section maps questions onto a REQUEST, and is still the one to read if you
+drive the route over raw HTTP.
 
 **How the old questions are asked now.** The request is `measures` (one or more of `supplier_cogs`,
 `customer_revenue`, `gross_margin`, `recorded_events`), `group_by` (zero or more axes, each
@@ -766,6 +768,94 @@ same reason as above.
 
 The routes pre-date the launch tag, so the removals are recorded in the break block
 (`openapi/oasdiff-err-ignore.txt`) as reviewed breaks.
+
+---
+
+## 17. The one query gets its handle, and the grouping bag takes the registry's word (slice 7, #505 — pre-live)
+
+### The five deleted calls, mapped onto the one that replaces them
+
+`MeteringClient.query_economics()` is the handle §16 said was coming, with
+`MeteringClient.grouping_options()` beside it saying what this tenant may ask of it. Both are
+on `UBBClient` too.
+
+| Gone (#501) | The call that answers it now |
+| --- | --- |
+| `.usage_analytics(...)` | `query_economics(measures=[ANALYTICS_MEASURE_SUPPLIER_COGS], group_by=[...])` |
+| `.usage_timeseries(granularity="day")` | the same question with `bucket="day"` |
+| `.get_customer_margin(customer_id)` | `query_economics(measures=[...], customer_id=...)` |
+| `.get_margin_trend(customer_id)` | the same question with `bucket="month"` |
+| `.get_margin_by_grouping_field(group_by="provider")` | `query_economics(..., group_by=[group_by_field("provider")])` |
+
+⚠ **The window defaults to the CURRENT MONTH TO DATE, and every call it replaces defaulted to
+all time.** A port that drops the dates does not fail — it answers `200` with no rows. Name
+`start_date` and `end_date` unless the question really is about now; the answer echoes the
+period it applied either way.
+
+⚠ **`measures` is required and has no default**, at both layers, because it has none on the
+wire: a default measure set is how a caller ends up aggregating three different things to draw
+one line.
+
+⚠ **Every measure carries its own state, and a figure read without it can be wrong in a way
+that looks right.** Read one with `ubb.measure_on(row, name)`, which hands back the measure
+rather than the number — `status` is `known`, `incomplete` (the figure is a BOUND), one of the
+two `unavailable_*` states, or `not_applicable`. A margin that could not be attributed at the
+grain you asked for has NO figure at all; a zero in `amount_micros` is a MEASURED zero.
+
+Axis words are built with `ubb.group_by_field(key)` and `ubb.group_by_rollup(name)` rather
+than typed, so a misspelled kind is a name error rather than a `422`. The four concepts'
+constants are in `ubb.vocabulary` (`ANALYTICS_MEASURE_*`, `ANALYTICS_GROUPING_KIND_*`,
+`ANALYTICS_ROLLUP_*`, `MEASURE_STATUS_*`).
+
+### The declared grouping bag is renamed, at every layer
+
+**The declared grouping bag's keyword is now `grouping_fields=`** on `record_usage` and
+`start_task`, on both the metering client and `UBBClient`, and the request property behind it
+moved with it. It is the keyword that carried the analytics grouping word — the one this
+programme is retiring everywhere — and it is the only bag on either call that is not
+`metadata`. You do not have to guess which: passing the old name raises `TypeError` and
+**Python names it for you**. Rename it and nothing else changes.
+
+⚠ **`record_batch` IS THE EXCEPTION, AND IT USED TO BE THE DANGEROUS ONE.** It takes
+dicts rather than keyword arguments, so Python could not name anything and UBB drops a
+body key it does not publish rather than refusing it — a batch item carrying the old
+key recorded an event **attributed to nothing**, answered `200`, and said so nowhere,
+a hundred at a time. **#505 closes that**: `record_batch` now raises
+`UBBValidationError` before any HTTP for any key the recording request does not
+publish, naming the item's index and listing the keys that are valid. The set is read
+off the generated request model, so it cannot drift from the contract.
+
+That is a behaviour change on its own account: a batch item carrying a key UBB used to
+ignore — `product_id`, say — is now refused by the client instead of being silently
+dropped by the server. Drop the key.
+
+The word is the one **both responses have used since #277**: `RecordUsageResponse` and
+`UsageEventDetailOut` have keyed this same object under `grouping_fields` all along, so until
+now the contract published two spellings of one concept and a round trip read as a
+translation. The registry's own declaration body and the kind-of-work declaration's
+`required_dimensions` moved for the same reason — the latter is now
+`required_grouping_fields` on `PUT /api/v1/task-types` and on what it answers with.
+
+⚠ **If you call these routes over raw HTTP, read this twice.** A body key no schema declares
+is **dropped, not rejected**, so a request still sending the old name gets a normal `200` with
+an EMPTY grouping bag: the event is recorded and attributed to nothing, and no error says so.
+Grep your callers for the old names rather than waiting for a failure.
+
+### A unit of work's grouping values are keyed by YOUR word now
+
+`TaskOut.grouping_fields` (`GET /api/v1/tasks`, `/tasks/{id}`, `/tasks/{id}/subtasks`) is
+keyed by the key you declared, not by UBB's internal slot column — the shape the posting
+reads have had since #277, and the one the field's own comment said the task read was being
+moved to match. A value in a slot no live declaration names is **omitted** rather than
+published under a column name you never chose.
+
+### And one facade passthrough stops being lossy
+
+`UBBClient.get_usage` accepted three parameters where `MeteringClient.get_usage` accepts
+eight, and defaulted `limit` to 50 against the metering client's 20 — so one client answered
+the same call two ways depending which object you held. The facade now forwards all eight and
+pages the same way. **If you call `UBBClient.get_usage` without `limit`, you now get 20 rows
+rather than 50**; pass `limit=50` to keep the old page size.
 
 ---
 

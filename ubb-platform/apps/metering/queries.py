@@ -1588,7 +1588,7 @@ def grouping_options(tenant_id) -> list[dict]:
     order, then the rollups in registry order. Slot order is not alphabetical
     order and the registry's own read is what knows the difference.
     """
-    from apps.platform.grouping_fields.queries import declared_dimensions
+    from apps.platform.grouping_fields.queries import declared_grouping_fields
 
     options = [
         _option(grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, name),
@@ -1599,7 +1599,7 @@ def grouping_options(tenant_id) -> list[dict]:
         _option(grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, field["key"]),
                 kind=ANALYTICS_GROUPING_KIND_FIELD, grain=field["scope"],
                 label=field["key"], max_cardinality=field["max_cardinality"])
-        for field in declared_dimensions(tenant_id)
+        for field in declared_grouping_fields(tenant_id)
     ]
     options += [
         _option(grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP, axis),

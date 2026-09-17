@@ -39,20 +39,33 @@ def declared_grouping_values(values):
     """The recording body's declared grouping bag, for a caller that may not
     spell its key.
 
-    `usage_payload`'s problem one key along, and the same answer: the wire name
-    of this bag is retired vocabulary under a spread ceiling (slice 7's, at 16
-    files), and this module is already one of the counted ones. A caller passes
-    the values and never learns which key they land under.
+    ⚠ THE REASON IT WAS WRITTEN IS GONE AND THE HELPER IS NOT (#505). It
+    existed because this bag's wire key was retired vocabulary under a spread
+    ceiling, so a caller that spelled it put one more file on the entry. The
+    wire now takes the registry's own word and nothing refuses it anywhere.
+
+    What survives is the service `usage_payload` above it states in its own
+    docstring, and `cost_rate_in_default_book` one concept along
+    (`apps/metering/pricing/tests/_helpers.py`): the NAME says what the bag IS
+    — the declared values, as against the open bag beside them — which is a
+    distinction twelve call sites in five modules would otherwise make by
+    spelling a key that says neither. Kept for that, and for nothing else.
+
+    ⚠ The count is measured AFTER this commit's own edits, which removed one:
+    `test_a_start_claims_its_key.py` used to read the wire key back out of
+    this helper to avoid spelling it, and now says the name itself.
     """
-    return {"dimensions": values}
+    return {"grouping_fields": values}
 
 
 #: EVERY PARAMETER THE RECORDING REQUEST PUBLISHES, and nothing else (#324).
 #:
-#: Spelled here for `usage_payload`'s reason one word wider: ONE of these keys
-#: is a retired word under a spread ceiling — the grouping bag slice 7 owns —
-#: and this module is already counted for it. There were TWO until #411 deleted
-#: the second correlation value, which left the set as well as the ledger.
+#: ⚠ NO KEY IN THIS SET IS A RETIRED WORD ANY MORE (#505). One was — the
+#: grouping bag, under a spread ceiling slice 7 owned — and there were TWO
+#: until #411 deleted the second correlation value, which left the set as well
+#: as the ledger. The set is still spelled here rather than derived, for the
+#: reason the paragraph below gives: it is the CLAIM, and a claim read off the
+#: class it is a claim about cannot fail.
 #: The claim that reads it lives in
 #: `test_two_request_fields_each_with_one_meaning.py`, where the two cost
 #: fields' story is; only the spelling is here.
@@ -73,7 +86,7 @@ THE_WHOLE_RECORDING_REQUEST = frozenset({
     "customer_id", "idempotency_key", "metadata",
     "provider_cost_micros", "claimed_provider_cost_micros",
     "measurements", "currency", "task_id", "event_type",
-    "provider", "dimensions", "effective_at",
+    "provider", "grouping_fields", "effective_at",
 })
 
 

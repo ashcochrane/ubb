@@ -1202,3 +1202,33 @@ GET /api/v1/margin/summary api path removed without deprecation
 GET /api/v1/me/usage-summary api path removed without deprecation
 GET /api/v1/metering/analytics/usage api path removed without deprecation
 GET /api/v1/metering/analytics/usage/timeseries api path removed without deprecation
+
+# ─────────────────────────────────────────────────────────────────────────
+# SLICE 7 / #505 — the axis word leaves the contract, AND OWES THIS FILE
+# NOTHING. Recorded as a comment because the arithmetic is surprising and a
+# reader who checks will otherwise think something was missed.
+#
+# Eight published properties were renamed to `grouping_fields` /
+# `required_grouping_fields` — the recording and start requests, the two task
+# reads, the grouping-field registry's request and response, and the
+# kind-of-work declaration in both directions. Against `origin/main` that is
+# FOURTEEN breaking findings (5 ERR, 9 WARN). Against `api-v1-launch` it is
+# ZERO, and the count this file is measured by did not move.
+#
+# WHY: none of those properties existed at the tag. Measured, not assumed —
+# at `api-v1-launch` the word appears on exactly three schemas, all of them
+# pricing-rate bodies (`RateIn`, `RateOut`, `RateChangeIn`) that earlier
+# slices have already taken away, and the tag publishes 98 paths against
+# today's 118. The whole declared grouping-field registry — the routes, the
+# bag on the write side and the object on the read side — landed in #276–#278,
+# AFTER the tag. A property added after the baseline and removed now nets to
+# zero, which is #407's shape exactly (6 authoring, 0 cumulative).
+#
+# So nothing is filed. Fourteen entries here would suppress nothing, and an
+# entry that suppresses nothing turns the gate RED (#367, and rule 1 above).
+# The rule that produced this decision is the standing one: run the gate BOTH
+# ways and file only what the CUMULATIVE run is missing.
+#
+# ⚠ The authoring direction will go on reporting those fourteen for as long as
+# `origin/main` predates this commit. That is expected and is not a defect.
+# ─────────────────────────────────────────────────────────────────────────

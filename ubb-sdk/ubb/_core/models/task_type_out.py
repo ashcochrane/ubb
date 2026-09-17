@@ -40,7 +40,7 @@ class TaskTypeOut:
             key (str):
             kind (TaskTypeOutKind):
             pricing_mode (TaskTypeOutPricingMode):
-            required_dimensions (list[str]):
+            required_grouping_fields (list[str]):
             retired (bool):
             uncapped (bool):
             absolute_deadline_seconds (int | None | Unset):
@@ -52,7 +52,7 @@ class TaskTypeOut:
     key: str
     kind: TaskTypeOutKind
     pricing_mode: TaskTypeOutPricingMode
-    required_dimensions: list[str]
+    required_grouping_fields: list[str]
     retired: bool
     uncapped: bool
     absolute_deadline_seconds: int | None | Unset = UNSET
@@ -72,7 +72,7 @@ class TaskTypeOut:
 
         pricing_mode = self.pricing_mode.value
 
-        required_dimensions = self.required_dimensions
+        required_grouping_fields = self.required_grouping_fields
 
 
 
@@ -111,7 +111,7 @@ class TaskTypeOut:
             "key": key,
             "kind": kind,
             "pricing_mode": pricing_mode,
-            "required_dimensions": required_dimensions,
+            "required_grouping_fields": required_grouping_fields,
             "retired": retired,
             "uncapped": uncapped,
         })
@@ -143,7 +143,7 @@ class TaskTypeOut:
 
 
 
-        required_dimensions = cast(list[str], d.pop("required_dimensions"))
+        required_grouping_fields = cast(list[str], d.pop("required_grouping_fields"))
 
 
         retired = d.pop("retired")
@@ -194,7 +194,7 @@ class TaskTypeOut:
             key=key,
             kind=kind,
             pricing_mode=pricing_mode,
-            required_dimensions=required_dimensions,
+            required_grouping_fields=required_grouping_fields,
             retired=retired,
             uncapped=uncapped,
             absolute_deadline_seconds=absolute_deadline_seconds,

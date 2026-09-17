@@ -90,7 +90,7 @@ def sync_detailed(
 
     Idempotent: send the whole vocabulary every time. A kind of work you have
     already declared has its ceiling, its two windows and its
-    `required_dimensions` updated in place.
+    `required_grouping_fields` updated in place.
 
     `pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a
     different one answers `409 pricing_mode_frozen`; to change how a kind of
@@ -110,8 +110,8 @@ def sync_detailed(
     requests one.
 
     `422 validation_error` answers a kind this registry does not recognise, a
-    `required_dimensions` entry you have not declared as a grouping field, or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    `required_grouping_fields` entry you have not declared as a grouping field,
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -149,7 +149,7 @@ def sync(
 
     Idempotent: send the whole vocabulary every time. A kind of work you have
     already declared has its ceiling, its two windows and its
-    `required_dimensions` updated in place.
+    `required_grouping_fields` updated in place.
 
     `pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a
     different one answers `409 pricing_mode_frozen`; to change how a kind of
@@ -169,8 +169,8 @@ def sync(
     requests one.
 
     `422 validation_error` answers a kind this registry does not recognise, a
-    `required_dimensions` entry you have not declared as a grouping field, or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    `required_grouping_fields` entry you have not declared as a grouping field,
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -203,7 +203,7 @@ async def asyncio_detailed(
 
     Idempotent: send the whole vocabulary every time. A kind of work you have
     already declared has its ceiling, its two windows and its
-    `required_dimensions` updated in place.
+    `required_grouping_fields` updated in place.
 
     `pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a
     different one answers `409 pricing_mode_frozen`; to change how a kind of
@@ -223,8 +223,8 @@ async def asyncio_detailed(
     requests one.
 
     `422 validation_error` answers a kind this registry does not recognise, a
-    `required_dimensions` entry you have not declared as a grouping field, or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    `required_grouping_fields` entry you have not declared as a grouping field,
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:
@@ -262,7 +262,7 @@ async def asyncio(
 
     Idempotent: send the whole vocabulary every time. A kind of work you have
     already declared has its ceiling, its two windows and its
-    `required_dimensions` updated in place.
+    `required_grouping_fields` updated in place.
 
     `pricing_mode` CANNOT BE CHANGED once a kind of work exists. Sending a
     different one answers `409 pricing_mode_frozen`; to change how a kind of
@@ -282,8 +282,8 @@ async def asyncio(
     requests one.
 
     `422 validation_error` answers a kind this registry does not recognise, a
-    `required_dimensions` entry you have not declared as a grouping field, or
-    a declaration that neither states a ceiling nor declares itself uncapped
+    `required_grouping_fields` entry you have not declared as a grouping field,
+    or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
 
     Args:

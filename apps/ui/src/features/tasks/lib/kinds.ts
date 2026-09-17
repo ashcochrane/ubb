@@ -273,7 +273,7 @@ export function redeclare(kind: KindOfWork): KindOfWorkDeclaration {
     uncapped: kind.uncapped,
     silence_window_seconds: kind.silence_window_seconds ?? null,
     absolute_deadline_seconds: kind.absolute_deadline_seconds ?? null,
-    required_dimensions: [...kind.required_dimensions],
+    required_grouping_fields: [...kind.required_grouping_fields],
     retired: kind.retired,
   };
 }
@@ -311,7 +311,7 @@ export function declarationBody(
     uncapped: next.uncapped,
     silence_window_seconds: next.silence_window_seconds ?? null,
     absolute_deadline_seconds: next.absolute_deadline_seconds ?? null,
-    required_dimensions: [...(next.required_dimensions ?? [])],
+    required_grouping_fields: [...(next.required_grouping_fields ?? [])],
     retired: next.retired ?? matched?.retired ?? null,
   };
   const task_types = standing.map((kind) =>

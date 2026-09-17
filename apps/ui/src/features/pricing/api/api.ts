@@ -300,5 +300,5 @@ export async function listGroupingFields(): Promise<GroupingFieldDef[]> {
   const registry: GroupingFieldRegistry = unwrap(
     await meteringApi.GET("/grouping-fields"),
   );
-  return registry.dimensions;
+  return registry.grouping_fields;
 }
