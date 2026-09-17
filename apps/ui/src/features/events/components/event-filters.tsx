@@ -25,7 +25,12 @@ import {
 } from "@/components/ui/select";
 import { stopScopeLabel } from "@/lib/labels";
 
-import { STOP_SCOPES, type EventsSearch } from "../lib/search";
+import {
+  NO_FILTERS,
+  STOP_SCOPES,
+  type EventsSearch,
+  type FilterPatch,
+} from "../lib/search";
 
 const ANY_SCOPE = "any";
 
@@ -70,14 +75,6 @@ function CommitInput({
       }}
     />
   );
-}
-
-export interface FilterPatch {
-  past_limit?: boolean;
-  stop_scope?: EventsSearch["stop_scope"];
-  episode_seq?: number;
-  metadata_key?: string;
-  metadata_value?: string;
 }
 
 export function EventFilters({
@@ -193,15 +190,7 @@ export function EventFilters({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() =>
-            onChange({
-              past_limit: undefined,
-              stop_scope: undefined,
-              episode_seq: undefined,
-              metadata_key: undefined,
-              metadata_value: undefined,
-            })
-          }
+          onClick={() => onChange(NO_FILTERS)}
         >
           Clear filters
         </Button>

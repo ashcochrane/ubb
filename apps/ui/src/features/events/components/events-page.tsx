@@ -18,7 +18,7 @@ import { isGroupingAxis } from "@/lib/grouping-axis";
 
 import { useUsageLedger } from "../api/queries";
 import type { UsageListFilters } from "../api/types";
-import type { EventsSearch } from "../lib/search";
+import { NO_FILTERS, type EventsSearch } from "../lib/search";
 import { AnalyticsStrip } from "./analytics-strip";
 import { CustomerScopeCard } from "./customer-scope-card";
 import { EventFilters } from "./event-filters";
@@ -165,14 +165,7 @@ export function EventsPage({
                   anyFilterActive
                     ? {
                         label: "Clear filters",
-                        onClick: () =>
-                          update({
-                            past_limit: undefined,
-                            stop_scope: undefined,
-                            episode_seq: undefined,
-                            metadata_key: undefined,
-                            metadata_value: undefined,
-                          }),
+                        onClick: () => update(NO_FILTERS),
                       }
                     : undefined
                 }

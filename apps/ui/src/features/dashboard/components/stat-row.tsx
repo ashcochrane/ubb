@@ -2,6 +2,7 @@ import { ErrorCard } from "@/components/shared/error-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   marginBound,
   marginPercentBound,
@@ -87,7 +88,7 @@ export function StatRow({ window, currency }: StatRowProps) {
         label="Gross margin"
         value={
           view.margin_micros === null
-            ? "—"
+            ? ABSENT_LABEL
             : marginBound(view.margin_micros, summary.data, currency)
         }
         subtitle={
@@ -110,9 +111,13 @@ export function StatRow({ window, currency }: StatRowProps) {
           variant="raised"
           label="Customers with usage"
           value={
-            customers.isError ? "—" : (customers.data?.length ?? 0).toLocaleString()
+            customers.isError
+              ? ABSENT_LABEL
+              : (customers.data?.length ?? 0).toLocaleString()
           }
-          subtitle={customers.isError ? "not available for this window" : undefined}
+          subtitle={
+            customers.isError ? "not available for this window" : undefined
+          }
         />
       )}
       <StatCard

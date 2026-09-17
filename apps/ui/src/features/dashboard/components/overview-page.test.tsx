@@ -125,4 +125,30 @@ describe("OverviewPage", () => {
     // Lifetime events > 0 in the mock story → the workspace is not new.
     expect(screen.queryByText("Get started with UBB")).not.toBeInTheDocument();
   });
+
+  // ⚠ THREE OF THE FOUR FAMILIAR EXPERIENCES, PINNED AS ARRIVING WITHOUT A
+  // CLICK (#507). Slice 7 collapsed nine reports into one query and owes that
+  // none of them became a query a tenant has to build: a revenue overview,
+  // margin by customer and cost by provider are console COMPOSITIONS over the
+  // one contract, with no preset concept on the API to ship them. This renders
+  // the page and touches nothing — the three arrive, the breakdown already on
+  // the provider axis, which is what "still one click" means.
+  //
+  // ⚠ THE FOURTH IS NOT PINNED ANYWHERE AND THAT IS SAID RATHER THAN IMPLIED:
+  // the monthly margin trend renders on a customer's own overview tab, and no
+  // test in this console asserts that it renders at all. It is #508's row in
+  // §19 and its rendering assertion belongs with that work.
+  it("composes the revenue overview, margin by customer and cost by provider with no interaction", async () => {
+    renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
+
+    expect(
+      await screen.findByText("Revenue vs provider cost"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Customer economics")).toBeInTheDocument();
+    expect(screen.getByText("Cost breakdown")).toBeInTheDocument();
+    // The breakdown's axis is already the provider one, unpressed by anybody.
+    expect(
+      screen.getByRole("button", { name: "Provider", pressed: true }),
+    ).toBeInTheDocument();
+  });
 });

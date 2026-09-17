@@ -1,5 +1,5 @@
 // Window totals in both denominations + gross margin, from the one economic
-// query (#501 — and the card's own note below says why the third figure is no
+// query (#501 — and the margin card's own note below says why that figure is no
 // longer "markup margin"). Honors the customer scope and the past-limit filters
 // (the API composes them into the totals); the metadata filter applies to the
 // ledger only.

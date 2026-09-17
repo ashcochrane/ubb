@@ -36,6 +36,41 @@ export const eventsSearchSchema = dateRangeSearchSchema.extend({
 
 export type EventsSearch = z.infer<typeof eventsSearchSchema>;
 
+/** A change to the ledger's filters, as the bar hands one back to the page. */
+export interface FilterPatch {
+  past_limit?: boolean;
+  stop_scope?: EventsSearch["stop_scope"];
+  episode_seq?: number;
+  metadata_key?: string;
+  metadata_value?: string;
+}
+
+/**
+ * Every filter, cleared.
+ *
+ * ⚠ **ONE LITERAL, BECAUSE A FILTER LEFT OUT OF IT SURVIVES THE CLICK.** The
+ * filter bar and the empty state below the table both offer "Clear filters",
+ * and both spelled these five keys out. A patch that omits one leaves that
+ * filter applied while the bar stops claiming anything is active — and the
+ * rename in #507 had to edit the same five keys in two files, which is how the
+ * duplication announced itself. The type is what makes it total: every key of
+ * the patch, each set to nothing, so a filter added to `FilterPatch` and not to
+ * this object is a `tsc` failure rather than a key that quietly stops being
+ * cleared.
+ *
+ * It lives here rather than beside the bar because a file that exports a
+ * component may export nothing else — `react-refresh/only-export-components` is
+ * an ERROR in this console, and this module already owns the filter vocabulary
+ * it is made of.
+ */
+export const NO_FILTERS: Record<keyof FilterPatch, undefined> = {
+  past_limit: undefined,
+  stop_scope: undefined,
+  episode_seq: undefined,
+  metadata_key: undefined,
+  metadata_value: undefined,
+};
+
 // The event detail (GET /metering/usage/{event_id}) does NOT carry the
 // customer's id, but the refund endpoint needs it — so the ledger link
 // forwards it as a search param. Arriving without it hides the refund action.

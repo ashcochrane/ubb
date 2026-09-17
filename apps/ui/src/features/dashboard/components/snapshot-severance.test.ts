@@ -9,15 +9,24 @@
 // before a supplier invoice arrived is one a closed period would publish
 // forever.
 //
-// ⚠ **NOTHING ELSE WOULD CATCH A REGRESSION HERE.** The three files this slice
-// names — the customer economics table, its own test, and the overview page —
-// carry no retired word and no ledger entry, so the forbidden-term sweep and
-// the migration ledger are both silent about them; and the two reads answer in
-// the same shape — a customer id, a gross margin in micros, a margin percentage
-// and the same two completeness counts beside them — so a surface repointed at
-// the alerting one renders figures a reader cannot tell apart from the derived
-// ones. The only thing that can say it happened is a claim about which file
-// holds the read.
+// ⚠ **NO GATE WOULD CATCH A REGRESSION HERE, AND THE MARGIN IS THE FIGURE THAT
+// GETS AWAY.** The three files this slice names — the customer economics table,
+// its own test, and the overview page — carry no retired word and no ledger
+// entry, so the forbidden-term sweep and the migration ledger are both silent
+// about them whichever read they hold.
+//
+// The rendering assertions are not silent, but they only cover part of it, and
+// the part they miss is the one that matters. The alerting row carries a
+// customer id, a gross margin in micros, a margin percentage and both
+// completeness counts; it carries no revenue, no provider cost and no event
+// count. So a table repointed WHOLESALE reddens on the revenue and COGS columns
+// it could no longer fill — but a surface that kept the one query and took only
+// its MARGIN from the alerting record renders a margin of the right shape, in
+// the right currency, with the right counts beside it, and every rendering
+// assertion in this feature passes. That is not a hypothetical shape: #330 is
+// the same fact read from two responses on one page, and it is the direction a
+// severance overshoots or half-lands in. The only thing that can say it
+// happened is a claim about which file holds the read.
 //
 // ⚠ **IT IS AN EQUALITY, WHICH IS WHAT MAKES IT BOTH DIRECTIONS.** A reporting
 // surface acquiring the alerting read fails it, and so does the alert card
