@@ -352,24 +352,28 @@ class CrossProductReadContractTest(TestCase):
                          {"billed_cost_micros": 100,
                           UNPRICED_EVENT_COUNT_KEY: 1})
 
-    def test_billed_breakdown_tag_empty_string_and_missing_merge_to_other(self):
-        from apps.metering.queries import get_customer_billed_breakdown
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i1",
-                                  billed_cost_micros=100, metadata={"seat": "alice"})
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i2",
-                                  billed_cost_micros=20, metadata={"seat": ""})
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i3",
-                                  billed_cost_micros=3, metadata={})
-        pairs = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, self.start, self.end, "tag:seat")
-        self.assertEqual({label: billed for label, billed, _ in pairs},
-                         {"alice": 100, "(other)": 23})
+    def _a_declared_axis(self, key="product", slot="grouping_field_1"):
+        from apps.platform.grouping_fields.services import DimensionService
+        DimensionService.declare(self.tenant, key=key, slot=slot, scope="event")
+        return f"field:{key}"
 
-    def test_billed_breakdown_dim1_empty_to_other(self):
+    def test_billed_breakdown_refuses_a_word_that_names_no_axis(self):
+        """THE FREE-TEXT KEY IS GONE FROM THE READ CONTRACT (#503, slice 7 §11).
+
+        `tag:<key>` read the open bag and anything else fell through to the
+        first slot, so an unrecognised grouping silently billed a customer under
+        headings nobody chose. Both readings are refused now, by the sentence
+        every other surface refuses an unknown axis with.
+        """
         from apps.metering.queries import get_customer_billed_breakdown
+        for word in ("tag:seat", "dim1"):
+            with self.subTest(word=word), self.assertRaises(ValueError):
+                get_customer_billed_breakdown(
+                    self.tenant.id, self.customer.id, self.start, self.end, word)
+
+    def test_billed_breakdown_declared_field_empty_value_to_other(self):
+        from apps.metering.queries import get_customer_billed_breakdown
+        axis = self._a_declared_axis()
         Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                   idempotency_key="i1",
                                   billed_cost_micros=100, grouping_field_1="chat")
@@ -377,7 +381,7 @@ class CrossProductReadContractTest(TestCase):
                                   idempotency_key="i2",
                                   billed_cost_micros=20, grouping_field_1="")
         pairs = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, self.start, self.end, "dim1")
+            self.tenant.id, self.customer.id, self.start, self.end, axis)
         self.assertEqual({label: billed for label, billed, _ in pairs},
                          {"chat": 100, "(other)": 20})
 
@@ -389,6 +393,7 @@ class CrossProductReadContractTest(TestCase):
         wrong line as often as the right one.
         """
         from apps.metering.queries import get_customer_billed_breakdown
+        axis = self._a_declared_axis()
         Posting.objects.create(tenant=self.tenant, customer=self.customer,
                                idempotency_key="i1",
                                billed_cost_micros=100, grouping_field_1="chat")
@@ -400,7 +405,7 @@ class CrossProductReadContractTest(TestCase):
                                idempotency_key="i3",
                                billed_cost_micros=50, grouping_field_1="batch")
         rows = get_customer_billed_breakdown(
-            self.tenant.id, self.customer.id, self.start, self.end, "dim1")
+            self.tenant.id, self.customer.id, self.start, self.end, axis)
         self.assertEqual({label: (billed, unpriced)
                           for label, billed, unpriced in rows},
                          {"chat": (100, 1), "batch": (50, 0)})

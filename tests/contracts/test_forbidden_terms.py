@@ -368,7 +368,13 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # retired word -- it renames nothing and carries nothing -- so the
         # number moved for the file existing; the sites and terms held at
         # 7 in 25.
-        "historical-migrations": (UNTIL_SLICE_8, 264, 19),
+        # 264 -> 265 in #503: one migration, renaming the postpaid
+        # invoice-line grouping column onto the one vocabulary and carrying
+        # every stored value with it. The exclusion's worked example twice
+        # over: a `RenameField(old_name=...)` that HAS to spell the retired
+        # word, and a `RunPython` that has to recognise the two readings the
+        # old column had to carry each to what it actually meant.
+        "historical-migrations": (UNTIL_SLICE_8, 265, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

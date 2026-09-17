@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,870 of 2,301 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,872 of 2,304 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2458,6 +2458,24 @@ measurement_key:
     # was declined: the prose says "postings", "events" and "records" where the
     # plural would have been the lazy noun. Checked rather than assumed, by
     # re-taking the count over the new swept set.
+    #
+    # 2026-09-17, #503 (invoice lines take the one grouping vocabulary):
+    # 1,870 of 2,301 -> 1,872 of 2,304 tracked files (`units` 44 files / 122
+    # occurrences, UNMOVED for the NINTH consecutive ticket). THREE files
+    # arrived and none left, and the two totals move by DIFFERENT amounts for
+    # the first time this slice: two new billing test modules are swept, and
+    # the migration that renames the invoice-line grouping column is excluded,
+    # so tracked rises by three and swept by two with `historical-migrations`
+    # 264 -> 265 taking the difference. The slice's first migration since #496.
+    #
+    # ⚠ A RISE OWES AN ACCOUNT, and this one's is that both swept arrivals are
+    # about INVOICE LINES — one line per distinct value of an axis, which is
+    # the shape of prose the retired plural keeps arriving through (#412
+    # reached for it in a read contract writing ordinary English about work).
+    # It was declined deliberately: the modules say "lines", "postings",
+    # "calls" and "constituents" throughout, and the one place a count of
+    # things was needed reads "a hundred calls". Checked by re-taking the count
+    # over the new swept set rather than assumed from care.
 
     - term: units
       retired_as: >-
