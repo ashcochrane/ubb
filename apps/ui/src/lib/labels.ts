@@ -33,6 +33,8 @@ import {
   AFFORDABILITY_REASON_KNOWN_VALUES,
   ANALYTICS_GROUPING_KIND_VALUES,
   ANALYTICS_ROLLUP_VALUES,
+  RECOGNITION_METHOD_VALUES,
+  REVENUE_BASIS_VALUES,
   CEILING_STATUS_VALUES,
   CONTROL_FAMILY_VALUES,
   COSTING_METHOD_VALUES,
@@ -468,6 +470,24 @@ export const ANALYTICS_GROUPING_KINDS = ANALYTICS_GROUPING_KIND_VALUES;
 // terms. The tenant assigns members to them; the axes themselves are UBB's,
 // which is exactly why this set can be shipped and the field list cannot.
 export const ANALYTICS_ROLLUPS = ANALYTICS_ROLLUP_VALUES;
+
+// How a tenant-supplied revenue record is spread over the span it declares,
+// and which of the two views a figure is stated under — the registry's two
+// closed pairs, held BY REFERENCE (#508) on exactly the terms above.
+//
+// ⚠ **THE REGISTRY WAS WAITING FOR THIS TICKET AND SAID SO.** Both concepts
+// carried a note that they had no console consumer *yet*, because declaring
+// one before the panels existed would have been declaring a debt. The panels
+// exist now: the write form offers every recognition method as the choice of
+// how an amount is spread, and the read panel offers both bases and labels
+// every figure with the one the answer states. So the console holds both sets,
+// and the declaration and this reference land together.
+//
+// ⚠ AND NOTHING IMPORTS EITHER FROM HERE, for the reason the pair above gives:
+// `features/customers/lib/supplied-revenue.ts` and the panels read the
+// generated constants directly. The alias is what the census reads.
+export const RECOGNITION_METHODS = RECOGNITION_METHOD_VALUES;
+export const REVENUE_BASES = REVENUE_BASIS_VALUES;
 
 // ---------------------------------------------------------------------------
 // Audit

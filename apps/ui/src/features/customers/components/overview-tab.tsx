@@ -25,11 +25,13 @@ import {
   partialTotalNote,
   supplierCostTotal,
 } from "@/lib/supplier-cost";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
 
 import { useMarginTrend } from "../api/queries";
 import type { CustomerEconomics } from "../api/types";
 import { BusinessRollup } from "./business-rollup";
+import { RevenuePanels } from "./revenue-panels";
 
 const MarginTrendChart = React.lazy(() => import("./margin-trend-chart"));
 
@@ -66,6 +68,12 @@ export function OverviewTab({
           // to their own usage rather than what the number was made of. The
           // three sources are the honest answer, and they are the row below.
           subtitle="Subscriptions, supplied figures and billed usage"
+          // ⚠ THE SUPPLIED SHARE IS NOT SPLIT OUT HERE AND IS NOT MEANT TO BE.
+          // The one economic query answers `customer_revenue` from ONE
+          // definition (#501) and publishes no split; what the panels below
+          // show is the supplied RECORD's own figures, read from the record
+          // that owns them, which is a different question from "how much of
+          // this total was supplied".
         />
         {/* The cost card's subtitle already carries a count — the events in
             the window — so the one that says how many of them went uncosted
@@ -146,26 +154,39 @@ export function OverviewTab({
           <Skeleton className="h-64 w-full" />
         ) : trend.isError ? (
           <ErrorCard error={trend.error} onRetry={() => void trend.refetch()} />
-        ) : !trend.data || trend.data.length === 0 ? (
+        ) : !trend.data || trend.data.points.length === 0 ? (
           <EmptyState
             title="No closed periods yet"
             description="The trend fills in as monthly economics periods close."
           />
         ) : (
-          <React.Suspense fallback={<Skeleton className="h-64 w-full" />}>
-            <MarginTrendChart points={trend.data} currency={currency} />
-          </React.Suspense>
+          <>
+            <React.Suspense fallback={<Skeleton className="h-64 w-full" />}>
+              <MarginTrendChart points={trend.data.points} currency={currency} />
+            </React.Suspense>
+            {/* ⚠ **THE REVENUE LINE INCLUDES SUPPLIED AMOUNTS, AND ONE OF THE
+                TWO VIEWS SPREADS THEM (§5).** A figure a tenant stated for a
+                quarter appears in three months under `recognised` and in one
+                under `recorded` — so a trend drawn without saying which is a
+                chart the reader cannot interpret, and the smoothing is exactly
+                the kind "they did not ask for". The answer names the view it
+                served; this is the console repeating it rather than assuming
+                one. */}
+            <p data-revenue-basis={trend.data.basis} className="mt-2 text-[11px] text-text-muted">
+              {revenueBasisNote(trend.data.basis)}
+            </p>
+          </>
         )}
       </ChartCard>
 
-      {/* THE REVENUE PANELS WERE RENDERED HERE AND ARE GONE (#497,
-          slice 7 section 9). The module held two cards; #496 deleted the
-          recurring-amount card with the record it wrote, and this ticket
-          deletes the revenue-mode card with the switch it set, which left
-          nothing to render. #508 puts the supplied-revenue write panel
-          back in this slot, with the mid-period affordance section 9
-          rules into this slice. An empty grid held open for it would be a
-          defect on every customer page in the meantime. */}
+      {/* THE REVENUE PANELS ARE BACK IN THIS SLOT (#508, slice 7 section 9),
+          and they are a different pair from the two #496 and #497 deleted.
+          Those wrote a recurring amount with no period and set a
+          customer-level switch; these READ the tenant-supplied revenue record
+          under a basis the reader chooses, and WRITE one period at a time with
+          its own source reference. The mid-period affordance section 9 rules
+          into this slice is the day field on the form. */}
+      <RevenuePanels customerId={customerId} range={range} />
 
       <BusinessRollup externalId={externalId} range={range} />
     </div>

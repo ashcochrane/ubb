@@ -92,6 +92,36 @@ describe("CustomerDetailPage — overview", () => {
     }
   });
 
+  // ⚠ **THE TREND'S REVENUE LINE INCLUDES SUPPLIED AMOUNTS, AND ONE OF THE TWO
+  // VIEWS SPREADS THEM (§5).** A figure a tenant stated for a quarter appears
+  // in three months under `recognised` and in one under `recorded`, so a trend
+  // drawn without saying which is a chart its reader cannot interpret — the
+  // "smoothing they did not ask for" §5 names. The answer states the view it
+  // served and the card repeats it; the console assumes nothing.
+  //
+  // The mark is on the node, so this asserts WHICH view the card claims rather
+  // than matching a sentence either view could satisfy.
+  it("says which revenue view the margin trend was drawn under", async () => {
+    const margin: CustomerEconomics = {
+      customer_id: CUS_ACME,
+      ...statedMargin(90_000_000, 390_000_000),
+      event_count: 12,
+    };
+
+    renderWithProviders(
+      <OverviewTab
+        customerId={CUS_ACME}
+        margin={margin}
+        externalId="not-a-business"
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    const note = await screen.findByText(/Revenue stated as/, undefined, SLOW);
+    expect(note.getAttribute("data-revenue-basis")).toBe("recorded");
+    expect(note).toHaveTextContent("nothing is divided");
+  });
+
   // ⚠ AND A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS $0.00.
   // `gross_margin_micros` is nullable on the one query — a margin it cannot
   // attribute at the grain asked for has no figure at all — and a currency

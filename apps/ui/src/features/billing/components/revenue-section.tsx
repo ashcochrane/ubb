@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { DATE_RANGE_PRESETS, resolveRange, type DateRange } from "@/lib/date-range";
 import { formatEventCount, formatMicros } from "@/lib/format";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
 import {
   marginBound,
   partialTotalNote,
@@ -111,6 +112,20 @@ export function RevenueSection({
               <Suspense fallback={<Skeleton className="h-[240px] w-full" />}>
                 <RevenueChart data={daily} currency={currency} />
               </Suspense>
+              {/* ⚠ **THE BILLED FIGURE INCLUDES WHAT TENANTS SUPPLIED, AND ONE
+                  OF THE TWO VIEWS SPREADS IT (§5).** This window sums three
+                  revenue sources, so it has no single source reference and no
+                  single recognition method to show — what it owes instead is
+                  the view it was drawn under, which the one economic query
+                  states on every answer. Without it a tenant reading a day's
+                  revenue cannot tell a figure earned that day from a slice of
+                  one earned across a quarter. */}
+              <p
+                data-revenue-basis={query.data.basis}
+                className="text-[11px] text-text-muted"
+              >
+                {revenueBasisNote(query.data.basis)}
+              </p>
             </div>
           );
         })()

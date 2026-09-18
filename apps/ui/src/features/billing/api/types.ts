@@ -65,6 +65,17 @@ export interface RevenueDailyRow {
  * skipping the day.
  */
 export interface RevenueWindow {
+  /**
+   * The revenue view the server drew these figures under (#508; slice 7 §5).
+   *
+   * ⚠ **A CHART SUMMING SUPPLIED AMOUNTS OWES THIS AND CAN OWE NOTHING ELSE.**
+   * The per-record panels on a customer's page show a source reference and a
+   * recognition method per row; a window adding three revenue sources together
+   * has neither to show, so the one honest thing it can say is which of the two
+   * views it was drawn under — and the answer states it rather than the console
+   * assuming.
+   */
+  basis: string;
   daily: RevenueDailyRow[];
   revenue_micros: number;
   provider_cost_micros: number;
@@ -84,6 +95,7 @@ export function toRevenueWindow(answer: Economics): RevenueWindow {
   }));
   const stated = answer.rows.map((row) => amountOn(row, GROSS_MARGIN));
   return {
+    basis: answer.basis,
     daily,
     revenue_micros: daily.reduce((sum, row) => sum + row.revenue_micros, 0),
     provider_cost_micros: daily.reduce(

@@ -9,6 +9,7 @@ import {
   parseAlertLevels,
   shortId,
   sortMarginRows,
+  suppliedPeriod,
   toMicros,
 } from "./helpers";
 
@@ -88,5 +89,71 @@ describe("parseAlertLevels", () => {
     expect(parseAlertLevels("50, 80,100")).toEqual([50, 80, 100]);
     expect(parseAlertLevels("abc, 50, -2, ")).toEqual([50]);
     expect(parseAlertLevels("")).toEqual([]);
+  });
+});
+
+// The mid-period affordance's arithmetic (#508; slice 7 §9's ruling).
+//
+// #153 §19(f) recorded what retiring the recurring profile cost: the profile
+// absorbed the *began on the fourteenth* semantics automatically, and per-period
+// rows can only express it if the tenant enters the partial period correctly.
+// This is the function that means they do not have to work it out — they say
+// which month and which day they began, and the SPAN is derived.
+describe("suppliedPeriod", () => {
+  it("makes a whole month the month's own span", () => {
+    expect(suppliedPeriod("2026-06", "")).toEqual({
+      period_start: "2026-06-01",
+      period_end: "2026-07-01",
+      days: 30,
+      partial: false,
+    });
+  });
+
+  // THE CASE THE AFFORDANCE EXISTS FOR, COVERED BY NAME. A customer that began
+  // on the fourteenth of June earned over seventeen days, not thirty, and
+  // nothing asks the tenant for that seventeen.
+  it("derives the fourteenth-of-the-month case without the tenant computing it", () => {
+    expect(suppliedPeriod("2026-06", "2026-06-14")).toEqual({
+      period_start: "2026-06-14",
+      period_end: "2026-07-01",
+      days: 17,
+      partial: true,
+    });
+  });
+
+  it("treats the first of the month as the whole month, not a partial one", () => {
+    expect(suppliedPeriod("2026-06", "2026-06-01")).toEqual({
+      period_start: "2026-06-01",
+      period_end: "2026-07-01",
+      days: 30,
+      partial: false,
+    });
+  });
+
+  // The period end is EXCLUSIVE, so December's rolls into the next year. A
+  // helper that incremented the month without the year would state a span
+  // running backwards across every year boundary.
+  it("rolls a December period into the next year", () => {
+    expect(suppliedPeriod("2026-12", "2026-12-14")).toEqual({
+      period_start: "2026-12-14",
+      period_end: "2027-01-01",
+      days: 18,
+      partial: true,
+    });
+  });
+
+  it("counts February's own length rather than a nominal month", () => {
+    expect(suppliedPeriod("2026-02", "")?.days).toBe(28);
+    expect(suppliedPeriod("2028-02", "")?.days).toBe(29);
+  });
+
+  it("answers null for a day outside the month it names", () => {
+    expect(suppliedPeriod("2026-06", "2026-07-14")).toBeNull();
+    expect(suppliedPeriod("2026-06", "2026-05-31")).toBeNull();
+  });
+
+  it("answers null for a month it cannot read", () => {
+    expect(suppliedPeriod("", "")).toBeNull();
+    expect(suppliedPeriod("2026-13", "")).toBeNull();
   });
 });

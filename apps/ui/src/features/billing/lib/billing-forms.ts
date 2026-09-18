@@ -38,33 +38,37 @@ export const currencyAmountField = (opts: { min: number }) =>
 // ---------------------------------------------------------------------------
 // Postpaid config — PUT is PARTIAL: omitted preserves, explicit "" clears.
 
-export type GroupByMode = "single" | "product" | "tag";
+// ⚠ **THE MODE, THE FREE-TEXT KEY AND THE BUILDER BETWEEN THEM ARE GONE
+// (#508, slice 7 §11).** The form used to offer three shapes — one total, one
+// line per product, one line per value of a key the tenant TYPED — and compose
+// a stored string out of them. ADR-0005 calls that key the sharpest of the
+// three free-text hatches and the only one a paying customer reads: *"an
+// unbounded free-text key driving invoice line labels is how a 5,000-line
+// invoice happens."* What replaces it is one word of the SAME grouping
+// vocabulary the analytics surfaces use, chosen from the tenant's own
+// discovery contract, which the server validates before it stores (#503).
+//
+// So there is nothing to compose. The state IS the request word, and the two
+// functions below only decide what has changed.
 
 export interface PostpaidFormState {
-  mode: GroupByMode;
-  tagKey: string;
+  /**
+   * The axis's own request word — `field:<name>` or `rollup:<name>` — or the
+   * empty string for a single line carrying one total.
+   *
+   * The empty string is an ABSENCE of grouping rather than a mode meaning
+   * "don't group": there is no axis that produces one line, so the way to ask
+   * for one is to name no axis.
+   */
+  axis: string;
   consolidate: boolean;
 }
 
 export function postpaidToFormState(config: PostpaidConfig): PostpaidFormState {
-  const groupBy = config.usage_line_item_group_by;
-  if (groupBy.startsWith("tag:")) {
-    return {
-      mode: "tag",
-      tagKey: groupBy.slice("tag:".length),
-      consolidate: config.consolidate_with_subscription,
-    };
-  }
-  if (groupBy === "product_id") {
-    return { mode: "product", tagKey: "", consolidate: config.consolidate_with_subscription };
-  }
-  return { mode: "single", tagKey: "", consolidate: config.consolidate_with_subscription };
-}
-
-export function groupByValue(mode: GroupByMode, tagKey: string): string {
-  if (mode === "product") return "product_id";
-  if (mode === "tag") return `tag:${tagKey.trim()}`;
-  return "";
+  return {
+    axis: config.usage_line_item_group_by,
+    consolidate: config.consolidate_with_subscription,
+  };
 }
 
 /**
@@ -77,9 +81,8 @@ export function buildPostpaidPayload(
   next: PostpaidFormState,
 ): PostpaidConfigIn | null {
   const payload: PostpaidConfigIn = {};
-  const nextGroupBy = groupByValue(next.mode, next.tagKey);
-  if (nextGroupBy !== current.usage_line_item_group_by) {
-    payload.usage_line_item_group_by = nextGroupBy;
+  if (next.axis !== current.usage_line_item_group_by) {
+    payload.usage_line_item_group_by = next.axis;
   }
   if (next.consolidate !== current.consolidate_with_subscription) {
     payload.consolidate_with_subscription = next.consolidate;

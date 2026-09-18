@@ -3,7 +3,9 @@
 // acme-corp     — business customer with two pooled seats, active subscription,
 //                 grants, a blocking pool crossed in July; healthy margin.
 // luna-labs     — individual on a negative balance (floor stop episodes),
-//                 negative margin, no subscription.
+//                 negative margin, no subscription — and the one customer this
+//                 tenant bills OUTSIDE UBB, so it is the one that STATES what
+//                 it earned (#508). Its first month is a part month.
 // nova-ai       — individual whose supplier cost is INCOMPLETE: four events
 //                 carry a cost UBB never learned, so its totals are bounds.
 //
@@ -32,6 +34,7 @@ import type {
   GrantOut,
   StripeSubscriptionOut,
   SubscriptionInvoiceOut,
+  SuppliedRevenueRecord,
   UsageInvoiceOut,
   WalletTransactionOut,
 } from "./types";
@@ -119,15 +122,88 @@ export const MOCK_DIRECTORY: MockCustomer[] = [
 ];
 
 // ⚠ EVERY `supplied_revenue_micros` IN THIS FILE IS ZERO, DELIBERATELY (#496).
-// Each customer in this story is billed BY UBB — acme-corp has a real Stripe
-// subscription at the same 199 the retired recurring record used to carry, and
-// the rest earn through usage — so none of them has stated a figure UBB did
-// not bill. A fixture that supplied one anyway would be describing a workspace
-// none of these customers is in, and the panel a tenant states it through is
-// #508's. The three-way revenue sum is exercised with real numbers in
-// `lib/helpers.test.ts` and `features/dashboard/lib/economics.test.ts`, where
-// the figures are the case rather than the scenery.
+// It is the BUSINESS ROLLUP's field, and acme-corp and its two seats are the
+// only customers that route answers for — all three are billed BY UBB, acme
+// through a real Stripe subscription at the same 199 the retired recurring
+// record used to carry and the seats through usage. A fixture that supplied
+// one anyway would describe a workspace none of those three is in. The
+// three-way revenue sum is exercised with real numbers in `lib/helpers.test.ts`
+// and `features/dashboard/lib/economics.test.ts`, where the figures are the
+// case rather than the scenery.
+//
+// ⚠ **AND THAT IS WHY luna-labs IS THE ONE THAT SUPPLIES (#508).** It is an
+// individual, so it appears in no business rollup and the zeroes above stay
+// true; and it is the customer this story has always billed OUTSIDE UBB. Both
+// postures §9 rules must survive are therefore in one mock workspace at once:
+// luna states what it earned and gets margin at the supplied scope, while
+// acme and nova state nothing and get revenue UNKNOWN — never a zero.
 export const MOCK_PERIOD = { start: "2026-07-01", end: "2026-07-24" };
+
+// ---------------------------------------------------------------------------
+// Tenant-supplied revenue (#508; slice 7 §9)
+//
+// ⚠ **THE FIRST RECORD IS THE MID-PERIOD CASE, AND IT IS THE FIXTURE THE
+// AFFORDANCE EXISTS FOR.** #153 §19(f) records that retiring the recurring
+// profile lost the *began on the fourteenth* semantics — a profile absorbed it
+// automatically, per-period rows can only express it if the tenant enters the
+// partial period correctly. So the story's first month is a PART month, June
+// 14th to July 1st, stated as its own row at its own amount. Anything that
+// renders these rows has to survive a span that is not a whole month.
+//
+// The three rows are also the three things a reader must be able to tell apart:
+// a part period, a whole one, and an amount that is an INSTANT rather than a
+// span (the setup fee, `on_receipt`, no period end). Under `recognised` the
+// whole month divides by day and the fee does not — which is what its method
+// says, and the panel labels both.
+const LUNA_SUPPLIED: SuppliedRevenueRecord[] = [
+  {
+    id: "rev_mock_luna_june_part",
+    amount_micros: 510_000_000,
+    currency: "usd",
+    period_start: "2026-06-14",
+    period_end: "2026-07-01",
+    recognition_method: "straight_line",
+    source_reference: "INV-2026-06-part",
+    recorded_at: "2026-07-02T09:14:00Z",
+  },
+  {
+    id: "rev_mock_luna_july",
+    amount_micros: 900_000_000,
+    currency: "usd",
+    period_start: "2026-07-01",
+    period_end: "2026-08-01",
+    recognition_method: "straight_line",
+    source_reference: "INV-2026-07",
+    recorded_at: "2026-07-03T11:02:00Z",
+  },
+  {
+    id: "rev_mock_luna_setup",
+    amount_micros: 250_000_000,
+    currency: "usd",
+    // No period end: an up-front fee is an instant, not a span, and
+    // `on_receipt` is the method that says so. Under either basis the whole
+    // amount lands on this day.
+    period_start: "2026-07-10",
+    period_end: null,
+    recognition_method: "on_receipt",
+    source_reference: "SETUP-FEE-114",
+    recorded_at: "2026-07-10T16:40:00Z",
+  },
+];
+
+/**
+ * What each customer has stated, by customer id.
+ *
+ * ⚠ **A CUSTOMER WITH NO ENTRY HERE IS COST-TRACKING-ONLY AND THAT IS A
+ * SUPPORTED POSTURE, NOT AN EMPTY FIXTURE.** #153 §3.2 rules that a tenant may
+ * legitimately operate either way, so the absence has to be as reachable in
+ * mock mode as the presence is — otherwise every console test is written
+ * against the workspace that supplies, and the answer the other one gets
+ * (revenue unknown, margin unavailable, never zero) is checked by nobody.
+ */
+export const MOCK_SUPPLIED_REVENUE: Record<string, SuppliedRevenueRecord[]> = {
+  [CUS_LUNA]: LUNA_SUPPLIED,
+};
 
 export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
   business_id: CUS_ACME,

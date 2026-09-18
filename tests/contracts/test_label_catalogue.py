@@ -419,6 +419,12 @@ def test_every_adapter_export_is_classified(legacy):
         "ROLES", "SPEND_POOL_ENFORCE_MODES", "TASK_STATUSES", "TRIGGER_SOURCES",
         "USAGE_EVENT_KINDS",
         "ANALYTICS_GROUPING_KINDS", "ANALYTICS_ROLLUPS", "WEBHOOK_EVENT_TYPES",
+        # #508: the two revenue concepts the supplied-record panels render.
+        # The registry had deferred BOTH console consumers to the ticket that
+        # built those panels, in terms — declaring one earlier would have been
+        # declaring a debt — so the declaration and these references land
+        # together and the census reads them served rather than owed.
+        "RECOGNITION_METHODS", "REVENUE_BASES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "

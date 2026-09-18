@@ -4,7 +4,12 @@
 
 import { z } from "zod";
 
-import { SPEND_POOL_ENFORCE_MODE_VALUES } from "@/lib/vocabulary";
+import {
+  RECOGNITION_METHOD_VALUES,
+  SPEND_POOL_ENFORCE_MODE_VALUES,
+} from "@/lib/vocabulary";
+
+import { suppliedPeriod } from "./helpers";
 
 const isFiniteNumber = (value: string) => Number.isFinite(Number(value));
 
@@ -176,10 +181,57 @@ export type AutoTopUpForm = z.infer<typeof autoTopUpSchema>;
 // NO RECURRING REVENUE FORM (#496). It validated one amount, an interval and
 // an open-ended span for a record that had no periods and no source reference
 // - and the interval it made the tenant choose was never read by anything
-// that computed a number. The replacement is stated per period: an amount, the
-// span it covers, a recognition method and the tenant's own source reference.
-// The form for it lands with the panel in #508, where the mid-period
-// affordance (#153 section 19f) is what the span field is for.
+// that computed a number. Its replacement is directly below.
+
+/**
+ * What a tenant states it earned from one customer over one period (#508).
+ *
+ * ⚠ **THE AMOUNT MAY BE ZERO AND THAT IS A STATEMENT, NOT AN EMPTY FIELD.**
+ * #153 section 3.4 rules a deliberate zero one of the four revenue states -
+ * a free month, which produces a real negative margin against known cost - and
+ * it is a different fact from having supplied nothing at all, which is served
+ * as an absence rather than a figure. A schema demanding "greater than zero"
+ * would make the free month unsayable on the only surface that says it.
+ *
+ * ⚠ **AND THE SPAN IS NOT TWO DATE FIELDS.** The tenant names the MONTH and,
+ * where the customer began part-way through it, the DAY they began; the span
+ * is derived by `suppliedPeriod`. That is the mid-period affordance section 9
+ * rules into this slice, and the reason it is here rather than in the
+ * component is that a refusal has to be able to say which field to change.
+ */
+export const suppliedRevenueSchema = z
+  .object({
+    amount: nonNegativeMoney,
+    /** `<input type="month">` gives "2026-06". */
+    month: z.string().trim().min(1, "Choose the month this covers"),
+    /** "" = the whole month; otherwise the day the customer began. */
+    began_on: z.string().trim(),
+    // The registry's closed pair, held BY REFERENCE — so a third method is a
+    // `tsc` failure at the radio list rather than a value the form can never
+    // send.
+    recognition_method: z.enum(RECOGNITION_METHOD_VALUES),
+    source_reference: z
+      .string()
+      .trim()
+      .min(1, "Say where this number came from")
+      .max(255, "255 characters max"),
+  })
+  .superRefine((value, ctx) => {
+    if (suppliedPeriod(value.month, value.began_on) === null) {
+      ctx.addIssue({
+        code: "custom",
+        // The month is valid on its own in the case that actually happens -
+        // a day picked before the month was changed - so the refusal names
+        // the day, which is the field that has to move.
+        path: value.began_on === "" ? ["month"] : ["began_on"],
+        message:
+          value.began_on === ""
+            ? "Choose the month this covers"
+            : "Pick a day inside the month this covers",
+      });
+    }
+  });
+export type SuppliedRevenueForm = z.infer<typeof suppliedRevenueSchema>;
 
 // ⚠ NO MARKUP FORM (#369). It validated a percentage beside a flat per-event
 // amount for the customer override dialog, and both the dialog and the record

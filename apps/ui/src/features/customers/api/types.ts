@@ -89,15 +89,36 @@ export function toOneCustomer(answer: Economics): CustomerEconomics {
   return economicsOf(onlyRow(answer), "");
 }
 
+/**
+ * A margin trend: the months, and the revenue view they were drawn under.
+ *
+ * ⚠ **THE BASIS TRAVELS WITH THE POINTS RATHER THAN BESIDE THEM, AND THE TYPE
+ * IS WHERE §5 IS ENFORCED.** A supplied revenue figure inside these totals has
+ * either been placed whole on the day its period opens or spread across that
+ * period by its own method, and the tenant "must be able to see whether they
+ * are looking at smoothing they did not ask for". The answer states which; a
+ * narrowing that returned bare points would let every caller drop it silently,
+ * which is what every caller did until this ticket. Now a surface cannot get
+ * the figures without being handed the sentence that qualifies them.
+ */
+export interface MarginTrend {
+  /** The revenue view the server drew these figures under. */
+  basis: string;
+  points: TrendPoint[];
+}
+
 /** The trend's points, from a month-bucketed answer. */
-export function toTrendPoints(answer: Economics): TrendPoint[] {
-  return answer.rows.map((row) => ({
-    period_start: (row.bucket_start ?? "").slice(0, 10),
-    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-    gross_margin_micros: amountOn(row, GROSS_MARGIN),
-    ...completenessOn(row),
-  }));
+export function toTrendPoints(answer: Economics): MarginTrend {
+  return {
+    basis: answer.basis,
+    points: answer.rows.map((row) => ({
+      period_start: (row.bucket_start ?? "").slice(0, 10),
+      provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
+      revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
+      gross_margin_micros: amountOn(row, GROSS_MARGIN),
+      ...completenessOn(row),
+    })),
+  };
 }
 
 /** The usage tab's day series. */
@@ -110,6 +131,38 @@ export function toTimeseriesPoints(answer: Economics): TimeseriesPoint[] {
     unresolved_event_count: completenessOn(row).unresolved_event_count,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Tenant-supplied revenue (#508; slice 7 §9)
+//
+// ⚠ **NOT A CHARGE, AND THE TYPES SAY SO BY NAMING THE RECORD RATHER THAN THE
+// MONEY.** UBB neither created nor invoiced this figure: a tenant that bills
+// its customers somewhere UBB cannot see states what it earned, per customer
+// per period, and UBB admits it for analytics. Every surface consuming one has
+// to be able to say that — which is why `source_reference` and
+// `recognition_method` travel on the row rather than being summed away, and why
+// nothing here narrows one to a bare amount.
+
+/** What a tenant states it earned from one customer over one period. */
+export type SuppliedRevenueIn = MarginSchemas["TenantSuppliedRevenueIn"];
+
+/** One supplied record, as the tenant stated it. */
+export type SuppliedRevenueRecord = MarginSchemas["TenantSuppliedRevenueOut"];
+
+/** One supplied record, and what a window gets of it under one basis. */
+export type AttributedSuppliedRevenue = MarginSchemas["AttributedSuppliedRevenueOut"];
+
+/**
+ * The window's supplied revenue, under a basis the answer NAMES.
+ *
+ * ⚠ **`totals` IS A LIST PER CURRENCY AND AN EMPTY ONE IS HOW `unknown` IS
+ * SERVED.** It is never a zero: a tenant that has supplied nothing covering
+ * this window has revenue UBB does not know, so margin is unavailable there
+ * rather than nil. A renderer that coalesces this to `0` states a figure the
+ * server deliberately refused to state, which is the defect this record exists
+ * to end.
+ */
+export type SuppliedRevenueWindow = MarginSchemas["SuppliedRevenueWindowOut"];
 
 export type BusinessMarginOut = MarginSchemas["BusinessMarginOut"];
 export type SeatMarginOut = MarginSchemas["SeatMarginOut"];
@@ -181,12 +234,16 @@ export type SubscribeIn = SubscriptionSchemas["SubscribeIn"];
 // [backend-verified shape — see discovery spec]
 
 /**
- * One bucket of GET /metering/analytics/usage/timeseries `series[]`.
+ * One day of the Usage tab's series, narrowed from the one query's rows.
  *
- * No grouped-value field: this feature never sends `group_by` (see
- * `usage-tab.tsx`), so the backend never emits one, and the chart plots only
- * bucket and the two costs. The optional field this carried was narrowed but
- * read by nothing.
+ * ⚠ **THE ROUTE THIS ONCE NAMED IS GONE (#501)** and the sentence outlived it.
+ * What the tab reads is `GET /metering/analytics/economics` bucketed by day,
+ * filtered to the customer and asked for every measure; the narrowing is
+ * `toTimeseriesPoints` above.
+ *
+ * No grouped-value field, and that is still the tab's own choice rather than
+ * the contract's: it sends no `group_by`, so every row is that day's whole
+ * window of work and the chart plots bucket, cost, revenue and count.
  */
 export interface TimeseriesPoint {
   /** The bucket's opening instant, as the answer states it. */

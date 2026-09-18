@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,881 of 2,313 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,889 of 2,321 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2529,6 +2529,39 @@ measurement_key:
     # "hooks", "calls" and "customers"; where a whole set was meant they say
     # "the set", and where one item was meant they say "one". Checked by
     # re-taking the count over the new swept set rather than assumed from care.
+    #
+    # 2026-09-18, #508 (the customer's supplied-revenue panels and the
+    # invoice-line grouping form): 1,881 of 2,313 -> 1,889 of 2,321 tracked
+    # files (`units` 44 files / 122 occurrences, UNMOVED for the TWELFTH
+    # consecutive ticket). EIGHT files arrived and none left, and both totals
+    # move by the same eight: the customers feature's revenue panels and their
+    # rendering test; the module binding the two revenue concepts' words, with
+    # its own cases; a check over that feature's sources holding the monthly
+    # margin read to one surface and the alerting route to none; and on the
+    # billing side the invoice-line grouping module, its cases, and a rendering
+    # test for the form that reads it. All eight are ordinary source, so no
+    # exclusion moves. A NINTH file MOVED rather than arrived — the revenue
+    # words left the customers feature for `src/lib` the moment a second
+    # feature rendered them — and a move is neutral to both totals.
+    #
+    # ⚠ TAKEN TWICE, AND THE SECOND TAKE IS THE ONE RECORDED, which is #352's
+    # warning landing for the third consecutive ticket. The build read 1,888 of
+    # 2,320; carrying the revenue BASIS onto the two charts that sum supplied
+    # amounts moved the words to `src/lib` and gave them a test of their own,
+    # and the eighth file is that test. A paragraph written before the last
+    # edit is a paragraph written twice.
+    #
+    # ⚠ A RISE OWES AN ACCOUNT, and this one's is that the near miss was
+    # present throughout and declined. Everything arriving is about MONEY OVER A
+    # SPAN — an amount divided by day across a period, a share of it attributed
+    # to a window, a form entering one in currency — which is both the rate
+    # arithmetic sense and the minor-units sense at once, and #407's lesson is
+    # that ordinary prose about work reaches it too. The modules say "amount",
+    # "figure", "micros", "days", "period" and "span"; where the divisor was
+    # meant they say "by day", and where the currency's own subdivision was
+    # meant nothing needed saying at all, because `formatMicros` owns it.
+    # Checked by re-taking the count over the new swept set rather than assumed
+    # from care.
 
     - term: units
       retired_as: >-
