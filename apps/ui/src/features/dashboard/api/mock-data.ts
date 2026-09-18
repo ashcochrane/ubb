@@ -13,7 +13,11 @@
 // $563.60 provider cost, and two unprofitable customers (luna-labs runs at a
 // loss; nova-ai sits at break-even against an INCOMPLETE supplier cost, so even
 // that figure is a ceiling). Every breakdown below sums exactly to those totals
-// so the page reads as one consistent business.
+// so the page reads as one consistent business — ⚠ with ONE exception the
+// server imposes, below: grouped by a supplier, an event type or a kind of
+// work, the $199 subscription cannot be placed on any row, so those answers
+// state it as context and read their revenue as unavailable at that grain
+// (#510). Their rows sum to the $653.90 of usage; the subscription is the rest.
 //
 // ⚠ THOSE FIGURES MOVED IN #497 AND THIS PARAGRAPH IS WHY THEY ARE WRITTEN
 // DOWN. It read $764.90 total and $565.90 usage revenue — the same totals
@@ -31,13 +35,22 @@
 // between a subscription, a supplied figure and billed usage is not something
 // the one query states, and the totals below are the sums they always were.
 
-import { completeTotal, incompleteTotal } from "@/lib/economic-scenarios";
 import {
-  CUSTOMER_REVENUE,
-  GROSS_MARGIN,
-  RECORDED_EVENTS,
-  SUPPLIER_COGS,
+  completePriceTotal,
+  completeTotal,
+  incompleteTotal,
+  knownMeasures,
+  measuresFor,
+  revenueUnavailableAtThisGrain,
+  type CostTotalScenario,
+  type EconomicMeasureScenario,
+  type RevenueContextScenario,
+} from "@/lib/economic-scenarios";
+import {
+  EVERY_MEASURE,
+  MONEY_MEASURES,
 } from "@/lib/economic-query";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import type {
   ApiKeyList,
@@ -48,71 +61,55 @@ import type {
   Window,
 } from "./types";
 
-/** One row of an answer, from the facts a fixture actually chooses.
+/**
+ * A row's four measures, COMPOSED from `@/lib/economic-scenarios` (#510).
  *
- *  ⚠ THE COUNTS RIDE THEIR OWN MEASURES. `unresolved_event_count` belongs to
- *  the supplier cost and `unpriced_event_count` to the customer revenue; they
- *  are different sets of postings and they bound the margin in opposite
- *  directions, so a builder that put both on one entry would let a fixture
- *  describe a response no server can produce. */
+ * The margin and every state are the composers' to derive, never this file's to
+ * state: this builder used to write each measure by hand and pick the margin's
+ * state from whether a margin was passed at all, which let a fixture describe a
+ * margin `unavailable_at_requested_grain` beside a revenue reading `known` — a
+ * row no server can write.
+ */
+function measuresOf(
+  cost: CostTotalScenario,
+  revenueMicros: number,
+  events: number,
+): EconomicMeasureScenario[] {
+  return measuresFor({
+    cost_micros: cost.micros,
+    unresolved_event_count: cost.unresolved_event_count,
+    revenue_micros: revenueMicros,
+    events,
+  });
+}
+
+/** One row of an answer, carrying exactly the measures its question asked for.
+ *
+ *  ⚠ A GROUPED ANSWER CARRIES NO COUNT, because the server refuses one: a count
+ *  compared across rows that mix Event Types is not comparable, and three of
+ *  the four breakdown axes mix them. A fixture that carried it would describe
+ *  a response no server produces — which is why the measures are filtered to
+ *  the question rather than taken whole from the composer. */
 function economicRow({
   values = [],
   statuses = [],
   bucket = null,
-  cost,
-  revenue,
-  margin,
-  events,
-  unresolved = 0,
-  unpriced = 0,
+  measures,
+  asked = EVERY_MEASURE,
 }: {
   values?: (string | null)[];
   statuses?: string[];
   bucket?: string | null;
-  cost: number;
-  revenue: number;
-  margin: number | null;
-  events?: number;
-  unresolved?: number;
-  unpriced?: number;
+  measures: EconomicMeasureScenario[];
+  asked?: readonly AnalyticsMeasure[];
 }): Economics["rows"][number] {
-  const measures: Economics["rows"][number]["measures"] = [
-    {
-      measure: SUPPLIER_COGS,
-      amount_micros: cost,
-      status: unresolved ? "incomplete" : "known",
-      unresolved_event_count: unresolved,
-    },
-    {
-      measure: CUSTOMER_REVENUE,
-      amount_micros: revenue,
-      status: unpriced ? "incomplete" : "known",
-      unpriced_event_count: unpriced,
-    },
-    {
-      measure: GROSS_MARGIN,
-      amount_micros: margin,
-      status: margin === null
-        ? "unavailable_at_requested_grain"
-        : unresolved || unpriced
-          ? "incomplete"
-          : "known",
-    },
-  ] as Economics["rows"][number]["measures"];
-  if (events !== undefined) {
-    measures.push({
-      measure: RECORDED_EVENTS,
-      event_count: events,
-      status: "known",
-    } as Economics["rows"][number]["measures"][number]);
-  }
   return {
     bucket_start: bucket,
     grouping_field_value: values,
     grouping_field_value_status:
       statuses.length ? statuses : values.map((v) => (v === null ? "not_recorded" : "recorded")),
-    measures,
-  } as Economics["rows"][number];
+    measures: measures.filter((entry) => asked.includes(entry.measure)),
+  };
 }
 
 /** A whole answer, echoing the request it answers. */
@@ -121,11 +118,13 @@ function economicAnswer({
   rows,
   groupBy = [],
   bucket = null,
+  context = [],
 }: {
   window?: Window;
   rows: Economics["rows"];
   groupBy?: string[];
   bucket?: string | null;
+  context?: RevenueContextScenario[];
 }): Economics {
   return {
     period_start: window?.start_date ?? "2020-07-01",
@@ -137,8 +136,8 @@ function economicAnswer({
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
     rows,
-    context: [],
-  } as Economics;
+    context,
+  };
 }
 
 // Mirrors CUS_* in src/features/customers/api/mock-data.ts — keep in sync.
@@ -217,16 +216,21 @@ export function mockCustomerEconomics(window: Window): Economics {
   return economicAnswer({
     window,
     groupBy: ["field:customer"],
-    rows: CUSTOMER_ROWS.map(([id, revenue, cost, margin]) =>
+    // Grouped by the customer, every revenue source CAN be placed — a
+    // subscription names its customer — so these rows state their revenue
+    // whole, the subscription inside acme-corp's. The margin column of the
+    // tuple is the subtraction the composer performs, written down.
+    rows: CUSTOMER_ROWS.map(([id, revenue, cost, , events]) =>
       economicRow({
         values: [id],
-        revenue,
-        cost,
-        margin,
-        unresolved:
+        measures: measuresOf(
           id === CUSTOMER_IDS.nova
-            ? NOVA_PROVIDER_COST.unresolved_event_count
-            : 0,
+            ? NOVA_PROVIDER_COST
+            : completeTotal(cost),
+          revenue,
+          events,
+        ),
+        asked: MONEY_MEASURES,
       }),
     ),
   });
@@ -238,20 +242,16 @@ export function mockTenantEconomics(window: Window): Economics {
     window,
     rows: [
       economicRow({
-        // 199,000,000 subscription + 653,900,000 billed usage.
-        revenue: 852_900_000,
-        cost: WINDOW_PROVIDER_COST.micros,
-        // 852,900,000 - 563,600,000, and the exact sum of the five rows'
-        // margins above (267.5 - 14.7 + 0 + 24.1 + 12.4, in millions).
-        margin: 289_300_000,
-        // The window's recorded work. Ungrouped, so it compares with nothing
-        // and the server answers it.
-        events: 93_558,
-        // The exact sum over the roster: only nova-ai holds uncosted events,
-        // so the window's total is a floor by the same four. Both halves come
-        // from one object, so "the exact sum" is arithmetic rather than a
-        // promise (#371).
-        unresolved: WINDOW_PROVIDER_COST.unresolved_event_count,
+        // Revenue: 199,000,000 subscription + 653,900,000 billed usage. The
+        // margin the composer derives is 852,900,000 - 563,600,000, the exact
+        // sum of the five rows' margins above (267.5 - 14.7 + 0 + 24.1 +
+        // 12.4, in millions). The events are the window's recorded work —
+        // ungrouped, so the count compares with nothing and the server
+        // answers it. The cost is the exact sum over the roster: only nova-ai
+        // holds uncosted events, so the window's total is a floor by the same
+        // four, and the margin is INCOMPLETE with it whatever the revenue
+        // reads (§15).
+        measures: measuresOf(WINDOW_PROVIDER_COST, 852_900_000, 93_558),
       }),
     ],
   });
@@ -341,23 +341,52 @@ const AXIS_ROWS = {
   customer: BY_CUSTOMER,
 } as const;
 
+/**
+ * acme-corp's subscription for the window, as an answer states money it could
+ * not place.
+ *
+ * It names its customer and no supplier, event type or kind of work — the
+ * server's `REVENUE_ATTRIBUTABLE_AXES` is the customer alone — and it can be
+ * placed as finely as a day, because its accrual divides by days.
+ */
+function acmeSubscription(window: Window): RevenueContextScenario {
+  return {
+    source: "subscription",
+    customer_id: CUSTOMER_IDS.acme,
+    amount_micros: 199_000_000,
+    window_start: window.start_date,
+    window_end: window.end_date,
+    attributable_axes: ["customer"],
+    attributable_bucket: "day",
+  };
+}
+
 export function mockGroupedEconomics(
   window: Window,
   groupBy: keyof typeof AXIS_ROWS,
 ): Economics {
+  // ⚠ ONLY THE CUSTOMER AXIS CAN PLACE THE SUBSCRIPTION (#510). This fixture
+  // used to answer every axis with `known` revenue, and the operational axes'
+  // rows summed to $653.90 against a $852.90 workspace — the subscription
+  // silently gone, on rows claiming to be whole. The server cannot produce that
+  // answer: it reads each row's revenue as unavailable at that grain, draws no
+  // margin, and states the subscription in `context`.
+  if (groupBy === "customer") return mockCustomerEconomics(window);
+  const subscription = acmeSubscription(window);
   return economicAnswer({
     window,
     groupBy: [`field:${groupBy}`],
-    // ⚠ NO COUNT MEASURE ON A GROUPED ANSWER, because the server refuses one:
-    // a count compared across rows that mix Event Types is not comparable, and
-    // three of these four axes mix them. A fixture that carried it would
-    // describe a response no server produces.
-    rows: AXIS_ROWS[groupBy].map(([name, revenue, provider]) =>
+    context: [subscription],
+    rows: AXIS_ROWS[groupBy].map(([name, revenue, provider, events]) =>
       economicRow({
         values: [name],
-        revenue,
-        cost: provider,
-        margin: revenue - provider,
+        measures: revenueUnavailableAtThisGrain({
+          cost: completeTotal(provider),
+          revenue: completePriceTotal(revenue),
+          events,
+          context: [subscription],
+        }).measures,
+        asked: MONEY_MEASURES,
       }),
     ),
   });
@@ -366,12 +395,9 @@ export function mockGroupedEconomics(
 export const MOCK_LIFETIME_ECONOMICS: Economics = economicAnswer({
   rows: [
     economicRow({
-      revenue: 7_845_300_000,
-      cost: LIFETIME_PROVIDER_COST.micros,
-      margin: 7_845_300_000 - LIFETIME_PROVIDER_COST.micros,
-      events: 812_441,
-      // Lifetime spans the window, so it cannot count FEWER than the window.
-      unresolved: LIFETIME_PROVIDER_COST.unresolved_event_count,
+      // Lifetime spans the window, so it cannot count FEWER uncosted events
+      // than the window does.
+      measures: measuresOf(LIFETIME_PROVIDER_COST, 7_845_300_000, 812_441),
     }),
   ],
 });
@@ -419,10 +445,11 @@ export function mockDailyEconomics(window: Window): Economics {
     rows: mockDailySeries(window).map((point) =>
       economicRow({
         bucket: `${point.day}T00:00:00+00:00`,
-        revenue: point.revenue_micros,
-        cost: point.provider_cost_micros,
-        margin: point.revenue_micros - point.provider_cost_micros,
-        events: point.event_count,
+        measures: knownMeasures({
+          cost_micros: point.provider_cost_micros,
+          revenue_micros: point.revenue_micros,
+          events: point.event_count,
+        }),
       }),
     ),
   });

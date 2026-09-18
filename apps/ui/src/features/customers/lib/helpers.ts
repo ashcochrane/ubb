@@ -3,7 +3,11 @@
 import { wholeDaysBetween } from "@/lib/supplied-revenue";
 
 import type { CustomerEconomics } from "../api/types";
-import { descendingWithAbsencesLast } from "@/lib/economic-query";
+import {
+  descendingWithAbsencesLast,
+  statedShare,
+  statedValue,
+} from "@/lib/economic-query";
 
 /** Shorten a UUID for table display: "1f0c9c4e-8f2a-…" → "1f0c9c4e". */
 export function shortId(id: string): string {
@@ -43,16 +47,15 @@ export function sortMarginRows(
   sort: CustomerSort,
 ): CustomerEconomics[] {
   // The order is `descendingWithAbsencesLast`'s, shared with the dashboard's
-  // table: a row stating no margin sorts LAST rather than as zero. Only the
-  // extractor is this table's, because only the row type differs.
+  // table: a row stating no figure sorts LAST rather than as zero. Only the
+  // extractor is this table's, and it asks each figure the one question a
+  // number-shaped caller may ask of one — `statedValue` (#510).
   const measure = (row: CustomerEconomics): number | null =>
     sort === "revenue"
-      ? row.total_revenue_micros
+      ? statedValue(row.revenue)
       : sort === "margin"
-        ? row.gross_margin_micros
-        : row.gross_margin_micros === null
-          ? null
-          : row.margin_percentage;
+        ? statedValue(row.margin)
+        : statedShare(row.margin, row.revenue);
   return [...rows].sort(descendingWithAbsencesLast(measure));
 }
 

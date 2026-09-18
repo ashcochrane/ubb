@@ -77,14 +77,18 @@ export async function getUsageAnalytics(
 export async function getUsageTimeseries(
   params: TimeseriesParams,
 ): Promise<Economics> {
-  const { group_by, ...window } = params;
+  const { group_by, measures, ...window } = params;
   return unwrap(
     await meteringApi.GET("/analytics/economics", {
       params: {
         query: {
           ...window,
           bucket: "day",
-          measures: group_by ? [...MONEY_MEASURES] : [...EVERY_MEASURE],
+          // ⚠ A GROUPED QUESTION ASKS FOR WHAT ITS AXIS ANSWERS (#510). All
+          // three money measures under any axis was a 422 on the
+          // measurement-concept rollup, which answers none of them; the card
+          // reads the axis's discovery entry and hands over what to ask for.
+          measures: group_by ? [...(measures ?? MONEY_MEASURES)] : [...EVERY_MEASURE],
           // ⚠ NOT PREFIXED HERE ANY MORE (#506). The picker's value IS the
           // request word, kind and all, because it came off the discovery
           // contract — and it has to be, since a rollup is as offerable as a

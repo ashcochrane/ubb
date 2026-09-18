@@ -9,15 +9,21 @@
 
 import type { BillingSchemas } from "@/api/types";
 import {
-  amountOn,
-  completenessOn,
+  caveatsOf,
+  combineFigures,
   CUSTOMER_REVENUE,
-  eventsOn,
+  FIGURES_KEY,
+  figureOn,
   GROSS_MARGIN,
-  orZero,
+  RECORDED_EVENTS,
+  statedValue,
   SUPPLIER_COGS,
+  type AnswerCaveats,
   type EconomicsAnswer,
+  type MeasureFigure,
+  type PlottedFigures,
 } from "@/lib/economic-query";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 export type Economics = EconomicsAnswer;
 export type CustomerSpendPool = BillingSchemas["CustomerSpendPoolOut"];
@@ -30,41 +36,42 @@ export type CreditRequest = BillingSchemas["CreditRequest"];
 export type DebitRequest = BillingSchemas["DebitRequest"];
 export type DebitCreditResponse = BillingSchemas["DebitCreditResponse"];
 
-/** One day of the revenue chart. */
+/**
+ * One day of the revenue chart.
+ *
+ * The plotted numbers are `statedValue` of their figures — a GAP where the
+ * state states none — and the figures ride under `FIGURES_KEY`, each carrying
+ * its own day's counts: an unresolved cost or an unresolved price belongs to
+ * the day it fell in, and a reader hovering one point is told about that point.
+ */
 export interface RevenueDailyRow {
   /** Calendar day, YYYY-MM-DD. */
   day: string;
-  provider_cost_micros: number;
-  revenue_micros: number;
-  event_count: number;
+  provider_cost_micros: number | null;
+  revenue_micros: number | null;
   /**
-   * How many of the day's events carry a supplier cost UBB never learned.
-   *
-   * PER DAY, not per window: an unresolved cost belongs to the day it fell in,
-   * and a reader hovering one point has to be told about that point.
+   * The day's margin AS THE QUERY STATES IT. The chart used to compute it
+   * itself, revenue minus cost, which is a second copy of the server's rule —
+   * and one that drew a margin through a day the server said had none.
    */
-  unresolved_event_count: number;
-  /**
-   * And how many of the day's events carry a customer price UBB could not
-   * resolve (#351). Per day for the same reason, and a SECOND field rather
-   * than a widened one because the two are about different events: a day can
-   * be complete on one side of the margin and a floor on the other.
-   */
-  unpriced_event_count: number;
+  margin_micros: number | null;
+  event_count: number | null;
+  [FIGURES_KEY]: PlottedFigures;
 }
 
 /**
  * The window's series and its totals.
  *
- * ⚠ **THE TOTALS ARE SUMMED FROM THE DAYS, AND THAT IS ARITHMETIC RATHER THAN
- * A SECOND DEFINITION.** Each bucket is a real total over the postings that
- * fell in it, and the window is the buckets — which is how the server builds
- * its own ungrouped answer. What must NOT be summed is a margin with a day
- * missing from it: a single day UBB cannot state a margin for makes the
- * window's margin unstateable too, so the sum carries the absence rather than
- * skipping the day.
+ * ⚠ **THE TOTALS ARE FOLDED FROM THE DAYS, AND A FOLD IS NOT A SUM.** Each
+ * bucket is a real total over the postings that fell in it, and the window is
+ * the buckets — which is how the server builds its own ungrouped answer. What
+ * must NOT happen is a day's STATE vanishing into the total: until #510 the
+ * cost and revenue were summed as numbers, so a day past the horizon counted as
+ * a zero and the window read as a smaller whole. `combineFigures` lets the worst
+ * day's state win, exactly as the query ranks a margin's two sides, and states
+ * no figure under a state that states none.
  */
-export interface RevenueWindow {
+export interface RevenueWindow extends AnswerCaveats {
   /**
    * The revenue view the server drew these figures under (#508; slice 7 §5).
    *
@@ -77,36 +84,37 @@ export interface RevenueWindow {
    */
   basis: string;
   daily: RevenueDailyRow[];
-  revenue_micros: number;
-  provider_cost_micros: number;
-  margin_micros: number | null;
-  unresolved_event_count: number;
-  unpriced_event_count: number;
-  event_count: number;
+  revenue: MeasureFigure;
+  cost: MeasureFigure;
+  margin: MeasureFigure;
+  events: MeasureFigure;
 }
 
 export function toRevenueWindow(answer: Economics): RevenueWindow {
-  const daily: RevenueDailyRow[] = answer.rows.map((row) => ({
-    day: (row.bucket_start ?? "").slice(0, 10),
-    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-    event_count: orZero(eventsOn(row)),
-    ...completenessOn(row),
-  }));
-  const stated = answer.rows.map((row) => amountOn(row, GROSS_MARGIN));
+  const daily: RevenueDailyRow[] = answer.rows.map((row) => {
+    const figures = {
+      provider_cost_micros: figureOn(row, SUPPLIER_COGS),
+      revenue_micros: figureOn(row, CUSTOMER_REVENUE),
+      margin_micros: figureOn(row, GROSS_MARGIN),
+    };
+    return {
+      day: (row.bucket_start ?? "").slice(0, 10),
+      provider_cost_micros: statedValue(figures.provider_cost_micros),
+      revenue_micros: statedValue(figures.revenue_micros),
+      margin_micros: statedValue(figures.margin_micros),
+      event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+      [FIGURES_KEY]: figures,
+    };
+  });
+  const across = (measure: AnalyticsMeasure) =>
+    combineFigures(measure, answer.rows.map((row) => figureOn(row, measure)));
   return {
+    ...caveatsOf(answer),
     basis: answer.basis,
     daily,
-    revenue_micros: daily.reduce((sum, row) => sum + row.revenue_micros, 0),
-    provider_cost_micros: daily.reduce(
-      (sum, row) => sum + row.provider_cost_micros, 0),
-    margin_micros: stated.some((amount) => amount === null)
-      ? null
-      : stated.reduce((sum: number, amount) => sum + (amount ?? 0), 0),
-    unresolved_event_count: daily.reduce(
-      (sum, row) => sum + row.unresolved_event_count, 0),
-    unpriced_event_count: daily.reduce(
-      (sum, row) => sum + row.unpriced_event_count, 0),
-    event_count: daily.reduce((sum, row) => sum + row.event_count, 0),
+    revenue: across(CUSTOMER_REVENUE),
+    cost: across(SUPPLIER_COGS),
+    margin: across(GROSS_MARGIN),
+    events: across(RECORDED_EVENTS),
   };
 }

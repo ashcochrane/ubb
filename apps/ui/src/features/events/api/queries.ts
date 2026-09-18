@@ -7,7 +7,7 @@ import { useCursorList } from "@/api/pagination";
 
 import { eventsApi } from "./provider";
 import {
-  asTimeseriesPoints,
+  asTimeseries,
   toWindowTotals,
   type AnalyticsParams,
   type RefundBody,
@@ -47,7 +47,7 @@ export function useUsageTimeseries(params: TimeseriesParams) {
   return useQuery({
     queryKey: ["metering", "analytics", "economics", "daily", params] as const,
     queryFn: () => eventsApi.getUsageTimeseries(params),
-    select: asTimeseriesPoints,
+    select: asTimeseries,
     placeholderData: (previous) => previous,
   });
 }

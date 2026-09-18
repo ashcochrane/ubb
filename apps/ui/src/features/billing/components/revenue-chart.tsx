@@ -13,30 +13,20 @@ import {
 } from "recharts";
 
 import {
-  BoundedCostTooltip,
-  type SeriesRole,
-} from "@/components/shared/supplier-cost";
+  MeasureTooltip,
+  type TooltipSeries,
+} from "@/components/shared/measure-value";
 import { formatCostMicros, formatShortDate } from "@/lib/format";
 
 import type { RevenueDailyRow } from "../api/types";
 
-interface ChartRow extends RevenueDailyRow {
-  margin_micros: number;
-}
-
-const SERIES: { key: keyof ChartRow; label: string; color: string }[] = [
-  { key: "revenue_micros", label: "Revenue", color: "var(--chart-1)" },
-  { key: "provider_cost_micros", label: "Provider cost", color: "var(--chart-2)" },
-  { key: "margin_micros", label: "Gross margin", color: "var(--chart-3)" },
-];
-
-/** Which bounding rule each plotted series obeys (#330). */
-function roleOf(dataKey: string): SeriesRole {
-  if (dataKey === "provider_cost_micros") return "supplier-cost";
-  if (dataKey === "margin_micros") return "margin";
-  // Revenue is bounded by its own count, which the row carries.
-  return "whole";
-}
+/** The plotted series, by the data key each row and its figure share. The
+ *  margin is the query's own measure, never recomputed here (#510). */
+const SERIES = [
+  { key: "revenue_micros", name: "Revenue", color: "var(--chart-1)" },
+  { key: "provider_cost_micros", name: "Provider cost", color: "var(--chart-2)" },
+  { key: "margin_micros", name: "Gross margin", color: "var(--chart-3)" },
+] as const satisfies readonly (TooltipSeries & { key: keyof RevenueDailyRow })[];
 
 function dayLabel(label: string | number | undefined): string {
   return typeof label === "string" ? formatShortDate(label) : String(label ?? "");
@@ -49,15 +39,10 @@ export default function RevenueChart({
   data: RevenueDailyRow[];
   currency: string;
 }) {
-  const chartData: ChartRow[] = data.map((row) => ({
-    ...row,
-    margin_micros: row.revenue_micros - row.provider_cost_micros,
-  }));
-
   return (
     <div className="h-[240px] w-full" aria-label="Daily revenue chart">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="day"
@@ -75,11 +60,12 @@ export default function RevenueChart({
             width={64}
           />
           <Tooltip
+            filterNull={false}
             content={
-              <BoundedCostTooltip
+              <MeasureTooltip
+                series={SERIES}
                 currency={currency}
                 labelFormatter={dayLabel}
-                roleOf={roleOf}
               />
             }
             cursor={{ stroke: "var(--chart-grid)" }}
@@ -89,6 +75,7 @@ export default function RevenueChart({
               key={series.key}
               type="monotone"
               dataKey={series.key}
+              name={series.name}
               stroke={series.color}
               strokeWidth={2}
               dot={false}

@@ -51,8 +51,10 @@ import { describe, expect, it } from "vitest";
 import * as scenarios from "./economic-scenarios";
 import {
   CEILING_STATUS_VALUES,
+  MEASURE_STATUS_VALUES,
   NOT_APPLICABLE_REASON_VALUES,
   PRICING_STATUS_VALUES,
+  type MeasureStatus,
   type PricingStatus,
 } from "./vocabulary";
 
@@ -253,6 +255,29 @@ describe("the scenario module is wired to something that renders", () => {
       if (composer === undefined) continue;
       expect(COMPOSERS).toContain(composer);
       expect(REACHED.has(composer)).toBe(true);
+    }
+  });
+
+  // Every MEASURE state (#510; slice 7 §19), on the price statuses' terms: the
+  // map is hand-written because nothing mechanical leads from a value to its
+  // composer, and the loop is the generated list, so the sixth state a
+  // registry edit adds fails here until something composes it and something
+  // that renders consumes it.
+  it("reaches a composer for every measure state the registry declares", () => {
+    const byStatus: Partial<Record<MeasureStatus, string>> = {
+      known: "knownMeasures",
+      incomplete: "incompleteMeasures",
+      unavailable_at_requested_grain: "revenueUnavailableAtThisGrain",
+      unavailable_outside_retention_horizon: "measuresOutsideRetentionHorizon",
+      not_applicable: "measureNotApplicable",
+    };
+
+    for (const status of MEASURE_STATUS_VALUES) {
+      const composer = byStatus[status];
+      expect(composer, `no scenario composes \`${status}\``).toBeDefined();
+      if (composer === undefined) continue;
+      expect(COMPOSERS).toContain(composer);
+      expect(REACHED.has(composer), `nothing that renders composes \`${composer}\``).toBe(true);
     }
   });
 });

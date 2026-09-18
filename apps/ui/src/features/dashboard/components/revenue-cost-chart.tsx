@@ -12,9 +12,9 @@ import {
 } from "recharts";
 
 import {
-  BoundedCostTooltip,
-  type SeriesRole,
-} from "@/components/shared/supplier-cost";
+  MeasureTooltip,
+  type TooltipSeries,
+} from "@/components/shared/measure-value";
 import {
   formatCalendarDate,
   formatCostMicros,
@@ -22,14 +22,6 @@ import {
 } from "@/lib/format";
 
 import type { RevenueCostPoint } from "../api/types";
-
-/** Which bounding rule each plotted series obeys (#330). */
-function roleOf(dataKey: string): SeriesRole {
-  if (dataKey === "provider_micros") return "supplier-cost";
-  if (dataKey === "margin_micros") return "margin";
-  // Billed is NOT NULL at the column and whole by construction.
-  return "whole";
-}
 
 /** Day buckets are calendar dates (YYYY-MM-DD) — format in UTC so the day
  * never shifts for viewers west of Greenwich. */
@@ -55,6 +47,15 @@ export default function RevenueCostChart({
   currency: string;
   revenueLabel: string;
 }) {
+  // Each series by the data key its point and its figure share — the key is
+  // the contract, the name is copy.
+  const series: TooltipSeries[] = [
+    { key: "revenue_micros", name: revenueLabel, color: "var(--chart-1)" },
+    { key: "provider_micros", name: "Provider cost", color: "var(--chart-2)" },
+    ...(showMargin
+      ? [{ key: "margin_micros", name: "Margin", color: "var(--chart-3)" }]
+      : []),
+  ];
   return (
     <div className="h-[280px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -76,11 +77,12 @@ export default function RevenueCostChart({
             width={58}
           />
           <Tooltip
+            filterNull={false}
             content={
-              <BoundedCostTooltip
+              <MeasureTooltip
+                series={series}
                 currency={currency}
                 labelFormatter={dayLabel}
-                roleOf={roleOf}
                 footer={eventCountLine}
               />
             }

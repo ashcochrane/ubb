@@ -17,18 +17,18 @@ import {
 
 import { dashboardApi } from "./provider";
 import {
-  toBreakdownRows,
+  toBreakdown,
   toCustomerRows,
-  toRevenueCostPoints,
+  toRevenueCostSeries,
   toTenantEconomics,
   type ApiKeyList,
   type BreakdownAxis,
-  type BreakdownRow,
+  type Breakdown,
   type ConnectStatus,
   type CustomerEconomicsRow,
   type Economics,
   type PricingBookList,
-  type RevenueCostPoint,
+  type RevenueCostSeries,
   type TenantEconomics,
   type Unprofitable,
   type Window,
@@ -53,14 +53,14 @@ export function useTenantEconomics(
 export function useGroupedEconomics(
   window: Window,
   groupBy: BreakdownAxis,
-): UseQueryResult<BreakdownRow[]> {
+): UseQueryResult<Breakdown> {
   return useQuery({
     queryKey: [
       "metering", "analytics", "economics", "grouped",
       { ...window, groupBy },
     ] as const,
     queryFn: () => dashboardApi.getGroupedEconomics(window, groupBy),
-    select: toBreakdownRows,
+    select: toBreakdown,
     placeholderData: keepPreviousData,
   });
 }
@@ -85,13 +85,13 @@ export function useLifetimeEconomics(): UseQueryResult<Economics> {
  */
 export function useRevenueVsCost(
   window: Window,
-): UseQueryResult<RevenueCostPoint[]> {
+): UseQueryResult<RevenueCostSeries> {
   return useQuery({
     queryKey: [
       "metering", "analytics", "economics", "daily", window,
     ] as const,
     queryFn: () => dashboardApi.getDailyEconomics(window),
-    select: toRevenueCostPoints,
+    select: toRevenueCostSeries,
     placeholderData: keepPreviousData,
   });
 }

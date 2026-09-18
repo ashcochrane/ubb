@@ -76,7 +76,7 @@ describe("GroupingFieldBreakdown", () => {
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: [],
+          data: { rows: [], context: [], held_from: null, measurement_horizon: false },
           isPending: false,
           isError: false,
           error: null,
@@ -91,5 +91,51 @@ describe("GroupingFieldBreakdown", () => {
     expect(screen.getByText("No usage in this window")).toBeInTheDocument();
     const cta = screen.getByRole("link", { name: "Send a test event" });
     expect(cta).toHaveAttribute("href", "/developers");
+  });
+
+  // ⚠ THE SAME EMPTY LIST, OVER A WINDOW REACHING BACK PAST THE RECORDS IT
+  // READS, IS NOT "NO USAGE" (#510) — it is a stretch UBB no longer holds.
+  it("says the window is past the horizon rather than that nothing happened", () => {
+    renderWithClient(
+      <GroupingFieldBreakdown
+        query={{
+          data: { rows: [], context: [], held_from: "2020-09-18", measurement_horizon: false },
+          isPending: false,
+          isError: false,
+          error: null,
+          refetch: () => {},
+        }}
+        groupBy="provider"
+        onGroupByChange={() => {}}
+        currency="usd"
+      />,
+    );
+
+    expect(screen.queryByText("No usage in this window")).not.toBeInTheDocument();
+    expect(screen.getByText(/UBB holds economic records from Sep 18, 2020/)).toBeInTheDocument();
+  });
+
+  // ⚠ Grouped by a supplier, the workspace's subscription cannot be placed
+  // (#510): each row's revenue reads unavailable at that grain. The bars used
+  // to plot the usage alone as "Revenue by provider", dropping $199 without a
+  // word. Now the bars draw the cost, the revenue is named as its state, and
+  // the subscription is stated as the coarser figure — never as a zero.
+  it("draws revenue it cannot place as its state, with the subscription as context", async () => {
+    const { container } = renderWithClient(<Harness />);
+
+    expect(await screen.findByText("openai")).toBeInTheDocument();
+    const caption = container.querySelector("[data-plotted-measure]");
+    expect(caption).toHaveAttribute("data-plotted-measure", "supplier_cogs");
+    expect(caption).toHaveTextContent(
+      "Supplier COGS by provider, top 8 shown. Customer revenue by provider: Unavailable at this grain.",
+    );
+    expect(caption?.querySelector("[data-measure-state]")).toHaveAttribute(
+      "data-measure-state",
+      "unavailable_at_requested_grain",
+    );
+    expect(container.querySelector("[data-revenue-context]")).toHaveTextContent(
+      "$199.00 of revenue from subscriptions can only be placed by customer, per day",
+    );
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
   });
 });
