@@ -1,9 +1,12 @@
 // TanStack Query hooks over the provider. ALL query keys and invalidation
 // live here (first key segment = backend namespace, not feature name).
 //
-// 404-as-state reads (revenue profile / business rollup / subscription) are
-// caught in the queryFn and resolved to null so an expected absence never
-// retries or renders as an error.
+// 404-as-state reads (business rollup / subscription) are caught in the queryFn
+// and resolved to null so an expected absence never retries or renders as an
+// error. The revenue profile was a third until #496 deleted the record; the
+// supplied-revenue read that replaced it is NOT one of these, because a
+// customer who has supplied nothing is answered rather than 404'd — an empty
+// `totals` list, which is how `unknown` is served.
 
 import {
   keepPreviousData,
@@ -15,6 +18,7 @@ import {
 import { useCursorList } from "@/api/pagination";
 import { isNotFound } from "@/api/problem";
 import type { DateRange } from "@/lib/date-range";
+import type { RevenueBasis } from "@/lib/vocabulary";
 
 import { customersApi } from "./provider";
 import {
@@ -33,6 +37,7 @@ import type {
   CustomerBillingProfileIn,
   DebitRequest,
   SubscribeIn,
+  SuppliedRevenueIn,
   WithdrawRequest,
 } from "./types";
 
@@ -79,6 +84,27 @@ export function useMarginTrend(customerId: string, periods: number) {
     queryKey: ["margin", "trend", customerId, periods],
     queryFn: () => customersApi.getMarginTrend(customerId, periods),
     select: toTrendPoints,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * The window's supplied revenue, under the basis the caller is showing.
+ *
+ * ⚠ **THE BASIS IS PART OF THE KEY, because it is part of the ANSWER.** The two
+ * views are two different sets of figures over the same records, and caching
+ * them under one key would let a panel labelled *recorded* render the numbers
+ * the *recognised* request fetched. `select` cannot save it — the narrowing is
+ * the server's, not this console's.
+ */
+export function useSuppliedRevenue(
+  customerId: string,
+  range: DateRange,
+  basis: RevenueBasis,
+) {
+  return useQuery({
+    queryKey: ["margin", "supplied-revenue", customerId, range, basis] as const,
+    queryFn: () => customersApi.getSuppliedRevenue(customerId, range, basis),
     placeholderData: keepPreviousData,
   });
 }
@@ -228,6 +254,29 @@ export function useCreateCustomer() {
 // whether a customer's billed usage counted as revenue at all, which is not a
 // question a customer-level setting was ever entitled to answer: the price
 // status on each posting answers it, one posting at a time.
+
+/**
+ * State what this customer earned over one period (#508). **ADMIN floor.**
+ *
+ * ⚠ **IT INVALIDATES `metering` AS WELL AS `margin`, AND THAT IS NOT
+ * OVER-INVALIDATION.** A supplied figure is half of every margin drawn from it,
+ * so the server marks every CLOSED month the record's span touches as stale and
+ * rebuilds their cached economics (#502). The one economic query is what those
+ * months are read back through, and it lives under the metering prefix — so a
+ * console that refreshed only the margin prefix would leave the customer's own
+ * charts showing the answer from before they stated the figure.
+ */
+export function useRecordSuppliedRevenue(customerId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SuppliedRevenueIn) =>
+      customersApi.recordSuppliedRevenue(customerId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["margin"] });
+      void queryClient.invalidateQueries({ queryKey: ["metering"] });
+    },
+  });
+}
 
 function useBillingMutation<TArgs, TResult>(
   mutationFn: (args: TArgs) => Promise<TResult>,

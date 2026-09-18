@@ -6,6 +6,7 @@ import {
   currencyToMicros,
   microsToCurrencyInput,
   monthToPeriodDate,
+  postpaidToFormState,
 } from "./billing-forms";
 
 describe("currency conversion", () => {
@@ -29,30 +30,50 @@ describe("currency conversion", () => {
 });
 
 describe("postpaid partial-update payload", () => {
+  // ⚠ **THE STORED VALUE IS ONE REQUEST WORD OF THE GROUPING VOCABULARY NOW
+  // (#503), NOT A MODE PLUS A FREE-TEXT KEY.** What this form used to build —
+  // `single`, `product_id`, `tag:<anything the tenant typed>` — is what
+  // ADR-0005 calls the sharpest of the three free-text hatches, and it is the
+  // only one a paying customer reads: an unbounded key driving invoice line
+  // labels is how a 5,000-line invoice happens. The server now refuses a word
+  // with no kind, so `product_id` is not merely renamed here, it is a value
+  // the API would reject.
   const current: PostpaidConfig = {
-    usage_line_item_group_by: "product_id",
+    usage_line_item_group_by: "field:event_type",
     consolidate_with_subscription: false,
   };
 
   it("omits unchanged fields entirely", () => {
     expect(
-      buildPostpaidPayload(current, { mode: "product", tagKey: "", consolidate: true }),
+      buildPostpaidPayload(current, { axis: "field:event_type", consolidate: true }),
     ).toEqual({ consolidate_with_subscription: true });
   });
 
   it("sends an explicit empty string to clear grouping", () => {
+    // One total, one line — the absence of an axis rather than an axis meaning
+    // "don't". The PUT is partial, so clearing has to be said explicitly.
     expect(
-      buildPostpaidPayload(current, { mode: "single", tagKey: "", consolidate: false }),
+      buildPostpaidPayload(current, { axis: "", consolidate: false }),
     ).toEqual({ usage_line_item_group_by: "" });
   });
 
-  it("builds tag:<key> values and returns null when nothing changed", () => {
+  it("sends the axis's own request word, kind included", () => {
     expect(
-      buildPostpaidPayload(current, { mode: "tag", tagKey: "seat", consolidate: false }),
-    ).toEqual({ usage_line_item_group_by: "tag:seat" });
+      buildPostpaidPayload(current, { axis: "rollup:event_category", consolidate: false }),
+    ).toEqual({ usage_line_item_group_by: "rollup:event_category" });
     expect(
-      buildPostpaidPayload(current, { mode: "product", tagKey: "", consolidate: false }),
+      buildPostpaidPayload(current, { axis: "field:event_type", consolidate: false }),
     ).toBeNull();
+  });
+
+  it("reads the stored axis back as the form's own state", () => {
+    expect(postpaidToFormState(current)).toEqual({
+      axis: "field:event_type",
+      consolidate: false,
+    });
+    expect(
+      postpaidToFormState({ ...current, usage_line_item_group_by: "" }),
+    ).toEqual({ axis: "", consolidate: false });
   });
 });
 

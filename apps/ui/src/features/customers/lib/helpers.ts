@@ -1,5 +1,7 @@
 // Pure helpers for the customers feature (no React, no IO).
 
+import { wholeDaysBetween } from "@/lib/supplied-revenue";
+
 import type { CustomerEconomics } from "../api/types";
 import { descendingWithAbsencesLast } from "@/lib/economic-query";
 
@@ -74,4 +76,89 @@ export function parseAlertLevels(input: string): number[] {
 
 export function formatAlertLevels(levels: number[]): string {
   return levels.join(", ");
+}
+
+// ---------------------------------------------------------------------------
+// The mid-period affordance (#508; slice 7 §9's ruling)
+
+const MONTH_RE = /^(\d{4})-(\d{2})$/;
+
+/** One supplied period: the span it covers, and whether it is a part month. */
+export interface SuppliedPeriod {
+  /** ISO date the period opens on. */
+  period_start: string;
+  /** ISO date it closes on, EXCLUSIVE — the first of the following month. */
+  period_end: string;
+  /** Whole days between the two, which is what a straight-line method divides by. */
+  days: number;
+  /** Whether it opens after the first, so the surface can say what it is. */
+  partial: boolean;
+  /** How many whole calendar months it runs to, from the month it opens in. */
+  months: number;
+}
+
+/**
+ * The span a supplied figure covers, from the month it belongs to and the day
+ * the customer began.
+ *
+ * ⚠ **THIS IS THE DATA-ENTRY BURDEN THE RECURRING PROFILE USED TO ABSORB.**
+ * #153 §19(f) recorded that retiring the profile lost the *began on the
+ * fourteenth* semantics: a profile carried one amount and an interval and
+ * worked the part month out, while per-period rows can express it **only if
+ * the tenant enters the partial period correctly**. So the tenant states which
+ * month and which day, and the SPAN is derived here — they never work out that
+ * June the fourteenth is seventeen days.
+ *
+ * The end is EXCLUSIVE, matching the record's own field and the half-open
+ * windows every margin surface reads. `null` where the month cannot be read or
+ * the day falls outside it, so the form refuses rather than inventing a span.
+ */
+export function suppliedPeriod(
+  month: string,
+  beganOn: string,
+  months = 1,
+): SuppliedPeriod | null {
+  const parsed = MONTH_RE.exec(month);
+  if (!parsed) return null;
+  const year = Number(parsed[1]);
+  const monthNumber = Number(parsed[2]);
+  if (monthNumber < 1 || monthNumber > 12) return null;
+  if (!Number.isInteger(months) || months < 1) return null;
+  const firstOfMonth = Date.UTC(year, monthNumber - 1, 1);
+  // The first of the month AFTER the span, which `Date.UTC` rolls into the
+  // next year on its own — an increment that touched the month alone would run
+  // December's span backwards.
+  //
+  // ⚠ **A SPAN MAY RUN PAST ONE MONTH, because a supplied figure may.** §9
+  // says the record carries the period it actually covers, and a tenant that
+  // invoices quarterly earned that money across three months; a form that
+  // could only say "one month" would make them state three rows for one
+  // invoice, which is the data-entry burden this affordance exists to remove
+  // rather than relocate.
+  const firstAfter = Date.UTC(year, monthNumber - 1 + months, 1);
+
+  let opens = firstOfMonth;
+  if (beganOn !== "") {
+    opens = Date.parse(`${beganOn}T00:00:00Z`);
+    // The day must fall inside the month the span OPENS in — a start part-way
+    // through month two of a quarter is a different period, stated as one.
+    const firstOfNext = Date.UTC(year, monthNumber, 1);
+    if (Number.isNaN(opens) || opens < firstOfMonth || opens >= firstOfNext) {
+      return null;
+    }
+  }
+  const period_start = new Date(opens).toISOString().slice(0, 10);
+  const period_end = new Date(firstAfter).toISOString().slice(0, 10);
+  return {
+    period_start,
+    period_end,
+    // The one counter, shared with the mock's attribution and the panel's own
+    // span — a supplied amount is DIVIDED by this under a spreading method.
+    days: wholeDaysBetween(period_start, period_end),
+    // The first of the month is a WHOLE period however it was entered: a
+    // figure covering all of June is not partial because the tenant reached
+    // for the day picker to say so.
+    partial: opens > firstOfMonth,
+    months,
+  };
 }

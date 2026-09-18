@@ -34,6 +34,18 @@ import { axisRequestWord, FIELD_KIND, ROLLUP_KIND } from "@/lib/grouping-axis";
 export const ANALYTICS_SURFACE = "analytics";
 
 /**
+ * The other one: the grouping a tenant's invoice LINES are built on.
+ *
+ * ⚠ **A NARROWER SET THAN ANALYTICS, AND THE DIFFERENCE IS MONEY.** An axis
+ * resolving at the measurement grain is analytics-only, because an invoice line
+ * is money and UBB holds none at that grain — so the two pickers reading this
+ * one contract genuinely see two lists. Spelled here rather than at the call
+ * site so the invoice surface and the fixtures that describe it cannot drift
+ * apart on a string.
+ */
+export const INVOICE_LINES_SURFACE = "invoice_lines";
+
+/**
  * The mock workspace's own declared axis keys, in slot order.
  *
  * ⚠ **ONE LIST, READ BY BOTH MOCKS THAT NEED IT.** The pricing feature's rule
@@ -62,7 +74,7 @@ function mockOption(over: Partial<GroupingOption> & { key: string }): GroupingOp
     label: "",
     rollup: null,
     source_grain: "event",
-    supported_surfaces: [ANALYTICS_SURFACE, "invoice_lines"],
+    supported_surfaces: [ANALYTICS_SURFACE, INVOICE_LINES_SURFACE],
     unsupported_measures: [],
     max_cardinality: null,
     ...over,

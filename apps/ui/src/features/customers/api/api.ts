@@ -22,6 +22,7 @@ import {
   MONEY_MEASURES,
 } from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
+import type { RevenueBasis } from "@/lib/vocabulary";
 
 import {
   type BalanceResponse,
@@ -52,6 +53,9 @@ import {
   type WithdrawRequest,
   type WithdrawResponse,
   type BusinessMarginOut,
+  type SuppliedRevenueIn,
+  type SuppliedRevenueRecord,
+  type SuppliedRevenueWindow,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -125,9 +129,54 @@ export async function getMarginTrend(
 // THE RECURRING REVENUE PAIR WAS HERE AND IS GONE (#496, slice 7 section 9).
 // It read and wrote one recurring amount per customer - no period, no source,
 // and an amount the backend added into the same field as a Stripe
-// subscription. Its replacement is the tenant-supplied revenue record, one
-// figure per period with its own span and its own source reference, and the
-// panel that writes it is #508's.
+// subscription. Its replacement is the pair directly below.
+
+// ---------------------------------------------------------------------------
+// Tenant-supplied revenue (#508, slice 7 section 9)
+
+/**
+ * The window's supplied revenue, under a basis the answer NAMES.
+ *
+ * ⚠ **THE BASIS IS ASKED FOR, NEVER ASSUMED.** `recorded` places each supplied
+ * amount whole on the day its period opens and distributes nothing;
+ * `recognised` spreads it by the record's own method across the span the record
+ * declares. The route will choose for a caller that does not, and then says
+ * which it chose — but a surface offering the tenant both views has to send the
+ * one it is showing, or the label over the figure is a guess.
+ */
+export async function getSuppliedRevenue(
+  customerId: string,
+  range: DateRange,
+  basis: RevenueBasis,
+): Promise<SuppliedRevenueWindow> {
+  return unwrap(
+    await marginApi.GET("/customers/{customer_id}/supplied-revenue", {
+      params: { path: { customer_id: customerId }, query: { ...range, basis } },
+    }),
+  );
+}
+
+/**
+ * State what this customer earned over one period. **ADMIN floor.**
+ *
+ * ⚠ **A RE-STATEMENT IS THE SAME ACT PERFORMED AGAIN, AND A SECOND SOURCE IS A
+ * SECOND FACT.** The record's identity is customer + period start + source
+ * reference, so sending the same source for the same period corrects the figure
+ * and sending a different one records another figure beside it. Two invoices
+ * covering one month are two facts rather than a contradiction, which is why
+ * the surface never asks the tenant to pick one.
+ */
+export async function recordSuppliedRevenue(
+  customerId: string,
+  body: SuppliedRevenueIn,
+): Promise<SuppliedRevenueRecord> {
+  return unwrap(
+    await marginApi.POST("/customers/{customer_id}/supplied-revenue", {
+      params: { path: { customer_id: customerId } },
+      body,
+    }),
+  );
+}
 
 // AND THE REVENUE-SWITCH PAIR WAS HERE AND IS GONE TOO (#497, slice 7 section
 // 9) - one path, two operations, which with the pair above completes what

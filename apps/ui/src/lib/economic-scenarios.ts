@@ -839,3 +839,53 @@ export function chargeReceipt(terms: ChargeTerms): ChargeReceiptScenario {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// `pricing_status` at the SUPPLIED SCOPE — a window's revenue, and whether UBB
+// is stating one at all (#508, slice 7 §9).
+
+/**
+ * What a window's supplied revenue is, and whether UBB is stating it.
+ *
+ * ⚠ **THE STATUS AND THE TOTALS ARE ONE FACT AND A FIXTURE MAY NOT TAKE
+ * HALF.** The read serves `unknown` as an EMPTY list rather than a zero,
+ * because a tenant who has supplied nothing has revenue UBB does not know —
+ * margin unavailable at this scope, **never nil** — and `[]` coalesced to `0`
+ * is precisely the silent zero #153 §3.4 refuses by name. The two composers
+ * below make the dangerous pairs unwritable: there is no way to state
+ * `unknown` beside a figure, and no way to state `known` beside nothing.
+ *
+ * ⚠ **AND IT IS A DIFFERENT SCOPE FROM THE PRICE THE SAME CONCEPT ANSWERS
+ * FOR.** `@/lib/customer-price` reads `pricing_status` on one posting's price;
+ * this is the same concept answering for a whole window at the scope a tenant
+ * supplied a figure at. One concept, two subjects — which is why the status is
+ * read through that module's binding and only the SHAPE is composed here.
+ */
+export interface SuppliedRevenueScenario {
+  readonly pricing_status: PricingStatus;
+  readonly totals: readonly { currency: string; amount_micros: number }[];
+}
+
+/** A window a tenant has supplied a figure for, per currency. */
+export function suppliedRevenueKnown(
+  totals: readonly { currency: string; amount_micros: number }[],
+): SuppliedRevenueScenario {
+  if (totals.length === 0) {
+    // A `known` window with nothing in it is the shape the server never sends
+    // and the one a fixture would reach for by accident — so it is refused
+    // here rather than rendered as an empty panel claiming a figure exists.
+    throw new Error("suppliedRevenueKnown needs at least one currency total");
+  }
+  return { pricing_status: "known", totals };
+}
+
+/**
+ * A window nobody has supplied a figure for.
+ *
+ * No argument, deliberately: there is nothing to state. The empty list is the
+ * whole point and a caller able to pass one could pass `[{…, amount_micros: 0}]`
+ * instead, which is the zero this scenario exists to make unsayable.
+ */
+export function suppliedRevenueUnknown(): SuppliedRevenueScenario {
+  return { pricing_status: "unknown", totals: [] };
+}

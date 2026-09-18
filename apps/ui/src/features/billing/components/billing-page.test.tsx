@@ -58,6 +58,20 @@ describe("BillingPage", () => {
     expect(screen.queryByText("Postpaid invoicing")).not.toBeInTheDocument();
   });
 
+  // ⚠ **THE BILLED FIGURE INCLUDES WHAT TENANTS SUPPLIED, AND ONE OF THE TWO
+  // VIEWS SPREADS IT (#508; slice 7 §5).** This window adds three revenue
+  // sources, so it has no single source reference and no single recognition
+  // method to show — what it owes is the view it was drawn under, which the one
+  // economic query states on every answer and which this console threw away
+  // until now.
+  it("says which revenue view the window was drawn under", async () => {
+    renderPage();
+
+    const note = await screen.findByText(/Revenue stated as/);
+    expect(note.getAttribute("data-revenue-basis")).toBe("recorded");
+    expect(note).toHaveTextContent("Nothing is divided");
+  });
+
   // #330: the window's supplier total is a FLOOR whenever it holds events UBB
   // could not cost, and the markup beside it is then a ceiling — billed minus
   // the RESOLVED cost, which the contract states on the measure itself since

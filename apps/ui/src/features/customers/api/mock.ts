@@ -12,7 +12,11 @@ import {
   spendPoolAssessment,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
-import type { AffordabilityReasonKnown } from "@/lib/vocabulary";
+import {
+  spreadsAcrossItsSpan,
+  wholeDaysBetween,
+} from "@/lib/supplied-revenue";
+import type { AffordabilityReasonKnown, RevenueBasis } from "@/lib/vocabulary";
 
 import {
   MOCK_BALANCES,
@@ -28,8 +32,10 @@ import {
   mockMarginTrend,
   mockOneCustomer,
   mockUsageTimeseries,
+  MOCK_PERIOD,
   MOCK_SUB_INVOICES,
   MOCK_SUBSCRIPTIONS,
+  MOCK_SUPPLIED_REVENUE,
   MOCK_TRANSACTIONS,
   MOCK_USAGE_INVOICES,
   type MockCustomer,
@@ -58,6 +64,10 @@ import type {
   StripeSubscriptionOut,
   SubscribeIn,
   SubscriptionInvoiceOut,
+  AttributedSuppliedRevenue,
+  SuppliedRevenueIn,
+  SuppliedRevenueRecord,
+  SuppliedRevenueWindow,
   TopUpCheckoutResponse,
   UsageInvoiceOut,
   WalletTransactionOut,
@@ -78,6 +88,8 @@ const billingProfiles: Record<string, CustomerBillingProfileOut> =
   structuredClone(MOCK_BILLING_PROFILES);
 const subscriptions: Record<string, StripeSubscriptionOut> =
   structuredClone(MOCK_SUBSCRIPTIONS);
+const suppliedRevenue: Record<string, SuppliedRevenueRecord[]> =
+  structuredClone(MOCK_SUPPLIED_REVENUE);
 
 function notFound(detail: string): ApiProblem {
   return new ApiProblem({
@@ -203,6 +215,146 @@ export async function getMarginTrend(
   await mockDelay();
   requireCustomer(customerId);
   return mockMarginTrend(periods);
+}
+
+// ---------------------------------------------------------------------------
+// Tenant-supplied revenue (#508)
+//
+// ⚠ **THE WINDOW IS HALF-OPEN, `[start, end)`, BECAUSE THE ROUTE'S IS.** The
+// margin module hands `_window` the two dates unchanged and its service then
+// compares with `period_start < end`, so the last day a console DateRange calls
+// inclusive is excluded by the server. That divergence is real, it predates
+// this read — `getBusinessMargin` beside it sends the same range to the same
+// module — and it is not settled here: mirroring it is what keeps mock mode
+// honest about the answer the API gives. A mock that quietly added a day would
+// hide the one thing a fixture is for.
+
+/**
+ * Whether this record is spread across its own span under `basis`.
+ *
+ * ⚠ **THE METHOD HALF IS ASKED OF `@/lib/supplied-revenue`, NOT DECIDED
+ * HERE.** Which methods divide an amount is one rule with one home, and a mock
+ * carrying its own copy would let the fixture and the panel disagree about
+ * whether a figure had been spread — the mock saying it had while the panel
+ * said it had not is exactly the unlabelled proration §5 exists to end, served
+ * from inside the console.
+ *
+ * ⚠ **AND A SPREADING METHOD WITH NO SPAN IS NOT SPREAD, RATHER THAN
+ * DROPPED.** The record's own check constraint refuses that pair, so the server
+ * never sends one — but a fixture can build one, and answering "distributed"
+ * for it would make the row vanish from one view and not the other. §5 forbids
+ * the silent drop in terms, so the span decides as well as the method.
+ */
+function isDistributed(record: SuppliedRevenueRecord, basis: RevenueBasis): boolean {
+  return (basis === "recognised"
+          && spreadsAcrossItsSpan(record.recognition_method)
+          && record.period_end !== null
+          && record.period_end !== undefined);
+}
+
+/**
+ * How much of `record` the half-open window gets under `basis`.
+ *
+ * ⚠ **A RECORD MAY CONTRIBUTE ZERO AND THAT IS NOT THE SAME AS NOT
+ * CONTRIBUTING** — a tenant recording a free month states that revenue WAS
+ * nothing, which is a different fact from having supplied nothing at all. So
+ * membership is decided first and the amount second, exactly as the service
+ * does it, and `null` here means "says nothing about this window".
+ */
+function attributedMicros(
+  record: SuppliedRevenueRecord,
+  start: string,
+  end: string,
+  basis: RevenueBasis,
+): number | null {
+  if (isDistributed(record, basis)) {
+    const periodEnd = record.period_end;
+    if (periodEnd === null || periodEnd === undefined) return null;
+    const opens = record.period_start > start ? record.period_start : start;
+    const closes = periodEnd < end ? periodEnd : end;
+    const overlap = Math.max(wholeDaysBetween(opens, closes), 0);
+    if (overlap === 0) return null;
+    const span = wholeDaysBetween(record.period_start, periodEnd);
+    // Integer division by whole days, floored — the service's arithmetic, so
+    // the two never disagree about how a part-month is counted.
+    return Math.floor((record.amount_micros * overlap) / span);
+  }
+  if (record.period_start < start || record.period_start >= end) return null;
+  return record.amount_micros;
+}
+
+export async function getSuppliedRevenue(
+  customerId: string,
+  range: DateRange,
+  basis: RevenueBasis,
+): Promise<SuppliedRevenueWindow> {
+  await mockDelay();
+  requireCustomer(customerId);
+  const window = resolveRange(range);
+  const start = window.start_date ?? MOCK_PERIOD.start;
+  const end = window.end_date ?? MOCK_PERIOD.end;
+  const rows: AttributedSuppliedRevenue[] = [];
+  const perCurrency = new Map<string, number>();
+  for (const record of suppliedRevenue[customerId] ?? []) {
+    const attributed = attributedMicros(record, start, end, basis);
+    if (attributed === null) continue;
+    rows.push({ ...record, attributed_amount_micros: attributed });
+    perCurrency.set(
+      record.currency,
+      (perCurrency.get(record.currency) ?? 0) + attributed,
+    );
+  }
+  return {
+    basis,
+    window: { start, end },
+    // AN EMPTY `totals` IS HOW `unknown` IS SERVED AND IT IS NEVER A ZERO: a
+    // customer nobody has supplied a figure for has revenue UBB does not know,
+    // so margin is unavailable there rather than nil.
+    pricing_status: rows.length > 0 ? "known" : "unknown",
+    totals: [...perCurrency.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([currency, amount_micros]) => ({ currency, amount_micros })),
+    records: rows,
+  };
+}
+
+export async function recordSuppliedRevenue(
+  customerId: string,
+  body: SuppliedRevenueIn,
+): Promise<SuppliedRevenueRecord> {
+  await mockDelay();
+  requireCustomer(customerId);
+  // ONE ROW PER CUSTOMER PER PERIOD-OPEN PER SOURCE REFERENCE. Re-stating a
+  // figure is the same act performed again, so the same source for the same
+  // period CORRECTS the row; a different source records a second fact beside
+  // it. The mock keys on the same pair the route's `update_or_create` does, or
+  // a tenant correcting a typo here would end up with two contradictory rows
+  // and no way to tell which the server would have kept.
+  const held = suppliedRevenue[customerId] ?? (suppliedRevenue[customerId] = []);
+  const sourceReference = body.source_reference.trim();
+  const stated: SuppliedRevenueRecord = {
+    id: `rev_mock_${customerId.slice(0, 8)}_${body.period_start}_${sourceReference}`,
+    amount_micros: body.amount_micros,
+    currency: body.currency.trim().toLowerCase(),
+    period_start: body.period_start,
+    period_end: body.period_end ?? null,
+    recognition_method: body.recognition_method,
+    source_reference: sourceReference,
+    recorded_at: new Date().toISOString(),
+  };
+  const at = held.findIndex(
+    (record) =>
+      record.period_start === stated.period_start &&
+      record.source_reference === sourceReference,
+  );
+  if (at === -1) held.push(stated);
+  else held[at] = stated;
+  held.sort((left, right) =>
+    left.period_start === right.period_start
+      ? left.source_reference.localeCompare(right.source_reference)
+      : left.period_start.localeCompare(right.period_start),
+  );
+  return stated;
 }
 
 export async function getBusinessMargin(

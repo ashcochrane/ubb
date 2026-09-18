@@ -758,15 +758,26 @@ recognition_method:
     - straight_line
     - on_receipt
   label_key_prefix: recognition_method
-  # NO CONSOLE CONSUMER YET, and that is a statement about where this concept
-  # is turned into words rather than an omission. The panels that write a
-  # supplied record arrive with the console's own slice-7 tickets; declaring a
-  # console consumer before one exists would be declaring a debt, and this
-  # concept's whole point is that it is held by reference on the day it is
-  # coined (`not_applicable_reason`'s precedent, #351).
+  # ⚠ THE CONSOLE CONSUMER ARRIVED IN #508, WHICH IS THE TICKET THE NOTE HERE
+  # WAS WAITING FOR. It used to read *"no console consumer YET … the panels
+  # that write a supplied record arrive with the console's own slice-7
+  # tickets; declaring a console consumer before one exists would be declaring
+  # a debt"* — and that is exactly what those panels now do: the write form
+  # offers this concept's whole closed set as the choice of how an amount is
+  # spread, so the console HOLDS these values and a registry saying it holds
+  # none of them would be the census defect G2 exists to catch.
+  #
+  # DECLARED AND PAID IN ONE COMMIT (#506's settled shape): the alias in
+  # `labels.ts` holds the set BY REFERENCE on the same day this line appears,
+  # so the census reads it served rather than owed and no allowlist entry ever
+  # existed to survive. The module that decides with the values imports
+  # `@/lib/vocabulary` directly — the adapter's importer set is a ratchet that
+  # may only shrink.
   consumers:
     - surface: backend
       path: ubb-platform/apps/subscriptions/economics/models.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json
 
@@ -783,10 +794,15 @@ revenue_basis:
     - recorded
     - recognised
   label_key_prefix: revenue_basis
-  # Same reason as `recognition_method` above for the absent console consumer.
+  # Same story as `recognition_method` above, and the same commit: the read
+  # panel offers BOTH views as a choice and labels every figure with the one
+  # the answer states, so the console holds this set too. Declared and held by
+  # reference together (#508).
   consumers:
     - surface: backend
       path: ubb-platform/apps/subscriptions/economics/revenue.py
+    - surface: console
+      path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json
 
