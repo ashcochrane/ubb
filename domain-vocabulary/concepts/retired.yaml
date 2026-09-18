@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,889 of 2,321 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,891 of 2,323 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2562,6 +2562,20 @@ measurement_key:
     # meant nothing needed saying at all, because `formatMicros` owns it.
     # Checked by re-taking the count over the new swept set rather than assumed
     # from care.
+    #
+    # 2026-09-18, #509 (the pricing feature's rate selectors take the grouping
+    # vocabulary's words): 1,889 of 2,321 -> 1,891 of 2,323 tracked files
+    # (`units` 44 files / 122 occurrences, UNMOVED — as #508 recorded it, and
+    # #531 between them moved neither number). TWO files arrived and none left,
+    # and both totals move by the same two: the pricing feature's form-schema
+    # cases, which hold a selector's length refusal to the words its input
+    # wears, and a contracts module holding the console's named selectors to
+    # the server's and every other term a rule carries off the grouping axes.
+    # Both are ordinary source, so no exclusion moves.
+    #
+    # TAKEN TWICE, as #352's warning asks, and this time the two takes agree:
+    # the `/code-review` pass corrected sentences and moved one constant
+    # between two modules that already existed, and added no file.
 
     - term: units
       retired_as: >-

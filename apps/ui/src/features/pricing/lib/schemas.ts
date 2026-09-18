@@ -5,6 +5,22 @@
 import { z } from "zod";
 
 import { PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES } from "@/lib/vocabulary";
+import { selectorTitle, type NamedSelector } from "./rules";
+
+/**
+ * A named selector's value, refused past `max` in the words its input wears.
+ *
+ * The message names the field through `selectorTitle`, the same function that
+ * labels the input above it (#509), so a refusal under "Kind of work" cannot go
+ * on to call the field something else. Four hand-written messages were four
+ * more copies of the words, and the relabelling that brought the inputs onto
+ * the grouping vocabulary would otherwise have left two of them behind.
+ */
+const selectorText = (selector: NamedSelector, max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Keep the ${selectorTitle(selector).toLowerCase()} under ${max} characters`);
 
 const nonNegativeNumberString = (message: string) =>
   z
@@ -61,13 +77,10 @@ export const ruleFormSchema = z
       .trim()
       .min(1, "Required")
       .max(100, "Keep the measurement key under 100 characters"),
-    provider: z.string().trim().max(100, "Keep the provider under 100 characters"),
-    event_type: z.string().trim().max(100, "Keep the event type under 100 characters"),
-    task_type: z.string().trim().max(64, "Keep the task type under 64 characters"),
-    subtask_type: z
-      .string()
-      .trim()
-      .max(64, "Keep the subtask type under 64 characters"),
+    provider: selectorText("provider", 100),
+    event_type: selectorText("event_type", 100),
+    task_type: selectorText("task_type", 64),
+    subtask_type: selectorText("subtask_type", 64),
     /**
      * The tenant's own pins, keyed by the key THEY declared.
      *

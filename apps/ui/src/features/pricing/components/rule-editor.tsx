@@ -20,7 +20,12 @@ import {
   UNIT_QUANTITY_CHOICES,
 } from "../lib/pricing-math";
 import { pricingMethodLabel } from "@/lib/customer-price";
-import { rateStructureLabel } from "../lib/rules";
+import {
+  NAMED_SELECTORS,
+  rateStructureLabel,
+  SELECTOR_EXAMPLES,
+  selectorTitle,
+} from "../lib/rules";
 import { resolveUnitQuantity, type RuleFormValues } from "../lib/schemas";
 
 /**
@@ -122,36 +127,22 @@ export function RuleEditor({
           higher it ranks — specificity decides before the book it sits in does.
         </p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <FormField label="Provider" error={errors.provider?.message}>
-            {(id) => (
-              <Input
-                id={id}
-                className="font-mono"
-                placeholder="openai"
-                {...form.register("provider")}
-              />
-            )}
-          </FormField>
-          <FormField label="Event type" error={errors.event_type?.message}>
-            {(id) => (
-              <Input
-                id={id}
-                className="font-mono"
-                placeholder="chat.completion"
-                {...form.register("event_type")}
-              />
-            )}
-          </FormField>
-          <FormField label="Task type" error={errors.task_type?.message}>
-            {(id) => (
-              <Input id={id} className="font-mono" {...form.register("task_type")} />
-            )}
-          </FormField>
-          <FormField label="Subtask type" error={errors.subtask_type?.message}>
-            {(id) => (
-              <Input id={id} className="font-mono" {...form.register("subtask_type")} />
-            )}
-          </FormField>
+          {NAMED_SELECTORS.map((selector) => (
+            <FormField
+              key={selector}
+              label={selectorTitle(selector)}
+              error={errors[selector]?.message}
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  className="font-mono"
+                  placeholder={SELECTOR_EXAMPLES[selector]}
+                  {...form.register(selector)}
+                />
+              )}
+            </FormField>
+          ))}
         </div>
         {groupingFields.length > 0 && (
           <div className="space-y-2">
