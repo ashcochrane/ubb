@@ -783,14 +783,30 @@ def list_tenant_usage_invoices(request, period: str = None,
 CARDINALITY_WARNING_KEY = "invoice_line_cardinality_warning"
 
 
+def _postpaid_config_as_published(cfg):
+    """A stored postpaid configuration in the words the contract publishes.
+
+    ⚠ THE PUBLISHED FIELD AND THE COLUMN HAVE TWO NAMES, AND THIS IS WHERE THE
+    COLUMN BECOMES THE WIRE. What a tenant reads is contract vocabulary —
+    `group_by` since #531, the word every grouping surface takes; what the
+    column holds is a backend fact, `invoice_line_grouping` since #503. Neither
+    follows the other. Both routes answer through this, and so does the audit
+    record: the audit feed is tenant-readable, and a tenant should find there
+    the word they sent. The other direction is the one assignment in
+    `put_postpaid_config`. `None` is a tenant that has configured nothing.
+    """
+    return {"group_by": cfg.invoice_line_grouping if cfg else "",
+            "consolidate_with_subscription": (cfg.consolidate_with_subscription
+                                              if cfg else False)}
+
+
 @billing_router.get("/postpaid-config", response=PostpaidConfigOut)
 @role_floor(READ)
 def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     cfg = PostpaidUsageConfig.objects.filter(tenant=request.auth.tenant).first()
-    return {"group_by": cfg.invoice_line_grouping if cfg else "",
-            "consolidate_with_subscription": cfg.consolidate_with_subscription if cfg else False}
+    return _postpaid_config_as_published(cfg)
 
 
 @billing_router.put("/postpaid-config", response=PostpaidConfigOut)
@@ -802,14 +818,10 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
     # channel ADR-001 allows between these two products, and the reason a ticket
     # plan scoped by analytics route would miss this surface entirely.
     #
-    # ⚠ THE PUBLISHED FIELD AND THE COLUMN HAVE TWO NAMES, AND THIS FUNCTION IS
-    # WHERE THEY MEET. What a tenant SENDS is contract vocabulary — `group_by`
-    # since #531, the word every grouping surface takes; what the column HOLDS
-    # is a backend fact, `invoice_line_grouping` since #503. Neither follows the
-    # other, and the mapping between them lives here, deliberately in one place.
-    # The audit record keys what was set by the published name, because the
-    # audit feed is a tenant-readable surface and a tenant should find the word
-    # they sent.
+    # ⚠ THE WIRE BECOMES THE COLUMN AT ONE ASSIGNMENT BELOW: what a tenant sends
+    # as `group_by` (#531) is stored as `invoice_line_grouping` (#503). The
+    # other direction is `_postpaid_config_as_published`, which says why the
+    # two names differ.
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     from apps.metering.queries import (
@@ -838,8 +850,7 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
     with transaction.atomic():
         cfg, _ = PostpaidUsageConfig.objects.update_or_create(
             tenant=tenant, defaults=defaults)
-        metadata = {"group_by": cfg.invoice_line_grouping,
-                    "consolidate_with_subscription": cfg.consolidate_with_subscription}
+        metadata = _postpaid_config_as_published(cfg)
         warning = (invoice_line_cardinality_warning(tenant.id,
                                                     cfg.invoice_line_grouping)
                    if cfg.invoice_line_grouping else None)
@@ -852,5 +863,4 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
             action="postpaid_config.set", tenant_id=tenant.id,
             resource_type="postpaid_config", resource_id=tenant.id,
             metadata=metadata)
-    return {"group_by": cfg.invoice_line_grouping,
-            "consolidate_with_subscription": cfg.consolidate_with_subscription}
+    return _postpaid_config_as_published(cfg)

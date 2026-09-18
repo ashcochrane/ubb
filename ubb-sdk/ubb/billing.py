@@ -286,10 +286,11 @@ class BillingClient:
 
         ``group_by`` is the ONE axis invoice lines are split by — a request
         word of the grouping vocabulary (``ubb.group_by_field(key)`` or
-        ``ubb.group_by_rollup(name)``), one of the options
+        ``ubb.group_by_rollup(rollup)``), one of the options
         ``MeteringClient.grouping_options()`` lists as supported on invoice
-        lines — or ``""`` for one line per period. One word, not a list: the economic query groups by
-        several axes, an invoice line by exactly one.
+        lines — or ``""`` for one line per period. One word, not a list: the
+        economic query groups by several axes, an invoice line by exactly
+        one.
 
         ``consolidate_with_subscription=True`` pins each period's usage onto
         the customer's subscription-renewal invoice (one Stripe invoice per

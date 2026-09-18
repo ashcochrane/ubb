@@ -205,37 +205,18 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         assert self._put("field:region").status_code == 200
         assert CARDINALITY_WARNING_KEY not in self._last_audit_metadata()
 
+    def test_both_published_schemas_declare_ONE_axis_and_never_an_array(self):
+        """⚠ **ONE AXIS HERE AND A LIST ON THE ECONOMIC QUERY, AND BOTH ARE
+        RIGHT** (#531). The field took the word the economic query publishes,
+        where it is a list because an analytics question may be grouped by
+        several axes; an invoice line is grouped by exactly one. This is the
+        test that pins the arity — it goes red if either schema widens to an
+        array (measured, both directions).
 
-class TheInvoiceLineGroupingIsOneAxisTest(TestCase):
-    """⚠ **ONE AXIS HERE AND A LIST ON THE ECONOMIC QUERY, AND BOTH ARE RIGHT.**
-
-    #531, slice 7 §11. The published field took the registry's own successor
-    word, `group_by` — the word the economic query already publishes. There it
-    is a LIST, because an analytics question may be grouped by several axes at
-    once; an invoice line is grouped by exactly one. Same concept, different
-    arity. A list here would publish a capability the invoicing path does not
-    have, and the server would then have to refuse what its own contract
-    offered — so the arity is pinned twice: on the document a caller reads, and
-    at the door a caller writes through.
-    """
-
-    def setUp(self):
-        from apps.platform.grouping_fields.services import DimensionService
-        self.http = Client()
-        self.tenant = Tenant.objects.create(
-            name="T", products=["metering", "billing"])
-        DimensionService.declare(self.tenant, key="region",
-                                 slot="grouping_field_1", scope="event")
-        _, self.key = TenantApiKey.create_key(self.tenant, label="t")
-
-    def _auth(self):
-        return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
-
-    def test_both_published_schemas_declare_a_string_and_never_an_array(self):
-        """Read off the live document rather than off the class, because the
-        claim is about what a caller is TOLD. Every `type` anywhere under the
-        property is collected, so an array inside a nullable union is seen as
-        surely as a bare one."""
+        Read off the live document rather than off the class, because the claim
+        is about what a caller is TOLD. Every `type` anywhere under the property
+        is collected, so an array inside a nullable union is seen as surely as a
+        bare one."""
         from api.v1.api import api
 
         schemas = api.get_openapi_schema()["components"]["schemas"]
@@ -258,30 +239,18 @@ class TheInvoiceLineGroupingIsOneAxisTest(TestCase):
                 self.assertNotIn("array", types_under(grouping))
 
     def test_a_list_of_axes_is_refused_and_nothing_is_stored(self):
-        """THE WIRE HALF. A list naming one perfectly good axis is still a list,
-        and storing it — or its first element — would be the server quietly
-        choosing for the caller.
+        """A list naming one perfectly good axis is still a list, and storing it
+        — or its first element — would be the server quietly choosing for the
+        caller.
 
-        ⚠ This asserts the OUTCOME, not which layer produces it, and it is not
-        what pins the arity: with the request field widened to a list, the
-        grouping refusal behind it happens to reject a nested list too, so this
-        stays green (measured by making that mutation). The document test above
-        is the one that goes red, which is why both exist."""
-        r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"group_by": ["field:region"]}),
-                          content_type="application/json", **self._auth())
+        ⚠ This asserts the OUTCOME, not which layer produces it, and it does NOT
+        pin the arity: with the request field widened to a list, the grouping
+        refusal behind it happens to reject a nested list too, so this stays
+        green (measured by making that mutation). The document test above is
+        the one that goes red."""
+        r = self._put(["field:region"])
 
         assert r.status_code == 422
         assert r.json()["code"] == "validation_error"
         stored = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
         assert stored.json()["group_by"] == ""
-
-    def test_the_answer_is_one_axis_and_not_a_list_of_one(self):
-        """THE READ HALF: what a caller gets back is the word it sent, not a
-        one-element list of it."""
-        r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"group_by": "field:region"}),
-                          content_type="application/json", **self._auth())
-
-        assert r.status_code == 200
-        assert r.json()["group_by"] == "field:region"

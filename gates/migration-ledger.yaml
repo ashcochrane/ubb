@@ -351,14 +351,17 @@ entries:
   # `ubb-platform/docs/CHANGELOG-pricing-api.md`, whose 2026-07-03 entry named
   # the rule's bag of grouping values by the plural. #505 left it standing on
   # the argument that rewriting a changelog to spell a word its release did not
-  # use would falsify the record. The changelog's OWN HEADER RULE decides this
-  # case the other way: a name RETIRED AND REPLACED is carried forward to the
-  # current one, so a reader is not sent to a spelling that resolves to
-  # nothing, and only an entry's FACTS are never rewritten. The bag's current
-  # name is `grouping_fields` — the name a publish's change body carries it
-  # under, per that file's own 2026-08-20 entry — so the 2026-07-03 entry now
-  # says that, and its callout, which already carried two names forward the
-  # same way (#374), says it carries three.
+  # use would falsify the record — and that argument is right about a
+  # SUBSTITUTION, which this commit's first draft made and review caught: #131
+  # DELETED that bag (one column per grouping slot replaced it; it was never
+  # renamed), so writing today's `grouping_fields` into the July entry claimed
+  # `RateIn` had a property it never had. What the entry now does instead is
+  # the same file's own precedent for a name deleted outright: #374 wrote the
+  # container's retired discriminator as *the kind field*, with a callout
+  # saying why, and the bag is written as *the grouping bag* in that same
+  # callout's terms. No fact moves and no other word is spelled in its place.
+  # ⚠ This still departs from #505's "it stays", and the owner may prefer the
+  # word back — one line in the changelog and this entry restored at 1 file.
   #
   # ⚠ THE TICKET NAMED A DIFFERENT FILE, AND THAT FILE WAS ALREADY EXCLUDED.
   # #531 attributed this entry's last site to
@@ -542,13 +545,10 @@ entries:
   # vocabularies; #531 was inserted to end that. The field is `group_by` on
   # both postpaid config schemas — the registry's own stated successor for
   # every per-surface grouping parameter, and the word the economic query
-  # already publishes — and the route and its two test modules followed.
-  # ⚠ It is ONE axis where the economic query's `group_by` is a list, pinned
-  # by a test on the published document that goes red if either schema widens
-  # to an array. The stored column stays `invoice_line_grouping`, and the
-  # route is still the one place the two names meet. The audit record keys
-  # what was set by the published name too, so rows written before #531 keep
-  # the old key and later rows carry the new one.
+  # already publishes — and the route and its two test modules followed. The
+  # stored column stays `invoice_line_grouping`. The audit record keys what was
+  # set by the published name too, so rows written before #531 keep the old key
+  # and later rows carry the new one.
 
   # `g7-console-budget` WAS HERE AND IS PAID (#468, slice 6, the console
   # stage of §20 with the catalogue's #464 already landed): the two features'

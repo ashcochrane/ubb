@@ -1854,7 +1854,8 @@ class PostpaidConfigIn(Schema):
     # line is grouped by exactly one. Same concept, different arity: do not
     # widen this to a list, which would publish a capability the invoicing path
     # does not have. The stored column is `invoice_line_grouping` and does not
-    # follow the wire; `put_postpaid_config` is the one place the two meet.
+    # follow the wire; `api/v1/billing_endpoints.py` is where the two meet, one
+    # function per direction.
     group_by: Optional[str] = None
     # F5.5 opt-in; None = leave unchanged (a group_by-only PUT must never
     # silently switch a tenant's consolidation mode off).

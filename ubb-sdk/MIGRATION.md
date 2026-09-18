@@ -802,7 +802,7 @@ rather than the number — `status` is `known`, `incomplete` (the figure is a BO
 two `unavailable_*` states, or `not_applicable`. A margin that could not be attributed at the
 grain you asked for has NO figure at all; a zero in `amount_micros` is a MEASURED zero.
 
-Axis words are built with `ubb.group_by_field(key)` and `ubb.group_by_rollup(name)` rather
+Axis words are built with `ubb.group_by_field(key)` and `ubb.group_by_rollup(rollup)` rather
 than typed, so a misspelled kind is a name error rather than a `422`. The four concepts'
 constants are in `ubb.vocabulary` (`ANALYTICS_MEASURE_*`, `ANALYTICS_GROUPING_KIND_*`,
 `ANALYTICS_ROLLUP_*`, `MEASURE_STATUS_*`).
@@ -875,7 +875,7 @@ argument keeps working.
 
 ⚠ **ONE AXIS, NOT A LIST — even though the economic query's `group_by` is a list.** An analytics
 question may be grouped by several axes; an invoice line is grouped by exactly one. Send one word,
-built with `ubb.group_by_field(key)` or `ubb.group_by_rollup(name)`; a list is refused with `422`.
+built with `ubb.group_by_field(key)` or `ubb.group_by_rollup(rollup)`; a list is refused with `422`.
 Only an axis `MeteringClient.grouping_options()` lists as supported on invoice lines is accepted.
 
 ⚠ **AND ONE BEHAVIOUR CHANGE RIDES WITH THE RENAME: OMITTING THE GROUPING NO LONGER CLEARS IT.**
@@ -889,6 +889,11 @@ same as the consolidation flag always did. **To clear the grouping, say so:**
 publish is **dropped, not rejected** — so a PUT still sending the old name answers `200` and changes
 NOTHING, and the response's `group_by` shows the axis that was already stored. Read it back rather
 than trusting the status.
+
+**The audit record follows the published name.** A `postpaid_config.set` entry on
+`GET /api/v1/audit/records` now keys the axis as `group_by` in its `metadata`. Entries written before
+this change keep the old key — the audit trail is immutable — so a reader of that history should
+accept either.
 
 ---
 

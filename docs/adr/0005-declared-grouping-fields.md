@@ -265,11 +265,11 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   Consequences bullet naming all three was then out of date by one.** That bullet said the three
   were *"spelled here as the wire spells them today"* and that *"slice 7 owns renaming them"*.
   Slice 7 had then renamed the first: the pair filtering a customer's postings on
-  `/customers/{id}/usage` names the bag it reads (`metadata_key` / `metadata_value`) rather than reading as an axis over a
-  bag this ADR keeps deliberately ungroupable. The route KEEPS its own contract — it is a filter
-  surface and returns paginated event rows, which no parameter combination of the one economic query
-  returns — so what moved is four lines of request vocabulary and the generated followers of it,
-  and the path count did not change.
+  `/customers/{id}/usage` names the bag it reads (`metadata_key` / `metadata_value`) rather than
+  reading as an axis over a bag this ADR keeps deliberately ungroupable. The route KEEPS its own
+  contract — it is a filter surface and returns paginated event rows, which no parameter
+  combination of the one economic query returns — so what moved is four lines of request
+  vocabulary and the generated followers of it, and the path count did not change.
   - **The second and third are accounted for.** The second — the key-driven breakdown on the usage
     report and on the margin breakdown — **died with its routes** in #501 rather than being renamed,
     which is the one disposition that bullet did not anticipate. The third, the invoice-line one,
@@ -292,7 +292,8 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
     analytics question may be grouped by several axes; an invoice line is grouped by exactly one. A
     list here would publish a capability the invoicing path does not have and the server would have
     to refuse, so the published schema declares a string and a list is refused at the route. The
-    stored column stays `invoice_line_grouping`; the route is the one place the two names meet.
+    stored column stays `invoice_line_grouping`; the route module maps between the two names, one
+    function per direction.
   - **The Consequences bullet is corrected in place, with its line count kept**, so nothing above
     the line `EconomicRowOut`'s description cites has moved. The notes under #503 and #504 record
     why it was not corrected sooner: while the wire still spelled the old words, correcting this

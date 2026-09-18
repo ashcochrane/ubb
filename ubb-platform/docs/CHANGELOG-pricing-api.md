@@ -133,15 +133,19 @@ book assignment, which a flat per-rate model could not express safely.
 
 ### What changed
 
-> **Three names in this entry no longer resolve, and the header's rule applies to
-> all three.** The container this entry introduces carried **a kind field**
-> telling a book of supplier costs from a book of customer prices; the split into
-> a `PricingBook` and a `CostBook` replaced it with two entities rather than
-> renaming it, so it is written as *the kind field* below. The rule's pointer at
-> its container is `pricing_book` now, and the bag of grouping values a rule is
-> matched on is `grouping_fields`, the name a publish's change body carries it
-> under (see the 2026-08-20 entry; carried forward here in #531). What this entry
-> records — what changed on 2026-07-03, and why — is untouched.
+> **Three names in this entry are not spelled as they were on the day.** The
+> container this entry introduces carried **a kind field** telling a book of
+> supplier costs from a book of customer prices; the split into a `PricingBook`
+> and a `CostBook` replaced it with two entities rather than renaming it, so it
+> is written as *the kind field* below. A rule likewise carried **a bag of
+> grouping values** it was matched on, under a name since retired; #131
+> replaced that bag with one column per grouping slot rather than renaming it
+> (today `grouping_field_1`..`grouping_field_10`), so it is written as *the
+> grouping bag* below (#531). The rule's pointer at its container is
+> `pricing_book` now, which is the header's rule for a name retired and
+> replaced. What this entry records — what changed on 2026-07-03, and why — is
+> untouched, and other names it uses that a later change deleted outright stay
+> as they were.
 
 - **`POST/GET /pricing/rate-cards`** now creates/lists **books**, not rates.
   - Request body is `BookIn` (the kind field, `provider_key`, `key`, `name`,
@@ -151,7 +155,7 @@ book assignment, which a flat per-rate model could not express safely.
     replaced by `BookOut` for books and a repurposed `RateOut` for rates.
 - **Rates now live under a book**, created via:
   - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`measurement_key`,
-    `provider`, `event_type`, `grouping_fields`, `rate_structure`,
+    `provider`, `event_type`, the grouping bag, `rate_structure`,
     `rate_per_unit_micros`, `unit_quantity`, `fixed_micros`, `tiers`,
     `product_id`). The kind field and `currency` are no longer accepted here —
     they are inherited from the parent book (single source of truth).
@@ -164,7 +168,7 @@ book assignment, which a flat per-rate model could not express safely.
   multi-measurement reprice. Body `PublishIn` (`changes: list[RateChangeIn]`),
   one entry per measurement key to reprice, matched by
   `(measurement_key, provider, event_type,
-  grouping_fields)`. Each change supersedes the matching active rate
+  the grouping bag)`. Each change supersedes the matching active rate
   (`valid_to` stamped, `book_version_to = old book version`) and opens a new
   version (same `lineage_id` — required for tiered/marginal continuity via
   `PricingPeriodCounter` — `book_version_from = new book version`). The book's
