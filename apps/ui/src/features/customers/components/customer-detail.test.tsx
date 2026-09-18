@@ -3,18 +3,41 @@ import { describe, expect, it, vi } from "vitest";
 
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
 import {
-  marginUnavailableAtThisGrain,
-  statedMargin,
+  completePriceTotal,
+  incompleteMeasures,
+  incompleteTotal,
+  knownMeasures,
+  measuresOutsideRetentionHorizon,
+  type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
 
 import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
-import type { CustomerEconomics } from "../api/types";
+import { toOneCustomer, type CustomerEconomics } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
 import { CustomerDetailPage } from "./customer-detail-page";
 import { OverviewTab } from "./overview-tab";
 
 const SLOW = { timeout: 5000 };
+
+/**
+ * One customer's economics, from composed measures through the feature's OWN
+ * narrowing — so a fixture reaches the tab by the path a real answer takes,
+ * and a narrowing that dropped a state would drop it here too.
+ */
+function oneCustomer(measures: EconomicMeasureScenario[]): CustomerEconomics {
+  return toOneCustomer({
+    period_start: "2026-07-01",
+    period_end: "2026-07-24",
+    group_by: [],
+    bucket: null,
+    basis: "recorded",
+    economic_data_available_from: "2020-07-01",
+    measurement_data_available_from: "2026-01-01",
+    rows: [{ grouping_field_value: [], grouping_field_value_status: [], measures }],
+    context: [],
+  });
+}
 
 describe("CustomerDetailPage — overview", () => {
   it("renders the header identity and period economics", async () => {
@@ -66,11 +89,9 @@ describe("CustomerDetailPage — overview", () => {
   // and asserting that the console does not invent one is what is left worth
   // asserting.
   it("states the total revenue it is given, and invents no split of it", async () => {
-    const margin: CustomerEconomics = {
-      customer_id: CUS_ACME,
-      ...statedMargin(90_000_000, 390_000_000),
-      event_count: 12,
-    };
+    const margin = oneCustomer(
+      knownMeasures({ cost_micros: 90_000_000, revenue_micros: 390_000_000, events: 12 }),
+    );
 
     renderWithProviders(
       <OverviewTab
@@ -102,11 +123,9 @@ describe("CustomerDetailPage — overview", () => {
   // The mark is on the node, so this asserts WHICH view the card claims rather
   // than matching a sentence either view could satisfy.
   it("says which revenue view the margin trend was drawn under", async () => {
-    const margin: CustomerEconomics = {
-      customer_id: CUS_ACME,
-      ...statedMargin(90_000_000, 390_000_000),
-      event_count: 12,
-    };
+    const margin = oneCustomer(
+      knownMeasures({ cost_micros: 90_000_000, revenue_micros: 390_000_000, events: 12 }),
+    );
 
     renderWithProviders(
       <OverviewTab
@@ -122,36 +141,56 @@ describe("CustomerDetailPage — overview", () => {
     expect(note).toHaveTextContent("Nothing is divided");
   });
 
-  // ⚠ AND A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS $0.00.
-  // `gross_margin_micros` is nullable on the one query — a margin it cannot
-  // attribute at the grain asked for has no figure at all — and a currency
-  // zero here would be the silent zero this whole programme exists to delete.
+  // ⚠ A WINDOW PAST THE HORIZON RENDERS AS ITS STATE, NEVER AS $0.00 (#510).
+  // The narrowing coalesced every amount to zero until this ticket, so this
+  // answer — every measure null, the state saying why — read "$0.00" on the
+  // revenue and cost cards and "0%" on the share.
   //
   // ⚠ **THE STATE IS COMPOSED FROM `economic-scenarios.ts`, NOT WRITTEN OUT
-  // HERE** (§9.2). Written by hand, the null and the zero percentage beside
-  // it are two independent numbers a later edit can separate — and a fixture
-  // pairing a null margin with a plausible-looking share would let a renderer
-  // show a percentage for a figure it refuses to show. The scenario refuses to
-  // be built that way; the fixture is still one the MOCK does not author, which
-  // is what makes this case able to fail.
-  it("renders an absent margin as an absence rather than as zero", async () => {
-    const margin: CustomerEconomics = {
-      customer_id: CUS_ACME,
-      ...marginUnavailableAtThisGrain(90_000_000, 390_000_000),
-      event_count: 12,
-    };
-
+  // HERE** (§9.2), and it reaches the tab through `toOneCustomer`, so the
+  // fixture is one the MOCK does not author — which is what makes this case
+  // able to fail when the narrowing, rather than the renderer, drops the state.
+  it("renders a window past the horizon as out-of-horizon rather than as zero", async () => {
     renderWithProviders(
       <OverviewTab
         customerId={CUS_ACME}
-        margin={margin}
+        margin={oneCustomer(measuresOutsideRetentionHorizon("2020-09-18"))}
+        externalId="not-a-business"
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    expect(
+      (await screen.findAllByText("Outside retention horizon", undefined, SLOW)).length,
+    ).toBe(4);
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0(\.0)?%$/)).not.toBeInTheDocument();
+  });
+
+  // ⚠ §15: an uncosted event makes the margin a bound EVEN WHERE the revenue
+  // beside it reads known — the honest rendering of a dishonest input #473
+  // owns. The revenue card is whole; the margin and its share are not.
+  it("renders the margin incomplete where the cost is, while the revenue reads known", async () => {
+    renderWithProviders(
+      <OverviewTab
+        customerId={CUS_ACME}
+        margin={oneCustomer(
+          incompleteMeasures({
+            cost: incompleteTotal(90_000_000, 2),
+            revenue: completePriceTotal(390_000_000),
+            events: 12,
+          }),
+        )}
         externalId="not-a-business"
         range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
       />,
     );
 
     expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
-    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+    expect(screen.getByText("at least $90.00")).toBeInTheDocument();
+    expect(screen.getByText("at most $300.00")).toBeInTheDocument();
+    expect(screen.queryByText("$300.00")).not.toBeInTheDocument();
+    expect(screen.getByText("at most 76.9%")).toBeInTheDocument();
   });
 
   it("shows the not-found state for an unknown customer", async () => {

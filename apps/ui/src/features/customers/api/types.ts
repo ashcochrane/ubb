@@ -8,18 +8,21 @@ import type {
   SubscriptionSchemas,
 } from "@/api/types";
 import {
-  amountOn,
   axisValueOn,
-  completenessOn,
+  caveatsOf,
   CUSTOMER_REVENUE,
-  eventsOn,
+  FIGURES_KEY,
+  figureOn,
   GROSS_MARGIN,
-  marginPercentOf,
   onlyRow,
-  orZero,
+  RECORDED_EVENTS,
+  statedValue,
   SUPPLIER_COGS,
+  type AnswerCaveats,
   type EconomicRow,
   type EconomicsAnswer,
+  type MeasureFigure,
+  type PlottedFigures,
 } from "@/lib/economic-query";
 
 // ---------------------------------------------------------------------------
@@ -39,43 +42,62 @@ import {
 // that read is the customers feature's own ticket.
 export type Economics = EconomicsAnswer;
 
-/** One customer's economics over a window. */
+/**
+ * One customer's economics over a window.
+ *
+ * ⚠ **EACH MEASURE IS A FIGURE WITH ITS STATE (#510).** This view carried four
+ * numbers coalesced to zero and a nullable margin; the list then printed that
+ * margin's percentage — computed as zero for a margin UBB would not state — as
+ * `0.0%` beside the dash for the margin itself, and the Usage tab printed the
+ * margin as `$0.00`. `@/components/shared/measure-value` draws each figure as
+ * its state allows.
+ */
 export interface CustomerEconomics {
   customer_id: string;
-  total_revenue_micros: number;
-  provider_cost_micros: number;
-  /** Null where UBB states no margin — never a zero. */
-  gross_margin_micros: number | null;
-  margin_percentage: number;
-  unresolved_event_count: number;
-  unpriced_event_count: number;
+  revenue: MeasureFigure | null;
+  cost: MeasureFigure | null;
+  margin: MeasureFigure | null;
   /** Recorded work, where the question could carry it. A GROUPED question
    *  cannot: a count across rows that mix Event Types is the comparison the
    *  server refuses. */
-  event_count: number | null;
+  events: MeasureFigure | null;
 }
 
-/** One point of the margin trend — a month of the same answer. */
+/**
+ * One point of the margin trend — a month of the same answer.
+ *
+ * The plotted numbers are `statedValue` of their figures, a GAP where the
+ * state states none; the figures ride under `FIGURES_KEY` for the tooltip.
+ */
 export interface TrendPoint {
   period_start: string;
-  provider_cost_micros: number;
-  revenue_micros: number;
+  provider_cost_micros: number | null;
+  revenue_micros: number | null;
   gross_margin_micros: number | null;
-  unresolved_event_count: number;
-  unpriced_event_count: number;
+  [FIGURES_KEY]: PlottedFigures;
 }
 
 function economicsOf(row: EconomicRow | undefined, customerId: string): CustomerEconomics {
-  const revenue = orZero(amountOn(row, CUSTOMER_REVENUE));
-  const margin = amountOn(row, GROSS_MARGIN);
   return {
     customer_id: customerId,
-    total_revenue_micros: revenue,
-    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    gross_margin_micros: margin,
-    margin_percentage: marginPercentOf(revenue, margin),
-    event_count: eventsOn(row),
-    ...completenessOn(row),
+    revenue: figureOn(row, CUSTOMER_REVENUE),
+    cost: figureOn(row, SUPPLIER_COGS),
+    margin: figureOn(row, GROSS_MARGIN),
+    events: figureOn(row, RECORDED_EVENTS),
+  };
+}
+
+/** The three money figures of a row, keyed by the data keys a chart plots
+ *  them under. */
+function moneyFigures(row: EconomicRow): {
+  provider_cost_micros: MeasureFigure | null;
+  revenue_micros: MeasureFigure | null;
+  gross_margin_micros: MeasureFigure | null;
+} {
+  return {
+    provider_cost_micros: figureOn(row, SUPPLIER_COGS),
+    revenue_micros: figureOn(row, CUSTOMER_REVENUE),
+    gross_margin_micros: figureOn(row, GROSS_MARGIN),
   };
 }
 
@@ -101,7 +123,7 @@ export function toOneCustomer(answer: Economics): CustomerEconomics {
  * which is what every caller did until this ticket. Now a surface cannot get
  * the figures without being handed the sentence that qualifies them.
  */
-export interface MarginTrend {
+export interface MarginTrend extends AnswerCaveats {
   /** The revenue view the server drew these figures under. */
   basis: string;
   points: TrendPoint[];
@@ -110,26 +132,41 @@ export interface MarginTrend {
 /** The trend's points, from a month-bucketed answer. */
 export function toTrendPoints(answer: Economics): MarginTrend {
   return {
+    ...caveatsOf(answer),
     basis: answer.basis,
-    points: answer.rows.map((row) => ({
-      period_start: (row.bucket_start ?? "").slice(0, 10),
-      provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-      revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-      gross_margin_micros: amountOn(row, GROSS_MARGIN),
-      ...completenessOn(row),
-    })),
+    points: answer.rows.map((row) => {
+      const figures = moneyFigures(row);
+      return {
+        period_start: (row.bucket_start ?? "").slice(0, 10),
+        provider_cost_micros: statedValue(figures.provider_cost_micros),
+        revenue_micros: statedValue(figures.revenue_micros),
+        gross_margin_micros: statedValue(figures.gross_margin_micros),
+        [FIGURES_KEY]: figures,
+      };
+    }),
   };
 }
 
+/** The usage tab's day series, and what the answer said beside it. */
+export interface UsageSeries extends AnswerCaveats {
+  points: TimeseriesPoint[];
+}
+
 /** The usage tab's day series. */
-export function toTimeseriesPoints(answer: Economics): TimeseriesPoint[] {
-  return answer.rows.map((row) => ({
-    bucket: row.bucket_start ?? "",
-    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-    event_count: eventsOn(row) ?? 0,
-    unresolved_event_count: completenessOn(row).unresolved_event_count,
-  }));
+export function toTimeseriesPoints(answer: Economics): UsageSeries {
+  return {
+    ...caveatsOf(answer),
+    points: answer.rows.map((row) => {
+      const figures = moneyFigures(row);
+      return {
+        bucket: row.bucket_start ?? "",
+        provider_cost_micros: statedValue(figures.provider_cost_micros),
+        revenue_micros: statedValue(figures.revenue_micros),
+        event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+        [FIGURES_KEY]: figures,
+      };
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,12 +285,13 @@ export type SubscribeIn = SubscriptionSchemas["SubscribeIn"];
 export interface TimeseriesPoint {
   /** The bucket's opening instant, as the answer states it. */
   bucket: string;
-  provider_cost_micros: number;
-  revenue_micros: number;
-  event_count: number;
-  /** That day's own uncosted events — per bucket, because an unresolved cost
-   *  belongs to the day it fell in. */
-  unresolved_event_count: number;
+  /** `statedValue` of the figures below — a GAP where the state states none. */
+  provider_cost_micros: number | null;
+  revenue_micros: number | null;
+  event_count: number | null;
+  /** The figures behind the numbers, each carrying its own day's counts —
+   *  because an unresolved cost belongs to the day it fell in. */
+  [FIGURES_KEY]: PlottedFigures;
 }
 
 // ---------------------------------------------------------------------------

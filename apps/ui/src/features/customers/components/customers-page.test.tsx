@@ -1,6 +1,11 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { MONEY_MEASURES } from "@/lib/economic-query";
+import { measuresOutsideRetentionHorizon } from "@/lib/economic-scenarios";
+
+import { mockCustomerList } from "../api/mock-data";
+import { customersApi } from "../api/provider";
 import { renderWithProviders } from "../test-utils";
 import { CustomersPage } from "./customers-page";
 
@@ -50,6 +55,31 @@ describe("CustomersPage", () => {
     expect(screen.getByText("-$14.70")).toBeInTheDocument();
     expect(screen.queryByText("at most -$14.70")).not.toBeInTheDocument();
     expect(screen.getByText("$55.90")).toBeInTheDocument();
+  });
+
+  // ⚠ A LIST PAST THE HORIZON STATES NO FIGURE AND SAYS SO (#510). Before this
+  // ticket the narrowing made every amount a zero and the share column printed
+  // the percentage computed for a margin UBB would not state — "0%" beside a
+  // dash. The answer is composed, not hand-typed, and served through the
+  // provider for this one case, because the mock does not author a window
+  // UBB no longer holds.
+  it("renders a list past the horizon as its state, never as zero or 0%", async () => {
+    const served = mockCustomerList({ start_date: "2014-07-01", end_date: "2014-07-31" });
+    vi.spyOn(customersApi, "listCustomerMargins").mockResolvedValueOnce({
+      ...served,
+      rows: served.rows.map((row) => ({
+        ...row,
+        measures: measuresOutsideRetentionHorizon("2020-09-18", [...MONEY_MEASURES]),
+      })),
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 })).toBeInTheDocument();
+    // Four figures per row, five rows: every one is the state.
+    expect(screen.getAllByText("Outside retention horizon")).toHaveLength(20);
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^0(\.0)?%$/)).not.toBeInTheDocument();
   });
 
   it("shows the filtered empty state when no customer ID matches", async () => {

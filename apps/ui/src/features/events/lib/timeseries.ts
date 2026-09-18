@@ -1,6 +1,25 @@
 // Pivot the timeseries rows into Recharts-ready data, respecting the
 // monochrome chart discipline: at most 3 painted series — when a group-by
 // produces more groups, the top two stay and the rest fold into "Other".
+//
+// ⚠ **EVERY PLOTTED NUMBER IS A FIGURE'S `statedValue`, AND THE FIGURE RIDES
+// BESIDE IT (#510).** A bucket whose measure states no figure — past a
+// retention horizon, or revenue a grouping could not place — is a GAP in its
+// line, never a zero; and each row keeps the figures behind its numbers under
+// `FIGURES_KEY`, keyed like the series, so the tooltip says each one as its
+// state allows. The pivot used to carry an uncosted-event count beside the
+// numbers for the tooltip to bound by; the figures carry their own counts now.
+
+import {
+  combineFigures,
+  CUSTOMER_REVENUE,
+  FIGURES_KEY,
+  RECORDED_EVENTS,
+  statedValue,
+  SUPPLIER_COGS,
+  type MeasureFigure,
+} from "@/lib/economic-query";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import type { TimeseriesPoint } from "../api/types";
 
@@ -14,8 +33,10 @@ export interface ChartSeries {
 }
 
 export interface PivotedTimeseries {
-  data: Array<Record<string, number | string>>;
+  data: Array<Record<string, unknown>>;
   series: ChartSeries[];
+  /** The measure the lines are drawn in — money for all but the count. */
+  plotted: AnalyticsMeasure;
 }
 
 const SERIES_COLORS = [
@@ -27,25 +48,56 @@ const SERIES_COLORS = [
 export const OTHER_LABEL = "Other";
 const OTHER_KEY = "d:__other__";
 
-/**
- * Where each ungrouped row keeps its bucket's own uncosted-event count.
- *
- * It rides the pivoted row rather than sitting beside the chart because the
- * completeness is per bucket: a window-wide caveat would mark every day for one
- * day's missing supplier invoice. No `<Line>` names this key, so it is carried
- * and never plotted — and it is spelled exactly as the wire spells it, which is
- * what lets `<BoundedCostTooltip>` read it off the row without this feature
- * having to hand it over.
- *
- * ONLY THE UNGROUPED PIVOT CARRIES IT, and that is not an omission. The grouped
- * pivot sums BILLED cost per group and plots no supplier cost at all — there is
- * nothing there for a completeness count to qualify, and the tooltip renders
- * every grouped series as the whole figure it is.
- */
-export const UNRESOLVED_COUNT_KEY = "unresolved_event_count";
-
 function groupValueOf(point: TimeseriesPoint): string {
   return point.group_value ?? "(unattributed)";
+}
+
+/**
+ * The measures a GROUPED question asks for, given what the chosen axis's
+ * discovery entry declares it cannot answer.
+ *
+ * Revenue where the axis answers it, with the supplier cost beside it so the
+ * chart has something true to draw where the revenue cannot be placed; the
+ * count where the axis answers no money at all — which is the
+ * measurement-concept rollup, whose records carry quantities and no cost lines
+ * (`queries.py::MEASUREMENT_ROLLUP_UNSUPPORTED`). An axis answering none of
+ * the three leaves the chart nothing to ask for, and says so.
+ */
+export function groupedMeasuresFor(
+  unsupported: readonly { readonly measure: string }[],
+): AnalyticsMeasure[] {
+  const refused = new Set(unsupported.map((entry) => entry.measure));
+  if (!refused.has(CUSTOMER_REVENUE)) {
+    return refused.has(SUPPLIER_COGS)
+      ? [CUSTOMER_REVENUE]
+      : [SUPPLIER_COGS, CUSTOMER_REVENUE];
+  }
+  return refused.has(RECORDED_EVENTS) ? [] : [RECORDED_EVENTS];
+}
+
+/** A point's figure for one measure. */
+function figureFor(point: TimeseriesPoint, measure: AnalyticsMeasure): MeasureFigure | null {
+  if (measure === SUPPLIER_COGS) return point.cost;
+  if (measure === RECORDED_EVENTS) return point.events;
+  if (measure === CUSTOMER_REVENUE) return point.revenue;
+  return point.margin;
+}
+
+/**
+ * Which measure a grouped chart draws: revenue where every row states it, the
+ * supplier cost where the revenue could not be placed at this grain and the
+ * cost was asked for, and the count where the rows carry no money.
+ *
+ * The dashboard breakdown's rule (`plottedMeasureOf`), for the same reason: a
+ * line through the placed PART of a revenue is a floor drawn as a total.
+ */
+export function plottedMeasureOf(points: readonly TimeseriesPoint[]): AnalyticsMeasure {
+  if (points.some((point) => point.revenue !== null)) {
+    const placed = points.every((point) => statedValue(point.revenue) !== null);
+    const costAsked = points.some((point) => point.cost !== null);
+    return placed || !costAsked ? CUSTOMER_REVENUE : SUPPLIER_COGS;
+  }
+  return points.some((point) => point.events !== null) ? RECORDED_EVENTS : CUSTOMER_REVENUE;
 }
 
 export function pivotTimeseries(
@@ -54,24 +106,32 @@ export function pivotTimeseries(
 ): PivotedTimeseries {
   if (!grouped) {
     return {
+      plotted: CUSTOMER_REVENUE,
       data: points.map((point) => ({
         bucket: point.bucket,
-        billed: point.revenue_micros,
-        provider: point.provider_cost_micros,
-        [UNRESOLVED_COUNT_KEY]: point.unresolved_event_count,
+        revenue: statedValue(point.revenue),
+        provider: statedValue(point.cost),
+        [FIGURES_KEY]: { revenue: point.revenue, provider: point.cost },
       })),
+      // "Revenue", not "Billed": the measure is customer revenue from one
+      // definition — subscriptions and supplied figures as well as billed
+      // usage — and #501 renamed it everywhere else the query is drawn.
       series: [
-        { key: "billed", label: "Billed", color: SERIES_COLORS[0] },
+        { key: "revenue", label: "Revenue", color: SERIES_COLORS[0] },
         { key: "provider", label: "Provider cost", color: SERIES_COLORS[1] },
       ],
     };
   }
 
-  // Rank groups by total billed cost across the window.
+  const plotted = plottedMeasureOf(points);
+
+  // Rank groups by what they state across the window. A group stating nothing
+  // ranks with nothing — the ranking only chooses which lines to paint; every
+  // painted line still says its own state.
   const totals = new Map<string, number>();
   for (const point of points) {
     const value = groupValueOf(point);
-    totals.set(value, (totals.get(value) ?? 0) + point.revenue_micros);
+    totals.set(value, (totals.get(value) ?? 0) + (statedValue(figureFor(point, plotted)) ?? 0));
   }
   const ranked = [...totals.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -91,23 +151,30 @@ export function pivotTimeseries(
     series.push({ key: OTHER_KEY, label: OTHER_LABEL, color: SERIES_COLORS[2] });
   }
 
-  const byBucket = new Map<string, Record<string, number | string>>();
+  // Each bucket's figures per series, folded with their states. A series with
+  // no row in a bucket is a measured zero there — no postings of that group
+  // that day — which is `combineFigures` over no rows.
+  const byBucket = new Map<string, Map<string, (MeasureFigure | null)[]>>();
   for (const point of points) {
-    let row = byBucket.get(point.bucket);
-    if (!row) {
-      row = { bucket: point.bucket };
-      for (const entry of series) row[entry.key] = 0;
-      byBucket.set(point.bucket, row);
-    }
+    const bucket = byBucket.get(point.bucket) ?? new Map<string, (MeasureFigure | null)[]>();
     const value = groupValueOf(point);
     const key = paintedSet.has(value) ? `d:${value}` : OTHER_KEY;
-    const current = row[key];
-    row[key] =
-      (typeof current === "number" ? current : 0) + point.revenue_micros;
+    bucket.set(key, [...(bucket.get(key) ?? []), figureFor(point, plotted)]);
+    byBucket.set(point.bucket, bucket);
   }
 
-  const data = [...byBucket.values()].sort((a, b) =>
-    String(a.bucket).localeCompare(String(b.bucket)),
-  );
-  return { data, series };
+  const data = [...byBucket.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([bucket, figuresByKey]) => {
+      const figures: Record<string, MeasureFigure> = {};
+      const row: Record<string, unknown> = { bucket };
+      for (const entry of series) {
+        const folded = combineFigures(plotted, figuresByKey.get(entry.key) ?? []);
+        figures[entry.key] = folded;
+        row[entry.key] = statedValue(folded);
+      }
+      row[FIGURES_KEY] = figures;
+      return row;
+    });
+  return { data, series, plotted };
 }

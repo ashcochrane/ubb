@@ -1035,6 +1035,49 @@ export const ALL_EVENTS: MockEvent[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// The two clocks this mock workspace's records are held by (#510).
+
+/**
+ * The first day this workspace still holds MEASUREMENT records.
+ *
+ * ⚠ **ONE CLOCK, TWO GRAINS, AND UNTIL #510 THIS MOCK HAD TWO CLOCKS.** Its
+ * analytics answers published `2026-01-01` while the one pruned seed above is
+ * dated in May — so the receipt said a posting's measurements were gone while
+ * every answer said they were held. The pruned seed is `prunedMeasurements()`
+ * because it is older than this day, and the answers publish this day as their
+ * measurement horizon, so the per-posting state and the aggregate one are read
+ * off the same fact. A grouping by what was measured reads the seeds' own
+ * measurement bags (`mock.ts`), so the pruned seed — whose bag is empty because
+ * its record was removed, not because nothing was measured — contributes no row
+ * to it, which is exactly what the server's answer over a released stretch
+ * looks like; the console must then say the stretch was pruned rather than that
+ * nothing happened. `mock-data.test.ts` holds the seeds to this day in both
+ * directions.
+ */
+export const MEASUREMENT_HORIZON = "2026-06-01";
+
+/** The first day this workspace holds economic records from — the longer clock. */
+export const ECONOMIC_HORIZON = "2020-07-01";
+
+/**
+ * Which measurement concept this mock tenant assigned each of its measurement
+ * keys to — the members of the measurement-concept rollup.
+ *
+ * The rollup is UBB's; its MEMBERS are the tenant's to declare, the way the
+ * grouping fields beside it are (`hooks/use-grouping-options.ts`). A key the
+ * tenant assigned to no concept groups under no value, which is how the server
+ * answers it too.
+ */
+export const MEASUREMENT_CONCEPT_OF: Readonly<Record<string, string>> = {
+  input_tokens: "tokens",
+  output_tokens: "tokens",
+  embedding_tokens: "tokens",
+  audio_seconds: "audio",
+  documents_scanned: "documents",
+  rerank_documents: "documents",
+};
+
+// ---------------------------------------------------------------------------
 // Margin surfaces (the customer picker source + external-id resolution).
 
 export const MARGIN_PERIOD = { start: "2026-07-01", end: "2026-07-25" };

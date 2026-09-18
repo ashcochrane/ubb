@@ -15,16 +15,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 import {
-  formatCalendarDate,
-  formatEventCount,
-  formatMicros,
-} from "@/lib/format";
+  MarginShare,
+  MeasureValue,
+  RetentionHorizonNote,
+} from "@/components/shared/measure-value";
+import { statedValue } from "@/lib/economic-query";
+import { formatCalendarDate } from "@/lib/format";
 import {
-  marginBound,
-  marginPercentBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+  figureNote,
+  isNegative,
+  noFigureNote,
+  readingText,
+  readMeasure,
+} from "@/lib/measure-state";
 import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
 
@@ -52,22 +55,24 @@ export function OverviewTab({
   const [periods, setPeriods] = React.useState(6);
   const trend = useMarginTrend(customerId, periods);
   // ⚠ AN ABSENT MARGIN IS NEITHER NEGATIVE NOR ZERO, so it is styled as
-  // neither and rendered as an absence below.
-  const negative =
-    margin.gross_margin_micros !== null && margin.gross_margin_micros < 0;
+  // neither and rendered as its state below.
+  const negative = isNegative(margin.margin);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Total revenue"
-          value={formatMicros(margin.total_revenue_micros, currency)}
+          value={<MeasureValue figure={margin.revenue} currency={currency} />}
           variant="raised"
           // THE SUBTITLE NAMED THE DELETED SWITCH UNTIL #497 — "Resolved
           // revenue mode: …" — which told a reader which rule had been applied
           // to their own usage rather than what the number was made of. The
           // three sources are the honest answer, and they are the row below.
-          subtitle="Subscriptions, supplied figures and billed usage"
+          subtitle={
+            figureNote(margin.revenue, currency) ??
+            "Subscriptions, supplied figures and billed usage"
+          }
           // ⚠ THE SUPPLIED SHARE IS NOT SPLIT OUT HERE AND IS NOT MEANT TO BE.
           // The one economic query answers `customer_revenue` from ONE
           // definition (#501) and publishes no split; what the panels below
@@ -81,34 +86,30 @@ export function OverviewTab({
             is where a reader stops reading either. */}
         <StatCard
           label="Provider cost (COGS)"
-          value={supplierCostTotal(margin.provider_cost_micros, margin, currency)}
+          value={<MeasureValue figure={margin.cost} currency={currency} />}
           variant="raised"
           subtitle={
-            partialTotalNote(margin.unresolved_event_count) ??
-            (margin.event_count === null
+            figureNote(margin.cost, currency) ??
+            (statedValue(margin.events) === null
               ? undefined
-              : `${formatEventCount(margin.event_count)} events in window`)
+              : `${readingText(readMeasure(margin.events, currency))} events in window`)
           }
         />
         <StatCard
           label="Gross margin"
           value={
             <span className={cn(negative && "text-danger-dark")}>
-              {margin.gross_margin_micros === null
-                ? "—"
-                : marginBound(margin.gross_margin_micros, margin, currency)}
+              <MeasureValue figure={margin.margin} currency={currency} />
             </span>
           }
           variant="raised"
-          subtitle="Revenue minus provider cost"
+          subtitle={noFigureNote(margin.margin, currency) ?? "Revenue minus provider cost"}
         />
         <StatCard
           label="Margin %"
           value={
-            <span className={cn(margin.margin_percentage < 0 && "text-danger-dark")}>
-              {margin.gross_margin_micros === null
-                ? "—"
-                : marginPercentBound(margin.margin_percentage, margin)}
+            <span className={cn(negative && "text-danger-dark")}>
+              <MarginShare margin={margin.margin} revenue={margin.revenue} />
             </span>
           }
           variant="raised"
@@ -155,15 +156,20 @@ export function OverviewTab({
         ) : trend.isError ? (
           <ErrorCard error={trend.error} onRetry={() => void trend.refetch()} />
         ) : !trend.data || trend.data.points.length === 0 ? (
-          <EmptyState
-            title="No closed periods yet"
-            description="The trend fills in as monthly economics periods close."
-          />
+          trend.data && trend.data.held_from !== null ? (
+            <RetentionHorizonNote caveats={trend.data} />
+          ) : (
+            <EmptyState
+              title="No closed periods yet"
+              description="The trend fills in as monthly economics periods close."
+            />
+          )
         ) : (
           <>
             <React.Suspense fallback={<Skeleton className="h-64 w-full" />}>
               <MarginTrendChart points={trend.data.points} currency={currency} />
             </React.Suspense>
+            <RetentionHorizonNote caveats={trend.data} />
             {/* ⚠ **THE REVENUE LINE INCLUDES SUPPLIED AMOUNTS, AND ONE OF THE
                 TWO VIEWS SPREADS THEM (§5).** A figure a tenant stated for a
                 quarter appears in three months under `recognised` and in one

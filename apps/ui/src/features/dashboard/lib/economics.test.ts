@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CUSTOMER_REVENUE,
+  GROSS_MARGIN,
+  statedValue,
+  SUPPLIER_COGS,
+  type MeasureFigure,
+} from "@/lib/economic-query";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
+
+import {
   mockCustomerEconomics,
   mockGroupedEconomics,
   mockTenantEconomics,
@@ -11,92 +20,49 @@ import {
   toTenantEconomics,
   type BreakdownRow,
   type CustomerEconomicsRow,
-  type TenantEconomics,
 } from "../api/types";
-import {
-  customerEconomics,
-  shortId,
-  sortCustomers,
-  summaryEconomics,
-  topWithOther,
-} from "./economics";
+import { plottedMeasureOf, shortId, sortCustomers, topWithOther } from "./economics";
 
 const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
-const SUMMARY: TenantEconomics = {
-  provider_cost_micros: 2_500_000_000,
-  // One figure from one definition (#501). It was three fields — a
-  // subscription, a supplied figure and billed usage — which this module
-  // summed itself, and a fourth source added later would have gone missing
-  // until somebody noticed.
-  total_revenue_micros: 6_000_000_000,
-  gross_margin_micros: 3_500_000_000,
-  margin_percentage: 58.33,
-  unresolved_event_count: 0,
-  unpriced_event_count: 0,
-  event_count: 93_558,
-};
+/** One figure, known unless the case says otherwise. */
+function fig(
+  measure: AnalyticsMeasure,
+  value: number | null,
+  status = "known",
+): MeasureFigure {
+  return {
+    measure,
+    status,
+    value,
+    unresolved_event_count: 0,
+    unpriced_event_count: 0,
+    available_from: null,
+  };
+}
 
-describe("summaryEconomics", () => {
-  it("passes the server's figures through", () => {
-    const view = summaryEconomics(SUMMARY);
-    expect(view.revenue_micros).toBe(6_000_000_000);
-    expect(view.margin_micros).toBe(3_500_000_000);
-    expect(view.margin_pct).toBe(58.33);
-  });
-
-  // ⚠ THE METERED VIEW IS GONE AND THIS IS THE CASE THAT REPLACES ITS TWO
-  // (#501). It substituted billed usage for the server's revenue total, and
-  // #497 — which deleted the switch that had made that substitution true —
-  // left it standing as a recorded residual, asserting the GAP rather than the
-  // figure so the loss would not be invisible. There is no substitution left to
-  // make: the one economic query answers revenue once, so a workspace that
-  // bills its customers elsewhere reads the same figure here as anywhere else.
-  it("states a margin it has and withholds one it does not", () => {
-    expect(summaryEconomics(SUMMARY).margin_micros).toBe(3_500_000_000);
-    const unattributable: TenantEconomics = {
-      ...SUMMARY,
-      gross_margin_micros: null,
-    };
-    // NOT zero, and not the revenue: a margin UBB cannot state is absent.
-    expect(summaryEconomics(unattributable).margin_micros).toBeNull();
-  });
-});
-
-const ROW: CustomerEconomicsRow = {
-  customer_id: "3e7f0a41-5c2d-4b8e-9f10-8a64c1d2e301",
-  provider_cost_micros: 600_000_000,
-  total_revenue_micros: 1_200_000_000,
-  gross_margin_micros: 600_000_000,
-  margin_percentage: 50,
-  unresolved_event_count: 0,
-  unpriced_event_count: 0,
-  event_count: null,
-};
-
-describe("customerEconomics", () => {
-  it("reads the row's own total rather than summing revenue sources", () => {
-    const view = customerEconomics(ROW);
-    expect(view.revenue_micros).toBe(1_200_000_000);
-    expect(view.margin_micros).toBe(600_000_000);
-  });
-
-  it("carries an absent margin through as an absence", () => {
-    const view = customerEconomics({ ...ROW, gross_margin_micros: null });
-    expect(view.margin_micros).toBeNull();
-  });
-});
+function customer(
+  id: string,
+  revenue: number,
+  margin: number | null,
+  marginStatus = "known",
+): CustomerEconomicsRow {
+  return {
+    customer_id: id,
+    revenue: fig(CUSTOMER_REVENUE, revenue),
+    cost: fig(SUPPLIER_COGS, revenue - (margin ?? 0)),
+    margin: fig(GROSS_MARGIN, margin, marginStatus),
+    events: null,
+  };
+}
 
 describe("sortCustomers", () => {
-  const rows: CustomerEconomicsRow[] = [
-    { ...ROW, customer_id: "a", total_revenue_micros: 100_000_000, gross_margin_micros: 50_000_000, margin_percentage: 10 },
-    { ...ROW, customer_id: "b", total_revenue_micros: 900_000_000, gross_margin_micros: 20_000_000, margin_percentage: 90 },
-  ];
+  const rows = [customer("a", 100_000_000, 50_000_000), customer("b", 900_000_000, 20_000_000)];
 
   it("sorts descending by the requested key", () => {
     expect(sortCustomers(rows, "revenue").map((r) => r.customer_id)).toEqual(["b", "a"]);
     expect(sortCustomers(rows, "margin").map((r) => r.customer_id)).toEqual(["a", "b"]);
-    expect(sortCustomers(rows, "margin_pct").map((r) => r.customer_id)).toEqual(["b", "a"]);
+    expect(sortCustomers(rows, "margin_pct").map((r) => r.customer_id)).toEqual(["a", "b"]);
   });
 
   // ⚠ A ROW STATING NO MARGIN MUST NOT SORT AS IF IT STATED ZERO, which is
@@ -104,15 +70,18 @@ describe("sortCustomers", () => {
   // between the profitable and the unprofitable, reading as a claim about a
   // customer UBB cannot report on.
   it("files a customer with no margin last rather than as a zero", () => {
-    const withAGap: CustomerEconomicsRow[] = [
+    const withAGap = [
       ...rows,
-      { ...ROW, customer_id: "gap", gross_margin_micros: null },
+      customer("gap", 400_000_000, null, "unavailable_at_requested_grain"),
+      // A figure under a state that states none is a gap too, whatever number
+      // the wire carries beside it.
+      customer("placed", 400_000_000, 99_000_000_000, "unavailable_at_requested_grain"),
     ];
     expect(sortCustomers(withAGap, "margin").map((r) => r.customer_id)).toEqual(
-      ["a", "b", "gap"],
+      ["a", "b", "gap", "placed"],
     );
     expect(sortCustomers(withAGap, "margin_pct").map((r) => r.customer_id)).toEqual(
-      ["b", "a", "gap"],
+      ["a", "b", "gap", "placed"],
     );
   });
 });
@@ -120,8 +89,8 @@ describe("sortCustomers", () => {
 describe("topWithOther", () => {
   const rows: BreakdownRow[] = Array.from({ length: 10 }, (_, i) => ({
     group_value: `group-${i}`,
-    total_provider_cost_micros: 5_000_000,
-    total_revenue_micros: (10 - i) * 1_000_000,
+    cost: fig(SUPPLIER_COGS, 5_000_000),
+    revenue: fig(CUSTOMER_REVENUE, (10 - i) * 1_000_000),
   }));
 
   it("keeps the top 8 by revenue and folds the rest into Other", () => {
@@ -131,49 +100,77 @@ describe("topWithOther", () => {
     const other = bars[8];
     expect(other?.isOther).toBe(true);
     expect(other?.name).toBe("Other (2)");
-    // group-8 (2) + group-9 (1) revenue
-    expect(other?.revenue_micros).toBe(3_000_000);
-    expect(other?.provider_micros).toBe(10_000_000);
+    // group-8 (2) + group-9 (1) revenue, folded with its state.
+    expect(other?.plotted).toMatchObject({ status: "known", value: 3_000_000 });
+    expect(other?.cost).toMatchObject({ status: "known", value: 10_000_000 });
+  });
+
+  // ⚠ The fold used to sum numbers, so a folded row with no figure made the
+  // "Other" bar smaller rather than unstateable.
+  it("folds a row stating no figure into an Other that states none", () => {
+    const gapped = rows.map((row, i) =>
+      i === 9 ? { ...row, cost: fig(SUPPLIER_COGS, null, "unavailable_outside_retention_horizon") } : row,
+    );
+    const other = topWithOther(gapped, 8)[8];
+    expect(other?.cost?.status).toBe("unavailable_outside_retention_horizon");
+    expect(statedValue(other?.cost ?? null)).toBeNull();
+  });
+
+  // ⚠ The grain case (#510): a revenue that cannot be placed is not drawn —
+  // the part that could be placed is a floor, and a bar is a total.
+  it("draws the cost where the revenue cannot be placed at this grain", () => {
+    const grain = rows.map((row) => ({
+      ...row,
+      revenue: fig(CUSTOMER_REVENUE, 7_000_000, "unavailable_at_requested_grain"),
+    }));
+    expect(plottedMeasureOf(grain)).toBe(SUPPLIER_COGS);
+    expect(topWithOther(grain, 8)[0]?.plotted?.measure).toBe(SUPPLIER_COGS);
+    expect(plottedMeasureOf(rows)).toBe(CUSTOMER_REVENUE);
   });
 
   it("labels an absent group value as unattributed", () => {
     const bars = topWithOther([
-      { group_value: null, total_provider_cost_micros: 0, total_revenue_micros: 1 },
+      { group_value: null, cost: fig(SUPPLIER_COGS, 0), revenue: fig(CUSTOMER_REVENUE, 1) },
     ]);
     expect(bars[0]?.name).toBe("(unattributed)");
   });
 });
 
-// ⚠ THE LEGACY-FALLBACK SUITE IS GONE WITH THE SHAPE IT NARROWED (#501).
-// Three of its cases were about a response that had two ways of saying the same
-// thing — a uniform `breakdowns` map and the older `by_*` arrays, which keyed a
-// customer as `customer__external_id` and billed cost as `total_cost_micros` —
-// and a fourth pinned the key the backend put a grouped value under, because
-// the rows were `additionalProperties: true` and nothing in the generated types
-// could hold the console's read to it.
-//
-// The one economic query DECLARES its row. The grouped value's key is on the
-// contract, the drift and breaking gates see it, and a rename on one side is a
-// break rather than a silent page of "(unattributed)" bars. So what those four
-// cases bought is bought by the schema now, and what is left to assert is the
-// narrowing itself.
+// ⚠ THE LEGACY-FALLBACK SUITE IS GONE WITH THE SHAPE IT NARROWED (#501). The
+// one economic query DECLARES its row, so what is left to assert is the
+// narrowing itself — and since #510, that the narrowing keeps each measure's
+// STATE and the answer's context rather than a number coalesced to zero.
 describe("toBreakdownRows", () => {
   it("reads the grouped value and both figures off a declared row", () => {
-    const rows = toBreakdownRows(mockGroupedEconomics(WINDOW, "provider"));
-    expect(rows[0]?.group_value).toBe("openai");
-    expect(rows[0]?.total_revenue_micros).toBe(280_000_000);
-    expect(rows[0]?.total_provider_cost_micros).toBe(245_000_000);
+    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "provider"));
+    expect(breakdown.rows[0]?.group_value).toBe("openai");
+    expect(breakdown.rows[0]?.cost).toMatchObject({ status: "known", value: 245_000_000 });
+  });
+
+  // ⚠ Grouped by a supplier, the subscription cannot be placed: the revenue
+  // reads as the state on every row and the money is in the context. The rows
+  // sum to the usage alone, and the subscription is the rest — never dropped.
+  it("carries the revenue's state and the context that holds the rest", () => {
+    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "provider"));
+    expect(breakdown.rows.every((row) => row.revenue?.status === "unavailable_at_requested_grain")).toBe(true);
+    const placed = breakdown.rows.reduce((sum, row) => sum + (row.revenue?.value ?? 0), 0);
+    const context = breakdown.context.reduce((sum, row) => sum + row.amount_micros, 0);
+    expect(placed + context).toBe(852_900_000);
+  });
+
+  it("places the subscription grouped by the customer, and states no context", () => {
+    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "customer"));
+    expect(breakdown.context).toEqual([]);
+    expect(breakdown.rows.every((row) => row.revenue?.status === "known")).toBe(true);
   });
 
   // ⚠ THE ROW WHOSE AXIS VALUE IS ABSENT IS A ROW, and dropping it would make
-  // the bars stop summing to the total above them. The report this replaced
-  // bucketed it under a sentinel STRING; here it is `null`, and the narrowing
-  // has to carry that through rather than filter it out.
+  // the bars stop summing to the total above them.
   it("keeps a row whose axis value was never recorded", () => {
-    const rows = toBreakdownRows(mockGroupedEconomics(WINDOW, "task_type"));
-    const absent = rows.filter((row) => row.group_value === null);
+    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "task_type"));
+    const absent = breakdown.rows.filter((row) => row.group_value === null);
     expect(absent).toHaveLength(1);
-    expect(absent[0]?.total_revenue_micros).toBe(50_000_000);
+    expect(absent[0]?.cost?.value).toBe(42_000_000);
   });
 });
 
@@ -181,30 +178,38 @@ describe("toCustomerRows", () => {
   it("reads one row per customer, keyed by the identity the axis groups", () => {
     const rows = toCustomerRows(mockCustomerEconomics(WINDOW));
     expect(rows).toHaveLength(5);
-    expect(rows[0]?.total_revenue_micros).toBe(541_500_000);
+    expect(rows[0]?.revenue).toMatchObject({ status: "known", value: 541_500_000 });
     expect(rows[0]?.customer_id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  // ⚠ EACH ROW'S OWN COMPLETENESS, NOT THE WINDOW'S. One customer's unresolved
-  // cost says nothing about another's, and a table that bounded every row on
-  // the window's total would caveat four rows for one customer's missing
-  // invoice.
+  // ⚠ EACH ROW'S OWN COMPLETENESS, NOT THE WINDOW'S.
   it("carries each row's own completeness", () => {
     const rows = toCustomerRows(mockCustomerEconomics(WINDOW));
-    const partial = rows.filter((row) => row.unresolved_event_count > 0);
+    const partial = rows.filter((row) => row.cost?.status === "incomplete");
     expect(partial).toHaveLength(1);
-    expect(partial[0]?.unresolved_event_count).toBe(4);
+    expect(partial[0]?.cost?.unresolved_event_count).toBe(4);
   });
 });
 
 describe("toTenantEconomics", () => {
   it("narrows the single row an ungrouped answer always has", () => {
     const totals = toTenantEconomics(mockTenantEconomics(WINDOW));
-    expect(totals.total_revenue_micros).toBe(852_900_000);
-    expect(totals.gross_margin_micros).toBe(289_300_000);
+    expect(totals.revenue).toMatchObject({ status: "known", value: 852_900_000 });
     // The count is answerable here precisely BECAUSE the question is
     // ungrouped: one row compares with nothing.
-    expect(totals.event_count).toBe(93_558);
+    expect(totals.events).toMatchObject({ status: "known", value: 93_558 });
+  });
+
+  // ⚠ §15: the window's cost is a floor by nova-ai's four uncosted events,
+  // so the margin is INCOMPLETE — while the revenue beside it reads known.
+  it("reads the margin incomplete where the cost is, whatever the revenue says", () => {
+    const totals = toTenantEconomics(mockTenantEconomics(WINDOW));
+    expect(totals.revenue?.status).toBe("known");
+    expect(totals.margin).toMatchObject({
+      status: "incomplete",
+      value: 289_300_000,
+      unresolved_event_count: 4,
+    });
   });
 });
 

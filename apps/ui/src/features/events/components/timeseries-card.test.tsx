@@ -4,10 +4,22 @@ import { describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
 import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
-import { groupingOptionsQueryOptions } from "@/hooks/use-grouping-options";
+import {
+  groupingOptionsQueryOptions,
+  MOCK_GROUPING_OPTIONS,
+} from "@/hooks/use-grouping-options";
+import { MEASUREMENT_CONCEPT_AXIS } from "@/lib/economic-query";
 import { axisRequestWord, FIELD_KIND, ROLLUP_KIND } from "@/lib/grouping-axis";
 import type { GroupingOption } from "@/lib/grouping-axis";
 
+import {
+  completePriceTotal,
+  completeTotal,
+  revenueUnavailableAtThisGrain,
+} from "@/lib/economic-scenarios";
+
+import { MEASUREMENT_HORIZON } from "../api/mock-data";
+import { eventsApi } from "../api/provider";
 import { TimeseriesCard } from "./timeseries-card";
 
 // The chart itself is lazy and irrelevant here — this is a test about the axis
@@ -197,5 +209,117 @@ describe("an axis this console has no words for", () => {
     expect(option?.textContent).not.toContain(UNRECOGNISED_MARK);
     expect(option?.querySelector("[data-axis]"))
       .toHaveAttribute("data-axis", "tenant");
+  });
+});
+
+// ⚠ THE PRUNED SERIES (#510; slice 7 §19). A grouping by what was measured
+// reads the measurement records, which the shorter clock releases — so over a
+// stretch before the measurement horizon the answer has NO ROWS (#500), and
+// this card used to call that "No usage recorded in this window". The data is
+// the events mock's, which groups its seeds by their own measurement bags: the
+// May seed is `prunedMeasurements()`, its bag is empty because its record was
+// removed, and it therefore contributes nothing to that grouping — the same
+// answer a server gives. The same window, ungrouped, is economic and held.
+describe("a series whose measurement records were pruned", () => {
+  function renderOver(window: { start_date: string; end_date: string }, groupBy?: string) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(groupingOptionsQueryOptions.queryKey, MOCK_GROUPING_OPTIONS);
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <TimeseriesCard window={window} groupBy={groupBy} onGroupByChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    return container;
+  }
+
+  const MAY = { start_date: "2026-05-01", end_date: "2026-05-31" };
+
+  it("renders as pruned, never as no usage", async () => {
+    const container = renderOver(MAY, MEASUREMENT_CONCEPT_AXIS);
+
+    expect(
+      await screen.findByText(/have been pruned at their retention horizon/, undefined, { timeout: 5000 }),
+    ).toHaveTextContent("it is not a stretch with no usage");
+    expect(screen.queryByText(/No usage recorded/)).not.toBeInTheDocument();
+    expect(container.querySelector("[data-retention-horizon]"))
+      .toHaveAttribute("data-retention-horizon", MEASUREMENT_HORIZON);
+  });
+
+  // One clock, two grains: the economic records of the same stretch are held,
+  // so the ungrouped chart draws them and says nothing was pruned.
+  it("draws the same stretch ungrouped, where nothing was released", async () => {
+    const container = renderOver(MAY);
+
+    expect(await screen.findByTestId("chart", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(container.querySelector("[data-retention-horizon]")).toBeNull();
+  });
+
+  it("draws what it holds and says where the pruned stretch ends", async () => {
+    const container = renderOver({ start_date: "2026-05-01", end_date: "2026-07-23" }, MEASUREMENT_CONCEPT_AXIS);
+
+    expect(await screen.findByTestId("chart", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(container.querySelector("[data-retention-horizon]"))
+      .toHaveAttribute("data-retention-horizon", MEASUREMENT_HORIZON);
+    expect(screen.getByText(/recorded events by group/)).toBeInTheDocument();
+  });
+});
+
+// ⚠ REVENUE A GROUPING CANNOT PLACE (#510). Grouped by a supplier, a
+// subscription names none, so every row's revenue reads unavailable at that
+// grain: the lines draw the supplier cost, the caption names the revenue's
+// state, and the subscription is stated as the coarser figure — never dropped,
+// and never drawn as the placed part of itself.
+describe("a grouped chart whose revenue cannot be placed", () => {
+  it("draws the cost, names the revenue's state and states the context", async () => {
+    const subscription = {
+      source: "subscription",
+      customer_id: "c1",
+      amount_micros: 199_000_000,
+      window_start: WINDOW.start_date,
+      window_end: WINDOW.end_date,
+      attributable_axes: ["customer"],
+      attributable_bucket: "day",
+    };
+    const row = (group: string, cost: number, revenue: number) => ({
+      bucket_start: "2026-07-01T00:00:00Z",
+      grouping_field_value: [group],
+      grouping_field_value_status: ["recorded"],
+      measures: revenueUnavailableAtThisGrain({
+        cost: completeTotal(cost),
+        revenue: completePriceTotal(revenue),
+        events: 1,
+        context: [subscription],
+      }).measures.filter((entry) => entry.measure !== "recorded_events"),
+    });
+    vi.spyOn(eventsApi, "getUsageTimeseries").mockResolvedValueOnce({
+      period_start: WINDOW.start_date,
+      period_end: WINDOW.end_date,
+      group_by: ["field:provider"],
+      bucket: "day",
+      basis: "recorded",
+      economic_data_available_from: "2020-07-01",
+      measurement_data_available_from: MEASUREMENT_HORIZON,
+      rows: [row("openai", 70_000_000, 90_000_000), row("anthropic", 60_000_000, 80_000_000)],
+      context: [subscription],
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(groupingOptionsQueryOptions.queryKey, ACME);
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <TimeseriesCard window={WINDOW} groupBy="field:provider" onGroupByChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(
+      await screen.findByText(
+        "Lines are provider cost by group, per day. Revenue by group: Unavailable at this grain.",
+        undefined,
+        { timeout: 5000 },
+      ),
+    ).toBeInTheDocument();
+    expect(container.querySelector("[data-revenue-context]")).toHaveTextContent(
+      "$199.00 of revenue from subscriptions can only be placed by customer, per day",
+    );
   });
 });

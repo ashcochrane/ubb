@@ -12,20 +12,21 @@ import {
 } from "recharts";
 
 import {
-  BoundedCostTooltip,
-  type SeriesRole,
-} from "@/components/shared/supplier-cost";
+  MeasureTooltip,
+  type TooltipSeries,
+} from "@/components/shared/measure-value";
 import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
 import type { TrendPoint } from "../api/types";
 
-/** Which bounding rule each plotted series obeys (#330). */
-function roleOf(dataKey: string): SeriesRole {
-  if (dataKey === "provider_cost_micros") return "supplier-cost";
-  if (dataKey === "gross_margin_micros") return "margin";
-  // Revenue is bounded by its own count, which the point carries.
-  return "whole";
-}
+/** The plotted series, by the data key each point and its figure share. The
+ *  tooltip says each as its own state allows — the margin as incomplete where
+ *  the cost side is, whatever the revenue beside it reads (§15). */
+const SERIES: readonly TooltipSeries[] = [
+  { key: "gross_margin_micros", name: "Gross margin", color: "var(--chart-1)" },
+  { key: "provider_cost_micros", name: "Provider cost", color: "var(--chart-2)" },
+  { key: "revenue_micros", name: "Revenue", color: "var(--chart-3)" },
+];
 
 function periodLabel(label: string | number | undefined): string {
   return formatCalendarDate(String(label));
@@ -60,11 +61,12 @@ export default function MarginTrendChart({
             width={72}
           />
           <Tooltip
+            filterNull={false}
             content={
-              <BoundedCostTooltip
+              <MeasureTooltip
+                series={SERIES}
                 currency={currency}
                 labelFormatter={periodLabel}
-                roleOf={roleOf}
               />
             }
           />

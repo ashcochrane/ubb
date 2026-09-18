@@ -40,32 +40,22 @@
 // console's own readers of a supplier cost — or of a margin computed against
 // one — intersected with the responses that carry a completeness count:
 //
-//   dashboard/stat-row, dashboard/customer-economics-table,
-//   customers/customers-page, customers/overview-tab,
-//   customers/usage-tab, events/analytics-strip,
-//   billing/revenue-section         EconomicsOut — the one query, asked
-//                                   unbucketed, grouped by customer, or
-//                                   filtered to one, according to the surface
 //   dashboard/unprofitable-alert    UnprofitableCustomerRow (margin only)
 //   customers/business-rollup       SeatMarginOut + BusinessMarginTotals
 //   events/task-section             CloseTaskResponse
 //   spend-controls/stops-and-breaches (its own tab and the customer's
 //   Usage tab)                      StopsAndBreachesResponse — episodes, their
 //                                   itemised events and the per-family totals
-//   billing/revenue-chart, dashboard/revenue-cost-chart,
-//   customers/margin-trend-chart, customers/usage-timeseries-chart,
-//   events/usage-timeseries-chart   the per-point rows of the responses above
-//                                   — which, for all five, is now the same
-//                                   query with a `bucket`
 //
-// ⚠ **SEVEN SURFACES ON ONE SCHEMA IS THE COLLAPSE, AND IT CHANGES WHERE THE
-// COUNT LIVES.** The six responses those seven used to read each carried ONE
-// completeness count for the whole payload. `EconomicsOut` carries one per
-// MEASURE per row, so a surface showing a cost and a margin side by side reads
-// two counts and may floor one without flooring the other. The rule this module
-// states is unchanged; what changed is that the caller now has to say which
-// measure it is asking about, which is the thing a single per-response count
-// let it avoid saying.
+// ⚠ **THE ONE ECONOMIC QUERY'S SURFACES LEFT THIS LIST IN #510.** Its stat
+// cards, its tables, its breakdown and its charts read `EconomicsOut`, which carries
+// a STATE per measure per row rather than a bare count — and a count can only
+// say "floor", while that state also says "unavailable at this grain", "outside
+// the retention horizon" and "not applicable", none of which is a bound. They
+// read `@/lib/measure-state` now, which applies this module's floor rule
+// (`partialTotalNote`, the zero-floor absence) to an incomplete cost and adds
+// the four readings a count could never carry. This module keeps the surfaces
+// whose responses still publish a count and no state.
 //
 // ⚠ DERIVING THAT LIST FROM THE CONTRACT'S TYPED SCHEMAS MISSES THE UNTYPED
 // ONES, AND THAT IS HOW THE REPORT STOPS AND BREACHES REPLACED WAS FIRST
@@ -77,12 +67,6 @@
 // surface whose data is untyped is exactly the surface a schema-derived
 // enumeration cannot see, so every untyped response a console reader touches
 // has to be read at the server rather than in the spec.
-//
-// ONE console cost surface is deliberately absent, and it is absent by
-// construction rather than by omission: `dashboard/grouping-field-breakdown`
-// renders BILLED cost, which is NOT NULL at the column and therefore whole.
-// #152's Tasks page (#423) and Spend controls tab (#466) have since been
-// built; the list above is what renders a supplier cost today.
 //
 // Per-EVENT surfaces are a different rendering and live below the totals: one
 // event has no count, it has the mark itself. Those are the event receipt, the

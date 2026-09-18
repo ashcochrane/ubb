@@ -3,6 +3,14 @@
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
+import {
+  completePriceTotal,
+  completeTotal,
+  incompleteMeasures,
+  incompletePriceTotal,
+  incompleteTotal,
+  knownMeasures,
+} from "@/lib/economic-scenarios";
 
 import {
   SEAT_DEFAULT_POOL,
@@ -11,6 +19,7 @@ import {
   TENANT_USAGE_INVOICES,
   buildDailyRows,
   rowsInRange,
+  type MockDailyRow,
 } from "./mock-data";
 import type {
   CustomerSpendPool,
@@ -54,37 +63,38 @@ export async function getRevenueWindow(range: {
     // The report this replaced published its own totals beside its day rows,
     // which was a second definition of the same sum; the one query answers the
     // buckets and the console adds them up, so the two cannot disagree.
+    //
+    // ⚠ AND EACH DAY'S STATES ARE COMPOSED, NOT WRITTEN (#510). This wrote the
+    // margin's state from the cost side alone, which is §15's rule stated
+    // halfway: the query derives it from BOTH sides. The composers derive it.
     rows: daily.map((row) => ({
       bucket_start: `${row.day}T00:00:00+00:00`,
       grouping_field_value: [],
       grouping_field_value_status: [],
-      measures: [
-        {
-          measure: "supplier_cogs",
-          amount_micros: row.provider_cost_micros,
-          status: row.unresolved_event_count ? "incomplete" : "known",
-          unresolved_event_count: row.unresolved_event_count,
-        },
-        {
-          measure: "customer_revenue",
-          amount_micros: row.revenue_micros,
-          status: row.unpriced_event_count ? "incomplete" : "known",
-          unpriced_event_count: row.unpriced_event_count,
-        },
-        {
-          measure: "gross_margin",
-          amount_micros: row.revenue_micros - row.provider_cost_micros,
-          status: row.unresolved_event_count ? "incomplete" : "known",
-        },
-        {
-          measure: "recorded_events",
-          event_count: row.event_count,
-          status: "known",
-        },
-      ],
+      measures: measuresForDay(row),
     })),
     context: [],
-  } as Economics;
+  };
+}
+
+/** One fixture day's four measures, as the query would state them. */
+function measuresForDay(row: MockDailyRow) {
+  const terms = {
+    cost: row.unresolved_event_count > 0
+      ? incompleteTotal(row.provider_cost_micros, row.unresolved_event_count)
+      : completeTotal(row.provider_cost_micros),
+    revenue: row.unpriced_event_count > 0
+      ? incompletePriceTotal(row.revenue_micros, row.unpriced_event_count)
+      : completePriceTotal(row.revenue_micros),
+    events: row.event_count,
+  };
+  return row.unresolved_event_count > 0 || row.unpriced_event_count > 0
+    ? incompleteMeasures(terms)
+    : knownMeasures({
+        cost_micros: row.provider_cost_micros,
+        revenue_micros: row.revenue_micros,
+        events: row.event_count,
+      });
 }
 
 export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {

@@ -7,13 +7,18 @@ import {
   completePriceTotal,
   completeTotal,
   costNotApplicable,
+  incompleteMeasures,
   incompletePriceTotal,
   incompleteTotal,
   knownCost,
+  knownMeasures,
   knownPrice,
+  measureNotApplicable,
   measurementsNotApplicable,
+  measuresOutsideRetentionHorizon,
   priceNotApplicable,
   prunedMeasurements,
+  revenueUnavailableAtThisGrain,
   spendPoolAssessment,
   unknownCost,
   unknownPrice,
@@ -657,5 +662,92 @@ describe("the pool's status pair", () => {
       "unresolved_posting_count",
       "used_percentage",
     ]);
+  });
+});
+
+describe("measure-state scenarios (#510)", () => {
+  const byMeasure = (measures: { measure: string }[]) =>
+    Object.fromEntries(measures.map((entry) => [entry.measure, entry]));
+
+  it("states every figure whole where nothing was left out, and a zero revenue as a loss", () => {
+    const row = byMeasure(knownMeasures({ cost_micros: 3_000_000, revenue_micros: 0, events: 4 }));
+    expect(row["customer_revenue"]).toMatchObject({ status: "known", amount_micros: 0 });
+    expect(row["gross_margin"]).toMatchObject({ status: "known", amount_micros: -3_000_000 });
+  });
+
+  // §15: the margin is incomplete wherever the cost side is, whatever the
+  // revenue side reads — derived, so a fixture cannot say otherwise.
+  it("derives an incomplete margin from an uncosted event under a known revenue", () => {
+    const row = byMeasure(
+      incompleteMeasures({
+        cost: incompleteTotal(2_000_000, 3),
+        revenue: completePriceTotal(9_000_000),
+        events: 10,
+      }),
+    );
+    expect(row["customer_revenue"]).toMatchObject({ status: "known" });
+    expect(row["supplier_cogs"]).toMatchObject({ status: "incomplete", unresolved_event_count: 3 });
+    expect(row["gross_margin"]).toMatchObject({ status: "incomplete", amount_micros: 7_000_000 });
+  });
+
+  it("refuses to call two complete totals incomplete", () => {
+    expect(() =>
+      incompleteMeasures({
+        cost: completeTotal(1),
+        revenue: completePriceTotal(2),
+        events: 1,
+      }),
+    ).toThrow(/writes as known/);
+  });
+
+  it("states no margin where the revenue could not be placed, and carries the context", () => {
+    const composed = revenueUnavailableAtThisGrain({
+      cost: completeTotal(1_000_000),
+      revenue: completePriceTotal(4_000_000),
+      events: 2,
+      context: [{
+        source: "subscription",
+        customer_id: "c1",
+        amount_micros: 50_000_000,
+        window_start: "2026-07-01",
+        window_end: "2026-07-31",
+        attributable_axes: ["customer"],
+        attributable_bucket: "month",
+      }],
+    });
+    const row = byMeasure(composed.measures);
+    expect(row["customer_revenue"]).toMatchObject({ status: "unavailable_at_requested_grain" });
+    expect(row["gross_margin"]).toMatchObject({
+      status: "unavailable_at_requested_grain",
+      amount_micros: null,
+    });
+    expect(composed.context).toHaveLength(1);
+  });
+
+  it("refuses the grain state with no context to state the money in", () => {
+    expect(() =>
+      revenueUnavailableAtThisGrain({
+        cost: completeTotal(1),
+        revenue: completePriceTotal(2),
+        events: 1,
+        context: [],
+      }),
+    ).toThrow(/needs the context/);
+  });
+
+  it("states no figure and no count past the horizon, and the day the series starts", () => {
+    for (const entry of measuresOutsideRetentionHorizon("2020-09-18")) {
+      expect(entry.status).toBe("unavailable_outside_retention_horizon");
+      expect(entry.available_from).toBe("2020-09-18");
+      expect(entry.amount_micros ?? entry.event_count ?? null).toBeNull();
+    }
+  });
+
+  it("composes a measure that does not apply with no figure at all", () => {
+    expect(measureNotApplicable("gross_margin")).toEqual({
+      measure: "gross_margin",
+      status: "not_applicable",
+      amount_micros: null,
+    });
   });
 });

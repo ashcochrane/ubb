@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,891 of 2,323 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,899 of 2,331 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2576,6 +2576,18 @@ measurement_key:
     # TAKEN TWICE, as #352's warning asks, and this time the two takes agree:
     # the `/code-review` pass corrected sentences and moved one constant
     # between two modules that already existed, and added no file.
+    #
+    # 2026-09-18, #510 (the five measure states render, and unknown never
+    # renders as zero): 1,891 of 2,323 -> 1,899 of 2,331 tracked files
+    # (`units` 44 files / 122 occurrences, UNMOVED). EIGHT files arrived and
+    # none left, and both totals move by the same eight: the console's one
+    # reading of a measure's state and its cases, the component that draws one
+    # and its cases, the reader's own cases, and three rendering assertions on
+    # surfaces that had none for an economic state (the billing revenue
+    # window, the events page's totals, and the events mock's two clocks held
+    # to one). All ordinary source, so no exclusion moves. Every sentence
+    # these files say about an amount's denomination says "figure", "micros",
+    # "count" or "per day", never the retired plural.
 
     - term: units
       retired_as: >-

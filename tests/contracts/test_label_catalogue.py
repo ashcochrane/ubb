@@ -425,6 +425,11 @@ def test_every_adapter_export_is_classified(legacy):
         # declaring a debt — so the declaration and these references land
         # together and the census reads them served rather than owed.
         "RECOGNITION_METHODS", "REVENUE_BASES",
+        # #510: the measure set and its five states, which every economic
+        # surface now draws. Both concepts had named this file as their console
+        # consumer since the registry was seeded; the renderer that holds them
+        # is the payment, and these references are what the census reads.
+        "ANALYTICS_MEASURES", "MEASURE_STATUSES",
         "BillingMode", "Product", "Role",
     }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "

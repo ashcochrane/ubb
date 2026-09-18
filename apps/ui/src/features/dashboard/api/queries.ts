@@ -23,12 +23,12 @@ import {
   toTenantEconomics,
   type ApiKeyList,
   type BreakdownAxis,
-  type BreakdownRow,
+  type Breakdown,
   type ConnectStatus,
   type CustomerEconomicsRow,
   type Economics,
   type PricingBookList,
-  type RevenueCostPoint,
+  type RevenueCostSeries,
   type TenantEconomics,
   type Unprofitable,
   type Window,
@@ -53,7 +53,7 @@ export function useTenantEconomics(
 export function useGroupedEconomics(
   window: Window,
   groupBy: BreakdownAxis,
-): UseQueryResult<BreakdownRow[]> {
+): UseQueryResult<Breakdown> {
   return useQuery({
     queryKey: [
       "metering", "analytics", "economics", "grouped",
@@ -85,7 +85,7 @@ export function useLifetimeEconomics(): UseQueryResult<Economics> {
  */
 export function useRevenueVsCost(
   window: Window,
-): UseQueryResult<RevenueCostPoint[]> {
+): UseQueryResult<RevenueCostSeries> {
   return useQuery({
     queryKey: [
       "metering", "analytics", "economics", "daily", window,

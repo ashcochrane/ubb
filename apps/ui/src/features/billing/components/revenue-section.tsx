@@ -5,27 +5,36 @@ import { ChartLegend } from "@/components/shared/chart-legend";
 import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
+import {
+  MeasureValue,
+  RetentionHorizonNote,
+  RevenueContext,
+} from "@/components/shared/measure-value";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { DATE_RANGE_PRESETS, resolveRange, type DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros } from "@/lib/format";
-import { revenueBasisNote } from "@/lib/supplied-revenue";
 import {
-  marginBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+  figureNote,
+  isNegative,
+  noFigureNote,
+  readingText,
+  readMeasure,
+} from "@/lib/measure-state";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
 
 import { SectionCard } from "./section-card";
 
 const RevenueChart = lazy(() => import("./revenue-chart"));
 
+// The legend names what the lines plot. It read "Billed" and "Markup" after
+// #501 renamed the lines and the cards to Revenue and Gross margin — the
+// retired names on the one element that tells a reader which line is which.
 const LEGEND_ITEMS = [
-  { label: "Billed", color: "var(--chart-1)" },
+  { label: "Revenue", color: "var(--chart-1)" },
   { label: "Provider cost", color: "var(--chart-2)" },
-  { label: "Markup", color: "var(--chart-3)" },
+  { label: "Gross margin", color: "var(--chart-3)" },
 ];
 
 export function RevenueSection({
@@ -51,8 +60,13 @@ export function RevenueSection({
         <ErrorCard error={query.error} onRetry={() => void query.refetch()} />
       ) : query.data ? (
         (() => {
-          const { daily, event_count: eventTotal } = query.data;
+          const { daily } = query.data;
           if (daily.length === 0) {
+            // ⚠ "NO USAGE" ONLY WHERE THE WINDOW IS INSIDE THE RECORDS IT
+            // READS; past their horizon it is a stretch UBB no longer holds.
+            if (query.data.held_from !== null) {
+              return <RetentionHorizonNote caveats={query.data} />;
+            }
             return (
               <EmptyState
                 title="No usage in this window"
@@ -75,35 +89,37 @@ export function RevenueSection({
               )}
             >
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {/* ⚠ THE THREE TOTALS ARE FOLDED FROM THE DAYS WITH THEIR
+                    STATES (#510): the worst day's state wins, so a window with
+                    a day UBB no longer holds reads as that state rather than
+                    as a smaller figure presented as whole. */}
                 <StatCard
                   label="Revenue"
-                  value={formatMicros(query.data.revenue_micros, currency)}
-                  subtitle={`${formatEventCount(eventTotal)} events`}
+                  value={<MeasureValue figure={query.data.revenue} currency={currency} />}
+                  subtitle={
+                    figureNote(query.data.revenue, currency) ??
+                    `${readingText(readMeasure(query.data.events, currency))} events`
+                  }
                 />
                 <StatCard
                   label="Provider cost"
-                  value={supplierCostTotal(
-                    query.data.provider_cost_micros,
-                    query.data,
-                    currency,
-                  )}
-                  subtitle={
-                    partialTotalNote(query.data.unresolved_event_count) ?? undefined
-                  }
+                  value={<MeasureValue figure={query.data.cost} currency={currency} />}
+                  subtitle={figureNote(query.data.cost, currency)}
                 />
                 {/* ⚠ "MARKUP" WAS NEITHER A MARKUP NOR A MARGIN (#501) — it
                     was billed minus supplier cost over a window, published
                     under a name that suggested a rate. It is the gross-margin
-                    measure now, and a window UBB cannot state one for renders
-                    as an absence rather than as zero. */}
+                    measure now, drawn as its state allows. */}
                 <StatCard
                   label="Gross margin"
                   value={
-                    query.data.margin_micros === null
-                      ? "—"
-                      : marginBound(query.data.margin_micros, query.data, currency)
+                    <span className={cn(isNegative(query.data.margin) && "text-destructive")}>
+                      <MeasureValue figure={query.data.margin} currency={currency} />
+                    </span>
                   }
-                  subtitle="Revenue minus provider cost"
+                  subtitle={
+                    noFigureNote(query.data.margin, currency) ?? "Revenue minus provider cost"
+                  }
                 />
               </div>
               <div className="flex justify-end">
@@ -126,6 +142,8 @@ export function RevenueSection({
               >
                 {revenueBasisNote(query.data.basis)}
               </p>
+              <RevenueContext context={query.data.context} currency={currency} />
+              <RetentionHorizonNote caveats={query.data} />
             </div>
           );
         })()

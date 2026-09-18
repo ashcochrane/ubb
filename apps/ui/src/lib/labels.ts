@@ -32,7 +32,9 @@
 import {
   AFFORDABILITY_REASON_KNOWN_VALUES,
   ANALYTICS_GROUPING_KIND_VALUES,
+  ANALYTICS_MEASURE_VALUES,
   ANALYTICS_ROLLUP_VALUES,
+  MEASURE_STATUS_VALUES,
   RECOGNITION_METHOD_VALUES,
   REVENUE_BASIS_VALUES,
   CEILING_STATUS_VALUES,
@@ -488,6 +490,22 @@ export const ANALYTICS_ROLLUPS = ANALYTICS_ROLLUP_VALUES;
 // directly. The alias is what the census reads.
 export const RECOGNITION_METHODS = RECOGNITION_METHOD_VALUES;
 export const REVENUE_BASES = REVENUE_BASIS_VALUES;
+
+// What the one economic query can measure, and what each measure's figure is
+// worth — the registry's two closed sets, held BY REFERENCE (#510) on exactly
+// the terms above. Both concepts have named THIS FILE as their console consumer
+// since the registry was seeded, and until #510 it held neither: the measures
+// were request literals and the five states reached no renderer, which is why
+// every economic surface could draw an unknown as a zero.
+//
+// ⚠ **THE WORK IS DONE NEXT DOOR, AND NOTHING IMPORTS EITHER FROM HERE.**
+// `@/lib/economic-query` types the measure names against the generated
+// `AnalyticsMeasure` and asks for the generated list whole; `@/lib/measure-state`
+// binds the states' words (`labelMap(MEASURE_STATUS_LABEL_KEYS)`) and the rule
+// for each; `components/shared/measure-value.tsx` draws them, and an unfamiliar
+// state through the open-set helper. The aliases are what the census reads.
+export const ANALYTICS_MEASURES = ANALYTICS_MEASURE_VALUES;
+export const MEASURE_STATUSES = MEASURE_STATUS_VALUES;
 
 // ---------------------------------------------------------------------------
 // Audit

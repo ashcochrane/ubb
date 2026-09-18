@@ -5,14 +5,11 @@
 // ledger only.
 
 import { ErrorCard } from "@/components/shared/error-card";
+import { MeasureValue } from "@/components/shared/measure-value";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatEventCount, formatMicros } from "@/lib/format";
-import {
-  marginBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+import { figureNote, isNegative, noFigureNote } from "@/lib/measure-state";
+import { cn } from "@/lib/utils";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 
 import { useUsageAnalytics } from "../api/queries";
@@ -54,39 +51,39 @@ export function AnalyticsStrip({
   return (
     <div className="space-y-1.5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* ⚠ EVERY FIGURE ON THE STRIP IS DRAWN AS ITS STATE ALLOWS (#510).
+            The narrowing coalesced the count, the revenue and the cost to
+            zero, so a window reaching back past the economic horizon read
+            "0 events" and "$0.00" here. */}
         <StatCard
           variant="raised"
           label="Events"
-          value={formatEventCount(data.event_count)}
+          value={<MeasureValue figure={data.events} currency={currency} />}
         />
         <StatCard
           variant="raised"
           label="Revenue"
-          value={formatMicros(data.revenue_micros, currency)}
+          value={<MeasureValue figure={data.revenue} currency={currency} />}
+          subtitle={figureNote(data.revenue, currency)}
         />
         <StatCard
           variant="raised"
           label="Provider cost"
-          value={supplierCostTotal(
-            data.provider_cost_micros,
-            data,
-            currency,
-          )}
-          subtitle={partialTotalNote(data.unresolved_event_count) ?? undefined}
+          value={<MeasureValue figure={data.cost} currency={currency} />}
+          subtitle={figureNote(data.cost, currency)}
         />
         {/* ⚠ "MARKUP MARGIN" WAS NEITHER (#501) — it was the difference
             between two aggregates, named as if it were a rate. It is the
-            gross-margin measure now, and a window UBB cannot state one for
-            renders as an absence rather than as zero. */}
+            gross-margin measure now, drawn as its state allows. */}
         <StatCard
           variant="raised"
           label="Gross margin"
           value={
-            data.margin_micros === null
-              ? "—"
-              : marginBound(data.margin_micros, data, currency)
+            <span className={cn(isNegative(data.margin) && "text-destructive")}>
+              <MeasureValue figure={data.margin} currency={currency} />
+            </span>
           }
-          subtitle="Revenue minus provider cost"
+          subtitle={noFigureNote(data.margin, currency) ?? "Revenue minus provider cost"}
         />
       </div>
       {metadataFilterActive && (

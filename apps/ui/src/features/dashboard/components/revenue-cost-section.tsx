@@ -3,6 +3,10 @@ import * as React from "react";
 import { ChartCard } from "@/components/shared/chart-card";
 import { ChartLegend } from "@/components/shared/chart-legend";
 import { ErrorCard } from "@/components/shared/error-card";
+import {
+  RetentionHorizonNote,
+  RevenueContext,
+} from "@/components/shared/measure-value";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -68,21 +72,30 @@ export function RevenueCostSection({
           title="Couldn't load the revenue chart"
           onRetry={chart.refetch}
         />
-      ) : !chart.data || chart.data.length === 0 ? (
-        <SectionEmpty
-          title="No usage in this window"
-          description="Once events are recorded, daily revenue and provider cost land here."
-          cta={{ label: "Send a test event", to: "/developers" }}
-        />
-      ) : (
-        <React.Suspense fallback={<Skeleton className="h-[280px] rounded-md" />}>
-          <RevenueCostChart
-            points={chart.data}
-            showMargin={showMargin}
-            currency={currency}
-            revenueLabel={revenueLabel}
+      ) : !chart.data || chart.data.points.length === 0 ? (
+        // ⚠ "NO USAGE" ONLY WHERE THE WINDOW IS INSIDE THE RECORDS IT READS.
+        chart.data && chart.data.held_from !== null ? (
+          <RetentionHorizonNote caveats={chart.data} />
+        ) : (
+          <SectionEmpty
+            title="No usage in this window"
+            description="Once events are recorded, daily revenue and provider cost land here."
+            cta={{ label: "Send a test event", to: "/developers" }}
           />
-        </React.Suspense>
+        )
+      ) : (
+        <>
+          <React.Suspense fallback={<Skeleton className="h-[280px] rounded-md" />}>
+            <RevenueCostChart
+              points={chart.data.points}
+              showMargin={showMargin}
+              currency={currency}
+              revenueLabel={revenueLabel}
+            />
+          </React.Suspense>
+          <RevenueContext context={chart.data.context} currency={currency} />
+          <RetentionHorizonNote caveats={chart.data} />
+        </>
       )}
     </ChartCard>
   );

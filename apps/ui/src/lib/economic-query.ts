@@ -6,32 +6,45 @@
 // each carrying one entry per requested measure — so the narrowing lives here
 // rather than five times over.
 //
-// ⚠ **THE MEASURE NAMES ARE LITERALS AND THAT IS DELIBERATE.** The generated
-// vocabulary module carries them as constants, and importing those constants
-// would make this console a declared consumer of the measure concept — an act
-// with a ledger entry behind it and a rendering ticket that owns it. Until that
-// ticket, these are request values spelled the way every other request value on
-// this console is spelled.
+// ⚠ **THE MEASURE NAMES ARE THE REGISTRY'S (#510).** They were literals until
+// the ticket that renders the measure states, because typing them against the
+// generated vocabulary made this console a declared consumer of the measure
+// concept — an act with a ledger entry behind it. That ticket is this one: each
+// name is checked against `AnalyticsMeasure` at `tsc`, the whole list IS the
+// generated one, and `@/lib/labels` holds the set by reference for the census.
 //
-// ⚠ **AND A MEASURE'S AMOUNT IS `number | null`, NEVER COERCED HERE.** A null
+// ⚠ **AND A MEASURE IS READ WITH ITS STATE, NEVER AS A BARE AMOUNT.** A null
 // means UBB has no figure to state — the stretch is past a retention horizon,
-// or a margin could not be attributed at the grain asked for — and a helper
-// that answered `0` would turn "we cannot say" into "it was nothing", which is
-// the defect this whole surface exists to end. Each caller decides what to
-// render; the state is on the row for it to read.
+// or a margin could not be attributed at the grain asked for — and a number
+// beside `unavailable_at_requested_grain` is a PART of the revenue, not the
+// revenue. A helper that answered `0` for the first, or the part for the
+// second, would turn "we cannot say" into a claim; that was `orZero`, and every
+// narrowing on this console used it until #510. `figureOn` carries the state to
+// the renderer, `statedValue` is the one question a chart or a sort may ask of
+// it, and `@/lib/measure-state` is what a figure is SAID as.
 
 import type { MeteringSchemas } from "@/api/types";
-import { axisRequestWord, FIELD_KIND } from "@/lib/grouping-axis";
+import {
+  axisRequestWord,
+  FIELD_KIND,
+  ROLLUP_KIND,
+} from "@/lib/grouping-axis";
+import {
+  ANALYTICS_MEASURE_VALUES,
+  type AnalyticsMeasure,
+  type MeasureStatus,
+} from "@/lib/vocabulary";
 
 export type EconomicsAnswer = MeteringSchemas["EconomicsOut"];
 export type EconomicRow = MeteringSchemas["EconomicRowOut"];
 export type EconomicMeasure = MeteringSchemas["EconomicMeasureOut"];
 
-/** The measures, as the request spells them. */
-export const SUPPLIER_COGS = "supplier_cogs";
-export const CUSTOMER_REVENUE = "customer_revenue";
-export const GROSS_MARGIN = "gross_margin";
-export const RECORDED_EVENTS = "recorded_events";
+/** The measures, as the registry spells them — a name it does not declare is a
+ *  `tsc` failure here rather than a 422 at the server. */
+export const SUPPLIER_COGS = "supplier_cogs" satisfies AnalyticsMeasure;
+export const CUSTOMER_REVENUE = "customer_revenue" satisfies AnalyticsMeasure;
+export const GROSS_MARGIN = "gross_margin" satisfies AnalyticsMeasure;
+export const RECORDED_EVENTS = "recorded_events" satisfies AnalyticsMeasure;
 
 /** The three money measures, which every economic panel on this console asks
  *  for together: a cost with no revenue beside it is half a page. */
@@ -39,10 +52,11 @@ export const MONEY_MEASURES = [
   SUPPLIER_COGS,
   CUSTOMER_REVENUE,
   GROSS_MARGIN,
-] as const;
+] as const satisfies readonly AnalyticsMeasure[];
 
-/** All four — the money plus the count of recorded work. */
-export const EVERY_MEASURE = [...MONEY_MEASURES, RECORDED_EVENTS] as const;
+/** All four — the money plus the count of recorded work — which is the
+ *  registry's whole list, in its order. */
+export const EVERY_MEASURE = ANALYTICS_MEASURE_VALUES;
 
 /** The request word for a named FIELD axis, where a call site knows which it wants.
  *
@@ -63,32 +77,17 @@ export const EVERY_MEASURE = [...MONEY_MEASURES, RECORDED_EVENTS] as const;
 export const FIELD_AXIS = (name: string) =>
   axisRequestWord({ kind: FIELD_KIND, name });
 
-/**
- * A measure's figure where it states one, and zero where it does not.
- *
- * ⚠ **CALL THIS ONLY WHERE ZERO IS THE HONEST READING, WHICH IS NOT
- * EVERYWHERE.** A cost or a revenue UBB could not attribute at the grain asked
- * for is genuinely nothing on that row — the money is in the answer's
- * `context`, not in this bucket — so summing it as zero is correct. A
- * MARGIN is different: `null` there means UBB will not state one at all, and
- * zero would be a claim about the customer. `amountOn` keeps the null so a
- * caller has to choose; this is the choice spelled once instead of four times.
- */
-export function orZero(value: number | null | undefined): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
-
-/**
- * The share a margin is of the revenue it was drawn from, as a percentage.
- *
- * Zero where there is no margin to state and where there is no revenue to
- * divide by — the second because a percentage of nothing is not a number,
- * and the callers all render the figure beside the amounts it came from.
- */
-export function marginPercentOf(revenue: number, margin: number | null): number {
-  if (margin === null || revenue === 0) return 0;
-  return (margin / revenue) * 100;
-}
+// ⚠ `orZero` AND `marginPercentOf` WERE HERE AND ARE DELETED (#510), with
+// `amountOn` and `eventsOn` below them. `orZero` argued that a revenue UBB
+// could not attribute at the grain asked for "is genuinely nothing on that
+// row", so summing it as zero was correct — and every narrowing on this
+// console then coalesced EVERY no-figure state that way, including a stretch
+// past the retention horizon, which is not nothing but unknown. §19's
+// never-clauses are the ruling that reverses it: a state that states no figure
+// is drawn as the state, and the money that could not be placed is drawn as
+// the answer's context. `marginPercentOf` answered zero for a margin UBB would
+// not state, and the customer list printed that zero as `0.0%`; `statedShare`
+// answers null instead.
 
 /**
  * Descending by a stated figure, with every row that states none LAST.
@@ -112,29 +111,16 @@ export function descendingWithAbsencesLast<Row>(
   };
 }
 
-export function measureOn(
+function measureOn(
   row: EconomicRow | undefined,
   measure: string,
 ): EconomicMeasure | undefined {
   return row?.measures.find((entry) => entry.measure === measure);
 }
 
-/** A measure's money figure, or null where it states none. */
-export function amountOn(
-  row: EconomicRow | undefined,
-  measure: string,
-): number | null {
-  return measureOn(row, measure)?.amount_micros ?? null;
-}
-
-/** The count measure's figure, or null where it states none. */
-export function eventsOn(row: EconomicRow | undefined): number | null {
-  return measureOn(row, RECORDED_EVENTS)?.event_count ?? null;
-}
-
 /**
- * What each side of the margin left out, as the pair every cost helper on this
- * console already takes.
+ * What each side of the margin left out — the two counts `figureOn` hands the
+ * margin, which publishes neither on its own entry.
  *
  * ⚠ **THE TWO COUNTS ARE NOT INTERCHANGEABLE AND EACH BELONGS TO ITS OWN
  * MEASURE.** `unresolved_event_count` rides the SUPPLIER COST and says how many
@@ -147,9 +133,9 @@ export function eventsOn(row: EconomicRow | undefined): number | null {
  * Zero where a measure states none, because these counts have a floor of zero
  * by construction and their absence means what their zero means: nothing was
  * left out. That is NOT true of an AMOUNT, which is why this coerces and
- * `amountOn` does not.
+ * `figureOn` keeps an absent amount null.
  */
-export function completenessOn(row: EconomicRow | undefined): {
+function completenessOn(row: EconomicRow | undefined): {
   unresolved_event_count: number;
   unpriced_event_count: number;
 } {
@@ -160,6 +146,243 @@ export function completenessOn(row: EconomicRow | undefined): {
     unpriced_event_count: revenue?.unpriced_event_count ?? 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// A measure as a FIGURE: its value, and the state that says what it is worth.
+
+/**
+ * One measure off one row, carrying everything a renderer needs to say it
+ * honestly and nothing it could say dishonestly.
+ *
+ * ⚠ **`status` IS A STRING, NOT `MeasureStatus`, ON PURPOSE.** The generated
+ * union is the five values this build knows; the console is downstream of a
+ * server that may know a sixth (ADR-003), and a narrowing typed on the union
+ * would have to decide what to do with it HERE — which is how a state gets
+ * mapped onto the nearest familiar one. It reaches the renderer as itself and
+ * renders as the marked token (`@/lib/measure-state`).
+ *
+ * `value` is micros for the three money measures and a count for
+ * `recorded_events`: one field, because the measure's own name says which, and
+ * the renderer is the one place that turns either into text.
+ *
+ * ⚠ **THE MARGIN CARRIES BOTH SIDES' COUNTS.** Its own entry publishes none,
+ * and it needs both: an uncosted event can only lower it and an unpriced one
+ * can only raise it, so which way an incomplete margin is a bound depends on
+ * which side is short — and when both are, it is a bound in neither direction.
+ */
+export interface MeasureFigure {
+  readonly measure: AnalyticsMeasure;
+  readonly status: string;
+  readonly value: number | null;
+  readonly unresolved_event_count: number;
+  readonly unpriced_event_count: number;
+  readonly available_from: string | null;
+}
+
+/** The states under which a measure states a figure at all — whole under the
+ *  first, a bound under the second. Under every other state the wire's number,
+ *  where it carries one, is not the answer. */
+export const FIGURE_STATES = [
+  "known",
+  "incomplete",
+] as const satisfies readonly MeasureStatus[];
+
+/** Whether a state states a figure. A state this build has never seen does
+ *  not: the console cannot vouch for a number whose meaning it cannot read. */
+export function statesAFigure(status: string): boolean {
+  return (FIGURE_STATES as readonly string[]).includes(status);
+}
+
+/** One measure off a row as a figure, or null where the row does not carry it. */
+export function figureOn(
+  row: EconomicRow | undefined,
+  measure: AnalyticsMeasure,
+): MeasureFigure | null {
+  const entry = measureOn(row, measure);
+  if (entry === undefined) return null;
+  const sides = completenessOn(row);
+  const value =
+    measure === RECORDED_EVENTS ? entry.event_count : entry.amount_micros;
+  return {
+    measure,
+    status: entry.status,
+    value: value ?? null,
+    unresolved_event_count:
+      measure === SUPPLIER_COGS || measure === GROSS_MARGIN
+        ? sides.unresolved_event_count
+        : 0,
+    unpriced_event_count:
+      measure === CUSTOMER_REVENUE || measure === GROSS_MARGIN
+        ? sides.unpriced_event_count
+        : 0,
+    available_from: entry.available_from ?? null,
+  };
+}
+
+/**
+ * The figure a chart may plot or a table may sort by — and null wherever the
+ * state states none.
+ *
+ * ⚠ **THE ONE QUESTION A NUMBER-SHAPED CALLER MAY ASK, AND IT REPLACES A
+ * COALESCE.** A null here is a GAP: a line breaks at it and a sort files it
+ * last (`descendingWithAbsencesLast`). It is never a zero, and it is never the
+ * part of a revenue that could be placed at a grain where the rest could not —
+ * a line drawn through that part is a floor drawn as a total.
+ */
+export function statedValue(figure: MeasureFigure | null): number | null {
+  if (figure === null || !statesAFigure(figure.status)) return null;
+  return figure.value;
+}
+
+/**
+ * The margin as a percentage of the revenue it was drawn from, where both state
+ * a figure and the revenue is not nothing — and null otherwise.
+ *
+ * ⚠ **IT REPLACES `marginPercentOf`, WHICH ANSWERED ZERO FOR A MARGIN UBB WOULD
+ * NOT STATE**, and the customer list printed that zero as `0.0%` beside a dash.
+ * A share of a figure that is not there, or of nothing, is not a share.
+ */
+export function statedShare(
+  margin: MeasureFigure | null,
+  revenue: MeasureFigure | null,
+): number | null {
+  const m = statedValue(margin);
+  const r = statedValue(revenue);
+  if (m === null || r === null || r === 0) return null;
+  return (m / r) * 100;
+}
+
+/**
+ * Which state wins when figures are folded together — the query's own order
+ * (`apps/metering/queries.py::MEASURE_STATES_WORST_LAST`), with `not_applicable`
+ * first because a measure that does not apply to one row takes nothing from the
+ * sum of the rest.
+ */
+const FOLD_ORDER: readonly string[] = [
+  "not_applicable",
+  "known",
+  "incomplete",
+  "unavailable_at_requested_grain",
+  "unavailable_outside_retention_horizon",
+] satisfies readonly MeasureStatus[];
+
+/** A state's rank in the fold — and a state this build cannot rank ranks
+ *  WORST, so it survives the fold as itself rather than being summed away. */
+function foldRank(status: string): number {
+  const rank = FOLD_ORDER.indexOf(status);
+  return rank === -1 ? FOLD_ORDER.length : rank;
+}
+
+/**
+ * Several rows' figures for one measure, as one.
+ *
+ * ⚠ **THIS IS THE CONSOLE'S OWN ARITHMETIC AND IT MUST NOT LAUNDER A STATE.**
+ * The billing window used to sum its days, so one day UBB could not attribute
+ * made the window's revenue a PART presented as the whole, and the dashboard's
+ * "Other" bar folded rows the same way. The worst state wins, exactly as the
+ * query ranks a margin's two sides; a figure is stated only where that state
+ * states one; and a row that carried no figure for the measure at all is a gap
+ * in the sum, which makes the sum unstateable rather than smaller.
+ *
+ * Over no rows at all it is a measured zero — the same answer the query gives an
+ * ungrouped question over an empty window.
+ */
+export function combineFigures(
+  measure: AnalyticsMeasure,
+  figures: readonly (MeasureFigure | null)[],
+): MeasureFigure {
+  const present = figures.filter((f): f is MeasureFigure => f !== null);
+  const worst = present.reduce<MeasureFigure | null>(
+    (held, next) =>
+      held === null || foldRank(next.status) > foldRank(held.status) ? next : held,
+    null,
+  );
+  const status = worst?.status ?? "known";
+  const whole = present.length === figures.length && statesAFigure(status);
+  return {
+    measure,
+    status,
+    value: whole
+      ? present.reduce((sum, f) => sum + (statedValue(f) ?? 0), 0)
+      : null,
+    unresolved_event_count: present.reduce((n, f) => n + f.unresolved_event_count, 0),
+    unpriced_event_count: present.reduce((n, f) => n + f.unpriced_event_count, 0),
+    available_from:
+      present
+        .map((f) => f.available_from)
+        .filter((day): day is string => day !== null)
+        .sort()
+        .at(-1) ?? null,
+  };
+}
+
+/** The request word for the grouping that reads the records the shorter clock
+ *  prunes (#500). */
+export const MEASUREMENT_CONCEPT_AXIS = axisRequestWord({
+  kind: ROLLUP_KIND,
+  name: "measurement_concept",
+});
+
+/**
+ * The first day the records behind this answer are held from.
+ *
+ * ⚠ **WHICH CLOCK GOVERNS DEPENDS ON THE GROUPING** (#500). Every measure is
+ * economic and read from postings, which are held for the economic horizon;
+ * only a grouping by what was MEASURED reads the child records the measurement
+ * horizon releases. The answer publishes both, whether or not anything was
+ * truncated, so this is a choice between two stated days rather than a guess.
+ */
+export function governingHorizon(answer: EconomicsAnswer): string {
+  return answer.group_by.includes(MEASUREMENT_CONCEPT_AXIS)
+    ? answer.measurement_data_available_from
+    : answer.economic_data_available_from;
+}
+
+/**
+ * Whether the window asked about starts before that day.
+ *
+ * ⚠ **THIS IS WHAT AN EMPTY ANSWER MUST ASK BEFORE IT SAYS "NO USAGE".** A
+ * grouped question over a stretch whose records were released has no rows to
+ * carry the state on (#500's recorded limit), so the empty list is the ONLY
+ * shape the answer can take — and "nothing happened" is the one reading of it
+ * that is certainly unproven.
+ */
+export function reachesPastHorizon(answer: EconomicsAnswer): boolean {
+  return answer.period_start < governingHorizon(answer);
+}
+
+/**
+ * What an answer says beside its rows, which a narrowing to points or bars
+ * would otherwise drop: the revenue it could not place at the grain asked for,
+ * and — where the window reaches back past the records it reads — the day those
+ * records are held from.
+ *
+ * A narrowing that returns bare points lets every caller lose both, which is
+ * how a stretch UBB no longer holds becomes a chart reading "no usage" and a
+ * subscription becomes a breakdown that never mentions it.
+ */
+export interface AnswerCaveats {
+  readonly context: EconomicsAnswer["context"];
+  /** The governing horizon, where the window starts before it; else null. */
+  readonly held_from: string | null;
+  /** Whether that horizon is the measurement one — the pruned-records clock. */
+  readonly measurement_horizon: boolean;
+}
+
+export function caveatsOf(answer: EconomicsAnswer): AnswerCaveats {
+  return {
+    context: answer.context,
+    held_from: reachesPastHorizon(answer) ? governingHorizon(answer) : null,
+    measurement_horizon: answer.group_by.includes(MEASUREMENT_CONCEPT_AXIS),
+  };
+}
+
+/** A chart's plotted numbers and the figures they came from, keyed alike. */
+export type PlottedFigures = Readonly<Record<string, MeasureFigure | null>>;
+
+/** Where every plotted row keeps the figures behind its numbers, for the
+ *  tooltip to say each one as its state allows. */
+export const FIGURES_KEY = "figures";
 
 /**
  * One grouped value off a row, by the position of the axis in the request.

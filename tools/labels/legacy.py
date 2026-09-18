@@ -95,10 +95,10 @@ MAP_CONSTRUCTOR = "legacyLabelMap"
 #: never notice. An export that is not here and is not a map or a humanising
 #: renderer is a FAULT — the gate refuses to guess.
 #:
-#: The twenty-two value lists and three types are pinned BY NAME rather than
+#: The twenty-four value lists and three types are pinned BY NAME rather than
 #: matched by shape. A rule saying "an `as const` array is a value list, and a
-#: value list is G2's subject" would be true of these twenty-five and false of
-#: the twenty-sixth somebody adds, and nothing would say so. #371 added three
+#: value list is G2's subject" would be true of these twenty-seven and false of
+#: the twenty-eighth somebody adds, and nothing would say so. #371 added three
 #: of them in one commit and each one had to be classified by hand, which is
 #: the gate working rather than the gate being in the way. (Thirteen and
 #: sixteen until #425 held `usage_event_kind` by reference, fourteen and
@@ -106,8 +106,9 @@ MAP_CONSTRUCTOR = "legacyLabelMap"
 #: and nineteen until #463 held `affordability_reason`, seventeen and twenty
 #: until #466 held `control_family` and `reason_code`, nineteen and twenty-two
 #: until #468 held `spend_pool_enforce_mode`, twenty and twenty-three until
-#: #508 held `recognition_method` and `revenue_basis`; the counts are re-taken
-#: from the map below each time rather than incremented.)
+#: #508 held `recognition_method` and `revenue_basis`, twenty-two and
+#: twenty-five until #510 held `analytics_measure` and `measure_status`; the
+#: counts are re-taken from the map below each time rather than incremented.)
 _VALUE_SET = ("a canonical value set the console still restates. Not this "
               "gate's subject: G2 and G3 ask whether a consumer holds a value "
               "BY REFERENCE, and this file already has their ledger entries")
@@ -142,7 +143,9 @@ DECLARED_NON_LABEL_EXPORTS = {
     "TRIGGER_SOURCES": _BY_REFERENCE,
     "USAGE_EVENT_KINDS": _BY_REFERENCE,
     "ANALYTICS_GROUPING_KINDS": _BY_REFERENCE,
+    "ANALYTICS_MEASURES": _BY_REFERENCE,
     "ANALYTICS_ROLLUPS": _BY_REFERENCE,
+    "MEASURE_STATUSES": _BY_REFERENCE,
     "RECOGNITION_METHODS": _BY_REFERENCE,
     "REVENUE_BASES": _BY_REFERENCE,
     "WEBHOOK_EVENT_TYPES": _BY_REFERENCE,

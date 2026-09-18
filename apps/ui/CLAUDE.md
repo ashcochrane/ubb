@@ -98,6 +98,17 @@ obligation with teeth: a slice that introduces or changes an economic state owes
 **and** a rendering assertion that the state renders as itself. A slice that renames a table owes
 nothing.
 
+**A MEASURE of the one economic query is a figure with a state, never an amount** (#510). Read it
+with `figureOn` (`src/lib/economic-query.ts`), draw it with `MeasureValue` / `MarginShare`
+(`components/shared/measure-value.tsx`), and let `@/lib/measure-state` say it: `known` is the
+amount, `incomplete` a bound with its count, and `unavailable_at_requested_grain`,
+`unavailable_outside_retention_horizon` and `not_applicable` render as the state — never a currency
+zero, never the placed part of a revenue. A number-shaped caller (a chart, a sort) asks
+`statedValue`, which is a GAP where the state states none; folding rows is `combineFigures`, never a
+sum. An answer's `context` and its horizons are the rest of the answer: `caveatsOf` keeps them, and
+an empty answer whose window reaches past its governing horizon renders `RetentionHorizonNote`,
+not "no usage".
+
 **A fixture is not complete until a mock or a component test consumes it**, and
 `economic-scenarios.reachability.test.ts` is what says so rather than a reviewer (#371). A scenario
 reaching only `economic-scenarios.test.ts` proves the scenario is well-formed and nothing about the

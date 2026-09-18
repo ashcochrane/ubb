@@ -14,18 +14,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMicros } from "@/lib/format";
-import {
-  marginBound,
-  marginPercentBound,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+import { MarginShare, MeasureValue } from "@/components/shared/measure-value";
+import { isNegative } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
 import { useCustomerEconomics } from "../api/queries";
 import type { Window } from "../api/types";
 import {
-  customerEconomics,
   shortId,
   sortCustomers,
   type CustomerSortKey,
@@ -181,11 +176,9 @@ function EconomicsRows({
         </TableHeader>
         <TableBody>
           {visible.map((row) => {
-            const view = customerEconomics(row);
             // ⚠ A ROW MAY STATE NO MARGIN AT ALL, and an absence is not a loss:
-            // null is neither negative nor zero, so it is styled as neither.
-            const negative =
-              view.margin_micros !== null && view.margin_micros < 0;
+            // it is neither negative nor zero, so it is styled as neither.
+            const negative = isNegative(row.margin);
             return (
               <TableRow key={row.customer_id}>
                 <TableCell>
@@ -206,28 +199,25 @@ function EconomicsRows({
                   </span>
                 </TableCell>
                 <TableCell className="text-right font-medium">
-                  {formatMicros(view.revenue_micros, currency)}
+                  <MeasureValue figure={row.revenue} currency={currency} />
                 </TableCell>
-                {/* Each customer's total carries its OWN count: an unresolved
-                    cost belongs to the customer it was incurred for, and a
-                    table that bounded every row on the window's total would
-                    caveat nine rows for one customer's missing invoice. */}
+                {/* Each customer's figures carry their OWN counts: an
+                    unresolved cost belongs to the customer it was incurred
+                    for, and a table that bounded every row on the window's
+                    total would caveat nine rows for one customer's missing
+                    invoice. */}
                 <TableCell className="text-right text-text-secondary">
-                  {supplierCostTotal(row.provider_cost_micros, row, currency)}
+                  <MeasureValue figure={row.cost} currency={currency} />
                 </TableCell>
                 <TableCell
                   className={cn("text-right font-medium", negative && "text-destructive")}
                 >
-                  {view.margin_micros === null
-                    ? "—"
-                    : marginBound(view.margin_micros, row, currency)}
+                  <MeasureValue figure={row.margin} currency={currency} />
                 </TableCell>
                 <TableCell
                   className={cn("text-right", negative && "text-destructive")}
                 >
-                  {view.margin_micros === null
-                    ? "—"
-                    : marginPercentBound(view.margin_pct, row)}
+                  <MarginShare margin={row.margin} revenue={row.revenue} />
                 </TableCell>
               </TableRow>
             );

@@ -1281,18 +1281,12 @@ entries:
   # been the vacuous form of paying this. Its G4 twin died with it, after the
   # regeneration: the two were one debt read from two sides.
 
-  - id: g2-console-analytics_measure
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::analytics_measure
-    expected: analytics_measure
-    found: 0 of 4 values
-    owner_slice: slice_7
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. The three measures and the event count are what
-      slice 7 rebuilds the analytics surface around (#145, #141's
-      unknown-revenue rule).
+  # g2-console-analytics_measure WAS HERE AND IS PAID (#510, slice 7). `labels.ts`
+  # holds `ANALYTICS_MEASURES = ANALYTICS_MEASURE_VALUES` by reference, and the
+  # measures are held where they are used: `@/lib/economic-query` types each
+  # request name against the generated `AnalyticsMeasure` and asks for the
+  # generated list whole, and every economic surface reads a measure as a figure
+  # with its state rather than as an amount coalesced to zero.
 
   # g2-console-control_family WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
   # holds `CONTROL_FAMILIES = CONTROL_FAMILY_VALUES` by reference; the words
@@ -1314,25 +1308,16 @@ entries:
       `meter_only` to slice 8 for the same reason, and this entry must not
       fall earlier than that one.
 
-  - id: g2-console-measure_status
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::measure_status
-    expected: measure_status
-    found: 0 of 5 values
-    owner_slice: slice_7
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. A measure that is unavailable at the requested
-      grain must never render as zero (#141, #147). Slice 7 rebuilds the
-      analytics surface that has to say so.
-      ⚠ 4 -> 5 in #500, a RE-STATEMENT of this entry's extent and not a
-      payment: the concept gained
-      `unavailable_outside_retention_horizon` and the console holds none of the
-      five either way. #510 renders all five states, and this entry falls
-      there — #500 deliberately declares no console consumer of its own, since
-      the census would then print an OWED console verdict and that would be a
-      NEW entry rather than a re-stated one.
+  # g2-console-measure_status WAS HERE AND IS PAID (#510, slice 7). `labels.ts`
+  # holds `MEASURE_STATUSES = MEASURE_STATUS_VALUES` by reference, and the five
+  # states render: `@/lib/measure-state` binds their words off the catalogue
+  # and the rule for each (a bound with its count, the state and never a figure,
+  # the day a series can start), `components/shared/measure-value.tsx` draws
+  # them and an unfamiliar sixth through the open-set helper, and
+  # `@/lib/economic-scenarios` composes one fixture per state, each consumed by
+  # a rendering assertion (the reachability test lists all five). The words
+  # moved in the same commit, which is what makes this a payment rather than an
+  # import beside a hand-written map.
 
   # ⚠ `pricing_method`, `pricing_status` AND `rate_structure` ARE ALL HELD BY
   # REFERENCE IN #371, and their three entries are deleted together. Each is

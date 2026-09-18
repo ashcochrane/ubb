@@ -40,9 +40,11 @@ describe("BillingPage", () => {
     expect(screen.getByText("Customer usage invoices")).toBeInTheDocument();
     expect(screen.getByText("Manual ledger adjustments")).toBeInTheDocument();
 
-    // Revenue tiles resolve ("Provider cost"/"Markup" appear as tile + legend).
+    // Revenue tiles resolve ("Provider cost"/"Gross margin" appear as tile +
+    // legend; the legend read "Markup" until #510, the word #501 retired).
     expect((await screen.findAllByText("Provider cost")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Markup").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Gross margin").length).toBeGreaterThan(1);
+    expect(screen.queryByText("Markup")).not.toBeInTheDocument();
 
     // The pool form prefilled from GET (cap 2,500 USD → "2500").
     const capInput = await screen.findByLabelText(/Monthly cap/);
@@ -92,8 +94,9 @@ describe("BillingPage", () => {
     // The note beside them says how many events are missing and which way the
     // total is wrong — a marker alone would leave the reader to guess.
     expect(screen.getByText(/3 events have a supplier cost/)).toBeInTheDocument();
-    // Billed cost is NOT NULL at the column and whole by construction, so it is
-    // rendered as the figure it is.
+    // Every price in this fixture resolved, so the revenue reads `known` and is
+    // drawn as the figure it is — while the margin beside it is a bound, from
+    // the cost side alone (§15).
     expect(screen.getAllByText(/^\$[\d,]+\.\d\d$/).length).toBeGreaterThan(0);
   });
 

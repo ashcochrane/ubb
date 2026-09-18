@@ -10,16 +10,19 @@ import type {
   RootSchemas,
 } from "@/api/types";
 import {
-  amountOn,
   axisValueOn,
-  completenessOn,
-  eventsOn,
+  caveatsOf,
+  figureOn,
   onlyRow,
   CUSTOMER_REVENUE,
   GROSS_MARGIN,
+  RECORDED_EVENTS,
   SUPPLIER_COGS,
+  type AnswerCaveats,
   type EconomicsAnswer,
+  type MeasureFigure,
 } from "@/lib/economic-query";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 export type UsageEventRow = MeteringSchemas["UsageEventOut"];
 export type UsageEventDetail = MeteringSchemas["UsageEventDetailOut"];
@@ -30,25 +33,26 @@ export type UsagePage = MeteringSchemas["PaginatedUsageResponse"];
 // turn it into the three views this page has always rendered.
 export type Economics = EconomicsAnswer;
 
-/** The window's totals, from the ungrouped answer's single row. */
+/**
+ * The window's totals, from the ungrouped answer's single row — each measure a
+ * figure with its state (#510). This carried four numbers coalesced to zero,
+ * so a window reaching back past the economic horizon printed "$0.00" and
+ * "0 events" on the strip.
+ */
 export interface WindowTotals {
-  event_count: number;
-  revenue_micros: number;
-  provider_cost_micros: number;
-  /** Null where UBB states no margin — never a zero. */
-  margin_micros: number | null;
-  unresolved_event_count: number;
-  unpriced_event_count: number;
+  events: MeasureFigure | null;
+  revenue: MeasureFigure | null;
+  cost: MeasureFigure | null;
+  margin: MeasureFigure | null;
 }
 
 export function toWindowTotals(answer: Economics): WindowTotals {
   const row = onlyRow(answer);
   return {
-    event_count: eventsOn(row) ?? 0,
-    revenue_micros: amountOn(row, CUSTOMER_REVENUE) ?? 0,
-    provider_cost_micros: amountOn(row, SUPPLIER_COGS) ?? 0,
-    margin_micros: amountOn(row, GROSS_MARGIN),
-    ...completenessOn(row),
+    events: figureOn(row, RECORDED_EVENTS),
+    revenue: figureOn(row, CUSTOMER_REVENUE),
+    cost: figureOn(row, SUPPLIER_COGS),
+    margin: figureOn(row, GROSS_MARGIN),
   };
 }
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
@@ -110,6 +114,15 @@ export interface TimeseriesParams {
   end_date: string;
   customer_id?: string;
   group_by?: string;
+  /**
+   * What a GROUPED question asks for — the measures the chosen axis answers
+   * (#510). The chart used to ask for all three money measures under any axis,
+   * and the measurement-concept rollup declares all three unsupported, so
+   * picking it was a 422 against a real server. The card reads the axis's
+   * discovery entry and asks only for what it can draw; an ungrouped question
+   * asks for everything and ignores this.
+   */
+  measures?: readonly AnalyticsMeasure[];
 }
 
 // ---------------------------------------------------------------------------
@@ -216,17 +229,27 @@ export function asStopContextEntries(
 // Timeseries rows — spec-untyped objects.
 // [backend-verified shape — see discovery spec §2.2]
 
+/**
+ * One row of a day-bucketed answer: each measure a figure with its state, or
+ * null where the question did not ask for it (#510).
+ *
+ * These were four numbers coalesced to zero, so a bucket past a horizon — or a
+ * revenue a grouping could not place — plotted as a real zero.
+ */
 export interface TimeseriesPoint {
   bucket: string;
-  provider_cost_micros: number;
-  revenue_micros: number;
-  /** Null where UBB states no margin for the bucket. */
-  margin_micros: number | null;
-  event_count: number;
-  /** This bucket's own uncosted events — the server answers it per bucket. */
-  unresolved_event_count: number;
+  cost: MeasureFigure | null;
+  revenue: MeasureFigure | null;
+  margin: MeasureFigure | null;
+  events: MeasureFigure | null;
   /** Present only when group_by was requested; "(unattributed)" for empties. */
   group_value?: string;
+}
+
+/** The series, and what the answer said beside it — the revenue it could not
+ *  place, and the day the records a window reaches past are held from. */
+export interface Timeseries extends AnswerCaveats {
+  points: TimeseriesPoint[];
 }
 
 /**
@@ -250,20 +273,22 @@ export interface TimeseriesPoint {
  */
 export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
-export function asTimeseriesPoints(answer: Economics): TimeseriesPoint[] {
-  return answer.rows.map((row) => {
-    const point: TimeseriesPoint = {
-      bucket: row.bucket_start ?? "",
-      provider_cost_micros: amountOn(row, SUPPLIER_COGS) ?? 0,
-      revenue_micros: amountOn(row, CUSTOMER_REVENUE) ?? 0,
-      margin_micros: amountOn(row, GROSS_MARGIN),
-      event_count: eventsOn(row) ?? 0,
-      unresolved_event_count: completenessOn(row).unresolved_event_count,
-    };
-    const value = axisValueOn(row);
-    if (value !== null) point.group_value = value;
-    return point;
-  });
+export function asTimeseriesPoints(answer: Economics): Timeseries {
+  return {
+    ...caveatsOf(answer),
+    points: answer.rows.map((row) => {
+      const point: TimeseriesPoint = {
+        bucket: row.bucket_start ?? "",
+        cost: figureOn(row, SUPPLIER_COGS),
+        revenue: figureOn(row, CUSTOMER_REVENUE),
+        margin: figureOn(row, GROSS_MARGIN),
+        events: figureOn(row, RECORDED_EVENTS),
+      };
+      const value = axisValueOn(row);
+      if (value !== null) point.group_value = value;
+      return point;
+    }),
+  };
 }
 
 // ⚠ THE PAST-LIMIT REPORT'S NARROWING WAS HERE AND IS DELETED (#466). The

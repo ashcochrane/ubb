@@ -1,21 +1,27 @@
 import { ChartCard } from "@/components/shared/chart-card";
 import { ErrorCard } from "@/components/shared/error-card";
+import {
+  MeasureValue,
+  RetentionHorizonNote,
+  RevenueContext,
+} from "@/components/shared/measure-value";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatMicros } from "@/lib/format";
+import { CUSTOMER_REVENUE, statedValue } from "@/lib/economic-query";
 import { ubbAxisTitle } from "@/lib/grouping-axis";
+import { readingText, readMeasure } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
 import {
   BREAKDOWN_AXES,
+  type Breakdown,
   type BreakdownAxis,
-  type BreakdownRow,
 } from "../api/types";
-import { topWithOther } from "../lib/economics";
+import { plottedMeasureOf, topWithOther } from "../lib/economics";
 import { SectionEmpty } from "./section-empty";
 
 /** The slice of the grouped-economics query result this card consumes. */
 export interface AnalyticsQueryLike {
-  data: BreakdownRow[] | undefined;
+  data: Breakdown | undefined;
   isPending: boolean;
   isError: boolean;
   error: unknown;
@@ -97,9 +103,13 @@ function BreakdownBody({
   }
   if (!query.data) return null;
 
-  const bars = topWithOther(query.data, 8);
+  const bars = topWithOther(query.data.rows, 8);
   if (bars.length === 0) {
-    return (
+    // ⚠ AN EMPTY ANSWER IS "NO USAGE" ONLY WHERE THE WINDOW IS INSIDE THE
+    // RECORDS IT READS; past their horizon it is a stretch UBB no longer holds.
+    return query.data.held_from !== null ? (
+      <RetentionHorizonNote caveats={query.data} />
+    ) : (
       <SectionEmpty
         title="No usage in this window"
         description="Record events with provider, event type, or product attributes to see cost split here."
@@ -108,7 +118,9 @@ function BreakdownBody({
     );
   }
 
-  const max = bars.reduce((m, bar) => Math.max(m, bar.revenue_micros), 0);
+  const plotsRevenue = plottedMeasureOf(query.data.rows) === CUSTOMER_REVENUE;
+  const axis = ubbAxisTitle(groupBy).toLowerCase();
+  const max = bars.reduce((m, bar) => Math.max(m, statedValue(bar.plotted) ?? 0), 0);
   return (
     <div
       className={cn(
@@ -116,36 +128,49 @@ function BreakdownBody({
         query.isPlaceholderData && "opacity-60",
       )}
     >
-      {bars.map((bar) => (
-        <div key={bar.name}>
-          <div className="mb-1 flex items-baseline justify-between gap-3 text-[12px]">
-            <span
-              className={cn(
-                "truncate",
-                bar.isOther ? "text-text-muted" : "text-text-secondary",
+      {bars.map((bar) => {
+        const length = statedValue(bar.plotted);
+        return (
+          <div key={bar.name}>
+            <div className="mb-1 flex items-baseline justify-between gap-3 text-[12px]">
+              <span
+                className={cn(
+                  "truncate",
+                  bar.isOther ? "text-text-muted" : "text-text-secondary",
+                )}
+                title={`${bar.name} — ${readingText(readMeasure(bar.cost, currency))} provider cost`}
+              >
+                {bar.name}
+              </span>
+              <span className="shrink-0 font-medium text-text-primary">
+                <MeasureValue figure={bar.plotted} currency={currency} />
+              </span>
+            </div>
+            {/* A bar is drawn only for a figure the state states: a gap is not
+                a zero-length bar, which would read as "nothing". */}
+            <div className="h-1.5 overflow-hidden rounded-full bg-bg-subtle">
+              {length !== null && (
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: max === 0 ? "0%" : `${Math.max(2, (length / max) * 100)}%`,
+                    backgroundColor: bar.isOther ? "var(--chart-3)" : "var(--chart-1)",
+                  }}
+                />
               )}
-              title={`${bar.name} — ${formatMicros(bar.provider_micros, currency)} provider cost`}
-            >
-              {bar.name}
-            </span>
-            <span className="shrink-0 font-medium text-text-primary">
-              {formatMicros(bar.revenue_micros, currency)}
-            </span>
+            </div>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-bg-subtle">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: max === 0 ? "0%" : `${Math.max(2, (bar.revenue_micros / max) * 100)}%`,
-                backgroundColor: bar.isOther ? "var(--chart-3)" : "var(--chart-1)",
-              }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <p className="pt-1 text-[11px] text-text-muted">
-        Revenue by {ubbAxisTitle(groupBy).toLowerCase()}, top 8 shown.
+        {plotsRevenue
+          ? `Revenue by ${axis}, top 8 shown.`
+          : `Provider cost by ${axis}, top 8 shown. Revenue by ${axis}: ${readingText(
+              readMeasure(bars[0]?.revenue ?? null, currency),
+            )}.`}
       </p>
+      <RevenueContext context={query.data.context} currency={currency} />
+      <RetentionHorizonNote caveats={query.data} />
     </div>
   );
 }
