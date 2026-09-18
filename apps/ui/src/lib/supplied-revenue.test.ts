@@ -25,8 +25,13 @@ describe("revenueBasisNote", () => {
   // reading a day's revenue has to be able to tell a figure earned that day
   // from a slice of one earned across a quarter.
   it("says of each view whether it divides anything", () => {
-    expect(revenueBasisNote("recorded")).toContain("nothing is divided");
+    // ⚠ CAPITALISED, because the meaning is TWO sentences. An earlier draft
+    // lowercased the whole string and put a lower-case letter after a full
+    // stop — and these very assertions pinned the defect in place.
+    expect(revenueBasisNote("recorded")).toContain("Nothing is divided");
     expect(revenueBasisNote("recognised")).toContain("spread across the period");
+    // The join is lower-cased at the seam and nowhere else.
+    expect(revenueBasisNote("recorded")).toContain("— each figure whole");
   });
 
   it("names the view the catalogue's own word for it", () => {

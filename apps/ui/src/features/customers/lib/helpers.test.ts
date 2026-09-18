@@ -106,6 +106,7 @@ describe("suppliedPeriod", () => {
       period_end: "2026-07-01",
       days: 30,
       partial: false,
+      months: 1,
     });
   });
 
@@ -118,6 +119,7 @@ describe("suppliedPeriod", () => {
       period_end: "2026-07-01",
       days: 17,
       partial: true,
+      months: 1,
     });
   });
 
@@ -127,6 +129,7 @@ describe("suppliedPeriod", () => {
       period_end: "2026-07-01",
       days: 30,
       partial: false,
+      months: 1,
     });
   });
 
@@ -139,12 +142,43 @@ describe("suppliedPeriod", () => {
       period_end: "2027-01-01",
       days: 18,
       partial: true,
+      months: 1,
     });
   });
 
   it("counts February's own length rather than a nominal month", () => {
     expect(suppliedPeriod("2026-02", "")?.days).toBe(28);
     expect(suppliedPeriod("2028-02", "")?.days).toBe(29);
+  });
+
+  // ⚠ A FIGURE MAY COVER MORE THAN THE MONTH IT OPENS IN. §9 says the record
+  // carries the period it actually covers, and a tenant invoicing quarterly
+  // earned that money across three months — a form that could only say "one
+  // month" would make them state three rows for one invoice, moving the
+  // data-entry burden rather than removing it.
+  it("runs a span across as many months as it covers", () => {
+    expect(suppliedPeriod("2026-07", "", 3)).toEqual({
+      period_start: "2026-07-01",
+      period_end: "2026-10-01",
+      days: 92,
+      partial: false,
+      months: 3,
+    });
+  });
+
+  it("carries a part month at the head of a longer span", () => {
+    expect(suppliedPeriod("2026-06", "2026-06-14", 3)).toEqual({
+      period_start: "2026-06-14",
+      period_end: "2026-09-01",
+      days: 79,
+      partial: true,
+      months: 3,
+    });
+  });
+
+  it("answers null for a span of no months at all", () => {
+    expect(suppliedPeriod("2026-06", "", 0)).toBeNull();
+    expect(suppliedPeriod("2026-06", "", 1.5)).toBeNull();
   });
 
   it("answers null for a day outside the month it names", () => {

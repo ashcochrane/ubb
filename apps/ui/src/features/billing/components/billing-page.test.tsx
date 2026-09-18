@@ -69,7 +69,7 @@ describe("BillingPage", () => {
 
     const note = await screen.findByText(/Revenue stated as/);
     expect(note.getAttribute("data-revenue-basis")).toBe("recorded");
-    expect(note).toHaveTextContent("nothing is divided");
+    expect(note).toHaveTextContent("Nothing is divided");
   });
 
   // #330: the window's supplier total is a FLOOR whenever it holds events UBB

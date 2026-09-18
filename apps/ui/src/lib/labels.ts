@@ -484,8 +484,8 @@ export const ANALYTICS_ROLLUPS = ANALYTICS_ROLLUP_VALUES;
 // and the declaration and this reference land together.
 //
 // ⚠ AND NOTHING IMPORTS EITHER FROM HERE, for the reason the pair above gives:
-// `features/customers/lib/supplied-revenue.ts` and the panels read the
-// generated constants directly. The alias is what the census reads.
+// `@/lib/supplied-revenue` and the panels read the generated constants
+// directly. The alias is what the census reads.
 export const RECOGNITION_METHODS = RECOGNITION_METHOD_VALUES;
 export const REVENUE_BASES = REVENUE_BASIS_VALUES;
 

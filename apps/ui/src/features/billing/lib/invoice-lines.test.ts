@@ -34,8 +34,21 @@ describe("cardinalityWarning", () => {
   it("warns on a capped axis, naming the cap and preferring a rollup", () => {
     const warning = cardinalityWarning(option({ max_cardinality: 200 }));
     expect(warning).toContain("200");
-    expect(warning).toContain("one line per value");
+    expect(warning).toContain("one line per distinct value");
     expect(warning).toContain(ROLLUPS_ARE_PREFERRED);
+  });
+
+  // ⚠ **THE CAP IS NOT A CEILING ON THE LINE COUNT, AND SAYING SO WOULD
+  // REASSURE EXACTLY WHERE THE SERVER WARNS.** `invoice_line_cardinality_warning`
+  // exists because the values actually recorded CAN exceed the declared
+  // maximum — its own sentence is "has recorded more than {ceiling} distinct
+  // values" — so a console promising the invoice "could run to 200 lines"
+  // would be contradicting the warning it is there to anticipate.
+  it("does not present the declared cap as a limit on the line count", () => {
+    const warning = cardinalityWarning(option({ max_cardinality: 200 })) ?? "";
+    expect(warning).toContain("nothing caps how many that is");
+    expect(warning).not.toMatch(/could run to 200 lines/);
+    expect(warning).not.toMatch(/at most 200/);
   });
 
   // ⚠ NOT AN OMISSION. UBB's own axes and the rollups carry no declared cap,

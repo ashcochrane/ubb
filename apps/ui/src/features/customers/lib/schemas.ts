@@ -206,6 +206,15 @@ export const suppliedRevenueSchema = z
     month: z.string().trim().min(1, "Choose the month this covers"),
     /** "" = the whole month; otherwise the day the customer began. */
     began_on: z.string().trim(),
+    /** How many whole months the figure covers, from the month it opens in. */
+    months: z
+      .string()
+      .trim()
+      .min(1, "Say how many months this covers")
+      .refine(
+        (value) => Number.isInteger(Number(value)) && Number(value) >= 1,
+        "Enter one month or more",
+      ),
     // The registry's closed pair, held BY REFERENCE — so a third method is a
     // `tsc` failure at the radio list rather than a value the form can never
     // send.
@@ -217,7 +226,7 @@ export const suppliedRevenueSchema = z
       .max(255, "255 characters max"),
   })
   .superRefine((value, ctx) => {
-    if (suppliedPeriod(value.month, value.began_on) === null) {
+    if (suppliedPeriod(value.month, value.began_on, Number(value.months)) === null) {
       ctx.addIssue({
         code: "custom",
         // The month is valid on its own in the case that actually happens -

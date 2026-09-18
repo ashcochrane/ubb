@@ -109,7 +109,28 @@ export function spreadsAcrossItsSpan(method: string): boolean {
 export function revenueBasisNote(basis: string): string {
   const meaning = REVENUE_BASIS_MEANS[basis as RevenueBasis];
   const named = revenueBasisLabel(basis);
-  return meaning === undefined
-    ? `Revenue stated on the ${named} basis.`
-    : `Revenue stated as ${named.toLowerCase()} — ${meaning.toLowerCase()}`;
+  if (meaning === undefined) return `Revenue stated on the ${named} basis.`;
+  // ⚠ ONLY THE FIRST LETTER, because the meaning is TWO sentences. Lowercasing
+  // the whole string put a lower-case letter after a full stop — "…period
+  // opens. nothing is divided." — which shipped, and which the tests pinned.
+  const joined = meaning.charAt(0).toLowerCase() + meaning.slice(1);
+  return `Revenue stated as ${named.toLowerCase()} — ${joined}`;
+}
+
+/**
+ * Whole days between two ISO calendar dates, the way every span in this
+ * vocabulary is counted.
+ *
+ * ⚠ **ONE COPY, BECAUSE THREE APPEARED IN ONE COMMIT.** The form's derived
+ * period, the mock's attribution and the panel's own span all count the days
+ * between two dates, and a supplied amount is DIVIDED by this number under a
+ * spreading method — so three implementations is three chances for a figure to
+ * differ from the one the server computed. The division is by whole days, which
+ * is the arithmetic `SuppliedRevenueService` uses.
+ */
+export function wholeDaysBetween(fromIso: string, toIso: string): number {
+  return Math.round(
+    (Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`))
+    / 86_400_000,
+  );
 }

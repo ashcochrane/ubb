@@ -72,9 +72,18 @@ export function cardinalityWarning(
   if (!option) return null;
   const ceiling = option.max_cardinality;
   if (ceiling === null || ceiling === undefined) return null;
+  // ⚠ **THE CAP IS NOT A CEILING ON THE LINE COUNT AND MUST NOT BE WORDED AS
+  // ONE.** An earlier draft said the invoice "could run to {ceiling} lines",
+  // which reassures exactly where the server warns: `max_cardinality` is a
+  // bound the tenant DECLARED, and `invoice_line_cardinality_warning` exists
+  // because the values actually recorded can exceed it — its own sentence is
+  // "has recorded more than {ceiling} distinct values". So this says the count
+  // is unbounded by anything UBB enforces, and names the cap as the number the
+  // server measures against.
   return (
-    `This axis is capped at ${ceiling} distinct values, and an invoice grouped `
-    + `by it carries one line per value — so it could run to ${ceiling} lines. `
+    `An invoice grouped by this axis carries one line per distinct value, and `
+    + `nothing caps how many that is — you declared ${ceiling} as the most you `
+    + `expect, and UBB warns you when this axis has recorded more than that. `
     + `${ROLLUPS_ARE_PREFERRED}`
   );
 }

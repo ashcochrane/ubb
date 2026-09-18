@@ -24,7 +24,14 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  suppliedRevenueKnown,
+  suppliedRevenueUnknown,
+  type SuppliedRevenueScenario,
+} from "@/lib/economic-scenarios";
+
 import { CUS_LUNA, CUS_NOVA } from "../api/mock-data";
+import type { AttributedSuppliedRevenue } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import {
   MARGIN_UNAVAILABLE_NOT_ZERO,
@@ -91,10 +98,17 @@ function field(label: string | RegExp) {
   return screen.findByLabelText(label);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   role.value = "admin";
-  provider.getSuppliedRevenue.mockClear();
-  provider.recordSuppliedRevenue.mockClear();
+  // ⚠ RESET TO THE FEATURE'S OWN MOCK, not merely cleared. Two cases below
+  // hand the panel an answer assembled in this file; without restoring the
+  // implementation, every case after them would silently read that answer
+  // instead of the fixture it meant to.
+  const mock = await vi.importActual<typeof import("../api/mock")>("../api/mock");
+  provider.getSuppliedRevenue.mockReset();
+  provider.getSuppliedRevenue.mockImplementation(mock.getSuppliedRevenue);
+  provider.recordSuppliedRevenue.mockReset();
+  provider.recordSuppliedRevenue.mockImplementation(mock.recordSuppliedRevenue);
 });
 
 describe("a tenant that supplies revenue", () => {
@@ -168,6 +182,82 @@ describe("a tenant that supplies revenue", () => {
     // method says so — so the mark is per record and not per view.
     const fee = within(panel).getByText("SETUP-FEE-114").closest("li");
     expect(fee?.getAttribute("data-distributed")).toBe("no");
+  });
+});
+
+// ⚠ **THE WINDOW'S STATE, ON A FIXTURE THE MOCK DOES NOT AUTHOR (§9.2).** The
+// cases below hand the panel an answer assembled in this file from
+// `@/lib/economic-scenarios`, because a mock returns its own fixture and
+// narrows along with the module — so a component test fed only by the mock goes
+// on receiving exactly what it always received and cannot fail. The composers
+// pair `pricing_status` with `totals` so that neither half can be stated
+// without the other: there is no way to write `unknown` beside a figure, and no
+// way to write `known` beside nothing.
+function windowOf(state: SuppliedRevenueScenario, records: AttributedSuppliedRevenue[]) {
+  return {
+    basis: "recorded",
+    window: { start: JULY.start_date, end: JULY.end_date },
+    ...state,
+    records,
+  };
+}
+
+const ONE_RECORD: AttributedSuppliedRevenue = {
+  id: "rev_assembled",
+  amount_micros: 250_000_000,
+  currency: "usd",
+  period_start: "2026-07-10",
+  period_end: null,
+  recognition_method: "on_receipt",
+  source_reference: "ASSEMBLED-1",
+  recorded_at: "2026-07-10T16:40:00Z",
+  attributed_amount_micros: 250_000_000,
+};
+
+describe("the window's own state decides what is shown", () => {
+  it("renders the unknown state as itself, never as a zero", async () => {
+    provider.getSuppliedRevenue.mockResolvedValue(
+      windowOf(suppliedRevenueUnknown(), []),
+    );
+    renderWithProviders(<RevenuePanels customerId={CUS_LUNA} range={JULY} />);
+
+    const panel = await supplied();
+    expect(await within(panel).findByText(REVENUE_UNKNOWN_HERE)).toBeInTheDocument();
+    expect(panel.querySelector('[data-revenue="unknown"]')).not.toBeNull();
+    expect(within(panel).queryByText("$0.00")).not.toBeInTheDocument();
+  });
+
+  // The foil. Without it the case above is satisfied by a panel that renders
+  // the absence for every answer, which is not the rule being checked.
+  it("renders the known state as the figure it states", async () => {
+    provider.getSuppliedRevenue.mockResolvedValue(
+      windowOf(
+        suppliedRevenueKnown([{ currency: "usd", amount_micros: 250_000_000 }]),
+        [ONE_RECORD],
+      ),
+    );
+    renderWithProviders(<RevenuePanels customerId={CUS_LUNA} range={JULY} />);
+
+    const panel = await supplied();
+    expect(await within(panel).findByText("ASSEMBLED-1")).toBeInTheDocument();
+    expect(within(panel).queryByText(REVENUE_UNKNOWN_HERE)).not.toBeInTheDocument();
+  });
+
+  // ⚠ **THE STATE IS READ, NOT COUNTED OFF THE ROWS.** An answer carrying a
+  // status this build has no words for must not be reported as "nothing was
+  // supplied" — that is a claim about the tenant's data, made from a value the
+  // console did not understand. It renders the token, marked.
+  it("does not claim nothing was supplied for a state it cannot read", async () => {
+    provider.getSuppliedRevenue.mockResolvedValue({
+      ...windowOf(suppliedRevenueUnknown(), []),
+      pricing_status: "under_review",
+    });
+    renderWithProviders(<RevenuePanels customerId={CUS_LUNA} range={JULY} />);
+
+    const panel = await supplied();
+    await within(panel).findByText(/UBB is stating no supplied revenue/);
+    expect(within(panel).queryByText(REVENUE_UNKNOWN_HERE)).not.toBeInTheDocument();
+    expect(panel.querySelector('[data-revenue="under_review"]')).not.toBeNull();
   });
 });
 

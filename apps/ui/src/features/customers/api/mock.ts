@@ -12,6 +12,10 @@ import {
   spendPoolAssessment,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
+import {
+  spreadsAcrossItsSpan,
+  wholeDaysBetween,
+} from "@/lib/supplied-revenue";
 import type { AffordabilityReasonKnown, RevenueBasis } from "@/lib/vocabulary";
 
 import {
@@ -225,15 +229,27 @@ export async function getMarginTrend(
 // honest about the answer the API gives. A mock that quietly added a day would
 // hide the one thing a fixture is for.
 
-const MS_PER_DAY = 86_400_000;
-
-function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(to) - Date.parse(from)) / MS_PER_DAY);
-}
-
-/** Whether this record is spread across its own span under `basis`. */
+/**
+ * Whether this record is spread across its own span under `basis`.
+ *
+ * ⚠ **THE METHOD HALF IS ASKED OF `@/lib/supplied-revenue`, NOT DECIDED
+ * HERE.** Which methods divide an amount is one rule with one home, and a mock
+ * carrying its own copy would let the fixture and the panel disagree about
+ * whether a figure had been spread — the mock saying it had while the panel
+ * said it had not is exactly the unlabelled proration §5 exists to end, served
+ * from inside the console.
+ *
+ * ⚠ **AND A SPREADING METHOD WITH NO SPAN IS NOT SPREAD, RATHER THAN
+ * DROPPED.** The record's own check constraint refuses that pair, so the server
+ * never sends one — but a fixture can build one, and answering "distributed"
+ * for it would make the row vanish from one view and not the other. §5 forbids
+ * the silent drop in terms, so the span decides as well as the method.
+ */
 function isDistributed(record: SuppliedRevenueRecord, basis: RevenueBasis): boolean {
-  return basis === "recognised" && record.recognition_method === "straight_line";
+  return (basis === "recognised"
+          && spreadsAcrossItsSpan(record.recognition_method)
+          && record.period_end !== null
+          && record.period_end !== undefined);
 }
 
 /**
@@ -256,9 +272,9 @@ function attributedMicros(
     if (periodEnd === null || periodEnd === undefined) return null;
     const opens = record.period_start > start ? record.period_start : start;
     const closes = periodEnd < end ? periodEnd : end;
-    const overlap = Math.max(daysBetween(opens, closes), 0);
+    const overlap = Math.max(wholeDaysBetween(opens, closes), 0);
     if (overlap === 0) return null;
-    const span = daysBetween(record.period_start, periodEnd);
+    const span = wholeDaysBetween(record.period_start, periodEnd);
     // Integer division by whole days, floored — the service's arithmetic, so
     // the two never disagree about how a part-month is counted.
     return Math.floor((record.amount_micros * overlap) / span);

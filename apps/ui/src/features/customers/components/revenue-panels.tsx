@@ -44,11 +44,19 @@ import type { DateRange } from "@/lib/date-range";
 import { formatCalendarDate, formatMicros } from "@/lib/format";
 import { toastSuccess } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import {
+  PRICING_STATUS_LABEL_KEYS,
   RECOGNITION_METHOD_VALUES,
   REVENUE_BASIS_VALUES,
   type RevenueBasis,
 } from "@/lib/vocabulary";
+
+/** The two states this read serves, spelled once. */
+const PRICING_STATUS_KNOWN = "known";
+const PRICING_STATUS_UNKNOWN = "unknown";
+/** The view that counts a figure in the window its period opens in. */
+const REVENUE_BASIS_RECORDED: RevenueBasis = "recorded";
 
 import { useRecordSuppliedRevenue, useSuppliedRevenue } from "../api/queries";
 import type { AttributedSuppliedRevenue } from "../api/types";
@@ -60,17 +68,43 @@ import {
   REVENUE_BASIS_MEANS,
   revenueBasisLabel,
   spreadsAcrossItsSpan,
+  wholeDaysBetween,
 } from "@/lib/supplied-revenue";
 
 export const SUPPLIED_REVENUE_TITLE = "Revenue you supplied";
 export const STATE_REVENUE_TITLE = "State what you earned";
 
-/** The cost-tracking-only answer, said once so both halves of it agree. */
+/**
+ * The answer where UBB is stating no supplied revenue, said once so both halves
+ * of it agree.
+ *
+ * ⚠ **IT SAYS "ATTRIBUTED TO THIS WINDOW" RATHER THAN "SUPPLIED", AND THE
+ * DIFFERENCE IS A CLAIM THE CONSOLE CANNOT MAKE.** Under the `recorded` view a
+ * record counts in the window its period OPENS in, so a figure covering all of
+ * July, supplied in June, contributes nothing to a July window — the tenant
+ * supplied it, and a panel saying "nothing has been supplied" would be telling
+ * them something false about their own data. The server answers `unknown` for
+ * that case and for the cost-tracking-only tenant alike, because from its side
+ * they are the same fact: nothing is attributable here.
+ */
 export const REVENUE_UNKNOWN_HERE =
-  "Revenue unknown — nothing has been supplied covering this window.";
+  "Revenue unknown — no supplied figure is attributed to this window.";
 export const MARGIN_UNAVAILABLE_NOT_ZERO =
   "UBB is tracking this customer's cost. Margin is unavailable at this scope "
   + "rather than nil: revenue UBB does not know is not revenue of nothing.";
+
+/**
+ * The half of that answer only the `recorded` view needs, and why it is
+ * conditional.
+ *
+ * Under `recognised` a record covering this window contributes to it whatever
+ * month it opened in, so an empty answer there really does mean nothing
+ * covering the window exists. Under `recorded` it does not, and a reader who
+ * can see the other view is one click from the figure.
+ */
+export const RECORDED_COUNTS_AT_ITS_OPENING =
+  "Under the recorded view a figure counts in the window its period opens in. "
+  + "One that opened earlier and covers this window appears under recognised.";
 
 /**
  * How one supplied record's span reads, with the day count that settles it.
@@ -83,10 +117,7 @@ export const MARGIN_UNAVAILABLE_NOT_ZERO =
 function spanOf(record: AttributedSuppliedRevenue): string {
   const opens = formatCalendarDate(record.period_start);
   if (!record.period_end) return `${opens} · a single day`;
-  const days = Math.round(
-    (Date.parse(`${record.period_end}T00:00:00Z`)
-      - Date.parse(`${record.period_start}T00:00:00Z`)) / 86_400_000,
-  );
+  const days = wholeDaysBetween(record.period_start, record.period_end);
   return `${opens} → ${formatCalendarDate(record.period_end)} · ${days} days`;
 }
 
@@ -202,7 +233,7 @@ function SuppliedRevenuePanel({
           <Skeleton className="h-20 w-full" />
         ) : supplied.isError ? (
           <ErrorCard error={supplied.error} onRetry={() => void supplied.refetch()} />
-        ) : supplied.data && supplied.data.records.length > 0 ? (
+        ) : supplied.data && supplied.data.pricing_status === PRICING_STATUS_KNOWN ? (
           // ⚠ **EVERY FIGURE IS LABELLED WITH THE BASIS THE ANSWER STATES, NOT
           // THE ONE THE PICKER IS SET TO, AND THE DIFFERENCE IS VISIBLE FOR AS
           // LONG AS A REFETCH TAKES.** The read keeps the previous answer on
@@ -239,12 +270,39 @@ function SuppliedRevenuePanel({
               ))}
             </ul>
           </>
-        ) : (
-          <div data-revenue="unknown" className="space-y-1">
-            <p className="text-[13px] text-text-primary">{REVENUE_UNKNOWN_HERE}</p>
-            <p className="text-[12px] text-text-secondary">{MARGIN_UNAVAILABLE_NOT_ZERO}</p>
+        ) : supplied.data ? (
+          // ⚠ **THE STATE IS THE ANSWER'S, NOT A COUNT OF THE ROWS.** The read
+          // publishes `pricing_status` — the same concept a posting's price
+          // carries, answering here for a whole window — and deriving it from
+          // `records.length` would be a second copy of a rule the server
+          // already stated, wrong the first time the two disagree. A status
+          // this build has no words for renders as the token, marked, rather
+          // than as a claim that nothing was supplied.
+          <div data-revenue={supplied.data.pricing_status} className="space-y-1">
+            {supplied.data.pricing_status === PRICING_STATUS_UNKNOWN ? (
+              <>
+                <p className="text-[13px] text-text-primary">{REVENUE_UNKNOWN_HERE}</p>
+                <p className="text-[12px] text-text-secondary">
+                  {MARGIN_UNAVAILABLE_NOT_ZERO}
+                </p>
+                {basis === REVENUE_BASIS_RECORDED && (
+                  <p className="text-[12px] text-text-secondary">
+                    {RECORDED_COUNTS_AT_ITS_OPENING}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-[13px] text-text-primary">
+                UBB is stating no supplied revenue for this window:{" "}
+                <OpenSetValue
+                  labelKeys={PRICING_STATUS_LABEL_KEYS}
+                  value={supplied.data.pricing_status}
+                />
+                . {MARGIN_UNAVAILABLE_NOT_ZERO}
+              </p>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
     </Section>
   );
@@ -263,6 +321,7 @@ function StateRevenuePanel({ customerId }: { customerId: string }) {
       amount: "",
       month: "",
       began_on: "",
+      months: "1",
       recognition_method: "straight_line",
       source_reference: "",
     },
@@ -271,14 +330,16 @@ function StateRevenuePanel({ customerId }: { customerId: string }) {
   const { errors } = form.formState;
   const month = form.watch("month");
   const beganOn = form.watch("began_on");
+  const months = form.watch("months");
   const method = form.watch("recognition_method");
   // The derived span, shown as it is typed. This is the affordance: the tenant
   // says which month and which day, and never works out that the fourteenth of
   // June is seventeen days (#153 §19(f)).
-  const period = suppliedPeriod(month, beganOn);
+  const period = suppliedPeriod(month, beganOn, Number(months));
 
   const submit = form.handleSubmit((values) => {
-    const span = suppliedPeriod(values.month, values.began_on);
+    const span = suppliedPeriod(
+      values.month, values.began_on, Number(values.months));
     if (span === null) return;
     mutation.mutate(
       {
@@ -320,9 +381,27 @@ function StateRevenuePanel({ customerId }: { customerId: string }) {
             {(id) => <Input id={id} type="date" {...form.register("began_on")} />}
           </FormField>
 
+          {/* A figure may cover more than the month it opens in — a tenant
+              that invoices quarterly earned that money across three months,
+              and stating it as three rows would move the data-entry burden
+              rather than remove it. */}
+          <FormField
+            label="Months it covers"
+            error={errors.months?.message}
+            hint="One for a single month; three for a quarter."
+          >
+            {(id) => (
+              <Input id={id} inputMode="numeric" className="w-24" {...form.register("months")} />
+            )}
+          </FormField>
+
           {period && (
             <p data-derived-period={period.partial ? "partial" : "whole"} className="text-[12px] text-text-secondary">
-              {period.partial ? "Part period: " : "Whole month: "}
+              {period.partial
+                ? "Part period: "
+                : period.months > 1
+                  ? `Whole ${period.months} months: `
+                  : "Whole month: "}
               {formatCalendarDate(period.period_start)} →{" "}
               {formatCalendarDate(period.period_end)} · {period.days} days
             </p>

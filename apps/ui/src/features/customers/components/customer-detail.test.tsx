@@ -119,7 +119,7 @@ describe("CustomerDetailPage — overview", () => {
 
     const note = await screen.findByText(/Revenue stated as/, undefined, SLOW);
     expect(note.getAttribute("data-revenue-basis")).toBe("recorded");
-    expect(note).toHaveTextContent("nothing is divided");
+    expect(note).toHaveTextContent("Nothing is divided");
   });
 
   // ⚠ AND A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS $0.00.

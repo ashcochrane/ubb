@@ -139,7 +139,7 @@ describe("what the form says about the choice", () => {
     provider.getPostpaidConfig.mockResolvedValue(configuredOn("field:model"));
     renderCard();
 
-    const warning = await screen.findByText(/capped at 200 distinct values/);
+    const warning = await screen.findByText(/one line per distinct value/);
     expect(warning.getAttribute("data-invoice-warning")).toBe("cardinality");
     expect(warning).toHaveTextContent("Rollups are preferred for invoices");
     // It WARNS and never refuses — the save is still available.
@@ -150,7 +150,7 @@ describe("what the form says about the choice", () => {
     provider.getPostpaidConfig.mockResolvedValue(configuredOn("field:event_type"));
     renderCard();
     await screen.findByLabelText("Usage line items");
-    expect(screen.queryByText(/capped at/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/one line per distinct value/)).not.toBeInTheDocument();
   });
 
   // §6: changing a rollup reclassifies history, and that is safe precisely
