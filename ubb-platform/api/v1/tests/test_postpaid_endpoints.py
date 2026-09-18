@@ -54,32 +54,32 @@ class PostpaidEndpointsTest(TestCase):
 
     def test_postpaid_config_get_put(self):
         r = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
-        assert r.status_code == 200 and r.json()["usage_line_item_group_by"] == ""
+        assert r.status_code == 200 and r.json()["group_by"] == ""
         assert r.json()["consolidate_with_subscription"] is False
         r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"usage_line_item_group_by": "field:product_id"}),
+                          data=json.dumps({"group_by": "field:product_id"}),
                           content_type="application/json", **self._auth())
         assert r.status_code == 200
         r = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
-        assert r.json()["usage_line_item_group_by"] == "field:product_id"
+        assert r.json()["group_by"] == "field:product_id"
 
     def test_postpaid_config_consolidation_flag_roundtrip(self):
         r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"usage_line_item_group_by": "field:product_id",
+                          data=json.dumps({"group_by": "field:product_id",
                                            "consolidate_with_subscription": True}),
                           content_type="application/json", **self._auth())
         assert r.status_code == 200 and r.json()["consolidate_with_subscription"] is True
         # F5.5: a group_by-only PUT (flag omitted) must NOT flip the opt-in off.
         r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"usage_line_item_group_by": "field:model"}),
+                          data=json.dumps({"group_by": "field:model"}),
                           content_type="application/json", **self._auth())
         assert r.status_code == 200
         body = r.json()
-        assert body["usage_line_item_group_by"] == "field:model"
+        assert body["group_by"] == "field:model"
         assert body["consolidate_with_subscription"] is True
         # An explicit false switches it off.
         r = self.http.put("/api/v1/billing/postpaid-config",
-                          data=json.dumps({"usage_line_item_group_by": "field:model",
+                          data=json.dumps({"group_by": "field:model",
                                            "consolidate_with_subscription": False}),
                           content_type="application/json", **self._auth())
         assert r.json()["consolidate_with_subscription"] is False
@@ -114,7 +114,7 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
     def _put(self, axis):
         return self.http.put(
             "/api/v1/billing/postpaid-config",
-            data=json.dumps({"usage_line_item_group_by": axis}),
+            data=json.dumps({"group_by": axis}),
             content_type="application/json", **self._auth())
 
     def _a_posting(self, key, region):
@@ -154,7 +154,7 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         would pass all three tests above."""
         r = self._put("field:region")
         assert r.status_code == 200
-        assert r.json()["usage_line_item_group_by"] == "field:region"
+        assert r.json()["group_by"] == "field:region"
 
     def test_an_axis_inside_its_declared_maximum_warns_about_nothing(self):
         """Two values against a declared maximum of two: at the cap and not past
@@ -168,7 +168,7 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
 
         assert self._put("field:region").status_code == 200
         assert self._last_audit_metadata() == {
-            "usage_line_item_group_by": "field:region",
+            "group_by": "field:region",
             "consolidate_with_subscription": False,
         }
 
@@ -186,7 +186,7 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         response = self._put("field:region")
 
         assert response.status_code == 200
-        assert response.json()["usage_line_item_group_by"] == "field:region"
+        assert response.json()["group_by"] == "field:region"
         warning = self._last_audit_metadata()[CARDINALITY_WARNING_KEY]
         assert "more than 2 distinct values" in warning
 
@@ -204,3 +204,53 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
         """
         assert self._put("field:region").status_code == 200
         assert CARDINALITY_WARNING_KEY not in self._last_audit_metadata()
+
+    def test_both_published_schemas_declare_ONE_axis_and_never_an_array(self):
+        """⚠ **ONE AXIS HERE AND A LIST ON THE ECONOMIC QUERY, AND BOTH ARE
+        RIGHT** (#531). The field took the word the economic query publishes,
+        where it is a list because an analytics question may be grouped by
+        several axes; an invoice line is grouped by exactly one. This is the
+        test that pins the arity — it goes red if either schema widens to an
+        array (measured, both directions).
+
+        Read off the live document rather than off the class, because the claim
+        is about what a caller is TOLD. Every `type` anywhere under the property
+        is collected, so an array inside a nullable union is seen as surely as a
+        bare one."""
+        from api.v1.api import api
+
+        schemas = api.get_openapi_schema()["components"]["schemas"]
+
+        def types_under(node):
+            if isinstance(node, dict):
+                found = ({node["type"]} if isinstance(node.get("type"), str)
+                         else set())
+                for child in node.values():
+                    found |= types_under(child)
+                return found
+            if isinstance(node, list):
+                return set().union(*(types_under(child) for child in node))
+            return set()
+
+        for name in ("PostpaidConfigIn", "PostpaidConfigOut"):
+            with self.subTest(schema=name):
+                grouping = schemas[name]["properties"]["group_by"]
+                self.assertIn("string", types_under(grouping))
+                self.assertNotIn("array", types_under(grouping))
+
+    def test_a_list_of_axes_is_refused_and_nothing_is_stored(self):
+        """A list naming one perfectly good axis is still a list, and storing it
+        — or its first element — would be the server quietly choosing for the
+        caller.
+
+        ⚠ This asserts the OUTCOME, not which layer produces it, and it does NOT
+        pin the arity: with the request field widened to a list, the grouping
+        refusal behind it happens to reject a nested list too, so this stays
+        green (measured by making that mutation). The document test above is
+        the one that goes red."""
+        r = self._put(["field:region"])
+
+        assert r.status_code == 422
+        assert r.json()["code"] == "validation_error"
+        stored = self.http.get("/api/v1/billing/postpaid-config", **self._auth())
+        assert stored.json()["group_by"] == ""

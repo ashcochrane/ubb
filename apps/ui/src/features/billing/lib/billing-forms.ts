@@ -66,7 +66,7 @@ export interface PostpaidFormState {
 
 export function postpaidToFormState(config: PostpaidConfig): PostpaidFormState {
   return {
-    axis: config.usage_line_item_group_by,
+    axis: config.group_by,
     consolidate: config.consolidate_with_subscription,
   };
 }
@@ -81,8 +81,8 @@ export function buildPostpaidPayload(
   next: PostpaidFormState,
 ): PostpaidConfigIn | null {
   const payload: PostpaidConfigIn = {};
-  if (next.axis !== current.usage_line_item_group_by) {
-    payload.usage_line_item_group_by = next.axis;
+  if (next.axis !== current.group_by) {
+    payload.group_by = next.axis;
   }
   if (next.consolidate !== current.consolidate_with_subscription) {
     payload.consolidate_with_subscription = next.consolidate;

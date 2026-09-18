@@ -23,11 +23,11 @@ T = TypeVar("T", bound="PostpaidConfigOut")
 class PostpaidConfigOut:
     """ 
         Attributes:
-            usage_line_item_group_by (str):
+            group_by (str):
             consolidate_with_subscription (bool | Unset):  Default: False.
      """
 
-    usage_line_item_group_by: str
+    group_by: str
     consolidate_with_subscription: bool | Unset = False
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -36,7 +36,7 @@ class PostpaidConfigOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        usage_line_item_group_by = self.usage_line_item_group_by
+        group_by = self.group_by
 
         consolidate_with_subscription = self.consolidate_with_subscription
 
@@ -44,7 +44,7 @@ class PostpaidConfigOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "usage_line_item_group_by": usage_line_item_group_by,
+            "group_by": group_by,
         })
         if consolidate_with_subscription is not UNSET:
             field_dict["consolidate_with_subscription"] = consolidate_with_subscription
@@ -56,12 +56,12 @@ class PostpaidConfigOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        usage_line_item_group_by = d.pop("usage_line_item_group_by")
+        group_by = d.pop("group_by")
 
         consolidate_with_subscription = d.pop("consolidate_with_subscription", UNSET)
 
         postpaid_config_out = cls(
-            usage_line_item_group_by=usage_line_item_group_by,
+            group_by=group_by,
             consolidate_with_subscription=consolidate_with_subscription,
         )
 

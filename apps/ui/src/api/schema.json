@@ -5086,7 +5086,7 @@
             ],
             "title": "Consolidate With Subscription"
           },
-          "usage_line_item_group_by": {
+          "group_by": {
             "anyOf": [
               {
                 "type": "string"
@@ -5095,7 +5095,7 @@
                 "type": "null"
               }
             ],
-            "title": "Usage Line Item Group By"
+            "title": "Group By"
           }
         },
         "title": "PostpaidConfigIn",
@@ -5108,13 +5108,13 @@
             "title": "Consolidate With Subscription",
             "type": "boolean"
           },
-          "usage_line_item_group_by": {
-            "title": "Usage Line Item Group By",
+          "group_by": {
+            "title": "Group By",
             "type": "string"
           }
         },
         "required": [
-          "usage_line_item_group_by"
+          "group_by"
         ],
         "title": "PostpaidConfigOut",
         "type": "object"

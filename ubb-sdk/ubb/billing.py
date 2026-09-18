@@ -275,17 +275,29 @@ class BillingClient:
 
     def get_postpaid_config(self):
         """The tenant's postpaid config:
-        ``{"usage_line_item_group_by": str, "consolidate_with_subscription": bool}``."""
+        ``{"group_by": str, "consolidate_with_subscription": bool}``."""
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_POSTPAID_CONFIG)
         return r.json()
 
-    def set_postpaid_config(self, usage_line_item_group_by="",
+    def set_postpaid_config(self, group_by=None,
                             consolidate_with_subscription=None):
-        """Update the postpaid config. ``consolidate_with_subscription=None``
-        leaves the consolidation opt-in unchanged; True pins each period's
-        usage onto the customer's subscription-renewal invoice (one Stripe
-        invoice per period) with a standalone fallback."""
-        body = {"usage_line_item_group_by": usage_line_item_group_by}
+        """Update the postpaid config. The PUT is partial: a parameter left as
+        ``None`` is not sent, and the server keeps what it has stored.
+
+        ``group_by`` is the ONE axis invoice lines are split by — a request
+        word of the grouping vocabulary (``ubb.group_by_field(key)`` or
+        ``ubb.group_by_rollup(rollup)``), one of the options
+        ``MeteringClient.grouping_options()`` lists as supported on invoice
+        lines — or ``""`` for one line per period. One word, not a list: the
+        economic query groups by several axes, an invoice line by exactly
+        one.
+
+        ``consolidate_with_subscription=True`` pins each period's usage onto
+        the customer's subscription-renewal invoice (one Stripe invoice per
+        period) with a standalone fallback."""
+        body = {}
+        if group_by is not None:
+            body["group_by"] = group_by
         if consolidate_with_subscription is not None:
             body["consolidate_with_subscription"] = consolidate_with_subscription
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_PUT_POSTPAID_CONFIG, json=body)

@@ -1844,19 +1844,26 @@ class PostpaidConfigIn(Schema):
     # ⚠ **THE VALUE IS AN AXIS, NOT A KEY, SINCE #503** (slice 7 §11): one word
     # of the same grouping vocabulary every analytics surface takes
     # (`field:<declared field>` or `rollup:<axis>`), refused at the route
-    # against this tenant's own discovery contract. **The FIELD NAME is the one
-    # thing here that has not moved**, and deliberately: renaming a published
-    # field regenerates the spec and the SDK, which is the later phase's work,
-    # so the backend column carries the new name and this carries the old one
-    # until then.
-    usage_line_item_group_by: Optional[str] = None
+    # against this tenant's own discovery contract. **And since #531 the FIELD
+    # takes the vocabulary's own name too**, the registry's stated successor for
+    # every per-surface grouping parameter — so the value and the key it
+    # travels under are no longer two vocabularies in one setting.
+    #
+    # ⚠ **ONE AXIS, WHERE `EconomicsOut.group_by` IS A LIST — AND BOTH ARE
+    # RIGHT.** An analytics question may be grouped by several axes; an invoice
+    # line is grouped by exactly one. Same concept, different arity: do not
+    # widen this to a list, which would publish a capability the invoicing path
+    # does not have. The stored column is `invoice_line_grouping` and does not
+    # follow the wire; `api/v1/billing_endpoints.py` is where the two meet, one
+    # function per direction.
+    group_by: Optional[str] = None
     # F5.5 opt-in; None = leave unchanged (a group_by-only PUT must never
     # silently switch a tenant's consolidation mode off).
     consolidate_with_subscription: Optional[bool] = None
 
 
 class PostpaidConfigOut(Schema):
-    usage_line_item_group_by: str
+    group_by: str
     consolidate_with_subscription: bool = False
 
 

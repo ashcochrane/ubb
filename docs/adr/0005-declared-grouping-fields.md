@@ -139,13 +139,13 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
 - **The open bag is never a pricing selector, and never groupable.** The registry is the only thing
   a `Rate` can select on. #273 folded the second bag into the surviving one, which is filterable and
   readable but never a grouping axis — an unbounded free-text keyspace that can become a chart is
-  one that can drive an invoice line label. Three ad-hoc label reads predate that rule and survive
-  it: `tag_key` + `tag_value` filtering a customer's postings on `/customers/{id}/usage`, `tag_key`
-  alone driving the `by_tag` breakdown on `/analytics/usage` and the margin breakdown, and
-  `usage_line_item_group_by="tag:<key>"` driving postpaid invoice line labels
-  (`apps/metering/queries.py:get_customer_billed_breakdown`). Those names are spelled here as the
-  wire spells them today; slice 7 owns renaming them, and renaming them here first would make this
-  document disagree with a running server.
+  one that can drive an invoice line label. Three ad-hoc label reads predated that rule, and slice 7
+  retired all three: the key/value pair filtering a customer's postings on `/customers/{id}/usage`
+  names the bag it reads (`metadata_key` / `metadata_value`, #504); the key-driven `by_tag`
+  breakdown on `/analytics/usage` and the margin breakdown died with those routes (#501); and the
+  free-text key driving postpaid invoice line labels became one axis of the declared vocabulary,
+  published as `group_by` (#503 behind the wire, #531 on it). This bullet named them as the wire
+  spelled them until the wire moved, and #531 corrected it in place with its line count kept.
 - **A bounded keyspace let `CardCache` key on the full selector tuple**, removing the bypass that
   used to fire whenever a slot was pinned. What bounds the key is the per-slot cardinality cap and
   not the number of slots, which is why widening to ten changed nothing about that argument. It is
@@ -225,13 +225,14 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   - `api/v1/tests/test_analytics_dimensions.py` is deleted with the rollups it pinned. The whole-row
     pin it provided is not lost: `api/v1/tests/test_the_one_economic_query.py` asserts the declared
     row, and the schema itself is now the pin the open rollups never had.
-  - **The second of the three ad-hoc label reads is gone too.** `tag_key` driving the `by_tag`
-    breakdown died with the report. ⚠ **This bullet used to say the remaining two survived "exactly
-    as the bullet describes them", and #504 made that half false**: the filter pair on
-    `/customers/{id}/usage` is now `metadata_key` / `metadata_value`, naming the bag it reads. The
-    invoice-line grouping parameter took the declared vocabulary behind the wire in #503 and its
-    published field is phase B2's. Neither was ever a grouping axis, which is why no route removal
-    could clear either and both had to be renamed on a live surface.
+  - **The second of the three ad-hoc label reads is gone too.** The key-driven `by_tag` breakdown
+    died with the report. ⚠ **This bullet used to say the remaining two survived "exactly as the
+    bullet describes them", and #504 and #531 between them made that false**: the filter pair on
+    `/customers/{id}/usage` is now `metadata_key` / `metadata_value`, naming the bag it reads, and
+    the invoice-line grouping parameter took the declared vocabulary behind the wire in #503 and the
+    vocabulary's own name, `group_by`, on it in #531. Neither was ever an analytics grouping axis,
+    which is why no route removal could clear either and both had to be renamed on a live surface.
+    None of the three survives.
 
 - **#503 (slice 7 §11) — the third ad-hoc label read is gone, and it is the one that mattered most.**
   The invoice-line grouping parameter now takes one axis of the declared vocabulary
@@ -242,11 +243,11 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   an invoice line label"* — and it was also **the only one of the three a paying customer reads**.
   Two things went with it: the open bag can no longer reach an invoice line at all, and the silent
   fall-through that grouped an unrecognised configuration by the first slot is a refusal.
-  - **What the parameter is called on the wire has NOT changed here.** The column beneath it has;
-    the published request and response field keep their names until the phase that regenerates the
-    contract and the SDK from the backend, which is the ordering §21 of that slice fixes. So this
-    document still disagrees with no running server, which is the bullet above's own reason for
-    spelling the wire's word rather than the intended one.
+  - **What the parameter is called on the wire did NOT change here.** The column beneath it did;
+    the published request and response field kept their names for the phase that regenerates the
+    contract and the SDK from the backend, which is the ordering §21 of that slice fixes, so this
+    document went on disagreeing with no running server. ⚠ That phase closed without moving the
+    field, and #531 renamed it on every surface at once — see the amendment below.
   - **The per-axis cardinality cap this ADR declares (D4) became a real control on one surface.** It
     was stored and read by nothing; the invoice surface now warns a tenant at CONFIGURATION time
     when the axis they chose has already recorded more distinct values than the maximum they
@@ -256,28 +257,47 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   - This note is appended rather than written into the bullets above because a published field
     description cites this file by LINE NUMBER (`EconomicRowOut`, `api/v1/schemas.py`), and editing
     above that line would silently move what it points at. That is a fair criticism of the citation
-    rather than of the bullets; it is left for the ticket that next has reason to regenerate the
-    description.
+    rather than of the bullets, and re-pointing it is still left for the ticket that next has reason
+    to regenerate that description. (#531 did correct the Consequences bullet in place, but kept its
+    line count, so nothing the citation points at moved.)
 
 - **Amended by slice 7 (#504): the first of the three ad-hoc label reads is renamed, and the
-  Consequences bullet naming all three is now out of date by one.** That bullet says the three are
-  *"spelled here as the wire spells them today"* and that *"slice 7 owns renaming them"*. Slice 7
-  has now renamed the first: the pair filtering a customer's postings on `/customers/{id}/usage`
-  names the bag it reads (`metadata_key` / `metadata_value`) rather than reading as an axis over a
-  bag this ADR keeps deliberately ungroupable. The route KEEPS its own contract — it is a filter
-  surface and returns paginated event rows, which no parameter combination of the one economic query
-  returns — so what moved is four lines of request vocabulary and the generated followers of it,
-  and the path count did not change.
+  Consequences bullet naming all three was then out of date by one.** That bullet said the three
+  were *"spelled here as the wire spells them today"* and that *"slice 7 owns renaming them"*.
+  Slice 7 had then renamed the first: the pair filtering a customer's postings on
+  `/customers/{id}/usage` names the bag it reads (`metadata_key` / `metadata_value`) rather than
+  reading as an axis over a bag this ADR keeps deliberately ungroupable. The route KEEPS its own
+  contract — it is a filter surface and returns paginated event rows, which no parameter
+  combination of the one economic query returns — so what moved is four lines of request
+  vocabulary and the generated followers of it, and the path count did not change.
   - **The second and third are accounted for.** The second — the key-driven breakdown on the usage
     report and on the margin breakdown — **died with its routes** in #501 rather than being renamed,
-    which is the one disposition that bullet does not anticipate. The third, the invoice-line one,
-    took the declared grouping vocabulary BEHIND the wire in #503; its published field still spells
-    the retired word and is phase B2's, per slice 7 §21's ruling that only one of the four surfaces
-    can move independently.
-  - **The bullet above is left standing rather than rewritten**, for the reason the note above it
-    gives: it sits above the line a published field description cites, and correcting it in place
-    would move what that citation points at. The claim a reader needs — which of the three are done
-    and by what — is here instead.
+    which is the one disposition that bullet did not anticipate. The third, the invoice-line one,
+    took the declared grouping vocabulary BEHIND the wire in #503; its published field still spelled
+    the retired word at this amendment, and was left to phase B2 by slice 7 §21's ruling that only
+    one of the four surfaces can move independently.
+  - **The bullet above was left standing here rather than rewritten**, for the reason the note above
+    it gives: it sits above the line a published field description cites, and a re-wrap would move
+    what that citation points at.
+
+- **Amended by slice 7 (#531): the third ad-hoc label read is renamed ON the wire, and none of the
+  three survives.** The postpaid configuration publishes its invoice-line axis as `group_by` on both
+  `PostpaidConfigIn` and `PostpaidConfigOut` — the registry's own stated successor for every
+  per-surface grouping parameter, and the word the one economic query already publishes. Phase B2
+  had closed without moving it, which left one setting speaking two vocabularies: a key named after
+  the invoice line it produced, carrying a value from the grouping vocabulary. The contract, the
+  console and the SDK moved in one commit, because a renamed published field cannot move one
+  surface at a time.
+  - **It is ONE axis where the economic query's `group_by` is a list, and both are right.** An
+    analytics question may be grouped by several axes; an invoice line is grouped by exactly one. A
+    list here would publish a capability the invoicing path does not have and the server would have
+    to refuse, so the published schema declares a string and a list is refused at the route. The
+    stored column stays `invoice_line_grouping`; the route module maps between the two names, one
+    function per direction.
+  - **The Consequences bullet is corrected in place, with its line count kept**, so nothing above
+    the line `EconomicRowOut`'s description cites has moved. The notes under #503 and #504 record
+    why it was not corrected sooner: while the wire still spelled the old words, correcting this
+    document first would have made it disagree with a running server.
 
 ## Deferred findings tracked against this ADR
 
