@@ -1232,3 +1232,28 @@ GET /api/v1/metering/analytics/usage/timeseries api path removed without depreca
 # ⚠ The authoring direction will go on reporting those fourteen for as long as
 # `origin/main` predates this commit. That is expected and is not a defect.
 # ─────────────────────────────────────────────────────────────────────────
+
+# 2026-09-18 - Slice 7 (#531): the postpaid configuration's invoice-line
+# grouping takes the one vocabulary's name ON THE WIRE - `group_by`, on both
+# its request and its response. #503 had already made the VALUE one word of
+# the grouping vocabulary and renamed the stored column; phase B2 (#504, #505)
+# closed without renaming the published field, which left one setting speaking
+# two vocabularies - a key named after the invoice line it produced, carrying a
+# value from the grouping vocabulary. `group_by` is the registry's own stated
+# successor for every per-surface grouping parameter, and the word the one
+# economic query already publishes. It is ONE axis here where the economic
+# query's `group_by` is a list: an invoice line is grouped by exactly one, and
+# the published schema declares a string.
+#
+# LICENCE: slice 7 §17 - map #137 constraint 1, "no live integrators, one clean
+# break across API, SDK, UI and database", which this slice has not spent. One
+# renamed field on two operations sits inside that block, not beside it.
+#
+# ERR because the response DROPS a property the contract promised as required:
+# a reader of the old name finds it gone. The response gains `group_by` in the
+# same edit, which oasdiff does not report, because adding a response property
+# breaks no reader. Both directions were run and agree: the route and the field
+# EXIST at `api-v1-launch`, so the cumulative gate reports both lines and
+# neither is inert. The request half is in the warn file under the same date.
+GET /api/v1/billing/postpaid-config removed the required property `usage_line_item_group_by` from the response with the `200` status
+PUT /api/v1/billing/postpaid-config removed the required property `usage_line_item_group_by` from the response with the `200` status

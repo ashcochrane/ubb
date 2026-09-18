@@ -3,7 +3,7 @@
 Fix 1: Phase-2a guarded update ignores its row count — a stale/reclaimed
        worker must abort before any InvoiceItem.create.
 
-Fix 2: PUT postpaid-config partial-update asymmetry — usage_line_item_group_by
+Fix 2: PUT postpaid-config partial-update asymmetry — group_by
        must use a None sentinel so an omit preserves the current value.
 
 Fix 3: repush_usage_invoice --rebill-void must refuse consolidated recs with
@@ -236,10 +236,10 @@ class PostpaidConfigPartialUpdateTest(TestCase):
         # First: set a non-default group_by
         r = self.http.put(
             "/api/v1/billing/postpaid-config",
-            data=json.dumps({"usage_line_item_group_by": "field:product_id"}),
+            data=json.dumps({"group_by": "field:product_id"}),
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json()["usage_line_item_group_by"], "field:product_id")
+        self.assertEqual(r.json()["group_by"], "field:product_id")
 
         # Second PUT omits group_by entirely — must NOT overwrite with "".
         r = self.http.put(
@@ -249,7 +249,7 @@ class PostpaidConfigPartialUpdateTest(TestCase):
         self.assertEqual(r.status_code, 200)
         body = r.json()
         # group_by must be preserved
-        self.assertEqual(body["usage_line_item_group_by"], "field:product_id",
+        self.assertEqual(body["group_by"], "field:product_id",
                          "Omitting group_by must preserve its current value, not reset to ''")
         self.assertTrue(body["consolidate_with_subscription"])
 
@@ -257,22 +257,22 @@ class PostpaidConfigPartialUpdateTest(TestCase):
         # Set group_by to something
         self.http.put(
             "/api/v1/billing/postpaid-config",
-            data=json.dumps({"usage_line_item_group_by": "field:product_id"}),
+            data=json.dumps({"group_by": "field:product_id"}),
             content_type="application/json", **self._auth())
 
         # Explicitly pass "" — must clear it.
         r = self.http.put(
             "/api/v1/billing/postpaid-config",
-            data=json.dumps({"usage_line_item_group_by": ""}),
+            data=json.dumps({"group_by": ""}),
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json()["usage_line_item_group_by"], "")
+        self.assertEqual(r.json()["group_by"], "")
 
     def test_both_fields_omitted_preserves_both(self):
         # Establish a non-default state
         self.http.put(
             "/api/v1/billing/postpaid-config",
-            data=json.dumps({"usage_line_item_group_by": "field:model",
+            data=json.dumps({"group_by": "field:model",
                              "consolidate_with_subscription": True}),
             content_type="application/json", **self._auth())
 
@@ -283,7 +283,7 @@ class PostpaidConfigPartialUpdateTest(TestCase):
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
         body = r.json()
-        self.assertEqual(body["usage_line_item_group_by"], "field:model")
+        self.assertEqual(body["group_by"], "field:model")
         self.assertTrue(body["consolidate_with_subscription"])
 
 

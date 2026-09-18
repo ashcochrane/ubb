@@ -347,143 +347,30 @@ entries:
   # file now, and the docs seat died in #470, so the word is refused on
   # every swept surface there is.
 
-  - id: g7-backend-dimensions
-    gate: G7
-    site: backend::dimensions
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      The plural named an analytics grouping capability, not a value.
-      Slice 7's one economic query replaces it with `field:`/`rollup:`
-      grouping and its discovery contract.
-      Ten of the original thirty were the kernel app's own modules and the
-      import lines naming them, and #259 renamed that app. The OWNER does not
-      move — slice 7 still owes what is left — but ten files stopped violating
-      in slice 2, and a recorded extent that overstates is an excuse with no
-      upper bound. So the number comes down now, in the commit that cleared
-      them, rather than waiting for the slice that owes the rest.
-      Two more went the same way in #278, which renamed the registry route
-      family: both were comments in tests naming the old path, and the path
-      was the plural's last use in either file.
-      Two more in #283, and they are the last of the glossaries: the kernel
-      and metering `CONTEXT.md` files each used the plural once, in prose
-      about what the registry is, and both now name the declared field or
-      the real published `required_dimensions` instead.
-      WHERE THE BOUNDARY WITH THE SINGULAR RUNS, settled in #312 and recorded
-      here because the singular's own entry was deleted in the commit that
-      settled it — an entry cannot outlive its debt, so a ruling kept only in
-      the entry it retired would be a ruling nobody could find. Two analytics
-      rollups return `list[dict]` and write a row's grouped value into an
-      undeclared key: `/analytics/usage`'s breakdowns and its timeseries
-      sibling. `metering_endpoints.py`'s comment on the neighbouring open-bag
-      block claims this whole surface for slice 7, and that comment is right
-      about the block it is attached to and does not reach these two. The
-      registry decides it: this term is retired to `analytics_grouping_kind`,
-      an AXIS, while the singular is retired to `grouping_field_value`, a
-      VALUE — and a row key holds a value. The declared third rollup had
-      already published it as `grouping_field_value` with a comment saying
-      exactly that, so slice 2 made the two open ones agree rather than
-      inventing a word. WHAT REMAINS THIS ENTRY'S is unchanged and is the
-      axis half: the request parameter, the `by_tag` block, and the discovery
-      contract that replaces them.
-
-      16 -> 15 in #501, THE FIRST DECREMENT THIS ENTRY HAS TAKEN FROM ITS OWN
-      SLICE rather than from a neighbour paying early. The file is
-      `api/v1/tests/test_analytics_dimensions.py`, deleted whole: it tested how
-      the usage report turned a grouping name into a breakdown, and the report
-      is one of the nine routes the collapse deletes. The axis half named just
-      above went with it — the request parameter and the `by_tag` block are
-      both gone, and the discovery contract that replaces them shipped in #498.
-
-      WHAT IS LEFT IS NOT THE ANALYTICS AXIS AT ALL, and the entry stays open
-      only because the word is still spelled. The fifteen are the declared
-      registry (`required_dimensions` on a published schema, its models and its
-      tests), the task surface's own slot bag, the pricing selectors, and the
-      event-recording payloads that carry a tenant's declared keys. None of
-      them is a grouping request, so this entry is now a naming debt on the
-      REGISTRY's word rather than on the report's — the distinction the
-      boundary paragraph above drew between an axis and a value, arrived at
-      from the other side.
-
-      15 -> 11 in #504, AND THE FOUR THAT WENT ARE EXACTLY THE SITES THAT ARE
-      NOT THE PUBLISHED WORD. The pricing app's two — a comment in
-      `pricing/models.py` describing the retired JSONB selector bag, and the
-      selector test that named it — plus the start gate's keyword-only
-      parameter in `gating/services/risk_service.py`, which took
-      `grouping_values` (the word its own caller already used one call earlier),
-      and two comments in the registry's own `grouping_fields/models.py`, one of
-      which was additionally citing a ROUTE PATH that #278 renamed away.
-      ⚠ The selector test was not merely re-worded: it named two retired
-      spellings and asserted their absence, which says nothing about a bag
-      arriving under a third. It now pins `Rate.SELECTORS` as a whole set
-      against the registry's own slot vocabulary, refuses any selector that is a
-      JSON container BY TYPE, and refuses every value of
-      `ANALYTICS_ROLLUP_VALUES` by reference — so #145 §5 and #147 §2 are held
-      by derivation rather than by literal, and a rollup coined later is covered
-      the day it lands. All three controls were mutation-checked: dropping a
-      reserved axis and readmitting a rollup each turn it red.
-
-      ⚠⚠ THE ELEVEN LEFT ARE ONE FACT — THE PUBLISHED FIELD STILL SPELLS IT.
-      ⚠ **AC6 ASKED FOR ALL THREE GROUPING-FAMILY BACKEND COLUMNS AT ZERO AND
-      #504 DELIVERED ONE OF THE THREE** — the free-text key filter, which
-      reached zero on three surfaces at once. This entry stands at 11 and the
-      invoice-line entry below stands at 4, and BOTH are the same fact wearing
-      the same reason. Saying "two of three" would be wrong: #503 took the
-      invoice-line term behind the wire, which is not the same as taking its
-      backend column to zero, and the number in that entry says so. Ten
-      are the wire and its route tests (`api/v1/schemas.py` declares the bag on
-      the recording and task requests and the registry's own body,
-      `metering_endpoints.py` and `task_endpoints.py` read it off the payload
-      and echo it, and seven route test modules send or assert it as the wire
-      spells it); the eleventh is a DATED CHANGELOG entry describing a pricing
-      API that no longer exists, which is history and stays. Renaming the
-      published field regenerates the contract, the SDK's ten files and the
-      console's three — slice 7 §21 rules that the contract and the SDK are
-      phase B2 and the console phase B3, and that only ONE of the four surfaces
-      can move independently. It is the same shape the invoice-line entry
-      records, and it is why this entry could not reach zero in the ticket that
-      took the other two grouping terms' backend columns there: the free-text
-      key filter's last backend sites were a request vocabulary slice 7 §1
-      explicitly hands this phase, and the registry's word is not.
-
-      11 -> 1 in #505, AND THE ONE LEFT IS NOT A DEBT. The eleven were one
-      fact — the published field — and phase B2 renamed it, which is the
-      phase the paragraph above said it belonged to. Six schemas and two
-      `required_*` fields took `grouping_fields` / `required_grouping_fields`:
-      the recording request, the start request, the two task reads, the
-      registry's own request and response, and the kind-of-work declaration
-      in both directions. The word chose itself — `RecordUsageResponse` and
-      `UsageEventDetailOut` have keyed this same object under it since #277,
-      so the contract had been publishing TWO SPELLINGS OF ONE CONCEPT and a
-      round trip read as a translation. The three endpoint modules, the
-      registry's read contract and seven route test modules followed, and one
-      of those test modules is renamed with its subject.
-
-      ⚠ THE RENAME FORCED A KEY-SHAPE CHANGE IT DID NOT ASK FOR, and that is
-      worth recording because it is the sort of thing a route-scoped plan
-      misses. `TaskOut` published this bag keyed by the PHYSICAL SLOT while
-      the two posting reads published it keyed by the tenant's own declared
-      key. Different names hid that; one name would have published two key
-      vocabularies under one word, which is worse than what was there before.
-      So the task reads are re-keyed here, through the projection
-      `apps/metering/usage/grouping.py` argues for — the move the field's own
-      comment had said was coming since ticket 20.
-
-      THE ONE FILE LEFT IS `ubb-platform/docs/CHANGELOG-pricing-api.md`, a
-      DATED entry describing a pricing API that no longer exists. It is
-      history and it stays: rewriting a changelog to spell a word the release
-      it records did not use would make the record false to make a counter
-      zero. The entry therefore stands at 1 and will not reach 0 by any edit
-      worth making; the debt it named is paid.
-
-      ⚠ THE COLUMN BEHIND `required_grouping_fields` IS STILL SPELLED THE OLD
-      WAY, deliberately. Moving it is a migration and belongs to the cutover;
-      the wire and the kernel's read contract took the word, and the two
-      places that bridge them — `apps/platform/work/queries.py` and the
-      declaration route's write path — each say so at the line a reader meets
-      them. The column name is invisible to this sweep (it is one token,
-      `required_` and all), so no gate is owed and none is being dodged.
+  # `g7-backend-dimensions` WAS HERE AND IS PAID (#531), at its last file:
+  # `ubb-platform/docs/CHANGELOG-pricing-api.md`, whose 2026-07-03 entry named
+  # the rule's bag of grouping values by the plural. #505 left it standing on
+  # the argument that rewriting a changelog to spell a word its release did not
+  # use would falsify the record. The changelog's OWN HEADER RULE decides this
+  # case the other way: a name RETIRED AND REPLACED is carried forward to the
+  # current one, so a reader is not sent to a spelling that resolves to
+  # nothing, and only an entry's FACTS are never rewritten. The bag's current
+  # name is `grouping_fields` — the name a publish's change body carries it
+  # under, per that file's own 2026-08-20 entry — so the 2026-07-03 entry now
+  # says that, and its callout, which already carried two names forward the
+  # same way (#374), says it carries three.
+  #
+  # ⚠ THE TICKET NAMED A DIFFERENT FILE, AND THAT FILE WAS ALREADY EXCLUDED.
+  # #531 attributed this entry's last site to
+  # `grouping_fields/tests/test_app_label_move.py` and asked for the exclusion
+  # to be extended to it. The sweep's per-site file list said otherwise: that
+  # test has sat in `checks-whose-subject-is-a-retired-word` since #259 (its
+  # admission is written into that rule's reason) and was never in this
+  # entry's extent. So NEITHER of the ticket's two explanations happened — the
+  # exclusion had been extended, and the file had not been renamed out of it —
+  # and the exclusion is untouched here, as is the old-label constant the test
+  # needs. Refused in every swept backend file now; the registry's retired
+  # alias stays, and that is what keeps it refused.
 
   # ⚠ THE TWO MARKUP AUDIT ACTIONS REACHED ZERO ON EVERY SURFACE AND ALL FIVE
   # OF THEIR ENTRIES ARE DELETED (#369) — backend (3 files and 2 files), console
@@ -647,33 +534,21 @@ entries:
   # seat died in #470, so the word is refused on every swept surface there
   # is.
 
-  - id: g7-backend-usage_line_item_group_by
-    gate: G7
-    site: backend::usage_line_item_group_by
-    expected: analytics_grouping_kind
-    found: 4 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind named after the invoice line it produced rather
-      than after what it grouped. Slice 7's collapse replaces it.
-
-      11 -> 4 in #503, and what went is everything BEHIND the wire. The stored
-      column, the service that reads it, the read contract's parameter and the
-      five test modules that built or asserted on them all now carry the
-      invoice-line grouping AXIS instead — one word of the same vocabulary
-      every chart uses, validated at configuration time against the tenant's own
-      discovery contract. The free-text key that drove invoice line labels is
-      gone, and with it the silent fall-through that grouped an unrecognised
-      configuration by the first slot.
-
-      ⚠ **THE FOUR LEFT ARE ALL ONE FACT: THE PUBLISHED FIELD STILL SPELLS IT.**
-      `api/v1/schemas.py` declares it on the postpaid config request and
-      response, `api/v1/billing_endpoints.py` maps it onto the renamed column,
-      and two route test modules send it as the wire spells it today. Renaming a
-      published field regenerates the contract and the SDK, which is phase B2's
-      work and not phase B1's (slice 7 §21) — so this is the correct resting
-      state for the backend column, not a residue, and it clears in one edit
-      when the contract moves.
+  # `g7-backend-usage_line_item_group_by` WAS HERE AND IS PAID (#531), at its
+  # four files. #503 took everything BEHIND the wire and left exactly these,
+  # recording that they were all one fact — the published field — and that the
+  # entry would clear in one edit when the contract moved. Phase B2 (#504,
+  # #505) closed without moving it, which left one setting speaking two
+  # vocabularies; #531 was inserted to end that. The field is `group_by` on
+  # both postpaid config schemas — the registry's own stated successor for
+  # every per-surface grouping parameter, and the word the economic query
+  # already publishes — and the route and its two test modules followed.
+  # ⚠ It is ONE axis where the economic query's `group_by` is a list, pinned
+  # by a test on the published document that goes red if either schema widens
+  # to an array. The stored column stays `invoice_line_grouping`, and the
+  # route is still the one place the two names meet. The audit record keys
+  # what was set by the published name too, so rows written before #531 keep
+  # the old key and later rows carry the new one.
 
   # `g7-console-budget` WAS HERE AND IS PAID (#468, slice 6, the console
   # stage of §20 with the catalogue's #464 already landed): the two features'
@@ -836,15 +711,13 @@ entries:
   # report). The one stop-context seed that spelled it took the registry's
   # word.
 
-  - id: g7-console-usage_line_item_group_by
-    gate: G7
-    site: console::usage_line_item_group_by
-    expected: analytics_grouping_kind
-    found: 6 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind named after the invoice line it produced rather
-      than after what it grouped. Slice 7's collapse replaces it.
+  # `g7-console-usage_line_item_group_by` WAS HERE AND IS PAID (#531), at its
+  # six files: the regenerated contract snapshot, and the billing feature's
+  # api, mock and fixture modules and form builder with its test, which now
+  # read and send `group_by`. All six were the WIRE KEY ITSELF, which is why
+  # no console-only ticket could pay this entry, and why #509's criterion that
+  # the grouping family's console column reach zero was unpayable until the
+  # contract moved underneath it.
 
   # ALL NINE OF SLICE 6's `g7-docs-*` ENTRIES WERE HERE AND ARE PAID (#470, the
   # two living guides). They came off together because they were one debt told
@@ -892,16 +765,16 @@ entries:
       REBUILDS THIS SUBJECT, so this owner is the programme's default
       rather than a positive finding, and it wants an owner's eye.
 
-  - id: g7-docs-tag_key
-    gate: G7
-    site: docs::tag_key
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind that read from the open bag. Slice 7's grouping
-      contract declares what may be grouped on, which is the capability
-      the bag deliberately does not have.
+  # `g7-docs-tag_key` WAS HERE AND IS PAID (#531), together with the invoice-line
+  # grouping word's docs entry below and at the same single file: ADR-0005's
+  # Consequences bullet, which named all three ad-hoc label reads "as the wire
+  # spells them today" and said renaming them in the document first would make
+  # it disagree with a running server. The last of the three moved on the wire
+  # in #531, so the document followed. The bullet is corrected IN PLACE with
+  # its line count kept, because a published schema description cites the file
+  # at `:191` and every edited line sits above it; the amendments below that
+  # line which still said the invoice-line field "is phase B2's" are corrected
+  # too.
 
   # `g7-docs-task.limit_exceeded` WAS HERE AND IS PAID (the terminal-event
   # split). It stood at 1 file — the living spend-control guide, which tells an
@@ -912,15 +785,8 @@ entries:
   # contained-work half: that name appears only in frozen dated documents, so
   # one would have been false.
 
-  - id: g7-docs-usage_line_item_group_by
-    gate: G7
-    site: docs::usage_line_item_group_by
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind named after the invoice line it produced rather
-      than after what it grouped. Slice 7's collapse replaces it.
+  # `g7-docs-usage_line_item_group_by` WAS HERE AND IS PAID (#531), in the same
+  # edit to the same file as the free-text key's docs entry above — see there.
 
 
   # ⚠ THE CONTRACT'S ENTRY FOR THE AXIS WORD WAS HERE AND IS PAID (#505,
@@ -987,15 +853,12 @@ entries:
   # contained-work twin above.
 
 
-  - id: g7-openapi-usage_line_item_group_by
-    gate: G7
-    site: openapi::usage_line_item_group_by
-    expected: analytics_grouping_kind
-    found: 1 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind named after the invoice line it produced rather
-      than after what it grouped. Slice 7's collapse replaces it.
+  # `g7-openapi-usage_line_item_group_by` WAS HERE AND IS PAID (#531), at its
+  # one file and by regeneration: one property on `PostpaidConfigIn` and one on
+  # `PostpaidConfigOut` took `group_by`, and nothing else in the document
+  # moved. It is a breaking rename of a published field on a route that
+  # predates `api-v1-launch`, so the break block records it, under slice 7
+  # §17's licence for one clean break.
 
   # Two words #210 spread to this surface, and would not have without it.
   # `tests/contracts/test_label_catalogue.py` pins the files that import the
@@ -1158,15 +1021,14 @@ entries:
   # prevent, and it is why the SDK half could not wait for phase B2.
 
 
-  - id: g7-sdk-usage_line_item_group_by
-    gate: G7
-    site: sdk::usage_line_item_group_by
-    expected: analytics_grouping_kind
-    found: 5 files
-    owner_slice: slice_7
-    reason: >-
-      A grouping kind named after the invoice line it produced rather
-      than after what it grouped. Slice 7's collapse replaces it.
+  # `g7-sdk-usage_line_item_group_by` WAS HERE AND IS PAID (#531), at its five
+  # files: the two generated models regenerated from the moved contract, and
+  # the hand-written `set_postpaid_config` on both clients, with its test,
+  # taking the keyword by hand. ⚠ The same commit changed that keyword's
+  # DEFAULT from `""` to `None`. The old default cleared a tenant's invoice-line
+  # grouping on every call that did not mention it — the partial-update
+  # asymmetry the server's own `None` sentinel exists to prevent (F5.5 Fix 2),
+  # reintroduced one layer up — and `MIGRATION.md` §18 says so.
 
 # Every act of seeding, kept as history. The ratchet permits additions for a
 # gate only when an authorisation naming it is NEW in this pull request — so an

@@ -619,3 +619,23 @@ PATCH /api/v1/tenant/config removed the request property `default_task_provider_
 # cumulative gate reports both and neither line is inert.
 GET /api/v1/metering/customers/{customer_id}/usage deleted the `query` request parameter `tag_key`
 GET /api/v1/metering/customers/{customer_id}/usage deleted the `query` request parameter `tag_value`
+
+# 2026-09-18 - Slice 7 (#531): the request half of the postpaid invoice-line
+# grouping's rename to `group_by`. The response half and the argument for the
+# rename are in the err file under the same date.
+#
+# WARN is oasdiff's classification and #411's rule agrees with it: a request
+# property that was never required only relaxes what a caller must send.
+#
+# ⚠ BUT, AS #504's BLOCK ABOVE SAYS OF ITS OWN RENAME, "CANNOT HURT A CALLER"
+# WOULD BE A FALSE SENTENCE HERE. django-ninja DROPS an undeclared body key
+# rather than refusing it, and this route reads an absent grouping as "leave it
+# as stored" (F5.5 Fix 2). So a raw-HTTP caller still sending the old name gets
+# 200 and NOTHING CHANGES: the axis it asked for is never stored, and only the
+# response's `group_by` - showing the axis already stored - says so. Measured:
+# with the route tests renamed and the server not yet, the three refusal tests
+# answered 200 rather than 422 - the same drop, seen from the other side. The
+# SDK's keyword was renamed in the same commit, so a stale SDK caller gets a
+# TypeError naming the keyword, and `ubb-sdk/MIGRATION.md` §18 tells raw-HTTP
+# callers to read the configuration back rather than trust the status.
+PUT /api/v1/billing/postpaid-config removed the request property `usage_line_item_group_by`

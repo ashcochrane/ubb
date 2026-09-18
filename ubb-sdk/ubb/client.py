@@ -679,10 +679,10 @@ class UBBClient:
     def get_postpaid_config(self):
         return self._require_billing().get_postpaid_config()
 
-    def set_postpaid_config(self, usage_line_item_group_by="",
+    def set_postpaid_config(self, group_by=None,
                             consolidate_with_subscription=None):
         return self._require_billing().set_postpaid_config(
-            usage_line_item_group_by, consolidate_with_subscription)
+            group_by, consolidate_with_subscription)
 
     # ---- margin delegates ----
     #

@@ -39,7 +39,7 @@ describe("postpaid partial-update payload", () => {
   // with no kind, so `product_id` is not merely renamed here, it is a value
   // the API would reject.
   const current: PostpaidConfig = {
-    usage_line_item_group_by: "field:event_type",
+    group_by: "field:event_type",
     consolidate_with_subscription: false,
   };
 
@@ -54,13 +54,13 @@ describe("postpaid partial-update payload", () => {
     // "don't". The PUT is partial, so clearing has to be said explicitly.
     expect(
       buildPostpaidPayload(current, { axis: "", consolidate: false }),
-    ).toEqual({ usage_line_item_group_by: "" });
+    ).toEqual({ group_by: "" });
   });
 
   it("sends the axis's own request word, kind included", () => {
     expect(
       buildPostpaidPayload(current, { axis: "rollup:event_category", consolidate: false }),
-    ).toEqual({ usage_line_item_group_by: "rollup:event_category" });
+    ).toEqual({ group_by: "rollup:event_category" });
     expect(
       buildPostpaidPayload(current, { axis: "field:event_type", consolidate: false }),
     ).toBeNull();
@@ -72,7 +72,7 @@ describe("postpaid partial-update payload", () => {
       consolidate: false,
     });
     expect(
-      postpaidToFormState({ ...current, usage_line_item_group_by: "" }),
+      postpaidToFormState({ ...current, group_by: "" }),
     ).toEqual({ axis: "", consolidate: false });
   });
 });

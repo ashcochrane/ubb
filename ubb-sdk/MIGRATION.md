@@ -859,6 +859,39 @@ rather than 50**; pass `limit=50` to keep the old page size.
 
 ---
 
+## 18. The invoice-line grouping takes the one vocabulary's name (slice 7, #531 — pre-live)
+
+`GET`/`PUT /api/v1/billing/postpaid-config` publish the axis a postpaid customer's usage is split
+into invoice lines by as **`group_by`**, on both the request and the response. The old property
+was named after the invoice line it produced rather than after what it grouped, and since #503 its
+VALUE was already one word of the grouping vocabulary (`field:<declared field>` or
+`rollup:<axis>`) — so one setting was speaking two vocabularies, one in its key and one in its
+value. `group_by` is the word the economic query already publishes.
+
+**On the client, the keyword follows**: `set_postpaid_config(group_by=...)` on both
+`BillingClient` and `UBBClient`, and `get_postpaid_config()` returns a dict keyed `group_by`.
+Passing the old keyword raises `TypeError`, and Python names it for you. A positional first
+argument keeps working.
+
+⚠ **ONE AXIS, NOT A LIST — even though the economic query's `group_by` is a list.** An analytics
+question may be grouped by several axes; an invoice line is grouped by exactly one. Send one word,
+built with `ubb.group_by_field(key)` or `ubb.group_by_rollup(name)`; a list is refused with `422`.
+Only an axis `MeteringClient.grouping_options()` lists as supported on invoice lines is accepted.
+
+⚠ **AND ONE BEHAVIOUR CHANGE RIDES WITH THE RENAME: OMITTING THE GROUPING NO LONGER CLEARS IT.**
+The PUT is partial — a field left out is kept as stored, an explicit `""` clears it — but the
+wrapper used to default the grouping to `""`, so `set_postpaid_config(consolidate_with_subscription=True)`
+also collapsed every invoice to a single line. It now defaults to `None` and sends nothing, the
+same as the consolidation flag always did. **To clear the grouping, say so:**
+`set_postpaid_config(group_by="")`.
+
+⚠ **If you call this route over raw HTTP, read this twice.** A body key the request does not
+publish is **dropped, not rejected** — so a PUT still sending the old name answers `200` and changes
+NOTHING, and the response's `group_by` shows the axis that was already stored. Read it back rather
+than trusting the status.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

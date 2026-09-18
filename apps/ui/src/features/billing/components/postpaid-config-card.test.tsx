@@ -8,12 +8,9 @@
 //     choice**, which is the "configuration time" §11 means;
 //   * saving sends exactly what the form's own builder builds.
 //
-// ⚠ **THE FIXTURE BUILDER IS IMPORTED RATHER THAN WRITTEN HERE, AND THAT IS A
-// LEDGER CEILING RATHER THAN A STYLE CHOICE.** The stored field's name is a
-// retired term whose console entry is a SPREAD ceiling — a NEW file spelling it
-// fails `term_spread` before any payment is attempted, and the field cannot
-// leave this console until the contract renames it. So the one fixture that has
-// to name it lives in the fixtures module that already does.
+// The fixture builder is imported from the feature's fixtures module rather
+// than written here, so the configuration a test opens on is built the same way
+// the mock's own is.
 //
 // ⚠ **WHICH AXIS PRODUCES WHICH SENTENCE IS THE LIB'S CASE, NOT THIS ONE'S.**
 // A Base UI select's items carry their value in React state rather than in an

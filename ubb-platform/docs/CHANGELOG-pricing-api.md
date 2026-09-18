@@ -133,13 +133,15 @@ book assignment, which a flat per-rate model could not express safely.
 
 ### What changed
 
-> **Two names in this entry no longer resolve, and the header's rule applies to
-> both.** The container this entry introduces carried **a kind field** telling a
-> book of supplier costs from a book of customer prices; the split into a
-> `PricingBook` and a `CostBook` replaced it with two entities rather than
+> **Three names in this entry no longer resolve, and the header's rule applies to
+> all three.** The container this entry introduces carried **a kind field**
+> telling a book of supplier costs from a book of customer prices; the split into
+> a `PricingBook` and a `CostBook` replaced it with two entities rather than
 > renaming it, so it is written as *the kind field* below. The rule's pointer at
-> its container is `pricing_book` now. What this entry records — what changed on
-> 2026-07-03, and why — is untouched.
+> its container is `pricing_book` now, and the bag of grouping values a rule is
+> matched on is `grouping_fields`, the name a publish's change body carries it
+> under (see the 2026-08-20 entry; carried forward here in #531). What this entry
+> records — what changed on 2026-07-03, and why — is untouched.
 
 - **`POST/GET /pricing/rate-cards`** now creates/lists **books**, not rates.
   - Request body is `BookIn` (the kind field, `provider_key`, `key`, `name`,
@@ -149,7 +151,7 @@ book assignment, which a flat per-rate model could not express safely.
     replaced by `BookOut` for books and a repurposed `RateOut` for rates.
 - **Rates now live under a book**, created via:
   - `POST /pricing/rate-cards/{book_id}/rates` — body `RateIn` (`measurement_key`,
-    `provider`, `event_type`, `dimensions`, `rate_structure`,
+    `provider`, `event_type`, `grouping_fields`, `rate_structure`,
     `rate_per_unit_micros`, `unit_quantity`, `fixed_micros`, `tiers`,
     `product_id`). The kind field and `currency` are no longer accepted here —
     they are inherited from the parent book (single source of truth).
@@ -162,7 +164,7 @@ book assignment, which a flat per-rate model could not express safely.
   multi-measurement reprice. Body `PublishIn` (`changes: list[RateChangeIn]`),
   one entry per measurement key to reprice, matched by
   `(measurement_key, provider, event_type,
-  dimensions)`. Each change supersedes the matching active rate
+  grouping_fields)`. Each change supersedes the matching active rate
   (`valid_to` stamped, `book_version_to = old book version`) and opens a new
   version (same `lineage_id` — required for tiered/marginal continuity via
   `PricingPeriodCounter` — `book_version_from = new book version`). The book's

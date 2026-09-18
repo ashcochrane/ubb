@@ -449,7 +449,9 @@ The claim → Stripe → record flow that aggregates usage into lines and finali
 The one axis a tenant's usage invoice is broken into lines by — a word of the SAME grouping
 vocabulary every analytics surface uses (`field:<declared field>` or `rollup:<axis>`), or empty for
 one line per period. It is chosen from the tenant's own discovery contract, reached through
-metering's `queries.py` read contract, which is the only channel ADR-001 allows here.
+metering's `queries.py` read contract, which is the only channel ADR-001 allows here. A tenant
+sends and reads it as `group_by` on the postpaid configuration — ONE axis, where the economic
+query's `group_by` is a list, because an invoice line is grouped by exactly one.
 (`apps/billing/invoicing/models.py:PostpaidUsageConfig.invoice_line_grouping`)
 _Avoid_: the retired free-text key, which named a `Metadata` bag key and otherwise fell through to
 the first declared slot — the third of ADR-0005's ad-hoc label reads, and the only one a paying

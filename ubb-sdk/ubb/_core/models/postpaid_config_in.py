@@ -25,11 +25,11 @@ class PostpaidConfigIn:
     """ 
         Attributes:
             consolidate_with_subscription (bool | None | Unset):
-            usage_line_item_group_by (None | str | Unset):
+            group_by (None | str | Unset):
      """
 
     consolidate_with_subscription: bool | None | Unset = UNSET
-    usage_line_item_group_by: None | str | Unset = UNSET
+    group_by: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -43,11 +43,11 @@ class PostpaidConfigIn:
         else:
             consolidate_with_subscription = self.consolidate_with_subscription
 
-        usage_line_item_group_by: None | str | Unset
-        if isinstance(self.usage_line_item_group_by, Unset):
-            usage_line_item_group_by = UNSET
+        group_by: None | str | Unset
+        if isinstance(self.group_by, Unset):
+            group_by = UNSET
         else:
-            usage_line_item_group_by = self.usage_line_item_group_by
+            group_by = self.group_by
 
 
         field_dict: dict[str, Any] = {}
@@ -56,8 +56,8 @@ class PostpaidConfigIn:
         })
         if consolidate_with_subscription is not UNSET:
             field_dict["consolidate_with_subscription"] = consolidate_with_subscription
-        if usage_line_item_group_by is not UNSET:
-            field_dict["usage_line_item_group_by"] = usage_line_item_group_by
+        if group_by is not UNSET:
+            field_dict["group_by"] = group_by
 
         return field_dict
 
@@ -76,19 +76,19 @@ class PostpaidConfigIn:
         consolidate_with_subscription = _parse_consolidate_with_subscription(d.pop("consolidate_with_subscription", UNSET))
 
 
-        def _parse_usage_line_item_group_by(data: object) -> None | str | Unset:
+        def _parse_group_by(data: object) -> None | str | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(None | str | Unset, data)
 
-        usage_line_item_group_by = _parse_usage_line_item_group_by(d.pop("usage_line_item_group_by", UNSET))
+        group_by = _parse_group_by(d.pop("group_by", UNSET))
 
 
         postpaid_config_in = cls(
             consolidate_with_subscription=consolidate_with_subscription,
-            usage_line_item_group_by=usage_line_item_group_by,
+            group_by=group_by,
         )
 
 

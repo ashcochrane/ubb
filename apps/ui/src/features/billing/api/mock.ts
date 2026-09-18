@@ -125,8 +125,8 @@ export async function putPostpaidConfig(body: PostpaidConfigIn): Promise<Postpai
   await mockDelay();
   // PARTIAL semantics: omitted/null preserves; explicit "" clears group-by.
   postpaidConfig = {
-    usage_line_item_group_by:
-      body.usage_line_item_group_by ?? postpaidConfig.usage_line_item_group_by,
+    group_by:
+      body.group_by ?? postpaidConfig.group_by,
     consolidate_with_subscription:
       body.consolidate_with_subscription ?? postpaidConfig.consolidate_with_subscription,
   };

@@ -789,7 +789,7 @@ def get_postpaid_config(request):
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     cfg = PostpaidUsageConfig.objects.filter(tenant=request.auth.tenant).first()
-    return {"usage_line_item_group_by": cfg.invoice_line_grouping if cfg else "",
+    return {"group_by": cfg.invoice_line_grouping if cfg else "",
             "consolidate_with_subscription": cfg.consolidate_with_subscription if cfg else False}
 
 
@@ -802,11 +802,14 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
     # channel ADR-001 allows between these two products, and the reason a ticket
     # plan scoped by analytics route would miss this surface entirely.
     #
-    # ⚠ THE PUBLISHED FIELD KEEPS ITS NAME HERE AND THE COLUMN DOES NOT. What a
-    # tenant SENDS is contract vocabulary and renaming it regenerates the spec
-    # and the SDK, which is phase B2's work (§21) and not this ticket's; what the
-    # column HOLDS is a backend fact and changed with its meaning. The mapping
-    # between the two lives in this function, deliberately in one place.
+    # ⚠ THE PUBLISHED FIELD AND THE COLUMN HAVE TWO NAMES, AND THIS FUNCTION IS
+    # WHERE THEY MEET. What a tenant SENDS is contract vocabulary — `group_by`
+    # since #531, the word every grouping surface takes; what the column HOLDS
+    # is a backend fact, `invoice_line_grouping` since #503. Neither follows the
+    # other, and the mapping between them lives here, deliberately in one place.
+    # The audit record keys what was set by the published name, because the
+    # audit feed is a tenant-readable surface and a tenant should find the word
+    # they sent.
     _product_check(request)
     from apps.billing.invoicing.models import PostpaidUsageConfig
     from apps.metering.queries import (
@@ -816,7 +819,7 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
     # F5.5 Fix 2: both fields use None sentinel — only write the fields that
     # were explicitly provided in the PUT body.
     defaults = {}
-    chosen_axis = payload.usage_line_item_group_by
+    chosen_axis = payload.group_by
     if chosen_axis is not None:
         if chosen_axis:
             # ⚠ ONE CODE, DECIDED STRUCTURALLY. Every way this can fail — a word
@@ -835,7 +838,7 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
     with transaction.atomic():
         cfg, _ = PostpaidUsageConfig.objects.update_or_create(
             tenant=tenant, defaults=defaults)
-        metadata = {"usage_line_item_group_by": cfg.invoice_line_grouping,
+        metadata = {"group_by": cfg.invoice_line_grouping,
                     "consolidate_with_subscription": cfg.consolidate_with_subscription}
         warning = (invoice_line_cardinality_warning(tenant.id,
                                                     cfg.invoice_line_grouping)
@@ -849,5 +852,5 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
             action="postpaid_config.set", tenant_id=tenant.id,
             resource_type="postpaid_config", resource_id=tenant.id,
             metadata=metadata)
-    return {"usage_line_item_group_by": cfg.invoice_line_grouping,
+    return {"group_by": cfg.invoice_line_grouping,
             "consolidate_with_subscription": cfg.consolidate_with_subscription}

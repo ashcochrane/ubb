@@ -122,24 +122,17 @@ export const SEAT_DEFAULT_POOL: CustomerSpendPool = {
 // mode was serving a configuration the API would 422 on save. It is now one
 // request word of the grouping vocabulary, and one every tenant has.
 export const INITIAL_POSTPAID_CONFIG: PostpaidConfig = {
-  usage_line_item_group_by: "field:event_type",
+  group_by: "field:event_type",
   consolidate_with_subscription: false,
 };
 
 /**
  * The same configuration, grouped on a given axis — the fixture a test names
- * when the AXIS is the thing under test.
- *
- * ⚠ **HERE RATHER THAN IN THE TEST, AND THE REASON IS A LEDGER CEILING.** The
- * wire field is a retired term whose `console::` entry is a SPREAD ceiling as
- * well as a floor: a new file spelling it fails `term_spread` before any
- * payment is attempted, and that field cannot leave the console until the
- * contract renames it. This module already carries the word, so the fixture
- * that has to spell it belongs beside the one that already does — which is
- * where a fixture belongs anyway.
+ * when the AXIS is the thing under test. Beside the configuration it varies,
+ * which is where a fixture belongs.
  */
 export function postpaidConfiguredOn(axis: string): PostpaidConfig {
-  return { ...INITIAL_POSTPAID_CONFIG, usage_line_item_group_by: axis };
+  return { ...INITIAL_POSTPAID_CONFIG, group_by: axis };
 }
 
 /** First of the month `monthsAgo` months back, as "YYYY-MM-01". */

@@ -66,7 +66,7 @@ export async function getPostpaidConfig(): Promise<PostpaidConfig> {
 
 /**
  * PUT /billing/postpaid-config is a PARTIAL update: omitted/null fields keep
- * their current value; an explicit "" clears usage_line_item_group_by.
+ * their current value; an explicit "" clears group_by.
  * Callers build the body via buildPostpaidPayload so only changes are sent.
  */
 export async function putPostpaidConfig(body: PostpaidConfigIn): Promise<PostpaidConfig> {
