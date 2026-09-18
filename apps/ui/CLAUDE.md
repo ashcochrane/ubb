@@ -104,10 +104,11 @@ with `figureOn` (`src/lib/economic-query.ts`), draw it with `MeasureValue` / `Ma
 amount, `incomplete` a bound with its count, and `unavailable_at_requested_grain`,
 `unavailable_outside_retention_horizon` and `not_applicable` render as the state — never a currency
 zero, never the placed part of a revenue. A number-shaped caller (a chart, a sort) asks
-`statedValue`, which is a GAP where the state states none; folding rows is `combineFigures`, never a
-sum. An answer's `context` and its horizons are the rest of the answer: `caveatsOf` keeps them, and
-an empty answer whose window reaches past its governing horizon renders `RetentionHorizonNote`,
-not "no usage".
+`statedValue`, which is a GAP where the state states none; folding rows into a figure the page shows
+is `combineFigures`, never a sum. A grouped chart or breakdown draws `drawableMeasure`'s choice. An
+answer's `context` and its horizons are the rest of the answer: `caveatsOf` keeps them, and an empty
+answer whose window reaches past its governing horizon renders `RetentionHorizonNote`, not "no
+usage". A measure named by value (which one a chart drew) takes its catalogue word, `measureLabel`.
 
 **A fixture is not complete until a mock or a component test consumes it**, and
 `economic-scenarios.reachability.test.ts` is what says so rather than a reviewer (#371). A scenario

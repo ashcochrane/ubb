@@ -32,6 +32,7 @@ import {
 import {
   ANALYTICS_MEASURE_VALUES,
   type AnalyticsMeasure,
+  type AnalyticsRollup,
   type MeasureStatus,
 } from "@/lib/vocabulary";
 
@@ -187,6 +188,42 @@ export const FIGURE_STATES = [
   "incomplete",
 ] as const satisfies readonly MeasureStatus[];
 
+/** The states that state NO figure — each renders as itself, never as an
+ *  amount. The other half of the split above, kept beside it. */
+export const NO_FIGURE_STATES = [
+  "unavailable_at_requested_grain",
+  "unavailable_outside_retention_horizon",
+  "not_applicable",
+] as const satisfies readonly MeasureStatus[];
+
+/** One of the three states above. */
+export type NoFigureState = (typeof NO_FIGURE_STATES)[number];
+
+// The two halves cover the registry's set exactly: a sixth state the registry
+// declares is a `tsc` failure here until somebody decides which half it is in,
+// rather than a state both halves silently disown.
+type Unsplit = Exclude<MeasureStatus, (typeof FIGURE_STATES)[number] | NoFigureState>;
+const EVERY_STATE_IS_SPLIT: [Unsplit] extends [never] ? true : Unsplit = true;
+void EVERY_STATE_IS_SPLIT;
+
+/** Whether a state is one of the three that state no figure. */
+export function isNoFigureState(status: string): status is NoFigureState {
+  return (NO_FIGURE_STATES as readonly string[]).includes(status);
+}
+
+/**
+ * The query's own order of precedence, worst last
+ * (`apps/metering/queries.py::MEASURE_STATES_WORST_LAST`) — how a margin's two
+ * sides decide its state, and how folded rows decide theirs. `not_applicable`
+ * is not in it, because the query never builds a row carrying it.
+ */
+export const MEASURE_STATES_WORST_LAST = [
+  "known",
+  "incomplete",
+  "unavailable_at_requested_grain",
+  "unavailable_outside_retention_horizon",
+] as const satisfies readonly MeasureStatus[];
+
 /** Whether a state states a figure. A state this build has never seen does
  *  not: the console cannot vouch for a number whose meaning it cannot read. */
 export function statesAFigure(status: string): boolean {
@@ -217,6 +254,57 @@ export function figureOn(
         : 0,
     available_from: entry.available_from ?? null,
   };
+}
+
+/**
+ * The four measures of one row, as figures — null for each the question did
+ * not ask for. The shape every economic view on this console is built from, so
+ * a surface cannot hold a cost without the state it came with.
+ */
+export interface EconomicFigures {
+  readonly cost: MeasureFigure | null;
+  readonly revenue: MeasureFigure | null;
+  readonly margin: MeasureFigure | null;
+  readonly events: MeasureFigure | null;
+}
+
+/** A row's four measures as figures. */
+export function figuresOn(row: EconomicRow | undefined): EconomicFigures {
+  return {
+    cost: figureOn(row, SUPPLIER_COGS),
+    revenue: figureOn(row, CUSTOMER_REVENUE),
+    margin: figureOn(row, GROSS_MARGIN),
+    events: figureOn(row, RECORDED_EVENTS),
+  };
+}
+
+/**
+ * Which measure a GROUPED chart can draw truthfully: revenue where every row
+ * states one, the supplier cost where the revenue could not be placed at this
+ * grain and the cost was asked for, and the count where the rows carry no money
+ * at all.
+ *
+ * ⚠ **GROUPED BY A SUPPLIER, AN EVENT TYPE OR A KIND OF WORK, A WORKSPACE WITH
+ * A SUBSCRIPTION HAS NO REVENUE TO DRAW.** Neither a subscription nor a figure
+ * the tenant supplied names one, so the query reads every row's revenue as
+ * `unavailable_at_requested_grain` and states the money as context. A line or a
+ * bar through the placed PART of that revenue is a floor drawn as a total; the
+ * cost is known at every grain, so it is what a chart can still draw, beside a
+ * caption naming the revenue's state. The count is the measurement-concept
+ * rollup's case, which answers no money. One rule, read by the dashboard's
+ * breakdown and the events chart alike.
+ */
+export function drawableMeasure(
+  rows: readonly (Pick<EconomicFigures, "cost" | "revenue"> & {
+    readonly events?: MeasureFigure | null;
+  })[],
+): typeof CUSTOMER_REVENUE | typeof SUPPLIER_COGS | typeof RECORDED_EVENTS {
+  if (rows.length === 0 || rows.some((row) => row.revenue !== null)) {
+    const placed = rows.every((row) => statedValue(row.revenue) !== null);
+    const costAsked = rows.some((row) => row.cost !== null);
+    return placed || !costAsked ? CUSTOMER_REVENUE : SUPPLIER_COGS;
+  }
+  return rows.some((row) => (row.events ?? null) !== null) ? RECORDED_EVENTS : CUSTOMER_REVENUE;
 }
 
 /**
@@ -253,18 +341,11 @@ export function statedShare(
 }
 
 /**
- * Which state wins when figures are folded together — the query's own order
- * (`apps/metering/queries.py::MEASURE_STATES_WORST_LAST`), with `not_applicable`
- * first because a measure that does not apply to one row takes nothing from the
- * sum of the rest.
+ * Which state wins when figures are folded together — the query's order above,
+ * with `not_applicable` first because a measure that does not apply to one row
+ * takes nothing from the sum of the rest.
  */
-const FOLD_ORDER: readonly string[] = [
-  "not_applicable",
-  "known",
-  "incomplete",
-  "unavailable_at_requested_grain",
-  "unavailable_outside_retention_horizon",
-] satisfies readonly MeasureStatus[];
+const FOLD_ORDER: readonly string[] = ["not_applicable", ...MEASURE_STATES_WORST_LAST];
 
 /** A state's rank in the fold — and a state this build cannot rank ranks
  *  WORST, so it survives the fold as itself rather than being summed away. */
@@ -320,7 +401,7 @@ export function combineFigures(
  *  prunes (#500). */
 export const MEASUREMENT_CONCEPT_AXIS = axisRequestWord({
   kind: ROLLUP_KIND,
-  name: "measurement_concept",
+  name: "measurement_concept" satisfies AnalyticsRollup,
 });
 
 /**

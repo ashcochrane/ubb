@@ -19,6 +19,7 @@ import {
 } from "@/lib/economic-scenarios";
 import {
   CUSTOMER_REVENUE,
+  FIGURES_KEY,
   figureOn,
   GROSS_MARGIN,
   SUPPLIER_COGS,
@@ -26,7 +27,12 @@ import {
 } from "@/lib/economic-query";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
-import { MarginShare, MeasureValue, RevenueContext } from "./measure-value";
+import {
+  MarginShare,
+  MeasureTooltip,
+  MeasureValue,
+  RevenueContext,
+} from "./measure-value";
 
 function rowOf(measures: EconomicMeasureScenario[]): EconomicRow {
   return { grouping_field_value: [], grouping_field_value_status: [], measures };
@@ -42,9 +48,6 @@ function drawn(
   );
   return container;
 }
-
-/** Every rendering of a currency zero this console can produce. */
-const CURRENCY_ZERO = /\$0\.00|\$0(?!\.)/;
 
 describe("known — renders as the amount", () => {
   it("draws the figure, stated whole", () => {
@@ -73,8 +76,6 @@ describe("incomplete — renders as a floor with its count, never as a total", (
     const node = drawn(measures, SUPPLIER_COGS);
     expect(node.textContent).toBe("at least $4.00");
     expect(node.querySelector("[title]")?.getAttribute("title")).toMatch(/^3 events have/);
-    // Never the total: the bare figure is not what is drawn.
-    expect(node.textContent).not.toBe("$4.00");
   });
 
   // ⚠ §15 — the margin is incomplete wherever the cost side is, EVEN WHEN the
@@ -85,7 +86,6 @@ describe("incomplete — renders as a floor with its count, never as a total", (
     const margin = drawn(measures, GROSS_MARGIN);
     expect(margin.querySelector("[data-measure-state]")?.getAttribute("data-measure-state")).toBe("incomplete");
     expect(margin.textContent).toBe("at most $5.00");
-    expect(margin.textContent).not.toBe("$5.00");
   });
 });
 
@@ -111,8 +111,6 @@ describe("unavailable at the requested grain — the state, with the coarser fig
     for (const measure of [CUSTOMER_REVENUE, GROSS_MARGIN] as const) {
       const node = drawn(composed.measures, measure);
       expect(node.textContent).toBe("Unavailable at this grain");
-      expect(node.textContent).not.toMatch(CURRENCY_ZERO);
-      expect(node.textContent).not.toMatch(/\$/);
     }
   });
 
@@ -137,8 +135,6 @@ describe("not applicable — never known, never within anything", () => {
   it("draws the state and no figure", () => {
     const node = drawn([measureNotApplicable("gross_margin")], GROSS_MARGIN);
     expect(node.textContent).toBe("Not applicable");
-    expect(node.textContent).not.toMatch(/known|within/i);
-    expect(node.textContent).not.toMatch(CURRENCY_ZERO);
   });
 });
 
@@ -148,9 +144,48 @@ describe("outside the retention horizon — out-of-horizon with the day, never z
   it.each([SUPPLIER_COGS, CUSTOMER_REVENUE, GROSS_MARGIN] as const)("draws %s as the state", (measure) => {
     const node = drawn(measures, measure);
     expect(node.textContent).toBe("Outside retention horizon");
-    expect(node.textContent).not.toMatch(CURRENCY_ZERO);
-    expect(node.textContent).not.toMatch(/no usage/i);
     expect(node.querySelector("[title]")?.getAttribute("title")).toMatch(/from Sep 18, 2020/);
+  });
+});
+
+describe("the chart tooltip — each series as its state allows", () => {
+  // A line has a GAP where a figure is not stated, so the tooltip is the only
+  // place the gap is named; and a state this build cannot read is marked here
+  // exactly as it is in a card, through the one open-set helper.
+  it("lists a gap as its state and marks an unfamiliar one", () => {
+    const row = rowOf([
+      ...measuresOutsideRetentionHorizon("2020-09-18", ["supplier_cogs"]),
+      {
+        measure: "customer_revenue",
+        status: "estimated" as EconomicMeasureScenario["status"],
+        amount_micros: 4_000_000,
+      },
+    ]);
+    const { container } = render(
+      <MeasureTooltip
+        active
+        payload={[{
+          payload: {
+            [FIGURES_KEY]: {
+              cost: figureOn(row, SUPPLIER_COGS),
+              revenue: figureOn(row, CUSTOMER_REVENUE),
+            },
+          },
+        }]}
+        label="2020-09-16"
+        series={[
+          { key: "revenue", name: "Revenue" },
+          { key: "cost", name: "Provider cost" },
+        ]}
+        currency="usd"
+        labelFormatter={(label) => String(label)}
+      />,
+    );
+
+    expect(screen.getByText("Outside retention horizon")).toBeInTheDocument();
+    expect(container.querySelector("[data-label]")).toHaveAttribute("data-label", "unfamiliar");
+    expect(screen.getByText("Unrecognised")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/\$4\.00|\$0\.00/);
   });
 });
 

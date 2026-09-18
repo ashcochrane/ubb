@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   combineFigures,
   CUSTOMER_REVENUE,
-  EVERY_MEASURE,
   figureOn,
   governingHorizon,
   GROSS_MARGIN,
@@ -15,7 +14,6 @@ import {
   type EconomicsAnswer,
   type MeasureFigure,
 } from "./economic-query";
-import { ANALYTICS_MEASURE_VALUES } from "./vocabulary";
 
 function row(measures: EconomicRow["measures"]): EconomicRow {
   return { grouping_field_value: [], grouping_field_value_status: [], measures };
@@ -32,12 +30,6 @@ function figure(over: Partial<MeasureFigure>): MeasureFigure {
     ...over,
   };
 }
-
-describe("the measure names are the registry's", () => {
-  it("asks for every measure the registry declares, in its order", () => {
-    expect([...EVERY_MEASURE]).toEqual([...ANALYTICS_MEASURE_VALUES]);
-  });
-});
 
 describe("figureOn — one measure, with the state that says what it is worth", () => {
   const answered = row([

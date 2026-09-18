@@ -124,9 +124,15 @@ describe("GroupingFieldBreakdown", () => {
     const { container } = renderWithClient(<Harness />);
 
     expect(await screen.findByText("openai")).toBeInTheDocument();
-    expect(
-      screen.getByText("Provider cost by provider, top 8 shown. Revenue by provider: Unavailable at this grain."),
-    ).toBeInTheDocument();
+    const caption = container.querySelector("[data-plotted-measure]");
+    expect(caption).toHaveAttribute("data-plotted-measure", "supplier_cogs");
+    expect(caption).toHaveTextContent(
+      "Supplier COGS by provider, top 8 shown. Customer revenue by provider: Unavailable at this grain.",
+    );
+    expect(caption?.querySelector("[data-measure-state]")).toHaveAttribute(
+      "data-measure-state",
+      "unavailable_at_requested_grain",
+    );
     expect(container.querySelector("[data-revenue-context]")).toHaveTextContent(
       "$199.00 of revenue from subscriptions can only be placed by customer, per day",
     );

@@ -6,9 +6,9 @@ import {
   RevenueContext,
 } from "@/components/shared/measure-value";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CUSTOMER_REVENUE, statedValue } from "@/lib/economic-query";
+import { CUSTOMER_REVENUE, drawableMeasure, statedValue } from "@/lib/economic-query";
 import { ubbAxisTitle } from "@/lib/grouping-axis";
-import { readingText, readMeasure } from "@/lib/measure-state";
+import { measureLabel, readingText, readMeasure } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
 import {
@@ -16,7 +16,7 @@ import {
   type Breakdown,
   type BreakdownAxis,
 } from "../api/types";
-import { plottedMeasureOf, topWithOther } from "../lib/economics";
+import { topWithOther } from "../lib/economics";
 import { SectionEmpty } from "./section-empty";
 
 /** The slice of the grouped-economics query result this card consumes. */
@@ -118,7 +118,7 @@ function BreakdownBody({
     );
   }
 
-  const plotsRevenue = plottedMeasureOf(query.data.rows) === CUSTOMER_REVENUE;
+  const plotted = drawableMeasure(query.data.rows);
   const axis = ubbAxisTitle(groupBy).toLowerCase();
   const max = bars.reduce((m, bar) => Math.max(m, statedValue(bar.plotted) ?? 0), 0);
   return (
@@ -162,12 +162,17 @@ function BreakdownBody({
           </div>
         );
       })}
-      <p className="pt-1 text-[11px] text-text-muted">
-        {plotsRevenue
-          ? `Revenue by ${axis}, top 8 shown.`
-          : `Provider cost by ${axis}, top 8 shown. Revenue by ${axis}: ${readingText(
-              readMeasure(bars[0]?.revenue ?? null, currency),
-            )}.`}
+      {/* The measure the bars turned out to be, by its catalogue word — and,
+          where that is the cost, the revenue drawn as its state beside it,
+          through the renderer so an unfamiliar state is marked here too. */}
+      <p data-plotted-measure={plotted} className="pt-1 text-[11px] text-text-muted">
+        {`${measureLabel(plotted)} by ${axis}, top 8 shown.`}
+        {plotted !== CUSTOMER_REVENUE && (
+          <>
+            {` ${measureLabel(CUSTOMER_REVENUE)} by ${axis}: `}
+            <MeasureValue figure={bars[0]?.revenue ?? null} currency={currency} />.
+          </>
+        )}
       </p>
       <RevenueContext context={query.data.context} currency={currency} />
       <RetentionHorizonNote caveats={query.data} />

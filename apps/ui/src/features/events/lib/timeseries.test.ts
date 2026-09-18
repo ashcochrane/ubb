@@ -10,7 +10,7 @@ import {
 } from "@/lib/economic-query";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
-import { asTimeseriesPoints, type TimeseriesPoint } from "../api/types";
+import { asTimeseries, type TimeseriesPoint } from "../api/types";
 import { groupedMeasuresFor, OTHER_LABEL, pivotTimeseries } from "./timeseries";
 
 function fig(
@@ -198,9 +198,9 @@ describe("pivotTimeseries", () => {
         },
       ],
       context: [],
-    } as unknown as Parameters<typeof asTimeseriesPoints>[0];
+    } as unknown as Parameters<typeof asTimeseries>[0];
 
-    const { points } = asTimeseriesPoints(fromBackend);
+    const { points } = asTimeseries(fromBackend);
     expect(points[0]?.group_value).toBe("openai");
 
     const pivot = pivotTimeseries(points, true);

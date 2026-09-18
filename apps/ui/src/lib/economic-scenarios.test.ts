@@ -15,6 +15,7 @@ import {
   knownPrice,
   measureNotApplicable,
   measurementsNotApplicable,
+  measuresFor,
   measuresOutsideRetentionHorizon,
   priceNotApplicable,
   prunedMeasurements,
@@ -741,6 +742,18 @@ describe("measure-state scenarios (#510)", () => {
       expect(entry.available_from).toBe("2020-09-18");
       expect(entry.amount_micros ?? entry.event_count ?? null).toBeNull();
     }
+  });
+
+  it("composes a row from a mock's facts as known or incomplete, never a known row with a count", () => {
+    const whole = byMeasure(measuresFor({ cost_micros: 1, revenue_micros: 3, events: 1 }));
+    expect(whole["gross_margin"]).toMatchObject({ status: "known", amount_micros: 2 });
+
+    const unpriced = byMeasure(
+      measuresFor({ cost_micros: 1, revenue_micros: 3, events: 1, unpriced_event_count: 2 }),
+    );
+    expect(unpriced["supplier_cogs"]).toMatchObject({ status: "known" });
+    expect(unpriced["customer_revenue"]).toMatchObject({ status: "incomplete", unpriced_event_count: 2 });
+    expect(unpriced["gross_margin"]).toMatchObject({ status: "incomplete" });
   });
 
   it("composes a measure that does not apply with no figure at all", () => {

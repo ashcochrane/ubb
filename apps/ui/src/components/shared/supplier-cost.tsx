@@ -1,8 +1,8 @@
 // A supplier cost that may not be there, drawn for ONE subject.
 //
 // `@/lib/supplier-cost` decides what may be SAID; this decides what is drawn,
-// and it sits here rather than in a feature because several features draw it:
-// the event ledger, Stops and breaches and the run pages.
+// and it sits here rather than in a feature because two features draw it: the
+// event ledger's cost column and Stops and breaches' itemised events.
 //
 // ⚠ THE CHART TOOLTIP THAT LIVED HERE IS GONE (#510). `BoundedCostTooltip`
 // bounded each series by a ROLE — supplier cost a floor, margin a ceiling,

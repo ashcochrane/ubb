@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CUSTOMER_REVENUE,
+  drawableMeasure,
   GROSS_MARGIN,
   statedValue,
   SUPPLIER_COGS,
@@ -15,13 +16,13 @@ import {
   mockTenantEconomics,
 } from "../api/mock-data";
 import {
-  toBreakdownRows,
+  toBreakdown,
   toCustomerRows,
   toTenantEconomics,
   type BreakdownRow,
   type CustomerEconomicsRow,
 } from "../api/types";
-import { plottedMeasureOf, shortId, sortCustomers, topWithOther } from "./economics";
+import { shortId, sortCustomers, topWithOther } from "./economics";
 
 const WINDOW = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
@@ -123,9 +124,9 @@ describe("topWithOther", () => {
       ...row,
       revenue: fig(CUSTOMER_REVENUE, 7_000_000, "unavailable_at_requested_grain"),
     }));
-    expect(plottedMeasureOf(grain)).toBe(SUPPLIER_COGS);
+    expect(drawableMeasure(grain)).toBe(SUPPLIER_COGS);
     expect(topWithOther(grain, 8)[0]?.plotted?.measure).toBe(SUPPLIER_COGS);
-    expect(plottedMeasureOf(rows)).toBe(CUSTOMER_REVENUE);
+    expect(drawableMeasure(rows)).toBe(CUSTOMER_REVENUE);
   });
 
   it("labels an absent group value as unattributed", () => {
@@ -140,9 +141,9 @@ describe("topWithOther", () => {
 // one economic query DECLARES its row, so what is left to assert is the
 // narrowing itself — and since #510, that the narrowing keeps each measure's
 // STATE and the answer's context rather than a number coalesced to zero.
-describe("toBreakdownRows", () => {
+describe("toBreakdown", () => {
   it("reads the grouped value and both figures off a declared row", () => {
-    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "provider"));
+    const breakdown = toBreakdown(mockGroupedEconomics(WINDOW, "provider"));
     expect(breakdown.rows[0]?.group_value).toBe("openai");
     expect(breakdown.rows[0]?.cost).toMatchObject({ status: "known", value: 245_000_000 });
   });
@@ -151,7 +152,7 @@ describe("toBreakdownRows", () => {
   // reads as the state on every row and the money is in the context. The rows
   // sum to the usage alone, and the subscription is the rest — never dropped.
   it("carries the revenue's state and the context that holds the rest", () => {
-    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "provider"));
+    const breakdown = toBreakdown(mockGroupedEconomics(WINDOW, "provider"));
     expect(breakdown.rows.every((row) => row.revenue?.status === "unavailable_at_requested_grain")).toBe(true);
     const placed = breakdown.rows.reduce((sum, row) => sum + (row.revenue?.value ?? 0), 0);
     const context = breakdown.context.reduce((sum, row) => sum + row.amount_micros, 0);
@@ -159,7 +160,7 @@ describe("toBreakdownRows", () => {
   });
 
   it("places the subscription grouped by the customer, and states no context", () => {
-    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "customer"));
+    const breakdown = toBreakdown(mockGroupedEconomics(WINDOW, "customer"));
     expect(breakdown.context).toEqual([]);
     expect(breakdown.rows.every((row) => row.revenue?.status === "known")).toBe(true);
   });
@@ -167,7 +168,7 @@ describe("toBreakdownRows", () => {
   // ⚠ THE ROW WHOSE AXIS VALUE IS ABSENT IS A ROW, and dropping it would make
   // the bars stop summing to the total above them.
   it("keeps a row whose axis value was never recorded", () => {
-    const breakdown = toBreakdownRows(mockGroupedEconomics(WINDOW, "task_type"));
+    const breakdown = toBreakdown(mockGroupedEconomics(WINDOW, "task_type"));
     const absent = breakdown.rows.filter((row) => row.group_value === null);
     expect(absent).toHaveLength(1);
     expect(absent[0]?.cost?.value).toBe(42_000_000);

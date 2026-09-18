@@ -37,11 +37,13 @@
 import {
   CUSTOMER_REVENUE,
   GROSS_MARGIN,
+  isNoFigureState,
   RECORDED_EVENTS,
   statedShare,
   statedValue,
   type EconomicsAnswer,
   type MeasureFigure,
+  type NoFigureState,
 } from "@/lib/economic-query";
 import {
   formatCalendarDate,
@@ -52,13 +54,24 @@ import {
 import { UBB_AXIS_TITLES, type UbbAxis } from "@/lib/grouping-axis";
 import { ABSENT_LABEL, labelMap, tenantDefinedLabel } from "@/lib/localisation";
 import { AT_LEAST, AT_MOST, partialTotalNote } from "@/lib/supplier-cost";
+import { eventsHave } from "@/lib/total-reading";
 import {
+  ANALYTICS_MEASURE_LABEL_KEYS,
   MEASURE_STATUS_LABEL_KEYS,
   type MeasureStatus,
 } from "@/lib/vocabulary";
 
 /** The catalogue's name for what a measure's figure is worth. */
 export const measureStatusLabel = labelMap(MEASURE_STATUS_LABEL_KEYS);
+
+/**
+ * The catalogue's name for a measure — for where a surface names a measure BY
+ * VALUE, chosen at run time (which one a chart could draw), rather than titling
+ * a fixed slot. A card or a column whose measure is fixed keeps the console's
+ * own copy for that slot ("Provider cost (COGS)"); a sentence saying which
+ * measure the lines turned out to be says the registry's word for it.
+ */
+export const measureLabel = labelMap(ANALYTICS_MEASURE_LABEL_KEYS);
 
 /**
  * What each state means for the person reading the figure.
@@ -101,18 +114,6 @@ export type MeasureReading =
     }
   | { readonly kind: "unfamiliar"; readonly status: string };
 
-/** The three states that state no figure — each renders as itself. */
-const NO_FIGURE_STATES = [
-  "unavailable_at_requested_grain",
-  "unavailable_outside_retention_horizon",
-  "not_applicable",
-] as const satisfies readonly MeasureStatus[];
-type NoFigureState = (typeof NO_FIGURE_STATES)[number];
-
-function isNoFigureState(status: string): status is NoFigureState {
-  return (NO_FIGURE_STATES as readonly string[]).includes(status);
-}
-
 /**
  * Which way an incomplete figure can be wrong — or `null` where it can be wrong
  * either way.
@@ -150,10 +151,6 @@ function boundNote(figure: MeasureFigure): string | null {
     return `${eventsHave(unpriced)} a customer price UBB could not resolve, so the true margin is higher.`;
   }
   return null;
-}
-
-function eventsHave(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "event has" : "events have"}`;
 }
 
 /**

@@ -3,14 +3,7 @@
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
-import {
-  completePriceTotal,
-  completeTotal,
-  incompleteMeasures,
-  incompletePriceTotal,
-  incompleteTotal,
-  knownMeasures,
-} from "@/lib/economic-scenarios";
+import { measuresFor } from "@/lib/economic-scenarios";
 
 import {
   SEAT_DEFAULT_POOL,
@@ -79,22 +72,13 @@ export async function getRevenueWindow(range: {
 
 /** One fixture day's four measures, as the query would state them. */
 function measuresForDay(row: MockDailyRow) {
-  const terms = {
-    cost: row.unresolved_event_count > 0
-      ? incompleteTotal(row.provider_cost_micros, row.unresolved_event_count)
-      : completeTotal(row.provider_cost_micros),
-    revenue: row.unpriced_event_count > 0
-      ? incompletePriceTotal(row.revenue_micros, row.unpriced_event_count)
-      : completePriceTotal(row.revenue_micros),
+  return measuresFor({
+    cost_micros: row.provider_cost_micros,
+    revenue_micros: row.revenue_micros,
     events: row.event_count,
-  };
-  return row.unresolved_event_count > 0 || row.unpriced_event_count > 0
-    ? incompleteMeasures(terms)
-    : knownMeasures({
-        cost_micros: row.provider_cost_micros,
-        revenue_micros: row.revenue_micros,
-        events: row.event_count,
-      });
+    unresolved_event_count: row.unresolved_event_count,
+    unpriced_event_count: row.unpriced_event_count,
+  });
 }
 
 export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {

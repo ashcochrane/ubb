@@ -501,9 +501,11 @@ export const REVENUE_BASES = REVENUE_BASIS_VALUES;
 // ⚠ **THE WORK IS DONE NEXT DOOR, AND NOTHING IMPORTS EITHER FROM HERE.**
 // `@/lib/economic-query` types the measure names against the generated
 // `AnalyticsMeasure` and asks for the generated list whole; `@/lib/measure-state`
-// binds the states' words (`labelMap(MEASURE_STATUS_LABEL_KEYS)`) and the rule
-// for each; `components/shared/measure-value.tsx` draws them, and an unfamiliar
-// state through the open-set helper. The aliases are what the census reads.
+// binds the states' words (`measureStatusLabel`) and the measures' own
+// (`measureLabel`, said wherever a surface names a measure by value — which one
+// a chart drew), with the rule for each state; `components/shared/measure-value.tsx`
+// draws them, and an unfamiliar state through the open-set helper. The aliases
+// are what the census reads.
 export const ANALYTICS_MEASURES = ANALYTICS_MEASURE_VALUES;
 export const MEASURE_STATUSES = MEASURE_STATUS_VALUES;
 

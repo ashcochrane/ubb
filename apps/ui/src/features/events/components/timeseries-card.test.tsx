@@ -260,7 +260,9 @@ describe("a series whose measurement records were pruned", () => {
     expect(await screen.findByTestId("chart", undefined, { timeout: 5000 })).toBeInTheDocument();
     expect(container.querySelector("[data-retention-horizon]"))
       .toHaveAttribute("data-retention-horizon", MEASUREMENT_HORIZON);
-    expect(screen.getByText(/recorded events by group/)).toBeInTheDocument();
+    expect(container.querySelector("[data-plotted-measure]")).toHaveTextContent(
+      "Lines: Recorded events by group, per day. This axis answers no money.",
+    );
   });
 });
 
@@ -311,13 +313,12 @@ describe("a grouped chart whose revenue cannot be placed", () => {
       </QueryClientProvider>,
     );
 
-    expect(
-      await screen.findByText(
-        "Lines are provider cost by group, per day. Revenue by group: Unavailable at this grain.",
-        undefined,
-        { timeout: 5000 },
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("chart", undefined, { timeout: 5000 })).toBeInTheDocument();
+    const caption = container.querySelector("[data-plotted-measure]");
+    expect(caption).toHaveAttribute("data-plotted-measure", "supplier_cogs");
+    expect(caption).toHaveTextContent(
+      "Lines: Supplier COGS by group, per day. Customer revenue by group: Unavailable at this grain.",
+    );
     expect(container.querySelector("[data-revenue-context]")).toHaveTextContent(
       "$199.00 of revenue from subscriptions can only be placed by customer, per day",
     );

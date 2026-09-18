@@ -33,11 +33,16 @@ import {
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 
 import {
+  MeasureValue,
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
-import { CUSTOMER_REVENUE, SUPPLIER_COGS } from "@/lib/economic-query";
-import { readingText, readMeasure } from "@/lib/measure-state";
+import {
+  CUSTOMER_REVENUE,
+  RECORDED_EVENTS,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
+import { measureLabel } from "@/lib/measure-state";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import { useUsageTimeseries } from "../api/queries";
@@ -45,21 +50,32 @@ import type { TimeseriesPoint } from "../api/types";
 import { groupedMeasuresFor, pivotTimeseries } from "../lib/timeseries";
 
 /**
- * What a grouped chart's lines are, in words — and, where it draws the cost
- * because the revenue could not be placed, what the revenue reads instead.
+ * What a grouped chart's lines are, by the measure's catalogue word — and,
+ * where it draws the cost because the revenue could not be placed, the revenue
+ * drawn as its state beside it, through the renderer so an unfamiliar state is
+ * marked here too.
  */
-function plottedCaption(
-  plotted: AnalyticsMeasure,
-  points: readonly TimeseriesPoint[],
-  currency: string,
-): string {
-  if (plotted === CUSTOMER_REVENUE) return "Lines are revenue by group, per day.";
-  if (plotted === SUPPLIER_COGS) {
-    return `Lines are provider cost by group, per day. Revenue by group: ${readingText(
-      readMeasure(points[0]?.revenue ?? null, currency),
-    )}.`;
-  }
-  return "Lines are recorded events by group, per day — this axis answers no money.";
+function PlottedCaption({
+  plotted,
+  points,
+  currency,
+}: {
+  plotted: AnalyticsMeasure;
+  points: readonly TimeseriesPoint[];
+  currency: string;
+}) {
+  return (
+    <p data-plotted-measure={plotted} className="text-[11px] text-text-muted">
+      {`Lines: ${measureLabel(plotted)} by group, per day.`}
+      {plotted === SUPPLIER_COGS && (
+        <>
+          {` ${measureLabel(CUSTOMER_REVENUE)} by group: `}
+          <MeasureValue figure={points[0]?.revenue ?? null} currency={currency} />.
+        </>
+      )}
+      {plotted === RECORDED_EVENTS && " This axis answers no money."}
+    </p>
+  );
 }
 
 const UsageTimeseriesChart = lazy(() => import("./usage-timeseries-chart"));
@@ -200,7 +216,7 @@ export function TimeseriesCard({
             />
           </Suspense>
           {groupBy !== undefined && (
-            <p className="text-[11px] text-text-muted">{plottedCaption(pivot.plotted, points, currency)}</p>
+            <PlottedCaption plotted={pivot.plotted} points={points} currency={currency} />
           )}
           {caveats && <RevenueContext context={caveats.context} currency={currency} />}
           {caveats && <RetentionHorizonNote caveats={caveats} />}

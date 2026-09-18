@@ -12,15 +12,11 @@ import type {
 import {
   axisValueOn,
   caveatsOf,
-  figureOn,
+  figuresOn,
   onlyRow,
-  CUSTOMER_REVENUE,
-  GROSS_MARGIN,
-  RECORDED_EVENTS,
-  SUPPLIER_COGS,
   type AnswerCaveats,
+  type EconomicFigures,
   type EconomicsAnswer,
-  type MeasureFigure,
 } from "@/lib/economic-query";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
@@ -39,21 +35,10 @@ export type Economics = EconomicsAnswer;
  * so a window reaching back past the economic horizon printed "$0.00" and
  * "0 events" on the strip.
  */
-export interface WindowTotals {
-  events: MeasureFigure | null;
-  revenue: MeasureFigure | null;
-  cost: MeasureFigure | null;
-  margin: MeasureFigure | null;
-}
+export type WindowTotals = EconomicFigures;
 
 export function toWindowTotals(answer: Economics): WindowTotals {
-  const row = onlyRow(answer);
-  return {
-    events: figureOn(row, RECORDED_EVENTS),
-    revenue: figureOn(row, CUSTOMER_REVENUE),
-    cost: figureOn(row, SUPPLIER_COGS),
-    margin: figureOn(row, GROSS_MARGIN),
-  };
+  return figuresOn(onlyRow(answer));
 }
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
 // (#409), so this comes from the root schemas rather than from metering's.
@@ -236,12 +221,8 @@ export function asStopContextEntries(
  * These were four numbers coalesced to zero, so a bucket past a horizon — or a
  * revenue a grouping could not place — plotted as a real zero.
  */
-export interface TimeseriesPoint {
+export interface TimeseriesPoint extends EconomicFigures {
   bucket: string;
-  cost: MeasureFigure | null;
-  revenue: MeasureFigure | null;
-  margin: MeasureFigure | null;
-  events: MeasureFigure | null;
   /** Present only when group_by was requested; "(unattributed)" for empties. */
   group_value?: string;
 }
@@ -273,17 +254,11 @@ export interface Timeseries extends AnswerCaveats {
  */
 export const WIRE_GROUP_VALUE_KEY = "grouping_field_value";
 
-export function asTimeseriesPoints(answer: Economics): Timeseries {
+export function asTimeseries(answer: Economics): Timeseries {
   return {
     ...caveatsOf(answer),
     points: answer.rows.map((row) => {
-      const point: TimeseriesPoint = {
-        bucket: row.bucket_start ?? "",
-        cost: figureOn(row, SUPPLIER_COGS),
-        revenue: figureOn(row, CUSTOMER_REVENUE),
-        margin: figureOn(row, GROSS_MARGIN),
-        events: figureOn(row, RECORDED_EVENTS),
-      };
+      const point: TimeseriesPoint = { bucket: row.bucket_start ?? "", ...figuresOn(row) };
       const value = axisValueOn(row);
       if (value !== null) point.group_value = value;
       return point;

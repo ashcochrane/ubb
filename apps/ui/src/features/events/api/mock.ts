@@ -11,12 +11,7 @@ import {
   MONEY_MEASURES,
 } from "@/lib/economic-query";
 import {
-  completePriceTotal,
-  completeTotal,
-  incompleteMeasures,
-  incompletePriceTotal,
-  incompleteTotal,
-  knownMeasures,
+  measuresFor,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
 import { axisNameOf } from "@/lib/grouping-axis";
@@ -296,15 +291,12 @@ function measuresOver(
   billed: number,
   provider: number,
 ): EconomicMeasureScenario[] {
-  const unresolved = countUnresolved(events);
-  const unpriced = countUnpriced(events);
-  if (unresolved === 0 && unpriced === 0) {
-    return knownMeasures({ cost_micros: provider, revenue_micros: billed, events: events.length });
-  }
-  return incompleteMeasures({
-    cost: unresolved > 0 ? incompleteTotal(provider, unresolved) : completeTotal(provider),
-    revenue: unpriced > 0 ? incompletePriceTotal(billed, unpriced) : completePriceTotal(billed),
+  return measuresFor({
+    cost_micros: provider,
+    revenue_micros: billed,
     events: events.length,
+    unresolved_event_count: countUnresolved(events),
+    unpriced_event_count: countUnpriced(events),
   });
 }
 

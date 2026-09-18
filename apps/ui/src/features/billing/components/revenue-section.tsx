@@ -14,6 +14,7 @@ import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { DATE_RANGE_PRESETS, resolveRange, type DateRange } from "@/lib/date-range";
+import { statedValue } from "@/lib/economic-query";
 import {
   figureNote,
   isNegative,
@@ -98,7 +99,9 @@ export function RevenueSection({
                   value={<MeasureValue figure={query.data.revenue} currency={currency} />}
                   subtitle={
                     figureNote(query.data.revenue, currency) ??
-                    `${readingText(readMeasure(query.data.events, currency))} events`
+                    (statedValue(query.data.events) === null
+                      ? undefined
+                      : `${readingText(readMeasure(query.data.events, currency))} events`)
                   }
                 />
                 <StatCard

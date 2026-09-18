@@ -93,18 +93,20 @@
 // horizon. Do not merge them here on the strength of the names, and do not
 // merge them on the strength of both mentioning a clock.
 
-import type {
-  AnalyticsMeasure,
-  CeilingStatus,
-  CostingStatus,
-  MeasurementsStatus,
-  MeasureStatus,
-  NotApplicableReason,
-  PricingMode,
-  PricingReceiptSubjectType,
-  PricingStatus,
-  SpendPoolEnforceMode,
-  UnresolvedReason,
+import { MEASURE_STATES_WORST_LAST } from "@/lib/economic-query";
+import {
+  ANALYTICS_MEASURE_VALUES,
+  type AnalyticsMeasure,
+  type CeilingStatus,
+  type CostingStatus,
+  type MeasurementsStatus,
+  type MeasureStatus,
+  type NotApplicableReason,
+  type PricingMode,
+  type PricingReceiptSubjectType,
+  type PricingStatus,
+  type SpendPoolEnforceMode,
+  type UnresolvedReason,
 } from "@/lib/vocabulary";
 
 /**
@@ -549,13 +551,8 @@ export interface MeasureTerms {
   readonly events: number;
 }
 
-/** The query's order of precedence (`queries.py::MEASURE_STATES_WORST_LAST`). */
-const WORST_LAST: readonly MeasureStatus[] = [
-  "known",
-  "incomplete",
-  "unavailable_at_requested_grain",
-  "unavailable_outside_retention_horizon",
-];
+/** The query's order of precedence, as `@/lib/economic-query` holds it once. */
+const WORST_LAST: readonly MeasureStatus[] = MEASURE_STATES_WORST_LAST;
 
 /** The four measures, from terms whose two sides state what they are worth. */
 function measuresFrom(
@@ -646,6 +643,35 @@ export function incompleteMeasures(terms: MeasureTerms): EconomicMeasureScenario
 }
 
 /**
+ * A row from the facts a mock chooses — its two totals, what each left out,
+ * and its count — composed as `known` where nothing was left out and as
+ * `incomplete` where anything was.
+ *
+ * The choice between the two composers above, made once. Four feature mocks
+ * each made it by hand until #510's review pass; a mock that got the condition
+ * wrong would hand the console a `known` row carrying a count, which the query
+ * cannot write.
+ */
+export function measuresFor(facts: {
+  readonly cost_micros: number;
+  readonly revenue_micros: number;
+  readonly events: number;
+  readonly unresolved_event_count?: number;
+  readonly unpriced_event_count?: number;
+}): EconomicMeasureScenario[] {
+  const uncosted = facts.unresolved_event_count ?? 0;
+  const unpriced = facts.unpriced_event_count ?? 0;
+  if (uncosted === 0 && unpriced === 0) return knownMeasures(facts);
+  return incompleteMeasures({
+    cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
+    revenue: unpriced > 0
+      ? incompletePriceTotal(facts.revenue_micros, unpriced)
+      : completePriceTotal(facts.revenue_micros),
+    events: facts.events,
+  });
+}
+
+/**
  * Revenue that exists and could not be placed this finely, as a row carries it,
  * WITH the context that carries the rest.
  *
@@ -701,12 +727,7 @@ export interface RevenueContextScenario {
  */
 export function measuresOutsideRetentionHorizon(
   availableFrom: string,
-  measures: readonly AnalyticsMeasure[] = [
-    "supplier_cogs",
-    "customer_revenue",
-    "gross_margin",
-    "recorded_events",
-  ],
+  measures: readonly AnalyticsMeasure[] = ANALYTICS_MEASURE_VALUES,
 ): EconomicMeasureScenario[] {
   return measures.map((measure) => ({
     measure,

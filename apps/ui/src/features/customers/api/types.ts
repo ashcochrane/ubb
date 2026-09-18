@@ -13,12 +13,14 @@ import {
   CUSTOMER_REVENUE,
   FIGURES_KEY,
   figureOn,
+  figuresOn,
   GROSS_MARGIN,
   onlyRow,
   RECORDED_EVENTS,
   statedValue,
   SUPPLIER_COGS,
   type AnswerCaveats,
+  type EconomicFigures,
   type EconomicRow,
   type EconomicsAnswer,
   type MeasureFigure,
@@ -52,15 +54,8 @@ export type Economics = EconomicsAnswer;
  * margin as `$0.00`. `@/components/shared/measure-value` draws each figure as
  * its state allows.
  */
-export interface CustomerEconomics {
+export interface CustomerEconomics extends EconomicFigures {
   customer_id: string;
-  revenue: MeasureFigure | null;
-  cost: MeasureFigure | null;
-  margin: MeasureFigure | null;
-  /** Recorded work, where the question could carry it. A GROUPED question
-   *  cannot: a count across rows that mix Event Types is the comparison the
-   *  server refuses. */
-  events: MeasureFigure | null;
 }
 
 /**
@@ -78,13 +73,7 @@ export interface TrendPoint {
 }
 
 function economicsOf(row: EconomicRow | undefined, customerId: string): CustomerEconomics {
-  return {
-    customer_id: customerId,
-    revenue: figureOn(row, CUSTOMER_REVENUE),
-    cost: figureOn(row, SUPPLIER_COGS),
-    margin: figureOn(row, GROSS_MARGIN),
-    events: figureOn(row, RECORDED_EVENTS),
-  };
+  return { customer_id: customerId, ...figuresOn(row) };
 }
 
 /** The three money figures of a row, keyed by the data keys a chart plots
@@ -153,7 +142,7 @@ export interface UsageSeries extends AnswerCaveats {
 }
 
 /** The usage tab's day series. */
-export function toTimeseriesPoints(answer: Economics): UsageSeries {
+export function toUsageSeries(answer: Economics): UsageSeries {
   return {
     ...caveatsOf(answer),
     points: answer.rows.map((row) => {
@@ -276,7 +265,7 @@ export type SubscribeIn = SubscriptionSchemas["SubscribeIn"];
  * ⚠ **THE ROUTE THIS ONCE NAMED IS GONE (#501)** and the sentence outlived it.
  * What the tab reads is `GET /metering/analytics/economics` bucketed by day,
  * filtered to the customer and asked for every measure; the narrowing is
- * `toTimeseriesPoints` above.
+ * `toUsageSeries` above.
  *
  * No grouped-value field, and that is still the tab's own choice rather than
  * the contract's: it sends no `group_by`, so every row is that day's whole
@@ -304,7 +293,7 @@ export interface TimeseriesPoint {
 // left its rows `additionalProperties: true` and nothing in the generated types
 // could hold the console's read to them. The one economic query DECLARES its
 // row: a key that moves is a contract break the gates see, so there is nothing
-// left to defend against and `toTimeseriesPoints` above reads it directly.
+// left to defend against and `toUsageSeries` above reads it directly.
 
 // ⚠ `narrowPastLimitReport` AND THE FOUR SHAPES IT NARROWED ARE DELETED (#466).
 // They narrowed the untyped body of the per-customer report of what was spent

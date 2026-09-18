@@ -12,11 +12,13 @@ import {
 } from "@/lib/economic-scenarios";
 
 import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
-import { toOneCustomer, type CustomerEconomics } from "../api/types";
+import { customersApi } from "../api/provider";
+import { toOneCustomer, type CustomerEconomics, type Economics } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
 import { CustomerDetailPage } from "./customer-detail-page";
 import { OverviewTab } from "./overview-tab";
+import { UsageTab } from "./usage-tab";
 
 const SLOW = { timeout: 5000 };
 
@@ -26,7 +28,12 @@ const SLOW = { timeout: 5000 };
  * and a narrowing that dropped a state would drop it here too.
  */
 function oneCustomer(measures: EconomicMeasureScenario[]): CustomerEconomics {
-  return toOneCustomer({
+  return toOneCustomer(oneCustomerAnswer(measures));
+}
+
+/** The answer filtered to one customer, carrying the composed measures. */
+function oneCustomerAnswer(measures: EconomicMeasureScenario[]): Economics {
+  return {
     period_start: "2026-07-01",
     period_end: "2026-07-24",
     group_by: [],
@@ -36,7 +43,7 @@ function oneCustomer(measures: EconomicMeasureScenario[]): CustomerEconomics {
     measurement_data_available_from: "2026-01-01",
     rows: [{ grouping_field_value: [], grouping_field_value_status: [], measures }],
     context: [],
-  });
+  };
 }
 
 describe("CustomerDetailPage — overview", () => {
@@ -204,6 +211,28 @@ describe("CustomerDetailPage — overview", () => {
     expect(
       await screen.findByText("Customer not found", undefined, SLOW),
     ).toBeInTheDocument();
+  });
+});
+
+// ⚠ THE USAGE TAB'S CARDS WERE THE CONSOLE'S LAST "?? 0" ON A MEASURE (#510):
+// a margin UBB would not state printed as "$0.00" under the retired label
+// "Markup margin", and a count that did not arrive as "0". The answer is
+// composed and served through the provider, so the narrowing is the real one.
+describe("UsageTab", () => {
+  it("draws a window past the horizon as its state, never as zero", async () => {
+    vi.spyOn(customersApi, "getCustomerMargin").mockResolvedValueOnce(
+      oneCustomerAnswer(measuresOutsideRetentionHorizon("2020-09-18")),
+    );
+
+    renderWithProviders(
+      <UsageTab customerId={CUS_ACME} range={{ start_date: "2026-07-01", end_date: "2026-07-24" }} />,
+    );
+
+    expect(await screen.findByText("Gross margin", undefined, SLOW)).toBeInTheDocument();
+    expect(screen.queryByText("Markup margin")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Outside retention horizon")).toHaveLength(4);
+    expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });
 

@@ -17,6 +17,7 @@ import {
   completePriceTotal,
   incompleteMeasures,
   incompleteTotal,
+  knownMeasures,
   measuresOutsideRetentionHorizon,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
@@ -71,6 +72,21 @@ describe("AnalyticsStrip", () => {
       expect(within(drawn).queryByText(/\$0\.00/)).not.toBeInTheDocument();
       expect(within(drawn).queryByText("0")).not.toBeInTheDocument();
     }
+  });
+
+  // A WAIVED charge reaches the one query as a KNOWN zero — waived is a
+  // decision, not missing information, so it raises no unpriced count — and
+  // the query publishes no waived distinction of its own; the word "waived"
+  // belongs to the posting's receipt (`event-detail-page.test.tsx`). What this
+  // surface owes is that the waived revenue reads as a zero it states, not as
+  // unknown, so the loss against a known cost stays visible.
+  it("reads a window whose charges were waived as a stated zero and a visible loss", async () => {
+    measures = knownMeasures({ cost_micros: 3_000_000, revenue_micros: 0, events: 2 });
+    renderStrip(<AnalyticsStrip params={PARAMS} metadataFilterActive={false} />);
+
+    expect(await screen.findByText("$0.00")).toBeInTheDocument();
+    expect(within(card("Revenue")).getByText("$0.00")).toHaveAttribute("data-measure-state", "known");
+    expect(within(card("Gross margin")).getByText("-$3.00")).toBeInTheDocument();
   });
 
   // ⚠ §15 — the margin is incomplete wherever the cost side is, whatever the

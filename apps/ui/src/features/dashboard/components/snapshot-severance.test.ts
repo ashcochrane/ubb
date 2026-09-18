@@ -205,4 +205,18 @@ describe("the overview's margin figures come from the one query", () => {
     expect(source).not.toMatch(/from "\.\.\/api\//);
     expect(source).toMatch(/from "\.\/customer-economics-table"/);
   });
+
+  // ⚠ AND THE SIBLING THAT MAY STUB (#510). A measure state the mock never
+  // serves needs a fixture the mock does not author, so that file stubs a read —
+  // and it is held here to stubbing the ONE QUERY, by the derived names, and to
+  // naming neither the alerting call nor the alerting hook.
+  it("has the table's state test stubbing the one query and nothing else", () => {
+    const source = sourceOf(
+      "/src/features/dashboard/components/customer-economics-table.states.test.tsx",
+    );
+
+    expect(namesAny(source, ONE_QUERY_CALLS)).toBe(true);
+    expect(namesAny(source, ALERTING_CALLS)).toBe(false);
+    expect(namesAny(source, ALERTING_HOOKS)).toBe(false);
+  });
 });

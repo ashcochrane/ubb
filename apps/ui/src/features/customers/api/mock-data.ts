@@ -20,10 +20,9 @@
 import {
   completePriceTotal,
   completeTotal,
-  incompleteMeasures,
   incompletePriceTotal,
   incompleteTotal,
-  knownMeasures,
+  measuresFor,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
@@ -664,15 +663,13 @@ export function economicRow({
   unresolved?: number;
   unpriced?: number;
 }): Economics["rows"][number] {
-  const measures =
-    unresolved > 0 || unpriced > 0
-      ? incompleteMeasures({
-          cost: unresolved > 0 ? incompleteTotal(cost, unresolved) : completeTotal(cost),
-          revenue:
-            unpriced > 0 ? incompletePriceTotal(revenue, unpriced) : completePriceTotal(revenue),
-          events: events ?? 0,
-        })
-      : knownMeasures({ cost_micros: cost, revenue_micros: revenue, events: events ?? 0 });
+  const measures = measuresFor({
+    cost_micros: cost,
+    revenue_micros: revenue,
+    events: events ?? 0,
+    unresolved_event_count: unresolved,
+    unpriced_event_count: unpriced,
+  });
   return {
     bucket_start: bucket,
     grouping_field_value: values,

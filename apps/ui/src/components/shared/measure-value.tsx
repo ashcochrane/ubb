@@ -7,10 +7,11 @@
 // second copy of the rule inside any of them is how one of them starts
 // rendering an unknown as a zero again.
 //
-// Every rendering carries `data-measure-state` with the state the server sent,
-// so a test asserts WHICH state rendered rather than matching prose that a
-// figure could happen to contain; a figure the row does not carry at all
-// carries no attribute, because nobody stated anything.
+// Every rendering of a figure the row carries has `data-measure-state` with the
+// state the server sent — including the absent marker a state can still come
+// to (a share of nothing) — so a test asserts WHICH state rendered rather than
+// matching prose a figure could happen to contain. A figure the row does not
+// carry at all has no attribute, because nobody stated anything.
 
 import { OpenSetValue } from "@/components/shared/open-set-value";
 import {
@@ -24,7 +25,6 @@ import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   horizonNote,
   readingNote,
-  readingText,
   readMeasure,
   readShare,
   revenueContextNote,
@@ -42,7 +42,7 @@ function Reading({
 }) {
   switch (reading.kind) {
     case "absent":
-      return <span>{ABSENT_LABEL}</span>;
+      return <span data-measure-state={status}>{ABSENT_LABEL}</span>;
     case "figure":
       return <span data-measure-state={status}>{reading.text}</span>;
     case "bound":
@@ -226,7 +226,12 @@ export function MeasureTooltip({
             )}
             {entry.name}
           </span>
-          <span className="font-medium text-text-primary">{readingText(reading)}</span>
+          {/* Drawn, not printed: a state this build cannot read is marked
+              through the open-set helper here too, rather than shown as a bare
+              token that reads like a word somebody forgot to translate. */}
+          <span className="font-medium text-text-primary">
+            <Reading reading={reading} status={figures[entry.key]?.status} />
+          </span>
         </div>
       ))}
       {(extra !== null || notes.length > 0) && (

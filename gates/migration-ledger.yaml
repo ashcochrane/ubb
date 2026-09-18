@@ -1285,8 +1285,11 @@ entries:
   # holds `ANALYTICS_MEASURES = ANALYTICS_MEASURE_VALUES` by reference, and the
   # measures are held where they are used: `@/lib/economic-query` types each
   # request name against the generated `AnalyticsMeasure` and asks for the
-  # generated list whole, and every economic surface reads a measure as a figure
-  # with its state rather than as an amount coalesced to zero.
+  # generated list whole, every economic surface reads a measure as a figure
+  # with its state rather than as an amount coalesced to zero, and where a
+  # surface names a measure BY VALUE — which one a grouped chart drew — it says
+  # the catalogue's word (`measureLabel` in `@/lib/measure-state`). A card or a
+  # column titled for a fixed slot keeps its console copy.
 
   # g2-console-control_family WAS HERE AND IS PAID (#466, slice 6). `labels.ts`
   # holds `CONTROL_FAMILIES = CONTROL_FAMILY_VALUES` by reference; the words

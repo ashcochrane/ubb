@@ -54,7 +54,7 @@
 // the retention horizon" and "not applicable", none of which is a bound. They
 // read `@/lib/measure-state` now, which applies this module's floor rule
 // (`partialTotalNote`, the zero-floor absence) to an incomplete cost and adds
-// the four readings a count could never carry. This module keeps the surfaces
+// the readings a count could never carry. This module keeps the surfaces
 // whose responses still publish a count and no state.
 //
 // ⚠ DERIVING THAT LIST FROM THE CONTRACT'S TYPED SCHEMAS MISSES THE UNTYPED

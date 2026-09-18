@@ -13,6 +13,7 @@
 import {
   combineFigures,
   CUSTOMER_REVENUE,
+  drawableMeasure,
   FIGURES_KEY,
   RECORDED_EVENTS,
   statedValue,
@@ -83,23 +84,6 @@ function figureFor(point: TimeseriesPoint, measure: AnalyticsMeasure): MeasureFi
   return point.margin;
 }
 
-/**
- * Which measure a grouped chart draws: revenue where every row states it, the
- * supplier cost where the revenue could not be placed at this grain and the
- * cost was asked for, and the count where the rows carry no money.
- *
- * The dashboard breakdown's rule (`plottedMeasureOf`), for the same reason: a
- * line through the placed PART of a revenue is a floor drawn as a total.
- */
-export function plottedMeasureOf(points: readonly TimeseriesPoint[]): AnalyticsMeasure {
-  if (points.some((point) => point.revenue !== null)) {
-    const placed = points.every((point) => statedValue(point.revenue) !== null);
-    const costAsked = points.some((point) => point.cost !== null);
-    return placed || !costAsked ? CUSTOMER_REVENUE : SUPPLIER_COGS;
-  }
-  return points.some((point) => point.events !== null) ? RECORDED_EVENTS : CUSTOMER_REVENUE;
-}
-
 export function pivotTimeseries(
   points: TimeseriesPoint[],
   grouped: boolean,
@@ -123,7 +107,10 @@ export function pivotTimeseries(
     };
   }
 
-  const plotted = plottedMeasureOf(points);
+  // `drawableMeasure` — the dashboard breakdown's rule too: revenue where every
+  // row states it, the cost where it could not be placed at this grain, the
+  // count where the axis answers no money.
+  const plotted = drawableMeasure(points);
 
   // Rank groups by what they state across the window. A group stating nothing
   // ranks with nothing — the ranking only chooses which lines to paint; every

@@ -30,6 +30,7 @@ import {
   combineFigures,
   CUSTOMER_REVENUE,
   descendingWithAbsencesLast,
+  drawableMeasure,
   statedShare,
   statedValue,
   SUPPLIER_COGS,
@@ -68,7 +69,7 @@ export function sortCustomers(
 
 export interface BreakdownBar {
   name: string;
-  /** The measure the bar's length is drawn from — see `plottedMeasureOf`. */
+  /** The measure the bar's length is drawn from — `drawableMeasure`'s choice. */
   plotted: MeasureFigure | null;
   revenue: MeasureFigure | null;
   cost: MeasureFigure | null;
@@ -76,30 +77,14 @@ export interface BreakdownBar {
 }
 
 /**
- * Which measure the breakdown's bars are drawn from: revenue where every row
- * states one, and the supplier cost where they do not.
- *
- * ⚠ **GROUPED BY A SUPPLIER, AN EVENT TYPE OR A KIND OF WORK, A WORKSPACE WITH
- * A SUBSCRIPTION HAS NO REVENUE TO DRAW.** Neither a subscription nor a figure
- * the tenant supplied names one, so the query reads every row's revenue as
- * `unavailable_at_requested_grain` and states the money as context instead.
- * The bars used to plot the PART that could be placed — billed usage alone —
- * as "Revenue by provider", which drew a floor as a total and dropped the
- * subscription without a word. The cost is known at every grain, so it is what
- * the card can still draw truthfully; the revenue beside each bar renders as
- * its state and the card states the context.
- */
-export function plottedMeasureOf(
-  rows: readonly BreakdownRow[],
-): typeof CUSTOMER_REVENUE | typeof SUPPLIER_COGS {
-  return rows.every((row) => statedValue(row.revenue) !== null)
-    ? CUSTOMER_REVENUE
-    : SUPPLIER_COGS;
-}
-
-/**
  * Top N rows by the plotted measure, remainder folded into a single "Other"
  * bar.
+ *
+ * The plotted measure is `drawableMeasure`'s, the rule the events chart reads
+ * too: revenue where every row states one, the supplier cost where it could not
+ * be placed at this grain. The bars used to plot the PART that could be placed —
+ * billed usage alone — as "Revenue by provider", which drew a floor as a total
+ * and dropped the subscription without a word.
  *
  * The fold is `combineFigures`, never a sum of numbers: a folded row that
  * states no figure makes the "Other" bar state none either, rather than a
@@ -113,7 +98,7 @@ export function plottedMeasureOf(
  * is a registry act rather than a rendering one.
  */
 export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
-  const measure = plottedMeasureOf(rows);
+  const measure = drawableMeasure(rows);
   const plottedOf = (row: BreakdownRow): MeasureFigure | null =>
     measure === CUSTOMER_REVENUE ? row.revenue : row.cost;
   const sorted = [...rows].sort(

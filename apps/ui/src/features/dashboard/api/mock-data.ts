@@ -38,9 +38,9 @@
 import {
   completePriceTotal,
   completeTotal,
-  incompleteMeasures,
   incompleteTotal,
   knownMeasures,
+  measuresFor,
   revenueUnavailableAtThisGrain,
   type CostTotalScenario,
   type EconomicMeasureScenario,
@@ -68,17 +68,19 @@ import type {
  * state: this builder used to write each measure by hand and pick the margin's
  * state from whether a margin was passed at all, which let a fixture describe a
  * margin `unavailable_at_requested_grain` beside a revenue reading `known` — a
- * row no server can write. A cost with uncosted events is `incompleteMeasures`;
- * anything else is `knownMeasures`.
+ * row no server can write.
  */
 function measuresOf(
   cost: CostTotalScenario,
   revenueMicros: number,
   events: number,
 ): EconomicMeasureScenario[] {
-  return cost.unresolved_event_count > 0
-    ? incompleteMeasures({ cost, revenue: completePriceTotal(revenueMicros), events })
-    : knownMeasures({ cost_micros: cost.micros, revenue_micros: revenueMicros, events });
+  return measuresFor({
+    cost_micros: cost.micros,
+    unresolved_event_count: cost.unresolved_event_count,
+    revenue_micros: revenueMicros,
+    events,
+  });
 }
 
 /** One row of an answer, carrying exactly the measures its question asked for.

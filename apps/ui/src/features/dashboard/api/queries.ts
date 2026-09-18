@@ -17,9 +17,9 @@ import {
 
 import { dashboardApi } from "./provider";
 import {
-  toBreakdownRows,
+  toBreakdown,
   toCustomerRows,
-  toRevenueCostPoints,
+  toRevenueCostSeries,
   toTenantEconomics,
   type ApiKeyList,
   type BreakdownAxis,
@@ -60,7 +60,7 @@ export function useGroupedEconomics(
       { ...window, groupBy },
     ] as const,
     queryFn: () => dashboardApi.getGroupedEconomics(window, groupBy),
-    select: toBreakdownRows,
+    select: toBreakdown,
     placeholderData: keepPreviousData,
   });
 }
@@ -91,7 +91,7 @@ export function useRevenueVsCost(
       "metering", "analytics", "economics", "daily", window,
     ] as const,
     queryFn: () => dashboardApi.getDailyEconomics(window),
-    select: toRevenueCostPoints,
+    select: toRevenueCostSeries,
     placeholderData: keepPreviousData,
   });
 }

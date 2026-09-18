@@ -24,13 +24,14 @@ import {
   CUSTOMER_REVENUE,
   FIGURES_KEY,
   figureOn,
+  figuresOn,
   GROSS_MARGIN,
   onlyRow,
   RECORDED_EVENTS,
   statedValue,
   SUPPLIER_COGS,
   type AnswerCaveats,
-  type EconomicRow,
+  type EconomicFigures,
   type EconomicsAnswer,
   type MeasureFigure,
   type PlottedFigures,
@@ -89,15 +90,7 @@ export type BreakdownAxis = (typeof BREAKDOWN_AXES)[number];
  * `@/components/shared/measure-value` draws each one as its state allows; the
  * counts that bound an incomplete figure ride inside it.
  */
-export interface TenantEconomics {
-  cost: MeasureFigure | null;
-  revenue: MeasureFigure | null;
-  margin: MeasureFigure | null;
-  /** Recorded work in the window. Null where the answer did not ask for it —
-   *  a grouped question cannot, because a count across rows that mix Event
-   *  Types is the comparison the server refuses to answer. */
-  events: MeasureFigure | null;
-}
+export type TenantEconomics = EconomicFigures;
 
 /** One customer's row of the same answer, grouped by the customer axis. */
 export interface CustomerEconomicsRow extends TenantEconomics {
@@ -164,25 +157,17 @@ export interface ConnectStatus {
   onboarded: boolean;
 }
 
-function economicsOf(row: EconomicRow | undefined): TenantEconomics {
-  return {
-    cost: figureOn(row, SUPPLIER_COGS),
-    revenue: figureOn(row, CUSTOMER_REVENUE),
-    margin: figureOn(row, GROSS_MARGIN),
-    events: figureOn(row, RECORDED_EVENTS),
-  };
-}
-
 /** The workspace's totals for the window. */
 export function toTenantEconomics(answer: Economics): TenantEconomics {
-  return economicsOf(onlyRow(answer));
+  return figuresOn(onlyRow(answer));
 }
 
-/** One row per customer, from an answer grouped by the customer axis. */
+/** One row per customer, from an answer grouped by the customer axis. The
+ *  count is null on each, because a grouped question cannot ask for it. */
 export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
   return answer.rows.map((row) => ({
     customer_id: axisValueOn(row) ?? "",
-    ...economicsOf(row),
+    ...figuresOn(row),
   }));
 }
 
@@ -194,7 +179,7 @@ export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
  * always carries one — a posting's own instant is never absent — which is why
  * this narrows without a fallback.
  */
-export function toRevenueCostPoints(answer: Economics): RevenueCostSeries {
+export function toRevenueCostSeries(answer: Economics): RevenueCostSeries {
   return {
     ...caveatsOf(answer),
     points: answer.rows.map((row) => {
@@ -227,7 +212,7 @@ export function toRevenueCostPoints(answer: Economics): RevenueCostSeries {
  * mean is still unrendered — a residual this console carries, not a state of a
  * MEASURE.
  */
-export function toBreakdownRows(answer: Economics): Breakdown {
+export function toBreakdown(answer: Economics): Breakdown {
   return {
     ...caveatsOf(answer),
     rows: answer.rows.map((row) => ({
