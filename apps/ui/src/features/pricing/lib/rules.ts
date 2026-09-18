@@ -18,6 +18,7 @@
 // they saw last, and a rule may move either without the other.
 
 import { formatMicros, formatPrice } from "@/lib/format";
+import { ubbAxisTitle, type UbbAxis } from "@/lib/grouping-axis";
 import { labelMap } from "@/lib/localisation";
 import { RATE_STRUCTURE_LABEL_KEYS } from "@/lib/vocabulary";
 import type { BookChangeIn, GroupingFieldDef, Rule } from "../api/types";
@@ -43,24 +44,66 @@ export const rateStructureLabel = labelMap(RATE_STRUCTURE_LABEL_KEYS);
  * are columns UBB defines, and the ten below are the tenant's own vocabulary.
  * A list that ran the two together would be a screen asking a tenant to
  * declare `provider`.
+ *
+ * ⚠ **THEY ARE FOUR OF UBB'S OWN GROUPING AXES, SO THEY TAKE THAT
+ * VOCABULARY'S WORDS (#509).** The declared grouping schema does double duty —
+ * a report groups by these columns and a rule selects on them — and the two
+ * had drifted into two sets of words for one column: this feature said "Task
+ * type" where every surface that groups by it says "Kind of work". The names
+ * here are typed against the grouping vocabulary and the words come from it,
+ * through `selectorTitle` below, so there is no second copy left to drift.
+ *
+ * ⚠ **AND FOUR, NOT FIVE: THE WORDS ARE SHARED, THE ROLE IS NOT.** The
+ * grouping vocabulary has a fifth axis, the customer, and it is absent on
+ * purpose. #145 §5 took the reporting axes out of rate selection — a customer's
+ * own rule reaches its customer through the book it is declared on, never
+ * through a selector — and #147 §2 took the event heading out of pricing by
+ * name, so no rollup is here either. That is why this list is spelled rather
+ * than derived: taking the vocabulary's whole list is exactly the door the
+ * customer would come back through. The rule editor's two callers pin what
+ * they offer as a whole list, in `declare-change-dialog.test.tsx` and
+ * `customer-pricing-tab.test.tsx`.
  */
 export const NAMED_SELECTORS = [
-  { name: "provider", label: "Provider" },
-  { name: "event_type", label: "Event type" },
-  { name: "task_type", label: "Task type" },
-  { name: "subtask_type", label: "Subtask type" },
-] as const;
+  "provider",
+  "event_type",
+  "task_type",
+  "subtask_type",
+] as const satisfies readonly UbbAxis[];
 
-export type NamedSelector = (typeof NAMED_SELECTORS)[number]["name"];
+export type NamedSelector = (typeof NAMED_SELECTORS)[number];
+
+/**
+ * What a named selector is called on screen — the grouping vocabulary's word
+ * for the same axis.
+ *
+ * ⚠ **TYPED ON THE SELECTOR, NOT ON THE AXIS, AND THAT IS THE POINT OF IT.**
+ * `ubbAxisTitle` words all five of UBB's axes, the customer among them, so a
+ * screen calling it directly could label an input for a customer and compile.
+ * This one refuses at `tsc` any name that is not a rate selector, which is the
+ * question a pricing screen is actually asking.
+ */
+export function selectorTitle(selector: NamedSelector): string {
+  return ubbAxisTitle(selector);
+}
+
+/**
+ * An example value for the named selectors a tenant is likeliest to recognise,
+ * shown as a placeholder wherever one of them is asked for.
+ */
+export const SELECTOR_EXAMPLES: Partial<Record<NamedSelector, string>> = {
+  provider: "openai",
+  event_type: "chat.completion",
+};
 
 /**
  * One pinned selector, ready to render: the word a tenant chose, and the value.
  *
  * ⚠ **THE SLOT NUMBER NEVER REACHES A SCREEN**, which is #277's ruling applied
- * one feature over. The event receipt used to show three rows reading
- * "Dimension 1..3" — console English for a slot number the tenant never chose,
- * and only ever three of the ten that exist. A rule's row is keyed by the same
- * slots, so it inherits the same defect unless the registry is read back.
+ * one feature over. The event receipt used to show three rows labelled with a
+ * slot's position in console English the tenant never chose, and only ever
+ * three of the ten that exist. A rule's row is keyed by the same slots, so it
+ * inherits the same defect unless the registry is read back.
  */
 export interface PinnedSelector {
   readonly key: string;
@@ -92,16 +135,23 @@ export function pinnedGroupingFields(
   return pins;
 }
 
+/** The named selectors a row pins, each keyed by its word in lower case. */
+function pinnedNamedSelectors(
+  row: Readonly<Record<NamedSelector, string>>,
+): PinnedSelector[] {
+  return NAMED_SELECTORS.flatMap((name) =>
+    row[name] === ""
+      ? []
+      : [{ key: selectorTitle(name).toLowerCase(), value: row[name] }],
+  );
+}
+
 /** Every selector a rule pins, named and declared alike — or none at all. */
 export function pinnedSelectors(
   rule: Rule,
   declared: readonly GroupingFieldDef[],
 ): PinnedSelector[] {
-  const named = NAMED_SELECTORS.flatMap(({ name, label }) => {
-    const value = rule[name];
-    return value === "" ? [] : [{ key: label.toLowerCase(), value }];
-  });
-  return [...named, ...pinnedGroupingFields(rule, declared)];
+  return [...pinnedNamedSelectors(rule), ...pinnedGroupingFields(rule, declared)];
 }
 
 /**
@@ -127,21 +177,15 @@ export function pinnableGroupingFields(
  * diff row carries its grouping fields already keyed by the tenant's own key,
  * which is why this needs no registry where `pinnedSelectors` does.
  */
-export function pinnedInDiff(row: {
-  provider: string;
-  event_type: string;
-  task_type: string;
-  subtask_type: string;
-  grouping_fields?: Readonly<Record<string, string>> | undefined;
-}): PinnedSelector[] {
-  const named = NAMED_SELECTORS.flatMap(({ name, label }) => {
-    const value = row[name];
-    return value === "" ? [] : [{ key: label.toLowerCase(), value }];
-  });
+export function pinnedInDiff(
+  row: Readonly<Record<NamedSelector, string>> & {
+    grouping_fields?: Readonly<Record<string, string>> | undefined;
+  },
+): PinnedSelector[] {
   const own = Object.entries(row.grouping_fields ?? {})
     .filter(([, value]) => value !== "")
     .map(([key, value]) => ({ key, value }));
-  return [...named, ...own];
+  return [...pinnedNamedSelectors(row), ...own];
 }
 
 /**

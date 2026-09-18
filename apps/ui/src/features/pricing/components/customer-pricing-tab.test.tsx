@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
-import { MOCK_OVERRIDE_CUSTOMER_ID } from "../api/mock-data";
+import { MOCK_GROUPING_FIELDS, MOCK_OVERRIDE_CUSTOMER_ID } from "../api/mock-data";
 import { CustomerPricingTab } from "./customer-pricing-tab";
 
 beforeEach(resetPricingMockState);
@@ -177,5 +177,59 @@ describe("one customer's own pricing rules", () => {
     for (const key of ["model", "tier", "cohort"]) {
       expect(editor.getByLabelText(key)).toBeInTheDocument();
     }
+  });
+});
+
+/** The words labelling each text input inside `scope`, in the order they render. */
+function inputLabels(scope: HTMLElement): string[] {
+  return within(scope)
+    .getAllByRole("textbox")
+    .map((input) => (input as HTMLInputElement).labels?.[0]?.textContent ?? "");
+}
+
+/**
+ * ⚠ WHAT A CUSTOMER'S RULE MAY SELECT ON, PINNED AS A WHOLE LIST (#509).
+ *
+ * The other caller of the one rule editor. A customer is a grouping axis a
+ * report may break margin down by, and it is NOT a selector: this rule reaches
+ * its customer through the book it is declared on, never through an input. So
+ * a Customer input here — or a rollup's, or any other word the grouping picker
+ * offers — would be a reporting axis readmitted to pricing through the door
+ * #145 §5 closed, and every list below is exact for that reason.
+ */
+describe("what a customer's rule may select on", () => {
+  const NAMED = ["Provider", "Event type", "Kind of work", "Kind of subtask"];
+  const DECLARED = MOCK_GROUPING_FIELDS.map((field) => field.key);
+
+  // ⚠ TWO NAMED SELECTORS AND NOT FOUR, PINNED RATHER THAN FIXED. The route
+  // takes all four, so this lookup cannot ask what a customer inherits for a
+  // rule pinned on a kind of work. Offering them would change what a tenant can
+  // ask, and this is a change to what things are called — the gap is recorded
+  // on #509 instead.
+  it("asks what they inherit on the same selectors it always did", async () => {
+    const { container } = renderTab();
+    await screen.findByLabelText("model");
+
+    expect(inputLabels(container)).toEqual([
+      "Measurement",
+      "Provider",
+      "Event type",
+      ...DECLARED,
+    ]);
+  });
+
+  it("writes their rule on the four named selectors and the tenant's own fields, and nothing else", async () => {
+    renderTab();
+    await lookUpTheInheritedRule();
+    expect(await screen.findByText("$5 / 1M")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Write their own rule from this" }),
+    );
+    const selectors = await screen.findByRole("group", {
+      name: "What this rule applies to",
+    });
+
+    expect(inputLabels(selectors)).toEqual([...NAMED, ...DECLARED]);
   });
 });

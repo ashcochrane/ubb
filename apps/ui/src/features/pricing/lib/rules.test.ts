@@ -100,6 +100,26 @@ describe("what a rule pins", () => {
     ]);
   });
 
+  // ⚠ THE ONE GROUPING VOCABULARY'S WORDS, NOT A SECOND COPY OF THEM (#509).
+  // The four named selectors are four of UBB's own grouping axes, and this
+  // table used to word two of them its own way — "task type" here, "Kind of
+  // work" on every surface that groups by the same column.
+  it("words every named selector the way the grouping vocabulary does", () => {
+    const rule = ruleWith({
+      provider: "openai",
+      event_type: "chat.completion",
+      task_type: "summarise",
+      subtask_type: "draft",
+    });
+
+    expect(pinnedSelectors(rule, DECLARED).map((pin) => pin.key)).toEqual([
+      "provider",
+      "event type",
+      "kind of work",
+      "kind of subtask",
+    ]);
+  });
+
   it("says nothing at all for a rule that pins nothing", () => {
     expect(pinnedSelectors(ruleWith({}), DECLARED)).toEqual([]);
   });

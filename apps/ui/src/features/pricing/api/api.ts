@@ -284,17 +284,14 @@ export async function withdrawTenantDefaultMarkup(): Promise<StatusResponse> {
  * reading one route is two thin wrappers, and a shared one would have to sit in
  * `lib/`, where an API call does not belong.
  *
- * ⚠ **IT RETURNS THE LIST AND NOT THE ENVELOPE, AND THAT IS THE FORBIDDEN-TERM
- * SWEEP'S DOING AS MUCH AS TASTE.** The wire wraps the list in a property whose
- * name is a term slice 7 retires, and that term's console ledger entry counts
- * the files holding it — a count that is a ceiling on SPREAD as well as a
- * floor, so a feature reading that key in four components would put the entry
- * over and fail the gate on a debt it does not own. Unwrapping here is Phase
- * B's second technique: the word sits ONCE, in the place whose job is to turn a
- * wire envelope into what the console actually wants, and every caller says
- * what it means. It is also the better shape on its own terms — no consumer of
- * this function has any use for the envelope — which is why it is not a
- * workaround.
+ * ⚠ **IT RETURNS THE LIST AND NOT THE ENVELOPE, BECAUSE NO CALLER WANTS THE
+ * ENVELOPE.** It first unwrapped for a narrower reason: the wire's key was a
+ * word slice 7 retired, counted under a ledger ceiling on spread, so it had to
+ * sit in one file. #505 renamed that key to `grouping_fields` — the word the
+ * contract's responses already used — and the debt went with it. What is left
+ * is the reason that was always true: the rule editor's two callers and the
+ * rules table all want the rows, and turning a wire envelope into what the
+ * console means is what this module is for.
  */
 export async function listGroupingFields(): Promise<GroupingFieldDef[]> {
   const registry: GroupingFieldRegistry = unwrap(

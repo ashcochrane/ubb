@@ -139,6 +139,16 @@ export type TenantDefaultMarkupIn = MeteringSchemas["TenantDefaultMarkupIn"];
  * fixed list of properties. The editor therefore offers whatever this registry
  * declares — anywhere from none to ten — instead of a hand-written six that
  * would be the same bug written in the console.
+ *
+ * ⚠ **THE TWO COMPONENT NAMES BELOW ARE THE CONTRACT'S, AND THEY ARE ALIASED
+ * HERE SO THAT NOTHING ELSE HAS TO SPELL THEM (#509).** The published
+ * schemas kept a name from before the Grouping Field took its own — a
+ * different, singular word from the axis word slice 7 retired — and
+ * `gates/migration-ledger.yaml` records them as deliberately not renamed:
+ * renaming four published components is a contract ticket of its own, not a
+ * corner of a console one. Aliasing them here to the vocabulary's names is what
+ * keeps every caller and every screen off them; a second module indexing the
+ * schema by those names would undo that.
  */
 export type GroupingFieldRegistry = MeteringSchemas["DimensionRegistryOut"];
 export type GroupingFieldDef = MeteringSchemas["DimensionDefOut"];

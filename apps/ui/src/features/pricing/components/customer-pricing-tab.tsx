@@ -20,7 +20,13 @@ import {
 import type { InheritedPricingRule, InheritedRuleParams } from "../api/types";
 import { pricingMethodLabel } from "@/lib/customer-price";
 import { microsToUnitString, toMicros, unitChoiceFor } from "../lib/pricing-math";
-import { pinnableGroupingFields, rateStructureLabel, ruleAmount } from "../lib/rules";
+import {
+  pinnableGroupingFields,
+  rateStructureLabel,
+  ruleAmount,
+  SELECTOR_EXAMPLES,
+  selectorTitle,
+} from "../lib/rules";
 import { effectiveInstant, scheduleRefusal } from "../lib/schedule";
 import {
   blankRule,
@@ -171,12 +177,12 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
                 />
               )}
             </FormField>
-            <FormField label="Provider">
+            <FormField label={selectorTitle("provider")}>
               {(id) => (
                 <Input
                   id={id}
                   className="font-mono"
-                  placeholder="openai"
+                  placeholder={SELECTOR_EXAMPLES.provider}
                   value={lookup.provider ?? ""}
                   onChange={(event) =>
                     setLookup((current) => ({
@@ -187,12 +193,12 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
                 />
               )}
             </FormField>
-            <FormField label="Event type">
+            <FormField label={selectorTitle("event_type")}>
               {(id) => (
                 <Input
                   id={id}
                   className="font-mono"
-                  placeholder="chat.completion"
+                  placeholder={SELECTOR_EXAMPLES.event_type}
                   value={lookup.event_type ?? ""}
                   onChange={(event) =>
                     setLookup((current) => ({

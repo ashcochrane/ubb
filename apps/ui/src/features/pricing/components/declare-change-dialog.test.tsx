@@ -4,11 +4,13 @@ import * as React from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
-import { MOCK_PRICING_BOOKS } from "../api/mock-data";
+import { MOCK_COST_BOOKS, MOCK_GROUPING_FIELDS, MOCK_PRICING_BOOKS } from "../api/mock-data";
+import type { AnyBook } from "../api/types";
 import { BookChangesPanel } from "./book-changes-panel";
 import { DeclareChangeDialog } from "./declare-change-dialog";
 
 const STANDARD = MOCK_PRICING_BOOKS[0]!;
+const OPENAI_COSTS = MOCK_COST_BOOKS[0]!;
 
 beforeEach(resetPricingMockState);
 
@@ -20,12 +22,12 @@ beforeEach(resetPricingMockState);
  * a console that sent the wrong body — the assertion that matters is what the
  * book's pending changes say about it once it is there.
  */
-function Harness() {
+function Harness({ book }: { book: AnyBook }) {
   const [open, setOpen] = React.useState(true);
   return (
     <>
-      <BookChangesPanel book={STANDARD} onDeclareChange={() => setOpen(true)} />
-      <DeclareChangeDialog book={STANDARD} open={open} onOpenChange={setOpen} />
+      <BookChangesPanel book={book} onDeclareChange={() => setOpen(true)} />
+      <DeclareChangeDialog book={book} open={open} onOpenChange={setOpen} />
     </>
   );
 }
@@ -37,15 +39,22 @@ function Harness() {
  * permanently unreachable, which is the assertion these cases exist for.
  * Declaring closes it, which is also what a tenant experiences.
  */
-function renderDialog() {
+function renderDialog(book: AnyBook = STANDARD) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <Harness />
+      <Harness book={book} />
     </QueryClientProvider>,
   );
+}
+
+/** The words labelling each text input inside `scope`, in the order they render. */
+function inputLabels(scope: HTMLElement): string[] {
+  return within(scope)
+    .getAllByRole("textbox")
+    .map((input) => (input as HTMLInputElement).labels?.[0]?.textContent ?? "");
 }
 
 /**
@@ -286,5 +295,50 @@ describe("declaring a change to a book", () => {
         .toBeInTheDocument(),
     );
     expect(changes.getAllByText("Scheduled")).toHaveLength(3);
+  });
+});
+
+/**
+ * ⚠ WHAT A RULE MAY SELECT ON, PINNED AS A WHOLE LIST (#509).
+ *
+ * The rate selectors and the analytics grouping axes share one vocabulary: the
+ * four named selectors are four of UBB's own grouping axes, and a tenant's
+ * declared fields are both. That sharing is what makes a vocabulary change the
+ * easiest place to widen a selector by accident — #145 §5 took the reporting
+ * axes out of rate selection and #147 §2 took the event heading out of pricing
+ * by name. So every list below is EXACT: an input for the customer, for a
+ * rollup, or for any other word the grouping picker offers is a red test here
+ * rather than a quietly wider rule.
+ */
+describe("what a rule may select on", () => {
+  const NAMED = ["Provider", "Event type", "Kind of work", "Kind of subtask"];
+  const DECLARED = MOCK_GROUPING_FIELDS.map((field) => field.key);
+
+  it("offers a Cost Rate the four named selectors and the tenant's own fields, and nothing else", async () => {
+    renderDialog(OPENAI_COSTS);
+    await screen.findByLabelText("model");
+
+    const selectors = screen.getByRole("group", { name: "What this rule applies to" });
+    expect(inputLabels(selectors)).toEqual([...NAMED, ...DECLARED]);
+  });
+
+  // ⚠ TWO SELECTORS AND NOT FOURTEEN, AND THAT IS PINNED RATHER THAN FIXED.
+  // The server finds a retirement's target by the measurement and the exact
+  // value of every selector, so this form cannot name a rule pinned on a kind
+  // of work or on one of the tenant's own fields. Widening it would be a
+  // change to what a tenant can do, and this is a change to what things are
+  // called — so the pin holds today's list, and the gap is recorded on #509.
+  it("names a rule to retire by the same selectors it always did", async () => {
+    renderDialog(OPENAI_COSTS);
+    await screen.findByLabelText("model");
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("radio", { name: /Retire a rule/ }),
+    );
+
+    expect(inputLabels(screen.getByRole("dialog"))).toEqual([
+      "Measurement",
+      "Provider",
+      "Event type",
+    ]);
   });
 });

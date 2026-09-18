@@ -49,8 +49,10 @@
 // thing tying them to the server is the cross-tree check named at
 // `UBB_AXIS_TITLES` rather than anything a generator would refuse. If a concept
 // is ever coined for UBB's own axis names, the catalogue becomes their home and
-// this object goes. #509 takes the same five words for the pricing feature's
-// rate selectors and will want the same answer; nobody owns the question yet.
+// this object goes. The residual now covers the pricing feature's rate
+// selectors too: #509 took four of these words for them (`selectorTitle` in
+// `features/pricing/lib/rules.ts`) rather than keeping a second copy there, so
+// the same answer will serve both. Nobody owns the question yet.
 
 import { resolveLabel } from "@/lib/localisation";
 import type { MeteringSchemas } from "@/api/types";
@@ -98,6 +100,12 @@ export const ROLLUP_KIND: GroupingKind = "rollup";
  * directions: an axis the server offers with no word here would render as a
  * marked token instead of the word UBB chose, and a word here for an axis the
  * server never offers is copy no render can reach.
+ *
+ * ⚠ **FOUR OF THESE WORDS ALSO LABEL A RULE'S SELECTORS (#509)**, so changing
+ * one changes the pricing screens too. The customer is the one that does not:
+ * it is an axis a report groups by and never something a rule selects on, and
+ * `tests/contracts/test_rate_selector_vocabulary.py` holds the pricing
+ * feature's list to the server's selectors so it cannot come back that way.
  */
 export const UBB_AXIS_TITLES = {
   customer: "Customer",

@@ -322,6 +322,10 @@ on an event and "matches anything" on a Rate. Only the four reserved axes are in
 carry no index of their own, because no query selects rows by one — every read of a slot groups by
 it inside a tenant and time window (#276).
 (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)
+_Avoid_: reading the analytics grouping axes as the selector list — every selector is an axis a
+report may group by, but the customer and the two rollups are axes that never select a rule
+(#145 §5, #147 §2), and nothing else a rule carries is an axis at all. The two share a schema and
+its words, not a role (#509).
 
 **Specificity**:
 How many of a Rate's fourteen selectors are non-empty (pinned) — and **only that count** (#356). It

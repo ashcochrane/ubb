@@ -20,7 +20,12 @@ import { toastSuccess } from "@/lib/mutations";
 import { useDeclareBookPublish, useGroupingFields } from "../api/queries";
 import type { AnyBook, BookChangeIn } from "../api/types";
 import { toMicros } from "../lib/pricing-math";
-import { CHANGE_KINDS, pinnableGroupingFields, type ChangeKind } from "../lib/rules";
+import {
+  CHANGE_KINDS,
+  pinnableGroupingFields,
+  selectorTitle,
+  type ChangeKind,
+} from "../lib/rules";
 import {
   blankRule,
   resolveUnitQuantity,
@@ -292,10 +297,10 @@ function RetireFields({ form }: { form: ReturnType<typeof useForm<RuleFormValues
         )}
       </FormField>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField label="Provider">
+        <FormField label={selectorTitle("provider")}>
           {(id) => <Input id={id} className="font-mono" {...form.register("provider")} />}
         </FormField>
-        <FormField label="Event type">
+        <FormField label={selectorTitle("event_type")}>
           {(id) => (
             <Input id={id} className="font-mono" {...form.register("event_type")} />
           )}
