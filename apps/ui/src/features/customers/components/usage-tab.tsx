@@ -10,12 +10,12 @@ import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros } from "@/lib/format";
 import {
-  marginBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+  MeasureValue,
+  RetentionHorizonNote,
+  RevenueContext,
+} from "@/components/shared/measure-value";
+import { figureNote, isNegative, noFigureNote } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
 import { useUsageAnalytics, useUsageTimeseries } from "../api/queries";
@@ -66,46 +66,41 @@ export function UsageTab({
       ) : analytics.isError ? (
         <ErrorCard error={analytics.error} onRetry={() => void analytics.refetch()} />
       ) : analytics.data ? (
+        // ⚠ THESE CARDS WERE THE CONSOLE'S LAST "?? 0" ON A MEASURE (#510).
+        // The margin card rendered a margin UBB would not state as "$0.00",
+        // and the event card a count that did not arrive as "0"; both now draw
+        // the figure as its state allows. The labels are the events strip's —
+        // #501 retired "Markup margin" there as naming neither thing, and the
+        // same measure on this tab kept the retired name.
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard
             label="Events"
-            value={formatEventCount(analytics.data.event_count ?? 0)}
+            value={<MeasureValue figure={analytics.data.events} currency={currency} />}
             variant="raised"
           />
           <StatCard
-            label="Billed cost"
-            value={formatMicros(analytics.data.total_revenue_micros, currency)}
+            label="Revenue"
+            value={<MeasureValue figure={analytics.data.revenue} currency={currency} />}
             variant="raised"
+            subtitle={figureNote(analytics.data.revenue, currency)}
           />
           <StatCard
             label="Provider cost"
-            value={supplierCostTotal(
-              analytics.data.provider_cost_micros,
-              analytics.data,
-              currency,
-            )}
+            value={<MeasureValue figure={analytics.data.cost} currency={currency} />}
             variant="raised"
-            subtitle={
-              partialTotalNote(analytics.data.unresolved_event_count) ?? undefined
-            }
+            subtitle={figureNote(analytics.data.cost, currency)}
           />
           <StatCard
-            label="Markup margin"
+            label="Gross margin"
             value={
-              <span
-                className={cn(
-                  (analytics.data.gross_margin_micros ?? 0) < 0 && "text-danger-dark",
-                )}
-              >
-                {marginBound(
-                  (analytics.data.gross_margin_micros ?? 0),
-                  analytics.data,
-                  currency,
-                )}
+              <span className={cn(isNegative(analytics.data.margin) && "text-danger-dark")}>
+                <MeasureValue figure={analytics.data.margin} currency={currency} />
               </span>
             }
             variant="raised"
-            subtitle="Billed minus provider cost"
+            subtitle={
+              noFigureNote(analytics.data.margin, currency) ?? "Revenue minus provider cost"
+            }
           />
         </div>
       ) : null}
@@ -115,18 +110,26 @@ export function UsageTab({
           <Skeleton className="h-56 w-full" />
         ) : timeseries.isError ? (
           <ErrorCard error={timeseries.error} onRetry={() => void timeseries.refetch()} />
-        ) : !timeseries.data || timeseries.data.length === 0 ? (
-          <EmptyState
-            title="No usage in this window"
-            description="Recorded events will chart here by day."
-          />
-        ) : (
-          <React.Suspense fallback={<Skeleton className="h-56 w-full" />}>
-            <UsageTimeseriesChart
-              points={timeseries.data}
-              currency={currency}
+        ) : !timeseries.data || timeseries.data.points.length === 0 ? (
+          timeseries.data && timeseries.data.held_from !== null ? (
+            <RetentionHorizonNote caveats={timeseries.data} />
+          ) : (
+            <EmptyState
+              title="No usage in this window"
+              description="Recorded events will chart here by day."
             />
-          </React.Suspense>
+          )
+        ) : (
+          <>
+            <React.Suspense fallback={<Skeleton className="h-56 w-full" />}>
+              <UsageTimeseriesChart
+                points={timeseries.data.points}
+                currency={currency}
+              />
+            </React.Suspense>
+            <RevenueContext context={timeseries.data.context} currency={currency} />
+            <RetentionHorizonNote caveats={timeseries.data} />
+          </>
         )}
       </ChartCard>
 

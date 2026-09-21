@@ -19,19 +19,22 @@
 import type { MeteringSchemas, MarginSchemas, TenantSchemas } from "@/api/types";
 import type { UbbAxis } from "@/lib/grouping-axis";
 import {
-  amountOn,
   axisValueOn,
-  completenessOn,
+  caveatsOf,
   CUSTOMER_REVENUE,
-  eventsOn,
+  FIGURES_KEY,
+  figureOn,
+  figuresOn,
   GROSS_MARGIN,
-  marginPercentOf,
-  measureOn,
   onlyRow,
-  orZero,
+  RECORDED_EVENTS,
+  statedValue,
   SUPPLIER_COGS,
-  type EconomicRow,
+  type AnswerCaveats,
+  type EconomicFigures,
   type EconomicsAnswer,
+  type MeasureFigure,
+  type PlottedFigures,
 } from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
 
@@ -80,22 +83,14 @@ export type BreakdownAxis = (typeof BREAKDOWN_AXES)[number];
  * The window's economics for the whole workspace — the ungrouped, unbucketed
  * answer, which always has exactly one row.
  *
- * ⚠ `gross_margin_micros` IS NULLABLE AND ITS NULL IS NOT A ZERO. A margin UBB
- * cannot state is absent rather than small; the two counts beside it say how
- * far the figures that ARE stated can be off, in opposite directions.
+ * ⚠ **EACH MEASURE IS A FIGURE WITH ITS STATE, NOT AN AMOUNT (#510).** This
+ * view used to carry four numbers coalesced to zero and a nullable margin, so a
+ * window reaching back past the economic horizon rendered its cost and revenue
+ * as `$0.00` — the state was on the wire and the narrowing threw it away.
+ * `@/components/shared/measure-value` draws each one as its state allows; the
+ * counts that bound an incomplete figure ride inside it.
  */
-export interface TenantEconomics {
-  provider_cost_micros: number;
-  total_revenue_micros: number;
-  gross_margin_micros: number | null;
-  margin_percentage: number;
-  unresolved_event_count: number;
-  unpriced_event_count: number;
-  /** Recorded work in the window. Null where the answer did not ask for it —
-   *  a grouped question cannot, because a count across rows that mix Event
-   *  Types is the comparison the server refuses to answer. */
-  event_count: number | null;
-}
+export type TenantEconomics = EconomicFigures;
 
 /** One customer's row of the same answer, grouped by the customer axis. */
 export interface CustomerEconomicsRow extends TenantEconomics {
@@ -103,20 +98,27 @@ export interface CustomerEconomicsRow extends TenantEconomics {
   customer_id: string;
 }
 
-/** One point of the revenue-vs-cost chart, from a day-bucketed answer. */
+/**
+ * One point of the revenue-vs-cost chart, from a day-bucketed answer.
+ *
+ * The three plotted numbers are `statedValue` of their figures — a GAP where
+ * the state states none, never a zero — and the figures themselves ride under
+ * `FIGURES_KEY`, keyed by the same data keys, for the tooltip to say each one
+ * as its state allows. The counts that bound a day's figures are per point
+ * inside them, because an unresolved cost belongs to the day it fell in.
+ */
 export interface RevenueCostPoint {
   day: string; // YYYY-MM-DD
-  revenue_micros: number;
-  provider_micros: number;
+  revenue_micros: number | null;
+  provider_micros: number | null;
   margin_micros: number | null;
-  event_count: number;
-  /**
-   * That day's own uncosted events. It rides the point rather than the chart
-   * because the answer is per bucket, and because the point is what the
-   * tooltip is handed: a count kept beside the series would caveat every day
-   * for one day's missing invoice.
-   */
-  unresolved_event_count: number;
+  event_count: number | null;
+  [FIGURES_KEY]: PlottedFigures;
+}
+
+/** The chart's points, and what the answer said beside them. */
+export interface RevenueCostSeries extends AnswerCaveats {
+  points: RevenueCostPoint[];
 }
 
 /** One bar of the cost breakdown, from an answer grouped by one axis.
@@ -126,8 +128,21 @@ export interface RevenueCostPoint {
 export interface BreakdownRow {
   /** The value of the axis this row is grouped by, or null when unset. */
   group_value: string | null;
-  total_provider_cost_micros: number;
-  total_revenue_micros: number;
+  cost: MeasureFigure | null;
+  revenue: MeasureFigure | null;
+}
+
+/**
+ * The breakdown's rows, and what the answer said beside them.
+ *
+ * ⚠ **THE CONTEXT IS WHY THIS IS NOT A BARE LIST.** Grouped by a supplier, an
+ * event type or a kind of work, a subscription and a figure the tenant supplied
+ * cannot be placed — neither names one — so the revenue measure reads
+ * `unavailable_at_requested_grain` on every row and the money is in the
+ * answer's `context`. A list of rows cannot carry that; the card has to.
+ */
+export interface Breakdown extends AnswerCaveats {
+  rows: BreakdownRow[];
 }
 
 /**
@@ -142,29 +157,17 @@ export interface ConnectStatus {
   onboarded: boolean;
 }
 
-function economicsOf(row: EconomicRow | undefined): TenantEconomics {
-  const revenue = orZero(amountOn(row, CUSTOMER_REVENUE));
-  const margin = amountOn(row, GROSS_MARGIN);
-  return {
-    provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    total_revenue_micros: revenue,
-    gross_margin_micros: margin,
-    margin_percentage: marginPercentOf(revenue, margin),
-    event_count: eventsOn(row),
-    ...completenessOn(row),
-  };
-}
-
 /** The workspace's totals for the window. */
 export function toTenantEconomics(answer: Economics): TenantEconomics {
-  return economicsOf(onlyRow(answer));
+  return figuresOn(onlyRow(answer));
 }
 
-/** One row per customer, from an answer grouped by the customer axis. */
+/** One row per customer, from an answer grouped by the customer axis. The
+ *  count is null on each, because a grouped question cannot ask for it. */
 export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
   return answer.rows.map((row) => ({
     customer_id: axisValueOn(row) ?? "",
-    ...economicsOf(row),
+    ...figuresOn(row),
   }));
 }
 
@@ -176,46 +179,48 @@ export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
  * always carries one — a posting's own instant is never absent — which is why
  * this narrows without a fallback.
  */
-export function toRevenueCostPoints(answer: Economics): RevenueCostPoint[] {
-  return answer.rows.map((row) => ({
-    day: (row.bucket_start ?? "").slice(0, 10),
-    revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-    provider_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    margin_micros: amountOn(row, GROSS_MARGIN),
-    event_count: orZero(eventsOn(row)),
-    unresolved_event_count: completenessOn(row).unresolved_event_count,
-  }));
+export function toRevenueCostSeries(answer: Economics): RevenueCostSeries {
+  return {
+    ...caveatsOf(answer),
+    points: answer.rows.map((row) => {
+      const figures = {
+        revenue_micros: figureOn(row, CUSTOMER_REVENUE),
+        provider_micros: figureOn(row, SUPPLIER_COGS),
+        margin_micros: figureOn(row, GROSS_MARGIN),
+      };
+      return {
+        day: (row.bucket_start ?? "").slice(0, 10),
+        revenue_micros: statedValue(figures.revenue_micros),
+        provider_micros: statedValue(figures.provider_micros),
+        margin_micros: statedValue(figures.margin_micros),
+        event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+        [FIGURES_KEY]: figures,
+      };
+    }),
+  };
 }
 
 /**
- * Breakdown rows from an answer grouped by one axis.
+ * Breakdown rows from an answer grouped by one axis, and what it said beside
+ * them.
  *
  * ⚠ **A NULL VALUE IS A ROW LIKE ANY OTHER AND MUST NOT BE DROPPED.** The
  * report this replaced bucketed every absence under one `(unattributed)`
  * string; the row now carries `null` with a status saying whether the value was
  * never recorded or whether the question does not apply to those rows. The bar
  * chart renders the absence as a heading either way, and what the two statuses
- * mean is the rendering ticket's to show.
+ * mean is still unrendered — a residual this console carries, not a state of a
+ * MEASURE.
  */
-export function toBreakdownRows(answer: Economics): BreakdownRow[] {
-  return answer.rows.map((row) => ({
-    group_value: axisValueOn(row),
-    total_provider_cost_micros: orZero(amountOn(row, SUPPLIER_COGS)),
-    total_revenue_micros: orZero(amountOn(row, CUSTOMER_REVENUE)),
-  }));
-}
-
-/** How many customers the window's usage reached — the row count of the answer
- *  grouped by the customer axis, which is what "customers with usage" meant on
- *  the summary route that published it as a field. */
-export function customerCount(answer: Economics): number {
-  return answer.rows.length;
-}
-
-/** Whether a row states a margin at all — the one thing a caller must ask
- *  before rendering one, and the reason `gross_margin_micros` is nullable. */
-export function statesAMargin(row: EconomicRow | undefined): boolean {
-  return measureOn(row, GROSS_MARGIN)?.amount_micros != null;
+export function toBreakdown(answer: Economics): Breakdown {
+  return {
+    ...caveatsOf(answer),
+    rows: answer.rows.map((row) => ({
+      group_value: axisValueOn(row),
+      cost: figureOn(row, SUPPLIER_COGS),
+      revenue: figureOn(row, CUSTOMER_REVENUE),
+    })),
+  };
 }
 
 /** Narrow the untyped connect-status body ("" sentinel = no account). */

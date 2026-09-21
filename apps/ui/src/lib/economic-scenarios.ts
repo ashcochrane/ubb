@@ -93,16 +93,20 @@
 // horizon. Do not merge them here on the strength of the names, and do not
 // merge them on the strength of both mentioning a clock.
 
-import type {
-  CeilingStatus,
-  CostingStatus,
-  MeasurementsStatus,
-  NotApplicableReason,
-  PricingMode,
-  PricingReceiptSubjectType,
-  PricingStatus,
-  SpendPoolEnforceMode,
-  UnresolvedReason,
+import { MEASURE_STATES_WORST_LAST } from "@/lib/economic-query";
+import {
+  ANALYTICS_MEASURE_VALUES,
+  type AnalyticsMeasure,
+  type CeilingStatus,
+  type CostingStatus,
+  type MeasurementsStatus,
+  type MeasureStatus,
+  type NotApplicableReason,
+  type PricingMode,
+  type PricingReceiptSubjectType,
+  type PricingStatus,
+  type SpendPoolEnforceMode,
+  type UnresolvedReason,
 } from "@/lib/vocabulary";
 
 /**
@@ -507,80 +511,253 @@ export function incompletePriceTotal(
 }
 
 // ---------------------------------------------------------------------------
-// `margin_at_a_grain` — a difference of two totals, and whether UBB will
-// state it at the grain it was asked at (#501, slice 7 §1).
+// ⚠ `margin_at_a_grain` WAS HERE (#501) AND THE MEASURE STATES BELOW REPLACE
+// IT (#510). `statedMargin` and `marginUnavailableAtThisGrain` composed a
+// NARROWED view — two totals as bare numbers, a nullable margin and a
+// percentage — which was the shape every customers view had until the views
+// began carrying each measure as a figure with its state. Their argument
+// survives in the composers below, one layer down and stricter: the margin is
+// still computed rather than passed, and its absence is now a STATE derived
+// from both sides rather than a null beside a percentage of zero. That
+// percentage was the defect itself — the customer list printed it as `0.0%`
+// beside the dash for the margin it was a share of.
+
+// ---------------------------------------------------------------------------
+// `measure_status` — what one measure of the one economic query is worth, and
+// the five states it can say (#510, slice 7 §19; §4 added the fifth).
 
 /**
- * A margin beside the two totals it was drawn from, and the count that bounds
- * them.
+ * One measure on one row of the one economic query, as the wire carries it.
  *
- * ⚠ **THE MARGIN IS NULLABLE AND THE TOTALS ARE NOT, WHICH IS THE WHOLE
- * STATE.** Nine reports each published a margin as a number; the one economic
- * query publishes one per measure with a `status` beside it, and
- * `unavailable_at_requested_grain` means UBB has the money and cannot attribute
- * it this finely. A revenue in that state carries the part that COULD be
- * placed, with the rest in the answer's `context` — but a margin carries
- * NOTHING, because there is no such thing as a partial margin.
- *
- * So this scenario exists to make the console's version of that impossible to
- * write by halves: `null` here is not "zero margin" and not "no data", it is
- * *UBB will not state one at this grain*, and a renderer that coalesces it to
- * `0` publishes a claim about a customer that nobody made. `dashes()` is the
- * composed absence; `stated()` is its foil, and a test that renders only one of
- * them proves nothing about the coalesce.
+ * A structural twin of the contract's `EconomicMeasureOut` rather than an
+ * import of it, because this module's scenarios are vocabulary-typed and never
+ * reach for the API layer — a fixture that assigns one into a response is what
+ * checks the two agree.
  */
-export interface MarginScenario {
-  readonly provider_cost_micros: number;
-  readonly total_revenue_micros: number;
-  readonly gross_margin_micros: number | null;
-  readonly margin_percentage: number;
-  readonly unresolved_event_count: number;
-  readonly unpriced_event_count: number;
+export interface EconomicMeasureScenario {
+  readonly measure: AnalyticsMeasure;
+  readonly status: MeasureStatus;
+  readonly amount_micros?: number | null;
+  readonly event_count?: number | null;
+  readonly unresolved_event_count?: number | null;
+  readonly unpriced_event_count?: number | null;
+  readonly available_from?: string | null;
+}
+
+/** The terms a row's four measures are built from: two totals and a count. */
+export interface MeasureTerms {
+  readonly cost: CostTotalScenario;
+  readonly revenue: PriceTotalScenario;
+  readonly events: number;
+}
+
+/** The query's order of precedence, as `@/lib/economic-query` holds it once. */
+const WORST_LAST: readonly MeasureStatus[] = MEASURE_STATES_WORST_LAST;
+
+/** The four measures, from terms whose two sides state what they are worth. */
+function measuresFrom(
+  terms: MeasureTerms,
+  revenueStatus: MeasureStatus,
+): EconomicMeasureScenario[] {
+  const costStatus: MeasureStatus =
+    terms.cost.unresolved_event_count > 0 ? "incomplete" : "known";
+  // ⚠ THE MARGIN'S STATE IS DERIVED FROM BOTH SIDES, NEVER FROM THE REVENUE
+  // ALONE (§15; `queries.py::_margin`). A fixture that stated its own would be
+  // free to state `known` beside an uncosted event — the dishonest rendering
+  // #473 owns the cause of, and this module makes unwritable.
+  const marginStatus =
+    WORST_LAST[
+      Math.max(WORST_LAST.indexOf(costStatus), WORST_LAST.indexOf(revenueStatus))
+    ] ?? "known";
+  const noMargin = marginStatus === "unavailable_at_requested_grain";
+  return [
+    {
+      measure: "supplier_cogs",
+      amount_micros: terms.cost.micros,
+      status: costStatus,
+      unresolved_event_count: terms.cost.unresolved_event_count,
+    },
+    {
+      measure: "customer_revenue",
+      amount_micros: terms.revenue.micros,
+      status: revenueStatus,
+      unpriced_event_count: terms.revenue.unpriced_event_count,
+    },
+    {
+      measure: "gross_margin",
+      amount_micros: noMargin ? null : terms.revenue.micros - terms.cost.micros,
+      status: marginStatus,
+    },
+    { measure: "recorded_events", event_count: terms.events, status: "known" },
+  ];
 }
 
 /**
- * A margin UBB states, with the two totals it is the difference of.
+ * A row whose every input resolved: each measure states its figure whole.
  *
- * The margin is COMPUTED here rather than passed, because a fixture free to
- * state a third number is a fixture free to state one the subtraction would
- * not produce — which is a row the backend cannot write.
+ * Takes plain amounts because there is nothing else to say about them — a
+ * `known` row carrying a count of left-out events is a row the query cannot
+ * write. The margin is COMPUTED, never passed: a fixture free to state a third
+ * number is free to state one the subtraction would not produce. A revenue of
+ * zero stays a zero, and against a known cost the margin is a real loss.
  */
-export function statedMargin(
-  providerCostMicros: number,
-  revenueMicros: number,
-): MarginScenario {
-  const margin = revenueMicros - providerCostMicros;
-  return {
-    provider_cost_micros: providerCostMicros,
-    total_revenue_micros: revenueMicros,
-    gross_margin_micros: margin,
-    margin_percentage: revenueMicros === 0 ? 0 : (margin / revenueMicros) * 100,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
-  };
+export function knownMeasures(terms: {
+  readonly cost_micros: number;
+  readonly revenue_micros: number;
+  readonly events: number;
+}): EconomicMeasureScenario[] {
+  return measuresFrom(
+    {
+      cost: completeTotal(terms.cost_micros),
+      revenue: completePriceTotal(terms.revenue_micros),
+      events: terms.events,
+    },
+    "known",
+  );
 }
 
 /**
- * The two totals, and NO margin: UBB could not attribute one at this grain.
+ * A row with at least one side still resolving: its figures are BOUNDS, each
+ * beside the count that makes it one.
  *
- * The percentage is zero and it is not a share of anything — the field is
- * required on the row, and there is no percentage of a margin that does not
- * exist. That is precisely why it is composed here rather than left to a
- * caller: a fixture that paired a null margin with a plausible-looking
- * percentage would let a renderer show a share for a figure it refuses to show.
+ * ⚠ **IT REFUSES TERMS THAT LEAVE NOTHING OUT**, on `ceilingAssessment`'s
+ * precedent: `incomplete` beside two complete totals is a row the query writes
+ * as `known`, and a fixture that could say otherwise would test the console
+ * against a state it will never be sent. The case that matters most is the one
+ * it is shaped for — an uncosted event under a revenue that reads `known` — and
+ * the margin it derives is then `incomplete` whatever the revenue says.
  */
-export function marginUnavailableAtThisGrain(
-  providerCostMicros: number,
-  revenueMicros: number,
-): MarginScenario {
+export function incompleteMeasures(terms: MeasureTerms): EconomicMeasureScenario[] {
+  if (
+    terms.cost.unresolved_event_count === 0 &&
+    terms.revenue.unpriced_event_count === 0
+  ) {
+    throw new Error(
+      "incompleteMeasures was handed two complete totals — a row the query writes as known",
+    );
+  }
+  return measuresFrom(
+    terms,
+    terms.revenue.unpriced_event_count > 0 ? "incomplete" : "known",
+  );
+}
+
+/**
+ * A row from the facts a mock chooses — its two totals, what each left out,
+ * and its count — composed as `known` where nothing was left out and as
+ * `incomplete` where anything was.
+ *
+ * The choice between the two composers above, made once. Four feature mocks
+ * each made it by hand until #510's review pass; a mock that got the condition
+ * wrong would hand the console a `known` row carrying a count, which the query
+ * cannot write.
+ */
+export function measuresFor(facts: {
+  readonly cost_micros: number;
+  readonly revenue_micros: number;
+  readonly events: number;
+  readonly unresolved_event_count?: number;
+  readonly unpriced_event_count?: number;
+}): EconomicMeasureScenario[] {
+  const uncosted = facts.unresolved_event_count ?? 0;
+  const unpriced = facts.unpriced_event_count ?? 0;
+  if (uncosted === 0 && unpriced === 0) return knownMeasures(facts);
+  return incompleteMeasures({
+    cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
+    revenue: unpriced > 0
+      ? incompletePriceTotal(facts.revenue_micros, unpriced)
+      : completePriceTotal(facts.revenue_micros),
+    events: facts.events,
+  });
+}
+
+/**
+ * Revenue that exists and could not be placed this finely, as a row carries it,
+ * WITH the context that carries the rest.
+ *
+ * ⚠ **THE CONTEXT IS THE DISAMBIGUATING FACT AND IT IS REQUIRED.** A revenue
+ * measure in this state carries the part that COULD be placed and a margin that
+ * is null outright; the money that could not be placed is in the answer's
+ * `context`, with the axes and the bucket at which asking again would place it.
+ * A fixture with the state and no context describes an answer that drops money
+ * silently — the third prohibition of §5 — so the composer throws on an empty
+ * one, and returns the two together so no consumer can take half.
+ */
+export function revenueUnavailableAtThisGrain(
+  terms: MeasureTerms & {
+    readonly context: readonly RevenueContextScenario[];
+  },
+): { measures: EconomicMeasureScenario[]; context: RevenueContextScenario[] } {
+  if (terms.context.length === 0) {
+    throw new Error(
+      "revenueUnavailableAtThisGrain needs the context the unplaced revenue is stated in",
+    );
+  }
   return {
-    provider_cost_micros: providerCostMicros,
-    total_revenue_micros: revenueMicros,
-    gross_margin_micros: null,
-    margin_percentage: 0,
-    unresolved_event_count: 0,
-    unpriced_event_count: 0,
+    measures: measuresFrom(terms, "unavailable_at_requested_grain"),
+    context: [...terms.context],
   };
+}
+
+/** Revenue the answer could not place, and where it could — `RevenueContextOut`. */
+export interface RevenueContextScenario {
+  readonly source: string;
+  readonly customer_id: string;
+  readonly amount_micros: number;
+  readonly window_start: string;
+  readonly window_end: string;
+  readonly attributable_axes: string[];
+  readonly attributable_bucket: string;
+}
+
+/**
+ * A row whose stretch reaches back past the horizon governing it: no figure and
+ * no count, on any measure, and the day its series can start.
+ *
+ * The analytics face of `prunedMeasurements()` above, and the reason the two are
+ * kept apart is the registry's: that one says ONE posting's measurement record
+ * was removed; this says no figure can be stated for a STRETCH, whatever any
+ * row in it still holds. The day is required, because "there is no figure" with
+ * no word on where the figures start again is a shrug.
+ *
+ * Every measure the row carries is in this state at once — a stretch nothing
+ * can be read from has no partial figure worth stating — and the slots each
+ * measure fills stay the slots it fills when the figure IS known, as the query
+ * builds them.
+ */
+export function measuresOutsideRetentionHorizon(
+  availableFrom: string,
+  measures: readonly AnalyticsMeasure[] = ANALYTICS_MEASURE_VALUES,
+): EconomicMeasureScenario[] {
+  return measures.map((measure) => ({
+    measure,
+    status: "unavailable_outside_retention_horizon",
+    ...(measure === "recorded_events"
+      ? { event_count: null }
+      : { amount_micros: null }),
+    ...(measure === "supplier_cogs" ? { unresolved_event_count: null } : {}),
+    ...(measure === "customer_revenue" ? { unpriced_event_count: null } : {}),
+    available_from: availableFrom,
+  }));
+}
+
+/**
+ * One measure that does not apply here.
+ *
+ * ⚠ **THE ONE QUERY NEVER SENDS THIS** — it refuses a combination a measure
+ * cannot answer against the discovery contract before building a row
+ * (`queries.py`, the precedence guard's own comment) — but the value is the
+ * concept's, a later surface may, and #155 §9.2 owes it a fixture and a
+ * rendering assertion regardless: it must never render as known, and never as
+ * within anything. So it is composed alone, with no figure, and a consumer
+ * places it where the surface under test would meet it.
+ */
+export function measureNotApplicable(
+  measure: AnalyticsMeasure,
+): EconomicMeasureScenario {
+  return measure === "recorded_events"
+    ? { measure, status: "not_applicable", event_count: null }
+    : { measure, status: "not_applicable", amount_micros: null };
 }
 
 // ---------------------------------------------------------------------------

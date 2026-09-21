@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { statedShare, statedValue } from "@/lib/economic-query";
+
 import { MOCK_CUSTOMER_ECONOMICS } from "../api/mock-data";
 import { toCustomerRows } from "../api/types";
 import { mockCustomerList } from "../api/mock-data";
@@ -52,16 +54,19 @@ describe("margin list sorting and filtering", () => {
   // distinguish.
   it("reads a row's own revenue total", () => {
     expect(ROWS).toHaveLength(MOCK_CUSTOMER_ECONOMICS.length);
-    expect(ROWS[0]?.total_revenue_micros).toBe(MOCK_CUSTOMER_ECONOMICS[0]?.[1]);
+    expect(ROWS[0]?.revenue).toMatchObject({
+      status: "known",
+      value: MOCK_CUSTOMER_ECONOMICS[0]?.[1],
+    });
   });
 
   it("sorts descending by the chosen measure", () => {
     const byRevenue = sortMarginRows(ROWS, "revenue");
-    const revenues = byRevenue.map((row) => row.total_revenue_micros);
+    const revenues = byRevenue.map((row) => statedValue(row.revenue) ?? -Infinity);
     expect(revenues).toEqual([...revenues].sort((a, b) => b - a));
 
     const byPct = sortMarginRows(ROWS, "margin_pct");
-    const pcts = byPct.map((row) => row.margin_percentage);
+    const pcts = byPct.map((row) => statedShare(row.margin, row.revenue) ?? -Infinity);
     expect(pcts).toEqual([...pcts].sort((a, b) => b - a));
   });
 
@@ -70,7 +75,15 @@ describe("margin list sorting and filtering", () => {
   it("files a customer with no margin last", () => {
     const withAGap = [
       ...ROWS,
-      { ...ROWS[0]!, customer_id: "gap", gross_margin_micros: null },
+      {
+        ...ROWS[0]!,
+        customer_id: "gap",
+        margin: {
+          ...ROWS[0]!.margin!,
+          status: "unavailable_outside_retention_horizon",
+          value: null,
+        },
+      },
     ];
     expect(
       sortMarginRows(withAGap, "margin").at(-1)?.customer_id,

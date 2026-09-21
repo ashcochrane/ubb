@@ -11,25 +11,12 @@ import {
   YAxis,
 } from "recharts";
 
-import {
-  BoundedCostTooltip,
-  type SeriesRole,
-} from "@/components/shared/supplier-cost";
-import { formatCostMicros, formatShortDate } from "@/lib/format";
+import { MeasureTooltip } from "@/components/shared/measure-value";
+import { RECORDED_EVENTS } from "@/lib/economic-query";
+import { formatCostMicros, formatEventCount, formatShortDate } from "@/lib/format";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import type { ChartSeries } from "../lib/timeseries";
-
-/**
- * Which bounding rule each plotted series obeys (#330).
- *
- * Only the UNGROUPED pivot plots a supplier cost, under the key `provider`.
- * Every grouped series sums BILLED cost per group, which is NOT NULL at the
- * column and whole by construction — and the grouped rows carry no count, so
- * the tooltip has nothing to bound them with either.
- */
-function roleOf(dataKey: string): SeriesRole {
-  return dataKey === "provider" ? "supplier-cost" : "whole";
-}
 
 /**
  * Buckets arrive as day-truncated UTC datetimes ("2026-07-01T00:00:00Z").
@@ -43,12 +30,21 @@ function bucketLabel(value: unknown): string {
 export default function UsageTimeseriesChart({
   data,
   series,
+  plotted,
   currency,
 }: {
-  data: Array<Record<string, number | string>>;
+  data: Array<Record<string, unknown>>;
   series: ChartSeries[];
+  /** The measure the lines are in — a count on an axis that answers no money. */
+  plotted: AnalyticsMeasure;
   currency: string;
 }) {
+  const axisLabel = (value: unknown) => {
+    const number = typeof value === "number" ? value : 0;
+    return plotted === RECORDED_EVENTS
+      ? formatEventCount(number)
+      : formatCostMicros(number, currency);
+  };
   return (
     <div className="h-[260px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -63,20 +59,23 @@ export default function UsageTimeseriesChart({
             minTickGap={28}
           />
           <YAxis
-            tickFormatter={(value) =>
-              formatCostMicros(typeof value === "number" ? value : 0, currency)
-            }
+            tickFormatter={axisLabel}
             tick={{ fill: "var(--color-text-muted)", fontSize: 11 }}
             tickLine={false}
             axisLine={false}
             width={64}
           />
           <Tooltip
+            filterNull={false}
             content={
-              <BoundedCostTooltip
+              <MeasureTooltip
+                series={series.map((entry) => ({
+                  key: entry.key,
+                  name: entry.label,
+                  color: entry.color,
+                }))}
                 currency={currency}
                 labelFormatter={bucketLabel}
-                roleOf={roleOf}
               />
             }
           />

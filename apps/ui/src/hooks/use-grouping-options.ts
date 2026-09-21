@@ -103,11 +103,15 @@ const RESERVED_AXIS_GRAIN: Record<UbbAxis, string> = {
 /**
  * What each rollup axis answers for, where it is not the ordinary case.
  *
- * The measurement-concept rollup ships with the supplier cost declared
+ * The measurement-concept rollup ships with ALL THREE MONEY MEASURES declared
  * UNSUPPORTED and the reason stated (§7): the measurement record carries
  * quantities and no cost lines, and declaring an unsupported measure is the
  * honest answer the capability mechanism was built to express. A fixture that
- * left it supported would describe a server that does not exist.
+ * left one supported would describe a server that does not exist — and this one
+ * did, until #510: it declared the supplier cost alone, while the server
+ * (`queries.py::MEASUREMENT_ROLLUP_UNSUPPORTED`) refuses revenue and margin on
+ * the same ground. So in mock mode the events chart asked this axis for revenue
+ * and got an answer no server gives; the reasons below are the server's.
  *
  * A `Record` over the generated union rather than a partial one, so a rollup
  * the registry declares tomorrow is a `tsc` failure here rather than a row
@@ -123,13 +127,29 @@ const ROLLUP_MOCK_DETAIL: Record<
     // Measurement quantities only — an invoice line is money, and UBB holds
     // none at this grain.
     supported_surfaces: [ANALYTICS_SURFACE],
-    unsupported_measures: [{
-      measure: "supplier_cogs",
-      reason:
-        "A measurement record carries quantities and no cost lines, so a cost "
-        + "at this grain could only be produced by spreading an event's cost "
-        + "across the measurements it contains.",
-    }],
+    unsupported_measures: [
+      {
+        measure: "supplier_cogs",
+        reason:
+          "UBB records supplier cost per posting and not per measurement, so a "
+          + "cost at this grain could only be produced by repeating one event's "
+          + "whole cost against every quantity that event was measured by.",
+      },
+      {
+        measure: "customer_revenue",
+        reason:
+          "UBB records customer revenue per posting and not per measurement, so "
+          + "revenue at this grain could only be produced by repeating one "
+          + "event's whole price against every quantity that event was measured by.",
+      },
+      {
+        measure: "gross_margin",
+        reason:
+          "A margin at this grain would be the difference between two figures "
+          + "UBB holds per posting and not per measurement, so it would repeat "
+          + "one event's whole economics against every quantity it was measured by.",
+      },
+    ],
   },
 };
 

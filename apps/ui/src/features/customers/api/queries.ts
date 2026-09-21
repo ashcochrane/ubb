@@ -24,7 +24,7 @@ import { customersApi } from "./provider";
 import {
   toCustomerRows,
   toOneCustomer,
-  toTimeseriesPoints,
+  toUsageSeries,
   toTrendPoints,
 } from "./types";
 import type {
@@ -141,7 +141,7 @@ export function useUsageTimeseries(customerId: string, range: DateRange) {
   return useQuery({
     queryKey: ["metering", "analytics", "timeseries", customerId, range],
     queryFn: () => customersApi.getUsageTimeseries(customerId, range),
-    select: toTimeseriesPoints,
+    select: toUsageSeries,
     placeholderData: keepPreviousData,
   });
 }

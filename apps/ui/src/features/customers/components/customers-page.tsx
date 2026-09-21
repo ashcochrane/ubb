@@ -27,12 +27,8 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { resolveRange, type DateRange } from "@/lib/date-range";
-import { formatMicros } from "@/lib/format";
-import {
-  marginBound,
-  marginPercentBound,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+import { MarginShare, MeasureValue } from "@/components/shared/measure-value";
+import { isNegative } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
 import { useCustomerMargins } from "../api/queries";
@@ -172,28 +168,30 @@ export function CustomersPage({
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatMicros(row.total_revenue_micros, currency)}
+                    <MeasureValue figure={row.revenue} currency={currency} />
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {supplierCostTotal(row.provider_cost_micros, row, currency)}
+                    <MeasureValue figure={row.cost} currency={currency} />
                   </TableCell>
                   <TableCell
                     className={cn(
                       "text-right tabular-nums",
-                      (row.gross_margin_micros ?? 0) < 0 && "text-danger-dark",
+                      isNegative(row.margin) && "text-danger-dark",
                     )}
                   >
-                    {row.gross_margin_micros === null
-                      ? "—"
-                      : marginBound(row.gross_margin_micros, row, currency)}
+                    <MeasureValue figure={row.margin} currency={currency} />
                   </TableCell>
+                  {/* ⚠ THIS CELL PRINTED "0.0%" BESIDE THE DASH FOR A MARGIN UBB
+                      WOULD NOT STATE (#510): the percentage was computed as zero
+                      for a null margin and rendered unguarded. The share now
+                      carries the margin's own state. */}
                   <TableCell
                     className={cn(
                       "text-right tabular-nums",
-                      row.margin_percentage < 0 && "text-danger-dark",
+                      isNegative(row.margin) && "text-danger-dark",
                     )}
                   >
-                    {marginPercentBound(row.margin_percentage, row)}
+                    <MarginShare margin={row.margin} revenue={row.revenue} />
                   </TableCell>
                 </TableRow>
               ))}

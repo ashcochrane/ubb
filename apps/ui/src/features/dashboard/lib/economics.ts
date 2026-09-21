@@ -17,61 +17,37 @@
 // same revenue on this page as on the customer page, over the same window,
 // because there is one definition of it.
 //
-// ⚠ **A MARGIN MAY BE ABSENT AND ABSENT IS NOT ZERO.** Every view below carries
-// `margin_micros: number | null`; a null means UBB has no figure to state, and
-// a caller that rendered it as a currency zero would be publishing exactly the
-// silent zero this programme exists to delete.
+// ⚠ **EVERY FIGURE HERE CARRIES ITS STATE, AND NOTHING HERE READS A NUMBER
+// PAST IT (#510).** The views are the measures themselves (`MeasureFigure`);
+// what a sort or a bar may use of one is `statedValue`, which is a GAP wherever
+// the state states no figure — never a zero, and never the part of a revenue
+// that could be placed at a grain where the rest could not.
 //
 // Money stays in integer micros end-to-end; only percentages (display-only)
 // use floats.
 
-import { descendingWithAbsencesLast } from "@/lib/economic-query";
+import {
+  combineFigures,
+  CUSTOMER_REVENUE,
+  descendingWithAbsencesLast,
+  drawableMeasure,
+  statedShare,
+  statedValue,
+  SUPPLIER_COGS,
+  type MeasureFigure,
+} from "@/lib/economic-query";
 
-import type {
-  BreakdownRow,
-  CustomerEconomicsRow,
-  TenantEconomics,
-} from "../api/types";
+import type { BreakdownRow, CustomerEconomicsRow } from "../api/types";
 
 // ---------------------------------------------------------------------------
-// Revenue / margin views
-
-export interface EconomicsView {
-  revenue_micros: number;
-  margin_micros: number | null;
-  margin_pct: number;
-}
-
-/** Headline figures for the stat row. */
-export function summaryEconomics(summary: TenantEconomics): EconomicsView {
-  return {
-    revenue_micros: summary.total_revenue_micros,
-    margin_micros: summary.gross_margin_micros,
-    margin_pct: summary.margin_percentage,
-  };
-}
-
-/** Per-customer figures for the economics table.
- *
- *  ⚠ THE ROWS CARRY A TOTAL NOW. The list route this replaced published three
- *  revenue fields per row and no total, so this console summed them itself and
- *  a source added later would have been missed until somebody noticed. One
- *  definition means one figure, and the summing is gone with the three fields.
- */
-export function customerEconomics(row: CustomerEconomicsRow): EconomicsView {
-  return {
-    revenue_micros: row.total_revenue_micros,
-    margin_micros: row.gross_margin_micros,
-    margin_pct: row.margin_percentage,
-  };
-}
+// The customer table's order
 
 export type CustomerSortKey = "revenue" | "margin" | "margin_pct";
 
 /**
  * Sort customer rows descending by the displayed figure.
  *
- * ⚠ **A ROW STATING NO MARGIN SORTS LAST RATHER THAN AS ZERO.** Treating an
+ * ⚠ **A ROW STATING NO FIGURE SORTS LAST RATHER THAN AS ZERO.** Treating an
  * absent margin as `0` would file a customer UBB cannot report on among the
  * ones it can, in the middle of the table, which reads as a claim.
  */
@@ -79,16 +55,12 @@ export function sortCustomers(
   rows: CustomerEconomicsRow[],
   key: CustomerSortKey,
 ): CustomerEconomicsRow[] {
-  const value = (row: CustomerEconomicsRow): number | null => {
-    const view = customerEconomics(row);
-    return key === "revenue"
-      ? view.revenue_micros
+  const value = (row: CustomerEconomicsRow): number | null =>
+    key === "revenue"
+      ? statedValue(row.revenue)
       : key === "margin"
-        ? view.margin_micros
-        : view.margin_micros === null
-          ? null
-          : view.margin_pct;
-  };
+        ? statedValue(row.margin)
+        : statedShare(row.margin, row.revenue);
   return [...rows].sort(descendingWithAbsencesLast(value));
 }
 
@@ -97,28 +69,46 @@ export function sortCustomers(
 
 export interface BreakdownBar {
   name: string;
-  revenue_micros: number;
-  provider_micros: number;
+  /** The measure the bar's length is drawn from — `drawableMeasure`'s choice. */
+  plotted: MeasureFigure | null;
+  revenue: MeasureFigure | null;
+  cost: MeasureFigure | null;
   isOther: boolean;
 }
 
 /**
- * Top N rows by revenue, remainder folded into a single "Other" bar.
+ * Top N rows by the plotted measure, remainder folded into a single "Other"
+ * bar.
+ *
+ * The plotted measure is `drawableMeasure`'s, the rule the events chart reads
+ * too: revenue where every row states one, the supplier cost where it could not
+ * be placed at this grain. The bars used to plot the PART that could be placed —
+ * billed usage alone — as "Revenue by provider", which drew a floor as a total
+ * and dropped the subscription without a word.
+ *
+ * The fold is `combineFigures`, never a sum of numbers: a folded row that
+ * states no figure makes the "Other" bar state none either, rather than a
+ * smaller one.
  *
  * ⚠ **A NULL AXIS VALUE IS A REAL ROW.** The report this replaced bucketed
  * every absence under one `(unattributed)` string; the answer now carries
  * `null` with a status beside it saying which absence it is. The bar keeps the
- * familiar heading, and telling the two absences apart on the page is the
- * rendering ticket's.
+ * familiar heading; telling the two absences apart on the page is unowned — the
+ * status is an open string with no registry concept to word it, and coining one
+ * is a registry act rather than a rendering one.
  */
 export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
+  const measure = drawableMeasure(rows);
+  const plottedOf = (row: BreakdownRow): MeasureFigure | null =>
+    measure === CUSTOMER_REVENUE ? row.revenue : row.cost;
   const sorted = [...rows].sort(
-    (a, b) => b.total_revenue_micros - a.total_revenue_micros,
+    descendingWithAbsencesLast((row: BreakdownRow) => statedValue(plottedOf(row))),
   );
   const top = sorted.slice(0, limit).map((row) => ({
     name: row.group_value || "(unattributed)",
-    revenue_micros: row.total_revenue_micros,
-    provider_micros: row.total_provider_cost_micros,
+    plotted: plottedOf(row),
+    revenue: row.revenue,
+    cost: row.cost,
     isOther: false,
   }));
   const rest = sorted.slice(limit);
@@ -127,11 +117,9 @@ export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
     ...top,
     {
       name: `Other (${rest.length})`,
-      revenue_micros: rest.reduce((s, r) => s + r.total_revenue_micros, 0),
-      provider_micros: rest.reduce(
-        (s, r) => s + r.total_provider_cost_micros,
-        0,
-      ),
+      plotted: combineFigures(measure, rest.map(plottedOf)),
+      revenue: combineFigures(CUSTOMER_REVENUE, rest.map((row) => row.revenue)),
+      cost: combineFigures(SUPPLIER_COGS, rest.map((row) => row.cost)),
       isOther: true,
     },
   ];

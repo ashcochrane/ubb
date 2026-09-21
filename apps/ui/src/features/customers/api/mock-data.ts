@@ -22,6 +22,7 @@ import {
   completeTotal,
   incompletePriceTotal,
   incompleteTotal,
+  measuresFor,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
@@ -634,13 +635,20 @@ export const MOCK_SUB_INVOICES: Record<string, SubscriptionInvoiceOut[]> = {
 // different sets of postings and they bound the margin in opposite directions,
 // so a builder that put both on one entry would let a fixture describe a
 // response no server can produce.
+//
+// ⚠ AND THE STATES ARE COMPOSED, NOT WRITTEN (#510). This builder wrote each
+// measure's state by hand and took the margin as an argument, so a fixture
+// could pass a margin the subtraction would not produce, or a null margin
+// labelled unavailable beside a revenue reading known — two rows no server
+// writes. The four measures now come from `@/lib/economic-scenarios`, which
+// computes the margin and derives its state from both sides; the arguments
+// here are only the facts a fixture chooses.
 
 export function economicRow({
   values = [],
   bucket = null,
   cost,
   revenue,
-  margin,
   events,
   unresolved = 0,
   unpriced = 0,
@@ -649,50 +657,29 @@ export function economicRow({
   bucket?: string | null;
   cost: number;
   revenue: number;
-  margin?: number | null;
+  /** The count measure, where the question asked for it — a grouped question
+   *  cannot, and a row carrying one would be a row no server writes. */
   events?: number;
   unresolved?: number;
   unpriced?: number;
 }): Economics["rows"][number] {
-  const measures: unknown[] = [
-    {
-      measure: "supplier_cogs",
-      amount_micros: cost,
-      status: unresolved ? "incomplete" : "known",
-      unresolved_event_count: unresolved,
-    },
-    {
-      measure: "customer_revenue",
-      amount_micros: revenue,
-      status: unpriced ? "incomplete" : "known",
-      unpriced_event_count: unpriced,
-    },
-    {
-      measure: "gross_margin",
-      amount_micros: margin === undefined ? revenue - cost : margin,
-      status:
-        margin === null
-          ? "unavailable_at_requested_grain"
-          : unresolved || unpriced
-            ? "incomplete"
-            : "known",
-    },
-  ];
-  if (events !== undefined) {
-    measures.push({
-      measure: "recorded_events",
-      event_count: events,
-      status: "known",
-    });
-  }
+  const measures = measuresFor({
+    cost_micros: cost,
+    revenue_micros: revenue,
+    events: events ?? 0,
+    unresolved_event_count: unresolved,
+    unpriced_event_count: unpriced,
+  });
   return {
     bucket_start: bucket,
     grouping_field_value: values,
     grouping_field_value_status: values.map((value) =>
       value === null ? "not_recorded" : "recorded",
     ),
-    measures,
-  } as unknown as Economics["rows"][number];
+    measures: measures.filter(
+      (entry) => events !== undefined || entry.measure !== "recorded_events",
+    ),
+  };
 }
 
 export function economicAnswer({
@@ -751,12 +738,13 @@ export function mockCustomerList(range: {
   return economicAnswer({
     range,
     groupBy: ["field:customer"],
-    rows: MOCK_CUSTOMER_ECONOMICS.map(([id, revenue, cost, margin]) =>
+    // The margin column of the roster is the subtraction the composer
+    // performs, written down for a reader; the row computes its own.
+    rows: MOCK_CUSTOMER_ECONOMICS.map(([id, revenue, cost]) =>
       economicRow({
         values: [id],
         revenue,
         cost,
-        margin,
         unresolved: unresolvedFor(id),
       }),
     ),
@@ -768,14 +756,13 @@ export function mockOneCustomer(
   range: { start_date?: string; end_date?: string },
 ): Economics {
   const row = MOCK_CUSTOMER_ECONOMICS.find(([id]) => id === customerId);
-  const [, revenue = 0, cost = 0, margin = 0, events = 0] = row ?? [];
+  const [, revenue = 0, cost = 0, , events = 0] = row ?? [];
   return economicAnswer({
     range,
     rows: [
       economicRow({
         revenue,
         cost,
-        margin,
         events,
         unresolved: unresolvedFor(customerId),
       }),

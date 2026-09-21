@@ -5,7 +5,17 @@
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
+import {
+  EVERY_MEASURE,
+  MEASUREMENT_CONCEPT_AXIS,
+  MONEY_MEASURES,
+} from "@/lib/economic-query";
+import {
+  measuresFor,
+  type EconomicMeasureScenario,
+} from "@/lib/economic-scenarios";
 import { axisNameOf } from "@/lib/grouping-axis";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import {
   ALL_EVENTS,
@@ -13,6 +23,9 @@ import {
   CUSTOMER_B_ID,
   CUSTOMER_C_ID,
   CUSTOMER_CHOICES,
+  ECONOMIC_HORIZON,
+  MEASUREMENT_CONCEPT_OF,
+  MEASUREMENT_HORIZON,
   TASK_KILLED_ID,
   type MockEvent,
 } from "./mock-data";
@@ -245,16 +258,14 @@ export async function getUsageAnalytics(
     billed = addKnownCost(billed, event.detail.billed_cost_micros);
     provider = addKnownCost(provider, event.detail.provider_cost_micros);
   }
-  const unresolved = countUnresolved(events);
-  const unpriced = countUnpriced(events);
   return {
     period_start: params.start_date,
     period_end: params.end_date,
     group_by: [],
     bucket: null,
     basis: "recorded",
-    economic_data_available_from: "2020-07-01",
-    measurement_data_available_from: "2026-01-01",
+    economic_data_available_from: ECONOMIC_HORIZON,
+    measurement_data_available_from: MEASUREMENT_HORIZON,
     // ⚠ ONE ROW, ALWAYS. An ungrouped, unbucketed question has exactly one —
     // zeros over an empty window, which is a measured zero rather than an
     // absence — so the page never has to handle an empty list here.
@@ -262,33 +273,48 @@ export async function getUsageAnalytics(
       bucket_start: null,
       grouping_field_value: [],
       grouping_field_value_status: [],
-      measures: [
-        {
-          measure: "supplier_cogs",
-          amount_micros: provider,
-          status: unresolved ? "incomplete" : "known",
-          unresolved_event_count: unresolved,
-        },
-        {
-          measure: "customer_revenue",
-          amount_micros: billed,
-          status: unpriced ? "incomplete" : "known",
-          unpriced_event_count: unpriced,
-        },
-        {
-          measure: "gross_margin",
-          amount_micros: billed - provider,
-          status: unresolved || unpriced ? "incomplete" : "known",
-        },
-        {
-          measure: "recorded_events",
-          event_count: events.length,
-          status: "known",
-        },
-      ],
+      measures: measuresOver(events, billed, provider),
     }],
     context: [],
-  } as Economics;
+  };
+}
+
+/**
+ * The four measures over a set of seeds, as the query would state them —
+ * COMPOSED rather than written (#510). This file wrote each state by hand, and
+ * its day series hardcoded both counts to zero, so a bucket holding an uncosted
+ * event read as a whole figure in the chart while the strip above it called
+ * the window's total a floor.
+ */
+function measuresOver(
+  events: MockEvent[],
+  billed: number,
+  provider: number,
+): EconomicMeasureScenario[] {
+  return measuresFor({
+    cost_micros: provider,
+    revenue_micros: billed,
+    events: events.length,
+    unresolved_event_count: countUnresolved(events),
+    unpriced_event_count: countUnpriced(events),
+  });
+}
+
+/**
+ * The measurement concepts one seed was measured under — nothing where its
+ * measurement record is not there to read.
+ *
+ * ⚠ **THIS IS WHERE THE PRUNED SEED MEETS ANALYTICS.** Its bag is
+ * `prunedMeasurements()`'s empty object because the record was REMOVED at the
+ * measurement horizon, so a grouping by what was measured has nothing of it to
+ * group — and the server answers the same stretch with no rows at all (#500).
+ * Reading the bag rather than the status is deliberate: it is what the server's
+ * join reads, and it is why the console, handed that empty answer, must say
+ * the stretch was pruned rather than that nothing happened.
+ */
+function conceptsOf(detail: UsageEventDetail): (string | null)[] {
+  const keys = Object.keys(detail.measurements ?? {});
+  return [...new Set(keys.map((key) => MEASUREMENT_CONCEPT_OF[key] ?? null))];
 }
 
 function axisValue(detail: UsageEventDetail, requestWord: string): string {
@@ -301,14 +327,15 @@ function axisValue(detail: UsageEventDetail, requestWord: string): string {
   // the picker reads it off the discovery contract, and the kind comes off
   // before the lookup.
   //
-  // ⚠ **A ROLLUP THEREFORE FALLS THROUGH TO "(unattributed)", AND THAT IS A
-  // LIMIT OF THIS FIXTURE RATHER THAN OF THE ANSWER.** A rollup is a JOIN — a
-  // controlled mapping from an event type or a measurement to a broader
-  // classification — and these seeds carry no such mapping to join to. So in
-  // mock mode picking one draws a single series under the unattributed name.
-  // The alternative is inventing categories UBB would have had to declare,
-  // which is the one thing a fixture for this vocabulary must not do; whoever
-  // gives the seeds an event-category mapping can delete this paragraph.
+  // ⚠ **THE EVENT-CATEGORY ROLLUP THEREFORE FALLS THROUGH TO
+  // "(unattributed)", AND THAT IS A LIMIT OF THIS FIXTURE RATHER THAN OF THE
+  // ANSWER.** A rollup is a JOIN — a controlled mapping from an event type to a
+  // broader classification — and these seeds carry no such mapping to join to,
+  // so in mock mode picking it draws a single series under the unattributed
+  // name. The measurement-concept rollup is no longer here: since #510 the
+  // mock tenant declares which concept each of its measurement keys belongs to
+  // (`MEASUREMENT_CONCEPT_OF`) and `getUsageTimeseries` groups by it directly,
+  // because that grouping is where a pruned measurement record shows.
   const axis = axisNameOf(requestWord);
   const value =
     axis === "provider"
@@ -329,63 +356,51 @@ export async function getUsageTimeseries(
         event.customer_id === params.customer_id) &&
       inWindow(event.detail, params.start_date, params.end_date),
   );
-  const buckets = new Map<
-    string,
-    { billed: number; provider: number; count: number }
-  >();
+  // A grouped question carries exactly the measures it asked for; an
+  // ungrouped one carries all four.
+  const asked: readonly AnalyticsMeasure[] = params.group_by
+    ? (params.measures ?? MONEY_MEASURES)
+    : EVERY_MEASURE;
+  const byMeasurement = params.group_by === MEASUREMENT_CONCEPT_AXIS;
+
+  // Each (day, group) bucket keeps the seeds that fell in it. A seed measured
+  // under two concepts is one event in each of their rows — which is what
+  // grouping by a many-valued join means, and why those rows do not add up to
+  // the ungrouped total.
+  const buckets = new Map<string, MockEvent[]>();
   for (const event of events) {
     const day = `${event.detail.effective_at.slice(0, 10)}T00:00:00Z`;
-    const key = params.group_by
-      ? `${day}|${axisValue(event.detail, params.group_by)}`
-      : day;
-    const bucket = buckets.get(key) ?? { billed: 0, provider: 0, count: 0 };
-    bucket.billed = addKnownCost(bucket.billed, event.detail.billed_cost_micros);
-    bucket.provider = addKnownCost(
-      bucket.provider, event.detail.provider_cost_micros);
-    bucket.count += 1;
-    buckets.set(key, bucket);
+    const groups: (string | null)[] | [undefined] = !params.group_by
+      ? [undefined]
+      : byMeasurement
+        ? conceptsOf(event.detail)
+        : [axisValue(event.detail, params.group_by)];
+    for (const group of groups) {
+      const key = `${day}|${group === undefined ? "" : JSON.stringify(group)}`;
+      buckets.set(key, [...(buckets.get(key) ?? []), event]);
+    }
   }
   const rows = [...buckets.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([key, totals]) => {
-      const [bucket = "", groupValue] = key.split("|");
-      const provider = totals.provider;
-      const billed = totals.billed;
-      const unresolved = 0;
-      const unpriced = 0;
+    .map(([key, bucketed]) => {
+      const [bucket = "", encoded = ""] = key.split("|");
+      const group = encoded === "" ? undefined : (JSON.parse(encoded) as string | null);
+      let billed = 0;
+      let provider = 0;
+      for (const event of bucketed) {
+        billed = addKnownCost(billed, event.detail.billed_cost_micros);
+        provider = addKnownCost(provider, event.detail.provider_cost_micros);
+      }
       return {
         bucket_start: bucket,
         // ⚠ POSITIONAL, aligned with the `group_by` the answer echoes: a
         // grouped question carries one value, an ungrouped one carries none.
-        grouping_field_value: groupValue === undefined ? [] : [groupValue],
+        grouping_field_value: group === undefined ? [] : [group],
         grouping_field_value_status:
-          groupValue === undefined ? [] : ["recorded"],
-      measures: [
-        {
-          measure: "supplier_cogs",
-          amount_micros: provider,
-          status: unresolved ? "incomplete" : "known",
-          unresolved_event_count: unresolved,
-        },
-        {
-          measure: "customer_revenue",
-          amount_micros: billed,
-          status: unpriced ? "incomplete" : "known",
-          unpriced_event_count: unpriced,
-        },
-        {
-          measure: "gross_margin",
-          amount_micros: billed - provider,
-          status: unresolved || unpriced ? "incomplete" : "known",
-        },
-        ...(params.group_by
-          ? []
-          : [{
-              measure: "recorded_events",
-              event_count: totals.count,
-              status: "known",
-            }]),
-        ],
+          group === undefined ? [] : [group === null ? "not_recorded" : "recorded"],
+        measures: measuresOver(bucketed, billed, provider).filter((entry) =>
+          asked.includes(entry.measure),
+        ),
       };
     });
   return {
@@ -396,11 +411,11 @@ export async function getUsageTimeseries(
     group_by: params.group_by ? [params.group_by] : [],
     bucket: "day",
     basis: "recorded",
-    economic_data_available_from: "2020-07-01",
-    measurement_data_available_from: "2026-01-01",
+    economic_data_available_from: ECONOMIC_HORIZON,
+    measurement_data_available_from: MEASUREMENT_HORIZON,
     rows,
     context: [],
-  } as unknown as Economics;
+  };
 }
 
 

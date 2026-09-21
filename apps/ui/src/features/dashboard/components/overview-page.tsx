@@ -9,7 +9,12 @@ import {
 } from "@/hooks/use-tenant-config";
 import { resolveRange, type DateRange } from "@/lib/date-range";
 
-import { eventsOn, onlyRow } from "@/lib/economic-query";
+import {
+  figureOn,
+  onlyRow,
+  RECORDED_EVENTS,
+  statedValue,
+} from "@/lib/economic-query";
 
 import { useGroupedEconomics, useLifetimeEconomics } from "../api/queries";
 import type { BreakdownAxis } from "../api/types";
@@ -44,10 +49,12 @@ export function OverviewPage({ search, onSearchChange }: OverviewPageProps) {
 
   // All-time totals decide whether this workspace still looks brand new —
   // deliberately not windowed, so changing the date range never resurrects
-  // the getting-started card on an active workspace.
+  // the getting-started card on an active workspace. Only a STATED zero counts:
+  // a count the answer could not state is not a workspace with no work.
   const lifetime = useLifetimeEconomics();
   const showGettingStarted =
-    lifetime.isSuccess && eventsOn(onlyRow(lifetime.data)) === 0;
+    lifetime.isSuccess &&
+    statedValue(figureOn(onlyRow(lifetime.data), RECORDED_EVENTS)) === 0;
 
   return (
     <div className="space-y-5">

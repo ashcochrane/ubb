@@ -32,8 +32,51 @@ import {
 } from "@/hooks/use-grouping-options";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 
+import {
+  MeasureValue,
+  RetentionHorizonNote,
+  RevenueContext,
+} from "@/components/shared/measure-value";
+import {
+  CUSTOMER_REVENUE,
+  RECORDED_EVENTS,
+  SUPPLIER_COGS,
+} from "@/lib/economic-query";
+import { measureLabel } from "@/lib/measure-state";
+import type { AnalyticsMeasure } from "@/lib/vocabulary";
+
 import { useUsageTimeseries } from "../api/queries";
-import { pivotTimeseries } from "../lib/timeseries";
+import type { TimeseriesPoint } from "../api/types";
+import { groupedMeasuresFor, pivotTimeseries } from "../lib/timeseries";
+
+/**
+ * What a grouped chart's lines are, by the measure's catalogue word — and,
+ * where it draws the cost because the revenue could not be placed, the revenue
+ * drawn as its state beside it, through the renderer so an unfamiliar state is
+ * marked here too.
+ */
+function PlottedCaption({
+  plotted,
+  points,
+  currency,
+}: {
+  plotted: AnalyticsMeasure;
+  points: readonly TimeseriesPoint[];
+  currency: string;
+}) {
+  return (
+    <p data-plotted-measure={plotted} className="text-[11px] text-text-muted">
+      {`Lines: ${measureLabel(plotted)} by group, per day.`}
+      {plotted === SUPPLIER_COGS && (
+        <>
+          {` ${measureLabel(CUSTOMER_REVENUE)} by group: `}
+          <MeasureValue figure={points[0]?.revenue ?? null} currency={currency} />.
+        </>
+      )}
+      {plotted === RECORDED_EVENTS && " This axis answers no money."}
+    </p>
+  );
+}
 
 const UsageTimeseriesChart = lazy(() => import("./usage-timeseries-chart"));
 
@@ -61,17 +104,27 @@ export function TimeseriesCard({
   // something false, and an empty list does not: it offers nothing rather than
   // claiming this tenant has nothing.
   const axes = optionsForSurface(useGroupingOptions().data, ANALYTICS_SURFACE);
+  // What the chosen axis answers, off its own discovery entry — so picking the
+  // measurement-concept rollup asks for the count it answers rather than the
+  // money it refuses (#510). An axis the list does not (yet) hold refuses
+  // nothing we know of, which is the ordinary case.
+  const chosen = axes.find((option) => option.key === groupBy);
+  const measures = groupBy === undefined
+    ? undefined
+    : groupedMeasuresFor(chosen?.unsupported_measures ?? []);
   const query = useUsageTimeseries({
     ...window,
     customer_id: customerId,
     group_by: groupBy,
+    ...(measures === undefined ? {} : { measures }),
   });
 
-  const points = useMemo(() => query.data ?? [], [query.data]);
+  const points = useMemo(() => query.data?.points ?? [], [query.data]);
   const pivot = useMemo(
     () => pivotTimeseries(points, groupBy !== undefined),
     [points, groupBy],
   );
+  const caveats = query.data;
 
   return (
     <ChartCard
@@ -140,17 +193,34 @@ export function TimeseriesCard({
           title="Couldn't load the timeseries"
         />
       ) : pivot.data.length === 0 ? (
-        <div className="flex h-[260px] items-center justify-center text-[13px] text-text-muted">
-          No usage recorded in this window.
+        // ⚠ "NO USAGE" ONLY WHERE THE WINDOW IS INSIDE THE RECORDS IT READS
+        // (#510). A grouping by what was measured over a stretch whose
+        // measurement records were pruned answers NO ROWS — there is nothing
+        // left to group — and this line used to call that "no usage". It is a
+        // pruned series, and it says so.
+        <div className="flex h-[260px] items-center justify-center px-6 text-center text-[13px] text-text-muted">
+          {caveats && caveats.held_from !== null ? (
+            <RetentionHorizonNote caveats={caveats} />
+          ) : (
+            "No usage recorded in this window."
+          )}
         </div>
       ) : (
-        <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
-          <UsageTimeseriesChart
-            data={pivot.data}
-            series={pivot.series}
-            currency={currency}
-          />
-        </Suspense>
+        <div className="space-y-1.5">
+          <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
+            <UsageTimeseriesChart
+              data={pivot.data}
+              series={pivot.series}
+              plotted={pivot.plotted}
+              currency={currency}
+            />
+          </Suspense>
+          {groupBy !== undefined && (
+            <PlottedCaption plotted={pivot.plotted} points={points} currency={currency} />
+          )}
+          {caveats && <RevenueContext context={caveats.context} currency={currency} />}
+          {caveats && <RetentionHorizonNote caveats={caveats} />}
+        </div>
       )}
     </ChartCard>
   );

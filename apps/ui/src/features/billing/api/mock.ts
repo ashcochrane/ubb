@@ -3,6 +3,7 @@
 
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
+import { measuresFor } from "@/lib/economic-scenarios";
 
 import {
   SEAT_DEFAULT_POOL,
@@ -11,6 +12,7 @@ import {
   TENANT_USAGE_INVOICES,
   buildDailyRows,
   rowsInRange,
+  type MockDailyRow,
 } from "./mock-data";
 import type {
   CustomerSpendPool,
@@ -54,37 +56,29 @@ export async function getRevenueWindow(range: {
     // The report this replaced published its own totals beside its day rows,
     // which was a second definition of the same sum; the one query answers the
     // buckets and the console adds them up, so the two cannot disagree.
+    //
+    // ⚠ AND EACH DAY'S STATES ARE COMPOSED, NOT WRITTEN (#510). This wrote the
+    // margin's state from the cost side alone, which is §15's rule stated
+    // halfway: the query derives it from BOTH sides. The composers derive it.
     rows: daily.map((row) => ({
       bucket_start: `${row.day}T00:00:00+00:00`,
       grouping_field_value: [],
       grouping_field_value_status: [],
-      measures: [
-        {
-          measure: "supplier_cogs",
-          amount_micros: row.provider_cost_micros,
-          status: row.unresolved_event_count ? "incomplete" : "known",
-          unresolved_event_count: row.unresolved_event_count,
-        },
-        {
-          measure: "customer_revenue",
-          amount_micros: row.revenue_micros,
-          status: row.unpriced_event_count ? "incomplete" : "known",
-          unpriced_event_count: row.unpriced_event_count,
-        },
-        {
-          measure: "gross_margin",
-          amount_micros: row.revenue_micros - row.provider_cost_micros,
-          status: row.unresolved_event_count ? "incomplete" : "known",
-        },
-        {
-          measure: "recorded_events",
-          event_count: row.event_count,
-          status: "known",
-        },
-      ],
+      measures: measuresForDay(row),
     })),
     context: [],
-  } as Economics;
+  };
+}
+
+/** One fixture day's four measures, as the query would state them. */
+function measuresForDay(row: MockDailyRow) {
+  return measuresFor({
+    cost_micros: row.provider_cost_micros,
+    revenue_micros: row.revenue_micros,
+    events: row.event_count,
+    unresolved_event_count: row.unresolved_event_count,
+    unpriced_event_count: row.unpriced_event_count,
+  });
 }
 
 export async function getTenantCustomerSpendPool(): Promise<CustomerSpendPool> {

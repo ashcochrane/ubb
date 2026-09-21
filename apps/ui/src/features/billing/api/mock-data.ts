@@ -9,7 +9,7 @@
 // empty state instead of tiles — see #225, and mock-data.test.ts, which fails
 // if this file ever goes back to pinned dates.
 
-import type { CustomerSpendPool, PostpaidConfig, RevenueDailyRow, TenantUsageInvoice } from "./types";
+import type { CustomerSpendPool, PostpaidConfig, TenantUsageInvoice } from "./types";
 
 const DAY_MS = 86_400_000;
 
@@ -37,6 +37,21 @@ function isoDay(epochMs: number): string {
  */
 export const UNRESOLVED_TODAY = 3;
 
+/**
+ * The facts one day of the fixture chooses — not the console's narrowed view
+ * of a day, which carries each measure as a figure with its state. The mock
+ * provider composes the answer's measures from these through
+ * `@/lib/economic-scenarios`, so the states are derived rather than written.
+ */
+export interface MockDailyRow {
+  day: string;
+  provider_cost_micros: number;
+  revenue_micros: number;
+  event_count: number;
+  unresolved_event_count: number;
+  unpriced_event_count: number;
+}
+
 /** Deterministic pseudo-random in [0, 1) so charts look organic but stable. */
 function noise(seed: number): number {
   const x = Math.sin(seed * 12.9898) * 43758.5453;
@@ -50,8 +65,8 @@ function noise(seed: number): number {
  * Ending on *today* is what guarantees the default month-to-date window always
  * selects something — including on the 1st, when that window is a single day.
  */
-export function buildDailyRows(): RevenueDailyRow[] {
-  const rows: RevenueDailyRow[] = [];
+export function buildDailyRows(): MockDailyRow[] {
+  const rows: MockDailyRow[] = [];
   const end = todayUtc();
   const start = end - (REVENUE_SPAN_DAYS - 1) * DAY_MS;
   for (let t = start, i = 0; t <= end; t += DAY_MS, i++) {

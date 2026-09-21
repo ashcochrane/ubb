@@ -12,9 +12,9 @@ import {
 } from "recharts";
 
 import {
-  BoundedCostTooltip,
-  type SeriesRole,
-} from "@/components/shared/supplier-cost";
+  MeasureTooltip,
+  type TooltipSeries,
+} from "@/components/shared/measure-value";
 import { formatCalendarDate, formatCostMicros } from "@/lib/format";
 
 import type { TimeseriesPoint } from "../api/types";
@@ -25,11 +25,11 @@ function bucketDay(bucket: unknown): string {
   return formatCalendarDate(String(bucket).slice(0, 10));
 }
 
-/** Which bounding rule each plotted series obeys (#330). */
-function roleOf(dataKey: string): SeriesRole {
-  // Billed is NOT NULL at the column and whole by construction.
-  return dataKey === "provider_cost_micros" ? "supplier-cost" : "whole";
-}
+/** The plotted series, by the data key each point and its figure share. */
+const SERIES: readonly TooltipSeries[] = [
+  { key: "revenue_micros", name: "Revenue", color: "var(--chart-1)" },
+  { key: "provider_cost_micros", name: "Provider cost", color: "var(--chart-2)" },
+];
 
 export default function UsageTimeseriesChart({
   points,
@@ -58,18 +58,23 @@ export default function UsageTimeseriesChart({
             width={72}
           />
           <Tooltip
+            filterNull={false}
             content={
-              <BoundedCostTooltip
+              <MeasureTooltip
+                series={SERIES}
                 currency={currency}
                 labelFormatter={bucketDay}
-                roleOf={roleOf}
               />
             }
           />
           <Legend wrapperStyle={{ fontSize: 12 }} />
+          {/* ⚠ THIS LINE READ `billed_cost_micros` UNTIL #510, a key the points
+              stopped carrying when #501 moved the tab onto the one query and
+              named the revenue `revenue_micros` — so the revenue line was not
+              drawn at all, and nothing said so. */}
           <Line
-            dataKey="billed_cost_micros"
-            name="Billed"
+            dataKey="revenue_micros"
+            name="Revenue"
             stroke="var(--chart-1)"
             strokeWidth={2}
             dot={false}

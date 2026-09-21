@@ -18,6 +18,7 @@ import { render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { measuresOutsideRetentionHorizon } from "@/lib/economic-scenarios";
 import { ABSENT_LABEL } from "@/lib/localisation";
 
 import {
@@ -29,7 +30,8 @@ import { StatRow } from "./stat-row";
 
 const WINDOW: Window = { start_date: "2026-07-01", end_date: "2026-07-23" };
 
-/** Swapped per case — the whole point is that this call can go either way. */
+/** Swapped per case — the whole point is that these calls can go either way. */
+let answerTotals: () => Promise<Economics> = async () => mockTenantEconomics(WINDOW);
 let answerCustomers: () => Promise<Economics> = async () =>
   mockCustomerEconomics(WINDOW);
 
@@ -37,12 +39,13 @@ vi.mock("../api/provider", () => ({
   dashboardApi: {
     // Only the two reads this row makes. A stub answering more would be a
     // second mock to keep true.
-    getTenantEconomics: async () => mockTenantEconomics(WINDOW),
+    getTenantEconomics: () => answerTotals(),
     getCustomerEconomics: () => answerCustomers(),
   },
 }));
 
 afterEach(() => {
+  answerTotals = async () => mockTenantEconomics(WINDOW);
   answerCustomers = async () => mockCustomerEconomics(WINDOW);
 });
 
@@ -105,5 +108,30 @@ describe("StatRow", () => {
     expect(screen.getByText("at least $563.60")).toBeInTheDocument();
     expect(screen.getByText("at most 33.9% margin")).toBeInTheDocument();
     expect(screen.getByText("93.6k")).toBeInTheDocument();
+  });
+  // ⚠ A WINDOW REACHING BACK PAST THE ECONOMIC HORIZON (#510). The narrowing
+  // used to coalesce each amount to zero, so this answer — every measure null,
+  // the state saying why — read "$0.00" on the revenue and the cost. The state
+  // is composed, not hand-typed, and every money card must draw it.
+  it("draws a window past the horizon as out-of-horizon, never as zero", async () => {
+    answerTotals = async () => ({
+      ...mockTenantEconomics(WINDOW),
+      rows: [{
+        grouping_field_value: [],
+        grouping_field_value_status: [],
+        measures: measuresOutsideRetentionHorizon("2020-09-18"),
+      }],
+    });
+
+    renderRow(<StatRow window={WINDOW} currency="usd" />);
+
+    expect(await screen.findByText("Customers with usage")).toBeInTheDocument();
+    for (const label of ["Total revenue", "Provider cost (COGS)", "Gross margin", "Events"]) {
+      const drawn = card(label);
+      expect(within(drawn).getByText("Outside retention horizon")).toBeInTheDocument();
+      expect(within(drawn).queryByText(/\$0\.00/)).not.toBeInTheDocument();
+      expect(within(drawn).queryByText("0")).not.toBeInTheDocument();
+    }
+    expect(within(card("Total revenue")).getByText(/from Sep 18, 2020/)).toBeInTheDocument();
   });
 });

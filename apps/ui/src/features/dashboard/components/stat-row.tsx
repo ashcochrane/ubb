@@ -1,18 +1,13 @@
 import { ErrorCard } from "@/components/shared/error-card";
+import { MeasureValue } from "@/components/shared/measure-value";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatEventCount, formatMicros } from "@/lib/format";
 import { ABSENT_LABEL } from "@/lib/localisation";
-import {
-  marginBound,
-  marginPercentBound,
-  partialTotalNote,
-  supplierCostTotal,
-} from "@/lib/supplier-cost";
+import { figureNote, isNegative, shareNote } from "@/lib/measure-state";
+import { cn } from "@/lib/utils";
 
 import { useCustomerEconomics, useTenantEconomics } from "../api/queries";
 import type { Window } from "../api/types";
-import { summaryEconomics } from "../lib/economics";
 
 // ⚠ THE METER-ONLY TIP AND ITS TWO RELABELLED CARDS ARE GONE (#501). They said
 // a workspace that does not bill through UBB sees what usage WOULD bill at its
@@ -53,49 +48,42 @@ export function StatRow({ window, currency }: StatRowProps) {
     );
   }
 
-  const view = summaryEconomics(summary.data);
+  const totals = summary.data;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {/* ⚠ EVERY FIGURE ON THIS ROW IS DRAWN AS ITS STATE ALLOWS (#510). The
+          narrowing used to coalesce each amount to zero, so a window reaching
+          back past the economic horizon read "$0.00" on the cost and revenue
+          cards; `MeasureValue` draws the state instead, and the subtitle says
+          why — a bound's count, or the sentence a state with no figure owes. */}
       <StatCard
         variant="raised"
         label="Total revenue"
-        value={formatMicros(view.revenue_micros, currency)}
+        value={<MeasureValue figure={totals.revenue} currency={currency} />}
+        subtitle={figureNote(totals.revenue, currency)}
       />
       {/* The window's supplier cost is a FLOOR wherever the summary counts
           events it could not cost, and the margin beside it is then a ceiling
-          — the same count, read from its other side. The note sits on the cost
-          card alone: it explains both, and repeating it would make a caveat out
-          of something that is one fact. */}
+          — the same count, read from its other side. */}
       <StatCard
         variant="raised"
         label="Provider cost (COGS)"
-        value={supplierCostTotal(
-          summary.data.provider_cost_micros,
-          summary.data,
-          currency,
-        )}
-        subtitle={partialTotalNote(summary.data.unresolved_event_count) ?? undefined}
+        value={<MeasureValue figure={totals.cost} currency={currency} />}
+        subtitle={figureNote(totals.cost, currency)}
       />
-      {/* ⚠ A MARGIN UBB CANNOT STATE RENDERS AS AN ABSENCE, NEVER AS ZERO.
-          `gross_margin_micros` is nullable on the one query — a margin it
-          cannot attribute at the grain asked for has no figure at all — and a
-          currency zero here would be exactly the silent zero this surface
-          exists to delete. Showing the states as themselves is the rendering
-          ticket's; not inventing one is this ticket's. */}
+      {/* ⚠ A MARGIN UBB CANNOT STATE RENDERS AS ITS STATE, NEVER AS ZERO — and
+          its state is the query's, derived from BOTH sides (§15), so an
+          uncosted event makes it a bound even where the revenue reads known. */}
       <StatCard
         variant="raised"
         label="Gross margin"
         value={
-          view.margin_micros === null
-            ? ABSENT_LABEL
-            : marginBound(view.margin_micros, summary.data, currency)
+          <span className={cn(isNegative(totals.margin) && "text-destructive")}>
+            <MeasureValue figure={totals.margin} currency={currency} />
+          </span>
         }
-        subtitle={
-          view.margin_micros === null
-            ? "not available for this window"
-            : `${marginPercentBound(view.margin_pct, summary.data)} margin`
-        }
+        subtitle={shareNote(totals.margin, totals.revenue, currency)}
       />
       {/* ⚠ A COUNT THAT DID NOT ARRIVE IS NOT A COUNT OF NONE. Since the card
           became a SECOND promise (#501) its answer can fail on its own, and
@@ -123,11 +111,7 @@ export function StatRow({ window, currency }: StatRowProps) {
       <StatCard
         variant="raised"
         label="Events"
-        value={
-          summary.data.event_count === null
-            ? "—"
-            : formatEventCount(summary.data.event_count)
-        }
+        value={<MeasureValue figure={totals.events} currency={currency} />}
       />
     </div>
   );
