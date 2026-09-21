@@ -620,8 +620,8 @@ gates:
       only pins 2 and 4 had a subject to gate, wrote those, and re-owned the row
       to slice 7 rather than installing it over two pins with nothing to hold.
       Slice 7 built the other two subjects — the one economic query that
-      computes `recorded_events` (#499), and the single surface the five
-      analytics routes collapsed into (#501) — and #511 wrote pins 1 and 3 and
+      computes `recorded_events` (#499), and the single surface nine
+      published reports collapsed into (#501) — and #511 wrote pins 1 and 3 and
       installed the row. All four run in the one module named for this row,
       through the routes a caller reads.
       On the collapsed surface, pin 3's *excluded* means credited to no

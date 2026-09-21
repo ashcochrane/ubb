@@ -166,6 +166,80 @@
 # from the reached count leaving the task analytics row (#465). The cumulative
 # gate — the only gate a green local board says nothing about — was run locally
 # with the pinned binary and is green at 101 breaks, 101 reviewed.
+#
+# Slice 7's flip (#512) is the sixth a slice makes in its own last ticket, and
+# the second whose slice INSTALLED the manifest row it owned — slice 3 did it
+# first, with G19. G14 read `owned_by_slice_7` from #417's re-ownership until
+# #511 wrote its last two pins over the one economic query and flipped it to
+# `installed`, in the ticket before this one, so nothing was owed here either:
+# all 31 of this slice's ledger entries had died in the commits that made them
+# false. `unlanded[0]` moved from slice 7 to `slice_builder` — the Code Builder,
+# which the chain orders ahead of the cutover — with no control re-pointed.
+#
+# IT IS ALSO THE FIRST FLIP WHOSE SLICE HOLDS BACK TWO OF THE PROGRAMME'S
+# SLICES. #189 is the native `blocked_by` of both #184 (the Code Builder) and
+# #190 (the cutover), so when it closes BOTH edges resolve in the same moment.
+# Earlier slices each released one slice, and two of them a residual beside it
+# (#192 released #246, #188 released #472). #184 becomes workable at once;
+# #190 still waits on #184, which is its other edge.
+#
+# The census was walked by IDENTITY over `git rev-list`, eighteen commits of
+# which eleven moved the ledger, and it ended at 40 — not the 41 spec §20
+# forecast. §20 counted one slice-8 entry paid early (`g6-map-revenue-mode-label`,
+# which died in #497 with its three console consumers). A second died in #496
+# that no footprint walk could have seen: `g6-humanises-revenue-panels` names a
+# `humanize` CALL rather than a route, a model or a field, and it went with the
+# card that made the call, which humanised the retired recurring amount's
+# interval. Both are the ledger's own rule — an owner may move earlier, never
+# later — and #496 put the revised number on #512 itself, so this flip read the
+# forecast rather than discovering it. That is #427's shape again, a coupling
+# reaching across the forecast, caught one ticket in instead of at the flip. So
+# 73→40 is 31 owned plus 2 paid early: nothing born, no owner moved, no entry
+# relabelled. Per gate: G2 12→6, G4 7→3, G6 28→25, G7 25→5, G9 1→1. The
+# residual is 39 `slice_8` entries and 1 `slice_builder`.
+#
+# The flip turned nothing red, so all twenty-three controls were mutation-checked
+# again with #471's harness, unchanged but for its root. Wherever the fault was
+# an ENTRY the removal RELABELLED it rather than reverting it; where it was a
+# missing field, a bad type, an uninstalled gate, a shared identifier or an
+# unreadable ref, the removal took out that cause and nothing else. ALL
+# TWENTY-THREE failed without their cause, and every failure was read rather
+# than counted, the tally derived from the harness output by script: twelve
+# `DID NOT RAISE GatesInvalid`, ten an empty fault set against the code they
+# assert — `{'ledger_grew'}` SIX times, and one each of
+# `{'authorisation_count_wrong'}`, `{'authorisation_inert'}`,
+# `{'debt_deferred'}` and `{'base_unreadable'}` — and one `assert not True` on a
+# comparison holding nothing. Each real-git control failed on an EMPTY set,
+# `{'ledger_grew'}` three times and `{'base_unreadable'}` once. None was vacuous
+# and none needed repair. The twin mutates `UNLANDED_SLICE`, which is slice 8,
+# so it is untouched by construction for the third flip running.
+#
+# ⚠ THE NEXT FLIP IS THE FIRST WHERE ONLY ONE SLICE IS LEFT UNLANDED, AND THREE
+# CONTROLS WILL NOT RUN. `test_migration_ledger.py`'s `unlanded` fixture asserts
+# that at least two slices have yet to land, because the controls about the
+# ratchet's direction need an earlier and a later one; the deferral, the
+# pull-earlier and the landed-owner controls take it. Today they read
+# `slice_builder` and `slice_8`. When the Code Builder lands, only the cutover
+# is left, and those three ERROR at setup with the fixture's own message rather
+# than going vacuous — as designed. What replaces them is #184's flip to
+# decide, not this one.
+#
+# THE AUTHORING-DIRECTION BREAKS ARE NAMED HERE AND DELIBERATELY NOT FILED.
+# `oasdiff --baseline 3fe1dbff` reports 33 breaks, 17 already covered and
+# SIXTEEN with no committed entry. All sixteen sit on surfaces the launch tag
+# never published, checked against the tag's own document rather than assumed:
+# ONE from #497, the revenue switch's field off the business tree's seat rows,
+# a response the tag published untyped (`"OK"`, no schema); ONE from #501, the
+# grouped margin breakdown's path, which the tag published under the name
+# #278's block files as removed; and FOURTEEN from #505's rename of the grouping
+# bag — four on `/api/v1/metering/grouping-fields`, three on
+# `/api/v1/task-types`, five across `/api/v1/tasks` and its two child paths, and
+# two on the recording request and its batch, whose `RecordUsageRequest` carried
+# no such property at the tag. Filing them would be sixteen inert lines, and an
+# inert entry turns the cumulative gate red. The slice removed ELEVEN paths and
+# THIRTEEN operations — §17's figures exactly — and the error file carries ten
+# and twelve, the eleventh path being that breakdown. The cumulative gate was
+# run locally with the pinned binary and is green at 115 breaks, 115 reviewed.
 
 version: 1
 
@@ -216,7 +290,7 @@ slices:
     issue: 189
     title: Analytics
     order: 7
-    landed: false
+    landed: true
 
   # Not numbered in #194's table, and deliberately so: it is the Code Builder,
   # sequenced after slice 7 and before the cutover. It is a slice in every way

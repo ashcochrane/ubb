@@ -33,8 +33,9 @@ REGISTRY = "/api/v1/task-types"
 #: Where it used to be. Spelled once, so every assertion that the old surface is
 #: gone is talking about the same path.
 RETIRED_PATH = "/api/v1/metering/task-types"
-#: The reporting surface that deliberately did NOT come with it: it belongs to
-#: the analytics collapse, and moving it now would break a path twice.
+#: The reporting surface that deliberately did NOT come with it: it was left
+#: for the analytics collapse, since moving it then would have broken a path
+#: twice, and that collapse kept it outside (slice 7 §12), so it never moved.
 JOB_ANALYTICS = "/api/v1/metering/analytics/tasks"
 
 

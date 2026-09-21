@@ -187,10 +187,10 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   #312 settled which vocabulary they belong to and made all three agree. The reading is the declared
   schema's own: *the value the row groups, not the axis it was grouped on* — the axis is already
   named by the request's `group_by` (or by the key of the `breakdowns` map), so repeating it per row
-  would say the same thing once per row. **This is also why the two open rollups are slice 2's and
-  not slice 7's**, which owns the analytics grouping *capability* and its request parameter: the
+  would say the same thing once per row. **This is also why the two open rollups were slice 2's and
+  not slice 7's**, which owned the analytics grouping *capability* and its request parameter: the
   registry retires the singular noun to `grouping_field_value` and the plural to
-  `analytics_grouping_kind`, so a value is this slice's and an axis is that one's, and the row key
+  `analytics_grouping_kind`, so a value was this slice's and an axis was that one's, and the row key
   holds a value. Nothing but a test asserting the whole row can hold that agreement, which is what
   `api/v1/tests/test_analytics_dimensions.py` DID for both open rollups until #501 deleted the
   rollups and the module with them (see the supersession note at the end of this section), and why
@@ -206,7 +206,7 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   the reason #312 exists, so slice 2 renamed the file and edited the one pinned path, taking slice
   7's one-file entry to zero with it. That is the ledger's own rule rather than an exception to it:
   an owner slice may move earlier but never later, and #283 settled that an entry cannot outlive its
-  debt whoever owns it. Slice 7 therefore never pays that file, and this sentence is why its ledger
+  debt whoever owns it. Slice 7 therefore never paid that file, and this sentence is why its ledger
   entry is not there to explain itself.
 
 - **Superseded by slice 7 (#501): the three rollups are one, and it DECLARES its rows.** The two

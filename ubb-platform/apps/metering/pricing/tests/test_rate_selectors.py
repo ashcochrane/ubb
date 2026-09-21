@@ -98,7 +98,7 @@ class TestRateSelectors:
 
     def test_no_reporting_rollup_is_a_rate_selector(self):
         """#145 §5 AND #147 §2 REMOVED THE REPORTING AXES FROM RATE SELECTION,
-        AND SLICE 7 IS A VOCABULARY CHANGE RATHER THAN A READMISSION.
+        AND SLICE 7 WAS A VOCABULARY CHANGE RATHER THAN A READMISSION.
 
         The analytics rollups are read from the generated vocabulary, not
         spelled, so a rollup COINED later is covered by this test the day it

@@ -189,6 +189,12 @@ POST /api/v1/metering/usage/batch removed the request property `events/items/uni
 # (This paragraph named two ledger entries by id until #504 PAID one of them —
 # `g7-backend-tag_key` is gone, so the ids are described rather than cited. The
 # claim above is unchanged and still true: what slice 2 moved was the column.)
+# ⚠ AND SLICE 7 DID MIGRATE THE CAPABILITY, SO NONE OF THE THREE READS A KEY OUT
+# OF THIS BAG ANY MORE (recorded at slice 7's flip, #512). The keyed parameter
+# and the keyed margin breakdown died with their routes (#501), and an invoice
+# line is grouped by one declared axis (#503; `group_by` on the wire since
+# #531). The paragraph keeps its own tense because the break it records is
+# slice 2's.
 GET /api/v1/metering/usage/{event_id} removed the optional property `tags` from the response with the `200` status
 POST /api/v1/metering/usage removed the request property `tags`
 POST /api/v1/metering/usage/batch removed the request property `events/items/tags`

@@ -49,8 +49,9 @@ of that declaration is consistent with the floor rather than novel.
 
 **Job analytics does NOT come with them.** ``GET /metering/analytics/tasks``
 stays where it is and stays gated on ``metering``: it is a reporting surface, it
-belongs to the five-endpoint analytics collapse, and moving it now would break a
-path twice — once here and once there.
+was left for slice 7's analytics collapse because moving it here would have
+broken a path twice — once here and once there — and that collapse then kept it
+outside (slice 7 §12), so it never moved at all.
 
 **The public path says ``task-types``, not ``kinds``.** The console route says
 *kinds of work*. That is ADR-0008 §4's identity/expression split working as

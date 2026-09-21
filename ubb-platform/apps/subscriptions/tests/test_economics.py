@@ -147,9 +147,13 @@ class MarginServiceTest(TestCase):
         cannot say "unavailable". `gross_margin_micros` is a NOT NULL column
         that always computes, so asserting a value for it here would be
         blessing a number the spec says should not be presented as a margin at
-        all. That half has no surface to be asserted against until the
-        route-collapsing tickets build slice 7 §5's scope rule, and #502 demotes
-        this record to the alerting state machine it is.
+        all. That half had no surface to be asserted against until the
+        route-collapsing tickets built slice 7 §5's scope rule and #502 demoted
+        this record to the alerting state machine it is. The one economic query
+        now answers it in its own states — a floor labelled `incomplete`, never
+        a `known` figure — asserted through its route
+        (`api/v1/tests/test_the_one_economic_query.py::
+        TestUsageNobodyPricedIsNeverAKnownFigure`).
 
         What IS asserted is the half this ticket owns: no revenue figure was
         invented, the cost side still flows, the total travels with the count

@@ -157,8 +157,8 @@ report they replaced was a `list[dict]`, which is why a console reader once coal
 cost to zero money — and neither coerces a null to zero: an indeterminate ceiling is never a
 breach, a pool row is explained by the Charge that crossed it and that Charge's posting, and the
 aggregate utilisation is computed per unit and then across every unit, with the indeterminate
-count published beside it. Slice 7 inherits both unchanged (#153 §8.3 keeps them outside its
-one-query collapse).
+count published beside it. Slice 7 inherited both and left them unchanged (#153 §8.3 kept them
+outside its one-query collapse, and #501 collapsed nine reports around them).
 
 ---
 

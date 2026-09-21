@@ -127,9 +127,9 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     asserts is that a row is OWED and never why. The row stayed here then,
     because two of its four pins still had no subject: it changed owner to
     slice 7 instead. Slice 7 built both — the one economic query that computes
-    the events measure (#499), and the single analytics surface the five routes
-    collapsed into (#501) — and #511 wrote the last two pins and installed the
-    row, all four in
+    the events measure (#499), and the single analytics surface nine published
+    reports collapsed into (#501) — and #511 wrote the last two pins and
+    installed the row, all four in
     `ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`.
 
     The two halves are asserted together deliberately. Separately, dropping a

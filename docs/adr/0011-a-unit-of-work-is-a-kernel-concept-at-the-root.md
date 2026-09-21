@@ -93,9 +93,10 @@ work is sold, which makes it a pricing-rule change rather than a day-to-day data
 ### 3. What did not move, on purpose
 
 The task analytics report (`GET /metering/analytics/tasks`) stays where it is and stays gated. It is
-a reporting surface, it belongs to slice 7's analytics collapse, and moving it now would break one
-path twice — once here and once there. It is asserted in both directions: it still answers where it
-was, and it did not also appear at the root.
+a reporting surface, and it was left for slice 7's analytics collapse because moving it here would
+have broken one path twice — once here and once there. That slice then kept it OUTSIDE the collapse
+(its spec §12: one observation per unit of work, not per posting), so it never moved at all. It is
+asserted in both directions: it still answers where it was, and it did not also appear at the root.
 
 ### 4. Which document is current
 

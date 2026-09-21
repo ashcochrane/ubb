@@ -359,6 +359,13 @@ PATCH /api/v1/tenant/config request property `products/anyOf[subschema #1]/items
 # that slice will then take away. The ledger's ownership rule decides it: an
 # owner may move a debt earlier, never later.
 #
+# ⚠ IT DID, AND THE COLLAPSE WAS NINE ROUTES RATHER THAN FIVE (#501). The
+# breakdown route went into the one economic query with eight others, and it
+# takes no line in #501's own block further down this file: the path the tag
+# published is filed as removed here, and the new spelling is one the tag never
+# promised. The churn weighed above was spent exactly as forecast. (Recorded at
+# slice 7's flip, #512.)
+#
 # HOW THIS BREAK FAILS, WHICH IS THE OPPOSITE OF THE FOUR BEFORE IT. #272-#275
 # dropped or renamed PROPERTIES, where django-ninja's `extra="ignore"` hands a
 # stale caller a 200 and quietly missing data. A removed PATH cannot fail
@@ -1119,6 +1126,14 @@ PUT /api/v1/margin/customers/{customer_id}/revenue-mode api path removed without
 # not silently corrected because §17 is the spec's number and a ticket that
 # finds the spec's arithmetic moved is told to say so rather than to quietly
 # adopt a different one.
+#
+# ⚠ AUDITED AT THE FLIP (#512), AGAINST BOTH DOCUMENTS RATHER THAN THIS FILE.
+# `oasdiff breaking` from the slice's base (`3fe1dbff`) to the landed contract
+# removes ELEVEN paths and THIRTEEN operations — §17's figures exactly — and
+# this file carries ten and twelve of them. The eleventh path is the grouped
+# margin breakdown, for the reason above, and the tag's own document confirms
+# it: `/api/v1/margin/by-dimension` is among its 98 paths and
+# `/api/v1/margin/by-grouping-field` is not.
 #
 # ⚠ AND TWO OF THE EIGHT ARE FILED FOR A SECOND REASON, WHICH IS A FINDING
 # ABOUT THIS GATE RATHER THAN ABOUT THE CONTRACT. `--emit` reported only SIX

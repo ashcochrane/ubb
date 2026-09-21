@@ -32,8 +32,8 @@ function that answers it, and **Measurements status** reads it first — a charg
 **What counts a charge posting and what does not is decided by the ECONOMIC FIELD each measure is
 about**: it is real revenue, so every monetary total includes it or a tenant under-reports what they
 sold; it is not a reported event, so `Task.event_count` and every count of events excludes it or a
-per-event average gains a denominator nobody billed. ADR-0013's Consequences say which of G14's
-four pins hold that today and which are slice 7's.
+per-event average gains a denominator nobody billed. G14's four pins hold it, installed by #511;
+ADR-0013's Consequences say which slice wrote which.
 **A compensating Charge is refused at the projection** — a negative posting would move nothing on
 the rails, and correcting a charge there needs a refund path nobody owns yet (ADR-0013 §3).
 (ADR-0013 §3; `apps/metering/usage/models.py:Posting.kind`;
@@ -589,7 +589,7 @@ and the two row types beside them are `PostingPrice` and `PostingCost`.
 `billed_cost_micros` and `pricing_status` — the customer-price pair — and the old name said "cost"
 for both halves, collapsing the one distinction **Billed cost** above asks a reader to hold.
 _Avoid_: reading the two surviving published spellings as a second concept — `UsageEventOut` /
-`UsageEventDetailOut` are a contract surface whose slice has not come (slice 7 §1 keeps the
+`UsageEventDetailOut` are a contract surface no slice has rebuilt (slice 7 §1 kept the
 per-customer event list's own contract), and `usage_event_id` on the unresolved-queue rows is a
 published row key, not an internal name.
 _Avoid_: importing metering models from another product; go through `queries.py`.

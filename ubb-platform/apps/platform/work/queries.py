@@ -299,7 +299,7 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
     # economics of a kind of work, so it moved to Utilisation and headroom
     # (`ceiling_utilisation` below, aggregated per unit by the composition
     # layer) and LEFT this report in both directions — slice 7's parity
-    # matrix for this endpoint starts one field short, and has been told.
+    # matrix for this endpoint started one field short, as its spec recorded.
 
 
 # --- the two spend-control reports' reads (#465, slice 6 §14) -------------

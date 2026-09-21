@@ -50,7 +50,7 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN, MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
-    MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN,
+    MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
     RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECORDED, UNRESOLVED_REASON_COST_RATE_MISSING,
 )
@@ -367,6 +367,55 @@ class TestAMarginIsNoBetterThanItsWorstInput:
         body = ask(self.key, measures=MONEY, **self.window).json()
         assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
                           )["unresolved_event_count"] == 1
+
+
+@pytest.mark.django_db
+class TestUsageNobodyPricedIsNeverAKnownFigure:
+    """Testing Decisions claim 9's margin half, as this surface can say it.
+
+    A tenant that does not bill through UBB — `a_tenant` is one — whose usage
+    carries no price and whose revenue nobody supplied. #495 proved the
+    supplied-revenue record's half (`unknown`, and no amount to read) and left
+    the margin half to the surface that would derive one; this is that surface.
+
+    ⚠ **CLAIM 9 WORDS IT AS MARGIN `unavailable`, NEVER ZERO, AND THIS QUERY
+    SAYS IT DIFFERENTLY — which is stated here rather than smoothed over.** The
+    query has no plain `unavailable`: its two unavailable states are about grain
+    and retention, and neither applies. What it publishes instead is the figure
+    it could compute beside the count of postings it could not price. Revenue is
+    a FLOOR — zero here, because nothing was priced — and the margin over it is
+    a floor too, and both read `incomplete` (§15). So a zero IS on the wire, and
+    what these cases pin is that it is never stated as `known`, the one state
+    under which a reader could take it for a figure.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fixture(self):
+        self.tenant, self.key = a_tenant()
+        customer = Customer.objects.create(tenant=self.tenant,
+                                           external_id="c1")
+        a_posting(self.tenant, customer, "i1", billed_cost_micros=None,
+                  pricing_status=PRICING_STATUS_UNKNOWN)
+        self.window = {"start_date": OPENS.isoformat(),
+                       "end_date": CLOSES.isoformat()}
+
+    def test_the_revenue_is_a_floor_that_says_so(self):
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert revenue["amount_micros"] == 0
+        assert revenue["status"] == MEASURE_STATUS_INCOMPLETE
+        assert revenue["unpriced_event_count"] == 1
+
+    def test_the_margin_is_no_better_than_the_revenue_under_it(self):
+        """The cost side is resolved here, so the state the margin carries
+        can only have come from the revenue side — the mirror of the class
+        above, where it could only have come from the cost side."""
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+                          )["status"] == MEASURE_STATUS_KNOWN
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert margin["amount_micros"] == 0 - 400_000
+        assert margin["status"] == MEASURE_STATUS_INCOMPLETE
 
 
 @pytest.mark.django_db

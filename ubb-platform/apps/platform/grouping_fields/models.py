@@ -52,7 +52,7 @@ SCOPE_CHOICES = [("task", "Task"), ("subtask", "Subtask"), ("event", "Event")]
 #
 # The customer joined THIS list when slice 7's grouping contract made it an
 # analytics axis every posting carries — §6 names it first among the direct
-# grouping fields, and the per-customer margin list collapses into grouping by
+# grouping fields, and the per-customer margin list collapsed into grouping by
 # it. Without the reservation a tenant could declare a field keyed `customer`
 # and the one request word `field:customer` would name two different axes at
 # two different grains, with nothing to say which the caller meant. A rule still

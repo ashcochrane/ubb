@@ -258,7 +258,7 @@ class Rate(BaseModel):
     # the ONE matching semantic — the retired JSONB selector bag was matched by
     # SUBSET while the provider/event_type columns beside it were matched by
     # exact equality, which was two different rules running on one query.
-    # (The bag's own name is the analytics grouping word slice 7 retires; it is
+    # (The bag's own name is the analytics grouping word slice 7 retired; it is
     # described here rather than spelled, and `test_rate_selectors.py` holds its
     # absence to the column TYPE so no bag returns under a newer word.)
     provider = models.CharField(max_length=100, blank=True, default="", db_index=True)

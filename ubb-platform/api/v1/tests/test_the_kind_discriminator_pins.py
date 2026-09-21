@@ -6,7 +6,7 @@ of them had a subject to gate, and took the escape the row's notes authorised:
 it re-owned the row to slice 7 rather than installing half a gate, and wrote
 pins 2 and 4 here to guard its own new column in the meantime. Slice 7 built
 the other two's subjects — the one economic query that computes the events
-measure (#499), and the single surface the five analytics routes collapsed into
+measure (#499), and the single surface nine published reports collapsed into
 (#501) — and #511 wrote pins 1 and 3 here and installed the row. G14's
 `enforced_by` in `gates/manifest.yaml` names a node of every pin, all in this
 module.

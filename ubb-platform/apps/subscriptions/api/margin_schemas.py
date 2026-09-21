@@ -177,7 +177,9 @@ class SeatMarginOut(Schema):
     customer_id: str
     subscription_revenue_micros: int
     #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
-    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: under the `recognised` basis every margin figure is stated under
+    #: (`economics/services.py:MARGIN_REVENUE_BASIS`, #496; this comment said
+    #: `recorded` until #512 found it). Beside the Stripe figure above and
     #: never inside it: both are in `total_revenue_micros`, and this pair is
     #: what lets a reader of that total say which part UBB drove through
     #: Stripe and which part the tenant stated about a system UBB cannot see.
@@ -251,7 +253,9 @@ class BusinessMarginTotals(Schema):
     # none).
     subscription_revenue_micros: int
     #: WHAT THE TENANT SAID IT EARNED ELSEWHERE, attributed to this window
-    #: under the `recorded` basis (#496). Beside the Stripe figure above and
+    #: under the `recognised` basis every margin figure is stated under
+    #: (`economics/services.py:MARGIN_REVENUE_BASIS`, #496; this comment said
+    #: `recorded` until #512 found it). Beside the Stripe figure above and
     #: never inside it: both are in `total_revenue_micros`, and this pair is
     #: what lets a reader of that total say which part UBB drove through
     #: Stripe and which part the tenant stated about a system UBB cannot see.
