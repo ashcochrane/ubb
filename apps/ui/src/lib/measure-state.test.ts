@@ -84,6 +84,36 @@ describe("incomplete — a bound with its count, never a total", () => {
     ).toBe("—");
   });
 
+  // #537: where no piece of a row's revenue resolved, the query sends no amount
+  // on the revenue or the margin. There is no total to have left anything out
+  // of and no figure for the truth to be above, so the sentence says neither.
+  it.each([CUSTOMER_REVENUE, GROSS_MARGIN] as const)(
+    "states no amount, no total and no direction for %s where nothing resolved",
+    (measure) => {
+      const reading = readMeasure(
+        figure({ measure, status: "incomplete", value: null, unpriced_event_count: 2 }),
+        "usd",
+      );
+      expect(readingText(reading)).toBe("—");
+      const note = reading.kind === "bound" ? reading.note : null;
+      expect(note).toMatch(/^No (revenue|margin) can be stated/);
+      expect(note).toContain("2 events have a customer price UBB could not resolve");
+      expect(note).not.toMatch(/total|higher|lower/);
+    },
+  );
+
+  // The guard on the case above: a revenue floor of ZERO is an amount — a free
+  // service beside an unpriced one — and keeps the note that says what the
+  // total left out.
+  it("keeps the left-out note where a zero floor IS an amount", () => {
+    const reading = readMeasure(
+      figure({ measure: CUSTOMER_REVENUE, status: "incomplete", value: 0, unpriced_event_count: 1 }),
+      "usd",
+    );
+    expect(readingText(reading)).toBe("—");
+    expect(reading.kind === "bound" && reading.note).toMatch(/left out of this total/);
+  });
+
   // ⚠ §15: the cost side incomplete makes the margin incomplete whatever the
   // revenue side says, and an uncosted event can only LOWER it.
   it("bounds a margin from above where only the cost side is short", () => {

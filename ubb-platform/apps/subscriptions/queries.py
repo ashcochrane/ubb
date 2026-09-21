@@ -10,7 +10,9 @@ Consumers:
 - api/v1/subscriptions_endpoints.py (future)
 - api/v1/metering_endpoints.py → revenue_contributions() (the one economic
   query's revenue half, #499 — the composition layer wires it to metering's
-  read contract, which is where the measures are computed)
+  read contract, which is where the measures are computed) and
+  supplied_revenue_covered_periods() (the spans a supplied figure supersedes
+  priced usage inside, #537)
 """
 from core.vocabulary import REVENUE_BASIS_VALUES
 
@@ -193,6 +195,60 @@ def _contribution(window_start, window_end, customer_id, source, amount_micros):
             "amount_micros": amount_micros,
             "attributable_axes": REVENUE_ATTRIBUTABLE_AXES,
             "finest_bucket": REVENUE_FINEST_BUCKET}
+
+
+def supplied_revenue_covered_periods(tenant_id, *, opens, closes,
+                                     customer_ids=None) -> list[dict]:
+    """Every span a tenant-supplied figure is the WHOLE revenue for, touching
+    the half-open ``[opens, closes)`` (#537).
+
+    The owner's ruling on slice 7's claim 9: a figure the tenant supplied is the
+    revenue for the customer and period it covers — authoritative, never added
+    to. So the one economic query supersedes the revenue it derived from priced
+    usage inside these spans, for these customers, and does not count the usage
+    nobody priced there against the figure's completeness. This is what it is
+    told, as plain data, because it may not read the record itself (ADR-001).
+
+    ⚠ **THE SPAN IS THE RECORD'S OWN, AND NO BASIS IS ASKED.** Where an AMOUNT
+    lands is the basis's business and :func:`revenue_contributions` answers it —
+    under `recorded` a figure lands whole on the day its period opens, so a
+    window starting after that day receives none of it. What the figure COVERS
+    does not move with the view: the usage in that later window is still inside
+    a period the tenant has stated the whole revenue of, and adding it back
+    there would make two windows that partition the month sum to more than the
+    tenant said the month earned.
+
+    ⚠ **A FIGURE FOR AN INSTANT COVERS NO SPAN.** A null period end is the
+    record saying it is a point in time — the model refuses to read it as a day
+    — so there is no period for it to be the whole revenue of. Its amount is
+    still revenue, reached through :func:`revenue_contributions`; it supersedes
+    nothing. That is this function's reading of a case the ruling did not name.
+
+    **A STATED ZERO COVERS ITS SPAN LIKE ANY OTHER FIGURE**: a free month is the
+    whole revenue of that month, and it is nothing (#153 §3.4).
+
+    **A Stripe subscription covers nothing.** The ruling supersedes revenue
+    derived from priced usage with a SUPPLIED figure and names no other source;
+    a subscription is added to what UBB priced, as it always was.
+
+    Each row is ``{"customer_id", "period_start", "period_end"}`` — the record's
+    own span, half-open, as dates. Overlapping figures for one customer are two
+    rows, because two invoices covering one month are two facts; the reader
+    merges spans, not this.
+    """
+    from apps.subscriptions.economics.models import TenantSuppliedRevenue
+
+    covering = TenantSuppliedRevenue.objects.filter(
+        tenant_id=tenant_id, period_end__isnull=False,
+        period_start__lt=closes, period_end__gt=opens)
+    if customer_ids is not None:
+        covering = covering.filter(
+            customer_id__in=[str(customer_id) for customer_id in customer_ids])
+    return [{"customer_id": str(customer_id), "period_start": period_start,
+             "period_end": period_end}
+            for customer_id, period_start, period_end in covering.order_by(
+                "period_start", "customer_id", "source_reference").values_list(
+                "customer_id", "period_start", "period_end")]
 
 
 def get_customer_subscription(tenant_id, customer_id):

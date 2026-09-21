@@ -135,6 +135,16 @@ function measureOn(
  * by construction and their absence means what their zero means: nothing was
  * left out. That is NOT true of an AMOUNT, which is why this coerces and
  * `figureOn` keeps an absent amount null.
+ *
+ * ⚠ **THE UNPRICED COUNT IS LEFT OUT ONLY WHERE THE REVENUE SAYS SO (#537).**
+ * Inside a period a tenant-supplied figure covers, that figure IS the revenue,
+ * and the query publishes the count of usage nobody priced there beside a
+ * `known` revenue, as information. Read as "left out", it would bound the
+ * margin in both directions where only the cost is short, and caption a
+ * revenue the tenant stated whole with events it did not need. So the count is
+ * taken off the revenue's STATE — `incomplete` is the one state under which it
+ * is what the figure left out — and a surface wanting the diagnostic number
+ * reads the wire.
  */
 function completenessOn(row: EconomicRow | undefined): {
   unresolved_event_count: number;
@@ -144,7 +154,8 @@ function completenessOn(row: EconomicRow | undefined): {
   const revenue = measureOn(row, CUSTOMER_REVENUE);
   return {
     unresolved_event_count: cost?.unresolved_event_count ?? 0,
-    unpriced_event_count: revenue?.unpriced_event_count ?? 0,
+    unpriced_event_count:
+      revenue?.status === "incomplete" ? (revenue.unpriced_event_count ?? 0) : 0,
   };
 }
 

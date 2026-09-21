@@ -2044,10 +2044,20 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     than small, and the revenue that could not be placed is listed under
     `context` with the axes at which asking again would produce one.
 
+    **A revenue figure you supplied is the whole revenue for the customer and
+    period it covers.** Revenue UBB derived from priced usage inside that period
+    is not added to it, and usage nobody priced there does not make it
+    incomplete — the count of that usage is still published. Everywhere else a
+    revenue is derived from priced usage: where some usage is unpriced the
+    figure is a bound and reads `incomplete`, and where no piece of a row's
+    revenue resolved at all, the revenue and the margin read `incomplete` with
+    no amount. A deliberate zero price is resolved.
+
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens
-    and is the default, `recognised` spreads it by the record's own method. The
-    answer always states which it served.
+    and is the default, `recognised` spreads it by the record's own method. It
+    moves where a supplied amount lands and never which usage the record
+    covers. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the
@@ -2078,7 +2088,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         ECONOMIC_BUCKETS, ECONOMIC_MEASURES, EconomicFilters,
         EconomicQuestionRefused, economic_refusal, economics, grouping_options)
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
-    from apps.subscriptions.queries import revenue_contributions
+    from apps.subscriptions.queries import (
+        revenue_contributions, supplied_revenue_covered_periods)
 
     measures = list(measures or [])
     axes = list(group_by or [])
@@ -2142,14 +2153,24 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     # number the caller did not request. The argument is absent exactly when it
     # is irrelevant, which is the one case the read contract's refusal is not
     # about.
+    #
+    # ⚠ **AND THE PERIODS A SUPPLIED FIGURE COVERS COME WITH THEM, READ FOR THE
+    # WHOLE WINDOW AND NOT PER BUCKET** (#537). A supplied figure is the whole
+    # revenue for the customer and period it covers, so the query supersedes
+    # the priced usage inside that period — and which period that is belongs to
+    # the record, not to the basis that decides where its amount lands.
     revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                            ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
     supplied = {}
     if revenue_wanted:
+        customer_ids = [customer_id] if customer_id else None
         supplied["contributed_revenue"] = revenue_contributions(
             request.auth.tenant.id,
             windows=_economic_buckets(start, end, bucket), basis=chosen,
-            customer_ids=[customer_id] if customer_id else None)
+            customer_ids=customer_ids)
+        supplied["covered_periods"] = supplied_revenue_covered_periods(
+            request.auth.tenant.id, opens=start,
+            closes=end + timedelta(days=1), customer_ids=customer_ids)
 
     try:
         answer = economics(request.auth.tenant.id, measures=measures,

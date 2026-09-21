@@ -113,15 +113,17 @@ class MarginEndpointsTest(TestCase):
         body = self._one_customers_margin()
         assert self._measure(
             body, ANALYTICS_MEASURE_SUPPLIER_COGS)["amount_micros"] == 1_000_000
-        # Both revenue sources reach the margin, and the billed usage is one of
-        # them for this tenant as for any other (#497): the switch that used to
-        # strike it out is deleted, so the revenue is supplied + billed.
+        # The supplied figure is the WHOLE revenue for this customer and the
+        # month it covers (#537), so the 1,300,000 UBB priced for the two events
+        # inside that month is superseded rather than added — which is what the
+        # case without a supplied figure below still reads. Until #537 this
+        # asserted supplied + billed: a tenant billing elsewhere, counted twice.
         assert self._measure(
             body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)["amount_micros"] == (
-            expected_supplied + 1_300_000)
+            expected_supplied)
         assert self._measure(
             body, ANALYTICS_MEASURE_GROSS_MARGIN)["amount_micros"] == (
-            expected_supplied + 1_300_000 - 1_000_000)
+            expected_supplied - 1_000_000)
 
         # And the total can still be taken apart, on the read that owns the
         # figure: the supplied share, under the basis it was attributed on,

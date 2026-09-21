@@ -209,9 +209,13 @@ What comes back: `rows`, each carrying `grouping_field_value` — a LIST, positi
 
 > **⚠ Every measure carries a `status`, and the amount alone is not the answer.** `known` means
 > every input resolved. `incomplete` means the figure is a bound and the counts beside it say how
-> far off it can be. `unavailable_at_requested_grain` means the figure could not be attributed this
-> finely — a revenue figure is the part that *could* be placed, with the rest in the answer's
-> `context`, and a margin is `null` outright, because there is no such thing as a partial margin.
+> far off it can be — and where no piece of a row's revenue resolved there is nothing to bound, so
+> the revenue and the margin are `null`. A revenue figure you supplied is the whole revenue for the
+> customer and period it covers: it reads `known` there even beside usage nobody priced, and the
+> revenue UBB priced inside that period is not added to it. `unavailable_at_requested_grain` means
+> the figure could not be attributed this finely — a revenue figure is the part that *could* be
+> placed, with the rest in the answer's `context`, and a margin is `null` outright, because there
+> is no such thing as a partial margin.
 > `unavailable_outside_retention_horizon` means the row reaches back past what UBB still holds, and
 > `available_from` says the day that measure's series can start. `not_applicable` means the measure
 > does not apply to this row at all. **A reader that takes the amount and drops the status will

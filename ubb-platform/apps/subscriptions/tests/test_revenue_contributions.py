@@ -19,7 +19,7 @@ from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.queries import (
     REVENUE_ATTRIBUTABLE_AXES, REVENUE_FINEST_BUCKET, REVENUE_SOURCES,
     REVENUE_SOURCE_SUBSCRIPTION, REVENUE_SOURCE_TENANT_SUPPLIED,
-    revenue_contributions,
+    revenue_contributions, supplied_revenue_covered_periods,
 )
 from core.vocabulary import (
     RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
@@ -35,7 +35,10 @@ MONTH = [(OPENS, NEXT)]
 SUPPLIED = 3_100_000
 
 
-class RevenueContributionsTest(TestCase):
+class _ATenantWithTwoCustomers(TestCase):
+    """The tenant both read contracts below are asked about, and the one way a
+    case here supplies a figure for it."""
+
     @classmethod
     def setUpTestData(cls):
         cls.tenant = Tenant.objects.create(name="T", products=["metering"])
@@ -45,12 +48,16 @@ class RevenueContributionsTest(TestCase):
                                             external_id="c2")
 
     def a_supplied_figure(self, customer=None, *, method, amount=SUPPLIED,
-                          reference="inv-1", period_end=NEXT):
+                          reference="inv-1", period_start=OPENS,
+                          period_end=NEXT):
         return TenantSuppliedRevenue.objects.create(
             tenant=self.tenant, customer=customer or self.customer,
-            amount_micros=amount, currency="usd", period_start=OPENS,
+            amount_micros=amount, currency="usd", period_start=period_start,
             period_end=period_end, recognition_method=method,
             source_reference=reference)
+
+
+class RevenueContributionsTest(_ATenantWithTwoCustomers):
 
     def a_subscription(self, customer=None, *, amount=31_000_000,
                        status="active", interval="month"):
@@ -214,3 +221,86 @@ class RevenueContributionsTest(TestCase):
         # admitted nothing at all.
         assert per_customer > 0
         assert whole == per_customer
+
+
+class SuppliedRevenueCoveredPeriodsTest(_ATenantWithTwoCustomers):
+    """The spans a tenant-supplied figure is the WHOLE revenue for (#537).
+
+    The one economic query supersedes the revenue it derived from priced usage
+    inside these spans, for these customers, and excuses the usage nobody
+    priced there. **What it is handed is the record's own span and nothing the
+    basis decides**: `revenue_contributions` above says where an AMOUNT lands,
+    which under `recorded` is the day a period opens, and a window starting
+    after that day gets none of it — while the usage inside that window is
+    still inside a month the tenant has stated the whole revenue of.
+    """
+
+    def covered(self, opens=OPENS, closes=NEXT, **kwargs):
+        return supplied_revenue_covered_periods(
+            self.tenant.id, opens=opens, closes=closes, **kwargs)
+
+    def test_a_figure_covers_the_span_it_declares_for_its_customer(self):
+        self.a_supplied_figure(method=RECOGNITION_METHOD_STRAIGHT_LINE)
+        assert self.covered() == [{"customer_id": str(self.customer.id),
+                                   "period_start": OPENS, "period_end": NEXT}]
+
+    def test_a_figure_opening_before_the_window_still_covers_it(self):
+        """The case the basis would have lost: under `recorded` this record
+        contributes nothing to a window opening on the tenth."""
+        self.a_supplied_figure(method=RECOGNITION_METHOD_ON_RECEIPT)
+        tenth = date(2026, 3, 10)
+        assert revenue_contributions(self.tenant.id, windows=[(tenth, NEXT)],
+                                     basis=REVENUE_BASIS_RECORDED) == []
+        assert [(row["period_start"], row["period_end"])
+                for row in self.covered(opens=tenth)] == [(OPENS, NEXT)]
+
+    def test_a_stated_zero_covers_its_span_like_any_other_figure(self):
+        """A free month is the whole revenue of that month, and it is nothing
+        (#153 §3.4) — which is a statement about the usage in it too."""
+        self.a_supplied_figure(method=RECOGNITION_METHOD_STRAIGHT_LINE,
+                               amount=0)
+        assert len(self.covered()) == 1
+
+    def test_a_figure_for_an_instant_covers_no_span(self):
+        """A null period end is the record saying it is a point in time and
+        not a span, and the model refuses to read it as a day — so there is
+        no period for it to be the whole revenue of."""
+        self.a_supplied_figure(method=RECOGNITION_METHOD_ON_RECEIPT,
+                               period_end=None)
+        assert self.covered() == []
+
+    def test_a_figure_outside_the_window_covers_nothing_in_it(self):
+        self.a_supplied_figure(method=RECOGNITION_METHOD_STRAIGHT_LINE)
+        assert self.covered(opens=NEXT, closes=date(2026, 5, 1)) == []
+        assert self.covered(opens=date(2026, 2, 1), closes=OPENS) == []
+
+    def test_a_subscription_covers_nothing(self):
+        """Stripe subscription revenue is outside #537's ruling: it is added
+        to what UBB priced, as it always was, and supersedes none of it."""
+        now = timezone.now()
+        StripeSubscription.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            stripe_subscription_id="sub_1", stripe_product_name="Pro",
+            status="active", amount_micros=31_000_000, quantity=1,
+            currency="usd", interval="month", current_period_start=now,
+            current_period_end=now, last_synced_at=now)
+        assert self.covered() == []
+
+    def test_narrowing_to_one_customer_leaves_the_others_out(self):
+        self.a_supplied_figure(method=RECOGNITION_METHOD_STRAIGHT_LINE)
+        self.a_supplied_figure(self.other,
+                               method=RECOGNITION_METHOD_STRAIGHT_LINE)
+        assert [row["customer_id"] for row in self.covered(
+            customer_ids=[self.other.id])] == [str(self.other.id)]
+
+    def test_another_tenants_figure_covers_nothing_here(self):
+        stranger = Tenant.objects.create(name="U", products=["metering"])
+        TenantSuppliedRevenue.objects.create(
+            tenant=stranger,
+            customer=Customer.objects.create(tenant=stranger,
+                                             external_id="c1"),
+            amount_micros=SUPPLIED, currency="usd", period_start=OPENS,
+            period_end=NEXT,
+            recognition_method=RECOGNITION_METHOD_STRAIGHT_LINE,
+            source_reference="inv-x")
+        assert self.covered() == []

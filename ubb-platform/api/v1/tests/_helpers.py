@@ -54,12 +54,13 @@ def tenant_wide_money(tenant_id, *, start_date, end_date):
     refuses a revenue measure without the rows this product does not hold, so an
     empty sequence is how a fixture says *this tenant has no subscription and
     supplied nothing* — which is what makes the totals readable as postings
-    alone. Passing nothing at all raises, deliberately.
+    alone. Passing nothing at all raises, deliberately. `covered_periods=()` is
+    the same statement about the periods a supplied figure covers (#537).
     """
     from apps.metering.queries import EconomicFilters, economics
 
     answer = economics(
-        str(tenant_id), measures=MONEY_MEASURES, contributed_revenue=(),
+        str(tenant_id), measures=MONEY_MEASURES, covered_periods=(), contributed_revenue=(),
         filters=EconomicFilters(start_date=start_date, end_date=end_date))
     assert len(answer["rows"]) == 1, answer["rows"]
     return {entry["measure"]: entry for entry in answer["rows"][0]["measures"]}

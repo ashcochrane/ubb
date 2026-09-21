@@ -694,7 +694,13 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // the figure would be read from, and `not_applicable` says the measure does
 // not apply here. The two unavailable values stay apart because their remedies
 // differ: ask a coarser question, against that data is gone. No query may
-// coerce any of them to zero (#153 §8.5).
+// coerce any of them to zero (#153 §8.5). A null amount beside any of them
+// means no figure can be stated — under
+// `unavailable_outside_retention_horizon` and `not_applicable`, for a margin
+// under `unavailable_at_requested_grain` (a revenue there carries the part
+// that could be placed), and under `incomplete` where no piece of a row's
+// revenue has resolved (#537). An amount under `incomplete` is a bound, never
+// a total.
 //
 // Declared in concepts/economics.yaml.
 

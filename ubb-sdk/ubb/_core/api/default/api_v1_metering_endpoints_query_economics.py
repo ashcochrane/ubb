@@ -234,10 +234,20 @@ def sync_detailed(
     than small, and the revenue that could not be placed is listed under
     `context` with the axes at which asking again would produce one.
 
+    **A revenue figure you supplied is the whole revenue for the customer and
+    period it covers.** Revenue UBB derived from priced usage inside that period
+    is not added to it, and usage nobody priced there does not make it
+    incomplete — the count of that usage is still published. Everywhere else a
+    revenue is derived from priced usage: where some usage is unpriced the
+    figure is a bound and reads `incomplete`, and where no piece of a row's
+    revenue resolved at all, the revenue and the margin read `incomplete` with
+    no amount. A deliberate zero price is resolved.
+
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens
-    and is the default, `recognised` spreads it by the record's own method. The
-    answer always states which it served.
+    and is the default, `recognised` spreads it by the record's own method. It
+    moves where a supplied amount lands and never which usage the record
+    covers. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the
@@ -358,10 +368,20 @@ def sync(
     than small, and the revenue that could not be placed is listed under
     `context` with the axes at which asking again would produce one.
 
+    **A revenue figure you supplied is the whole revenue for the customer and
+    period it covers.** Revenue UBB derived from priced usage inside that period
+    is not added to it, and usage nobody priced there does not make it
+    incomplete — the count of that usage is still published. Everywhere else a
+    revenue is derived from priced usage: where some usage is unpriced the
+    figure is a bound and reads `incomplete`, and where no piece of a row's
+    revenue resolved at all, the revenue and the margin read `incomplete` with
+    no amount. A deliberate zero price is resolved.
+
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens
-    and is the default, `recognised` spreads it by the record's own method. The
-    answer always states which it served.
+    and is the default, `recognised` spreads it by the record's own method. It
+    moves where a supplied amount lands and never which usage the record
+    covers. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the
@@ -477,10 +497,20 @@ async def asyncio_detailed(
     than small, and the revenue that could not be placed is listed under
     `context` with the axes at which asking again would produce one.
 
+    **A revenue figure you supplied is the whole revenue for the customer and
+    period it covers.** Revenue UBB derived from priced usage inside that period
+    is not added to it, and usage nobody priced there does not make it
+    incomplete — the count of that usage is still published. Everywhere else a
+    revenue is derived from priced usage: where some usage is unpriced the
+    figure is a bound and reads `incomplete`, and where no piece of a row's
+    revenue resolved at all, the revenue and the margin read `incomplete` with
+    no amount. A deliberate zero price is resolved.
+
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens
-    and is the default, `recognised` spreads it by the record's own method. The
-    answer always states which it served.
+    and is the default, `recognised` spreads it by the record's own method. It
+    moves where a supplied amount lands and never which usage the record
+    covers. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the
@@ -601,10 +631,20 @@ async def asyncio(
     than small, and the revenue that could not be placed is listed under
     `context` with the axes at which asking again would produce one.
 
+    **A revenue figure you supplied is the whole revenue for the customer and
+    period it covers.** Revenue UBB derived from priced usage inside that period
+    is not added to it, and usage nobody priced there does not make it
+    incomplete — the count of that usage is still published. Everywhere else a
+    revenue is derived from priced usage: where some usage is unpriced the
+    figure is a bound and reads `incomplete`, and where no piece of a row's
+    revenue resolved at all, the revenue and the margin read `incomplete` with
+    no amount. A deliberate zero price is resolved.
+
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens
-    and is the default, `recognised` spreads it by the record's own method. The
-    answer always states which it served.
+    and is the default, `recognised` spreads it by the record's own method. It
+    moves where a supplied amount lands and never which usage the record
+    covers. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the

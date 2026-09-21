@@ -307,13 +307,20 @@ class BothPosturesSurviveTest(
     makes a margin *unavailable* rather than nil is slice 7 §5's, built by the
     tickets that collapsed the nine routes into the one query. It has one now:
     the one economic query derives a margin at read time from both of its
-    inputs, and over usage nobody priced it publishes a FLOOR labelled
-    `incomplete` beside the count that says how far short it falls — never
-    `known`, the one state under which a reader could take a zero for a figure.
-    That is claim 9 in the query's own states rather than in its words, which
-    say *unavailable*. The flip (#512) found that half unasserted and asserted
-    it through the route, in
+    inputs, and where no piece of a row's revenue resolved — usage nobody
+    priced, and nothing supplied — the revenue AND the margin read `incomplete`
+    with NO AMOUNT, beside the count of unpriced postings (#537, the owner's
+    ruling on claim 9). The query has no plain *unavailable* and the ruling
+    added none; a null under `incomplete` is how it says *no figure can be
+    stated*, and it never says zero. The flip (#512) found that half unasserted
+    and asserted it through the route; #537 rewrote it to the ruling, in
     `test_the_one_economic_query.py::TestUsageNobodyPricedIsNeverAKnownFigure`.
+
+    **The second posture has its own class there too.** A supplied figure is
+    the whole revenue for the customer and period it covers, so over usage
+    that is unpriced by design the revenue reads `known` and the margin is
+    drawn at that scope — which, before #537, one unpriced posting prevented:
+    `TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers`.
 
     What this record guarantees is the input side: **nothing downstream can
     read a zero off it**, because its surface publishes no amount to read when

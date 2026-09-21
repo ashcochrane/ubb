@@ -897,6 +897,29 @@ accept either.
 
 ---
 
+## 19. Revenue nobody priced states no amount, and a supplied figure is the whole revenue for its period (slice 7, #537 — pre-live)
+
+No field, route or call changes. Two answers of `query_economics()` /
+`GET /api/v1/metering/analytics/economics` do.
+
+- **`amount_micros` can be `null` under `incomplete`.** Where no piece of a row's revenue
+  resolved — usage nobody priced, and no subscription or supplied figure beside it —
+  `customer_revenue` and `gross_margin` both read `incomplete` with `amount_micros: null`. They
+  used to read zero and minus the cost. A null means no figure can be stated; a number under
+  `incomplete` is a bound. A deliberate zero price is resolved, so a free service still reads
+  `known` zero. **Code that does arithmetic on every `incomplete` amount must check for `None`
+  first.**
+- **A figure you supplied is the whole revenue for the customer and period it covers.** Revenue
+  UBB derived from priced usage inside that period is no longer added to it, and usage nobody
+  priced there no longer makes the revenue `incomplete` — `unpriced_event_count` still counts it,
+  so a `known` revenue can now carry a non-zero count. If you priced usage in UBB AND supplied your
+  invoiced revenue for the same customer and month, that month's revenue falls by the priced
+  usage: it was being counted twice. The period is the record's own span whichever `basis` you
+  ask for. A figure with no `period_end` covers no period and is added beside the usage as
+  before, and Stripe subscription revenue is unchanged.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

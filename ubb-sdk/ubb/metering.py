@@ -109,8 +109,10 @@ def measure_on(row: EconomicRowOut, measure: str) -> EconomicMeasureOut | None:
     ⚠ **IT HANDS BACK THE MEASURE AND NEVER THE NUMBER, AND THAT IS THE
     WHOLE POINT** (#505, slice 7 §18). Every figure on this surface comes
     with a `status` saying what it is worth: `incomplete` means the number
-    is a BOUND and the count beside it says how far off it can be;
-    `unavailable_at_requested_grain` means a margin could not be attributed
+    is a BOUND and the count beside it says how far off it can be — and
+    where no piece of a row's revenue resolved there is no number, on the
+    revenue or the margin (#537); `unavailable_at_requested_grain` means a
+    margin could not be attributed
     this finely and is null outright, while a revenue at that same state is
     the part that COULD be placed with the rest in the answer's `context`;
     `unavailable_outside_retention_horizon` means there is no figure at all

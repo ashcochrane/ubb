@@ -5,7 +5,10 @@
 // and they are five different facts — not five decorations on one number:
 //
 //   known                                 the amount
-//   incomplete                            a BOUND, with the count that bounds it
+//   incomplete                            a BOUND, with the count that bounds it —
+//                                         or, where no piece of a revenue
+//                                         resolved, NO amount and no direction
+//                                         (#537)
 //   unavailable_at_requested_grain        the state, never an amount: the money
 //                                         exists and is stated as context, at the
 //                                         grain it can be placed
@@ -154,6 +157,30 @@ function boundNote(figure: MeasureFigure): string | null {
 }
 
 /**
+ * The sentence beside an `incomplete` measure that states NO amount (#537).
+ *
+ * ⚠ **IT NAMES NO TOTAL AND NO DIRECTION.** The query sends `incomplete` with a
+ * null amount where no piece of a row's revenue resolved — usage nobody priced,
+ * and no subscription or supplied figure beside it — on the revenue and on the
+ * margin over it. There is no total for a sentence to say events were "left
+ * out of", and no figure for "the true margin is higher" to be higher than;
+ * `boundNote` says both, and was right only while every bound had an amount.
+ * The count is still worth saying: it is why nothing can be stated.
+ */
+function noAmountNote(figure: MeasureFigure): string {
+  const unpriced = figure.unpriced_event_count;
+  const cause =
+    unpriced > 0 ? ` — ${eventsHave(unpriced)} a customer price UBB could not resolve` : "";
+  if (figure.measure === GROSS_MARGIN) {
+    return `No margin can be stated, because no revenue can be${cause}.`;
+  }
+  if (figure.measure === CUSTOMER_REVENUE) {
+    return `No revenue can be stated, because none of it has resolved${cause}.`;
+  }
+  return "No figure can be stated, because none of its inputs has resolved.";
+}
+
+/**
  * The sentence beside a revenue total that left unpriced events out — the
  * price-side twin of `partialTotalNote` in `@/lib/supplier-cost`.
  *
@@ -208,9 +235,12 @@ export function readMeasure(
       : { kind: "figure", text: amountText(figure, value, currency) };
   }
   if (figure.status === "incomplete") {
+    if (value === null) {
+      return { kind: "bound", text: ABSENT_LABEL, note: noAmountNote(figure) };
+    }
     const bound = boundOf(figure);
     const note = boundNote(figure);
-    if (value === null || (value === 0 && bound === AT_LEAST)) {
+    if (value === 0 && bound === AT_LEAST) {
       return { kind: "bound", text: ABSENT_LABEL, note };
     }
     const amount = amountText(figure, value, currency);

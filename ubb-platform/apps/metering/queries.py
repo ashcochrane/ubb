@@ -49,7 +49,7 @@ import uuid
 from datetime import date, datetime
 from typing import Iterator, NamedTuple, TypedDict
 
-from django.db.models import Count
+from django.db.models import BooleanField, Case, Count, Q, Value, When
 from django.db.models.functions import TruncDay, TruncHour, TruncMonth
 from django.utils import timezone
 
@@ -1874,15 +1874,16 @@ MEASURE_STATES_WITH_NO_FIGURE = (
     MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
 
-#: THE ABSENCE OF THE REVENUE ARGUMENT, WHICH IS NOT THE SAME AS AN EMPTY ONE.
+#: THE ABSENCE OF A REVENUE ARGUMENT, WHICH IS NOT THE SAME AS AN EMPTY ONE.
 #:
 #: A sentinel rather than `None` because `None` is a value a caller arrives at
 #: by accident — a variable that was never set, a `dict.get` that missed — and
-#: this is the one argument where *I did not think about it* must not be
-#: readable as *there was none*, because the second answers a confident margin
-#: that is short by a subscription. Asking whether the argument is PRESENT
-#: rather than whether it is truthy is also what stops an empty list, a zero and
-#: a `False` from all becoming the same request.
+#: these are the two arguments where *I did not think about it* must not be
+#: readable as *there was none*: forgetting the contributed rows answers a
+#: confident margin that is short by a subscription, and forgetting the covered
+#: periods answers one that counts a tenant's revenue twice (#537). Asking
+#: whether an argument is PRESENT rather than whether it is truthy is also what
+#: stops an empty list, a zero and a `False` from all becoming the same request.
 _NOTHING_WAS_CONTRIBUTED = object()
 
 class EconomicFilters(NamedTuple):
@@ -1927,6 +1928,11 @@ class EconomicFilters(NamedTuple):
 #: `None`, never zero, and never the number the measure would have been if the
 #: missing half were nothing (#153 §8.5). A margin UBB cannot attribute at the
 #: requested grain is not a small margin.
+#:
+#: ⚠ **NOT ONLY UNDER THE TWO STATES ABOVE THAT NEVER STATE ONE** (#537). Under
+#: `incomplete` an amount is a bound, and a revenue with no resolved piece to
+#: bound — and the margin over it — carries this too. That is decided per row
+#: from what the row holds, which is why `incomplete` is not in the tuple above.
 NO_FIGURE = None
 
 
@@ -2028,7 +2034,8 @@ def _keeps_the_event_type_constant(axes) -> bool:
 
 def economics(tenant_id, *, measures, group_by=(), bucket=None,
               filters=None, basis=None, as_of=None,
-              contributed_revenue=_NOTHING_WAS_CONTRIBUTED) -> dict:
+              contributed_revenue=_NOTHING_WAS_CONTRIBUTED,
+              covered_periods=_NOTHING_WAS_CONTRIBUTED) -> dict:
     """What this tenant's AI work cost, what it earned, and the difference.
 
     ONE definition of two numbers, answered over any filters, at any declared
@@ -2065,6 +2072,12 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
         the revenue rows this product does not hold — see below. Passing
         nothing is a different request from passing none, and the default is
         neither: it is refused where a revenue measure was asked for.
+    ``covered_periods``
+        the spans, per customer, that a tenant-supplied figure is the WHOLE
+        revenue for — ``{"customer_id", "period_start", "period_end"}`` rows,
+        half-open, as the other product's read contract states them. Refused
+        where absent exactly as the rows above are, and for the mirror reason:
+        forgetting them counts a tenant's revenue twice (#537).
 
     ⚠ **EACH MEASURE IS AGGREGATED FROM ITS OWN CANONICAL SOURCE**, and the
     sources genuinely differ:
@@ -2073,8 +2086,34 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
     * ``supplier_cogs`` — the supplier-cost pair on those same postings.
     * ``customer_revenue`` — the customer-price pair on postings, which is where
       a Charge lands 1:1 as a projection, PLUS the contributed rows, which are
-      neither postings nor this product's.
+      neither postings nor this product's — EXCEPT inside a covered period,
+      where the supplied figure is the revenue and the postings' price is not
+      added to it (below).
     * ``gross_margin`` — revenue MINUS cost, at the bucket, never at a row.
+
+    ⚠ **A SUPPLIED FIGURE IS THE REVENUE FOR THE CUSTOMER AND PERIOD IT COVERS
+    — AUTHORITATIVE, NEVER ADDED TO** (#537, the owner's ruling on claim 9).
+    Inside a covered period, for its customer, the revenue UBB derived from
+    priced usage is superseded, and usage nobody priced does not make the
+    revenue incomplete — its count stays on the measure as diagnostic
+    information. Before this, a cost-tracking tenant that supplied its real
+    revenue never got a known margin (its usage is unpriced by design), and one
+    that also priced its usage had the two added together. **The covered period
+    is the record's own span and no basis moves it**: a basis decides where a
+    figure's AMOUNT lands, and the usage inside a span the tenant has stated the
+    whole revenue of is superseded wherever that is. A Stripe subscription
+    supersedes nothing; it is added to priced usage as it always was.
+
+    ⚠ **WHERE NO PIECE OF A ROW'S REVENUE HAS RESOLVED, NO AMOUNT IS STATED**
+    (#537, claim 9: *never zero*). A piece is a posting UBB priced (a
+    deliberate zero included), a posting a supplied figure covers, or a
+    contributed row; a row with unpriced postings outside every covered period
+    and no piece at all reads `incomplete` with no amount on the revenue AND on
+    the margin over it, where it used to read a zero floor and its negative. It
+    is a COUNT of pieces and never a test of the sum, because a sum cannot tell
+    a free service from one nobody priced. So an amount under `incomplete` is a
+    bound, and `NO_FIGURE` under it means no figure can be stated — per row,
+    never across the answer.
 
     ⚠ **MARGIN IS A BUCKET-LEVEL SUBTRACTION, NEVER A ROW-LEVEL ONE** (#153 §2).
     A row-level subtraction produces a per-event margin for an event that was
@@ -2208,8 +2247,15 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
         raise ValueError(
             "a revenue measure needs the revenue rows this product does not "
             "hold; pass contributed_revenue=() to state that there are none")
+    if wants_revenue and covered_periods is _NOTHING_WAS_CONTRIBUTED:
+        # The same bare `ValueError` for the same reason: the caller is wrong.
+        raise ValueError(
+            "a revenue measure needs the periods a tenant-supplied figure "
+            "covers; pass covered_periods=() to state that there are none")
     contributions = ([] if contributed_revenue is _NOTHING_WAS_CONTRIBUTED
                      else list(contributed_revenue))
+    covered = ([] if covered_periods is _NOTHING_WAS_CONTRIBUTED
+               else list(covered_periods))
 
     plans = [_axis_plan(tenant_id, word) for word in axes]
     postings = _economic_postings(tenant_id, filters)
@@ -2224,7 +2270,8 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
     if from_measurements:
         groups = _measurement_grouped(tenant_id, postings, plans, bucket)
     else:
-        groups = _posting_grouped(tenant_id, postings, plans, bucket)
+        groups = _posting_grouped(tenant_id, postings, plans, bucket,
+                                  covered=covered)
 
     attributable = _contributions_are_attributable(axes, contributions, bucket)
     if attributable and contributions:
@@ -2407,7 +2454,7 @@ def _axis_plan(tenant_id, word) -> dict:
             "field": name}
 
 
-def _posting_grouped(tenant_id, postings, plans, bucket) -> dict:
+def _posting_grouped(tenant_id, postings, plans, bucket, *, covered) -> dict:
     """The money and the count, grouped by the requested axes and the bucket.
 
     ⚠ **THE POSTING KIND IS ALWAYS A GROUP KEY AND IS ALWAYS FOLDED AWAY
@@ -2417,6 +2464,13 @@ def _posting_grouped(tenant_id, postings, plans, bucket) -> dict:
     invoice is nonetheless revenue. And it is what tells an absent value's two
     causes apart, because whether an axis APPLIES to a row is a fact about the
     kind of row it is.
+
+    ⚠ **AND WHERE A SUPPLIED FIGURE COVERS ANY OF THEM, SO IS WHETHER A POSTING
+    IS INSIDE ITS PERIOD** (#537) — folded away the same way, after `_accumulate`
+    has kept the covered postings' price out of the revenue. It is a group key
+    rather than a second query because a second query would be a second reading
+    of the same postings, and the two could disagree about which were in the
+    window.
     """
     # The columns are named in `values()` directly and the alias a row publishes
     # is only ever POSITIONAL, in Python. An annotation per axis would have to
@@ -2424,10 +2478,15 @@ def _posting_grouped(tenant_id, postings, plans, bucket) -> dict:
     # it was aliasing — which Django answers with a `ValueError` naming neither
     # the axis nor the request that asked for it.
     columns = [plan["column"] for plan in plans]
+    inside = _inside_a_covered_period(covered)
     grouped = (postings
                .values("kind", *columns,
                        **({"bucket_start": _BUCKET_TRUNCATIONS[bucket](
-                           "effective_at")} if bucket is not None else {}))
+                           "effective_at")} if bucket is not None else {}),
+                       **({_COVERED_KEY: Case(
+                           When(inside, then=Value(True)), default=Value(False),
+                           output_field=BooleanField())}
+                          if inside is not None else {}))
                .annotate(
                    event_count=Count("id"),
                    **cost_total_annotations(SUPPLIER_COST,
@@ -2445,6 +2504,49 @@ def _posting_grouped(tenant_id, postings, plans, bucket) -> dict:
                        for plan in plans)
         _accumulate(groups, (row.get("bucket_start"), values), row)
     return groups
+
+
+#: The group key saying a posting is inside a period a supplied figure covers,
+#: for its customer. An invented name, like `bucket_start`, and one no posting
+#: column carries.
+_COVERED_KEY = "inside_a_covered_period"
+
+
+def _inside_a_covered_period(covered) -> Q | None:
+    """The postings the supplied figures cover, as one filter — or ``None``
+    where nothing is covered, so the aggregate is exactly the one it was.
+
+    Each customer's spans are merged first, because two figures covering one
+    month are two facts for the revenue and one fact for the usage; the
+    customers whose merged spans are identical then share a clause, so a tenant
+    supplying every customer's revenue month by month for a year is one clause
+    per stretch of months and not one per customer per month.
+
+    A span is whole days, half-open, and a day starts at UTC midnight — the
+    reading every window in this module takes.
+    """
+    spans = {}
+    for period in covered:
+        spans.setdefault(period["customer_id"], []).append(
+            (period["period_start"], period["period_end"]))
+    customers_by_span = {}
+    for customer_id, customer_spans in spans.items():
+        merged = []
+        for opens, closes in sorted(customer_spans):
+            if merged and opens <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], closes))
+            else:
+                merged.append((opens, closes))
+        for span in merged:
+            customers_by_span.setdefault(span, set()).add(customer_id)
+    if not customers_by_span:
+        return None
+    inside = Q()
+    for (opens, closes), customer_ids in sorted(customers_by_span.items()):
+        inside |= Q(customer_id__in=sorted(customer_ids),
+                    effective_at__gte=utc_day_start(opens),
+                    effective_at__lt=utc_day_start(closes))
+    return inside
 
 
 def _measurement_grouped(tenant_id, postings, plans, bucket) -> dict:
@@ -2552,10 +2654,28 @@ def _empty_group() -> dict:
     Every key exists whether or not a row contributed to it, because a measure
     that reads its own total with `.get` cannot tell a group that summed to zero
     from one the aggregate never reached.
+
+    ⚠ **THE REVENUE SIDE CARRIES COUNTS AS WELL AS SUMS** (#537), because the
+    two questions a row's revenue has to answer are about pieces and not about
+    money: whether anything outside a covered period is still unpriced, and
+    whether ANY piece of the revenue resolved. A sum answers neither — a free
+    service sums to the same zero as an unpriced one.
+
+    * ``posting_revenue_micros`` — the price of the postings OUTSIDE every
+      covered period. Inside one the supplied figure is the revenue, so the
+      price UBB resolved there is never added to it.
+    * ``UNPRICED_EVENT_COUNT_KEY`` — every posting nobody priced, covered or
+      not: the count the measure publishes.
+    * ``unpriced_outside_cover`` — the ones outside every covered period: the
+      only ones that make the revenue a bound.
+    * ``resolved_revenue_pieces`` — every piece that resolved: a posting UBB
+      priced outside cover, a posting a supplied figure covers, a contributed
+      row.
     """
     return {ANALYTICS_MEASURE_RECORDED_EVENTS: 0,
             "provider_cost_micros": 0, UNRESOLVED_EVENT_COUNT_KEY: 0,
             "posting_revenue_micros": 0, UNPRICED_EVENT_COUNT_KEY: 0,
+            "unpriced_outside_cover": 0, "resolved_revenue_pieces": 0,
             "contributed_revenue_micros": 0}
 
 
@@ -2565,14 +2685,32 @@ def _accumulate(groups, key, row) -> None:
     ⚠ The count excludes the charge posting kind and the money does not, which
     is the whole reason the kind was a group key: **a Task must not count its
     own invoice as work**, and that invoice is still revenue the tenant earned.
+
+    ⚠ **A POSTING INSIDE A COVERED PERIOD IS RESOLVED WHETHER OR NOT UBB PRICED
+    IT, AND ITS PRICE IS NOT REVENUE** (#537). The supplied figure is the whole
+    revenue for that customer and period, so it accounts for every posting in
+    it; adding the price UBB resolved there would count the period twice, and
+    counting the unpriced ones against the figure would keep a tenant that told
+    UBB its revenue from ever reading it as known.
+
+    Outside cover, a posting is a resolved piece unless nobody priced it — the
+    customer-price pair's own rule, under which a deliberate zero, a waived
+    price and a subject that earns nothing at this level are all resolved and
+    only `unknown` is missing (`core.amount_status_pairs.CUSTOMER_PRICE`).
     """
     group = groups.setdefault(key, _empty_group())
     if row["kind"] != USAGE_EVENT_KIND_TASK_CHARGE:
         group[ANALYTICS_MEASURE_RECORDED_EVENTS] += row["event_count"]
     group["provider_cost_micros"] += row["provider_cost_micros"]
     group[UNRESOLVED_EVENT_COUNT_KEY] += row[UNRESOLVED_EVENT_COUNT_KEY]
+    unpriced = row[UNPRICED_EVENT_COUNT_KEY]
+    group[UNPRICED_EVENT_COUNT_KEY] += unpriced
+    if row.get(_COVERED_KEY):
+        group["resolved_revenue_pieces"] += row["event_count"]
+        return
     group["posting_revenue_micros"] += row["billed_cost_micros"]
-    group[UNPRICED_EVENT_COUNT_KEY] += row[UNPRICED_EVENT_COUNT_KEY]
+    group["unpriced_outside_cover"] += unpriced
+    group["resolved_revenue_pieces"] += row["event_count"] - unpriced
 
 
 def _contributions_are_attributable(axes, contributions, bucket) -> bool:
@@ -2632,6 +2770,8 @@ def _fold_contributions_in(groups, plans, contributions, bucket) -> None:
         key = (bucket_start, values)
         group = groups.setdefault(key, _empty_group())
         group["contributed_revenue_micros"] += row["amount_micros"]
+        # A resolved piece whatever its amount: a stated zero is a figure.
+        group["resolved_revenue_pieces"] += 1
 
 
 def _as_moment(day):
@@ -2690,6 +2830,16 @@ def _economic_row(key, group, *, measures, attributable,
     will actually state — which is what "a bucket-level subtraction" means in
     code rather than in prose.
 
+    ⚠ **THE REVENUE'S STATE IS READ OFF COUNTS, NEVER OFF THE SUM** (#537).
+    Where the row cannot be attributed at this grain, that decides it. Otherwise
+    the revenue is a bound only where a posting OUTSIDE every covered period is
+    unpriced — inside one, a supplied figure is the whole revenue and nothing
+    there is missing — and a bound has an amount only where some piece of the
+    revenue resolved. With none, the row states no revenue at all: not a zero
+    floor, which is the number #153 §17.1 lists as the defect, and which a
+    reader cannot tell from a free service. The count of unpriced postings is
+    published either way, covered ones included, as diagnostic information.
+
     ``available_from`` is the day this row's series can start, passed exactly
     where the row's stretch reaches back past the horizon governing it — so the
     KEY is absent from this plain data otherwise, which is not the same as what
@@ -2736,8 +2886,10 @@ def _economic_row(key, group, *, measures, attributable,
                       else MEASURE_STATUS_KNOWN)
         if not attributable:
             revenue_state = MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
-        elif group[UNPRICED_EVENT_COUNT_KEY]:
+        elif group["unpriced_outside_cover"]:
             revenue_state = MEASURE_STATUS_INCOMPLETE
+            if not group["resolved_revenue_pieces"]:
+                revenue = NO_FIGURE
         else:
             revenue_state = MEASURE_STATUS_KNOWN
         built = {
@@ -2787,9 +2939,17 @@ def _margin(revenue, cost, *, revenue_state, cost_state) -> dict:
     placed — so the figure is absent and the state says why. The test is against
     the whole family of unavailable states rather than against one of them, so a
     state added to that family cannot arrive carrying a subtraction.
+
+    ⚠ **AND WHERE THE REVENUE STATES NO FIGURE, NEITHER DOES THE MARGIN** (#537,
+    claim 9). A row whose revenue nobody priced and nobody supplied used to
+    answer a margin of minus its cost, labelled `incomplete` — the "cost
+    £2,400, revenue £0, margin −£2,400" #153 §17.1 lists as the defect, which
+    the console drew as "at least −£2,400". Under `incomplete` an amount is a
+    bound, and with no revenue piece resolved there is nothing to bound: the
+    state stays `incomplete` and the amount is absent.
     """
     state = max((revenue_state, cost_state),
                 key=MEASURE_STATES_WORST_LAST.index)
-    if state in MEASURE_STATES_WITH_NO_FIGURE:
+    if state in MEASURE_STATES_WITH_NO_FIGURE or revenue is NO_FIGURE:
         return {"amount_micros": NO_FIGURE, "status": state}
     return {"amount_micros": revenue - cost, "status": state}

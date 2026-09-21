@@ -51,8 +51,9 @@ from core.vocabulary import (
     MEASURE_STATUS_KNOWN, MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
     MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
-    RECOGNITION_METHOD_STRAIGHT_LINE,
-    REVENUE_BASIS_RECORDED, UNRESOLVED_REASON_COST_RATE_MISSING,
+    RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
+    REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED,
+    UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 
 #: The window every fixture records into: one whole calendar month, so the
@@ -114,23 +115,38 @@ def describe(path):
 #:
 #: Derived from the fixture, and every one of them checkable by hand:
 #: the tenant-wide cost is the three postings' supplier costs; the revenue is
-#: the three postings' billed totals plus a whole month of a monthly
-#: subscription plus a supplied record spanning exactly that month.
+#: the first customer's two postings' billed totals plus a whole month of a
+#: monthly subscription plus a supplied record spanning exactly that month.
+#:
+#: ⚠ **TWO OF THESE NO LONGER AGREE WITH THE ROUTES THEY RECORD, ON PURPOSE
+#: (#537).** Those routes ADDED the second customer's 600,000 of priced usage to
+#: the 3,100,000 the tenant supplied for the same customer and the same month —
+#: on a tenant that does not bill through UBB, which is a double count. The
+#: owner's ruling on claim 9 makes a supplied figure the WHOLE revenue for the
+#: customer and period it covers, so that usage revenue is superseded rather
+#: than added, and `SECOND_CUSTOMER` and `TENANT_REVENUE` say so. The assertions
+#: are unchanged: still exact, still per customer and tenant-wide.
 TENANT_COST = 400_000 + 400_000 + 250_000
-TENANT_USAGE_REVENUE = 1_000_000 + 1_000_000 + 600_000
 SUBSCRIPTION_FOR_MARCH = 31_000_000
 SUPPLIED_FOR_MARCH = 3_100_000
+#: What UBB priced for the second customer inside the month the tenant's own
+#: figure covers — recorded, and superseded by that figure (#537).
+SUPERSEDED_USAGE_REVENUE = 600_000
+#: The usage revenue the answer states: the first customer's, whose month no
+#: supplied figure covers.
+TENANT_USAGE_REVENUE = 1_000_000 + 1_000_000
 TENANT_REVENUE = (TENANT_USAGE_REVENUE + SUBSCRIPTION_FOR_MARCH
                   + SUPPLIED_FOR_MARCH)
 #: The per-customer split the list route returned, as `(revenue, cost)` pairs.
-#: The first customer's revenue is its usage plus the subscription, the second's
-#: is its usage plus the figure the tenant supplied. ⚠ The rows come back keyed
-#: by the customer's IDENTITY rather than by the tenant's own external id, which
-#: is what `field:customer` groups and what the list route returned, so the test
+#: The first customer's revenue is its usage plus the subscription; the
+#: second's is the figure the tenant supplied, and only that (#537 — the routes
+#: stated `600_000 + SUPPLIED_FOR_MARCH`). ⚠ The rows come back keyed by the
+#: customer's IDENTITY rather than by the tenant's own external id, which is
+#: what `field:customer` groups and what the list route returned, so the test
 #: builds the lookup from the fixture's own rows.
 FIRST_CUSTOMER = (1_000_000 + 1_000_000 + SUBSCRIPTION_FOR_MARCH,
                   400_000 + 400_000)
-SECOND_CUSTOMER = (600_000 + SUPPLIED_FOR_MARCH, 250_000)
+SECOND_CUSTOMER = (SUPPLIED_FOR_MARCH, 250_000)
 
 
 @pytest.mark.django_db
@@ -223,6 +239,9 @@ class TestOneRequestAnswersWhatFiveDefinitionsAnsweredBefore:
         assert SUBSCRIPTION_FOR_MARCH > 0
         assert SUPPLIED_FOR_MARCH > 0
         assert TENANT_USAGE_REVENUE > 0
+        # And the superseded usage is real money, so an answer that added it
+        # back on top of the supplied figure differs from these by that much.
+        assert SUPERSEDED_USAGE_REVENUE > 0
         assert len({SUBSCRIPTION_FOR_MARCH, SUPPLIED_FOR_MARCH,
                     TENANT_USAGE_REVENUE}) == 3
         assert TENANT_COST > 0 and TENANT_REVENUE != TENANT_COST
@@ -273,7 +292,14 @@ class TestTheScopeRuleOnTheWire:
         self.tenant, self.key = a_tenant()
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
-        a_posting(self.tenant, self.customer, "i1")
+        # ⚠ THE PRICED POSTING IS ANOTHER CUSTOMER'S, SO THESE CASES STAY ABOUT
+        # GRAIN (#537). A supplied figure is the whole revenue for the customer
+        # and period it covers, so a posting of `c1`'s in March would be
+        # superseded by it and the part a provider row could place would be
+        # nothing. What these cases need is a figure that CAN be placed beside
+        # one that cannot; the supersession has its own class below.
+        priced = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        a_posting(self.tenant, priced, "i1")
         TenantSuppliedRevenue.objects.create(
             tenant=self.tenant, customer=self.customer, amount_micros=9_000_000,
             currency="usd", period_start=OPENS, period_end=NEXT,
@@ -335,8 +361,10 @@ class TestTheScopeRuleOnTheWire:
         """The guard: the rule withholds where it must and not everywhere."""
         body = ask(self.key, measures=MONEY, group_by=["field:customer"],
                    basis=MARGIN_REVENUE_BASIS, **self.window).json()
-        assert measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN
-                          )["status"] == MEASURE_STATUS_KNOWN
+        assert len(body["rows"]) == 2
+        for index in range(len(body["rows"])):
+            assert measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN, index
+                              )["status"] == MEASURE_STATUS_KNOWN
         assert body["context"] == []
 
 
@@ -371,51 +399,411 @@ class TestAMarginIsNoBetterThanItsWorstInput:
 
 @pytest.mark.django_db
 class TestUsageNobodyPricedIsNeverAKnownFigure:
-    """Testing Decisions claim 9's margin half, as this surface can say it.
+    """Testing Decisions claim 9, as this surface says it — in the words #537's
+    ruling gave it.
 
     A tenant that does not bill through UBB — `a_tenant` is one — whose usage
     carries no price and whose revenue nobody supplied. #495 proved the
-    supplied-revenue record's half (`unknown`, and no amount to read) and left
-    the margin half to the surface that would derive one; this is that surface.
+    supplied-revenue record's half (`unknown`, and no amount to read); this is
+    the query's half.
 
-    ⚠ **CLAIM 9 WORDS IT AS MARGIN `unavailable`, NEVER ZERO, AND THIS QUERY
-    SAYS IT DIFFERENTLY — which is stated here rather than smoothed over.** The
-    query has no plain `unavailable`: its two unavailable states are about grain
-    and retention, and neither applies. What it publishes instead is the figure
-    it could compute beside the count of postings it could not price. Revenue is
-    a FLOOR — zero here, because nothing was priced — and the margin over it is
-    a floor too, and both read `incomplete` (§15). So a zero IS on the wire, and
-    what these cases pin is that it is never stated as `known`, the one state
-    under which a reader could take it for a figure.
+    ⚠ **WHERE NO PIECE OF A ROW'S REVENUE HAS RESOLVED, NEITHER THE REVENUE NOR
+    THE MARGIN OVER IT STATES AN AMOUNT.** Claim 9 says margin `unavailable`,
+    never zero. This query's two unavailable states are about grain and about
+    retention and neither applies, and the owner ruled out a sixth (#537), so
+    both measures read `incomplete` with `amount_micros` null — which on this
+    surface means *no figure can be stated* — beside the count of postings
+    nobody priced. Until #537 the revenue was a zero floor and the margin its
+    negative, and the console drew "at least −£…": #153 §17.1's defect with a
+    prefix.
+
+    **An amount under `incomplete` is a BOUND, and there is one only where some
+    piece of the row's revenue DID resolve.** That is a COUNT of resolved
+    pieces and never a test of the sum, because a deliberate £0 price is
+    resolved and a sum cannot tell a free service from one nobody priced — the
+    two cases on the zero below are what hold the count to that.
+
+    **The rule is per row**, so one grouped answer can carry a bound on one row
+    and no amount on the next.
     """
 
     @pytest.fixture(autouse=True)
     def fixture(self):
         self.tenant, self.key = a_tenant()
-        customer = Customer.objects.create(tenant=self.tenant,
-                                           external_id="c1")
-        a_posting(self.tenant, customer, "i1", billed_cost_micros=None,
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="c1")
+        a_posting(self.tenant, self.customer, "i1", billed_cost_micros=None,
                   pricing_status=PRICING_STATUS_UNKNOWN)
         self.window = {"start_date": OPENS.isoformat(),
                        "end_date": CLOSES.isoformat()}
 
-    def test_the_revenue_is_a_floor_that_says_so(self):
+    def test_with_nothing_resolved_the_revenue_states_no_amount(self):
         body = ask(self.key, measures=MONEY, **self.window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
-        assert revenue["amount_micros"] == 0
+        assert revenue["amount_micros"] is None
         assert revenue["status"] == MEASURE_STATUS_INCOMPLETE
         assert revenue["unpriced_event_count"] == 1
 
-    def test_the_margin_is_no_better_than_the_revenue_under_it(self):
-        """The cost side is resolved here, so the state the margin carries
-        can only have come from the revenue side — the mirror of the class
-        above, where it could only have come from the cost side."""
+    def test_with_nothing_resolved_the_margin_states_no_amount_either(self):
+        """The cost side is resolved here, so the state the margin carries and
+        the amount it withholds can only have come from the revenue side — the
+        mirror of the class above, where they could only have come from the
+        cost side."""
         body = ask(self.key, measures=MONEY, **self.window).json()
-        assert measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS
+        cost = measure_of(body, ANALYTICS_MEASURE_SUPPLIER_COGS)
+        assert (cost["amount_micros"], cost["status"]) == (
+            400_000, MEASURE_STATUS_KNOWN)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert margin["amount_micros"] is None
+        assert margin["status"] == MEASURE_STATUS_INCOMPLETE
+
+    def test_with_some_revenue_resolved_the_priced_part_is_a_bound(self):
+        """AC 2 — the behaviour before #537, pinned beside the case it must
+        not be confused with: one priced posting beside the unpriced one, and
+        the priced subtotal is stated as the bound it is."""
+        a_posting(self.tenant, self.customer, "i2")
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"],
+                revenue["unpriced_event_count"]) == (
+            1_000_000, MEASURE_STATUS_INCOMPLETE, 1)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            1_000_000 - 800_000, MEASURE_STATUS_INCOMPLETE)
+
+    def test_a_deliberate_zero_price_is_resolved_and_known(self):
+        """AC 3 — a free service: every posting priced at £0 against a known
+        cost is a KNOWN revenue of nothing and a real loss (#153 §3.4). Read
+        for a second customer, so the unpriced posting above is not in it."""
+        free = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        a_posting(self.tenant, free, "free-1", billed_cost_micros=0)
+        a_posting(self.tenant, free, "free-2", billed_cost_micros=0)
+        body = ask(self.key, measures=MONEY, customer_id=str(free.id),
+                   **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"]) == (
+            0, MEASURE_STATUS_KNOWN)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            -800_000, MEASURE_STATUS_KNOWN)
+
+    def test_a_free_service_beside_an_unpriced_one_is_a_bound_of_zero(self):
+        """The same count, in the other branch. A £0 posting beside the
+        unpriced one IS a resolved piece, so the row states a bound — of zero —
+        where a rule reading the SUM would have stated no amount and called the
+        free service unpriced."""
+        a_posting(self.tenant, self.customer, "i2", billed_cost_micros=0)
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"]) == (
+            0, MEASURE_STATUS_INCOMPLETE)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            -800_000, MEASURE_STATUS_INCOMPLETE)
+
+    def test_a_subscription_is_a_resolved_piece_and_excuses_nothing(self):
+        """A Stripe subscription beside the unpriced posting: a piece of the
+        revenue that resolved, so the row states a bound — and, being outside
+        #537's ruling, it supersedes and excuses nothing, so a bound is what
+        it stays."""
+        StripeSubscription.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            stripe_subscription_id="sub_1", stripe_product_name="Pro",
+            status="active", amount_micros=SUBSCRIPTION_FOR_MARCH, quantity=1,
+            currency="usd", interval="month", current_period_start=MARCH,
+            current_period_end=MARCH, last_synced_at=MARCH)
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"],
+                revenue["unpriced_event_count"]) == (
+            SUBSCRIPTION_FOR_MARCH, MEASURE_STATUS_INCOMPLETE, 1)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            SUBSCRIPTION_FOR_MARCH - 400_000, MEASURE_STATUS_INCOMPLETE)
+
+    def test_the_rule_is_per_row_and_never_across_the_answer(self):
+        """AC 6: one question grouped by customer, where one customer has a
+        priced posting beside an unpriced one and the other has only the
+        unpriced one. Both rows read `incomplete`; only one states an amount."""
+        other = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        a_posting(self.tenant, other, "o1")
+        a_posting(self.tenant, other, "o2", billed_cost_micros=None,
+                  pricing_status=PRICING_STATUS_UNKNOWN)
+        body = ask(self.key, measures=MONEY, group_by=["field:customer"],
+                   **self.window).json()
+        rows = {row["grouping_field_value"][0]: index
+                for index, row in enumerate(body["rows"])}
+        stated = {
+            customer.id: [
+                (entry["amount_micros"], entry["status"])
+                for entry in (
+                    measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                               rows[str(customer.id)]),
+                    measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN,
+                               rows[str(customer.id)]))]
+            for customer in (self.customer, other)}
+        assert stated[self.customer.id] == [
+            (None, MEASURE_STATUS_INCOMPLETE), (None, MEASURE_STATUS_INCOMPLETE)]
+        assert stated[other.id] == [
+            (1_000_000, MEASURE_STATUS_INCOMPLETE),
+            (1_000_000 - 800_000, MEASURE_STATUS_INCOMPLETE)]
+
+
+@pytest.mark.django_db
+class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
+    """#537's second ruling: a tenant-supplied figure is the revenue for the
+    customer and the period it covers — AUTHORITATIVE, NEVER ADDED TO.
+
+    #153 §3.2's second posture is cost tracking plus a supplied figure, and its
+    promise is revenue `known` at the supplied scope with a margin there. Before
+    #537 the query could not keep it, in two ways the fixtures never exercised:
+    a cost-tracking tenant's usage is unpriced BY DESIGN, and one unpriced
+    posting made the row's revenue `incomplete` however much the tenant had
+    told UBB — so a tenant supplying its real revenue never got a known margin;
+    and a tenant that priced usage in UBB to estimate a margin AND supplied its
+    invoiced revenue had both added together.
+
+    So inside a supplied figure's covered period, for its customer, revenue
+    derived from priced usage is superseded and unpriced usage excuses nothing
+    — its count stays on the measure as diagnostic information. Everywhere else
+    the table in the class above holds. Stripe subscription revenue is not
+    touched by this ruling in either direction; the parity class holds a
+    subscription beside priced usage and adds them, as it always did.
+
+    ⚠ **THE COVERED PERIOD IS THE RECORD'S OWN SPAN, WHATEVER BASIS PLACES ITS
+    AMOUNT.** Under `recorded` a figure lands whole on the day its period opens,
+    so a window starting after that day receives none of it — and must receive
+    none of the usage it superseded either, or two windows that partition a
+    month would add up to more than the tenant said the month earned.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fixture(self):
+        self.tenant, self.key = a_tenant()
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="c1")
+        self.window = {"start_date": OPENS.isoformat(),
+                       "end_date": CLOSES.isoformat()}
+
+    def supply(self, amount_micros=SUPPLIED_FOR_MARCH, *, opens=OPENS,
+               closes=NEXT, method=RECOGNITION_METHOD_STRAIGHT_LINE,
+               customer=None):
+        return TenantSuppliedRevenue.objects.create(
+            tenant=self.tenant, customer=customer or self.customer,
+            amount_micros=amount_micros, currency="usd", period_start=opens,
+            period_end=closes, recognition_method=method,
+            source_reference=f"inv-{opens.isoformat()}")
+
+    def unpriced(self, key, **overrides):
+        return a_posting(self.tenant, self.customer, key,
+                         billed_cost_micros=None,
+                         pricing_status=PRICING_STATUS_UNKNOWN, **overrides)
+
+    def test_supplied_over_unpriced_usage_is_a_known_revenue(self):
+        """AC 4 — the cost-tracking tenant that tells UBB its revenue."""
+        self.unpriced("i1")
+        self.unpriced("i2")
+        self.supply()
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"]) == (
+            SUPPLIED_FOR_MARCH, MEASURE_STATUS_KNOWN)
+        # The two postings nobody priced are still published — as what they
+        # are, not as a reason the figure is short.
+        assert revenue["unpriced_event_count"] == 2
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            SUPPLIED_FOR_MARCH - 800_000, MEASURE_STATUS_KNOWN)
+
+    def test_priced_usage_under_a_supplied_figure_is_superseded_not_added(self):
+        """AC 5 — the mixed case: priced usage, unpriced usage and a supplied
+        figure for the same customer and month. The revenue is the supplied
+        figure EXACTLY; the 1,000,000 UBB priced is not on top of it."""
+        a_posting(self.tenant, self.customer, "i1")
+        self.unpriced("i2")
+        self.supply()
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"],
+                revenue["unpriced_event_count"]) == (
+            SUPPLIED_FOR_MARCH, MEASURE_STATUS_KNOWN, 1)
+        margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
+        assert (margin["amount_micros"], margin["status"]) == (
+            SUPPLIED_FOR_MARCH - 800_000, MEASURE_STATUS_KNOWN)
+
+    def test_the_cost_side_still_decides_the_margin(self):
+        """§15's cost-side rule is unchanged: a supplied revenue is known, and
+        a margin over a cost nobody resolved is still no better than that
+        cost."""
+        self.unpriced("i1", provider_cost_micros=None,
+                      costing_status=COSTING_STATUS_UNRESOLVED,
+                      unresolved_reason=UNRESOLVED_REASON_COST_RATE_MISSING)
+        self.supply()
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        assert measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE
                           )["status"] == MEASURE_STATUS_KNOWN
         margin = measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN)
-        assert margin["amount_micros"] == 0 - 400_000
-        assert margin["status"] == MEASURE_STATUS_INCOMPLETE
+        assert (margin["amount_micros"], margin["status"]) == (
+            SUPPLIED_FOR_MARCH, MEASURE_STATUS_INCOMPLETE)
+
+    def _around_a_february_figure(self):
+        """A quarter of usage with a figure covering February alone: each
+        month holds a priced posting, and January and February an unpriced one
+        besides."""
+        for month, billed in ((1, 1_000_000), (2, 1_000_000), (3, 600_000)):
+            day = datetime(2026, month, 10, 9, 30, tzinfo=dt_timezone.utc)
+            a_posting(self.tenant, self.customer, f"priced-{month}",
+                      effective_at=day, billed_cost_micros=billed)
+            if month < 3:
+                self.unpriced(f"unpriced-{month}", effective_at=day)
+        self.supply(2_800_000, opens=date(2026, 2, 1), closes=date(2026, 3, 1))
+        return {"start_date": date(2026, 1, 1).isoformat(),
+                "end_date": CLOSES.isoformat()}
+
+    def test_only_the_month_it_covers_is_superseded_or_excused(self):
+        """AC 7 — one month's figure inside a longer window supersedes that
+        month's priced usage and excuses that month's unpriced posting, and
+        nothing else: January's unpriced posting still makes the whole window
+        a bound."""
+        window = self._around_a_february_figure()
+        body = ask(self.key, measures=MONEY, **window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"],
+                revenue["unpriced_event_count"]) == (
+            1_000_000 + 2_800_000 + 600_000, MEASURE_STATUS_INCOMPLETE, 2)
+
+    def test_each_month_takes_the_rule_for_its_own_part(self):
+        """The same quarter by month, where each part is a row of its own."""
+        window = self._around_a_february_figure()
+        body = ask(self.key, measures=MONEY, bucket="month", **window).json()
+        months = {row["bucket_start"][:7]: index
+                  for index, row in enumerate(body["rows"])}
+        stated = {
+            month: tuple(
+                measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE, index)[key]
+                for key in ("amount_micros", "status", "unpriced_event_count"))
+            for month, index in months.items()}
+        assert stated == {
+            "2026-01": (1_000_000, MEASURE_STATUS_INCOMPLETE, 1),
+            "2026-02": (2_800_000, MEASURE_STATUS_KNOWN, 1),
+            "2026-03": (600_000, MEASURE_STATUS_KNOWN, 0)}
+
+    def test_the_covered_period_is_the_records_own_whichever_basis_places_it(
+            self):
+        """Two windows that partition March add up to the figure the tenant
+        supplied for March, under either basis — which they could not if the
+        usage were superseded only where the amount happened to land.
+
+        Under `recorded` the whole figure lands on 1 March, so the later
+        window reads a KNOWN nothing: the tenant has said what March earned,
+        and the recorded view places it at the month's opening. Under
+        `recognised` it is spread by day, 9 of 31 and 22 of 31."""
+        a_posting(self.tenant, self.customer, "early",
+                  effective_at=datetime(2026, 3, 5, 9, 30,
+                                        tzinfo=dt_timezone.utc))
+        a_posting(self.tenant, self.customer, "late")
+        self.supply()
+        halves = ({"start_date": OPENS.isoformat(),
+                   "end_date": date(2026, 3, 9).isoformat()},
+                  {"start_date": MARCH.date().isoformat(),
+                   "end_date": CLOSES.isoformat()})
+        for basis, expected in ((REVENUE_BASIS_RECORDED, (3_100_000, 0)),
+                                (REVENUE_BASIS_RECOGNISED,
+                                 (900_000, 2_200_000))):
+            stated = []
+            for half in halves:
+                revenue = measure_of(
+                    ask(self.key, measures=MONEY, basis=basis, **half).json(),
+                    ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+                assert revenue["status"] == MEASURE_STATUS_KNOWN, basis
+                stated.append(revenue["amount_micros"])
+            assert tuple(stated) == expected, basis
+            assert sum(stated) == SUPPLIED_FOR_MARCH, basis
+
+    def test_every_period_each_customers_figures_name_is_covered(self):
+        """Consecutive monthly figures for one customer and a single month's
+        for another: each customer's usage is superseded inside every period
+        ITS figures cover and nowhere else — so the second customer's January
+        usage, which no figure of theirs covers, is revenue."""
+        other = Customer.objects.create(tenant=self.tenant, external_id="c2")
+        for month in (1, 2):
+            day = datetime(2026, month, 10, 9, 30, tzinfo=dt_timezone.utc)
+            for customer in (self.customer, other):
+                a_posting(self.tenant, customer, f"{customer.id}-{month}",
+                          effective_at=day)
+        self.supply(2_000_000, opens=date(2026, 1, 1),
+                    closes=date(2026, 2, 1))
+        self.supply(3_000_000, opens=date(2026, 2, 1),
+                    closes=date(2026, 3, 1))
+        self.supply(5_000_000, opens=date(2026, 2, 1),
+                    closes=date(2026, 3, 1), customer=other)
+        body = ask(self.key, measures=MONEY,
+                   start_date=date(2026, 1, 1).isoformat(),
+                   end_date=date(2026, 2, 28).isoformat()).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"]) == (
+            2_000_000 + 3_000_000 + 5_000_000 + 1_000_000,
+            MEASURE_STATUS_KNOWN)
+
+    def test_a_covered_part_is_resolved_wherever_its_amount_lands(self):
+        """A figure covering 15 March to 15 April, asked about April, beside
+        unpriced usage on either side of the 15th. The covered part is a
+        RESOLVED piece of April's revenue under either basis — under
+        `recorded` it resolved to nothing here, because the whole figure
+        landed on 15 March, exactly as a £0 price is resolved — so the row is a
+        bound, from the uncovered unpriced posting, and never "no figure". Under
+        `recognised` the same bound carries April's 14 days of the figure."""
+        self.unpriced("covered", effective_at=datetime(
+            2026, 4, 5, 9, 30, tzinfo=dt_timezone.utc))
+        self.unpriced("uncovered", effective_at=datetime(
+            2026, 4, 20, 9, 30, tzinfo=dt_timezone.utc))
+        self.supply(opens=date(2026, 3, 15), closes=date(2026, 4, 15))
+        april = {"start_date": NEXT.isoformat(),
+                 "end_date": date(2026, 4, 30).isoformat()}
+        for basis, amount in ((REVENUE_BASIS_RECORDED, 0),
+                              (REVENUE_BASIS_RECOGNISED, 1_400_000)):
+            body = ask(self.key, measures=MONEY, basis=basis, **april).json()
+            revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+            assert (revenue["amount_micros"], revenue["status"],
+                    revenue["unpriced_event_count"]) == (
+                amount, MEASURE_STATUS_INCOMPLETE, 2), basis
+            assert measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN
+                              )["amount_micros"] == amount - 800_000, basis
+
+    def test_grouped_finer_than_the_figure_the_superseded_usage_is_not_placed(
+            self):
+        """At a grain the figure cannot reach, the part a row CAN place does
+        not include the usage the figure superseded — so the placed part and
+        the context together are the supplied figure, and not that plus what
+        UBB priced."""
+        a_posting(self.tenant, self.customer, "i1")
+        self.supply()
+        body = ask(self.key, measures=MONEY, group_by=["field:provider"],
+                   **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert revenue["status"] == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
+        assert revenue["amount_micros"] == 0
+        assert [entry["amount_micros"] for entry in body["context"]] == [
+            SUPPLIED_FOR_MARCH]
+        assert measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN
+                          )["amount_micros"] is None
+
+    def test_a_figure_for_an_instant_covers_no_period(self):
+        """⚠ AN INTERPRETATION, STATED RATHER THAN LEFT TO BE DISCOVERED. A
+        record with no period end declares an instant and not a span — the
+        model's own words are that null "is not unknown" and is NOT to be
+        silently treated as a day — so there is no period for it to be the
+        whole revenue of. Its amount is a resolved piece of revenue like any
+        other, and the usage beside it is neither superseded nor excused."""
+        a_posting(self.tenant, self.customer, "i1")
+        self.unpriced("i2")
+        self.supply(500_000, opens=date(2026, 3, 5), closes=None,
+                    method=RECOGNITION_METHOD_ON_RECEIPT)
+        body = ask(self.key, measures=MONEY, **self.window).json()
+        revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+        assert (revenue["amount_micros"], revenue["status"],
+                revenue["unpriced_event_count"]) == (
+            1_000_000 + 500_000, MEASURE_STATUS_INCOMPLETE, 1)
 
 
 @pytest.mark.django_db

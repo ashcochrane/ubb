@@ -150,8 +150,9 @@ class MarginServiceTest(TestCase):
         all. That half had no surface to be asserted against until the
         route-collapsing tickets built slice 7 §5's scope rule and #502 demoted
         this record to the alerting state machine it is. The one economic query
-        now answers it in its own states — a floor labelled `incomplete`, never
-        a `known` figure — asserted through its route
+        now answers it in its own states — `incomplete` with no amount on the
+        revenue or the margin, never a zero and never a `known` figure (#537) —
+        asserted through its route
         (`api/v1/tests/test_the_one_economic_query.py::
         TestUsageNobodyPricedIsNeverAKnownFigure`).
 
