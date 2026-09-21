@@ -48,8 +48,9 @@ precedent for the shape.
 
 **Job analytics is deliberately NOT here.** ``GET /metering/analytics/tasks``
 stays where it is and stays gated on ``metering``: it is a reporting surface,
-it belongs to the five-endpoint analytics collapse, and moving it now would
-break a path twice — once here and once there.
+it was left for slice 7's analytics collapse because moving it here would have
+broken a path twice — once here and once there — and that collapse then kept it
+outside (slice 7 §12), so it never moved at all.
 
 **The write floor is Write, not Admin.** Closing a unit of work is the tail of
 usage ingestion rather than a change to the rules or a movement of money, which

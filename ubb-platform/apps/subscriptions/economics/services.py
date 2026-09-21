@@ -26,12 +26,14 @@ from core.vocabulary import REVENUE_BASIS_RECOGNISED
 #: UBB is obeying a label the tenant chose rather than inventing a boundary.
 #:
 #: ⚠ **WHAT THESE SURFACES DO NOT DO IS PUBLISH THE BASIS**, and that is a real
-#: limit rather than an oversight: none of the five margin schemas has ever
-#: carried a basis field for any of its figures, and adding one to routes the
-#: collapse deletes would be contract churn. The surface where a caller CHOOSES
-#: a basis and is told which one it got is the supplied-revenue read (#495),
-#: and the one economic query that replaces these five (slice 7 §5) publishes
-#: it too. `test_economics.py` pins the choice so it cannot drift silently.
+#: limit rather than an oversight: none of the five margin schemas ever carried
+#: a basis field for any of its figures, and adding one to routes the collapse
+#: was about to delete would have been contract churn. #501 then deleted them;
+#: what still reads this constant — the business tree and the alerting record
+#: — publishes no basis either. The surfaces where a caller CHOOSES a basis and
+#: is told which one it got are the supplied-revenue read (#495) and the one
+#: economic query that replaced those five (slice 7 §5). `test_economics.py`
+#: pins the choice so it cannot drift silently.
 MARGIN_REVENUE_BASIS = REVENUE_BASIS_RECOGNISED
 
 

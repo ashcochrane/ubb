@@ -305,38 +305,33 @@ class TheReverseIsExercisedTest(TestCase):
 
 
 class TheBagIsNotAGroupingAxisTest(TestCase):
-    """FILTERABLE AND READABLE, NEVER GROUPABLE — as far as slice 2 reaches.
+    """FILTERABLE AND READABLE, NEVER GROUPABLE — on every surface since slice 7.
 
-    **Read the limit of this claim before trusting it.** What it pins is that
-    the surviving bag, BY ITS OWN NAME, is not a grouping axis anywhere: it is
-    not a groupable column, and naming it as an invoice-line grouping does not
-    read it. That is the part of "an unbounded free-text key can never drive an
-    invoice line label" slice 2 can honestly deliver.
+    **This claim used to carry a limit, and the limit is the history worth
+    keeping.** What slice 2 could pin was that the surviving bag, BY ITS OWN
+    NAME, is not a grouping axis anywhere: it is not a groupable column, and
+    naming it as an invoice-line grouping does not read it. Three surfaces
+    still read keys OUT of it then — the keyed analytics parameter, the keyed
+    margin breakdown and the key-driven invoice line labels — so an unbounded
+    key could still reach a chart and an invoice line, and slice 2 named slice
+    7 as where that capability moves onto the declared grouping contract.
 
-    WHAT IT DOES NOT PIN, DELIBERATELY: three surfaces still read keys out of
-    this bag — the keyed analytics parameter, the keyed margin breakdown and the
-    key-driven invoice line labels — so an unbounded key CAN still reach a chart
-    and an invoice line today, and they carry two G7 ledger entries of their own
-    for exactly that reason.
+    ⚠ **IT MOVED, AND ALL THREE READERS ARE GONE.** The one economic query
+    (#499) groups by declared axes and by nothing else and takes no parameter
+    that can name a key in here; the keyed parameter and the keyed margin
+    breakdown died with their routes (#501); and an invoice line's grouping is
+    one declared axis (#503), so a `tag:` value is a word naming no grouping
+    kind and is refused. The cases below say so one surface at a time.
 
-    ⚠ **THE CAPABILITY HAS MOVED AND THOSE THREE READERS HAVE NOT YET GONE**
-    (#499). Slice 2 said slice 7 was where the capability moves onto the
-    declared grouping contract, and it has: the one economic query groups by
-    declared axes and by nothing else, and takes no parameter that can name a
-    key in here. What survives is the three old readers, which go with the
-    routes that expose them — #501's, by name — and the entries with them.
-
-    AND IT REACHES FURTHER THAN IT DID, WHICH IS WHY THOSE THREE ARE WORTH
-    NAMING. They used to read a bag the recording path validated flat
-    `str -> str`; they now read the same arbitrary JSON the surviving bag has
-    always been allowed to hold, so a label can arrive as a serialised object
-    rather than a short string. The replacement cannot: an axis it groups by is
-    one the tenant declared.
-    `test_a_nested_value_reaches_the_label_path_unconstrained` runs it rather
-    than asserting it cannot happen. The alternative was imposing the retired
-    bag's value rules on a published field that never had them, which is a
-    break this ticket was not asked to make — the module note in
-    `services/usage_service.py` takes all four rules one at a time.
+    What made the three worth naming was that the fold WIDENED what they read:
+    the retired bag was validated flat `str -> str` on the recording path and
+    the survivor never was, so a label could arrive as a serialised object
+    rather than a short string. It closed by there being no key left to hand —
+    `test_a_nested_value_can_no_longer_reach_the_label_path` keeps the fixture
+    that used to get through. The alternative, imposing the retired bag's
+    value rules on a published field that never had them, was a break slice 2
+    was not asked to make — the module note in `services/usage_service.py`
+    takes all four rules one at a time.
     """
 
     def setUp(self):

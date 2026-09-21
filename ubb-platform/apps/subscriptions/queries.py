@@ -79,9 +79,9 @@ REVENUE_FINEST_BUCKET = "day"
 # `apps.subscriptions.economics.alerting`, inside this product. Nothing outside
 # reads it, which is why neither of these grew a replacement here.
 #
-# ⚠ AND THE ROWS THEMSELVES ARE #190's. Slice 7 removes the reader; the cutover
-# removes the rows for the periods nothing alerts on. Neither half is complete
-# without the other.
+# ⚠ AND THE ROWS THEMSELVES ARE #190's. Slice 7 removed the reader (#502); the
+# cutover removes the rows for the periods nothing alerts on. Neither half is
+# complete without the other.
 
 
 def revenue_contributions(tenant_id, *, windows, basis, customer_ids=None) -> list[dict]:

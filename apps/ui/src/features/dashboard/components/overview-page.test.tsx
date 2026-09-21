@@ -127,8 +127,8 @@ describe("OverviewPage", () => {
   });
 
   // ⚠ THREE OF THE FOUR FAMILIAR EXPERIENCES, PINNED AS ARRIVING WITHOUT A
-  // CLICK (#507). Slice 7 collapsed nine reports into one query and owes that
-  // none of them became a query a tenant has to build: a revenue overview,
+  // CLICK (#507). Slice 7 collapsed nine reports into one query on the promise
+  // that none of them became a query a tenant has to build: a revenue overview,
   // margin by customer and cost by provider are console COMPOSITIONS over the
   // one contract, with no preset concept on the API to ship them. This renders
   // the page and touches nothing — the three arrive, the breakdown already on

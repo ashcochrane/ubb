@@ -118,8 +118,9 @@ class TestTheLifecycleIsAtTheRootAndUngated(LifecycleEndpointTestBase):
             content_type="application/json", **self._auth()).status_code == 404
 
     def test_the_job_analytics_report_deliberately_stayed(self):
-        """It belongs to the analytics collapse, not to this move — and moving
-        it on the way past would break one path twice."""
+        """It was left for the analytics collapse, not for this move — moving
+        it on the way past would have broken one path twice — and that
+        collapse then kept it outside (slice 7 §12), so it never moved."""
         assert self._get("/api/v1/metering/analytics/tasks").status_code == 200
 
 

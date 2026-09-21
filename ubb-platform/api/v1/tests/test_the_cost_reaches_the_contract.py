@@ -212,11 +212,13 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         exercises the calculated path instead, which #324 left alone.
         """
         # The rate's shape is left to the model's own defaults rather than
-        # spelled out. That reads as brevity and is not: the word for it is
-        # retired, slice 7 owns re-spelling it, and its ledger entry caps the
-        # files that may still contain it at 21 — naming it here would have
-        # made this the 22nd and failed the sweep, exactly as the correlation
-        # key would have. The default IS the per-unit shape this needs.
+        # spelled out. When #323 wrote this that was not brevity: the word for
+        # it was retired and its ledger entry capped the files that could still
+        # contain it at 21, so naming it here would have made this the 22nd and
+        # failed the sweep, exactly as the correlation key would have. That
+        # entry was slice 4's (this comment first said slice 7's) and slice 4
+        # paid it in #366 — the field is `rate_structure` — so the reason is
+        # history. The default IS the per-unit shape this needs.
         cost_rate_in_default_book(self.tenant, measurement_key="tokens",
                                   rate_per_unit_micros=42, unit_quantity=1)
         ack = self.record("known", measurements={"tokens": 100})

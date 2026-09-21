@@ -21,7 +21,7 @@ where #153 and the registry disagree on a spelling the registry wins, and #153
 §6.4 spells both of these with a prefix the registry retired in #154. Naming the
 constants makes that impossible to get wrong here.
 
-⚠ **The other half of this removal is #190's.** Slice 7 severs the reader; #190
+⚠ **The other half of this removal is #190's.** Slice 7 severed the reader; #190
 deletes the rows. Neither is complete without the other, and only this half is in
 #189 — so nothing in this module asserts that the table is empty.
 """

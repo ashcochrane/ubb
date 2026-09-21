@@ -729,8 +729,8 @@ class UBBClient:
         carries the rules (kept in signature parity, defaults included, by
         ``test_sdk_delegation``).
 
-        The one query that replaced the five margin and analytics calls
-        this facade used to forward. ``measures`` is required, the window
+        The one query that replaced the three margin reads this facade
+        used to forward. ``measures`` is required, the window
         defaults to the current month to date, and every measure carries
         its own state — read one with ``ubb.metering.measure_on``."""
         return self._require_metering().query_economics(

@@ -523,7 +523,8 @@ measurement_key:
     # that spans them — so the pins landed beside the behaviour rather than in a
     # file that had to import it. The completeness pin for the OTHER keyed
     # rollup went to `test_analytics_dimensions.py` for the same reason and
-    # against slice 7's other word. The lesson #323 wrote is now three tickets
+    # against the other word slice 7 went on to retire (that module went with
+    # the rollups it pinned, in #501). The lesson #323 wrote is now three tickets
     # old and still the answer: spell a retired word only in a file already
     # counted, and prefer the file that owns the behaviour to the file that owns
     # the test.
@@ -619,7 +620,10 @@ measurement_key:
     # commit touches — all three already counted, and none gained an occurrence,
     # because the breakdown card renders BILLED cost and is out of this rule's
     # extent by construction. `metric` and `budget` sit on surfaces this commit
-    # does not reach at all.
+    # does not reach at all. (Both names went in #506, with the label map and the
+    # picker's narrowing constants, and slice 7 has since retired the word from
+    # every swept file — so the entries this paragraph counted against are paid,
+    # not missing.)
     #
     # #348 MOVED THE DENOMINATOR ONLY, BY TWO, WITH NO EXCLUSION MOVING
     # (1,566 → 1,568 swept, 1,947 → 1,949 tracked, 50/126 unchanged). TWO new

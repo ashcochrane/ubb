@@ -296,23 +296,28 @@ class BothPosturesSurviveTest(
     """#153 §3.2: cost-tracking alone and cost tracking plus a supplied figure
     are both legitimate, and this slice must not build only the second.
 
-    ⚠ **ONE HALF OF THE CRITERION IS ASSERTED HERE AND THE OTHER CANNOT BE
-    YET, so this says which.** The criterion is *"revenue `unknown` and margin
-    unavailable — never zero"*. The revenue half is this surface's and is
-    proved below: `unknown`, an empty totals list, and no scalar amount in the
-    answer at all. **The margin half has no surface to be asserted against in
-    this ticket** — margin today is `CustomerEconomics.gross_margin_micros`,
-    which defaults to zero and is computed from the recurring profile, and the
-    scope rule that makes a margin *unavailable* rather than nil is slice 7
-    §5's, built by the tickets that collapse the nine routes into the one
-    query. Asserting "margin unavailable" against today's snapshot would be
-    asserting something false.
+    ⚠ **ONE HALF OF THE CRITERION IS ASSERTED HERE AND THE OTHER IS NOT THIS
+    SURFACE'S, so this says which.** The criterion is *"revenue `unknown` and
+    margin unavailable — never zero"*. The revenue half is this surface's and
+    is proved below: `unknown`, an empty totals list, and no scalar amount in
+    the answer at all. **The margin half had no surface to be asserted against
+    when #495 wrote this** — margin was then
+    `CustomerEconomics.gross_margin_micros`, which defaulted to zero and was
+    computed from the recurring profile #496 deleted, and the scope rule that
+    makes a margin *unavailable* rather than nil is slice 7 §5's, built by the
+    tickets that collapsed the nine routes into the one query. It has one now:
+    the one economic query derives a margin at read time from both of its
+    inputs, and over usage nobody priced it publishes a FLOOR labelled
+    `incomplete` beside the count that says how far short it falls — never
+    `known`, the one state under which a reader could take a zero for a figure.
+    That is claim 9 in the query's own states rather than in its words, which
+    say *unavailable*. The flip (#512) found that half unasserted and asserted
+    it through the route, in
+    `test_the_one_economic_query.py::TestUsageNobodyPricedIsNeverAKnownFigure`.
 
-    What this ticket can and does guarantee is the input side: **nothing
-    downstream can read a zero off this record**, because the record's surface
-    publishes no amount to read when there is nothing supplied. That is the
-    half that is in #495's gift, and the reader that turns it into a margin is
-    the next ticket's."""
+    What this record guarantees is the input side: **nothing downstream can
+    read a zero off it**, because its surface publishes no amount to read when
+    there is nothing supplied."""
 
     def test_with_nothing_supplied_revenue_is_unknown_and_never_zero(self):
         body = self.read(start_date=MONTH_OPENS.isoformat(),

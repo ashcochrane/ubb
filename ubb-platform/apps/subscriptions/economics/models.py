@@ -91,8 +91,10 @@ class CustomerEconomics(BaseModel):
     #: columns, and then no surface has to be trusted to remember which.
     subscription_revenue_micros = models.BigIntegerField(default=0)
     #: WHAT THE TENANT SAID IT EARNED ELSEWHERE over the period — the
-    #: `TenantSuppliedRevenue` rows attributed to it, under the default
-    #: `recorded` basis (#496).
+    #: `TenantSuppliedRevenue` rows attributed to it, under the `recognised`
+    #: basis every margin figure is stated under, NOT the `recorded` default
+    #: (`economics/services.py:MARGIN_REVENUE_BASIS`, #496; this comment said
+    #: the default until #512 found it).
     #:
     #: Separate from the column above because the whole point of the record it
     #: comes from is that a revenue figure can say where it came from. It is in

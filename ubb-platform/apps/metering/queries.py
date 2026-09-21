@@ -179,10 +179,10 @@ class PeriodTotals(TypedDict):
 #:   * `UsageEventOut` / `UsageEventDetailOut` (`api/v1/schemas.py`) are on the
 #:     PUBLISHED contract. Renaming a schema is a contract break, and ADR-0007 §3
 #:     forbids doing it twice on one field — so it happens once, deliberately,
-#:     in whichever slice rebuilds that surface. ⚠ **Still true, and not this
-#:     slice's**: slice 7 §1 rules that the per-customer event list KEEPS its
-#:     own contract, so the surface those two schemas serve is not being rebuilt
-#:     here and the one deliberate rename has nowhere to happen yet.
+#:     in whichever slice rebuilds that surface. ⚠ **Still true after slice 7,
+#:     which did not rebuild it**: its §1 ruled that the per-customer event list
+#:     KEEPS its own contract, so the surface those two schemas serve was left
+#:     as it stood and the one deliberate rename has not happened.
 #:   * The read-contract entry points — now `iter_billable_postings`,
 #:     `get_posting_price`, `get_posting_effective_at`,
 #:     `get_customer_postings_for_period` and `get_customer_ids_with_postings` —

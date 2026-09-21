@@ -416,8 +416,8 @@ def get_usage(request, customer_id: UUIDIdentifier, cursor: str = None, limit: i
     # in #273. The pair NAMES THE BAG since #504 (slice 7 phase B1): it used to
     # carry the analytics grouping word, which read as an axis on a bag ADR-0005
     # keeps deliberately ungroupable, and this route is a filter surface rather
-    # than a grouping one — which is why slice 7 renames its request vocabulary
-    # and leaves its route and its response alone (slice 7 §1).
+    # than a grouping one — which is why slice 7 renamed its request vocabulary
+    # and left its route and its response alone (slice 7 §1).
     if metadata_key and metadata_value:
         qs = qs.filter(metadata__contains={metadata_key: metadata_value})
     qs = _apply_stop_context_filters(qs, past_limit, stop_scope, episode_seq)
@@ -518,9 +518,10 @@ def get_usage_event(request, event_id: UUID):
 # api/v1/task_endpoints.py carries the argument.
 #
 # The report below deliberately stayed, and stayed gated on `metering`: it is a
-# reporting surface rather than part of the lifecycle, it belongs to the
-# five-endpoint analytics collapse, and moving it on the way past would break
-# one path twice.
+# reporting surface rather than part of the lifecycle, it was left for slice 7's
+# analytics collapse, and moving it on the way past would have broken one path
+# twice. That collapse then kept it OUTSIDE (slice 7 §12 — one observation per
+# unit of work, not per posting), so it never moved at all.
 
 
 @metering_router.get("/analytics/tasks", response={200: TaskAnalyticsOut,
