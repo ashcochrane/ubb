@@ -600,39 +600,74 @@ gates:
 
   G14:
     statement: >-
-      The two `kind` discriminator pins that outlive slice 5 — `recorded_events`
-      counting `metered_usage` only, and the provider and measurement analytics
-      excluding `task_charge`.
-    oracle: "#154 §3.8, pins 1 and 3"
-    source: "#154 §3.8, #154 §12, #187 §28"
-    status: owned_by_slice_7
-    blocked_on: >-
-      The discriminator itself EXISTS: `Posting.kind` in
-      ubb-platform/apps/metering/usage/models.py, landed by #417 with the
-      Charge's 1:1 posting projection, holding the registry's
-      `usage_event_kind` by reference and advertised on the contract. What is
-      blocked is the two pins that outlive slice 5, and neither has a subject
-      to gate. Pin 1's measure, `recorded_events`, exists only as vocabulary —
-      a registry value and a generated constant — and no query computes it;
-      slice 7 (#189) builds the one economic query that does. Pin 3's exclusion
-      has surfaces today, but slice 7 collapses five analytics endpoints into
-      one, so a gate written against the five would be rewritten rather than
-      kept. A gate whose subject does not exist is a test that passes on
-      nothing.
+      The four `kind` discriminator pins — `recorded_events` counting
+      `metered_usage` only; `Task.event_count` counting `metered_usage` only;
+      the provider and measurement analytics excluding `task_charge`; and
+      revenue and monetary totals including both kinds, per their economic
+      fields.
+    oracle: "#154 §3.8"
+    source: "#154 §3.8, #154 §12, #187 §28, #189 §22"
+    status: installed
     notes: >-
-      Two of the four pins — `recorded_events` counting `metered_usage` only,
-      and analytics excluding `task_charge` — reach their final form in slice 7
-      (#189). If slice 5 finds it can only pin two, it re-owns this row to
-      slice 7 rather than installing half a gate.
-      #417 found exactly that and took the escape: `Posting.kind` landed with
-      the Charge's 1:1 projection, and pins 2 and 4 — a charge posting not
-      inflating `Task.event_count`, and revenue and monetary totals including
-      both kinds per their economic fields — are live tests in one module named
-      for this row,
-      `ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`.
-      They guard this slice's own new column and are not half a
-      gate while the row stays owed; what is still owed is the two above, which
-      is what the statement now claims and what slice 7 will install.
+      The four pull in opposite directions on purpose. A charge posting is real
+      revenue, so every monetary total includes it (pin 4); it is not a
+      reported event, so every count of events excludes it (pins 1 and 2) and
+      no provider or measurement heading is credited with it (pin 3). What
+      decides is the economic field each measure is about, never one rule about
+      the kind.
+      The row was installed by two slices and never as half a gate. Slice 5
+      landed `Posting.kind` with the Charge's 1:1 projection (#417), found that
+      only pins 2 and 4 had a subject to gate, wrote those, and re-owned the row
+      to slice 7 rather than installing it over two pins with nothing to hold.
+      Slice 7 built the other two subjects — the one economic query that
+      computes `recorded_events` (#499), and the single surface the five
+      analytics routes collapsed into (#501) — and #511 wrote pins 1 and 3 and
+      installed the row. All four run in the one module named for this row,
+      through the routes a caller reads.
+      On the collapsed surface, pin 3's *excluded* means credited to no
+      provider and filed under no measurement heading. The charge's revenue
+      still reaches the answer, on the provider axis's `not_applicable` row,
+      because the one query drops no money silently (#189 §5).
+      The per-customer cost totals carry an `event_count` that counts every
+      posting including a projection. That count is a denominator for its own
+      totals rather than a claim about what was reported, and it is not pin 1.
+    enforced_by:
+      # Pin 1 — `recorded_events` counts `metered_usage` only.
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheEventsMeasureCountsTheMeteredKindOnly::test_the_count_is_the_metered_calls_and_not_the_charge
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheEventsMeasureCountsTheMeteredKindOnly::test_the_charge_it_left_out_is_inside_the_same_answer
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheEventsMeasureCountsTheMeteredKindOnly::test_every_kind_the_registry_declares_is_in_scope
+      # Pin 2 — `Task.event_count` counts `metered_usage` only.
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_delivering_priced_work_leaves_the_event_count_where_it_was
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_projection_is_nonetheless_attributed_to_that_unit_of_work
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_a_unit_of_work_with_no_metered_calls_still_counts_none
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_billed_total_on_the_unit_of_work_is_unmoved_too
+      # Pin 3 — the provider and measurement analytics exclude `task_charge`.
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_no_provider_is_credited_with_the_charge
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_the_charge_sits_where_the_provider_question_does_not_apply
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_excluding_it_from_every_provider_drops_none_of_its_money
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_the_heading_counts_the_metered_calls_and_never_the_charge
+      # Pin 4 — revenue and monetary totals include both kinds.
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestRevenueAndMonetaryTotalsIncludeBothKinds::test_the_revenue_total_holds_the_agreed_price_and_the_metered_sale
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestRevenueAndMonetaryTotalsIncludeBothKinds::test_the_supplier_total_is_the_metered_cost_alone
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestRevenueAndMonetaryTotalsIncludeBothKinds::test_the_margin_nets_the_agreed_price_against_the_work_it_cost
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestRevenueAndMonetaryTotalsIncludeBothKinds::test_the_customers_monetary_totals_hold_it_too
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestRevenueAndMonetaryTotalsIncludeBothKinds::test_a_total_that_dropped_the_projection_would_be_visibly_short
 
   G15:
     statement: >-

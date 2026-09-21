@@ -215,7 +215,8 @@ database.
   they sold; it is not a reported event, so every count of events excludes it or a per-event average
   gains a denominator nobody billed. Those are G14's pins 2 and 4, written by slice 5; pins 1 and 3
   — the `recorded_events` measure, and the provider and measurement analytics excluding
-  `task_charge` — are **slice 7's**, and the manifest row is owed to slice 7 with them.
+  `task_charge` — waited for slice 7's one economic query and were written there (#511), which
+  installed the manifest row over all four.
 - **A compensating Charge has no path to the rails and no route.** Correcting a charge that has
   already been drawn down needs a refund path and an operator surface. Nobody owns that yet, and §3
   says so rather than leaving it to be discovered.

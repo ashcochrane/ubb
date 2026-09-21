@@ -76,14 +76,16 @@ every gate is accounted for. Locations may vary; accountability may not.
 construction rather than by a second check somebody has to remember to write.
 
 **A gate whose subject does not exist is recorded against its owner, never
-installed as a test that passes on nothing.** Two rows say so today: the two
-`kind` discriminator pins that outlive slice 5 have no query to pin — the column
-itself landed in #417, which re-owned G14 from slice 5 to slice 7, whose one
-economic query is the pins' subject — and ADR-0007 §1 states the data-carrying
-migration rule does not bind before the cutover squash (slice 8). A third said
-so until slice 3 gave G19 the subject it was waiting for — the first columns
-declared into a class the database defends, with a trigger holding them (#318)
-— and #319 flipped that row to `installed`.
+installed as a test that passes on nothing.** Of the three rows #191 decision 6
+named for it, one still says so: ADR-0007 §1 states the data-carrying migration
+rule does not bind before the cutover squash (slice 8). The other two left by
+installation, each when its subject arrived. Slice 3 gave G19 the first columns
+declared into a class the database defends, with a trigger holding them (#318),
+and #319 flipped that row to `installed`. G14 left in two stages: #417 landed
+the `kind` column, found only two of the row's four pins had a subject, and
+re-owned it from slice 5 to slice 7 rather than install half a gate; slice 7
+built the one economic query the other two pin (#499, #501), and #511 wrote
+them and flipped the row to `installed`.
 
 ### Flipping a row
 

@@ -284,8 +284,9 @@ def project_the_charge(charge):
     # own rule is what decides it: `costing_status` joined this event because
     # two products count their exclusions off it, and the field beside it
     # records that a fact "joins the payload the day a subscriber needs it".
-    # No subscriber filters on the kind today — the measure that will is
-    # `recorded_events`, which exists as vocabulary and as nothing else, and
-    # G14's row is now owed by the slice that builds it. A field nothing reads
-    # is a field that goes stale, and this one would go stale on the wire.
+    # No subscriber filters on the kind today — the one measure that does,
+    # `recorded_events`, reads the column in the economic query (#499) and G14
+    # pins it there (#511), so it never needed the payload either. A field
+    # nothing reads is a field that goes stale, and this one would go stale on
+    # the wire.
     return posting

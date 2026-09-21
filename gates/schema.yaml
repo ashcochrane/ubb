@@ -54,7 +54,7 @@ owned_status:
     The gate is not installed, and the named slice installs it. `blocked_on`
     states what must exist first, so the row is a plan rather than a shrug.
     Two different things can be missing and this status covers both: the gate's
-    SUBJECT (the `kind` column G14 pins does not exist) or merely its CHECKER
+    SUBJECT (the record G27 asserts about does not exist) or merely its CHECKER
     (G10's derived-column rule is already satisfied by the tree; nothing walks
     it yet). #191 decision 6 phrases the status around the first case because
     that is the one worth arguing about — installing a gate over a subject that

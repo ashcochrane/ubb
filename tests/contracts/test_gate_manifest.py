@@ -112,39 +112,41 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     each: the column, the protected field and the squash did not exist, so
     installing the gate would be installing a test that passes on nothing.
 
-    **G19 has left that list because its subject arrived**, which is the only
-    reason a gate may leave it. Slice 3 declared the first columns into a class
-    the database defends and installed a trigger that holds them (#317, #318),
-    so its nodes now run against real declarations rather than passing on an
-    empty walk. The two that remain are asserted exactly as they were — the
+    **G19 and G14 have left that list because their subjects arrived**, which is
+    the only reason a gate may leave it. Slice 3 declared the first columns into
+    a class the database defends and installed a trigger that holds them (#317,
+    #318), so G19's nodes run against real declarations rather than passing on
+    an empty walk. The one that remains is asserted exactly as it was — the
     cutover squash still does not exist, and a gate is removed here only when
     its subject arrives.
 
-    ⚠ **G14'S REASON CHANGED IN #417 AND THE ROW CHANGED OWNER WITH IT.** This
-    docstring used to say the `kind` discriminator column did not exist either,
-    and that stopped being true the moment slice 5 landed it with the Charge's
-    1:1 projection — a sentence this test would have kept passing over, because
-    what it asserts is that the row is OWED and never why. Two of G14's four
-    pins became writable and are written
-    (`ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`); the other
-    two still have no subject, which is what keeps the row owed and what moved
-    it to slice 7. The column exists; the measure that counts it and the single
-    analytics surface that must exclude it do not.
+    ⚠ **G14 LEFT IN TWO STAGES, AND ONLY THE SECOND WAS A DEPARTURE.** This
+    docstring once said the `kind` discriminator column did not exist, and that
+    stopped being true when slice 5 landed it with the Charge's 1:1 projection
+    (#417) — a sentence this test would have kept passing over, because what it
+    asserts is that a row is OWED and never why. The row stayed here then,
+    because two of its four pins still had no subject: it changed owner to
+    slice 7 instead. Slice 7 built both — the one economic query that computes
+    the events measure (#499), and the single analytics surface the five routes
+    collapsed into (#501) — and #511 wrote the last two pins and installed the
+    row, all four in
+    `ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py`.
 
     The two halves are asserted together deliberately. Separately, dropping a
     name from the tuple would be indistinguishable from silencing it; paired
     with the claim that the departed gate is installed, the only way past this
     test is the one that is honest.
     """
-    for name in ("G14", "G20"):
+    for name in ("G20",):
         row = programme.gates[name]
         assert row.owner_slice is not None, (
             f"{name}'s subject does not exist yet, so it cannot be installed")
 
-    assert programme.gates["G19"].installed, (
-        "G19 was removed from the list above because slice 3 installed it. If "
-        "it is owed again its subject has gone, and it belongs back in the "
-        "list rather than in neither")
+    for name, installer in (("G19", "slice 3"), ("G14", "slice 7")):
+        assert programme.gates[name].installed, (
+            f"{name} was removed from the list above because {installer} "
+            f"installed it. If it is owed again its subject has gone, and it "
+            f"belongs back in the list rather than in neither")
 
 
 def test_slice_0_declares_the_payment_rail_names_and_owes_the_machinery(programme):
