@@ -1039,9 +1039,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # rather than by extension of the one above: `costing_status` joined that
     # event because two products count their exclusions off it, and the field
     # beside it records that a fact "joins the payload the day a subscriber
-    # needs it". No subscriber filters on the kind. The measure that will is
-    # `recorded_events`, which exists as vocabulary and as nothing else, and
-    # G14's manifest row is now owned by the slice that builds it.
+    # needs it". No subscriber filters on the kind. The one measure that does,
+    # `recorded_events`, reads the column in the economic query (#499) and G14
+    # pins it there (#511), so it never needed the event either.
     #
     # ⚠ ITS BACKEND HALF WAS §27's THIRD SHAPE — CREATION, not re-sourcing. The
     # entry read `0 of 2 values`, character for character what `task_type_kind`'s
