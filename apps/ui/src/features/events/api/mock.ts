@@ -11,10 +11,7 @@ import {
   MONEY_MEASURES,
 } from "@/lib/economic-query";
 import {
-  completeTotal,
-  incompleteTotal,
   measuresFor,
-  measuresWithNoRevenueResolved,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
 import { axisNameOf } from "@/lib/grouping-axis";
@@ -290,11 +287,9 @@ export async function getUsageAnalytics(
  * the window's total a floor.
  *
  * ⚠ **A BUCKET WHOSE EVERY EVENT IS UNPRICED STATES NO REVENUE (#537).** The
- * query sends no amount on the revenue or the margin where no piece of the
- * revenue resolved, and these seeds carry no subscription or supplied figure —
- * so every event unpriced IS nothing resolved, and `measuresFor` (which cannot
- * tell a free service's zero from nobody's) would hand the chart a zero floor
- * the server never sends.
+ * query sends no amount where no piece of the revenue resolved, and these seeds
+ * carry no subscription or supplied figure — so the pieces that resolved are
+ * exactly the events somebody priced, and `measuresFor` is told how many.
  */
 function measuresOver(
   events: MockEvent[],
@@ -302,20 +297,13 @@ function measuresOver(
   provider: number,
 ): EconomicMeasureScenario[] {
   const unpriced = countUnpriced(events);
-  if (unpriced > 0 && unpriced === events.length) {
-    const uncosted = countUnresolved(events);
-    return measuresWithNoRevenueResolved({
-      cost: uncosted > 0 ? incompleteTotal(provider, uncosted) : completeTotal(provider),
-      unpriced_event_count: unpriced,
-      events: events.length,
-    });
-  }
   return measuresFor({
     cost_micros: provider,
     revenue_micros: billed,
     events: events.length,
     unresolved_event_count: countUnresolved(events),
-    unpriced_event_count: countUnpriced(events),
+    unpriced_event_count: unpriced,
+    resolved_revenue_pieces: events.length - unpriced,
   });
 }
 

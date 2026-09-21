@@ -789,6 +789,18 @@ describe("the two revenue states #537 made reachable", () => {
     });
   });
 
+  // A zero revenue beside an unpriced count is two rows, and the mock says which.
+  it("composes a mock's facts as no amount only where it says nothing resolved", () => {
+    const facts = { cost_micros: 1, revenue_micros: 0, events: 2, unpriced_event_count: 1 };
+    const nothing = byMeasure(measuresFor({ ...facts, resolved_revenue_pieces: 0 }));
+    expect(nothing["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: null });
+    expect(nothing["gross_margin"]).toMatchObject({ status: "incomplete", amount_micros: null });
+    const free = byMeasure(measuresFor({ ...facts, resolved_revenue_pieces: 1 }));
+    expect(free["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: 0 });
+    const untold = byMeasure(measuresFor(facts));
+    expect(untold["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: 0 });
+  });
+
   it("refuses an absent revenue with nothing unpriced to explain it", () => {
     expect(() =>
       measuresWithNoRevenueResolved({ cost: completeTotal(1), unpriced_event_count: 0, events: 1 }),

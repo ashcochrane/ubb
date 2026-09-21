@@ -51,6 +51,15 @@ def total_revenue_micros(subscription_revenue, supplied_revenue, usage_revenue):
     a tenant-supplied figure into the Stripe subscription argument on the way
     in would put the two back in one number one layer earlier, which is the
     defect this slice exists to end rather than a shortcut around it.
+
+    ⚠ **A RESIDUAL #537 DID NOT REACH: THIS STILL ADDS THE SUPPLIED FIGURE TO
+    THE BILLED USAGE.** The one economic query makes a supplied figure the whole
+    revenue for the customer and period it covers and supersedes the priced
+    usage there; this alerting total, which decides `is_unprofitable`, sums the
+    three sources as it always did. The ruling was about the query, so a tenant
+    that prices its usage AND supplies its invoiced revenue is alerted on a
+    total the economic query would not state. Unowned; named here so the next
+    reader of this sum finds it.
     """
     return subscription_revenue + supplied_revenue + usage_revenue
 

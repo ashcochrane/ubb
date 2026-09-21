@@ -191,9 +191,11 @@ export interface MeasureFigure {
   readonly available_from: string | null;
 }
 
-/** The states under which a measure states a figure at all — whole under the
- *  first, a bound under the second. Under every other state the wire's number,
- *  where it carries one, is not the answer. */
+/** The states under which a measure CAN state a figure — whole under the
+ *  first, a bound under the second, and under the second none at all where no
+ *  piece of a revenue resolved (#537), so the value is still read, never
+ *  assumed. Under every other state the wire's number, where it carries one,
+ *  is not the answer. */
 export const FIGURE_STATES = [
   "known",
   "incomplete",
@@ -235,8 +237,11 @@ export const MEASURE_STATES_WORST_LAST = [
   "unavailable_outside_retention_horizon",
 ] as const satisfies readonly MeasureStatus[];
 
-/** Whether a state states a figure. A state this build has never seen does
- *  not: the console cannot vouch for a number whose meaning it cannot read. */
+/** Whether a state can state a figure — whether the value beside it is worth
+ *  reading at all. It may still be null under `incomplete` (#537), which is
+ *  why `statedValue` returns the value rather than this. A state this build
+ *  has never seen states none: the console cannot vouch for a number whose
+ *  meaning it cannot read. */
 export function statesAFigure(status: string): boolean {
   return (FIGURE_STATES as readonly string[]).includes(status);
 }
@@ -376,6 +381,14 @@ function foldRank(status: string): number {
  * states one; and a row that carried no figure for the measure at all is a gap
  * in the sum, which makes the sum unstateable rather than smaller.
  *
+ * ⚠ **SO IS A ROW WHOSE STATE COULD STATE A FIGURE AND DID NOT (#537).** Under
+ * `incomplete` a revenue with no resolved piece — and the margin over it —
+ * carries no amount. Adding it as zero would make a margin fold wrong in an
+ * unknown direction (that row's margin is not nothing, it is minus a cost this
+ * fold never sees) and would turn a revenue nobody priced back into the zero
+ * floor #537 removed. One rule for every measure, because a per-measure rule
+ * here would be the server's arithmetic copied into the console.
+ *
  * Over no rows at all it is a measured zero — the same answer the query gives an
  * ungrouped question over an empty window.
  */
@@ -390,13 +403,15 @@ export function combineFigures(
     null,
   );
   const status = worst?.status ?? "known";
-  const whole = present.length === figures.length && statesAFigure(status);
+  const stated = present.map(statedValue);
+  const whole =
+    present.length === figures.length &&
+    statesAFigure(status) &&
+    stated.every((value) => value !== null);
   return {
     measure,
     status,
-    value: whole
-      ? present.reduce((sum, f) => sum + (statedValue(f) ?? 0), 0)
-      : null,
+    value: whole ? stated.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null,
     unresolved_event_count: present.reduce((n, f) => n + f.unresolved_event_count, 0),
     unpriced_event_count: present.reduce((n, f) => n + f.unpriced_event_count, 0),
     available_from:

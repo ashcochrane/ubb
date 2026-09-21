@@ -20,6 +20,7 @@ import {
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
 import {
+  combineFigures,
   CUSTOMER_REVENUE,
   FIGURES_KEY,
   figureOn,
@@ -116,6 +117,22 @@ describe("incomplete with no revenue resolved — no amount, and a hover naming 
       expect(hover).not.toMatch(/total|higher|lower/);
     },
   );
+
+  // The billing window and the dashboard's "Other" bar fold rows through
+  // `combineFigures`; a folded row with no amount leaves the fold with none.
+  it("draws a fold over a row with no amount as no amount, never the others' sum", () => {
+    const priced = rowOf(knownMeasures({ cost_micros: 1_000_000, revenue_micros: 3_000_000, events: 1 }));
+    const folded = combineFigures(
+      GROSS_MARGIN,
+      [figureOn(priced, GROSS_MARGIN), figureOn(rowOf(measures), GROSS_MARGIN)],
+    );
+    const { container } = render(<MeasureValue figure={folded} currency="usd" />);
+    expect(container.textContent).toBe("—");
+    expect(container.textContent).not.toMatch(/\$/);
+    expect(container.querySelector("[title]")?.getAttribute("title")).toMatch(
+      /^No margin can be stated here/,
+    );
+  });
 
   it("carries the margin's absence into its share rather than a 0%", () => {
     const row = rowOf(measures);

@@ -166,18 +166,22 @@ function boundNote(figure: MeasureFigure): string | null {
  * out of", and no figure for "the true margin is higher" to be higher than;
  * `boundNote` says both, and was right only while every bound had an amount.
  * The count is still worth saying: it is why nothing can be stated.
+ *
+ * ⚠ **IT DOES NOT SAY "NONE OF IT RESOLVED"**, because the same figure reaches
+ * here from `combineFigures`, where one folded row with no amount leaves the
+ * fold with none while its other rows resolved perfectly well.
  */
 function noAmountNote(figure: MeasureFigure): string {
   const unpriced = figure.unpriced_event_count;
   const cause =
     unpriced > 0 ? ` — ${eventsHave(unpriced)} a customer price UBB could not resolve` : "";
   if (figure.measure === GROSS_MARGIN) {
-    return `No margin can be stated, because no revenue can be${cause}.`;
+    return `No margin can be stated here, because no revenue can be${cause}.`;
   }
   if (figure.measure === CUSTOMER_REVENUE) {
-    return `No revenue can be stated, because none of it has resolved${cause}.`;
+    return `No revenue can be stated here${cause}.`;
   }
-  return "No figure can be stated, because none of its inputs has resolved.";
+  return "No figure can be stated here.";
 }
 
 /**

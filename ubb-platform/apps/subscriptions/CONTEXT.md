@@ -91,11 +91,13 @@ What a tenant that bills its customers somewhere other than UBB says it earned f
 over one period, stated per period with its own span, its own recognition method and its own source
 reference. UBB neither created nor invoiced it and **no surface may present it as a Charge**; it is
 admitted so that margin can be computed at the scope it was supplied at (#153 §3.2). It reaches the
-margin under its own name, never the subscription figure's. **It is the WHOLE revenue for the
-customer and period it covers — authoritative, never added to** (#537): revenue derived from priced
-usage inside that period is superseded, and unpriced usage there does not make the revenue
-incomplete. The period is the record's own span whatever basis is asked for; a figure with no
-period end covers none. A Stripe subscription supersedes nothing.
+margin under its own name, never the subscription figure's. **In the one economic query it is the
+WHOLE revenue for the customer and period it covers — authoritative, never added to** (#537):
+revenue derived from priced usage inside that period is superseded, and unpriced usage there does
+not make the revenue incomplete. The period is the record's own span whatever basis is asked for; a
+figure with no period end covers none. A Stripe subscription supersedes nothing. ⚠ The alerting
+record's total (`economics/services.py:total_revenue_micros`) still ADDS it to billed usage — a
+residual #537 did not reach, because its ruling is about the query.
 (`apps/subscriptions/economics/models.py:TenantSuppliedRevenue`,
 `apps/subscriptions/queries.py:supplied_revenue_covered_periods`)
 

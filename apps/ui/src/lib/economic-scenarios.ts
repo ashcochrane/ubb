@@ -666,6 +666,13 @@ export function incompleteMeasures(terms: MeasureTerms): EconomicMeasureScenario
  * writes ONLY where a tenant-supplied figure covers the unpriced usage (#537) —
  * a fact this composer is not told, so that row is
  * `revenueSuppliedOverUnpricedUsage`'s and never this one's.
+ *
+ * ⚠ **AND WHETHER ANY PIECE OF THE REVENUE RESOLVED, WHERE THE MOCK KNOWS IT**
+ * (#537). A zero revenue beside an unpriced count is two different rows — a
+ * free service beside one nobody priced (a bound of zero), or nothing resolved
+ * at all (no amount) — and the amount cannot tell them apart. A mock that
+ * counts its seeds says `resolved_revenue_pieces`; zero composes
+ * `measuresWithNoRevenueResolved`, and leaving it out keeps the bound.
  */
 export function measuresFor(facts: {
   readonly cost_micros: number;
@@ -673,10 +680,18 @@ export function measuresFor(facts: {
   readonly events: number;
   readonly unresolved_event_count?: number;
   readonly unpriced_event_count?: number;
+  readonly resolved_revenue_pieces?: number;
 }): EconomicMeasureScenario[] {
   const uncosted = facts.unresolved_event_count ?? 0;
   const unpriced = facts.unpriced_event_count ?? 0;
   if (uncosted === 0 && unpriced === 0) return knownMeasures(facts);
+  if (unpriced > 0 && facts.resolved_revenue_pieces === 0) {
+    return measuresWithNoRevenueResolved({
+      cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
+      unpriced_event_count: unpriced,
+      events: facts.events,
+    });
+  }
   return incompleteMeasures({
     cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
     revenue: unpriced > 0
@@ -712,27 +727,21 @@ export function measuresWithNoRevenueResolved(terms: {
       "measuresWithNoRevenueResolved needs the unpriced events that leave nothing resolved",
     );
   }
-  const costStatus = costStatusOf(terms.cost);
-  return [
+  // The same four measures `measuresFrom` builds, with the two amounts the
+  // query does not send taken away — so the states and the slots cannot drift
+  // from every other composer's.
+  return measuresFrom(
     {
-      measure: "supplier_cogs",
-      amount_micros: terms.cost.micros,
-      status: costStatus,
-      unresolved_event_count: terms.cost.unresolved_event_count,
+      cost: terms.cost,
+      revenue: incompletePriceTotal(0, terms.unpriced_event_count),
+      events: terms.events,
     },
-    {
-      measure: "customer_revenue",
-      amount_micros: null,
-      status: "incomplete",
-      unpriced_event_count: terms.unpriced_event_count,
-    },
-    {
-      measure: "gross_margin",
-      amount_micros: null,
-      status: marginStatusOf(costStatus, "incomplete"),
-    },
-    { measure: "recorded_events", event_count: terms.events, status: "known" },
-  ];
+    "incomplete",
+  ).map((entry) =>
+    entry.measure === "customer_revenue" || entry.measure === "gross_margin"
+      ? { ...entry, amount_micros: null }
+      : entry,
+  );
 }
 
 /**

@@ -230,7 +230,8 @@ class AnAbsentValueSaysWhichOfTwoThingsItMeansTest(TestCase):
     def test_the_two_absences_are_two_rows_with_two_statuses(self):
         answer = economics(self.tenant.id, measures=MONEY,
                            group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]), covered_periods=(), contributed_revenue=())
+                                                   end_date=WINDOW[1]),
+                           covered_periods=(), contributed_revenue=())
         seen = {(row[GROUPED_VALUE_KEY][0], row[GROUPED_VALUE_STATUS_KEY][0])
                 for row in answer["rows"]}
         assert seen == {("openai", VALUE_RECORDED),
@@ -243,7 +244,8 @@ class AnAbsentValueSaysWhichOfTwoThingsItMeansTest(TestCase):
         those rows left the answer without saying so."""
         answer = economics(self.tenant.id, measures=MONEY,
                            group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]), covered_periods=(), contributed_revenue=())
+                                                   end_date=WINDOW[1]),
+                           covered_periods=(), contributed_revenue=())
         grouped = sum(measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                                  row=index)["amount_micros"]
                       for index in range(len(answer["rows"])))
@@ -465,7 +467,8 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
              "finest_bucket": BUCKET_DAY}]
         answer = economics(self.tenant.id, measures=MONEY,
                            group_by=[CUSTOMER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]), covered_periods=(), contributed_revenue=contributed)
+                                                   end_date=WINDOW[1]),
+                           covered_periods=(), contributed_revenue=contributed)
         rows = {row[GROUPED_VALUE_KEY][0]: index
                 for index, row in enumerate(answer["rows"])}
         assert str(quiet.id) in rows
@@ -480,7 +483,8 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
         A tenant with no revenue outside its postings gets one at every grain."""
         answer = economics(self.tenant.id, measures=MONEY,
                            group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]), covered_periods=(), contributed_revenue=())
+                                                   end_date=WINDOW[1]),
+                           covered_periods=(), contributed_revenue=())
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
                           )["status"] == MEASURE_STATUS_KNOWN
 
@@ -546,7 +550,8 @@ class ForgettingTheContributedRevenueIsRefusedTest(TestCase):
         """The other half, and it is a different rule: a row of a grouped answer
         IS a group, so there is none to answer with."""
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], covered_periods=(), contributed_revenue=())
+                           group_by=[PROVIDER_AXIS],
+                           covered_periods=(), contributed_revenue=())
         assert answer["rows"] == []
 
 
@@ -1044,7 +1049,8 @@ class WhichClockGovernsARowTest(TestCase):
         cost nothing.
         """
         answer = economics(self.tenant.id, as_of=self.ASKED_ON,
-                           measures=ALL_FOUR, covered_periods=(), contributed_revenue=(),
+                           measures=ALL_FOUR,
+                           covered_periods=(), contributed_revenue=(),
                            filters=EconomicFilters(
                                start_date=date(2015, 1, 1),
                                end_date=date(2015, 6, 1)))

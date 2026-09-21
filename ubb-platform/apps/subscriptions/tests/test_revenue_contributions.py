@@ -36,8 +36,8 @@ SUPPLIED = 3_100_000
 
 
 class _ATenantWithTwoCustomers(TestCase):
-    """The tenant both read contracts below are asked about, and the one way a
-    case here supplies a figure for it."""
+    """The tenant both read contracts below are asked about, and the one way
+    each case here gives it a supplied figure or a subscription."""
 
     @classmethod
     def setUpTestData(cls):
@@ -56,9 +56,6 @@ class _ATenantWithTwoCustomers(TestCase):
             period_end=period_end, recognition_method=method,
             source_reference=reference)
 
-
-class RevenueContributionsTest(_ATenantWithTwoCustomers):
-
     def a_subscription(self, customer=None, *, amount=31_000_000,
                        status="active", interval="month"):
         now = timezone.now()
@@ -69,6 +66,9 @@ class RevenueContributionsTest(_ATenantWithTwoCustomers):
             quantity=1, currency="usd", interval=interval,
             current_period_start=now, current_period_end=now,
             last_synced_at=now)
+
+
+class RevenueContributionsTest(_ATenantWithTwoCustomers):
 
     def test_each_row_says_where_it_came_from(self):
         self.a_supplied_figure(method=RECOGNITION_METHOD_ON_RECEIPT)
@@ -277,13 +277,7 @@ class SuppliedRevenueCoveredPeriodsTest(_ATenantWithTwoCustomers):
     def test_a_subscription_covers_nothing(self):
         """Stripe subscription revenue is outside #537's ruling: it is added
         to what UBB priced, as it always was, and supersedes none of it."""
-        now = timezone.now()
-        StripeSubscription.objects.create(
-            tenant=self.tenant, customer=self.customer,
-            stripe_subscription_id="sub_1", stripe_product_name="Pro",
-            status="active", amount_micros=31_000_000, quantity=1,
-            currency="usd", interval="month", current_period_start=now,
-            current_period_end=now, last_synced_at=now)
+        self.a_subscription()
         assert self.covered() == []
 
     def test_narrowing_to_one_customer_leaves_the_others_out(self):

@@ -1884,7 +1884,9 @@ MEASURE_STATES_WITH_NO_FIGURE = (
 #: periods answers one that counts a tenant's revenue twice (#537). Asking
 #: whether an argument is PRESENT rather than whether it is truthy is also what
 #: stops an empty list, a zero and a `False` from all becoming the same request.
-_NOTHING_WAS_CONTRIBUTED = object()
+#: Named for what it means to BOTH — the other product's facts were never handed
+#: over — since #537 gave it a second argument to stand in for.
+_NOT_HANDED_OVER = object()
 
 class EconomicFilters(NamedTuple):
     """What one economic question is asked ABOUT, as one value.
@@ -2034,8 +2036,8 @@ def _keeps_the_event_type_constant(axes) -> bool:
 
 def economics(tenant_id, *, measures, group_by=(), bucket=None,
               filters=None, basis=None, as_of=None,
-              contributed_revenue=_NOTHING_WAS_CONTRIBUTED,
-              covered_periods=_NOTHING_WAS_CONTRIBUTED) -> dict:
+              contributed_revenue=_NOT_HANDED_OVER,
+              covered_periods=_NOT_HANDED_OVER) -> dict:
     """What this tenant's AI work cost, what it earned, and the difference.
 
     ONE definition of two numbers, answered over any filters, at any declared
@@ -2240,21 +2242,21 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
             f"{', '.join(ECONOMIC_BUCKETS)}")
     wants_revenue = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                           ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
-    if wants_revenue and contributed_revenue is _NOTHING_WAS_CONTRIBUTED:
+    if wants_revenue and contributed_revenue is _NOT_HANDED_OVER:
         # ⚠ NOT a refusal of the QUESTION — the question is fine and the caller
         # is the one that is wrong — so it raises the bare `ValueError` and the
         # composition layer does NOT translate it into a tenant-facing 422.
         raise ValueError(
             "a revenue measure needs the revenue rows this product does not "
             "hold; pass contributed_revenue=() to state that there are none")
-    if wants_revenue and covered_periods is _NOTHING_WAS_CONTRIBUTED:
+    if wants_revenue and covered_periods is _NOT_HANDED_OVER:
         # The same bare `ValueError` for the same reason: the caller is wrong.
         raise ValueError(
             "a revenue measure needs the periods a tenant-supplied figure "
             "covers; pass covered_periods=() to state that there are none")
-    contributions = ([] if contributed_revenue is _NOTHING_WAS_CONTRIBUTED
+    contributions = ([] if contributed_revenue is _NOT_HANDED_OVER
                      else list(contributed_revenue))
-    covered = ([] if covered_periods is _NOTHING_WAS_CONTRIBUTED
+    covered = ([] if covered_periods is _NOT_HANDED_OVER
                else list(covered_periods))
 
     plans = [_axis_plan(tenant_id, word) for word in axes]

@@ -60,7 +60,8 @@ def tenant_wide_money(tenant_id, *, start_date, end_date):
     from apps.metering.queries import EconomicFilters, economics
 
     answer = economics(
-        str(tenant_id), measures=MONEY_MEASURES, covered_periods=(), contributed_revenue=(),
+        str(tenant_id), measures=MONEY_MEASURES,
+        covered_periods=(), contributed_revenue=(),
         filters=EconomicFilters(start_date=start_date, end_date=end_date))
     assert len(answer["rows"]) == 1, answer["rows"]
     return {entry["measure"]: entry for entry in answer["rows"][0]["measures"]}

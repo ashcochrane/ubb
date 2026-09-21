@@ -33,6 +33,7 @@ from apps.platform.work.models import Task
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS
 from apps.subscriptions.models import StripeSubscription
+from apps.subscriptions.tests._helpers import a_supplied_figure
 from api.v1.schemas import EconomicMeasureOut, EconomicsOut, MeasureStatus
 # The route, the tenant it takes and the two readers of its answer moved to the
 # shared helpers when #502 gave them a second module to serve.
@@ -149,6 +150,18 @@ FIRST_CUSTOMER = (1_000_000 + 1_000_000 + SUBSCRIPTION_FOR_MARCH,
 SECOND_CUSTOMER = (SUPPLIED_FOR_MARCH, 250_000)
 
 
+def a_monthly_subscription(tenant, customer):
+    """An active monthly Stripe subscription that accrues
+    `SUBSCRIPTION_FOR_MARCH` over the month every fixture here records into."""
+    return StripeSubscription.objects.create(
+        tenant=tenant, customer=customer,
+        stripe_subscription_id=f"sub_{customer.external_id}",
+        stripe_product_name="Pro", status="active",
+        amount_micros=SUBSCRIPTION_FOR_MARCH, quantity=1, currency="usd",
+        interval="month", current_period_start=MARCH,
+        current_period_end=MARCH, last_synced_at=MARCH)
+
+
 @pytest.mark.django_db
 class TestOneRequestAnswersWhatFiveDefinitionsAnsweredBefore:
     """AC 1: the tenant-wide totals the tenant-wide margin route returned, and
@@ -170,13 +183,8 @@ class TestOneRequestAnswersWhatFiveDefinitionsAnsweredBefore:
         a_posting(self.tenant, self.one, "i1")
         a_posting(self.tenant, self.one, "i2", provider="anthropic")
         a_posting(self.tenant, self.two, "i3", provider_cost_micros=250_000,
-                  billed_cost_micros=600_000)
-        StripeSubscription.objects.create(
-            tenant=self.tenant, customer=self.one,
-            stripe_subscription_id="sub_1", stripe_product_name="Pro",
-            status="active", amount_micros=31_000_000, quantity=1,
-            currency="usd", interval="month", current_period_start=MARCH,
-            current_period_end=MARCH, last_synced_at=MARCH)
+                  billed_cost_micros=SUPERSEDED_USAGE_REVENUE)
+        a_monthly_subscription(self.tenant, self.one)
         TenantSuppliedRevenue.objects.create(
             tenant=self.tenant, customer=self.two, amount_micros=3_100_000,
             currency="usd", period_start=OPENS, period_end=NEXT,
@@ -506,12 +514,7 @@ class TestUsageNobodyPricedIsNeverAKnownFigure:
         revenue that resolved, so the row states a bound — and, being outside
         #537's ruling, it supersedes and excuses nothing, so a bound is what
         it stays."""
-        StripeSubscription.objects.create(
-            tenant=self.tenant, customer=self.customer,
-            stripe_subscription_id="sub_1", stripe_product_name="Pro",
-            status="active", amount_micros=SUBSCRIPTION_FOR_MARCH, quantity=1,
-            currency="usd", interval="month", current_period_start=MARCH,
-            current_period_end=MARCH, last_synced_at=MARCH)
+        a_monthly_subscription(self.tenant, self.customer)
         body = ask(self.key, measures=MONEY, **self.window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
         assert (revenue["amount_micros"], revenue["status"],
@@ -588,11 +591,13 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
     def supply(self, amount_micros=SUPPLIED_FOR_MARCH, *, opens=OPENS,
                closes=NEXT, method=RECOGNITION_METHOD_STRAIGHT_LINE,
                customer=None):
-        return TenantSuppliedRevenue.objects.create(
+        """One supplied figure, through the shared defaults, over March
+        unless a case says otherwise."""
+        return TenantSuppliedRevenue.objects.create(**a_supplied_figure(
             tenant=self.tenant, customer=customer or self.customer,
-            amount_micros=amount_micros, currency="usd", period_start=opens,
-            period_end=closes, recognition_method=method,
-            source_reference=f"inv-{opens.isoformat()}")
+            amount_micros=amount_micros, period_start=opens, period_end=closes,
+            recognition_method=method,
+            source_reference=f"inv-{opens.isoformat()}"))
 
     def unpriced(self, key, **overrides):
         return a_posting(self.tenant, self.customer, key,
