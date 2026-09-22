@@ -52,19 +52,60 @@ def total_revenue_micros(subscription_revenue, supplied_revenue, usage_revenue):
     in would put the two back in one number one layer earlier, which is the
     defect this slice exists to end rather than a shortcut around it.
 
-    ⚠ **A RESIDUAL #537 DID NOT REACH: THIS STILL ADDS THE SUPPLIED FIGURE TO
-    THE BILLED USAGE.** The one economic query makes a supplied figure the whole
-    revenue for the customer and period it covers and supersedes the priced
-    usage there; this alerting total, which decides `is_unprofitable`, sums the
-    three sources as it always did. The ruling was about the query, so a tenant
-    that prices its usage AND supplies its invoiced revenue is alerted on a
-    total the economic query would not state. Unowned; named here so the next
-    reader of this sum finds it.
+    ⚠ **`usage_revenue` IS THE BILLED USAGE OUTSIDE EVERY SUPPLIED FIGURE'S
+    COVERED PERIOD, NEVER ALL OF IT** (#537). A supplied figure is the whole
+    revenue for the customer and period it covers, so the usage priced inside
+    that period is not added to it — the one economic query's rule, and the
+    callers here pass `_usage_revenue_outside_cover` so the alerting record and
+    the live margin state the same revenue that query does. Adding the supplied
+    figure to all of the usage was one economic truth for the analytics and a
+    second one for the alert that decides `is_unprofitable`.
     """
     return subscription_revenue + supplied_revenue + usage_revenue
 
 
-def _compose(subscription_revenue, supplied_revenue, usage_billed, provider_cost):
+def _usage_revenue_outside_cover(tenant_id, customer_id, start_date, end_date,
+                                 *, billed_over_window):
+    """The billed usage over ``[start_date, end_date)`` that no supplied figure
+    supersedes (#537).
+
+    ``billed_over_window`` is the caller's own total for the whole window, and
+    it is the answer wherever no supplied figure covers any of the window —
+    so a customer with no supplied revenue is priced exactly as before, from
+    exactly the source it was before (the accumulator, for the snapshot).
+    Where a figure does cover part of it, the usage is priced over the
+    STRETCHES THE FIGURES LEAVE, from the posting ledger, through metering's
+    read contract: one source for the whole answer, rather than a posting
+    total subtracted from an accumulator that may not have caught up.
+
+    The spans are the records' own, whatever basis the revenue beside them is
+    stated under — the same `supplied_revenue_covered_periods` the one economic
+    query is handed — and overlapping figures cover their union once.
+    """
+    from apps.metering.queries import get_customer_cost_totals
+    from apps.subscriptions.queries import supplied_revenue_covered_periods
+
+    spans = sorted(
+        (max(period["period_start"], start_date),
+         min(period["period_end"], end_date))
+        for period in supplied_revenue_covered_periods(
+            tenant_id, opens=start_date, closes=end_date,
+            customer_ids=[customer_id]))
+    if not spans:
+        return billed_over_window
+    gaps, cursor = [], start_date
+    for opens, closes in spans:
+        if opens > cursor:
+            gaps.append((cursor, opens))
+        cursor = max(cursor, closes)
+    if cursor < end_date:
+        gaps.append((cursor, end_date))
+    return sum(get_customer_cost_totals(tenant_id, customer_id, opens,
+                                        closes)["billed_cost_micros"]
+               for opens, closes in gaps)
+
+
+def _compose(subscription_revenue, supplied_revenue, usage_revenue, provider_cost):
     """The three revenue sources added up, and the margin that falls out.
 
     ⚠ **THE BILLED USAGE IS REVENUE FOR EVERY TENANT, AND THE BRANCH THAT USED
@@ -84,8 +125,12 @@ def _compose(subscription_revenue, supplied_revenue, usage_billed, provider_cost
     never going to carry customer revenue is `not_applicable` and contributes
     nothing either, with no caveat, because nothing is missing from it. None of
     that is a fact about a billing mode, and none of it is decided here.
+
+    ⚠ **EXCEPT INSIDE A SUPPLIED FIGURE'S COVERED PERIOD** (#537): there the
+    figure is the revenue, so ``usage_revenue`` arrives as the billed usage
+    OUTSIDE every covered period (`_usage_revenue_outside_cover`), never as
+    the whole billed total.
     """
-    usage_revenue = usage_billed
     total_revenue = total_revenue_micros(
         subscription_revenue, supplied_revenue, usage_revenue)
     margin = total_revenue - provider_cost
@@ -112,7 +157,10 @@ class MarginService:
         supplied_revenue = SuppliedRevenueService.attributed_total(
             tenant_id, customer_id, start_date, end_date, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
-            subscription_revenue, supplied_revenue, costs["billed_cost_micros"],
+            subscription_revenue, supplied_revenue,
+            _usage_revenue_outside_cover(
+                tenant_id, customer_id, start_date, end_date,
+                billed_over_window=costs["billed_cost_micros"]),
             costs["provider_cost_micros"])
         return {
             "customer_id": str(customer_id),
@@ -181,7 +229,11 @@ class MarginService:
         supplied_revenue = SuppliedRevenueService.attributed_total(
             tenant_id, customer_id, period_start, period_end, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
-            subscription_revenue, supplied_revenue, usage_billed, provider_cost)
+            subscription_revenue, supplied_revenue,
+            _usage_revenue_outside_cover(
+                tenant_id, customer_id, period_start, period_end,
+                billed_over_window=usage_billed),
+            provider_cost)
         econ, _ = CustomerEconomics.objects.update_or_create(
             tenant_id=tenant_id, customer_id=customer_id, period_start=period_start,
             defaults={

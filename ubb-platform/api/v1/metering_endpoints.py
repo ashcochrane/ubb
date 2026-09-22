@@ -2057,7 +2057,11 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     declares: `recorded` places each amount whole on the day its record opens
     and is the default, `recognised` spreads it by the record's own method. It
     moves where a supplied amount lands and never which usage the record
-    covers. The answer always states which it served.
+    covers. So because `recorded` attributes the whole supplied figure to the
+    day its period opens, windows elsewhere in its covered period may contain
+    known zero recorded revenue — and a known negative margin over the usage in
+    them. Use `recognised` when analysing revenue attributable across the
+    covered period. The answer always states which it served.
 
     **How far back you may ask, and how much of it per request — the two
     numbers, together, because they do not compose on their own.** UBB keeps the

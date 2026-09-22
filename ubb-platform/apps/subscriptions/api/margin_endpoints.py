@@ -226,7 +226,9 @@ def record_supplied_revenue(request, customer_id: UUID,
     than a span: such a figure covers no period, so it is counted beside the
     usage in the window it lands in rather than instead of it. Recording again
     for the same customer, `period_start` and `source_reference` re-states the
-    figure; a different `source_reference` records a second figure beside it.
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
     """
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)

@@ -917,6 +917,16 @@ No field, route or call changes. Two answers of `query_economics()` /
   usage: it was being counted twice. The period is the record's own span whichever `basis` you
   ask for. A figure with no `period_end` covers no period and is added beside the usage as
   before, and Stripe subscription revenue is unchanged.
+- **Under `recorded`, a window inside a covered period can read a known zero.** `recorded`
+  attributes the whole supplied figure to the day its period opens, so windows elsewhere in its
+  covered period may contain known zero recorded revenue, and a known negative margin over the
+  usage in them. Use `recognised` when analysing revenue attributable across the covered period.
+- **Overlapping figures for one customer are two facts.** Their amounts add, each by its own span,
+  and the usage inside any of them is superseded once. Restating a figure means recording it again
+  with the same `period_start` and `source_reference`.
+- **The unprofitable alert and the business margin tree now agree with this query.** Both used to
+  add a supplied figure to the usage priced inside its period; `customer.unprofitable` was
+  evaluated on that doubled total.
 
 ---
 

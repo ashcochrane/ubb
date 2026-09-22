@@ -1096,7 +1096,11 @@ RECOGNITION_METHOD_VALUES = frozenset({
 # nothing; `recognised` spreads it by the record's own `recognition_method`
 # across the span the record declares. Both are offered and every surface
 # serving either NAMES the one it served — a revenue figure whose basis is
-# unstated is the defect this concept exists to end.
+# unstated is the defect this concept exists to end. Because `recorded`
+# attributes the whole supplied figure to the day its period opens, windows
+# elsewhere in its covered period may contain known zero recorded revenue
+# (#537); use `recognised` when analysing revenue attributable across the
+# covered period.
 #
 # Declared in concepts/economics.yaml.
 

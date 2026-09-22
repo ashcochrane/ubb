@@ -30,8 +30,10 @@ from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
-from apps.subscriptions.economics.models import TenantSuppliedRevenue
-from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS
+from apps.subscriptions.economics.models import (
+    CustomerCostAccumulator, TenantSuppliedRevenue)
+from apps.subscriptions.economics.services import (
+    MARGIN_REVENUE_BASIS, MarginService)
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.tests._helpers import a_supplied_figure
 from api.v1.schemas import EconomicMeasureOut, EconomicsOut, MeasureStatus
@@ -750,6 +752,41 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
             2_000_000 + 3_000_000 + 5_000_000 + 1_000_000,
             MEASURE_STATUS_KNOWN)
 
+    def test_overlapping_figures_are_two_facts_and_supersede_the_usage_once(
+            self):
+        """⚠ THE OVERLAP INVARIANT, ASSERTED RATHER THAN ASSUMED (#537's review).
+
+        The record permits overlapping figures for one customer — its
+        uniqueness key is the period's OPENING day and the source reference —
+        and #495's record rule says what they mean: "two invoices covering one
+        month are two facts". So no precedence is invented here. Where figures
+        overlap, the revenue is the SUM of every figure covering the stretch,
+        each attributed by its own span, and the usage priced inside is
+        superseded ONCE, because what a set of figures covers is their union.
+        Restating one figure is a different act and lands on the same row: the
+        same opening day and source reference.
+
+        A covers March; B covers 15 March – 15 April. Priced usage on the 5th
+        (inside A only) and the 20th (inside both) is not added to either."""
+        for key, day in (("only-a", 5), ("both", 20)):
+            a_posting(self.tenant, self.customer, key,
+                      effective_at=datetime(2026, 3, day, 9, 30,
+                                            tzinfo=dt_timezone.utc))
+        self.supply()
+        self.supply(3_100_000, opens=date(2026, 3, 15),
+                    closes=date(2026, 4, 15))
+        for basis, march in (
+                # B opens inside March, so under `recorded` it lands whole.
+                (REVENUE_BASIS_RECORDED, 3_100_000 + 3_100_000),
+                # Under `recognised`, 17 of B's 31 days are March's.
+                (REVENUE_BASIS_RECOGNISED, 3_100_000 + 1_700_000)):
+            revenue = measure_of(
+                ask(self.key, measures=MONEY, basis=basis,
+                    **self.window).json(),
+                ANALYTICS_MEASURE_CUSTOMER_REVENUE)
+            assert (revenue["amount_micros"], revenue["status"]) == (
+                march, MEASURE_STATUS_KNOWN), basis
+
     def test_a_covered_part_is_resolved_wherever_its_amount_lands(self):
         """A figure covering 15 March to 15 April, asked about April, beside
         unpriced usage on either side of the 15th. The covered part is a
@@ -774,6 +811,71 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
                 amount, MEASURE_STATUS_INCOMPLETE, 2), basis
             assert measure_of(body, ANALYTICS_MEASURE_GROSS_MARGIN
                               )["amount_micros"] == amount - 800_000, basis
+
+    def _mirrored_into_the_alerting_accumulator(self, *postings):
+        """The monthly accumulator the alerting record snapshots from, holding
+        exactly these postings — the consumer of `usage.recorded` writes it in
+        production, and a fixture that left it empty would let the alerting
+        total agree with the query for the wrong reason (no usage at all)."""
+        CustomerCostAccumulator.objects.create(
+            tenant=self.tenant, customer=self.customer, period_start=OPENS,
+            period_end=NEXT,
+            total_provider_cost_micros=sum(p.provider_cost_micros
+                                           for p in postings),
+            total_billed_cost_micros=sum(p.billed_cost_micros
+                                         for p in postings),
+            event_count=len(postings))
+
+    def test_the_unprofitable_alert_states_the_same_revenue_as_the_query(self):
+        """ONE ECONOMIC TRUTH PER CUSTOMER AND PERIOD (#537's review).
+
+        The alerting record decides `is_unprofitable` and fires
+        `customer.unprofitable`; the live margin behind the business tree is
+        the same composition. Both used to ADD the supplied figure to the
+        priced usage this query supersedes — a customer the analytics call
+        £3,000 was alerted on as £3,500. Never £3,500, on any of the three."""
+        priced = a_posting(self.tenant, self.customer, "i1",
+                           billed_cost_micros=500_000_000)
+        self._mirrored_into_the_alerting_accumulator(priced)
+        self.supply(3_000_000_000)
+
+        body = ask(self.key, measures=MONEY, basis=REVENUE_BASIS_RECOGNISED,
+                   **self.window).json()
+        assert measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                          )["amount_micros"] == 3_000_000_000
+        snapshot = MarginService.snapshot_customer(
+            self.tenant.id, self.customer.id, OPENS, NEXT)
+        assert snapshot.total_revenue_micros == 3_000_000_000
+        assert snapshot.gross_margin_micros == 3_000_000_000 - 400_000
+        live = MarginService.compute_live(
+            self.tenant.id, self.customer.id, OPENS, NEXT)
+        assert live["total_revenue_micros"] == 3_000_000_000
+
+    def test_the_alert_supersedes_only_the_usage_the_figure_covers(self):
+        """A figure covering the second half of March: the alerting total
+        keeps the priced usage from before the 15th and supersedes the usage
+        after it — the query's rule, over the stretches the figure leaves."""
+        before = a_posting(self.tenant, self.customer, "before",
+                           billed_cost_micros=500_000_000)
+        inside = a_posting(self.tenant, self.customer, "inside",
+                           billed_cost_micros=200_000_000,
+                           effective_at=datetime(2026, 3, 20, 9, 30,
+                                                 tzinfo=dt_timezone.utc))
+        self._mirrored_into_the_alerting_accumulator(before, inside)
+        self.supply(1_700_000_000, opens=date(2026, 3, 15),
+                    method=RECOGNITION_METHOD_ON_RECEIPT)
+
+        body = ask(self.key, measures=MONEY, basis=REVENUE_BASIS_RECOGNISED,
+                   **self.window).json()
+        query_revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE
+                                   )["amount_micros"]
+        assert query_revenue == 1_700_000_000 + 500_000_000
+        assert MarginService.snapshot_customer(
+            self.tenant.id, self.customer.id, OPENS, NEXT
+        ).total_revenue_micros == query_revenue
+        assert MarginService.compute_live(
+            self.tenant.id, self.customer.id, OPENS, NEXT
+        )["total_revenue_micros"] == query_revenue
 
     def test_grouped_finer_than_the_figure_the_superseded_usage_is_not_placed(
             self):
