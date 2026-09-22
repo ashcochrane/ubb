@@ -212,7 +212,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
     declared = {rule.id: (rule.permanence, rule.files, len(rule.paths))
                 for rule in plan.exclusions}
     assert declared == {
-        "frozen-dated-documents": ("permanent", 133, 6),
+        # 133 -> 134 files and 6 -> 7 paths on the #194 register's line R3:
+        # `docs/research/**` admits #144's dated vendor survey, which carries
+        # five retired words as the record of the day and moves no ledger
+        # extent, because it had never reached `main` to be counted.
+        "frozen-dated-documents": ("permanent", 134, 7),
         # 214 → 218 in #351: four migrations for the nullable customer price
         # and the three accumulators that count what they could not price.
         # 218 → 219 in #352: the trigger holding the price pair's transitions.
