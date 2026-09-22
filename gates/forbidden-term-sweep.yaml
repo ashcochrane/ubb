@@ -92,10 +92,11 @@ exclusions:
 
   - id: frozen-dated-documents
     permanence: permanent
-    files: 133
+    files: 134
     paths:
       - docs/plans/**
       - docs/prototypes/**
+      - docs/research/**
       - docs/reviews/**
       - ubb-platform/docs/plans/**
       - apps/ui/docs/superpowers/plans/**
@@ -141,6 +142,21 @@ exclusions:
       is otherwise invisible, and a reader of slice 6's ledger would otherwise
       find one file fewer than the debt they were told about, with nothing to
       explain it.
+      THE DATED RESEARCH IS THE SAME ARTIFACT A THIRD TIME, admitted on the
+      #194 register's line R3 (2026-09-22) rather than on convenience.
+      `docs/research/2026-07-29-code-builder-prior-art.md` is #144's
+      primary-source survey of sixteen vendors, written on the day its filename
+      states, and cited by eight merged decision documents and by #184's spec.
+      It records what other platforms call things and what `main` was on
+      2026-07-29, so it carries five retired words across fourteen occurrences,
+      each one the record being accurate: rewriting a vendor's own vocabulary
+      out of a survey of that vendor would falsify the survey. WHAT THIS
+      WIDENING COSTS IS NOTHING ON THE LEDGER, and that is stated rather than
+      left to be inferred: the file had never reached `main`, so no entry ever
+      counted it and no extent moves. The directory is admitted whole because
+      research in this repository is dated by its filename in the same way the
+      plans are; a living document placed under it would be misfiled, and the
+      place to catch that is review, as it is for the plans.
 
   - id: historical-migrations
     permanence: until_slice_8

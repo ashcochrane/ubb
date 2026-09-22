@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,900 of 2,332 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,900 of 2,333 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2598,6 +2598,14 @@ measurement_key:
     # the build took 1,899 of 2,331, and the `/code-review` pass moved the
     # table's past-horizon case into a sibling file, because #507's severance
     # guard holds the table's own test to importing the component alone.
+    #
+    # 2026-09-22, the #194 register's line R3 (#144's dated research reaches
+    # `main`): 1,900 of 2,332 -> 1,900 of 2,333 tracked files (`units` 44
+    # files / 122 occurrences, UNMOVED). ONE file arrived and it is EXCLUDED —
+    # `frozen-dated-documents` 133 -> 134 — so the swept set is the same 1,900
+    # files and only the denominator moves. `units` is therefore unmoved by
+    # construction rather than by a second take: the measure is taken over the
+    # swept set, and not one of its files changed.
 
     - term: units
       retired_as: >-
