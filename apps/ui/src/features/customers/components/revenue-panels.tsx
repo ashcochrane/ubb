@@ -75,6 +75,19 @@ export const SUPPLIED_REVENUE_TITLE = "Revenue you supplied";
 export const STATE_REVENUE_TITLE = "State what you earned";
 
 /**
+ * What the figure IS, said where it is written (#537).
+ *
+ * ⚠ **THE WHOLE REVENUE, NOT AN ADDITION.** The owner's ruling on claim 9: a
+ * supplied figure is the revenue for the customer and period it covers, and
+ * the economic query replaces what UBB priced for that customer there rather
+ * than adding the two. A tenant that also prices usage in UBB and read this
+ * form as "top up what UBB priced" would enter a figure short by exactly that.
+ */
+export const STATE_REVENUE_DESCRIPTION =
+  "For a customer you bill outside UBB: the whole revenue for that customer over the period, "
+  + "not an addition to what UBB priced. One figure per period, with the reference it came from.";
+
+/**
  * The answer where UBB is stating no supplied revenue, said once so both halves
  * of it agree.
  *
@@ -362,7 +375,7 @@ function StateRevenuePanel({ customerId }: { customerId: string }) {
   return (
     <Section
       title={STATE_REVENUE_TITLE}
-      description="For a customer you bill outside UBB. One figure per period, with the reference it came from."
+      description={STATE_REVENUE_DESCRIPTION}
     >
       <form onSubmit={(event) => void submit(event)} className="space-y-3">
         <fieldset disabled={!isAdmin} className="space-y-3">

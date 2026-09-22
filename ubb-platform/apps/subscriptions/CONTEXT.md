@@ -91,13 +91,23 @@ What a tenant that bills its customers somewhere other than UBB says it earned f
 over one period, stated per period with its own span, its own recognition method and its own source
 reference. UBB neither created nor invoiced it and **no surface may present it as a Charge**; it is
 admitted so that margin can be computed at the scope it was supplied at (#153 §3.2). It reaches the
-margin under its own name, never the subscription figure's.
-(`apps/subscriptions/economics/models.py:TenantSuppliedRevenue`)
+margin under its own name, never the subscription figure's. **It is the WHOLE revenue for the
+customer and period it covers — authoritative, never added to** (#537): revenue derived from priced
+usage inside that period is superseded, and unpriced usage there does not make the revenue
+incomplete — in the one economic query, and in the alerting record and live margin that
+`economics/services.py` composes, so the analytics and `is_unprofitable` state one revenue. The
+period is the record's own span whatever basis is asked for; a figure with no period end covers
+none. Figures that overlap are two facts: their amounts add and the usage is superseded once. A
+Stripe subscription supersedes nothing.
+(`apps/subscriptions/economics/models.py:TenantSuppliedRevenue`,
+`apps/subscriptions/queries.py:supplied_revenue_covered_periods`)
 
 **Recorded vs recognised**:
 The two labelled views of a supplied figure. **Recorded** places the whole amount on the day its
 record's period opens and is the default every surface falls back to — it invents nothing.
 **Recognised** spreads it by the record's own recognition method, and only ever along time.
+So under **recorded**, windows elsewhere in a figure's covered period may contain known zero
+recorded revenue (#537); **recognised** is the view for revenue attributable across the period.
 (`apps/subscriptions/economics/revenue.py:SuppliedRevenueService`)
 
 **Unprofitable / provider-cost spike**:

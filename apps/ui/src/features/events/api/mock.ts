@@ -285,18 +285,25 @@ export async function getUsageAnalytics(
  * its day series hardcoded both counts to zero, so a bucket holding an uncosted
  * event read as a whole figure in the chart while the strip above it called
  * the window's total a floor.
+ *
+ * ⚠ **A BUCKET WHOSE EVERY EVENT IS UNPRICED STATES NO REVENUE (#537).** The
+ * query sends no amount where no piece of the revenue resolved, and these seeds
+ * carry no subscription or supplied figure — so the pieces that resolved are
+ * exactly the events somebody priced, and `measuresFor` is told how many.
  */
 function measuresOver(
   events: MockEvent[],
   billed: number,
   provider: number,
 ): EconomicMeasureScenario[] {
+  const unpriced = countUnpriced(events);
   return measuresFor({
     cost_micros: provider,
     revenue_micros: billed,
     events: events.length,
     unresolved_event_count: countUnresolved(events),
-    unpriced_event_count: countUnpriced(events),
+    unpriced_event_count: unpriced,
+    resolved_revenue_pieces: events.length - unpriced,
   });
 }
 

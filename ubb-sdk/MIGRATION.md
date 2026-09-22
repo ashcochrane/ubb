@@ -897,6 +897,39 @@ accept either.
 
 ---
 
+## 19. Revenue nobody priced states no amount, and a supplied figure is the whole revenue for its period (slice 7, #537 — pre-live)
+
+No field, route or call changes. Two answers of `query_economics()` /
+`GET /api/v1/metering/analytics/economics` do.
+
+- **`amount_micros` can be `null` under `incomplete`.** Where no piece of a row's revenue
+  resolved — usage nobody priced, and no subscription or supplied figure beside it —
+  `customer_revenue` and `gross_margin` both read `incomplete` with `amount_micros: null`. They
+  used to read zero and minus the cost. A null means no figure can be stated; a number under
+  `incomplete` is a bound. A deliberate zero price is resolved, so a free service still reads
+  `known` zero. **Code that does arithmetic on every `incomplete` amount must check for `None`
+  first.**
+- **A figure you supplied is the whole revenue for the customer and period it covers.** Revenue
+  UBB derived from priced usage inside that period is no longer added to it, and usage nobody
+  priced there no longer makes the revenue `incomplete` — `unpriced_event_count` still counts it,
+  so a `known` revenue can now carry a non-zero count. If you priced usage in UBB AND supplied your
+  invoiced revenue for the same customer and month, that month's revenue falls by the priced
+  usage: it was being counted twice. The period is the record's own span whichever `basis` you
+  ask for. A figure with no `period_end` covers no period and is added beside the usage as
+  before, and Stripe subscription revenue is unchanged.
+- **Under `recorded`, a window inside a covered period can read a known zero.** `recorded`
+  attributes the whole supplied figure to the day its period opens, so windows elsewhere in its
+  covered period may contain known zero recorded revenue, and a known negative margin over the
+  usage in them. Use `recognised` when analysing revenue attributable across the covered period.
+- **Overlapping figures for one customer are two facts.** Their amounts add, each by its own span,
+  and the usage inside any of them is superseded once. Restating a figure means recording it again
+  with the same `period_start` and `source_reference`.
+- **The unprofitable alert and the business margin tree now agree with this query.** Both used to
+  add a supplied figure to the usage priced inside its period; `customer.unprofitable` was
+  evaluated on that doubled total.
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

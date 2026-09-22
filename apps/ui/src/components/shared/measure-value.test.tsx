@@ -14,10 +14,13 @@ import {
   knownMeasures,
   measureNotApplicable,
   measuresOutsideRetentionHorizon,
+  measuresWithNoRevenueResolved,
+  revenueSuppliedOverUnpricedUsage,
   revenueUnavailableAtThisGrain,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
 import {
+  combineFigures,
   CUSTOMER_REVENUE,
   FIGURES_KEY,
   figureOn,
@@ -86,6 +89,101 @@ describe("incomplete — renders as a floor with its count, never as a total", (
     const margin = drawn(measures, GROSS_MARGIN);
     expect(margin.querySelector("[data-measure-state]")?.getAttribute("data-measure-state")).toBe("incomplete");
     expect(margin.textContent).toBe("at most $5.00");
+  });
+});
+
+describe("incomplete with no revenue resolved — no amount, and a hover naming no total and no direction (#537)", () => {
+  // #153 §17.1's "cost £2,400, revenue £0, margin −£2,400", as the query now
+  // sends it: the revenue and the margin both `incomplete`, neither with an
+  // amount. It used to draw as "at least -$2,400.00".
+  const measures = measuresWithNoRevenueResolved({
+    cost: completeTotal(2_400_000_000),
+    unpriced_event_count: 5,
+    events: 5,
+  });
+
+  it.each([CUSTOMER_REVENUE, GROSS_MARGIN] as const)(
+    "draws %s as the absent marker, never a zero or a bound",
+    (measure) => {
+      const node = drawn(measures, measure);
+      expect(node.textContent).toBe("—");
+      expect(node.querySelector("[data-measure-state]")?.getAttribute("data-measure-state")).toBe(
+        "incomplete",
+      );
+      const hover = node.querySelector("[title]")?.getAttribute("title") ?? "";
+      expect(hover).toMatch(/^No (revenue|margin) can be stated/);
+      expect(hover).toContain("5 events have a customer price UBB could not resolve");
+      // No total for events to be left out of, and no figure to be higher than.
+      expect(hover).not.toMatch(/total|higher|lower/);
+    },
+  );
+
+  // The billing window and the dashboard's "Other" bar fold rows through
+  // `combineFigures`; a folded row with no amount leaves the fold with none.
+  it("draws a fold over a row with no amount as no amount, never the others' sum", () => {
+    const priced = rowOf(knownMeasures({ cost_micros: 1_000_000, revenue_micros: 3_000_000, events: 1 }));
+    const folded = combineFigures(
+      GROSS_MARGIN,
+      [figureOn(priced, GROSS_MARGIN), figureOn(rowOf(measures), GROSS_MARGIN)],
+    );
+    const { container } = render(<MeasureValue figure={folded} currency="usd" />);
+    expect(container.textContent).toBe("—");
+    expect(container.textContent).not.toMatch(/\$/);
+    expect(container.querySelector("[title]")?.getAttribute("title")).toMatch(
+      /^No margin can be stated here/,
+    );
+  });
+
+  it("carries the margin's absence into its share rather than a 0%", () => {
+    const row = rowOf(measures);
+    const { container } = render(
+      <MarginShare margin={figureOn(row, GROSS_MARGIN)} revenue={figureOn(row, CUSTOMER_REVENUE)} />,
+    );
+    expect(container.textContent).toBe("—");
+    expect(container.textContent).not.toMatch(/%/);
+  });
+});
+
+describe("revenue supplied over unpriced usage — a plain figure (#537)", () => {
+  // The supplied figure is the whole revenue for the customer and period it
+  // covers, so the count of usage nobody priced rides beside a KNOWN revenue.
+  const measures = revenueSuppliedOverUnpricedUsage({
+    cost: completeTotal(800_000),
+    supplied_micros: 3_100_000,
+    unpriced_event_count: 2,
+    events: 2,
+  });
+
+  it("draws the revenue and the margin over it as figures, with no bound and no caveat", () => {
+    for (const [measure, amount] of [
+      [CUSTOMER_REVENUE, "$3.10"],
+      [GROSS_MARGIN, "$2.30"],
+    ] as const) {
+      const node = drawn(measures, measure);
+      expect(node.textContent).toBe(amount);
+      expect(node.querySelector("[data-measure-state]")?.getAttribute("data-measure-state")).toBe(
+        "known",
+      );
+      expect(node.querySelector("[title]")).toBeNull();
+    }
+  });
+
+  // The count rides beside a KNOWN revenue, so it is not what the margin is
+  // short by: an uncosted event bounds the margin from above, and only that.
+  it("bounds the margin from above alone where an event is uncosted", () => {
+    const margin = drawn(
+      revenueSuppliedOverUnpricedUsage({
+        cost: incompleteTotal(400_000, 1),
+        supplied_micros: 3_100_000,
+        unpriced_event_count: 2,
+        events: 2,
+      }),
+      GROSS_MARGIN,
+    );
+    expect(margin.textContent).toBe("at most $2.70");
+    const hover = margin.querySelector("[title]")?.getAttribute("title") ?? "";
+    expect(hover).toMatch(/^1 event has a supplier cost/);
+    expect(hover).not.toMatch(/customer price/);
   });
 });
 

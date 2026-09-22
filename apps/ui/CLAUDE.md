@@ -101,11 +101,15 @@ nothing.
 **A MEASURE of the one economic query is a figure with a state, never an amount** (#510). Read it
 with `figureOn` (`src/lib/economic-query.ts`), draw it with `MeasureValue` / `MarginShare`
 (`components/shared/measure-value.tsx`), and let `@/lib/measure-state` say it: `known` is the
-amount, `incomplete` a bound with its count, and `unavailable_at_requested_grain`,
+amount, `incomplete` a bound with its count — **or NO amount at all, where no piece of a row's
+revenue resolved (#537): that is a legitimate state, drawn as "—" with a note naming no total and no
+direction, and never "fixed" back into a zero floor** — and `unavailable_at_requested_grain`,
 `unavailable_outside_retention_horizon` and `not_applicable` render as the state — never a currency
-zero, never the placed part of a revenue. A number-shaped caller (a chart, a sort) asks
-`statedValue`, which is a GAP where the state states none; folding rows into a figure the page shows
-is `combineFigures`, never a sum. A grouped chart or breakdown draws `drawableMeasure`'s choice. An
+zero, never the placed part of a revenue. **The unpriced count is not the state**: a `known` revenue
+a tenant supplied can carry one (#537), so decide what a figure is worth from `status`, never from
+`unpriced_event_count > 0`. A number-shaped caller (a chart, a sort) asks
+`statedValue`, which is a GAP where the state states none — including an `incomplete` with no
+amount; folding rows into a figure the page shows is `combineFigures`, never a sum. A grouped chart or breakdown draws `drawableMeasure`'s choice. An
 answer's `context` and its horizons are the rest of the answer: `caveatsOf` keeps them, and an empty
 answer whose window reaches past its governing horizon renders `RetentionHorizonNote`, not "no
 usage". A measure named by value (which one a chart drew) takes its catalogue word, `measureLabel`.

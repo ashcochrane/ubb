@@ -93,19 +93,23 @@ class MarginServiceTest(TestCase):
     def test_margin_includes_supplied_revenue_under_its_own_name(self):
         # Three sources, each in its own column: nothing from Stripe, the
         # figure the tenant supplied, and the usage UBB priced — which counts
-        # for this tenant as for any other since #497.
+        # for this tenant as for any other since #497, OUTSIDE a supplied
+        # figure's covered period.
         self.supply()
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
             total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         assert econ.supplied_revenue_micros == 500_000_000
-        # The snapshot keeps no usage-revenue column of its own — the billed
-        # total IS that figure since #497 — so the third source shows up in
-        # the total, which is the only place it could.
+        # The billed usage is still recorded in its own column, as a fact —
+        # but the supplied figure covers the whole period, so it is the whole
+        # revenue there and the usage priced inside it is superseded rather
+        # than added (#537). Until #537 the total was 501,000,000: the same
+        # customer-month counted twice, on the record that decides whether
+        # `customer.unprofitable` fires.
         assert econ.usage_billed_micros == 1_000_000
-        assert econ.total_revenue_micros == 501_000_000
-        assert econ.gross_margin_micros == 500_200_000
+        assert econ.total_revenue_micros == 500_000_000
+        assert econ.gross_margin_micros == 500_000_000 - 800_000
 
     def test_a_supplied_figure_never_lands_in_the_stripe_column(self):
         # ⚠ THE DEFECT #496 EXISTS TO END. The retired profile's amount was
@@ -150,8 +154,9 @@ class MarginServiceTest(TestCase):
         all. That half had no surface to be asserted against until the
         route-collapsing tickets built slice 7 §5's scope rule and #502 demoted
         this record to the alerting state machine it is. The one economic query
-        now answers it in its own states — a floor labelled `incomplete`, never
-        a `known` figure — asserted through its route
+        now answers it in its own states — `incomplete` with no amount on the
+        revenue or the margin, never a zero and never a `known` figure (#537) —
+        asserted through its route
         (`api/v1/tests/test_the_one_economic_query.py::
         TestUsageNobodyPricedIsNeverAKnownFigure`).
 

@@ -160,6 +160,19 @@ describe("combineFigures — folding rows without laundering a state", () => {
     expect(statedValue(folded)).toBeNull();
   });
 
+  // #537: a row whose state CAN state a figure and states none is a gap too.
+  // Summed as zero, a margin fold of +100 beside a no-amount margin over a
+  // cost of 50 would read 100 where the whole is 50 at most.
+  it("treats an incomplete figure with no amount as a gap, never as zero", () => {
+    const folded = combineFigures(GROSS_MARGIN, [
+      figure({ measure: GROSS_MARGIN, value: 100 }),
+      figure({ measure: GROSS_MARGIN, status: "incomplete", value: null, unpriced_event_count: 2 }),
+    ]);
+    expect(folded.status).toBe("incomplete");
+    expect(statedValue(folded)).toBeNull();
+    expect(folded.unpriced_event_count).toBe(2);
+  });
+
   it("is a measured zero over no rows at all", () => {
     expect(combineFigures(SUPPLIER_COGS, [])).toEqual(figure({ value: 0 }));
   });

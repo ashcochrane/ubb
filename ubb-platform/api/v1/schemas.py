@@ -3032,6 +3032,36 @@ ECONOMIC_BUCKET_MEANING = (
     "The time grain the rows are bucketed at — 'hour', 'day' or 'month' — or "
     "null where the whole period is one row."
 )
+#: WHAT AN AMOUNT IS, AND WHAT ITS ABSENCE IS (#537). Published because a reader
+#: and a generator both need the one distinction the state alone does not
+#: carry: under `incomplete` a null and a number are two different answers.
+#:
+#: ⚠ **"EITHER UNAVAILABLE STATE" WOULD BE FALSE OF THE REVENUE, SO IT IS NOT
+#: SAID.** Under `unavailable_at_requested_grain` a revenue carries the part
+#: that could be placed and only the margin is null — the claim #499's first
+#: description made and both review axes caught. Each null is named instead.
+ECONOMIC_AMOUNT_MEANING = (
+    "The figure of a money measure, in micros; null on the count measure, "
+    "which is not money. Where it is null on a money measure, no figure can "
+    "be stated: under 'unavailable_outside_retention_horizon', under "
+    "'not_applicable', on a margin under 'unavailable_at_requested_grain', and "
+    "under 'incomplete' where no piece of the row's revenue resolved — on the "
+    "revenue and on the margin over it. An amount under 'incomplete' is a "
+    "bound, never a total; under 'unavailable_at_requested_grain' a revenue "
+    "amount is the part that could be placed, with the rest in the answer's "
+    "context. A revenue figure the tenant supplied is the revenue for the "
+    "customer and period it covers and supersedes the revenue derived from "
+    "priced usage there — the two are never added together. Never a zero "
+    "standing in for any of these."
+)
+UNPRICED_COUNT_MEANING = (
+    "How many of this row's postings carry a customer price UBB could not "
+    "resolve, on the revenue measure only. Outside any period a "
+    "tenant-supplied revenue figure covers, they are what makes the revenue "
+    "'incomplete'. Inside one they are counted here as information and make "
+    "nothing incomplete — the supplied figure is the revenue there — so this "
+    "count can stand beside a 'known' revenue."
+)
 
 
 class EconomicMeasureOut(Schema):
@@ -3049,9 +3079,12 @@ class EconomicMeasureOut(Schema):
     **What each state says about the fields beside it**, which is what the state
     is for:
 
-    * `known` — every input resolved.
+    * `known` — every input resolved. Inside a period a tenant-supplied revenue
+      figure covers, that figure is the revenue and resolves it whole.
     * `incomplete` — some input is still unresolved, so the figure is a bound
       rather than a total, and the count beside it says how far off it can be.
+      Where no piece of a row's revenue resolved at all there is nothing to
+      bound, and the revenue and the margin over it carry no figure.
     * `unavailable_at_requested_grain` — a figure exists and cannot be
       attributed this finely. A REVENUE figure here is the part that COULD be
       placed, with the rest in the answer's `context`; a MARGIN is null
@@ -3071,13 +3104,11 @@ class EconomicMeasureOut(Schema):
     zero, and where UBB has no figure at all the field is null.
     """
     measure: AnalyticsMeasure
-    #: The money measures' figure, in micros. Null on the count measure, which
-    #: is not money, and null on the margin where it could not be attributed at
-    #: the requested grain — there is no such thing as a partial margin. A
-    #: REVENUE figure at that same state is not null: it is the part that could
-    #: be placed, with the rest in `context`. Never a zero standing in for any
-    #: of these.
-    amount_micros: Optional[int] = None
+    #: The money measures' figure, in micros — published with its meaning
+    #: (`ECONOMIC_AMOUNT_MEANING` above) since #537, which made a null under
+    #: `incomplete` mean something a number there does not.
+    amount_micros: Optional[int] = Field(None,
+                                         description=ECONOMIC_AMOUNT_MEANING)
     #: The count measure's figure, a number of records. Null on the three
     #: measures denominated in money.
     #:
@@ -3090,9 +3121,11 @@ class EconomicMeasureOut(Schema):
     #: the cost measure and on nothing else, because the two counts in this
     #: system are about different rows and a shared slot would merge them.
     unresolved_event_count: Optional[int] = None
-    #: How many postings the revenue total could not include, for the same
-    #: reason in the other direction.
-    unpriced_event_count: Optional[int] = None
+    #: How many postings nobody priced, for the same reason in the other
+    #: direction — and NOT always how many the total left out (#537): inside a
+    #: supplied figure's period they are information beside a known revenue.
+    unpriced_event_count: Optional[int] = Field(
+        None, description=UNPRICED_COUNT_MEANING)
     #: The day this measure's series can start, NON-NULL exactly where the
     #: state is `unavailable_outside_retention_horizon`.
     #:

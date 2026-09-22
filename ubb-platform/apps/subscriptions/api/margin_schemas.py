@@ -49,6 +49,10 @@ class TenantSuppliedRevenueIn(Schema):
     ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
     bills its customers somewhere UBB cannot see and is supplying the figure so
     that margin can be computed at the scope it was supplied at.
+
+    **THE WHOLE REVENUE FOR THAT CUSTOMER AND PERIOD, NOT AN ADDITION TO WHAT
+    UBB PRICED** (#537). Where UBB also priced the customer's usage inside the
+    period, the figure replaces that usage's revenue rather than adding to it.
     """
 
     amount_micros: int

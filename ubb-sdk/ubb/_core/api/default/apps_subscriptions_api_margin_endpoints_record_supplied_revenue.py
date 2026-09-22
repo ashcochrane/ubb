@@ -89,6 +89,24 @@ def sync_detailed(
 ) -> Response[ProblemOut | TenantSuppliedRevenueOut]:
     """ Record Supplied Revenue
 
+     Record what one customer paid you for one period, billed somewhere UBB
+    cannot see.
+
+    **The figure is the whole revenue for that customer and that period — not
+    an addition to what UBB priced.** Where UBB also priced the customer's usage
+    inside the period, `/metering/analytics/economics` states this figure as
+    the revenue and leaves that usage's price out of it, and usage nobody
+    priced there no longer makes the revenue incomplete. A Stripe subscription
+    is added as before and is not affected.
+
+    `period_end` is exclusive. Omit it for revenue that is an instant rather
+    than a span: such a figure covers no period, so it is counted beside the
+    usage in the window it lands in rather than instead of it. Recording again
+    for the same customer, `period_start` and `source_reference` re-states the
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
+
     Args:
         customer_id (UUID):
         body (TenantSuppliedRevenueIn): What a tenant states it earned from one customer over one
@@ -97,6 +115,10 @@ def sync_detailed(
             ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
             bills its customers somewhere UBB cannot see and is supplying the figure so
             that margin can be computed at the scope it was supplied at.
+
+            **THE WHOLE REVENUE FOR THAT CUSTOMER AND PERIOD, NOT AN ADDITION TO WHAT
+            UBB PRICED** (#537). Where UBB also priced the customer's usage inside the
+            period, the figure replaces that usage's revenue rather than adding to it.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -128,6 +150,24 @@ def sync(
 ) -> ProblemOut | TenantSuppliedRevenueOut | None:
     """ Record Supplied Revenue
 
+     Record what one customer paid you for one period, billed somewhere UBB
+    cannot see.
+
+    **The figure is the whole revenue for that customer and that period — not
+    an addition to what UBB priced.** Where UBB also priced the customer's usage
+    inside the period, `/metering/analytics/economics` states this figure as
+    the revenue and leaves that usage's price out of it, and usage nobody
+    priced there no longer makes the revenue incomplete. A Stripe subscription
+    is added as before and is not affected.
+
+    `period_end` is exclusive. Omit it for revenue that is an instant rather
+    than a span: such a figure covers no period, so it is counted beside the
+    usage in the window it lands in rather than instead of it. Recording again
+    for the same customer, `period_start` and `source_reference` re-states the
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
+
     Args:
         customer_id (UUID):
         body (TenantSuppliedRevenueIn): What a tenant states it earned from one customer over one
@@ -136,6 +176,10 @@ def sync(
             ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
             bills its customers somewhere UBB cannot see and is supplying the figure so
             that margin can be computed at the scope it was supplied at.
+
+            **THE WHOLE REVENUE FOR THAT CUSTOMER AND PERIOD, NOT AN ADDITION TO WHAT
+            UBB PRICED** (#537). Where UBB also priced the customer's usage inside the
+            period, the figure replaces that usage's revenue rather than adding to it.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -162,6 +206,24 @@ async def asyncio_detailed(
 ) -> Response[ProblemOut | TenantSuppliedRevenueOut]:
     """ Record Supplied Revenue
 
+     Record what one customer paid you for one period, billed somewhere UBB
+    cannot see.
+
+    **The figure is the whole revenue for that customer and that period — not
+    an addition to what UBB priced.** Where UBB also priced the customer's usage
+    inside the period, `/metering/analytics/economics` states this figure as
+    the revenue and leaves that usage's price out of it, and usage nobody
+    priced there no longer makes the revenue incomplete. A Stripe subscription
+    is added as before and is not affected.
+
+    `period_end` is exclusive. Omit it for revenue that is an instant rather
+    than a span: such a figure covers no period, so it is counted beside the
+    usage in the window it lands in rather than instead of it. Recording again
+    for the same customer, `period_start` and `source_reference` re-states the
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
+
     Args:
         customer_id (UUID):
         body (TenantSuppliedRevenueIn): What a tenant states it earned from one customer over one
@@ -170,6 +232,10 @@ async def asyncio_detailed(
             ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
             bills its customers somewhere UBB cannot see and is supplying the figure so
             that margin can be computed at the scope it was supplied at.
+
+            **THE WHOLE REVENUE FOR THAT CUSTOMER AND PERIOD, NOT AN ADDITION TO WHAT
+            UBB PRICED** (#537). Where UBB also priced the customer's usage inside the
+            period, the figure replaces that usage's revenue rather than adding to it.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -201,6 +267,24 @@ async def asyncio(
 ) -> ProblemOut | TenantSuppliedRevenueOut | None:
     """ Record Supplied Revenue
 
+     Record what one customer paid you for one period, billed somewhere UBB
+    cannot see.
+
+    **The figure is the whole revenue for that customer and that period — not
+    an addition to what UBB priced.** Where UBB also priced the customer's usage
+    inside the period, `/metering/analytics/economics` states this figure as
+    the revenue and leaves that usage's price out of it, and usage nobody
+    priced there no longer makes the revenue incomplete. A Stripe subscription
+    is added as before and is not affected.
+
+    `period_end` is exclusive. Omit it for revenue that is an instant rather
+    than a span: such a figure covers no period, so it is counted beside the
+    usage in the window it lands in rather than instead of it. Recording again
+    for the same customer, `period_start` and `source_reference` re-states the
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
+
     Args:
         customer_id (UUID):
         body (TenantSuppliedRevenueIn): What a tenant states it earned from one customer over one
@@ -209,6 +293,10 @@ async def asyncio(
             ⚠ **NOT A CHARGE.** UBB neither created nor invoiced this money; the tenant
             bills its customers somewhere UBB cannot see and is supplying the figure so
             that margin can be computed at the scope it was supplied at.
+
+            **THE WHOLE REVENUE FOR THAT CUSTOMER AND PERIOD, NOT AN ADDITION TO WHAT
+            UBB PRICED** (#537). Where UBB also priced the customer's usage inside the
+            period, the figure replaces that usage's revenue rather than adding to it.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

@@ -38,9 +38,12 @@ class EconomicMeasureOut:
     **What each state says about the fields beside it**, which is what the state
     is for:
 
-    * `known` — every input resolved.
+    * `known` — every input resolved. Inside a period a tenant-supplied revenue
+      figure covers, that figure is the revenue and resolves it whole.
     * `incomplete` — some input is still unresolved, so the figure is a bound
       rather than a total, and the count beside it says how far off it can be.
+      Where no piece of a row's revenue resolved at all there is nothing to
+      bound, and the revenue and the margin over it carry no figure.
     * `unavailable_at_requested_grain` — a figure exists and cannot be
       attributed this finely. A REVENUE figure here is the part that COULD be
       placed, with the rest in the answer's `context`; a MARGIN is null
@@ -62,10 +65,21 @@ class EconomicMeasureOut:
         Attributes:
             measure (EconomicMeasureOutMeasure):
             status (EconomicMeasureOutStatus):
-            amount_micros (int | None | Unset):
+            amount_micros (int | None | Unset): The figure of a money measure, in micros; null on the count measure, which
+                is not money. Where it is null on a money measure, no figure can be stated: under
+                'unavailable_outside_retention_horizon', under 'not_applicable', on a margin under
+                'unavailable_at_requested_grain', and under 'incomplete' where no piece of the row's revenue resolved — on the
+                revenue and on the margin over it. An amount under 'incomplete' is a bound, never a total; under
+                'unavailable_at_requested_grain' a revenue amount is the part that could be placed, with the rest in the
+                answer's context. A revenue figure the tenant supplied is the revenue for the customer and period it covers and
+                supersedes the revenue derived from priced usage there — the two are never added together. Never a zero standing
+                in for any of these.
             available_from (None | str | Unset):
             event_count (int | None | Unset):
-            unpriced_event_count (int | None | Unset):
+            unpriced_event_count (int | None | Unset): How many of this row's postings carry a customer price UBB could not
+                resolve, on the revenue measure only. Outside any period a tenant-supplied revenue figure covers, they are what
+                makes the revenue 'incomplete'. Inside one they are counted here as information and make nothing incomplete —
+                the supplied figure is the revenue there — so this count can stand beside a 'known' revenue.
             unresolved_event_count (int | None | Unset):
      """
 

@@ -17,8 +17,10 @@ import {
   measurementsNotApplicable,
   measuresFor,
   measuresOutsideRetentionHorizon,
+  measuresWithNoRevenueResolved,
   priceNotApplicable,
   prunedMeasurements,
+  revenueSuppliedOverUnpricedUsage,
   revenueUnavailableAtThisGrain,
   spendPoolAssessment,
   unknownCost,
@@ -744,7 +746,7 @@ describe("measure-state scenarios (#510)", () => {
     }
   });
 
-  it("composes a row from a mock's facts as known or incomplete, never a known row with a count", () => {
+  it("composes a row from a mock's facts as known or incomplete, never a known revenue with a count", () => {
     const whole = byMeasure(measuresFor({ cost_micros: 1, revenue_micros: 3, events: 1 }));
     expect(whole["gross_margin"]).toMatchObject({ status: "known", amount_micros: 2 });
 
@@ -762,5 +764,88 @@ describe("measure-state scenarios (#510)", () => {
       status: "not_applicable",
       amount_micros: null,
     });
+  });
+});
+
+describe("the two revenue states #537 made reachable", () => {
+  const byMeasure = (measures: { measure: string }[]) =>
+    Object.fromEntries(measures.map((entry) => [entry.measure, entry]));
+
+  it("states no revenue and no margin where nothing resolved, both incomplete", () => {
+    const row = byMeasure(
+      measuresWithNoRevenueResolved({ cost: completeTotal(400_000), unpriced_event_count: 1, events: 1 }),
+    );
+    expect(row["supplier_cogs"]).toMatchObject({ status: "known", amount_micros: 400_000 });
+    expect(row["customer_revenue"]).toEqual({
+      measure: "customer_revenue",
+      status: "incomplete",
+      amount_micros: null,
+      unpriced_event_count: 1,
+    });
+    expect(row["gross_margin"]).toEqual({
+      measure: "gross_margin",
+      status: "incomplete",
+      amount_micros: null,
+    });
+  });
+
+  // A zero revenue beside an unpriced count is two rows, and the mock says which.
+  it("composes a mock's facts as no amount only where it says nothing resolved", () => {
+    const facts = { cost_micros: 1, revenue_micros: 0, events: 2, unpriced_event_count: 1 };
+    const nothing = byMeasure(measuresFor({ ...facts, resolved_revenue_pieces: 0 }));
+    expect(nothing["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: null });
+    expect(nothing["gross_margin"]).toMatchObject({ status: "incomplete", amount_micros: null });
+    const free = byMeasure(measuresFor({ ...facts, resolved_revenue_pieces: 1 }));
+    expect(free["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: 0 });
+    const untold = byMeasure(measuresFor(facts));
+    expect(untold["customer_revenue"]).toMatchObject({ status: "incomplete", amount_micros: 0 });
+  });
+
+  it("refuses an absent revenue with nothing unpriced to explain it", () => {
+    expect(() =>
+      measuresWithNoRevenueResolved({ cost: completeTotal(1), unpriced_event_count: 0, events: 1 }),
+    ).toThrow(/unpriced events/);
+  });
+
+  it("states a supplied revenue as known beside the usage nobody priced, and the margin over it", () => {
+    const row = byMeasure(
+      revenueSuppliedOverUnpricedUsage({
+        cost: completeTotal(800_000),
+        supplied_micros: 3_100_000,
+        unpriced_event_count: 2,
+        events: 2,
+      }),
+    );
+    expect(row["customer_revenue"]).toMatchObject({
+      status: "known",
+      amount_micros: 3_100_000,
+      unpriced_event_count: 2,
+    });
+    expect(row["gross_margin"]).toMatchObject({ status: "known", amount_micros: 2_300_000 });
+  });
+
+  // §15 still holds over a supplied revenue: an uncosted event bounds the margin.
+  it("keeps the margin incomplete where the cost side is, over a supplied revenue", () => {
+    const row = byMeasure(
+      revenueSuppliedOverUnpricedUsage({
+        cost: incompleteTotal(0, 1),
+        supplied_micros: 3_100_000,
+        unpriced_event_count: 1,
+        events: 1,
+      }),
+    );
+    expect(row["customer_revenue"]).toMatchObject({ status: "known" });
+    expect(row["gross_margin"]).toMatchObject({ status: "incomplete", amount_micros: 3_100_000 });
+  });
+
+  it("refuses a supplied revenue with no unpriced usage beside it — that row is knownMeasures'", () => {
+    expect(() =>
+      revenueSuppliedOverUnpricedUsage({
+        cost: completeTotal(1),
+        supplied_micros: 2,
+        unpriced_event_count: 0,
+        events: 1,
+      }),
+    ).toThrow(/unpriced events/);
   });
 });

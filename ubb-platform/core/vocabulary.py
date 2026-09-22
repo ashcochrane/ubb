@@ -633,7 +633,12 @@ DECLARATION_STATUS_VALUES = frozenset({
 # the figure would be read from, and `not_applicable` says the measure does not
 # apply here. The two unavailable values stay apart because their remedies
 # differ: ask a coarser question, against that data is gone. No query may
-# coerce any of them to zero (#153 §8.5).
+# coerce any of them to zero (#153 §8.5). A null amount beside any of them
+# means no figure can be stated — under `unavailable_outside_retention_horizon`
+# and `not_applicable`, for a margin under `unavailable_at_requested_grain` (a
+# revenue there carries the part that could be placed), and under `incomplete`
+# where no piece of a row's revenue has resolved (#537). An amount under
+# `incomplete` is a bound, never a total.
 #
 # Declared in concepts/economics.yaml.
 
@@ -1080,7 +1085,11 @@ RECOGNITION_METHOD_VALUES = frozenset({
 # nothing; `recognised` spreads it by the record's own `recognition_method`
 # across the span the record declares. Both are offered and every surface
 # serving either NAMES the one it served — a revenue figure whose basis is
-# unstated is the defect this concept exists to end.
+# unstated is the defect this concept exists to end. Because `recorded`
+# attributes the whole supplied figure to the day its period opens, windows
+# elsewhere in its covered period may contain known zero recorded revenue
+# (#537); use `recognised` when analysing revenue attributable across the
+# covered period.
 #
 # Declared in concepts/economics.yaml.
 

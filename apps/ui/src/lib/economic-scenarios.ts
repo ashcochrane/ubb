@@ -554,21 +554,34 @@ export interface MeasureTerms {
 /** The query's order of precedence, as `@/lib/economic-query` holds it once. */
 const WORST_LAST: readonly MeasureStatus[] = MEASURE_STATES_WORST_LAST;
 
+/** The cost side's state: a floor wherever it left an event out. */
+function costStatusOf(cost: CostTotalScenario): MeasureStatus {
+  return cost.unresolved_event_count > 0 ? "incomplete" : "known";
+}
+
+/**
+ * The margin's state, from both sides.
+ *
+ * ⚠ THE MARGIN'S STATE IS DERIVED FROM BOTH SIDES, NEVER FROM THE REVENUE
+ * ALONE (§15; `queries.py::_margin`). A fixture that stated its own would be
+ * free to state `known` beside an uncosted event — the dishonest rendering
+ * #473 owns the cause of, and this module makes unwritable.
+ */
+function marginStatusOf(costStatus: MeasureStatus, revenueStatus: MeasureStatus): MeasureStatus {
+  return (
+    WORST_LAST[
+      Math.max(WORST_LAST.indexOf(costStatus), WORST_LAST.indexOf(revenueStatus))
+    ] ?? "known"
+  );
+}
+
 /** The four measures, from terms whose two sides state what they are worth. */
 function measuresFrom(
   terms: MeasureTerms,
   revenueStatus: MeasureStatus,
 ): EconomicMeasureScenario[] {
-  const costStatus: MeasureStatus =
-    terms.cost.unresolved_event_count > 0 ? "incomplete" : "known";
-  // ⚠ THE MARGIN'S STATE IS DERIVED FROM BOTH SIDES, NEVER FROM THE REVENUE
-  // ALONE (§15; `queries.py::_margin`). A fixture that stated its own would be
-  // free to state `known` beside an uncosted event — the dishonest rendering
-  // #473 owns the cause of, and this module makes unwritable.
-  const marginStatus =
-    WORST_LAST[
-      Math.max(WORST_LAST.indexOf(costStatus), WORST_LAST.indexOf(revenueStatus))
-    ] ?? "known";
+  const costStatus = costStatusOf(terms.cost);
+  const marginStatus = marginStatusOf(costStatus, revenueStatus);
   const noMargin = marginStatus === "unavailable_at_requested_grain";
   return [
     {
@@ -650,7 +663,16 @@ export function incompleteMeasures(terms: MeasureTerms): EconomicMeasureScenario
  * The choice between the two composers above, made once. Four feature mocks
  * each made it by hand until #510's review pass; a mock that got the condition
  * wrong would hand the console a `known` row carrying a count, which the query
- * cannot write.
+ * writes ONLY where a tenant-supplied figure covers the unpriced usage (#537) —
+ * a fact this composer is not told, so that row is
+ * `revenueSuppliedOverUnpricedUsage`'s and never this one's.
+ *
+ * ⚠ **AND WHETHER ANY PIECE OF THE REVENUE RESOLVED, WHERE THE MOCK KNOWS IT**
+ * (#537). A zero revenue beside an unpriced count is two different rows — a
+ * free service beside one nobody priced (a bound of zero), or nothing resolved
+ * at all (no amount) — and the amount cannot tell them apart. A mock that
+ * counts its seeds says `resolved_revenue_pieces`; zero composes
+ * `measuresWithNoRevenueResolved`, and leaving it out keeps the bound.
  */
 export function measuresFor(facts: {
   readonly cost_micros: number;
@@ -658,10 +680,18 @@ export function measuresFor(facts: {
   readonly events: number;
   readonly unresolved_event_count?: number;
   readonly unpriced_event_count?: number;
+  readonly resolved_revenue_pieces?: number;
 }): EconomicMeasureScenario[] {
   const uncosted = facts.unresolved_event_count ?? 0;
   const unpriced = facts.unpriced_event_count ?? 0;
   if (uncosted === 0 && unpriced === 0) return knownMeasures(facts);
+  if (unpriced > 0 && facts.resolved_revenue_pieces === 0) {
+    return measuresWithNoRevenueResolved({
+      cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
+      unpriced_event_count: unpriced,
+      events: facts.events,
+    });
+  }
   return incompleteMeasures({
     cost: uncosted > 0 ? incompleteTotal(facts.cost_micros, uncosted) : completeTotal(facts.cost_micros),
     revenue: unpriced > 0
@@ -669,6 +699,87 @@ export function measuresFor(facts: {
       : completePriceTotal(facts.revenue_micros),
     events: facts.events,
   });
+}
+
+/**
+ * A row where no piece of the revenue resolved (#537): usage nobody priced, and
+ * no subscription or supplied figure beside it.
+ *
+ * ⚠ **THE REVENUE AND THE MARGIN OVER IT BOTH STATE NO AMOUNT, AND BOTH READ
+ * `incomplete`.** The owner's ruling on claim 9: the query used to send a zero
+ * floor and minus the cost, which the console drew as "at least −$…" — #153
+ * §17.1's defect with a prefix. A null under `incomplete` means no figure can
+ * be stated, where a number there is a bound; the margin's state still comes
+ * from both sides, so an uncosted event beside this changes nothing about the
+ * amount and everything about which side is short.
+ *
+ * The unpriced count is REQUIRED and may not be zero: it is the fact that makes
+ * the absence an absence. `incomplete` with no amount and nothing left out is a
+ * row the query cannot write.
+ */
+export function measuresWithNoRevenueResolved(terms: {
+  readonly cost: CostTotalScenario;
+  readonly unpriced_event_count: number;
+  readonly events: number;
+}): EconomicMeasureScenario[] {
+  if (terms.unpriced_event_count <= 0) {
+    throw new Error(
+      "measuresWithNoRevenueResolved needs the unpriced events that leave nothing resolved",
+    );
+  }
+  // The same four measures `measuresFrom` builds, with the two amounts the
+  // query does not send taken away — so the states and the slots cannot drift
+  // from every other composer's.
+  return measuresFrom(
+    {
+      cost: terms.cost,
+      revenue: incompletePriceTotal(0, terms.unpriced_event_count),
+      events: terms.events,
+    },
+    "incomplete",
+  ).map((entry) =>
+    entry.measure === "customer_revenue" || entry.measure === "gross_margin"
+      ? { ...entry, amount_micros: null }
+      : entry,
+  );
+}
+
+/**
+ * A row whose revenue a tenant supplied, over usage nobody priced (#537).
+ *
+ * The supplied figure is the WHOLE revenue for the customer and period it
+ * covers, so the revenue is `known` and the margin is drawn over it — and the
+ * unpriced count still rides beside it, as information rather than as the
+ * reason the figure is short. This is the one place a price total's count sits
+ * beside a figure that is NOT a floor, which is why it is its own composer:
+ * `measuresFor` reads any count as a bound and would compose this as one.
+ *
+ * ⚠ **THE COUNT IS REQUIRED AND MAY NOT BE ZERO** — it is the fact this row
+ * exists to put beside a known revenue, and a renderer that keyed "left out of
+ * this total" off the count rather than the state would say it here, falsely.
+ */
+export function revenueSuppliedOverUnpricedUsage(terms: {
+  readonly cost: CostTotalScenario;
+  readonly supplied_micros: number;
+  readonly unpriced_event_count: number;
+  readonly events: number;
+}): EconomicMeasureScenario[] {
+  if (terms.unpriced_event_count <= 0) {
+    throw new Error(
+      "revenueSuppliedOverUnpricedUsage needs the unpriced events the supplied figure covers",
+    );
+  }
+  return measuresFrom(
+    {
+      cost: terms.cost,
+      revenue: {
+        micros: terms.supplied_micros,
+        unpriced_event_count: terms.unpriced_event_count,
+      },
+      events: terms.events,
+    },
+    "known",
+  );
 }
 
 /**

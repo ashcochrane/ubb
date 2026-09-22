@@ -37,6 +37,7 @@ import {
   MARGIN_UNAVAILABLE_NOT_ZERO,
   REVENUE_UNKNOWN_HERE,
   RevenuePanels,
+  STATE_REVENUE_DESCRIPTION,
   STATE_REVENUE_TITLE,
   SUPPLIED_REVENUE_TITLE,
 } from "./revenue-panels";
@@ -293,6 +294,16 @@ describe("a cost-tracking-only tenant", () => {
 });
 
 describe("stating a figure", () => {
+  // #537: the figure REPLACES what UBB priced for the customer and period, so
+  // the form says so where it is written — a tenant reading it as a top-up
+  // would enter a figure short by exactly what UBB priced.
+  it("says the figure is the whole revenue for the period, not an addition", async () => {
+    renderWithProviders(<RevenuePanels customerId={CUS_LUNA} range={JULY} />);
+    const form = await screen.findByRole("region", { name: STATE_REVENUE_TITLE });
+    expect(within(form).getByText(STATE_REVENUE_DESCRIPTION)).toBeInTheDocument();
+    expect(STATE_REVENUE_DESCRIPTION).toMatch(/the whole revenue .* not an addition to what UBB priced/);
+  });
+
   // THE CASE THE AFFORDANCE EXISTS FOR, BY NAME (#153 §19(f)). A customer that
   // began on the fourteenth is entered as the fourteenth; the SPAN is derived,
   // and the seventeen days are never asked for.

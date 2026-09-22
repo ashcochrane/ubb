@@ -212,6 +212,24 @@ def _supplied_record_body(record):
 @records_audit(AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED)
 def record_supplied_revenue(request, customer_id: UUID,
                             payload: TenantSuppliedRevenueIn):
+    """Record what one customer paid you for one period, billed somewhere UBB
+    cannot see.
+
+    **The figure is the whole revenue for that customer and that period — not
+    an addition to what UBB priced.** Where UBB also priced the customer's usage
+    inside the period, `/metering/analytics/economics` states this figure as
+    the revenue and leaves that usage's price out of it, and usage nobody
+    priced there no longer makes the revenue incomplete. A Stripe subscription
+    is added as before and is not affected.
+
+    `period_end` is exclusive. Omit it for revenue that is an instant rather
+    than a span: such a figure covers no period, so it is counted beside the
+    usage in the window it lands in rather than instead of it. Recording again
+    for the same customer, `period_start` and `source_reference` re-states the
+    figure; a different `source_reference` records a second figure beside it,
+    and figures whose periods overlap both count — two invoices covering one
+    month are two facts.
+    """
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     try:

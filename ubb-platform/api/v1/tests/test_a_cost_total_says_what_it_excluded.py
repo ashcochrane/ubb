@@ -245,7 +245,9 @@ class TestACostTotalSaysWhatItExcluded:
         assert cost_whole[UNRESOLVED_EVENT_COUNT_KEY] == 0
         assert cost_whole["amount_micros"] == 7_000
         assert price_short[UNPRICED_EVENT_COUNT_KEY] == 1
-        assert price_short["amount_micros"] == 0
+        # No amount, not a zero floor (#537): the row's one posting is its
+        # only piece of revenue and nobody priced it, so nothing resolved.
+        assert price_short["amount_micros"] is None
 
     # ---- what the pair is FOR ---------------------------------------------
 

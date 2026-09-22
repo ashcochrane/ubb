@@ -122,8 +122,11 @@ class WhoInvoicesDecidesOnlyWhoInvoicesTest(TestCase):
         """The second of §9's two surviving workflows: cost tracking PLUS a
         figure the tenant states for a system UBB has never seen.
 
-        The supplied figure reaches the margin under its own name, beside the
-        usage revenue rather than inside it, and both are inside the total.
+        The supplied figure reaches the margin under its own name, and it is
+        the WHOLE revenue for the customer and the month it covers (#537): the
+        usage UBB priced inside that month is still reported as billed, and is
+        superseded rather than added. Until #537 this total was 4,000,000 —
+        the supplied month plus the usage inside it, counted twice.
         """
         tenant, customer = a_tenant_billing_its_customers_elsewhere()
         a_priced_event(tenant, customer, provider=800_000, billed=1_000_000)
@@ -134,9 +137,10 @@ class WhoInvoicesDecidesOnlyWhoInvoicesTest(TestCase):
 
         assert margin["subscription_revenue_micros"] == 0
         assert margin["supplied_revenue_micros"] == 3_000_000
-        assert margin["usage_revenue_micros"] == 1_000_000
-        assert margin["total_revenue_micros"] == 4_000_000
-        assert margin["gross_margin_micros"] == 3_200_000
+        assert margin["usage_billed_micros"] == 1_000_000
+        assert margin["usage_revenue_micros"] == 0
+        assert margin["total_revenue_micros"] == 3_000_000
+        assert margin["gross_margin_micros"] == 3_000_000 - 800_000
 
     def test_where_nothing_was_supplied_and_nothing_priced_revenue_is_unknown(self):
         """The first of §9's two workflows: cost tracking only.
