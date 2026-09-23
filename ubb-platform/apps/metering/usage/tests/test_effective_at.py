@@ -2,6 +2,7 @@
 guard, dirty-period markers, outbox payload."""
 import json
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -326,11 +327,30 @@ class TestBackfillDirtyMarkers:
                                   provider_cost_micros=10, effective_at=eff)
         assert BackfillDirtyPeriod.objects.count() == 1
 
-    def test_same_month_backdated_event_writes_no_marker(self):
+    # #560: THE CLOCK IS PINNED, because this test's subject is which month an
+    # instant falls in, and reading the wall clock made the answer depend on when
+    # CI ran. `now - 30 minutes` in the first half-hour of a month lands in the
+    # month before, where the marker is CORRECTLY written, so the test failed
+    # there (it did once, on #417). The pinned month is safely in the past, so no
+    # database clock can disagree with it, and the test is tried at both edges of
+    # that month as well as its middle — the edges are where it broke.
+    @pytest.mark.parametrize("moment", ["middle", "first_minutes", "last_moment"])
+    def test_same_month_backdated_event_writes_no_marker(self, moment):
         t, c = _setup()
-        eff = timezone.now() - timedelta(minutes=30)
-        UsageService.record_usage(t, c, "k1",
-                                  provider_cost_micros=10, effective_at=eff)
+        today = timezone.now()
+        month_opens = (today.replace(day=1, hour=0, minute=0, second=0,
+                                     microsecond=0)
+                       - timedelta(days=20)).replace(day=1)
+        next_month_opens = (month_opens + timedelta(days=32)).replace(day=1)
+        now = {"middle": month_opens + timedelta(days=14, hours=12),
+               "first_minutes": month_opens + timedelta(minutes=10),
+               "last_moment": next_month_opens - timedelta(seconds=1)}[moment]
+        # Backdated by half an hour, or to the month's first instant where that
+        # is nearer: a same-month backdate is all this test claims.
+        eff = max(now - timedelta(minutes=30), month_opens)
+        with patch.object(timezone, "now", return_value=now):
+            UsageService.record_usage(t, c, "k1",
+                                      provider_cost_micros=10, effective_at=eff)
         assert BackfillDirtyPeriod.objects.count() == 0
 
     def test_marker_unique_constraint(self):
