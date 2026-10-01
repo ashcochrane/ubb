@@ -10,6 +10,9 @@ from ubb.exceptions import (
 from ubb._models import from_wire
 from ubb.types import PaginatedResponse
 from ubb.vocabulary import SPEND_POOL_ENFORCE_MODE_ALERT_ONLY
+# The facade's `record_usage` default, named rather than spelled so it IS the
+# metering client's default and not a second copy of the word (#574).
+from ubb.vocabulary import STOP_BEHAVIOR_RAISE
 # Generated DTOs (the wrap, #84): the facade returns the same generated models
 # its sub-clients do.
 from ubb._core.models.affordability_response import AffordabilityResponse
@@ -224,7 +227,7 @@ class UBBClient:
                      task_id: str | None = None,
                      measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = True) -> RecordUsageResponse:
+                     stop_behavior: str = STOP_BEHAVIOR_RAISE) -> RecordUsageResponse:
         """Record a usage event via metering — a full passthrough to
         ``MeteringClient.record_usage()`` (kept in signature parity, defaults
         included, by test_sdk_delegation.TestRecordUsageSignatureParity).
@@ -234,8 +237,11 @@ class UBBClient:
         ``UBBStopRequested`` — a ``BaseException`` carrying that ack, so your
         own ``except Exception:`` cannot swallow it. Catch it once, where you
         can honour ``stop_scope``, and stop sending work for that scope; the
-        event itself was recorded. ``raise_on_stop=False`` returns the ack
-        with ``result.stop`` set instead.
+        event itself was recorded. ``stop_behavior="return"`` returns the ack
+        with ``result.stop`` set instead; ``"raise"`` is the default, the two
+        are ``ubb.vocabulary.STOP_BEHAVIOR_RAISE`` / ``STOP_BEHAVIOR_RETURN``,
+        and any other value raises ``UBBValidationError`` before anything is
+        sent. The keyword replaced a boolean in #574.
 
         Pricing: supply ``provider_cost_micros`` (the SUPPLIER'S own reported
         cost, admissible only where the Event Type declares that it arrives on
@@ -247,7 +253,8 @@ class UBBClient:
         is no keyword for what you CHARGE — that is resolved from the rules your
         tenant configures and read off the response.
         ``recorded_at`` backdates the event (tz-aware datetime or ISO-8601
-        string, bounded by the tenant's backfill window).
+        string, bounded by the tenant's backfill window; a naive datetime
+        raises ``UBBValidationError`` before anything is sent).
 
         Wallet deduction is handled server-side via the billing outbox handler
         — the SDK does NOT call billing.debit() to avoid double-debit.
@@ -271,7 +278,7 @@ class UBBClient:
             task_id=task_id,
             measurements=measurements,
             recorded_at=recorded_at,
-            raise_on_stop=raise_on_stop,
+            stop_behavior=stop_behavior,
         )
 
     def close_task(self, task_id: str, outcome: str, *,

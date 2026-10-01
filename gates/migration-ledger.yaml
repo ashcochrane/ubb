@@ -1383,18 +1383,21 @@ entries:
   # same one `g2-console-pricing_mode` had), and the console's first sight of
   # it is already the migrated shape.
 
-  - id: g2-sdk-stop_behavior
-    gate: G2
-    site: ubb-sdk/ubb/metering.py::stop_behavior
-    expected: stop_behavior
-    found: 0 of 2 values
-    owner_slice: slice_builder
-    reason: >-
-      The SDK names no value here at all — the field is a bare string, so an
-      integrator has no constant to branch on, which is the whole reason #207
-      generated `ubb/vocabulary.py`. #179 §1 makes this the generated
-      wrapper's declared behaviour, and the wrapper does not exist until the
-      Code Builder slice. The SDK names it before then only as documentation.
+  # g2-sdk-stop_behavior WAS HERE AND IS PAID (#574, the Code Builder's SDK
+  # ticket). `ubb/metering.py` imports `STOP_BEHAVIOR_RAISE` and
+  # `STOP_BEHAVIOR_RETURN` and `record_usage` takes `stop_behavior`, defaulting
+  # to the first and refusing anything that is neither; the boolean it replaced
+  # is gone from both clients. It was `slice_builder`'s only entry, so that
+  # slice now owes the ledger nothing.
+  #
+  # ⚠ THE ENTRY'S OWN REASON WAS WRONG ABOUT HOW IT WOULD BE PAID, and the
+  # correction is kept because the same reading will be offered again. It said
+  # the generated wrapper would declare the behaviour. G2 counts imports in the
+  # registry's DECLARED consumer and nowhere else (`tasks.yaml`, `consumers:`),
+  # and that consumer is the hand-written client — so no generated wrapper
+  # could ever have moved this number, and the payment was a signature change
+  # in the SDK itself. It also said "the field is a bare string": there was no
+  # such field, only a boolean.
 
   # g3-backend-trigger_source WAS HERE AND IS PAID (#412, slice 5). All five
   # mechanisms are held by reference in that module, which is what the census

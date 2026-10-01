@@ -77,6 +77,24 @@ disagree with the shipped bytes.
   and `first_stop_index` from them. (v3.0 has not shipped, so this is part of
   the one coordinated cut rather than a second release.) See README →
   *Honouring a spend stop*.
+- **What a stop does is a named value: `stop_behavior="raise"` (the default)
+  or `"return"` (#574).** It replaces the boolean `raise_on_stop` on
+  `MeteringClient.record_usage` and `UBBClient.record_usage` — **this entry
+  supersedes the keyword named in the #421 entry above.** The boolean is
+  removed, not aliased, so a call still passing it is a `TypeError`. The two
+  values are `ubb.vocabulary.STOP_BEHAVIOR_RAISE` / `STOP_BEHAVIOR_RETURN`,
+  which the client now holds by reference; any other value raises
+  `UBBValidationError` before anything is sent. Behaviour is unchanged for
+  both: `"raise"` raises `UBBStopRequested` carrying the acknowledgement,
+  after the event was recorded, and `"return"` hands that acknowledgement
+  back with `result.stop` set. `record_batch` still takes no such keyword and
+  never raises for a stop. See MIGRATION.md §20.
+- **A naive `recorded_at` raises `UBBValidationError`, not `ValueError`
+  (#574).** A `datetime` with no offset is still refused before any request,
+  on `record_usage` and on every item of `record_batch`, but inside the SDK's
+  own family: `except UBBError:` now catches it, and `except ValueError:` no
+  longer does. It was the one refusal the recording calls made outside
+  `UBBError`. See MIGRATION.md §20.
 
 ### Added
 

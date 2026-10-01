@@ -1,11 +1,11 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from unittest.mock import patch, MagicMock
 import httpx
 from ubb.metering import MeteringClient
 from ubb.exceptions import (
     UBBAuthError, UBBAPIError, UBBConflictError, UBBConnectionError,
-    UBBValidationError,
+    UBBError, UBBValidationError,
 )
 from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 # ⚠ THE CLOSE'S VALUES ARE NAMED, NEVER SPELLED, on the same footing as the
@@ -226,10 +226,45 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_naive_recorded_at_rejected_before_http(self, mock_post):
-        with self.assertRaises(ValueError):
+        """A timestamp with no offset is refused INSIDE THE SDK'S OWN ERROR
+        FAMILY (#574). It used to be a plain ``ValueError``, the one refusal
+        the recording calls made that ``except UBBError`` did not catch —
+        so an integrator handling "anything UBB refuses" in one place let
+        this one through to whatever sat above it."""
+        caught = None
+        try:
             self.client.record_usage(
                 customer_id="cust_1", idempotency_key="i6",
                 provider_cost_micros=1, recorded_at=datetime(2026, 6, 1, 12, 0),
+            )
+        except UBBError as refused:  # the contract: the SDK's own family
+            caught = refused
+        self.assertIsInstance(caught, UBBValidationError)
+        self.assertIn("recorded_at", str(caught))
+        # The promise is `UBBError`, and it is not ALSO the built-in: a
+        # handler written against the old type no longer sees this, which
+        # MIGRATION.md says rather than leaving to be discovered.
+        self.assertNotIsInstance(caught, ValueError)
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_a_datetime_whose_tzinfo_answers_no_offset_is_refused_too(self, mock_post):
+        """``tzinfo`` set and ``utcoffset()`` still ``None`` is naive by
+        Python's own definition, and serialises with no offset."""
+        class _NoOffset(tzinfo):
+            def utcoffset(self, dt):
+                return None
+
+            def dst(self, dt):
+                return None
+
+            def tzname(self, dt):
+                return None
+
+        with self.assertRaises(UBBValidationError):
+            self.client.record_usage(
+                customer_id="cust_1", idempotency_key="i6",
+                recorded_at=datetime(2026, 6, 1, 12, 0, tzinfo=_NoOffset()),
             )
         mock_post.assert_not_called()
 
@@ -285,11 +320,18 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_batch_naive_recorded_at_rejected_before_http(self, mock_post):
-        with self.assertRaises(ValueError):
+        """The batch shares the single-event call's serialiser, so it shares
+        the error family: one naive item refuses the whole call, under
+        ``UBBError``, before anything is sent."""
+        with self.assertRaises(UBBError) as cm:
             self.client.record_batch([
+                {"customer_id": "cust_1", "idempotency_key": "k0",
+                 "recorded_at": datetime(2026, 6, 1, tzinfo=timezone.utc)},
                 {"customer_id": "cust_1",
                  "idempotency_key": "k1", "recorded_at": datetime(2026, 6, 1)},
             ])
+        self.assertIsInstance(cm.exception, UBBValidationError)
+        self.assertNotIsInstance(cm.exception, ValueError)
         mock_post.assert_not_called()
 
     @patch("ubb.metering.httpx.Client.post")

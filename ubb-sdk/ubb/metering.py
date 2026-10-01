@@ -56,6 +56,14 @@ from ubb.vocabulary import (
 # this is where a stop arrives: `record_usage` raises `UBBStopRequested`
 # carrying `stop_reason`, and `record_batch` reports it per item (#457).
 from ubb import vocabulary
+# WHAT A STOP DOES, BY NAME (#574). `record_usage` takes one of two values
+# and this module is the only place either is ACTED ON — the facade names
+# the default and passes it through, and the concept never travels on the
+# wire, so there is no route to refuse a third. Both are held
+# by reference: the default in the signature, the branch that raises, and the
+# refusal of anything else all name the registry's constant, so the word a
+# caller types cannot drift from the one this client acts on.
+from ubb.vocabulary import STOP_BEHAVIOR_RAISE, STOP_BEHAVIOR_RETURN
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -156,14 +164,39 @@ def _serialize_recorded_at(value):
     datetimes are rejected client-side, before any HTTP request, because the
     server cannot guess the intended offset. Strings pass through untouched
     (a naive ISO string is rejected server-side with a 422
-    ``effective_at_naive``)."""
+    ``effective_at_naive``).
+
+    The refusal is a ``UBBValidationError`` (#574). It was a plain
+    ``ValueError``, the one refusal the recording calls made outside
+    ``UBBError`` — so a caller handling "anything UBB refuses" in one place
+    let this one through. It is not ALSO a ``ValueError``: one family, and a
+    handler written against the built-in is told so in MIGRATION.md."""
     if isinstance(value, datetime):
         if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError(
+            raise UBBValidationError(
                 "recorded_at must be a timezone-aware datetime (e.g. "
                 "datetime.now(timezone.utc)) or an ISO-8601 string with offset")
         return value.isoformat()
     return str(value)
+
+
+def _check_stop_behavior(value) -> None:
+    """Refuse anything that is not one of the two things a stop can do.
+
+    Called FIRST, before the request is built: a call that recorded the
+    event and only then discovered it did not know what to do with a stop
+    would have to pick one of the two paths on the caller's behalf, and the
+    quiet one of those keeps spending. Compared by equality against the two
+    names rather than looked up in a set, so an unhashable argument is
+    refused like any other instead of raising a ``TypeError`` of its own."""
+    if value == STOP_BEHAVIOR_RAISE or value == STOP_BEHAVIOR_RETURN:
+        return
+    raise UBBValidationError(
+        f"stop_behavior must be {STOP_BEHAVIOR_RAISE!r} or "
+        f"{STOP_BEHAVIOR_RETURN!r}, got {value!r}. Nothing was sent. "
+        f"{STOP_BEHAVIOR_RAISE!r} (the default) raises UBBStopRequested when "
+        f"the acknowledgement asks for a stop; {STOP_BEHAVIOR_RETURN!r} "
+        f"returns the acknowledgement with `stop` set instead.")
 
 
 logger = logging.getLogger("ubb.metering")
@@ -449,13 +482,13 @@ class MeteringClient:
                      task_id: str | None = None,
                      measurements: dict | None = None,
                      recorded_at: datetime | str | None = None,
-                     raise_on_stop: bool = True) -> RecordUsageResponse:
+                     stop_behavior: str = STOP_BEHAVIOR_RAISE) -> RecordUsageResponse:
         """Record a usage event via POST /api/v1/metering/usage.
 
         One-rule contract: every event that reaches UBB is priced, recorded,
         and billed with an HTTP 200, and the ack carries the verdict. When
         the verdict says stop, this call RAISES ``UBBStopRequested`` carrying
-        that ack (see ``raise_on_stop`` below): stop sending work for the
+        that ack (see ``stop_behavior`` below): stop sending work for the
         named scope (``stop_scope``: the task, or the whole customer). A
         non-200 always means "this was not recorded".
 
@@ -481,8 +514,10 @@ class MeteringClient:
         the same keys under ``metadata``.
 
         ``recorded_at``: when the usage actually happened — a timezone-aware
-        datetime or ISO-8601 string (sent as ``effective_at``). Naive datetimes
-        raise ValueError client-side. Bounded server-side by the tenant's
+        datetime or ISO-8601 string (sent as ``effective_at``). A naive datetime
+        raises ``UBBValidationError`` client-side, before anything is sent — a
+        ``UBBError`` like every other refusal here, and no longer the built-in
+        ``ValueError`` it used to be. Bounded server-side by the tenant's
         backfill window (default 34 days; typed 422 codes: effective_at_naive,
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
@@ -515,19 +550,25 @@ class MeteringClient:
         request does not publish is still dropped without comment. Write the
         rule instead.
 
-        ``raise_on_stop``: True by default. A stop verdict on the ack is
-        raised as ``UBBStopRequested`` — a ``BaseException``, so your own
-        ``except Exception:`` around a provider loop cannot swallow it and
-        keep spending — carrying the whole acknowledgement, so nothing is
-        lost by catching it. The event was recorded and charged either way;
-        the signal is about the NEXT call, never a failed submission. Catch
-        it once, at the boundary that can honour ``stop_scope``, and never
-        resend the event. ``raise_on_stop=False`` returns the same ack with
-        ``result.stop`` set instead of raising. The one reason to choose it
-        is recording work that has ALREADY happened one call at a time,
-        where a stop raised part-way would leave the rest unrecorded — and
-        ``record_batch`` is the better tool for that, because it never
-        raises.
+        ``stop_behavior``: what this call does when the ack says stop — one
+        of two named values, ``"raise"`` (the default) or ``"return"``; the
+        constants are ``ubb.vocabulary.STOP_BEHAVIOR_RAISE`` and
+        ``STOP_BEHAVIOR_RETURN``. ⚠ IT REPLACED A BOOLEAN IN #574 and the
+        old keyword is not accepted. With ``"raise"`` a stop verdict on the
+        ack is raised as ``UBBStopRequested`` — a ``BaseException``, so your
+        own ``except Exception:`` around a provider loop cannot swallow it
+        and keep spending — carrying the whole acknowledgement, so nothing
+        is lost by catching it. The event was recorded and charged either
+        way; the signal is about the NEXT call, never a failed submission.
+        Catch it once, at the boundary that can honour ``stop_scope``, and
+        never resend the event. ``stop_behavior="return"`` returns the same
+        ack with ``result.stop`` set instead of raising. The one reason to
+        choose it is recording work that has ALREADY happened one call at a
+        time, where a stop raised part-way would leave the rest unrecorded —
+        and ``record_batch`` is the better tool for that, because it never
+        raises. Any other value raises ``UBBValidationError`` before
+        anything is sent: the set is closed at these two, and a value this
+        client does not know is never guessed at.
 
         ``stop_reason`` on the acknowledgement — and on the signal — says
         WHICH BOUND was reached, in the words of ``ubb.vocabulary``'s
@@ -537,6 +578,7 @@ class MeteringClient:
         set is open, so keep a default branch for a reason this client has
         not heard of.
         """
+        _check_stop_behavior(stop_behavior)
         body: dict = {
             "customer_id": customer_id,
             "idempotency_key": idempotency_key,
@@ -562,7 +604,7 @@ class MeteringClient:
             body["task_id"] = task_id
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE, json=body)
         result = from_wire(RecordUsageResponse, r.json())
-        if raise_on_stop and result.stop:
+        if stop_behavior == STOP_BEHAVIOR_RAISE and result.stop:
             # Ordering is contract (#179 §1.3): the write committed and the
             # ack is fully built before anything is raised, and the signal
             # carries that ack. It sits after `_request`, so the retry loop
@@ -576,7 +618,8 @@ class MeteringClient:
 
         Each event dict takes the same keys as record_usage kwargs (plus
         ``customer_id``); a per-event ``recorded_at`` is serialized to
-        ``effective_at`` (naive datetimes raise ValueError before any HTTP).
+        ``effective_at`` (a naive datetime raises ``UBBValidationError``
+        before any HTTP, as it does on ``record_usage``).
 
         ⚠ **A KEY THE RECORDING REQUEST DOES NOT PUBLISH RAISES**
         ``UBBValidationError``, before any HTTP, naming the item's index and

@@ -17,6 +17,7 @@ from ubb.billing import BillingClient
 from ubb.exceptions import UBBError
 from ubb.metering import MeteringClient
 from ubb.types import PaginatedResponse
+from ubb.vocabulary import STOP_BEHAVIOR_RETURN
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 
@@ -197,9 +198,10 @@ class TestMeteringDelegation:
     def test_record_usage_forwards_metrics_backdating_and_stop(self):
         """The facade passes the richer metering params through, and works
         without provider_cost_micros (metrics-only recording). The stop
-        keyword forwarded is the OPT-OUT: raising is the default on both
-        clients now (#421), so the value that must survive the passthrough is
-        the one a caller has to spell."""
+        value forwarded is the OPT-OUT: raising is the default on both
+        clients (#421), so the value that must survive the passthrough is
+        the one a caller has to spell — ``return``, under the keyword that
+        replaced the boolean (#574)."""
         sentinel = object()
         self.client.metering.record_usage = MagicMock(return_value=sentinel)
         result = self.client.record_usage(
@@ -207,14 +209,14 @@ class TestMeteringDelegation:
             measurements={"tokens": 1000},
             recorded_at="2026-06-01T00:00:00Z",
             task_id="task_1",
-            raise_on_stop=False,
+            stop_behavior=STOP_BEHAVIOR_RETURN,
         )
         assert result is sentinel
         _, kwargs = self.client.metering.record_usage.call_args
         assert kwargs["measurements"] == {"tokens": 1000}
         assert kwargs["recorded_at"] == "2026-06-01T00:00:00Z"
         assert kwargs["task_id"] == "task_1"
-        assert kwargs["raise_on_stop"] is False
+        assert kwargs["stop_behavior"] == STOP_BEHAVIOR_RETURN
 
 
 class TestRecordUsageSignatureParity:

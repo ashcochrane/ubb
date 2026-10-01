@@ -124,7 +124,9 @@ govern it. Back-out of the customer-wide half is instant (set `off`).
      boundary. `stop_reason` names which control stopped them:
      `customer_spend_pool` or `hard_floor`.
 
-   Reading `result.stop` in line is the opt-out (`raise_on_stop=False`), and a
+   Reading `result.stop` in line is the opt-out (`stop_behavior="return"`; the
+   default is `"raise"`, and any other value is refused before anything is
+   sent), and a
    batch never raises — it reports the stop per item. Either way the event was
    recorded and billed — the stop is an instruction, not an error, and the
    signal carries the ack to prove it.
@@ -198,7 +200,7 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   above is the only one that starts work.
 - **`record_usage` →** always 200 for a recorded event, and when the verdict
   says stop the SDK **raises** `UBBStopRequested` by default, carrying the whole
-  result as `stop.result` (`raise_on_stop=False` returns it instead): `stop` /
+  result as `stop.result` (`stop_behavior="return"` returns it instead): `stop` /
   `stop_reason` / `stop_scope` (cooperative — the event *was* charged),
   `task_total_billed_cost_micros` + `task_total_provider_cost_micros` (both
   running totals, denominationally explicit — only the provider total races the
@@ -261,7 +263,7 @@ The stop is cooperative — your runtime cancels at a safe boundary. Common shap
 
 - **Inngest:** `cancelOn` matched to a `customer.stopped` or `customer.suspended` webhook keyed on `data.customer_id`; finishes the piece of work already running.
 - **Temporal:** webhook → `workflow.cancel()`; activities must heartbeat to receive the cancellation.
-- **Vercel AI SDK:** a `stopWhen` predicate set by your `UBBStopRequested` handler (or, with `raise_on_stop=False`, fed by the last `record_usage` result's `stop`).
+- **Vercel AI SDK:** a `stopWhen` predicate set by your `UBBStopRequested` handler (or, with `stop_behavior="return"`, fed by the last `record_usage` result's `stop`).
 - **LangGraph:** catch `UBBStopRequested` at a node boundary; stop via the checkpointer.
 - **OpenAI Agents SDK:** `result.cancel()` (after the current turn) from the `UBBStopRequested` handler.
 - **Plain workers / Celery:** let `UBBStopRequested` end the current piece of work — catch it once at the worker's outer boundary, never per call. A `with client.start_task(...)` block it escapes declares nothing, so that handler is where the task is `cancel()`led or `fail()`ed; on the webhook, `revoke`/cancel the matching work.
