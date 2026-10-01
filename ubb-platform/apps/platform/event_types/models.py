@@ -38,7 +38,10 @@ slice 3 owns every behaviour the declaration selects, and #320 wired the first
 of them: **what an Event Type says about cost now reaches the rating path**,
 through ``costing.py`` next door, which answers in plain data and is the only
 door onto this package a behavioural module may use. No spend ceiling consults
-any of this, and neither satellite reaches money at all.
+any of this, and neither satellite reaches money at all. ``publication.py``
+is the other read in plain data, and it answers a different question for a
+different caller: what an Event Type said when it was LAST PUBLISHED, which a
+revision would otherwise overwrite in place (#573).
 ``apps/platform/tests/test_event_type_satellite_invariants.py``
 and its siblings ``test_event_type_declaration_invariants.py``,
 ``test_reported_cost_invariants.py`` and ``test_quarantine_invariants.py`` are
@@ -48,7 +51,7 @@ from decimal import Decimal, InvalidOperation
 from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from core.exceptions import UBBError
@@ -658,6 +661,28 @@ class EventType(PinnedDeclaration, BaseModel):
     published_revision = models.PositiveIntegerField(default=0)
     published_at = models.DateTimeField(null=True, blank=True)
 
+    # WHAT that publication said (#573). The two columns above count
+    # publications and date them; neither records content, and
+    # `revise_declaration` returns this row to draft IN PLACE — so without this
+    # the declaration a deployed integration was generated against is gone the
+    # moment a draft edit lands. The pinned elements of this record and of
+    # every part beneath it, as `_declaration_to_pin` composes them, written by
+    # `publish` in the same statement that moves the revision: there is no
+    # state in which the count has moved and the content has not.
+    #
+    # NULL means nothing has been published. It is never the draft's content,
+    # and nothing but `publish` writes it — which is why a revision, whichever
+    # door it arrives through, leaves it exactly where it was.
+    #
+    # On the row rather than in a table of publications, and that is a choice:
+    # the question asked of it is "what does the CURRENT publication say", the
+    # audit ledger already keeps every publication's content as
+    # `event_type.published`, and a copy on the row cannot disagree with the
+    # revision beside it. Read through `publication.py` next door, in plain
+    # data; it is not on the tenant contract.
+    published_declaration = models.JSONField(null=True, blank=True,
+                                             default=None)
+
     class Meta:
         db_table = "ubb_event_type"
         constraints = [
@@ -728,22 +753,75 @@ class EventType(PinnedDeclaration, BaseModel):
         through ``self.event_type``, which may be an instance loaded before the
         declaration was published — and a stale ``draft`` in memory would make
         this a silent no-op, which is failing open on exactly the reading that
-        matters. The conditional update also cannot race with a concurrent
-        publication: either it finds a published row or the publication has not
-        happened yet.
+        matters.
+
+        **The row is LOCKED before it is asked, and that is what stops this
+        racing a concurrent publication (#573).** A bare conditional update did
+        not: against a publication still in flight it sees a draft row, matches
+        nothing and does not wait — and the publication then commits a
+        published row whose part had already changed beneath it. That was
+        harmless while publishing pinned nothing but a status. It is not now
+        that :meth:`publish` keeps a copy of what it pinned, because the copy
+        would have been composed before the part's change was visible, and the
+        row would say *published* over parts the copy does not describe. Taking
+        the lock makes the two orders the only two: this waits for the
+        publication and then un-publishes it, or the publication waits for
+        this and pins the changed part.
 
         ``QuerySet.update`` is used deliberately here, the one place in this
         file it is: it goes round the model-level guard in :meth:`save`, and
         there is nothing for that guard to do — this record's OWN pinned
-        elements have not moved, and the status is what is being written.
+        elements have not moved, and the status is what is being written. What
+        the last publication SAID is not written either, and that omission is
+        the point of the column: see ``published_declaration``.
         """
-        moved = (type(self)._base_manager
-                 .filter(pk=self.pk,
-                         declaration_status=DECLARATION_STATUS_PUBLISHED)
-                 .update(declaration_status=DECLARATION_STATUS_DRAFT,
-                         updated_at=timezone.now()))
-        if moved:
-            self.declaration_status = DECLARATION_STATUS_DRAFT
+        with transaction.atomic():
+            status = self._locked_status()
+            if status != DECLARATION_STATUS_PUBLISHED:
+                return
+            (type(self)._base_manager.filter(pk=self.pk)
+             .update(declaration_status=DECLARATION_STATUS_DRAFT,
+                     updated_at=timezone.now()))
+        self.declaration_status = DECLARATION_STATUS_DRAFT
+
+    def _locked_status(self):
+        """This row's status, read under a lock held to the end of the transaction.
+
+        The one question both halves of the lifecycle ask before they act, and
+        the lock is the answer's shelf life: whoever holds it knows no
+        publication and no revision can land until they are done. ``None``
+        where there is no row yet: nothing is locked, and nothing needed to be.
+        """
+        return (type(self)._base_manager.select_for_update()
+                .filter(pk=self.pk)
+                .values_list("declaration_status", flat=True).first())
+
+    def _declaration_to_pin(self):
+        """Everything a publication pins, read from the rows, as plain data.
+
+        This record's own pinned elements and those of every part beneath it —
+        each named by the ``PINNED`` its model already declares, so an element
+        that becomes pinned is kept from the publication after and no second
+        list has to hear about it. ``publication.py`` holds the shape a reader
+        is handed to those same tuples.
+
+        The parts are READ rather than taken from whatever this instance has
+        cached, for the reason :meth:`revise_declaration` asks the row: a
+        prefetch from before an edit would pin a declaration nobody published.
+        The quantities come in code order so that two publications of one
+        declaration compose one value.
+        """
+        measurements = (Measurement._base_manager
+                        .filter(event_type_id=self.pk).order_by("code")
+                        .values(*Measurement.PINNED))
+        mapping = (ReportedCostMapping._base_manager
+                   .filter(event_type_id=self.pk)
+                   .values(*ReportedCostMapping.PINNED).first())
+        return {
+            **dict(zip(self.PINNED, self._pinned_declaration())),
+            "measurements": list(measurements),
+            REPORTED_COST_MAPPING: mapping,
+        }
 
     def publication_blockers(self):
         """What stands between this declaration and publication, if anything.
@@ -763,11 +841,19 @@ class EventType(PinnedDeclaration, BaseModel):
         for every `reported` declaration in the tree at once. The test next door
         names that shape so a change to it goes red where it is made.
         """
-        if self.costing_method != COSTING_METHOD_REPORTED:
+        return self._blockers_given(
+            mapped=getattr(self, REPORTED_COST_MAPPING, None) is not None)
+
+    def _blockers_given(self, *, mapped):
+        """The rule itself, apart from where the answer about the mapping came from.
+
+        Two callers and one rule: the method above answers from what this
+        instance holds, which is what a route serving the declaration wants,
+        and :meth:`publish` asks again of the rows it is about to pin (#573).
+        """
+        if self.costing_method != COSTING_METHOD_REPORTED or mapped:
             return ()
-        if getattr(self, REPORTED_COST_MAPPING, None) is None:
-            return (REPORTED_COST_MAPPING,)
-        return ()
+        return (REPORTED_COST_MAPPING,)
 
     def publish(self):
         """Pin this declaration, or refuse and leave it where it can be edited.
@@ -778,6 +864,12 @@ class EventType(PinnedDeclaration, BaseModel):
         nothing: there is no second declaration to have been generated against.
         The test that would otherwise be missing is the one for the natural
         sequence — change it, then publish it, with no save in between.
+
+        **And it keeps what it pinned (#573).** The revision, its date and the
+        declaration they describe are written together, so a later revision —
+        which returns this row to draft in place — cannot take the published
+        content with it. A publication that moves nothing writes nothing: the
+        copy already there is the copy of this declaration.
         """
         blockers = self.publication_blockers()
         if blockers:
@@ -788,16 +880,32 @@ class EventType(PinnedDeclaration, BaseModel):
                 and self._pinned_declaration() == baseline):
             return self
 
-        self.declaration_status = DECLARATION_STATUS_PUBLISHED
-        self.published_revision += 1
-        self.published_at = timezone.now()
-        # Publication IS the act of pinning the current declaration, so the
-        # baseline moves with it. Without this, publishing a record that was
-        # loaded published and then edited would be undone by the guard in
-        # `save` below, which would be reading a baseline this call has just
-        # replaced.
-        self._pinned_as_loaded = self._pinned_declaration()
-        self.save()
+        with transaction.atomic():
+            # Held from before the parts are read until the row is written, so
+            # a part changing meanwhile either is in what gets pinned or finds
+            # a published row to un-publish — see `revise_declaration`.
+            self._locked_status()
+            pinned = self._declaration_to_pin()
+            # Asked a second time, of the rows this publication pins rather
+            # than of what the instance remembers. The refusal above is the
+            # ordinary one; this is the mapping withdrawn since the instance
+            # was loaded, which would otherwise be kept as a published
+            # `reported` declaration with nowhere to read its cost from.
+            blockers = self._blockers_given(
+                mapped=pinned[REPORTED_COST_MAPPING] is not None)
+            if blockers:
+                raise DeclarationIncomplete(blockers)
+            self.declaration_status = DECLARATION_STATUS_PUBLISHED
+            self.published_revision += 1
+            self.published_at = timezone.now()
+            self.published_declaration = pinned
+            # Publication IS the act of pinning the current declaration, so
+            # the baseline moves with it. Without this, publishing a record
+            # that was loaded published and then edited would be undone by the
+            # guard in `save` below, which would be reading a baseline this
+            # call has just replaced.
+            self._pinned_as_loaded = self._pinned_declaration()
+            self.save()
         return self
 
     # -- what makes a change a revision rather than a reinterpretation --------
