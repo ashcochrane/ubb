@@ -142,6 +142,21 @@ averaging two genuinely different supplier costs produces a number wrong for bot
 _Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised
 string is quarantined for later resolution, not silently declared.
 
+**Last-published declaration**:
+What an Event Type said at its current publication — the pinned elements of the Event Type and of
+every part beneath it (each Measurement with its structured path, and the reported-cost mapping),
+with the revision and its date. A revision returns the Event Type to draft **in place**, so the
+catalogue's rows are the draft; this is the copy `publish` keeps beside the revision, in the same
+write, and returning to draft does not rewrite it (#573). It exists so that whatever must keep faith with an
+integration a tenant already deployed reads what that integration was generated against, not what
+is being edited. An Event Type never published has none, and the read answers `None` rather than
+falling back to the draft. It carries only what publication pins: the supplier, the category, a
+quantity's display name and its analytics grouping may each change without a new publication, so
+they are read from the catalogue. Internal — the tenant routes serve the live declaration.
+(`apps/platform/event_types/publication.py:last_published_declaration`)
+_Avoid_: reading a published-and-since-revised Event Type's Measurements or mapping off the
+catalogue's rows as "the published declaration" — they are the draft the moment an edit lands.
+
 **Provider**:
 The supplier behind a call — a per-tenant record, optional on an Event Type. It is a record and not
 a string because supplier cost resolution keys on its identity: a tenant may correct `key` without

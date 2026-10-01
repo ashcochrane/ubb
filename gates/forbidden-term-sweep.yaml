@@ -392,7 +392,11 @@ exclusions:
     # `RenameField(old_name=...)` that has to spell the retired word, and a
     # `RunPython` that has to recognise the two readings the old column had in
     # order to carry each to what it actually meant.
-    files: 265
+    # 265 → 266 in #573: one migration, adding the column an Event Type keeps
+    # its last-published declaration in and filling it for the declarations
+    # published already. It names no retired word — it renames nothing — so the
+    # number moved for the file existing, and the sites and terms held at 1 in 5.
+    files: 266
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**
