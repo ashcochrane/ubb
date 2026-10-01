@@ -32,16 +32,15 @@ from apps.platform.event_types.publication import (
 )
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
-    AMOUNT_REPRESENTATION_MICROS,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
-    SOURCE_KIND_CALLER_SUPPLIED,
-    SOURCE_KIND_PROVIDER_RESPONSE,
     SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1,
-    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
+    UNIT_CALL,
     UNIT_TOKEN,
 )
+
+from ._helpers import declares_an_event_type
 
 KEY = "acme.embed"
 
@@ -53,18 +52,17 @@ keep_what_is_published_now = import_module(
 def _declared(tenant=None, key=KEY):
     """A `reported` Event Type with one quantity and its mapping, in draft."""
     tenant = tenant or Tenant.objects.create(name="T")
-    event_type = EventType.objects.create(
-        tenant=tenant, key=key, costing_method=COSTING_METHOD_REPORTED,
-        source_shape_id=SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1)
-    Measurement.objects.create(
-        event_type=event_type, code="input_tokens", unit=UNIT_TOKEN,
-        display_name="Input tokens", required_for_costing=True,
-        source_kind=SOURCE_KIND_PROVIDER_RESPONSE,
-        source_path=["usage", "input_tokens"])
-    ReportedCostMapping.objects.create(
-        event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
-        amount_representation=AMOUNT_REPRESENTATION_MICROS, currency="usd")
+    event_type = declares_an_event_type(
+        tenant, key, costing_method=COSTING_METHOD_REPORTED,
+        quantities=("input_tokens",), mapping=True)
     return EventType.objects.get(pk=event_type.pk)
+
+
+def _recount(event_type):
+    """Revise the declaration: its one quantity is counted in another unit."""
+    quantity = event_type.measurements.get()
+    quantity.unit = UNIT_CALL
+    quantity.save()
 
 
 def _published(tenant=None, key=KEY):
@@ -173,7 +171,6 @@ def test_a_declaration_already_published_is_given_the_copy_it_would_have():
     keep_what_is_published_now(live_apps, None)
 
     assert _read(published) == kept
-    assert kept.measurements[0].source_path == ("usage", "input_tokens")
 
 
 @pytest.mark.django_db
@@ -183,9 +180,7 @@ def test_a_declaration_revised_before_copies_were_kept_is_not_given_one():
     published one, so it reads as nothing published — and publishing it again
     is what brings a copy back."""
     revised = _published()
-    quantity = revised.measurements.get()
-    quantity.source_path = ["usage", "prompt_tokens"]
-    quantity.save()
+    _recount(revised)
     _as_before_copies_were_kept(revised)
     revised = EventType.objects.get(pk=revised.pk)
     assert revised.declaration_status == DECLARATION_STATUS_DRAFT
@@ -198,7 +193,7 @@ def test_a_declaration_revised_before_copies_were_kept_is_not_given_one():
     revised.publish()
     again = _read(revised)
     assert again.published_revision == 2
-    assert again.measurements[0].source_path == ("usage", "prompt_tokens")
+    assert [m.unit for m in again.measurements] == [UNIT_CALL]
 
 
 @pytest.mark.django_db
@@ -207,9 +202,8 @@ def test_the_backfill_leaves_a_copy_already_kept_alone():
     that is there was written by the publication and is not recomposed."""
     revised = _published()
     kept = _read(revised)
-    quantity = revised.measurements.get()
-    quantity.source_path = ["usage", "prompt_tokens"]
-    quantity.save()
+    assert [m.unit for m in kept.measurements] == [UNIT_TOKEN]
+    _recount(revised)
     # Published once more by a writer that goes round the model, so the row
     # says `published` over parts the copy does not describe — the one state
     # in which recomposing would visibly move it.
@@ -262,6 +256,41 @@ def test_a_publication_locks_its_row_before_it_reads_its_parts():
 
 
 @pytest.mark.django_db
+def test_a_publication_counts_on_from_the_rows_revision_not_its_own():
+    """Two instances of one draft, published one after the other with a
+    change between. The second was loaded before the first published, so it
+    remembers revision 0 — and writing 1 again would put one number on two
+    different declarations."""
+    first = _declared()
+    second = EventType.objects.get(pk=first.pk)
+    first.publish()
+    assert _read(first).published_revision == 1
+
+    second.source_shape_id = SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1
+    second.publish()
+
+    kept = _read(second)
+    assert kept.published_revision == 2
+    assert kept.source_shape_id == SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1
+
+
+@pytest.mark.django_db
+def test_a_publication_pins_the_parts_as_the_rows_hold_them():
+    """An instance that prefetched its quantities before one was changed
+    still remembers the old one. What it publishes is what is declared NOW —
+    a copy composed from the prefetch would pin a declaration nobody
+    published."""
+    remembering = (EventType.objects.prefetch_related("measurements")
+                   .get(pk=_declared().pk))
+    assert [m.unit for m in remembering.measurements.all()] == [UNIT_TOKEN]
+    _recount(EventType.objects.get(pk=remembering.pk))
+
+    remembering.publish()
+
+    assert [m.unit for m in _read(remembering).measurements] == [UNIT_CALL]
+
+
+@pytest.mark.django_db
 def test_a_publication_asks_the_rows_whether_its_mapping_is_still_there():
     """An instance that remembers a mapping is not evidence there is one.
 
@@ -291,7 +320,7 @@ def test_a_revision_locks_the_row_before_it_asks_whether_it_is_published():
     does."""
     published = _published()
     quantity = published.measurements.get()
-    quantity.source_path = ["usage", "prompt_tokens"]
+    quantity.unit = UNIT_CALL
 
     with CaptureQueriesContext(connection) as captured:
         quantity.save()

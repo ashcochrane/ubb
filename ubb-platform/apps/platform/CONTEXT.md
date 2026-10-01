@@ -147,7 +147,7 @@ What an Event Type said at its current publication — the pinned elements of th
 every part beneath it (each Measurement with its structured path, and the reported-cost mapping),
 with the revision and its date. A revision returns the Event Type to draft **in place**, so the
 catalogue's rows are the draft; this is the copy `publish` keeps beside the revision, in the same
-write, and no revision touches it (#573). It exists so that whatever must keep faith with an
+write, and returning to draft does not rewrite it (#573). It exists so that whatever must keep faith with an
 integration a tenant already deployed reads what that integration was generated against, not what
 is being edited. An Event Type never published has none, and the read answers `None` rather than
 falling back to the draft. It carries only what publication pins: the supplier, the category, a

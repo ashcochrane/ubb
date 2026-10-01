@@ -32,7 +32,9 @@ from apps.platform.event_types.publication import (
     PublishedDeclaration, PublishedMeasurement, PublishedReportedCostMapping,
     last_published_declaration,
 )
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import Tenant
+
+from ._helpers import a_tenant
 
 KEY = "chat.completion"
 ROUTE = f"/api/v1/event-types/{KEY}"
@@ -86,8 +88,7 @@ def _as_served(body):
 @pytest.mark.django_db
 class TestTheLastPublishedDeclarationStaysReadable:
     def setup_method(self):
-        self.tenant = Tenant.objects.create(name="T", products=["metering"])
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
+        self.tenant, self.raw_key = a_tenant()
         self.client = Client()
 
     # -- the tenant's own routes ------------------------------------------
@@ -214,9 +215,11 @@ class TestTheLastPublishedDeclarationStaysReadable:
 
         after = self._read()
         assert after == before
-        assert after.published_revision == 1
-        assert after.published_at == datetime.fromisoformat(
-            body["published_at"])
+        # And it carries the publication's own count and date — the two the
+        # row kept all along, now beside the content they describe.
+        assert (after.published_revision, after.published_at) == (
+            draft["published_revision"],
+            datetime.fromisoformat(draft["published_at"]))
         # THE CONTROL. The same comparator that agreed at publication now
         # disagrees: the live declaration really did change, so a read that
         # answered with it could not have passed the equality above.
@@ -290,12 +293,11 @@ class TestTheLastPublishedDeclarationStaysReadable:
 
         republished = self._publish()
 
+        assert before.published_revision == 1
         assert republished["published_revision"] == 2
         after = self._read()
         assert after == _as_served(republished)
-        assert after.published_revision == before.published_revision + 1
         assert after.measurements[0].source_path == ("usage", "prompt_tokens")
-        assert after != before
 
     def test_a_revision_after_the_second_publication_keeps_the_second(self):
         self._declared_and_published()

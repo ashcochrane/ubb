@@ -31,7 +31,7 @@ integration from published configuration.
 from datetime import datetime
 from typing import NamedTuple
 
-from .models import REPORTED_COST_MAPPING, EventType
+from .models import MEASUREMENTS, REPORTED_COST_MAPPING, EventType
 
 
 class PublishedMeasurement(NamedTuple):
@@ -96,18 +96,20 @@ def last_published_declaration(*, tenant, key):
     published_revision, published_at, pinned = row
     if pinned is None:
         return None
-    mapping = pinned[REPORTED_COST_MAPPING]
+    # Every element is handed over by NAME, the Event Type's own as much as a
+    # part's, so a copy carrying one its shape does not name fails here rather
+    # than being read without it.
+    own = dict(pinned)
+    measurements = own.pop(MEASUREMENTS)
+    mapping = own.pop(REPORTED_COST_MAPPING)
     return PublishedDeclaration(
-        key=pinned["key"],
-        costing_method=pinned["costing_method"],
-        source_shape_id=pinned["source_shape_id"],
-        source_shape_label=pinned["source_shape_label"],
+        **own,
         published_revision=published_revision,
         published_at=published_at,
         measurements=tuple(
             PublishedMeasurement(**{**measurement, "source_path": tuple(
                 measurement["source_path"])})
-            for measurement in pinned["measurements"]),
+            for measurement in measurements),
         reported_cost_mapping=(None if mapping is None else
                                PublishedReportedCostMapping(**{
                                    **mapping,

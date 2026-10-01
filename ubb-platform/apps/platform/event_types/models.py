@@ -91,6 +91,11 @@ RECOGNISED_RESPONSE_SHAPES = SOURCE_SHAPE_ID_KNOWN_VALUES - {SOURCE_SHAPE_ID_CUS
 #: named once, and the accessor by which the Event Type reaches it.
 REPORTED_COST_MAPPING = "reported_cost_mapping"
 
+#: The accessor by which an Event Type reaches its declared quantities, named
+#: for the same reason: it is also the key they are kept under in the copy a
+#: publication pins, and `publication.py` reads them back by it.
+MEASUREMENTS = "measurements"
+
 #: The two source kinds a REPORTED COST may be declared with. The concept
 #: declares four and they are shared with the quantities beside it; these two
 #: are what survives the narrowing, and the other two are refused below for two
@@ -670,9 +675,17 @@ class EventType(PinnedDeclaration, BaseModel):
     # `publish` in the same statement that moves the revision: there is no
     # state in which the count has moved and the content has not.
     #
-    # NULL means nothing has been published. It is never the draft's content,
-    # and nothing but `publish` writes it — which is why a revision, whichever
-    # door it arrives through, leaves it exactly where it was.
+    # NULL means nothing has been published. It is never the draft's content:
+    # `publish` is the only place a value for it is COMPOSED, and neither
+    # `revise_declaration` nor the guard in `save` assigns it.
+    #
+    # ⚠ THAT IS A STATEMENT ABOUT THIS FILE AND NOT A PROTECTION, and it
+    # declares no transition class. A full `save()` writes back whatever the
+    # instance loaded — for this column exactly as for the revision and the
+    # date beside it — and `QuerySet.update()` goes round everything here, as
+    # ADR-0007 §2 says of every model-level rule. A database rule holding the
+    # three together would be a decision of its own; this ticket keeps the
+    # copy and does not claim to defend it.
     #
     # On the row rather than in a table of publications, and that is a choice:
     # the question asked of it is "what does the CURRENT publication say", the
@@ -776,7 +789,7 @@ class EventType(PinnedDeclaration, BaseModel):
         the point of the column: see ``published_declaration``.
         """
         with transaction.atomic():
-            status = self._locked_status()
+            status, _ = self._locked_publication()
             if status != DECLARATION_STATUS_PUBLISHED:
                 return
             (type(self)._base_manager.filter(pk=self.pk)
@@ -784,32 +797,40 @@ class EventType(PinnedDeclaration, BaseModel):
                      updated_at=timezone.now()))
         self.declaration_status = DECLARATION_STATUS_DRAFT
 
-    def _locked_status(self):
-        """This row's status, read under a lock held to the end of the transaction.
+    def _locked_publication(self):
+        """The row's status and revision, read under a lock held to the end of
+        the transaction.
 
-        The one question both halves of the lifecycle ask before they act, and
-        the lock is the answer's shelf life: whoever holds it knows no
-        publication and no revision can land until they are done. ``None``
-        where there is no row yet: nothing is locked, and nothing needed to be.
+        What both halves of the lifecycle ask before they act, and the lock is
+        the answer's shelf life: whoever holds it knows no publication and no
+        revision can land until they are done. A record with no row yet has
+        never been published, and says so: nothing is locked, and nothing
+        needed to be.
         """
         return (type(self)._base_manager.select_for_update()
                 .filter(pk=self.pk)
-                .values_list("declaration_status", flat=True).first())
+                .values_list("declaration_status", "published_revision")
+                .first()) or (DECLARATION_STATUS_DRAFT, 0)
 
     def _declaration_to_pin(self):
         """Everything a publication pins, read from the rows, as plain data.
 
         This record's own pinned elements and those of every part beneath it —
         each named by the ``PINNED`` its model already declares, so an element
-        that becomes pinned is kept from the publication after and no second
-        list has to hear about it. ``publication.py`` holds the shape a reader
-        is handed to those same tuples.
+        that becomes pinned is KEPT from the next publication on without this
+        method hearing about it. Being READ is another matter: the shapes in
+        ``publication.py`` are written out, and ``tests/test_publication.py``
+        is what holds them to these tuples.
 
-        The parts are READ rather than taken from whatever this instance has
-        cached, for the reason :meth:`revise_declaration` asks the row: a
-        prefetch from before an edit would pin a declaration nobody published.
-        The quantities come in code order so that two publications of one
-        declaration compose one value.
+        The two halves come from two places, deliberately. This record's own
+        elements are the INSTANCE's, because they are what the save beside
+        this call is about to write — changing one and publishing with no save
+        in between is the natural sequence. The parts are READ from their rows
+        rather than taken from whatever this instance has cached, for the
+        reason :meth:`revise_declaration` asks the row: a prefetch from before
+        an edit would pin a declaration nobody published. The quantities come
+        in code order so that two publications of one declaration compose one
+        value.
         """
         measurements = (Measurement._base_manager
                         .filter(event_type_id=self.pk).order_by("code")
@@ -819,7 +840,7 @@ class EventType(PinnedDeclaration, BaseModel):
                    .values(*ReportedCostMapping.PINNED).first())
         return {
             **dict(zip(self.PINNED, self._pinned_declaration())),
-            "measurements": list(measurements),
+            MEASUREMENTS: list(measurements),
             REPORTED_COST_MAPPING: mapping,
         }
 
@@ -883,8 +904,10 @@ class EventType(PinnedDeclaration, BaseModel):
         with transaction.atomic():
             # Held from before the parts are read until the row is written, so
             # a part changing meanwhile either is in what gets pinned or finds
-            # a published row to un-publish — see `revise_declaration`.
-            self._locked_status()
+            # a published row to un-publish — see `revise_declaration`. The
+            # shortcut above is NOT under it: whether an unchanged declaration
+            # is already published is still asked of the instance, as it was.
+            _, revision = self._locked_publication()
             pinned = self._declaration_to_pin()
             # Asked a second time, of the rows this publication pins rather
             # than of what the instance remembers. The refusal above is the
@@ -896,7 +919,12 @@ class EventType(PinnedDeclaration, BaseModel):
             if blockers:
                 raise DeclarationIncomplete(blockers)
             self.declaration_status = DECLARATION_STATUS_PUBLISHED
-            self.published_revision += 1
+            # One on from the ROW's revision, not from the one this instance
+            # was loaded with. An instance that predates somebody else's
+            # publication would otherwise write that publication's number
+            # again, over different content — and the number is what a
+            # generated integration says it was generated against.
+            self.published_revision = revision + 1
             self.published_at = timezone.now()
             self.published_declaration = pinned
             # Publication IS the act of pinning the current declaration, so
