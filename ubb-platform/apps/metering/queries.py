@@ -2459,7 +2459,8 @@ def _axis_plan(tenant_id, word) -> dict:
         # margin list this replaces returned and what a caller can look a
         # customer up by. Its external id is the tenant's own word for the same
         # row and belongs to the surface that renders it.
-        column = "customer_id" if name == "customer" else name
+        column = ("customer_id" if name == RESERVED_GROUPING_AXIS_CUSTOMER
+                  else name)
         return {"word": word, "column": column, "rollup": None,
                 "membership": None, "field": name}
     slot = slot_map(tenant_id).get(name)

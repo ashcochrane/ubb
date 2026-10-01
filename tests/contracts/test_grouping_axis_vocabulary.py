@@ -121,19 +121,32 @@ def typed_beside_the_generated_set(source, set_name):
         f"follow it rather than quietly stop checking.")
 
 
-def titles_typed_in_the_console(source, axes):
-    """Every ``<axis>: "Words"`` entry the console types for itself.
+#: One `key: "Words"` entry of an object literal — a name beside the string it
+#: is to be shown as — whether it has a line to itself or shares one. ANY key,
+#: deliberately: a reader keyed on the five declared axes would see a title
+#: retyped for one of them and miss the case this module is named for, a SIXTH
+#: word the registry never declared.
+_KEYED_STRING = re.compile(
+    r"(?:^|[{,])\s*[\"']?(\w+)[\"']?\s*:\s*[\"'`]", re.MULTILINE)
 
-    One line of an object literal keyed by an axis and valued by a string — the
-    shape the hand-kept title map had, and the shape a sixth word would arrive
-    in. Deliberately not a TypeScript parse: this suite ships no TS parser, and
-    the control below is what stops a regex that silently matches nothing from
+#: The one keyed string the console's axis module legitimately holds: the
+#: discriminant of the answer it returns (`{ kind: "worded", … }`). Named
+#: rather than matched around, so a second exemption is a line a reviewer reads.
+NOT_A_TITLE = frozenset({"kind"})
+
+
+def titles_typed_in_the_console(source):
+    """Every name the console module words for itself, in an object literal.
+
+    The shape the hand-kept title map had, and the shape a sixth word would
+    arrive in. The module's whole job is to turn an axis into words by LOOKUP,
+    so it has no reason to hold a keyed string of any kind — which is what lets
+    this be a statement about the module rather than about five spellings.
+    Deliberately not a TypeScript parse: this suite ships no TS parser, and the
+    control below is what stops a regex that silently matches nothing from
     passing.
     """
-    keys = "|".join(re.escape(axis) for axis in axes)
-    entry = re.compile(
-        rf"^\s*[\"']?({keys})[\"']?\s*:\s*[\"'`]", re.MULTILINE)
-    return sorted(set(entry.findall(source)))
+    return sorted(set(_KEYED_STRING.findall(source)) - NOT_A_TITLE)
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +216,13 @@ def test_the_console_words_the_axes_through_the_generated_label_keys(concept):
         f"{CONSOLE_MODULE} no longer resolves an axis through `{label_keys}`, "
         f"so whatever it renders for one of UBB's own axes is not the "
         f"catalogue's word for it.")
-    assert titles_typed_in_the_console(source, concept.values) == [], (
-        f"{CONSOLE_MODULE} types a title for "
-        f"{titles_typed_in_the_console(source, concept.values)} itself. The "
-        f"wording for a reserved axis lives in {CATALOGUE}, keyed off the "
-        f"generated label keys; a second copy here is the hand-kept map #544 "
-        f"retired.")
+    assert titles_typed_in_the_console(source) == [], (
+        f"{CONSOLE_MODULE} words {titles_typed_in_the_console(source)} for "
+        f"itself, in an object literal. The wording for an axis UBB reserves "
+        f"lives in {CATALOGUE}, keyed off the generated label keys, and an "
+        f"axis the registry does not declare has no wording to give: a map "
+        f"typed here is the hand-kept list #544 retired. If the entry is not "
+        f"a title at all, move it out of the module that words axes.")
 
 
 def test_the_catalogue_words_every_reserved_axis_and_no_other(concept):
@@ -284,8 +298,7 @@ def test_control_a_title_typed_in_the_console_is_seen(concept):
     """The same, for the console's reader.
 
     The map this module used to hold equal to the server's list, restored — and
-    then the shape a sixth word for an EXISTING axis would take beside the
-    catalogue lookup, which is the one a careless edit actually produces.
+    then a sixth word, which is the case the old cross-tree check existed for.
     """
     restored = (
         "export const UBB_AXIS_TITLES = {\n"
@@ -295,24 +308,39 @@ def test_control_a_title_typed_in_the_console_is_seen(concept):
         '  task_type: "Kind of work",\n'
         '  subtask_type: "Kind of subtask",\n'
         "} as const;\n")
-    assert titles_typed_in_the_console(restored, concept.values) == sorted(
-        THE_RESERVED_AXES)
+    assert titles_typed_in_the_console(restored) == sorted(THE_RESERVED_AXES)
 
-    one_override = (
-        "const OVERRIDES = {\n"
+    # THE SIXTH WORD — an axis the registry never declared, worded beside the
+    # catalogue lookup — and a title retyped for one it did declare. Quoted and
+    # template-string spellings both count.
+    a_sixth = (
+        "const EXTRA_TITLES = {\n"
+        '  region: "Region",\n'
         "  'task_type': `Kind of work`,\n"
         "};\n")
-    assert titles_typed_in_the_console(one_override, concept.values) == [
-        "task_type"]
+    assert "region" not in concept.values
+    assert titles_typed_in_the_console(a_sixth) == ["region", "task_type"]
 
-    # A name that merely CONTAINS an axis is not one, and neither is a union
-    # member or an argument: only a keyed string is a title.
+    # A map squeezed onto one line is still a map.
+    assert titles_typed_in_the_console(
+        'const T = { customer: "Customer", region: "Region" };\n') == [
+            "customer", "region"]
+
+    # What is NOT a title: a union member, an argument, a typed field, and the
+    # answer the module really returns — whose discriminant is the one keyed
+    # string it may hold. Each line would be caught by a reader that matched a
+    # quoted word anywhere, which is what makes this half able to fail.
     harmless = (
-        "const grain = { customer_tier: 'gold' };\n"
         'type Axis = "customer" | "provider";\n'
-        'ubbAxisTitle("customer");\n')
-    assert titles_typed_in_the_console(harmless, concept.values) == []
+        'ubbAxisTitle("customer");\n'
+        "  | { readonly kind: \"worded\"; readonly text: string }\n"
+        '    ? { kind: "worded", text: ubbAxisTitle(name) }\n'
+        '    : { kind: "unworded", text: name };\n')
+    assert titles_typed_in_the_console(harmless) == []
+    # And the exemption is one word wide: the same shape under another key is
+    # a title again.
+    assert titles_typed_in_the_console(
+        '    ? { label: "Customer", text: name }\n') == ["label"]
 
     # And the shipped module is none of those.
-    assert titles_typed_in_the_console(
-        _read(CONSOLE_MODULE), concept.values) == []
+    assert titles_typed_in_the_console(_read(CONSOLE_MODULE)) == []

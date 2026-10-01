@@ -133,9 +133,8 @@ export function axisName(option: GroupingOption): AxisName {
   }
   if (option.label !== "") return { kind: "tenant", text: option.label };
   const name = axisNameOf(option.key);
-  const resolved = resolveLabel(RESERVED_GROUPING_AXIS_LABEL_KEYS, name);
-  return resolved.kind === "labelled"
-    ? { kind: "worded", text: resolved.text }
+  return isUbbAxis(name)
+    ? { kind: "worded", text: ubbAxisTitle(name) }
     : { kind: "unworded", text: name };
 }
 

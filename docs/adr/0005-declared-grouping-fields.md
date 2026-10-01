@@ -32,8 +32,8 @@ Stated here because three of them are easy to read as deletions, and none is.
   the customer an axis every posting carries (#498); it is a word a tenant may not declare and is
   not a selector. The owner ruled the five canonical public vocabulary (#544), so they are declared
   once, as the registry's `reserved_grouping_axis`, and the server's list, the console's wording
-  and the SDK's constants are all read off that declaration (#575). Nothing was removed: the count
-  in the Decision is corrected in place, beside the sentence it corrects.
+  and the SDK's constants are all read off that declaration (#575). This one is a correction of a
+  count and reads as one: the Decision's sentence stands, with the correction beside it.
 
 ## Context
 

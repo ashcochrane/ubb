@@ -618,8 +618,11 @@ class Rate(BaseModel):
 
     #: The slot half is read off the registry rather than restated, so a rate
     #: cannot end up selecting on a different set of slots from the one a tenant
-    #: can declare. The four reserved axes are spelled out because they are not
-    #: in that vocabulary — they are always present and never declared.
+    #: can declare. The four named selectors are spelled out because they are
+    #: not in that vocabulary — they are always present and never declared.
+    #: They are four of the five words the registry reserves
+    #: (`reserved_grouping_axis`); the fifth, the customer, is a grouping axis
+    #: and never a selector, which is why this is its own list.
     SELECTORS = ("provider", "event_type", "task_type", "subtask_type",
                  *(slot for slot, _ in SLOT_CHOICES))
 

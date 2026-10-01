@@ -1712,8 +1712,7 @@ class QuarantinedKey(BaseModel):
 
     #: Which of the two names was not recognised.
     #:
-    #: UBB owns this pair and the registry declares no concept for it, the same
-    #: ruling ``Measurement.value_type`` records above and for the same reason:
+    #: UBB owns this pair and the registry declares no concept for it, because
     #: nothing outside this app reads it. It is not on the public contract, not
     #: in the console's label catalogue and not in the vocabulary a generated
     #: integration carries. ``tests/contracts/test_undeclared_value_sets.py``

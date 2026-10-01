@@ -11,9 +11,11 @@ import {
   isUbbAxis,
   ubbAxisTitle,
 } from "./grouping-axis";
+import { missingLabel } from "./localisation";
 import {
   ANALYTICS_GROUPING_KIND_VALUES,
   ANALYTICS_ROLLUP_VALUES,
+  RESERVED_GROUPING_AXIS_LABEL_KEYS,
   RESERVED_GROUPING_AXIS_VALUES,
 } from "./vocabulary";
 
@@ -165,7 +167,8 @@ describe("the two value sets this console now holds by reference", () => {
       const title = ubbAxisTitle(axis);
       expect(title.trim()).not.toBe("");
       expect(title).not.toBe(axis);
-      expect(title.startsWith("[no label:")).toBe(false);
+      expect(title).not.toBe(
+        missingLabel(RESERVED_GROUPING_AXIS_LABEL_KEYS[axis]));
       expect(axisName(option({ key: `field:${axis}` })))
         .toEqual({ kind: "worded", text: title });
     }
