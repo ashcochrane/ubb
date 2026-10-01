@@ -930,6 +930,50 @@ No field, route or call changes. Two answers of `query_economics()` /
 
 ---
 
+## 20. What a stop does is a named value, and a naive timestamp is a `UBBError` (#574 — pre-live)
+
+Two changes to `record_usage`, on `MeteringClient` and on `UBBClient` alike. Neither changes
+what the call sends or what UBB records. **This section supersedes the two earlier mentions of
+the boolean in this guide** (the note under §1's status table) **and in the changelog's #421
+entry**: read `raise_on_stop=False` there as `stop_behavior="return"`.
+
+### `raise_on_stop` is replaced by `stop_behavior`
+
+| You wrote | Write instead |
+|---|---|
+| `record_usage(...)` (no stop keyword) | unchanged — a stop still raises `UBBStopRequested` |
+| `record_usage(..., raise_on_stop=True)` | `record_usage(..., stop_behavior="raise")`, or drop the keyword |
+| `record_usage(..., raise_on_stop=False)` | `record_usage(..., stop_behavior="return")` |
+
+- **The boolean is gone, not aliased.** A call still passing `raise_on_stop` raises Python's own
+  `TypeError` naming it, before any request — the same answer every other removed keyword in
+  this guide gives.
+- **The two values are the whole set.** They are `ubb.vocabulary.STOP_BEHAVIOR_RAISE` and
+  `STOP_BEHAVIOR_RETURN` if you would rather name them than type them. Anything else — a
+  boolean, a different case, a word this client has not heard of — raises `UBBValidationError`
+  **before anything is sent**. A value the client did not recognise is never read as one of the
+  two: the quiet reading of an unknown value is the one that keeps spending.
+- **Behaviour is unchanged for both.** `"raise"` raises `UBBStopRequested` (still a
+  `BaseException`, still carrying the whole acknowledgement, still only after the event was
+  recorded); `"return"` hands back that same acknowledgement with `result.stop` set.
+- **`record_batch` is untouched.** It takes no such keyword and never raises for a stop.
+
+### A naive `recorded_at` raises `UBBValidationError`, not `ValueError`
+
+A `datetime` with no offset passed as `recorded_at` — to `record_usage`, or on any item of
+`record_batch` — is still refused client-side before any request. What changed is the type: it
+was the built-in `ValueError`, the one failure the recording calls raised outside the SDK's own
+family, and it is now `UBBValidationError`, a `UBBError`.
+
+- `except UBBError:` now catches it, which it did not before.
+- **`except ValueError:` no longer catches it.** The new type is not also a `ValueError`. If you
+  wrapped a backfill loop in that handler to skip a badly formed timestamp, change it to
+  `except UBBValidationError:`.
+- A naive ISO-8601 **string** is unchanged: it passes through and the server answers
+  `422 effective_at_naive` (`EffectiveAtNaiveError`).
+
+---
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

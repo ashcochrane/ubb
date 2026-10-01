@@ -128,7 +128,7 @@ class UBBStopRequested(BaseException):
     ordinary SDK failure stays an ``Exception`` under ``UBBError``.
 
     ``result`` is the whole acknowledgement (a ``RecordUsageResponse``, the
-    exact object ``raise_on_stop=False`` would have returned), so nothing is
+    exact object ``stop_behavior="return"`` would have returned), so nothing is
     lost by catching this; ``event_id``, ``stop_scope``, ``stop_reason`` and
     ``task_id`` read straight off it, and ``idempotency_key`` is the one you
     sent, so a handler can log what happened and reconcile without a second

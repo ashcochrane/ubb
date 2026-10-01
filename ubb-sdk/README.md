@@ -95,8 +95,9 @@ that error code are gone.
 
 Pass `recorded_at` (timezone-aware `datetime` or ISO-8601 string with offset) to timestamp the
 event when it actually happened — e.g. replaying a day of events after an integration outage.
-Omitted = server receive time. A **naive** datetime raises `ValueError` client-side before any
-HTTP request.
+Omitted = server receive time. A **naive** datetime raises `UBBValidationError` client-side
+before any HTTP request — a `UBBError`, like every other failure the recording calls raise, so
+`except UBBError:` catches it and `except ValueError:` does not.
 
 ```python
 from datetime import datetime, timezone
@@ -369,7 +370,13 @@ The rule for such a handler is the one Python already has for `KeyboardInterrupt
 signal** — a broad handler that swallows `BaseException` swallows the stop with it.
 Every ordinary SDK failure stays an `Exception` under `UBBError`.
 
-`record_usage(..., raise_on_stop=False)` returns the same acknowledgement with
+What a stop does is the keyword `stop_behavior`, and it takes one of two named values:
+`"raise"` (the default, everything above) or `"return"`. The constants are
+`ubb.vocabulary.STOP_BEHAVIOR_RAISE` and `STOP_BEHAVIOR_RETURN`; any other value raises
+`UBBValidationError` before anything is sent, because a value this client does not know
+is never guessed at.
+
+`record_usage(..., stop_behavior="return")` returns the same acknowledgement with
 `result.stop` set instead of raising. The one reason to choose it is recording work
 that has **already** happened one call at a time, where a stop raised part-way would
 leave the rest unrecorded — and `record_batch` is the better tool for that, because
@@ -465,7 +472,8 @@ client.record_usage(customer_id: str, idempotency_key: str, *,
     provider_cost_micros=None, claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
     grouping_fields=None, metadata=None, task_id=None, measurements=None,
-    recorded_at=None, raise_on_stop=True)      # a stop verdict raises UBBStopRequested
+    recorded_at=None, stop_behavior="raise")   # a stop verdict raises UBBStopRequested;
+                                               # "return" hands the ack back instead
 
 # record_batch  → BatchResult  (results: list[BatchItemResult], accepted, rejected,
 #                               stop, first_stop_index) — never raises

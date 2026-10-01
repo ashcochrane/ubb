@@ -6,10 +6,16 @@ carries the verdict (``stop`` / ``stop_reason`` / ``stop_scope``). What this
 module pins is what the CLIENT does with it. An unconfigured ``record_usage``
 raises ``UBBStopRequested`` carrying that ack; the signal derives from
 ``BaseException`` so a catch-all around a provider loop cannot eat it and keep
-spending; ``raise_on_stop=False`` returns the identical ack instead; and
+spending; ``stop_behavior="return"`` returns the identical ack instead; and
 ``record_batch`` reports the stop per item and never raises, because one
 stopped piece of work in a batch of fifty must not abandon the other
 forty-nine.
+
+What a stop does is chosen with a NAMED VALUE (#574): the two the registry
+declares for ``stop_behavior``, held by the client as the generated
+constants. A value outside those two is refused before anything is sent,
+because the alternative is a call that records and then silently takes one
+of the two paths the caller did not ask for.
 
 Every body below carries `costing_status`, which the ack has published since
 #317 and which the generated model requires. The literal is written out in each
@@ -26,9 +32,15 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 import ubb
+from ubb.client import UBBClient
 from ubb.metering import MeteringClient
-from ubb.vocabulary import REASON_CODE_HARD_FLOOR, REASON_CODE_TASK_COGS_CEILING
-from ubb.exceptions import UBBAPIError, UBBError, UBBStopRequested
+from ubb.vocabulary import (
+    REASON_CODE_HARD_FLOOR, REASON_CODE_TASK_COGS_CEILING,
+    STOP_BEHAVIOR_RAISE, STOP_BEHAVIOR_RETURN, STOP_BEHAVIOR_VALUES,
+)
+from ubb.exceptions import (
+    UBBAPIError, UBBError, UBBStopRequested, UBBValidationError,
+)
 from ubb._core.models.record_usage_response import RecordUsageResponse
 
 
@@ -241,16 +253,18 @@ class TheStopSurvivesATenantCatchAllTest(_ClientCase):
         self.assertIsInstance(caught, UBBStopRequested)
 
 
-class OptingOutOfTheRaiseTest(_ClientCase):
-    """``raise_on_stop=False`` returns the verdict on the ack. Same object the
-    signal carries, no information lost either way."""
+class ChoosingWhatAStopDoesTest(_ClientCase):
+    """``stop_behavior`` names what a stop does: ``return`` hands back the
+    verdict on the ack, ``raise`` is what the default already does. Same
+    object either way, no information lost."""
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_false_returns_the_identical_verdict_instead_of_raising(self, mock_post):
+    def test_return_hands_back_the_identical_verdict_instead_of_raising(self, mock_post):
         _responding(mock_post, _stopped_ack(
             stop_reason=REASON_CODE_TASK_COGS_CEILING, stop_scope="task", task_id="task_1"))
         returned = self.client.record_usage(customer_id="c1", idempotency_key="i1",
-                                            task_id="task_1", raise_on_stop=False)
+                                            task_id="task_1",
+                                            stop_behavior=STOP_BEHAVIOR_RETURN)
         self.assertTrue(returned.stop)
         self.assertEqual(returned.stop_reason, REASON_CODE_TASK_COGS_CEILING)
         self.assertEqual(returned.stop_scope, "task")
@@ -262,11 +276,86 @@ class OptingOutOfTheRaiseTest(_ClientCase):
         self.assertEqual(cm.exception.result, returned)
 
     @patch("ubb.metering.httpx.Client.post")
-    def test_true_is_what_the_default_already_does(self, mock_post):
+    def test_raise_is_what_the_default_already_does(self, mock_post):
         _responding(mock_post, _stopped_ack())
         with self.assertRaises(UBBStopRequested):
             self.client.record_usage(customer_id="c1", idempotency_key="i1",
-                                     raise_on_stop=True)
+                                     stop_behavior=STOP_BEHAVIOR_RAISE)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_two_values_are_the_words_a_caller_types(self, mock_post):
+        """Written as LITERALS, on purpose and only here. Generated code and
+        the documentation spell the value as a string, so what this pins is
+        the spelling a caller's source carries — every other case names the
+        generated constant, which would follow a registry edit silently."""
+        _responding(mock_post, _stopped_ack())
+        returned = self.client.record_usage(customer_id="c1", idempotency_key="i1",
+                                            stop_behavior="return")
+        self.assertTrue(returned.stop)
+        with self.assertRaises(UBBStopRequested):
+            self.client.record_usage(customer_id="c1", idempotency_key="i1",
+                                     stop_behavior="raise")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_neither_value_changes_an_acknowledgement_that_carries_no_stop(self, mock_post):
+        _responding(mock_post, _ok_ack())
+        for behavior in sorted(STOP_BEHAVIOR_VALUES):
+            with self.subTest(stop_behavior=behavior):
+                result = self.client.record_usage(
+                    customer_id="c1", idempotency_key="i1", stop_behavior=behavior)
+                self.assertFalse(result.stop)
+
+    def test_the_default_is_the_raising_value_on_both_clients(self):
+        for client in (MeteringClient, UBBClient):
+            with self.subTest(client=client.__name__):
+                parameter = inspect.signature(
+                    client.record_usage).parameters["stop_behavior"]
+                self.assertEqual(parameter.default, STOP_BEHAVIOR_RAISE)
+
+
+class AValueOutsideTheTwoIsRefusedTest(_ClientCase):
+    """The concept is closed at two values. Anything else is refused inside
+    the SDK's own error family, BEFORE any HTTP: a call that recorded the
+    event and then took a path the caller never named would be the silent
+    option, and here the silent option is the one that keeps spending."""
+
+    #: What a caller plausibly sends by mistake: the two booleans the
+    #: keyword replaced, a near-miss spelling, the wrong case, and nothing.
+    REFUSED = (True, False, None, "", "Raise", "RETURN", "ignore", "returns")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_it_is_refused_before_anything_is_sent(self, mock_post):
+        _responding(mock_post, _stopped_ack())
+        for value in self.REFUSED:
+            with self.subTest(stop_behavior=value):
+                with self.assertRaises(UBBValidationError) as cm:
+                    self.client.record_usage(customer_id="c1", idempotency_key="i1",
+                                             stop_behavior=value)
+                self.assertIsInstance(cm.exception, UBBError)
+                self.assertIn(repr(value), str(cm.exception))
+                for accepted in STOP_BEHAVIOR_VALUES:
+                    self.assertIn(repr(accepted), str(cm.exception))
+        mock_post.assert_not_called()
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_facade_refuses_it_the_same_way(self, mock_post):
+        facade = UBBClient(api_key="ubb_live_x", base_url="http://localhost:8001",
+                           max_retries=0)
+        self.addCleanup(facade.close)
+        with self.assertRaises(UBBValidationError):
+            facade.record_usage("c1", "i1", stop_behavior="ignore")
+        mock_post.assert_not_called()
+
+    def test_the_boolean_it_replaced_is_gone_from_both_clients(self):
+        """Not renamed beside the new keyword and not kept as an alias: a
+        caller still passing the boolean gets Python's own ``TypeError``
+        naming it, which is the loudest answer available."""
+        for client in (MeteringClient, UBBClient):
+            with self.subTest(client=client.__name__):
+                names = set(inspect.signature(client.record_usage).parameters)
+                self.assertIn("stop_behavior", names)
+                self.assertEqual(
+                    {name for name in names if "stop" in name}, {"stop_behavior"})
 
 
 class ABatchReportNeverRaisesTest(_ClientCase):
