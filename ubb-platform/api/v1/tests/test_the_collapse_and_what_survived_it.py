@@ -29,6 +29,7 @@ attempted — so the two the collapse takes away are read off the registry that
 retired them, through `_helpers.retired_aliases`.
 """
 import datetime
+from unittest.mock import patch
 
 import pytest
 from django.test import Client
@@ -445,18 +446,68 @@ class TestWhatDiedWithTheRoutesStaysDead:
 
 
 def months_back(count):
-    """The first day of each of the last `count` months, oldest first.
+    """The first day of each of the last `count` COMPLETED months, oldest first.
 
     Walked from today rather than written as literals: a fixed month would put
     this module's data outside the six-year economic horizon eventually, and
     outside the 366-day request bound long before that.
+
+    #589: COMPLETED, so the month today falls in is not one of them. It was,
+    and the trend below dated that month's money at `when_in`'s instant and
+    then asked for a window ending today — so on the 1st of every month, and
+    on the 2nd until noon, the current month's money was dated in the future,
+    fell outside the window, and two of the three cases failed for a reason
+    that was the calendar's. A month that has ended has every instant of
+    itself in the past, whatever day this runs.
     """
     first = timezone.now().date().replace(day=1)
-    months = [first]
-    for _ in range(count - 1):
+    months = []
+    for _ in range(count):
         first = (first - datetime.timedelta(days=1)).replace(day=1)
         months.insert(0, first)
     return months
+
+
+def when_in(month):
+    """The instant this module dates a month's money at: the 2nd, at noon.
+
+    Well inside the month on purpose — a bucket boundary is not what the cases
+    below are about, and money dated on one would make them about it.
+    """
+    return timezone.make_aware(datetime.datetime(
+        month.year, month.month, 2, 12, 0, 0))
+
+
+def _month_after(month):
+    return (month + datetime.timedelta(days=32)).replace(day=1)
+
+
+#: Where in the calendar the suite might be run, as (year, month, day, hour).
+#: The first two are #589's window exactly; the next two are the same window
+#: across a year's end and after the shortest month; the rest are an ordinary
+#: day and a month's last hour.
+RUN_ON = [(2026, 10, 1, 0), (2026, 10, 2, 11), (2027, 1, 1, 0),
+          (2027, 3, 1, 0), (2026, 10, 15, 12), (2026, 10, 31, 23)]
+
+
+@pytest.mark.parametrize("run_on", RUN_ON)
+def test_the_months_the_trend_is_dated_in_are_over_whenever_this_runs(run_on):
+    """#589, held on every day rather than found on the 1st.
+
+    The trend's cases read the wall clock, so the only day they could show
+    this defect was a day it was happening. This asks the same question of
+    the two helpers they are built from, with the clock pinned to each edge.
+    """
+    now = timezone.make_aware(datetime.datetime(*run_on))
+
+    with patch.object(timezone, "now", return_value=now):
+        months = months_back(3)
+
+    assert all(when_in(month) < now for month in months), (now, months)
+    # And they are three consecutive months ending just before today's — or a
+    # walk that stalled at a year's end would pass the line above on a repeat.
+    assert [_month_after(month) for month in months] == [
+        *months[1:], now.date().replace(day=1)], (now, months)
 
 
 @pytest.mark.django_db
@@ -500,8 +551,7 @@ class TestTheTrendIsTheSameQuestionWithABucket:
                     event_type="chat.completion",
                     provider_cost_micros=cost, billed_cost_micros=revenue)
                 Posting.objects.filter(id=posting.id).update(
-                    effective_at=timezone.make_aware(datetime.datetime(
-                        month.year, month.month, 2, 12, 0, 0)))
+                    effective_at=when_in(month))
 
     def _ask(self, **extra):
         params = {"measures": ["supplier_cogs", "customer_revenue",
