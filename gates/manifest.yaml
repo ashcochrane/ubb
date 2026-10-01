@@ -1017,7 +1017,10 @@ gates:
     oracle: the spec, the resolved plan and the registry
     source: ADR-0008 §5, #158 §5.2
     status: owned_by_slice_builder
-    blocked_on: The Code Builder does not exist. #184 lands the plan contract, the renderer and the verify stage.
+    blocked_on: >-
+      The Integration Blueprint contract has landed (#576) and its tests hold
+      the operation-ID half already; the renderer and the verify stage have
+      not. #184 lands them, and its flip installs this row.
 
   G24:
     statement: Code Builder renderer branches, pinned by snapshot.

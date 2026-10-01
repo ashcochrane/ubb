@@ -34,6 +34,14 @@ _EXEMPT = {
     # Subscription sync — a reconciliation trigger that pulls external Stripe
     # truth; it authors no tenant-side governance decision.
     ("POST", "/subscriptions/sync"),
+    # Resolving an Integration Blueprint (#576). It is a POST because it keeps
+    # the resolved content as a derived test fixture, and that is all it
+    # writes: no configuration is declared, edited or published, no money
+    # moves and no key or member changes. A governance reader has nothing to
+    # ask of it — and an audit entry would be a second row written by a route
+    # whose contract is that it writes one, which
+    # `test_the_integration_blueprint.py` holds as a whole-database comparison.
+    ("POST", "/code-builder/blueprints"),
 }
 
 _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -193,8 +201,13 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # entry and afterwards no swept backend file may spell it. Recording 73 -> 72:
 # the act it recorded has ceased to exist rather than become unrecorded, which
 # is the only way this count may fall.
-_EXPECTED_MUTATING = 77
-_EXPECTED_EXEMPT = 5
+#
+# 77 -> 78 in #576, AND THE EXEMPT SIDE MOVES FOR THE FIRST TIME SINCE SLICE 1:
+# 5 -> 6. Resolving an Integration Blueprint is a POST, so this walker counts
+# it, and it takes the exemption list on that list's own stated ground. See the
+# row above. Recording stays at 72.
+_EXPECTED_MUTATING = 78
+_EXPECTED_EXEMPT = 6
 
 
 def mutating_operations():

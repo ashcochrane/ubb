@@ -18,6 +18,22 @@ from apps.platform.tenants.models import Tenant
 
 logger = logging.getLogger(__name__)
 
+#: What a sandbox takes from the tenant it is a sibling of: which products it
+#: has, how it is billed and which currency it works in. Named once, because
+#: there are two readers — the provisioning below, and the Code Builder, which
+#: keeps the same three beside a resolved Blueprint so a sandbox materialised
+#: from one is provisioned as this one would be (#576).
+COPIED_TO_A_SANDBOX = ("products", "billing_mode", "default_currency")
+
+
+def _copied_from(tenant):
+    """The three as a sandbox is created with them. The product list is
+    copied rather than shared: it is a list, and a sandbox given the same one
+    would change its parent's by changing its own."""
+    copied = {field: getattr(tenant, field) for field in COPIED_TO_A_SANDBOX}
+    copied["products"] = list(tenant.products or [])
+    return copied
+
 
 def get_or_create_sandbox(tenant):
     """Return the tenant's sandbox sibling, creating it on first use.
@@ -39,9 +55,7 @@ def get_or_create_sandbox(tenant):
                 name=f"{tenant.name} (sandbox)",
                 is_sandbox=True,
                 parent_tenant=tenant,
-                products=list(tenant.products or []),
-                billing_mode=tenant.billing_mode,
-                default_currency=tenant.default_currency,
+                **_copied_from(tenant),
                 # NEVER copy Stripe fields: stripe_connected_account_id,
                 # stripe_customer_id, charges_enabled stay blank/False.
             )

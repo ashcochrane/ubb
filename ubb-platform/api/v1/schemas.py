@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import UUID
-from typing import Annotated, List, Literal, Optional, Union
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from ninja import Schema, Field
 from pydantic import ConfigDict, field_validator, model_validator
@@ -4229,3 +4229,168 @@ class UtilisationAndHeadroomResponse(Schema):
     average_final_utilisation_percentage: Optional[int] = None
     average_unused_headroom_micros: Optional[int] = None
     customer_spend_pool: Optional[CustomerSpendPoolStatusOut] = None
+
+
+# ---------------------------------------------------------------------------
+# The Integration Blueprint (#576, #184 §3), at `/api/v1/code-builder/`.
+# ---------------------------------------------------------------------------
+#
+# EVERY FIELD NAME BELOW WAS APPROVED ON 2026-09-25 AND IS FINAL (ADR-0007 §3),
+# and the response's own name, `ResolvedIntegrationBlueprint`, was ruled with
+# them. The six value sets are the registry's, each marked on every property
+# that carries it; this file spells none of their values.
+#
+# ⚠ NOTHING HERE REFERS TO ANOTHER REGISTRY'S SCHEMA. A Blueprint points at a
+# declaration by a kind and a key and restates none of it, so the schemas of
+# the registries it resolves from — the Grouping Field registry's among them,
+# which a later ticket renames — may move without this contract moving.
+
+#: What a generated integration is written for.
+CodeTarget = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "code_target"})]
+
+#: How ready one call, or the whole integration, is to run.
+IntegrationReadiness = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "integration_readiness"})]
+
+#: Where one token of a call gets its value.
+BindingClass = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "binding_class"})]
+
+#: Whether a diagnostic lowers readiness.
+DiagnosticSeverity = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "diagnostic_severity"})]
+
+#: What a diagnostic reports.
+DiagnosticCode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "diagnostic_code"})]
+
+#: Which kind of declaration a provenance or a diagnostic points at.
+ConfigurationObjectKind = Annotated[
+    str, Field(json_schema_extra={
+        "x-ubb-concept": "configuration_object_kind"})]
+
+
+class IntegrationBlueprintSelectionIn(Schema):
+    """What an integration does, as far as it has to be said.
+
+    Three things every integration states — the target it is written for, the
+    kind of work it performs and the Event Types that happen inside it — and
+    one it states only if it applies: the Subtask kinds it explicitly creates.
+    Everything else is read from what you have already declared.
+
+    `task_type` and `event_types` may be left out. The Blueprint is then a
+    scaffold that shows the lifecycle's shape and says what is missing.
+
+    Where an Event Type reads a supplier's response and declares no response
+    shape, the Blueprint does not take a path here: it answers with a blocking
+    diagnostic carrying the request that declares the shape.
+    """
+    target: CodeTarget
+    task_type: Optional[str] = Field(default=None, max_length=64)
+    event_types: List[str] = Field(default_factory=list)
+    #: Declared Subtask kinds this integration creates. UBB never infers a
+    #: Subtask boundary, so a kind that is not listed is not generated.
+    subtask_types: List[str] = Field(default_factory=list)
+    draft_preview: bool = Field(
+        default=False,
+        description=(
+            "Resolve from draft declarations instead of published ones. "
+            "Requires the admin role. A draft preview is stored nowhere, "
+            "carries no `configuration_fingerprint` and cannot be verified."))
+
+
+class IntegrationBlueprintProvenance(Schema):
+    """Which declaration a value was read from."""
+    object_kind: ConfigurationObjectKind
+    key: str
+    #: Set for a value read from an Event Type's publication, and null
+    #: otherwise: a kind of work and a Grouping Field have no publish record.
+    published_revision: Optional[int] = None
+    published_at: Optional[str] = None
+
+
+class IntegrationBlueprintArgument(Schema):
+    """One token of a call, and where its value comes from.
+
+    `name` says where the token sits: a field of the operation's request, the
+    credential `api_key`, `<field>.<key>` for the value under a declared key
+    of an object field, or `<name>.<declared field>` for a declared element
+    that says how a runtime value is read — `measurements.<key>.source_path`
+    is the path a quantity is read by.
+
+    Exactly one of `value`, `parameter_name` and `environment_variable` is
+    set, by `binding_class` — except a `platform_known` token with
+    `configured` false, which has no value yet.
+    """
+    name: str
+    binding_class: BindingClass
+    #: `platform_known` only: the literal.
+    value: Optional[Any] = None
+    #: `runtime_bound` only: the required parameter your code passes.
+    parameter_name: Optional[str] = None
+    #: `secret_reference` only: the variable the value is read from.
+    environment_variable: Optional[str] = None
+    #: False where UBB would know the value and nothing is configured to
+    #: supply it. A state of `platform_known`, not a fourth class.
+    configured: bool
+    provenance: Optional[IntegrationBlueprintProvenance] = None
+
+
+class IntegrationBlueprintCall(Schema):
+    """One generated call site: a real v1 operation and the tokens it takes."""
+    operation_id: str
+    readiness: IntegrationReadiness
+    arguments: List[IntegrationBlueprintArgument]
+
+
+class IntegrationBlueprintRemediationRequest(Schema):
+    """The API request that fixes a diagnostic, ready to copy.
+
+    UBB never sends it. The route names the object by its key, and `body` is
+    the operation's published fields with every value left empty — null for
+    an operation that takes no body.
+    """
+    method: str
+    route: str
+    operation_id: str
+    body: Optional[dict] = None
+
+
+class IntegrationBlueprintDiagnostic(Schema):
+    """Something that lowers readiness, or advice that does not.
+
+    Coded and addressed, with no message: `code` says what is true, and
+    `object_kind`, `key` and `field` say of which declaration. `key` is null
+    where nothing was selected, and is `<event type>:<code>` for a
+    Measurement. `remediation_request` is set where the console has no screen
+    for the object.
+    """
+    severity: DiagnosticSeverity
+    code: DiagnosticCode
+    object_kind: ConfigurationObjectKind
+    key: Optional[str] = None
+    field: Optional[str] = None
+    remediation_request: Optional[IntegrationBlueprintRemediationRequest] = None
+
+
+class ResolvedIntegrationBlueprint(Schema):
+    """What a tenant's integration code must mean, resolved from what the
+    tenant has declared.
+
+    `schema_version` is the shape of this document. `renderer_contract_version`
+    is the renderer contract it was resolved for. `sdk_major_version` is set
+    for the `python_sdk` target and null otherwise.
+
+    `configuration_fingerprint` identifies the stored snapshot of exactly this
+    resolution — `sha256:` and 64 hexadecimal characters — and is null for a
+    draft preview. `readiness` is the least ready of `calls`.
+    """
+    schema_version: int
+    renderer_contract_version: int
+    target: CodeTarget
+    sdk_major_version: Optional[int] = None
+    configuration_fingerprint: Optional[str] = None
+    readiness: IntegrationReadiness
+    calls: List[IntegrationBlueprintCall]
+    diagnostics: List[IntegrationBlueprintDiagnostic]

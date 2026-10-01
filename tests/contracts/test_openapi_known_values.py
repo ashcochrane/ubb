@@ -1268,6 +1268,39 @@ CONCEPTS_IN_THE_CONTRACT = {
     # the server's own answer. That field stays a plain string, by a decision
     # recorded at `apps/metering/queries.py::GROUPING_GRAINS`.
     "grouping_field_scope": Published(2, ENUM),  # the Grouping Field, in + out
+    # #576 — THE SIX VALUE SETS ONLY AN INTEGRATION BLUEPRINT PUBLISHES, all
+    # `closed`, all coined in the commit that marks them. So none of them ever
+    # had a G4 debt: each went from undeclared to fully served at once, which
+    # is `outcome_reason`'s precedent, and the seeding and its floor do not
+    # move.
+    #
+    # NINE NODES ACROSS THE SIX, and the three that are two are two for one
+    # reason each. The target is sent and echoed, so it is on the selection
+    # and on the Blueprint — and the selection is the one REQUEST node here,
+    # which is the one the route has to refuse in code: the `enum` is written
+    # at export and validates nothing. Readiness is published per call and for
+    # the whole, which is the rule the concept states (the whole is the least
+    # ready of its calls). And a kind of declaration is named in two places —
+    # where a value came from, and where a fix belongs.
+    #
+    # ⚠ NONE OF THE NINE IS NULLABLE, and that was chosen rather than found. A
+    # diagnostic about a selection that names nothing still says which KIND of
+    # thing was not selected, so its object kind is always present and only
+    # its key is null — which keeps every marker here on a plain string node
+    # rather than inside a union.
+    #
+    # ⚠ WHAT THE COUNT CANNOT SEE, SAID AT THE ROW. A literal on a Blueprint
+    # is untyped JSON, and one of them carries a closed concept's value: the
+    # representation a caller-supplied cost is stated in. It is the Event
+    # Type's own declared value, marked on the route that declares it
+    # (`amount_representation` above) and unmarkable here for #349's reason —
+    # marking needs a typed node.
+    "code_target": Published(2, ENUM),            # the selection + the Blueprint
+    "integration_readiness": Published(2, ENUM),  # the Blueprint + each call
+    "binding_class": Published(1, ENUM),          # each argument
+    "diagnostic_severity": Published(1, ENUM),    # each diagnostic
+    "diagnostic_code": Published(1, ENUM),        # each diagnostic
+    "configuration_object_kind": Published(2, ENUM),  # provenance + diagnostic
 }
 
 
@@ -1755,6 +1788,20 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # them, because sending a word and reading what a row IS are different acts.
     placed("analytics_grouping_kind", {"GroupingOptionOut"})
     placed("analytics_rollup", {"GroupingOptionOut"})
+
+    # #576's six, every one on the Integration Blueprint's own schemas and on
+    # nothing else — which is the placement argument: they are the Blueprint's
+    # vocabulary, and no registry's representation carries one. Only the
+    # target is on a request.
+    placed("code_target", {"IntegrationBlueprintSelectionIn",
+                           "ResolvedIntegrationBlueprint"})
+    placed("integration_readiness", {"ResolvedIntegrationBlueprint",
+                                     "IntegrationBlueprintCall"})
+    placed("binding_class", {"IntegrationBlueprintArgument"})
+    placed("diagnostic_severity", {"IntegrationBlueprintDiagnostic"})
+    placed("diagnostic_code", {"IntegrationBlueprintDiagnostic"})
+    placed("configuration_object_kind", {"IntegrationBlueprintProvenance",
+                                         "IntegrationBlueprintDiagnostic"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose

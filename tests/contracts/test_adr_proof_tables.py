@@ -100,6 +100,7 @@ OPTED_IN = (
     "0012-how-a-kind-of-work-is-sold-is-frozen.md",
     "0013-a-delivered-unit-of-work-is-charged-once-by-a-charge-that-projects-onto-one-posting.md",
     "0014-spend-control-is-four-families-and-the-ceiling-is-a-kernel-concept.md",
+    "0015-an-integration-blueprint-is-resolved-above-the-products-and-kept-as-a-fixture.md",
 )
 
 

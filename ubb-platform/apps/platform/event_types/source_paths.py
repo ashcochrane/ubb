@@ -104,6 +104,34 @@ SHAPE_CONVENTIONS = {
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1: CONVENTION_SNAKE,
 }
 
+#: What a supplier's response IS when a declared path is read from it: the JSON
+#: document its web API returns, or the object its Python library hands back.
+#: The same number sits in both, and they are read by different code — any
+#: target can walk a JSON document, and only Python can hold a Python object.
+REPRESENTATION_JSON = "json"
+REPRESENTATION_PYTHON_OBJECT = "python_object"
+
+#: Which of the two each response shape UBB RECOGNISES is (#576, owner ruling
+#: of 2026-09-25, item 6).
+#:
+#: DECLARED, NOT PARSED OUT OF THE IDENTIFIER. Two of the three ids happen to
+#: carry `python` as a segment and one carries `rest`, and reading the answer
+#: off that would make a naming habit load-bearing: the next shape UBB learns
+#: may be named for neither. Keyed on the generated names beside the table
+#: above and for its reason — it cannot drift from the registry — and held by
+#: the same kind of test, so a shape UBB learns cannot arrive saying nothing
+#: about what it is.
+#:
+#: `custom` is absent by construction, as it is above: a tenant's own wrapper
+#: declares no representation, so nothing here can say what reads it. The Code
+#: Builder treats a shape missing from this table as one no target can read
+#: until a renderer defines how to traverse it.
+SHAPE_REPRESENTATIONS = {
+    SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1: REPRESENTATION_JSON,
+    SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1: REPRESENTATION_PYTHON_OBJECT,
+    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1: REPRESENTATION_PYTHON_OBJECT,
+}
+
 
 class SourcePathNotRenderable(Exception):
     """This path cannot be expressed in this access style without renaming it.

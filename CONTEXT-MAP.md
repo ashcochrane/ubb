@@ -26,6 +26,11 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
     per-tenant `GroupingField`/`GroupingFieldValue` registry: the single declared vocabulary for
     analytics grouping and rate selection, read by metering via `grouping_fields/queries.py`
     (ADR-0005).
+  - [`apps/platform/code_builder`](./ubb-platform/apps/platform/CONTEXT.md#code-builder) — what
+    the Code Builder stores: the immutable snapshot of a resolved Integration Blueprint, addressed
+    by its `configuration_fingerprint`, and the withhold list. The Blueprint itself is resolved in
+    the composition layer (`api/v1/integration_blueprint.py`), which reads the kernel and metering
+    together.
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
   posting metadata, customer margin, and the pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,

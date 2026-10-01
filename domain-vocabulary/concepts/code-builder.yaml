@@ -1,0 +1,188 @@
+# Code Builder vocabulary: what an Integration Blueprint says about the code a
+# tenant's integration must be, in the words a renderer and a console read.
+#
+# A DOMAIN OF ITS OWN (#576), because every concept here is consumed by the
+# Blueprint and by nothing else. The value sets the Blueprint shares with the
+# registries it resolves from — the reserved grouping axes, a quantity's value
+# type, a Grouping Field's scope, a declaration's status — were declared where
+# they are held (#575) and are consumed from there, never redeclared here.
+#
+# WHAT IS DELIBERATELY NOT HERE. The symbols a generated file spells
+# (`UBB_API_KEY`, `UBB_BASE_URL`, the reserved stop exit status) belong to the
+# renderer's own versioned catalogue, by the owner's ruling of 2026-09-25: this
+# registry holds value sets, and is not a registry of program identifiers.
+#
+# EVERY NAME BELOW WAS RULED ON 2026-09-25 (#184 §15) EXCEPT THE MEMBERS OF
+# `diagnostic_code`, which that ruling handed to the ticket that builds the
+# contract. They are named there and are final from the commit that ships them
+# (ADR-0007 §3).
+
+code_target:
+  kind: closed
+  summary: >-
+    What a generated integration is written for: the Python SDK, or a shell
+    file speaking raw HTTP. One selection rather than a language and a client,
+    because the two never vary independently — the target is the thing a
+    developer can actually run. A target decides which response shapes an
+    integration can read, so it is part of what a Blueprint resolves and not
+    only of how one is rendered.
+  values:
+    - python_sdk
+    - shell_http
+  label_key_prefix: code_target
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json
+
+integration_readiness:
+  kind: closed
+  # THE THREE MEANINGS ARE PINNED (owner item 9, #184 §8), and the middle word
+  # is `blocked` rather than the one the originating decision used: that word
+  # is `measure_status`'s, where it means a figure is partly known, and one
+  # word may not carry two meanings on one contract (ADR-0006 §2).
+  summary: >-
+    How ready one generated call, or the whole integration, is to run.
+    `scaffold` means a structural selection is missing — no kind of work, or no
+    Event Type — so the code teaches the lifecycle's shape and cannot run.
+    `blocked` means the structure is known and a selected call lacks something
+    mandatory. `complete` means everything resolves from published
+    configuration and every call is renderable for the target. The integration
+    is as ready as its least ready call, and an advisory never lowers it.
+  values:
+    - scaffold
+    - blocked
+    - complete
+  label_key_prefix: integration_readiness
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json
+
+binding_class:
+  kind: closed
+  summary: >-
+    When, and from where, one token of a generated call gets its value.
+    `platform_known` is resolved now from the tenant's own published
+    configuration and is written as a literal. `runtime_bound` is known only to
+    the tenant's code when it runs and is written as a required parameter.
+    `secret_reference` is a value UBB may know and deliberately withholds, and
+    is written as a lookup of a named environment variable. A value UBB should
+    know and the tenant has not configured keeps its class and says so beside
+    it; it is a state of the first class, never a fourth one.
+  values:
+    - platform_known
+    - runtime_bound
+    - secret_reference
+  label_key_prefix: binding_class
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json
+
+diagnostic_severity:
+  kind: closed
+  summary: >-
+    Whether a Blueprint diagnostic lowers readiness. `blocking` says a call
+    lacks something it cannot run without. `advisory` says something looks
+    inconsistent and changes nothing: UBB warns about a declaration and never
+    rewrites one, so an advisory leaves a complete integration complete.
+  values:
+    - advisory
+    - blocking
+  label_key_prefix: diagnostic_severity
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json
+
+configuration_object_kind:
+  kind: closed
+  # ONE VALUE PER KIND OF DECLARATION A BLUEPRINT CAN POINT AT, and the two
+  # altitudes of a kind of work are two values on purpose. A kind's identity is
+  # the pair of its altitude and its key — one word may name a Task kind and a
+  # Subtask kind, and they are different declarations with different policy —
+  # so a pointer made of a kind and a key needs the altitude in the kind.
+  #
+  # ⚠ FOUR OF THE WORDS ARE ALSO RESERVED GROUPING AXES, and the two concepts
+  # are not one. That one names a column an analytics question may group by;
+  # this one names a record a tenant declared. They share spellings because
+  # both are named for the same four things, and nothing reads one as the
+  # other.
+  summary: >-
+    Which kind of tenant declaration a Blueprint's provenance or diagnostic
+    points at: a kind of work at either altitude, an Event Type, one of its
+    Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
+    With the object's key it names the declaration a value came from, or the
+    one a fix belongs to.
+  values:
+    - task_type
+    - subtask_type
+    - event_type
+    - measurement
+    - reported_cost_mapping
+    - provider
+    - grouping_field
+  label_key_prefix: configuration_object_kind
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json
+
+diagnostic_code:
+  kind: closed
+  # THE MEMBERS ARE NAMED HERE AND ARE FINAL (#576, ADR-0007 §3). Each one is a
+  # condition the resolver actually reports; none is reserved for later.
+  #
+  # Named for the STATE of a declaration, `<object>_<what is true of it>`,
+  # never for the ticket that will change it. A diagnostic carries no prose —
+  # the console words each code from its label key — so the code is the whole
+  # of what a consumer branches on.
+  #
+  # THE RULE FOR A CODE WHOSE CONDITION STOPS BEING REPORTED. While the
+  # pre-live lane is open (ADR-0007 §5) the ticket that lifts the condition
+  # REMOVES the member in the same commit, so the set never names a state
+  # nothing produces. `reported_cost_provider_response_unsupported` is the one
+  # member with a scheduled lift: reading a supplier's cost off its response
+  # has no truthful request field today. `constant_value_not_declared` and
+  # `derived_measurement_unsupported` are not on that footing — the first
+  # stays true of any constant with no declared value, and the second is a
+  # stated limitation with nothing designed to lift it.
+  summary: >-
+    What a Blueprint diagnostic reports, as one closed code per condition. Four
+    are structural and leave a call a scaffold: no kind of work or no Event
+    Type selected, or one selected that is not declared. The rest either block
+    a call — a retired kind, a required Grouping Field that cannot be supplied,
+    an Event Type with nothing published, a cost or a quantity UBB cannot yet
+    carry, a response shape the target cannot read — or advise without
+    blocking: a declaration revised since it was published, or a path that
+    looks inconsistent with its declared shape.
+  values:
+    - task_type_not_selected
+    - task_type_not_declared
+    - task_type_retired
+    - required_grouping_field_not_declared
+    - required_grouping_field_retired
+    - required_grouping_field_wrong_scope
+    - event_type_not_selected
+    - event_type_not_declared
+    - event_type_not_published
+    - event_type_revised_since_publication
+    - reported_cost_mapping_missing
+    - reported_cost_provider_response_unsupported
+    - constant_value_not_declared
+    - derived_measurement_unsupported
+    - response_shape_not_declared
+    - response_shape_not_readable_by_target
+    - source_path_convention_mismatch
+  label_key_prefix: diagnostic_code
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/integration_blueprint.py
+    - surface: openapi
+      path: openapi/v1.json

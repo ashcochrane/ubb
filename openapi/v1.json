@@ -3382,6 +3382,339 @@
         "title": "InheritedRuleOut",
         "type": "object"
       },
+      "IntegrationBlueprintArgument": {
+        "description": "One token of a call, and where its value comes from.\n\n`name` says where the token sits: a field of the operation's request, the\ncredential `api_key`, `<field>.<key>` for the value under a declared key\nof an object field, or `<name>.<declared field>` for a declared element\nthat says how a runtime value is read \u2014 `measurements.<key>.source_path`\nis the path a quantity is read by.\n\nExactly one of `value`, `parameter_name` and `environment_variable` is\nset, by `binding_class` \u2014 except a `platform_known` token with\n`configured` false, which has no value yet.",
+        "properties": {
+          "binding_class": {
+            "enum": [
+              "platform_known",
+              "runtime_bound",
+              "secret_reference"
+            ],
+            "title": "Binding Class",
+            "type": "string",
+            "x-ubb-concept": "binding_class"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "environment_variable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment Variable"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameter_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameter Name"
+          },
+          "provenance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationBlueprintProvenance"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "name",
+          "binding_class",
+          "configured"
+        ],
+        "title": "IntegrationBlueprintArgument",
+        "type": "object"
+      },
+      "IntegrationBlueprintCall": {
+        "description": "One generated call site: a real v1 operation and the tokens it takes.",
+        "properties": {
+          "arguments": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintArgument"
+            },
+            "title": "Arguments",
+            "type": "array"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "readiness": {
+            "enum": [
+              "scaffold",
+              "blocked",
+              "complete"
+            ],
+            "title": "Readiness",
+            "type": "string",
+            "x-ubb-concept": "integration_readiness"
+          }
+        },
+        "required": [
+          "operation_id",
+          "readiness",
+          "arguments"
+        ],
+        "title": "IntegrationBlueprintCall",
+        "type": "object"
+      },
+      "IntegrationBlueprintDiagnostic": {
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set where the console has no screen\nfor the object.",
+        "properties": {
+          "code": {
+            "enum": [
+              "task_type_not_selected",
+              "task_type_not_declared",
+              "task_type_retired",
+              "required_grouping_field_not_declared",
+              "required_grouping_field_retired",
+              "required_grouping_field_wrong_scope",
+              "event_type_not_selected",
+              "event_type_not_declared",
+              "event_type_not_published",
+              "event_type_revised_since_publication",
+              "reported_cost_mapping_missing",
+              "reported_cost_provider_response_unsupported",
+              "constant_value_not_declared",
+              "derived_measurement_unsupported",
+              "response_shape_not_declared",
+              "response_shape_not_readable_by_target",
+              "source_path_convention_mismatch"
+            ],
+            "title": "Code",
+            "type": "string",
+            "x-ubb-concept": "diagnostic_code"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "object_kind": {
+            "enum": [
+              "task_type",
+              "subtask_type",
+              "event_type",
+              "measurement",
+              "reported_cost_mapping",
+              "provider",
+              "grouping_field"
+            ],
+            "title": "Object Kind",
+            "type": "string",
+            "x-ubb-concept": "configuration_object_kind"
+          },
+          "remediation_request": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationBlueprintRemediationRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "severity": {
+            "enum": [
+              "advisory",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string",
+            "x-ubb-concept": "diagnostic_severity"
+          }
+        },
+        "required": [
+          "severity",
+          "code",
+          "object_kind"
+        ],
+        "title": "IntegrationBlueprintDiagnostic",
+        "type": "object"
+      },
+      "IntegrationBlueprintProvenance": {
+        "description": "Which declaration a value was read from.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "object_kind": {
+            "enum": [
+              "task_type",
+              "subtask_type",
+              "event_type",
+              "measurement",
+              "reported_cost_mapping",
+              "provider",
+              "grouping_field"
+            ],
+            "title": "Object Kind",
+            "type": "string",
+            "x-ubb-concept": "configuration_object_kind"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Revision"
+          }
+        },
+        "required": [
+          "object_kind",
+          "key"
+        ],
+        "title": "IntegrationBlueprintProvenance",
+        "type": "object"
+      },
+      "IntegrationBlueprintRemediationRequest": {
+        "description": "The API request that fixes a diagnostic, ready to copy.\n\nUBB never sends it. The route names the object by its key, and `body` is\nthe operation's published fields with every value left empty \u2014 null for\nan operation that takes no body.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "route": {
+            "title": "Route",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "route",
+          "operation_id"
+        ],
+        "title": "IntegrationBlueprintRemediationRequest",
+        "type": "object"
+      },
+      "IntegrationBlueprintSelectionIn": {
+        "description": "What an integration does, as far as it has to be said.\n\nThree things every integration states \u2014 the target it is written for, the\nkind of work it performs and the Event Types that happen inside it \u2014 and\none it states only if it applies: the Subtask kinds it explicitly creates.\nEverything else is read from what you have already declared.\n\n`task_type` and `event_types` may be left out. The Blueprint is then a\nscaffold that shows the lifecycle's shape and says what is missing.\n\nWhere an Event Type reads a supplier's response and declares no response\nshape, the Blueprint does not take a path here: it answers with a blocking\ndiagnostic carrying the request that declares the shape.",
+        "properties": {
+          "draft_preview": {
+            "default": false,
+            "description": "Resolve from draft declarations instead of published ones. Requires the admin role. A draft preview is stored nowhere, carries no `configuration_fingerprint` and cannot be verified.",
+            "title": "Draft Preview",
+            "type": "boolean"
+          },
+          "event_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Event Types",
+            "type": "array"
+          },
+          "subtask_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Subtask Types",
+            "type": "array"
+          },
+          "target": {
+            "enum": [
+              "python_sdk",
+              "shell_http"
+            ],
+            "title": "Target",
+            "type": "string",
+            "x-ubb-concept": "code_target"
+          },
+          "task_type": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Type"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "IntegrationBlueprintSelectionIn",
+        "type": "object"
+      },
       "InvitationCreateIn": {
         "properties": {
           "email": {
@@ -6828,6 +7161,84 @@
           }
         },
         "title": "ResolutionRunSelectorOut",
+        "type": "object"
+      },
+      "ResolvedIntegrationBlueprint": {
+        "description": "What a tenant's integration code must mean, resolved from what the\ntenant has declared.\n\n`schema_version` is the shape of this document. `renderer_contract_version`\nis the renderer contract it was resolved for. `sdk_major_version` is set\nfor the `python_sdk` target and null otherwise.\n\n`configuration_fingerprint` identifies the stored snapshot of exactly this\nresolution \u2014 `sha256:` and 64 hexadecimal characters \u2014 and is null for a\ndraft preview. `readiness` is the least ready of `calls`.",
+        "properties": {
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintCall"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "configuration_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configuration Fingerprint"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintDiagnostic"
+            },
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "readiness": {
+            "enum": [
+              "scaffold",
+              "blocked",
+              "complete"
+            ],
+            "title": "Readiness",
+            "type": "string",
+            "x-ubb-concept": "integration_readiness"
+          },
+          "renderer_contract_version": {
+            "title": "Renderer Contract Version",
+            "type": "integer"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sdk_major_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdk Major Version"
+          },
+          "target": {
+            "enum": [
+              "python_sdk",
+              "shell_http"
+            ],
+            "title": "Target",
+            "type": "string",
+            "x-ubb-concept": "code_target"
+          }
+        },
+        "required": [
+          "schema_version",
+          "renderer_contract_version",
+          "target",
+          "readiness",
+          "calls",
+          "diagnostics"
+        ],
+        "title": "ResolvedIntegrationBlueprint",
         "type": "object"
       },
       "RevenueContextOut": {
@@ -11581,6 +11992,106 @@
           }
         ],
         "summary": "List Tenant Usage Invoices"
+      }
+    },
+    "/api/v1/code-builder/blueprints": {
+      "post": {
+        "description": "Resolve a selection into an Integration Blueprint.\n\nThe Blueprint says what your integration code must mean: every call, each\ntoken of each call with where its value comes from, how ready each call\nis, and what stands in the way.\n\nResolved from PUBLISHED configuration: an Event Type revised since it was\npublished resolves from what it last published. The resolved content is\nstored, and `configuration_fingerprint` identifies it \u2014 the same selection\nover unchanged configuration answers the same fingerprint. Nothing else is\nwritten, and no configuration is changed.\n\nWith `draft_preview: true` the Blueprint resolves from draft declarations\ninstead. That requires the admin role, stores nothing and answers\n`configuration_fingerprint: null`.\n\n`422 validation_error` answers a `target` that is not one of the published\ntargets, or a selection naming more than 50 Event Types or Subtask kinds.\n`403 forbidden` answers a draft preview asked for below the admin role.",
+        "operationId": "api_v1_code_builder_endpoints_resolve_blueprint",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationBlueprintSelectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedIntegrationBlueprint"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Resolve Blueprint"
+      }
+    },
+    "/api/v1/code-builder/blueprints/{configuration_fingerprint}": {
+      "get": {
+        "description": "The Integration Blueprint stored under a fingerprint.\n\nExactly the Blueprint that was resolved, whatever has changed since. A\nfingerprint that was never resolved, or whose snapshot has been removed,\nanswers `404 not_found`: resolve the selection again.",
+        "operationId": "api_v1_code_builder_endpoints_get_blueprint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "configuration_fingerprint",
+            "required": true,
+            "schema": {
+              "title": "Configuration Fingerprint",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedIntegrationBlueprint"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Get Blueprint"
       }
     },
     "/api/v1/connect/start": {

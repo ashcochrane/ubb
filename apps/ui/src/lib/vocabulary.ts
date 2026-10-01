@@ -355,6 +355,36 @@ export const AUDIT_ACTION_LABEL_KEYS = {
 } as const satisfies Record<AuditAction, string>;
 
 
+// --- binding_class ----------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// When, and from where, one token of a generated call gets its value.
+// `platform_known` is resolved now from the tenant's own published
+// configuration and is written as a literal. `runtime_bound` is known only to
+// the tenant's code when it runs and is written as a required parameter.
+// `secret_reference` is a value UBB may know and deliberately withholds, and
+// is written as a lookup of a named environment variable. A value UBB should
+// know and the tenant has not configured keeps its class and says so beside
+// it; it is a state of the first class, never a fourth one.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const BINDING_CLASS_VALUES = [
+  "platform_known",
+  "runtime_bound",
+  "secret_reference",
+] as const;
+
+export type BindingClass = (typeof BINDING_CLASS_VALUES)[number];
+
+export const BINDING_CLASS_LABEL_KEYS = {
+  "platform_known": "binding_class.platform_known",
+  "runtime_bound": "binding_class.runtime_bound",
+  "secret_reference": "binding_class.secret_reference",
+} as const satisfies Record<BindingClass, string>;
+
+
 // --- ceiling_basis ----------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -441,6 +471,67 @@ export const CEILING_STATUS_LABEL_KEYS = {
   "indeterminate": "ceiling_status.indeterminate",
   "not_applicable": "ceiling_status.not_applicable",
 } as const satisfies Record<CeilingStatus, string>;
+
+
+// --- code_target ------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What a generated integration is written for: the Python SDK, or a shell file
+// speaking raw HTTP. One selection rather than a language and a client,
+// because the two never vary independently — the target is the thing a
+// developer can actually run. A target decides which response shapes an
+// integration can read, so it is part of what a Blueprint resolves and not
+// only of how one is rendered.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const CODE_TARGET_VALUES = [
+  "python_sdk",
+  "shell_http",
+] as const;
+
+export type CodeTarget = (typeof CODE_TARGET_VALUES)[number];
+
+export const CODE_TARGET_LABEL_KEYS = {
+  "python_sdk": "code_target.python_sdk",
+  "shell_http": "code_target.shell_http",
+} as const satisfies Record<CodeTarget, string>;
+
+
+// --- configuration_object_kind ----------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which kind of tenant declaration a Blueprint's provenance or diagnostic
+// points at: a kind of work at either altitude, an Event Type, one of its
+// Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
+// With the object's key it names the declaration a value came from, or the one
+// a fix belongs to.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const CONFIGURATION_OBJECT_KIND_VALUES = [
+  "task_type",
+  "subtask_type",
+  "event_type",
+  "measurement",
+  "reported_cost_mapping",
+  "provider",
+  "grouping_field",
+] as const;
+
+export type ConfigurationObjectKind = (typeof CONFIGURATION_OBJECT_KIND_VALUES)[number];
+
+export const CONFIGURATION_OBJECT_KIND_LABEL_KEYS = {
+  "task_type": "configuration_object_kind.task_type",
+  "subtask_type": "configuration_object_kind.subtask_type",
+  "event_type": "configuration_object_kind.event_type",
+  "measurement": "configuration_object_kind.measurement",
+  "reported_cost_mapping": "configuration_object_kind.reported_cost_mapping",
+  "provider": "configuration_object_kind.provider",
+  "grouping_field": "configuration_object_kind.grouping_field",
+} as const satisfies Record<ConfigurationObjectKind, string>;
 
 
 // --- control_family ---------------------------------------------------------
@@ -576,6 +667,88 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 } as const satisfies Record<DeclarationStatus, string>;
 
 
+// --- diagnostic_code --------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What a Blueprint diagnostic reports, as one closed code per condition. Four
+// are structural and leave a call a scaffold: no kind of work or no Event Type
+// selected, or one selected that is not declared. The rest either block a call
+// — a retired kind, a required Grouping Field that cannot be supplied, an
+// Event Type with nothing published, a cost or a quantity UBB cannot yet
+// carry, a response shape the target cannot read — or advise without blocking:
+// a declaration revised since it was published, or a path that looks
+// inconsistent with its declared shape.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const DIAGNOSTIC_CODE_VALUES = [
+  "task_type_not_selected",
+  "task_type_not_declared",
+  "task_type_retired",
+  "required_grouping_field_not_declared",
+  "required_grouping_field_retired",
+  "required_grouping_field_wrong_scope",
+  "event_type_not_selected",
+  "event_type_not_declared",
+  "event_type_not_published",
+  "event_type_revised_since_publication",
+  "reported_cost_mapping_missing",
+  "reported_cost_provider_response_unsupported",
+  "constant_value_not_declared",
+  "derived_measurement_unsupported",
+  "response_shape_not_declared",
+  "response_shape_not_readable_by_target",
+  "source_path_convention_mismatch",
+] as const;
+
+export type DiagnosticCode = (typeof DIAGNOSTIC_CODE_VALUES)[number];
+
+export const DIAGNOSTIC_CODE_LABEL_KEYS = {
+  "task_type_not_selected": "diagnostic_code.task_type_not_selected",
+  "task_type_not_declared": "diagnostic_code.task_type_not_declared",
+  "task_type_retired": "diagnostic_code.task_type_retired",
+  "required_grouping_field_not_declared": "diagnostic_code.required_grouping_field_not_declared",
+  "required_grouping_field_retired": "diagnostic_code.required_grouping_field_retired",
+  "required_grouping_field_wrong_scope": "diagnostic_code.required_grouping_field_wrong_scope",
+  "event_type_not_selected": "diagnostic_code.event_type_not_selected",
+  "event_type_not_declared": "diagnostic_code.event_type_not_declared",
+  "event_type_not_published": "diagnostic_code.event_type_not_published",
+  "event_type_revised_since_publication": "diagnostic_code.event_type_revised_since_publication",
+  "reported_cost_mapping_missing": "diagnostic_code.reported_cost_mapping_missing",
+  "reported_cost_provider_response_unsupported": "diagnostic_code.reported_cost_provider_response_unsupported",
+  "constant_value_not_declared": "diagnostic_code.constant_value_not_declared",
+  "derived_measurement_unsupported": "diagnostic_code.derived_measurement_unsupported",
+  "response_shape_not_declared": "diagnostic_code.response_shape_not_declared",
+  "response_shape_not_readable_by_target": "diagnostic_code.response_shape_not_readable_by_target",
+  "source_path_convention_mismatch": "diagnostic_code.source_path_convention_mismatch",
+} as const satisfies Record<DiagnosticCode, string>;
+
+
+// --- diagnostic_severity ----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Whether a Blueprint diagnostic lowers readiness. `blocking` says a call
+// lacks something it cannot run without. `advisory` says something looks
+// inconsistent and changes nothing: UBB warns about a declaration and never
+// rewrites one, so an advisory leaves a complete integration complete.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const DIAGNOSTIC_SEVERITY_VALUES = [
+  "advisory",
+  "blocking",
+] as const;
+
+export type DiagnosticSeverity = (typeof DIAGNOSTIC_SEVERITY_VALUES)[number];
+
+export const DIAGNOSTIC_SEVERITY_LABEL_KEYS = {
+  "advisory": "diagnostic_severity.advisory",
+  "blocking": "diagnostic_severity.blocking",
+} as const satisfies Record<DiagnosticSeverity, string>;
+
+
 // --- event_type_key ---------------------------------------------------------
 //
 // tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -684,6 +857,35 @@ export const GROUPING_FIELD_SCOPE_LABEL_KEYS = {
 // No constants: this kind declares no values by construction. The section is
 // here so that fact is visible, rather than looking like a concept the
 // generator lost.
+
+
+// --- integration_readiness --------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// How ready one generated call, or the whole integration, is to run.
+// `scaffold` means a structural selection is missing — no kind of work, or no
+// Event Type — so the code teaches the lifecycle's shape and cannot run.
+// `blocked` means the structure is known and a selected call lacks something
+// mandatory. `complete` means everything resolves from published configuration
+// and every call is renderable for the target. The integration is as ready as
+// its least ready call, and an advisory never lowers it.
+//
+// Declared in concepts/code-builder.yaml.
+
+export const INTEGRATION_READINESS_VALUES = [
+  "scaffold",
+  "blocked",
+  "complete",
+] as const;
+
+export type IntegrationReadiness = (typeof INTEGRATION_READINESS_VALUES)[number];
+
+export const INTEGRATION_READINESS_LABEL_KEYS = {
+  "scaffold": "integration_readiness.scaffold",
+  "blocked": "integration_readiness.blocked",
+  "complete": "integration_readiness.complete",
+} as const satisfies Record<IntegrationReadiness, string>;
 
 
 // --- live_counter_maintenance_enabled ---------------------------------------

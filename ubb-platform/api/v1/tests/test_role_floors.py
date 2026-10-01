@@ -34,6 +34,24 @@ _EXEMPT_EXACT = {
 # The single GET that floors above Read (deliberate, per #62).
 _GET_ADMIN_EXCEPTIONS = {("GET", "/tenant/invitations")}
 
+# The single non-GET that floors at Read (#576, #184 §3, approved 2026-09-25).
+#
+# Resolving an Integration Blueprint is a POST because it STORES: the
+# fingerprint a generated file is stamped with has to name a snapshot that
+# exists. What it stores is a derived fixture — no configuration, no money and
+# nothing any production path reads — and the people it exists for are the
+# developers who may read a tenant's declarations and not change them. So the
+# verb is the storage's and the floor is the reader's, and the route is the one
+# place the carve's "every write is Admin unless listed as Write" does not
+# describe. Its draft preview is Admin, checked inside the handler because it
+# is the same route asked a different question;
+# `test_the_integration_blueprint.py` holds that refusal.
+#
+# A set of one, on the invitations list's precedent above: an exception is
+# reviewed where the carve is stated, and a second POST joining it has to come
+# past the same argument.
+_READ_FLOORED_WRITES = {("POST", "/code-builder/blueprints")}
+
 # Every write that floors at Write, not Admin. Everything else that mutates is
 # Admin. Keeping the Write set explicit (it is the minority) pins the whole
 # write side of the carve: any mutation not listed here MUST be Admin.
@@ -309,7 +327,12 @@ _WRITE_ROUTES = {
 # capability had nowhere to go — and the subscription lifecycle is addressed by
 # the EXTERNAL id while every metering and billing read is addressed by the
 # UUID. Not carved and not exempt, so it moves the floored count alone.
-_EXPECTED_FLOORED = 146
+#
+# 146 + 2 = 148 (#576): the Integration Blueprint's two routes at
+# `/code-builder/`, both floored at Read — the read by fingerprint on the
+# carve's default for a GET, and the resolution by the one exception stated at
+# `_READ_FLOORED_WRITES`.
+_EXPECTED_FLOORED = 148
 _EXPECTED_EXEMPT = 9
 
 
@@ -337,6 +360,8 @@ def _expected_floor(method, full):
     """The floor the carve demands for a (non-exempt) tenant route."""
     if method == "GET":
         return "admin" if (method, full) in _GET_ADMIN_EXCEPTIONS else "read"
+    if (method, full) in _READ_FLOORED_WRITES:
+        return "read"
     return "write" if (method, full) in _WRITE_ROUTES else "admin"
 
 

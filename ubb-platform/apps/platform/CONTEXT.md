@@ -908,6 +908,70 @@ said nothing" was served as "the tenant said charge cost". Deleting the column i
 honest answer reachable.
 (`apps/metering/pricing/services/markup_service.py`)
 
+## Code Builder
+
+**Integration Blueprint**:
+What a tenant's integration code must *mean*, resolved from what the tenant has declared: every
+call the integration makes, each token of each call with the class saying where its value comes
+from, how ready each call is, and what stands in the way. A developer states a target, a kind of
+work, the Event Types inside it and — only if they create them — the Subtask kinds; everything else
+is looked up. It decides meaning and never expression: it emits no code, and a renderer turns it
+into a file. It restates no registry fact — a literal names the declaration it was read from, and a
+reader who wants the declaration reads it from the route that owns it. Resolved by the composition
+layer, because it reads the kernel's registries and metering's rules together.
+(`api/v1/integration_blueprint.py`; `api/v1/code_builder_endpoints.py`)
+_Avoid_: "Plan" (a live kernel concept — the catalogue of fees and markup) and "Resolved Contract";
+calling a generated call site an "operation", which the contract reserves for an OpenAPI operation.
+
+**Binding class**:
+Where one token of a generated call gets its value, assigned by three ordered questions. Can UBB
+resolve it now from the tenant's published configuration? If not it is `runtime_bound`, a required
+parameter. If so, is it on the withhold list? Then it is a `secret_reference`, a lookup of a named
+environment variable. Otherwise it is `platform_known`, a literal. Classification is per token, not
+per line: a declared key beside the runtime value under it is two tokens of two classes. A value
+UBB would know and the tenant has not configured keeps its class and says `configured: false` — a
+state, never a fourth class.
+(`api/v1/integration_blueprint.py:binding_class_of`)
+
+**Withhold list**:
+The short, central, named list of what UBB may know and deliberately never writes into generated
+code. A policy rather than a derivation: a credential is neither unknown nor a runtime value. It
+holds one entry, the tenant's API key, because that is the only credential a Blueprint's calls
+carry. The API host is not on it — varying between environments does not make something a secret.
+(`apps/platform/code_builder/withheld.py`)
+
+**Integration readiness**:
+How ready a call, or the whole integration, is to run — `scaffold`, `blocked` or `complete`, with
+pinned meanings. `scaffold`: a structural selection is missing (no kind of work, or no Event Type).
+`blocked`: the structure is known and a call lacks something mandatory. `complete`: everything
+resolves from published configuration and every call is renderable for the target. The whole is the
+least ready of its calls, and an advisory never lowers it.
+_Avoid_: "incomplete" for the middle state — that word is a measure's status and means a figure is
+partly known.
+
+**Blueprint snapshot** (and its **configuration fingerprint**):
+The immutable, content-addressed record of exactly what one Blueprint resolved: the selection, the
+Blueprint, and the configuration a sandbox would need to run it — the kinds with what they may
+spend and how they are sold, each Event Type as published, the required Grouping Fields, the rules
+that cost and price the selected quantities, the default markup, and the tenant fields a sandbox is
+provisioned from. Its `configuration_fingerprint` is `sha256:` and the hash of that content, all of
+it, so the same content is one fingerprint and one row. That includes which publication each Event
+Type was resolved from: republishing an unchanged declaration moves the revision and therefore the
+fingerprint. A **derived test fixture** — never tenant configuration, never read by a production
+path, and prunable: a sandbox reset removes it, and a fingerprint whose snapshot is gone answers
+not-found. A draft preview stores none.
+(`apps/platform/code_builder/models.py:BlueprintSnapshot`; `apps/platform/code_builder/snapshots.py`)
+_Avoid_: reading the fingerprint as a catalogue-wide configuration revision — it names one
+resolution of one selection.
+
+**Response-shape representation**:
+What a supplier's response *is* when a declared path is read from it — the JSON a web API returns,
+or the object a Python library hands back — declared per recognised response shape, never parsed
+out of the shape's identifier. It decides which targets can read a shape: a shell file reads JSON
+only, Python reads both, and a tenant's own wrapper declares none, so no target reads it until a
+renderer defines how to traverse one.
+(`apps/platform/event_types/source_paths.py:SHAPE_REPRESENTATIONS`)
+
 ## Cross-cutting primitives
 
 **micros**:

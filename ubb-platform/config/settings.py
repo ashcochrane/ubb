@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "apps.platform.work",
     "apps.platform.grouping_fields",
     "apps.platform.event_types",
+    "apps.platform.code_builder",
     "apps.metering.usage",
     "apps.metering.pricing",
     "apps.billing.wallets",
