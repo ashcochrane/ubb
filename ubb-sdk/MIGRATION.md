@@ -933,9 +933,9 @@ No field, route or call changes. Two answers of `query_economics()` /
 ## 20. What a stop does is a named value, and a naive timestamp is a `UBBError` (#574 — pre-live)
 
 Two changes to `record_usage`, on `MeteringClient` and on `UBBClient` alike. Neither changes
-what the call sends or what UBB records. **This section supersedes the two earlier mentions of
-the boolean in this guide** (the note under §1's status table) **and in the changelog's #421
-entry**: read `raise_on_stop=False` there as `stop_behavior="return"`.
+what the call sends or what UBB records. **This section supersedes the earlier mention of the
+boolean in this guide** (the note under §1's status table) **and the changelog's #421 entry**:
+read `raise_on_stop=False` there as `stop_behavior="return"`.
 
 ### `raise_on_stop` is replaced by `stop_behavior`
 
@@ -962,7 +962,7 @@ entry**: read `raise_on_stop=False` there as `stop_behavior="return"`.
 
 A `datetime` with no offset passed as `recorded_at` — to `record_usage`, or on any item of
 `record_batch` — is still refused client-side before any request. What changed is the type: it
-was the built-in `ValueError`, the one failure the recording calls raised outside the SDK's own
+was the built-in `ValueError`, the one refusal the recording calls made outside the SDK's own
 family, and it is now `UBBValidationError`, a `UBBError`.
 
 - `except UBBError:` now catches it, which it did not before.

@@ -320,18 +320,21 @@ class AValueOutsideTheTwoIsRefusedTest(_ClientCase):
     option, and here the silent option is the one that keeps spending."""
 
     #: What a caller plausibly sends by mistake: the two booleans the
-    #: keyword replaced, a near-miss spelling, the wrong case, and nothing.
-    REFUSED = (True, False, None, "", "Raise", "RETURN", "ignore", "returns")
+    #: keyword replaced, a near-miss spelling, the wrong case, nothing — and
+    #: an unhashable one, which a set lookup would answer with a
+    #: ``TypeError`` of its own rather than with this refusal.
+    REFUSED = (True, False, None, "", "Raise", "RETURN", "ignore", "returns",
+               ["raise"])
 
     @patch("ubb.metering.httpx.Client.post")
     def test_it_is_refused_before_anything_is_sent(self, mock_post):
         _responding(mock_post, _stopped_ack())
         for value in self.REFUSED:
             with self.subTest(stop_behavior=value):
-                with self.assertRaises(UBBValidationError) as cm:
+                with self.assertRaises(UBBError) as cm:
                     self.client.record_usage(customer_id="c1", idempotency_key="i1",
                                              stop_behavior=value)
-                self.assertIsInstance(cm.exception, UBBError)
+                self.assertIsInstance(cm.exception, UBBValidationError)
                 self.assertIn(repr(value), str(cm.exception))
                 for accepted in STOP_BEHAVIOR_VALUES:
                     self.assertIn(repr(accepted), str(cm.exception))
@@ -346,16 +349,21 @@ class AValueOutsideTheTwoIsRefusedTest(_ClientCase):
             facade.record_usage("c1", "i1", stop_behavior="ignore")
         mock_post.assert_not_called()
 
-    def test_the_boolean_it_replaced_is_gone_from_both_clients(self):
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_boolean_it_replaced_is_gone_from_both_clients(self, mock_post):
         """Not renamed beside the new keyword and not kept as an alias: a
         caller still passing the boolean gets Python's own ``TypeError``
-        naming it, which is the loudest answer available."""
-        for client in (MeteringClient, UBBClient):
-            with self.subTest(client=client.__name__):
-                names = set(inspect.signature(client.record_usage).parameters)
-                self.assertIn("stop_behavior", names)
-                self.assertEqual(
-                    {name for name in names if "stop" in name}, {"stop_behavior"})
+        naming it, before anything is sent — the loudest answer available,
+        and the one an alias that quietly mapped it would have hidden."""
+        facade = UBBClient(api_key="ubb_live_x", base_url="http://localhost:8001",
+                           max_retries=0)
+        self.addCleanup(facade.close)
+        for client in (self.client, facade):
+            with self.subTest(client=type(client).__name__):
+                with self.assertRaises(TypeError) as cm:
+                    client.record_usage("c1", "i1", raise_on_stop=False)
+                self.assertIn("raise_on_stop", str(cm.exception))
+        mock_post.assert_not_called()
 
 
 class ABatchReportNeverRaisesTest(_ClientCase):

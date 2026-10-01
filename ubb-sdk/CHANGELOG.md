@@ -93,7 +93,7 @@ disagree with the shipped bytes.
   (#574).** A `datetime` with no offset is still refused before any request,
   on `record_usage` and on every item of `record_batch`, but inside the SDK's
   own family: `except UBBError:` now catches it, and `except ValueError:` no
-  longer does. It was the one failure the recording calls raised outside
+  longer does. It was the one refusal the recording calls made outside
   `UBBError`. See MIGRATION.md §20.
 
 ### Added

@@ -227,8 +227,8 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_naive_recorded_at_rejected_before_http(self, mock_post):
         """A timestamp with no offset is refused INSIDE THE SDK'S OWN ERROR
-        FAMILY (#574). It used to be a plain ``ValueError``, the one failure
-        the recording calls raised that ``except UBBError`` did not catch —
+        FAMILY (#574). It used to be a plain ``ValueError``, the one refusal
+        the recording calls made that ``except UBBError`` did not catch —
         so an integrator handling "anything UBB refuses" in one place let
         this one through to whatever sat above it."""
         caught = None
@@ -323,14 +323,14 @@ class MeteringClientTest(unittest.TestCase):
         """The batch shares the single-event call's serialiser, so it shares
         the error family: one naive item refuses the whole call, under
         ``UBBError``, before anything is sent."""
-        with self.assertRaises(UBBValidationError) as cm:
+        with self.assertRaises(UBBError) as cm:
             self.client.record_batch([
                 {"customer_id": "cust_1", "idempotency_key": "k0",
                  "recorded_at": datetime(2026, 6, 1, tzinfo=timezone.utc)},
                 {"customer_id": "cust_1",
                  "idempotency_key": "k1", "recorded_at": datetime(2026, 6, 1)},
             ])
-        self.assertIsInstance(cm.exception, UBBError)
+        self.assertIsInstance(cm.exception, UBBValidationError)
         self.assertNotIsInstance(cm.exception, ValueError)
         mock_post.assert_not_called()
 

@@ -96,7 +96,7 @@ that error code are gone.
 Pass `recorded_at` (timezone-aware `datetime` or ISO-8601 string with offset) to timestamp the
 event when it actually happened — e.g. replaying a day of events after an integration outage.
 Omitted = server receive time. A **naive** datetime raises `UBBValidationError` client-side
-before any HTTP request — a `UBBError`, like every other failure the recording calls raise, so
+before any HTTP request — a `UBBError`, like every other refusal the recording calls make, so
 `except UBBError:` catches it and `except ValueError:` does not.
 
 ```python

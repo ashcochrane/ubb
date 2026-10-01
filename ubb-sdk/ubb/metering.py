@@ -57,8 +57,9 @@ from ubb.vocabulary import (
 # carrying `stop_reason`, and `record_batch` reports it per item (#457).
 from ubb import vocabulary
 # WHAT A STOP DOES, BY NAME (#574). `record_usage` takes one of two values
-# and this module is the only place either is read — the concept never
-# travels on the wire, so there is no route to refuse a third. Both are held
+# and this module is the only place either is ACTED ON — the facade names
+# the default and passes it through, and the concept never travels on the
+# wire, so there is no route to refuse a third. Both are held
 # by reference: the default in the signature, the branch that raises, and the
 # refusal of anything else all name the registry's constant, so the word a
 # caller types cannot drift from the one this client acts on.
@@ -166,7 +167,7 @@ def _serialize_recorded_at(value):
     ``effective_at_naive``).
 
     The refusal is a ``UBBValidationError`` (#574). It was a plain
-    ``ValueError``, the one failure the recording calls raised outside
+    ``ValueError``, the one refusal the recording calls made outside
     ``UBBError`` — so a caller handling "anything UBB refuses" in one place
     let this one through. It is not ALSO a ``ValueError``: one family, and a
     handler written against the built-in is told so in MIGRATION.md."""
