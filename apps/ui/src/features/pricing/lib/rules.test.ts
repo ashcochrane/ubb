@@ -26,7 +26,7 @@ const DECLARED: GroupingFieldDef[] = [
 ].map((key, index) => ({
   key,
   slot: `grouping_field_${index + 1}`,
-  scope: "usage_event",
+  scope: "event",
   max_cardinality: 200,
   retired: false,
 }));

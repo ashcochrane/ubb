@@ -72,7 +72,7 @@ class BookCRUDTest(TestCase):
         # answers WITHOUT it is `test_a_rate_names_a_declared_quantity.py`'s.
         declares_a_quantity(self.tenant, COST_RULE["measurement_key"])
         DimensionService.declare(self.tenant, key=SEGMENT_KEY,
-                                 slot=SEGMENT_SLOT, scope="tenant")
+                                 slot=SEGMENT_SLOT, scope="event")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

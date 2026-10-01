@@ -396,7 +396,12 @@ exclusions:
     # its last-published declaration in and filling it for the declarations
     # published already. It names no retired word — it renames nothing — so the
     # number moved for the file existing, and the sites and terms held at 1 in 5.
-    files: 266
+    # 266 → 268 in #575: two migrations, each following a `choices=` list onto
+    # the set generated from the registry — a Measurement's value type and a
+    # Grouping Field's scope. Both are state-only and neither names a retired
+    # word, so the number moved for the files existing, and the sites and
+    # terms held at 1 in 5.
+    files: 268
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -3,6 +3,11 @@ from django.test import Client
 
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
+from core.vocabulary import (
+    GROUPING_FIELD_SCOPE_EVENT,
+    GROUPING_FIELD_SCOPE_VALUES,
+    RESERVED_GROUPING_AXIS_VALUES,
+)
 
 
 @pytest.mark.django_db
@@ -55,6 +60,60 @@ class TestGroupingFieldRegistry:
                            {"key": "task_id", "slot": "grouping_field_1", "scope": "event"}]})
         assert r.status_code == 422
         assert "correlation" in r.json()["detail"]
+
+    def test_every_axis_the_registry_reserves_is_refused(self):
+        """The reserved words are the registry's `reserved_grouping_axis`
+        (#544), so this walks the generated set rather than naming one of them:
+        an axis the registry reserves and this route lets a tenant declare
+        underneath would leave one request word naming two axes."""
+        assert RESERVED_GROUPING_AXIS_VALUES, "the registry reserves no axis"
+        for axis in sorted(RESERVED_GROUPING_AXIS_VALUES):
+            r = self._put("/api/v1/metering/grouping-fields",
+                          {"grouping_fields": [
+                              {"key": axis, "slot": "grouping_field_1",
+                               "scope": GROUPING_FIELD_SCOPE_EVENT}]})
+            assert r.status_code == 422, axis
+            assert "reserved" in r.json()["detail"], axis
+        assert not GroupingField.objects.filter(tenant=self.tenant).exists()
+
+    def test_every_scope_the_registry_declares_can_be_declared(self):
+        scopes = sorted(GROUPING_FIELD_SCOPE_VALUES)
+        r = self._put("/api/v1/metering/grouping-fields",
+                      {"grouping_fields": [
+                          {"key": f"at_{scope}", "slot": f"grouping_field_{n}",
+                           "scope": scope}
+                          for n, scope in enumerate(scopes, start=1)]})
+        assert r.status_code == 200
+        assert {row["scope"] for row in r.json()["grouping_fields"]} == set(scopes)
+
+    def test_a_scope_the_registry_does_not_declare_is_422_and_stores_nothing(self):
+        """The contract publishes a Grouping Field's scope as a closed `enum`
+        (#575), on the declaration AND on its representation. That is a promise
+        in both directions: a declaration that stored whatever it was sent
+        would have the read answer a value its own `enum` refuses. So the
+        refusal names the scopes there are, and nothing is written."""
+        r = self._put("/api/v1/metering/grouping-fields",
+                      {"grouping_fields": [
+                          {"key": "region", "slot": "grouping_field_1",
+                           "scope": "session"}]})
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        assert "'session'" in detail
+        for scope in GROUPING_FIELD_SCOPE_VALUES:
+            assert scope in detail
+        assert not GroupingField.objects.filter(tenant=self.tenant).exists()
+
+    def test_one_bad_scope_refuses_the_whole_declaration(self):
+        """The declaration is one act: a good field beside a bad one is not
+        stored either."""
+        r = self._put("/api/v1/metering/grouping-fields",
+                      {"grouping_fields": [
+                          {"key": "model", "slot": "grouping_field_1",
+                           "scope": GROUPING_FIELD_SCOPE_EVENT},
+                          {"key": "region", "slot": "grouping_field_2",
+                           "scope": "session"}]})
+        assert r.status_code == 422
+        assert not GroupingField.objects.filter(tenant=self.tenant).exists()
 
     def test_slot_collision_on_a_new_key_is_422_not_500(self):
         """Important 4 (final-fixes wave): declaring a second key on a slot

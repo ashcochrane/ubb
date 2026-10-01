@@ -1723,9 +1723,13 @@ entries:
   # What renders now, per row of the discovery contract: a ROLLUP axis takes
   # the catalogue's word through `analytics_rollup`'s generated label keys; a
   # TENANT's axis renders exactly as the tenant declared it, which is the one
-  # thing UBB must never word for them; and UBB's five reserved axes take
+  # thing UBB must never word for them; and UBB's five reserved axes took
   # authored console copy in `@/lib/grouping-axis`, because the registry
-  # declares concepts by their VALUES and these five are the names of fields.
+  # declares concepts by their VALUES and these five read as the names of
+  # fields. THAT LAST CLAUSE STOPPED BEING TRUE IN #575: the owner ruled the
+  # five canonical (#544), the registry declares them as
+  # `reserved_grouping_axis`, and they take the catalogue's word through its
+  # generated label keys exactly as a rollup axis does.
   # An axis nothing has a word for renders as the token, MARKED, through the
   # one open-set helper — never title-cased.
   #

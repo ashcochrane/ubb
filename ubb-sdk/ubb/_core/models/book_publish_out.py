@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.book_publish_out_declaration_status import BookPublishOutDeclarationStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -27,21 +28,13 @@ class BookPublishOut:
     """ A change to a book: an intention while it is a draft, a decision once
     published.
 
-    ⚠ `declaration_status` is deliberately UNMARKED, on the same footing as
-    `EventTypeOut.declaration_status`: the concept declares no `openapi`
-    consumer in the registry, and the applier refuses a marker for a concept
-    that contributes nothing. A field is marked by the ticket that declares its
-    concept's contract consumer, never by one passing nearby. The FIELD is still
-    final under ADR-0007 §3 — gaining an `enum` later is additive, and its
-    values are already the registry's.
-
         Attributes:
             actor_display (str):
             actor_id (str):
             actor_kind (str):
             book_id (str):
             closed_rule_ids (list[str]):
-            declaration_status (str):
+            declaration_status (BookPublishOutDeclarationStatus):
             effective_at (str):
             id (str):
             opened_rule_ids (list[str]):
@@ -55,7 +48,7 @@ class BookPublishOut:
     actor_kind: str
     book_id: str
     closed_rule_ids: list[str]
-    declaration_status: str
+    declaration_status: BookPublishOutDeclarationStatus
     effective_at: str
     id: str
     opened_rule_ids: list[str]
@@ -82,7 +75,7 @@ class BookPublishOut:
 
 
 
-        declaration_status = self.declaration_status
+        declaration_status = self.declaration_status.value
 
         effective_at = self.effective_at
 
@@ -157,7 +150,10 @@ class BookPublishOut:
         closed_rule_ids = cast(list[str], d.pop("closed_rule_ids"))
 
 
-        declaration_status = d.pop("declaration_status")
+        declaration_status = BookPublishOutDeclarationStatus(d.pop("declaration_status"))
+
+
+
 
         effective_at = d.pop("effective_at")
 

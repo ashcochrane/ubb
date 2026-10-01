@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.measurement_out_source_kind import MeasurementOutSourceKind
+from ..models.measurement_out_value_type import MeasurementOutValueType
 from typing import cast
 
 
@@ -31,7 +32,7 @@ class MeasurementOut:
             source_kind (MeasurementOutSourceKind):
             source_path (list[str]):
             unit (str):
-            value_type (str):
+            value_type (MeasurementOutValueType):
      """
 
     advisories: list[str]
@@ -41,7 +42,7 @@ class MeasurementOut:
     source_kind: MeasurementOutSourceKind
     source_path: list[str]
     unit: str
-    value_type: str
+    value_type: MeasurementOutValueType
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -67,7 +68,7 @@ class MeasurementOut:
 
         unit = self.unit
 
-        value_type = self.value_type
+        value_type = self.value_type.value
 
 
         field_dict: dict[str, Any] = {}
@@ -109,7 +110,10 @@ class MeasurementOut:
 
         unit = d.pop("unit")
 
-        value_type = d.pop("value_type")
+        value_type = MeasurementOutValueType(d.pop("value_type"))
+
+
+
 
         measurement_out = cls(
             advisories=advisories,

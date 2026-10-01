@@ -129,10 +129,14 @@
       "representation": "enum"
     },
     "declaration_status": {
-      "advertised": false,
+      "advertised": true,
       "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "none"
+      "representation": "enum",
+      "values": [
+        "draft",
+        "published"
+      ]
     },
     "event_type_key": {
       "advertised": false,
@@ -145,6 +149,17 @@
       "backend_serves": null,
       "kind": "free_text",
       "representation": "none"
+    },
+    "grouping_field_scope": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "task",
+        "subtask",
+        "event"
+      ]
     },
     "grouping_field_value": {
       "advertised": false,
@@ -182,6 +197,16 @@
       "backend_serves": null,
       "kind": "tenant_defined",
       "representation": "none"
+    },
+    "measurement_value_type": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "integer",
+        "decimal"
+      ]
     },
     "measurements_status": {
       "advertised": true,
@@ -333,6 +358,12 @@
         "straight_line",
         "on_receipt"
       ]
+    },
+    "reserved_grouping_axis": {
+      "advertised": false,
+      "backend_serves": "5 of 5 values",
+      "kind": "closed",
+      "representation": "none"
     },
     "revenue_basis": {
       "advertised": true,

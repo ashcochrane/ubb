@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,903 of 2,337 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,909 of 2,345 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2617,6 +2617,18 @@ measurement_key:
     # `major_units_decimal` is spelled in both test modules and does not count:
     # the matcher requires a non-identifier character on each side of the
     # token, and that value has an underscore on both.
+    #
+    # 2026-10-01, #575 (the reserved grouping axes and the Event Type value sets
+    # are declared in the registry): 1,903 of 2,337 -> 1,909 of 2,345 tracked
+    # files (`units` 44 files / 122 occurrences, UNMOVED). 8 files arrived and
+    # none left. 6 are swept and all of them are GENERATED: advertising a closed
+    # concept mints one SDK enum module per schema node that carries it, and
+    # this ticket marked six nodes — the lifecycle on an Event Type and on a
+    # pricing book's publish record, the value type on a Measurement in and
+    # out, the scope on a Grouping Field in and out. 2 are EXCLUDED: the
+    # state-only migrations that follow the two `choices=` lists onto the
+    # generated sets, so `historical-migrations` goes 266 -> 268 and the
+    # exclusions 434 -> 436. No hand-written file was added.
 
     - term: units
       retired_as: >-

@@ -64,6 +64,8 @@ from core.vocabulary import (
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
     DECLARATION_STATUS_VALUES,
+    MEASUREMENT_VALUE_TYPE_INTEGER,
+    MEASUREMENT_VALUE_TYPE_VALUES,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_CONSTANT,
     SOURCE_KIND_DERIVED,
@@ -168,32 +170,18 @@ REPORTED_COST_KIND_REFUSALS = {
 #: the whole of it: a count of calls that arrived as 2.5 is a defect somewhere
 #: upstream, and a declaration that cannot say so cannot catch it.
 #:
-#: UBB owns this pair and the registry declares no concept for it — legal, and
-#: legal VISIBLY, which is what `tests/contracts/test_undeclared_value_sets.py`
-#: exists to count.
+#: The pair is the registry's `measurement_value_type` (#575), read off the
+#: generated set rather than typed. It was this model's own list until a third
+#: reader arrived: the contract has carried the field since #267, and the Code
+#: Builder has to know which conversion to emit, so the set is declared once
+#: and the contract's `enum`, the console's wording and the generated
+#: integration's constants all come from that declaration.
 #:
-#: ⚠ THE ARGUMENT FOR LEAVING IT A `choices=` LIST HAS WEAKENED, AND #267 IS
-#: WHAT WEAKENED IT. This note used to read "nothing outside this model reads
-#: it: it is not on the contract, not in the console's catalogue and not in the
-#: generated integration's vocabulary". The first clause is now false —
-#: `MeasurementIn`/`MeasurementOut` carry the field, so a tenant declares it
-#: over the wire — and the correction is recorded here rather than quietly
-#: dropped, because a stale justification is how a decision comes to look
-#: settled when its reason has gone.
-#:
-#: What is still true, and is why it stays: the contract does not RESTATE the
-#: pair. The field publishes as a plain string and the refusal is this model's,
-#: so there is still exactly one place the values live. What a concept would
-#: buy is the published `enum` and the console wording, and neither is owed by
-#: a ticket that names three concepts and no more. A later slice that wants
-#: either should register it; the cost of doing so has not risen.
-VALUE_TYPE_INTEGER = "integer"
-VALUE_TYPE_DECIMAL = "decimal"
-VALUE_TYPE_CHOICES = (
-    (VALUE_TYPE_INTEGER, "Integer"),
-    (VALUE_TYPE_DECIMAL, "Decimal"),
-)
-VALUE_TYPE_VALUES = frozenset(value for value, _ in VALUE_TYPE_CHOICES)
+#: Both halves of each pair are the identity, for the reason the posting gives
+#: for its own lists: ADR-0008 §4 puts every human-facing word in the console's
+#: locale catalogue, and English authored here would be wording nothing reaches.
+VALUE_TYPE_CHOICES = tuple(
+    (value, value) for value in sorted(MEASUREMENT_VALUE_TYPE_VALUES))
 
 #: Which of the two names UBB failed to recognise. They are one record because
 #: the answer to both is the same three words — accept, quarantine, replay —
@@ -1170,7 +1158,7 @@ class Measurement(DeclarationPart, BaseModel):
     display_name = models.CharField(max_length=200, blank=True, default="")
 
     value_type = models.CharField(max_length=16, choices=VALUE_TYPE_CHOICES,
-                                  default=VALUE_TYPE_INTEGER)
+                                  default=MEASUREMENT_VALUE_TYPE_INTEGER)
     # OPEN, so there is no constraint on WHICH unit — only that there is one.
     # A quantity with no noun beside it is a number an invoice reader cannot
     # interpret, and that is the failure this column is here to stop.
@@ -1213,7 +1201,8 @@ class Measurement(DeclarationPart, BaseModel):
                 name="ck_measurement_source_kind",
             ),
             models.CheckConstraint(
-                condition=models.Q(value_type__in=sorted(VALUE_TYPE_VALUES)),
+                condition=models.Q(
+                    value_type__in=sorted(MEASUREMENT_VALUE_TYPE_VALUES)),
                 name="ck_measurement_value_type",
             ),
             # The only thing a database can say about an OPEN set: not which
@@ -1245,7 +1234,7 @@ class Measurement(DeclarationPart, BaseModel):
         is slice 3's.
         """
         quantity = self._as_quantity(value)
-        if (self.value_type == VALUE_TYPE_INTEGER
+        if (self.value_type == MEASUREMENT_VALUE_TYPE_INTEGER
                 and quantity != quantity.to_integral_value()):
             raise ValueTypeMismatch(
                 f"{self.code} is declared as a whole number and {value!r} is "
@@ -1321,10 +1310,10 @@ class Measurement(DeclarationPart, BaseModel):
             errors["source_kind"] = (
                 f"'{self.source_kind}' is not a source kind. UBB owns this "
                 f"whole value set: {', '.join(sorted(SOURCE_KIND_VALUES))}.")
-        if self.value_type not in VALUE_TYPE_VALUES:
+        if self.value_type not in MEASUREMENT_VALUE_TYPE_VALUES:
             errors["value_type"] = (
                 f"'{self.value_type}' is not a value type. UBB owns this whole "
-                f"value set: {', '.join(sorted(VALUE_TYPE_VALUES))}.")
+                f"value set: {', '.join(sorted(MEASUREMENT_VALUE_TYPE_VALUES))}.")
         if not self.unit.strip():
             errors["unit"] = (
                 "a quantity needs a noun beside it, or a reader of an invoice "

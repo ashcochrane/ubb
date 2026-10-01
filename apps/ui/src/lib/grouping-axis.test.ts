@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import type { GroupingOption, UbbAxis } from "./grouping-axis";
+import type { GroupingOption } from "./grouping-axis";
 import {
   FIELD_KIND,
   ROLLUP_KIND,
-  UBB_AXIS_TITLES,
   axisName,
   axisRequestWord,
   groupingKindOf,
   isGroupingAxis,
+  isUbbAxis,
   ubbAxisTitle,
 } from "./grouping-axis";
-import { ANALYTICS_GROUPING_KIND_VALUES, ANALYTICS_ROLLUP_VALUES }
-  from "./vocabulary";
+import {
+  ANALYTICS_GROUPING_KIND_VALUES,
+  ANALYTICS_ROLLUP_VALUES,
+  RESERVED_GROUPING_AXIS_VALUES,
+} from "./vocabulary";
 
 /**
  * One discovery-contract row, with only the fields a picker reads stated.
@@ -146,27 +149,36 @@ describe("the two value sets this console now holds by reference", () => {
     }
   });
 
-  it("words an axis it claims to word, for every axis it claims", () => {
-    // ⚠ WHICH AXES BELONG HERE IS *NOT* THIS SUITE'S QUESTION, and an earlier
-    // draft of this file pretended otherwise — it compared the map against five
-    // literals typed a few lines above it and the header claimed that pinned it
-    // against the server's `RESERVED_KEYS`. It could not: the console cannot
-    // read Python, so a sixth reserved word would have been invisible. That
-    // agreement moved to `tests/contracts/test_grouping_axis_vocabulary.py`,
-    // which reads both trees.
+  it("words every axis the registry reserves, through the catalogue", () => {
+    // ⚠ WHICH AXES BELONG HERE IS *NOT* THIS SUITE'S QUESTION. The set is the
+    // registry's `reserved_grouping_axis`, generated into `./vocabulary`, and
+    // the server's `RESERVED_KEYS` is read from the same declaration (#575) —
+    // `tests/contracts/test_grouping_axis_vocabulary.py` holds both consumers
+    // to holding it by reference rather than typing it.
     //
-    // What IS this suite's question is that every word the map claims is a
-    // usable one, and that `ubbAxisTitle` reaches it — a blank or a key echoed
-    // back would satisfy the cross-tree set check exactly as well.
-    const axes = Object.keys(UBB_AXIS_TITLES) as UbbAxis[];
-
-    expect(axes.length).toBeGreaterThan(0);
-    for (const axis of axes) {
+    // What IS this suite's question is that this module REACHES the catalogue
+    // for each declared axis, through both doors: a blank, a key echoed back or
+    // the development error for a missing label would each satisfy "the set is
+    // right" exactly as well.
+    expect(RESERVED_GROUPING_AXIS_VALUES.length).toBeGreaterThan(0);
+    for (const axis of RESERVED_GROUPING_AXIS_VALUES) {
       const title = ubbAxisTitle(axis);
       expect(title.trim()).not.toBe("");
       expect(title).not.toBe(axis);
+      expect(title.startsWith("[no label:")).toBe(false);
       expect(axisName(option({ key: `field:${axis}` })))
         .toEqual({ kind: "worded", text: title });
+    }
+  });
+
+  it("tells an axis UBB reserves from any other name off the wire", () => {
+    for (const axis of RESERVED_GROUPING_AXIS_VALUES) {
+      expect(isUbbAxis(axis)).toBe(true);
+    }
+    // A tenant's own key, and two names every object inherits: a membership
+    // test that walked the prototype chain would answer true for both.
+    for (const name of ["region", "toString", "constructor", ""]) {
+      expect(isUbbAxis(name)).toBe(false);
     }
   });
 });

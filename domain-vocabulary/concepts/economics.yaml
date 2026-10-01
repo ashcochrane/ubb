@@ -950,14 +950,69 @@ declaration_status:
     response shape, the structured paths and the reported-cost mapping, because
     an incorrect mapping produces an incorrect supplier cost — so a later
     change is a revised publication, never a silent reinterpretation of
-    integrations already generated and deployed (#193 §B7).
+    integrations already generated and deployed (#193 §B7). A change to a
+    pricing book carries the same two states for the same reason: a draft is
+    an intention that writes no rule, and publishing is the act that puts it
+    in force.
   values:
     - draft
     - published
   label_key_prefix: declaration_status
+  # THE CONTRACT CONSUMER ARRIVED AHEAD OF THE CODE BUILDER THAT READS IT
+  # (#575, bank row a8). Both backend consumers already held the pair by
+  # reference, so the day this concept declares a contract consumer the census
+  # answers "advertised" and every property named for it owes a marker — which
+  # is TWO schemas and not the one the ticket names: an Event Type's
+  # representation, and a pricing book's publish record, which took this
+  # concept in slice 4 (`apps/metering/pricing/models.py` says so at the
+  # record). A value published on two responses is marked on both, or the
+  # contract states one agreed set as an enumeration in one place and as an
+  # open string in another.
+  #
+  # The second backend consumer is named for that reason and no other: the
+  # decision to advertise rests on the census, and a census that never read
+  # the model serving one of the two marked fields would be answering for
+  # half of what it licenses.
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+measurement_value_type:
+  kind: closed
+  # DECLARED BEFORE THE CODE BUILDER CONSUMES IT (#575, bank row a12). The pair
+  # lived as a `choices=` list on the Measurement, counted as an undeclared
+  # value set, and its own note recorded the argument for leaving it there
+  # weakening: the field went onto the contract in #267 as a plain string, so
+  # a tenant already declares it over the wire. What tipped it is a third
+  # reader. A generated integration has to know whether to emit a whole-number
+  # or a fractional conversion, and a value set three surfaces read from one
+  # model's private list is the hand-kept agreement this registry exists to
+  # replace.
+  #
+  # NOT `value_type` BARE. ADR-0006 §2 asks a name to say what it is the type
+  # OF, and "value" alone is the word every other concept here would also
+  # answer to. The field keeps its name on the wire — renaming a published
+  # property is a different act with a different owner — and the concept names
+  # the thing the field describes.
+  summary: >-
+    What kind of number a declared quantity carries: a whole count, or one
+    that may carry a fraction. The declaration says which so that a count
+    arriving with a fraction is refused as the upstream defect it is, rather
+    than rounded at the door — a quantity UBB rounded is one nobody can
+    reconcile back to what the supplier reported.
+  values:
+    - integer
+    - decimal
+  label_key_prefix: measurement_value_type
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/models.py
+    - surface: openapi
+      path: openapi/v1.json
 
 source_kind:
   kind: closed
@@ -1153,6 +1208,98 @@ grouping_field_value:
       path: ubb-platform/apps/platform/grouping_fields/models.py
     - surface: openapi
       path: openapi/v1.json
+
+grouping_field_scope:
+  kind: closed
+  # DECLARED BEFORE THE CODE BUILDER CONSUMES IT (#575, bank row a21). The
+  # three lived as a `choices=` list beside the Grouping Field and reached the
+  # contract as a plain string with no registry seat. A generated integration
+  # has to know WHERE to send a declared field's value — once when the Task
+  # starts, once when the Subtask does, or with every event — so the set is
+  # about to be read by code UBB emits into a repository it never sees, which
+  # is the point at which a private list stops being private.
+  #
+  # ⚠ THE GRAIN A GROUPING AXIS RESOLVES AT IS A DIFFERENT, WIDER SET AND IS
+  # DELIBERATELY NOT THIS CONCEPT. The discovery read publishes these three
+  # plus a fourth, for the axis that groups the quantities beneath an event —
+  # a grain no declared field can ever be scoped to. Marking that field with
+  # this concept would publish an enumeration that refuses the server's own
+  # answer. It stays an unmarked string whose meaning the contract states in
+  # prose, and `apps/metering/queries.py` says why at the set itself.
+  summary: >-
+    The level at which a declared Grouping Field's value is constant: set once
+    on a Task or on a Subtask and inherited by every event beneath it, or sent
+    with each event. Fixed when the field is declared and never changed
+    afterwards, because re-scoping would leave old and new rows disagreeing
+    about where a value came from.
+  values:
+    - task
+    - subtask
+    - event
+  label_key_prefix: grouping_field_scope
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/grouping_fields/models.py
+    - surface: openapi
+      path: openapi/v1.json
+
+reserved_grouping_axis:
+  kind: closed
+  # RULED CANONICAL BY THE OWNER, 2026-09-25 (#544; landed by #575). The five
+  # were worded by hand-written console copy and reserved by a hand-typed
+  # tuple on the server, tied to each other by one cross-tree test and
+  # generated by nothing. The console's own note recorded why — "the registry
+  # declares concepts by their VALUES, and these five are not values, they
+  # are the names of fields" — and ended "nobody owns the question yet".
+  #
+  # The ruling is the answer, and it turns on what the five ARE on the wire
+  # rather than on what they are in a table: the server RESERVES them, a
+  # client SENDS them as the name half of a grouping request word, and the
+  # discovery read PUBLISHES them. A word that crosses the wire in both
+  # directions is a value of something, and that something is this concept.
+  # ADR-0005 is marked superseded in part for it: that record names four
+  # reserved selectors, and the fifth joined when the customer became an axis
+  # every posting carries.
+  #
+  # ⚠ THIS IS NOT THE SET A RULE SELECTS ON, AND THE TWO MUST NOT BE MERGED.
+  # A rate pins on four of these words and never on the customer, which it
+  # reaches through its own relation. Which words a tenant may not bind to a
+  # slot and which columns a rule may pin on are two questions that once had
+  # one answer; the server keeps them as two lists and says so at both.
+  #
+  # NO CONTRACT CONSUMER, AND THAT IS A STATEMENT ABOUT THE FIELDS RATHER THAN
+  # AN OMISSION. No published property takes exactly these five: the request
+  # word and the discovery row's key both carry `<kind>:<name>`, where the
+  # name is one of these OR a tenant's own declared key, so an enumeration on
+  # either would refuse every axis a tenant declared. The values are public;
+  # there is no node to hang them on.
+  #
+  # NO SDK CONSUMER PATH EITHER, for the reason the census gives: a declared
+  # consumer is measured by what it IMPORTS, and no hand-written SDK module
+  # names an axis today. The SDK consumes the concept as the constants
+  # generated into `ubb/vocabulary.py`, which is where the Code Builder's
+  # emitted code will reach them. Naming a path that imports nothing would be
+  # a debt invented to be owed.
+  summary: >-
+    The grouping axes every tenant has, whatever it declares: the customer a
+    posting is attributed to, the supplier, the Event Type, and the kind of
+    Task and of Subtask the work ran under. UBB reserves the five words, so a
+    tenant may not declare a Grouping Field keyed by one and a grouping
+    request can never name two axes with one word. They name what every
+    posting carries rather than anything a tenant supplies, which is why
+    reserving them catalogues nobody's business.
+  values:
+    - customer
+    - provider
+    - event_type
+    - task_type
+    - subtask_type
+  label_key_prefix: reserved_grouping_axis
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/grouping_fields/models.py
+    - surface: console
+      path: apps/ui/src/lib/grouping-axis.ts
 
 plan_name:
   kind: free_text

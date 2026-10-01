@@ -84,11 +84,11 @@ function mockOption(over: Partial<GroupingOption> & { key: string }): GroupingOp
 /**
  * The grain each axis UBB reserves resolves at.
  *
- * ⚠ **A `Record` OVER THE CONSOLE'S OWN UNION RATHER THAN A LIST, so the five
- * are not written out a third time.** `UBB_AXIS_TITLES` is the set, and
- * `tests/contracts/test_grouping_axis_vocabulary.py` holds that set equal to
- * the server's `RESERVED_KEYS` — so a sixth reserved axis reddens there AND
- * fails `tsc` here, instead of being a word the mock quietly never offers.
+ * ⚠ **A `Record` OVER THE GENERATED UNION RATHER THAN A LIST, so the five are
+ * not a set this file keeps.** `UbbAxis` is the registry's
+ * `reserved_grouping_axis`, the same declaration the server's `RESERVED_KEYS`
+ * is read from — so a sixth reserved axis fails `tsc` here, instead of being a
+ * word the mock quietly never offers.
  * Which grain each one resolves at is the server's `ALWAYS_PRESENT_AXES`,
  * mirrored because a fixture has to state it and nothing generates it.
  */

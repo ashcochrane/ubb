@@ -74,7 +74,7 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         declares_a_quantity(self.tenant, QUANTITY)
         for slot, key in DECLARED_KEY_OF.items():
             DimensionService.declare(self.tenant, key=key, slot=slot,
-                                     scope="tenant")
+                                     scope="event")
         self.book = cost_book(self.tenant, key="openai", provider="openai")
 
     def _auth(self):

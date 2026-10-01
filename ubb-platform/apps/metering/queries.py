@@ -74,6 +74,10 @@ from core.vocabulary import (
     ANALYTICS_ROLLUP_EVENT_CATEGORY,
     ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
     ANALYTICS_ROLLUP_VALUES,
+    GROUPING_FIELD_SCOPE_EVENT,
+    GROUPING_FIELD_SCOPE_SUBTASK,
+    GROUPING_FIELD_SCOPE_TASK,
+    GROUPING_FIELD_SCOPE_VALUES,
     MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN,
     MEASURE_STATUS_NOT_APPLICABLE,
@@ -82,10 +86,14 @@ from core.vocabulary import (
     MEASURE_STATUS_VALUES,
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_WAIVED,
+    RESERVED_GROUPING_AXIS_CUSTOMER,
+    RESERVED_GROUPING_AXIS_EVENT_TYPE,
+    RESERVED_GROUPING_AXIS_PROVIDER,
+    RESERVED_GROUPING_AXIS_SUBTASK_TYPE,
+    RESERVED_GROUPING_AXIS_TASK_TYPE,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
-from apps.platform.grouping_fields.models import (
-    RESERVED_KEYS, SCOPE_CHOICES, SLOT_CHOICES)
+from apps.platform.grouping_fields.models import RESERVED_KEYS, SLOT_CHOICES
 
 #: The slot columns a caller may group by, read off the registry that owns the
 #: vocabulary. Restating it as a literal range here is how the two come to
@@ -1348,30 +1356,36 @@ def charge_that_reached(tenant_id, customer_id, *, stop_threshold_micros,
 #: would believe it.
 GROUPING_KIND_SEPARATOR = ":"
 
-#: The grain an axis's value is constant at. Three of the four are the Grouping
-#: Field registry's own scopes, read off it rather than restated; the fourth is
-#: the one no declared field can ever be scoped to, because it is a rollup's.
+#: The grain an axis's value is constant at. Three of the four are the scopes a
+#: Grouping Field may be declared with — the registry's `grouping_field_scope`,
+#: held by reference — and a declared field's grain is passed straight through
+#: from its scope. The fourth is the one no declared field can ever be scoped
+#: to, because it is a rollup's.
 #:
-#: UBB owns this set and the registry declares no concept for it — legal, and
-#: legal for the reason `event_types.VALUE_TYPE_CHOICES` gives for its own pair:
-#: the contract does not RESTATE the set. The field publishes as a plain string
-#: whose meaning the schema states in prose (`api/v1/schemas.py::
-#: SOURCE_GRAIN_MEANING`), so this is still the one place the values live, and
-#: §7's raw-HTTP reader is told what they mean without a generated enum. A
-#: concept would buy the published `enum` and the console wording, and neither
-#: is owed by a ticket that names two concepts and no more. A later slice
-#: wanting either should register it; the cost of doing so has not risen.
+#: ⚠ THE FOUR TOGETHER ARE NOT A REGISTRY CONCEPT, AND THAT IS A DECISION WITH
+#: A RECORD (#575) RATHER THAN A GAP. That ticket declared the three scopes and
+#: had to say what `GroupingOptionOut.source_grain` does about it, since the
+#: field carries those three PLUS this module's fourth. It stays an unmarked
+#: string, for two reasons that do not depend on each other:
+#:
+#: * marking it `grouping_field_scope` would publish an `enum` of three on a
+#:   field that answers four — a contract refusing the server's own response,
+#:   on exactly the rows that describe the measurement-concept rollup;
+#: * a concept for the superset would be a fifth declaration in a ticket that
+#:   names four, coined for one response field that nothing else reads.
+#:   A grain is a statement about how an axis RESOLVES, a scope is a statement
+#:   about how a field was DECLARED, and the day a second surface needs the
+#:   first as a value set of its own is the day it earns a name.
+#:
+#: Until then the contract states the field's meaning in prose
+#: (`api/v1/schemas.py::SOURCE_GRAIN_MEANING`), which is what §7's raw-HTTP
+#: reader needs, and this is the one place the fourth value lives.
 GRAIN_MEASUREMENT = "measurement"
-GROUPING_GRAINS = tuple(scope for scope, _ in SCOPE_CHOICES) + (GRAIN_MEASUREMENT,)
-GRAIN_EVENT, GRAIN_TASK, GRAIN_SUBTASK = "event", "task", "subtask"
-
-#: The three above are the registry's own scope values, and a declared field's
-#: grain is passed straight through from its scope — so they are spelled here
-#: only for the axes that have no declaration to read one from. The agreement is
-#: checked rather than assumed: a scope renamed in the kernel would otherwise
-#: leave this module answering a grain no declared field can ever match.
-assert {GRAIN_EVENT, GRAIN_TASK, GRAIN_SUBTASK} < set(GROUPING_GRAINS), (
-    "the always-present axes must be scoped in the registry's own words")
+GRAIN_EVENT = GROUPING_FIELD_SCOPE_EVENT
+GRAIN_TASK = GROUPING_FIELD_SCOPE_TASK
+GRAIN_SUBTASK = GROUPING_FIELD_SCOPE_SUBTASK
+GROUPING_GRAINS = (tuple(sorted(GROUPING_FIELD_SCOPE_VALUES))
+                   + (GRAIN_MEASUREMENT,))
 
 #: The surfaces that take a grouping axis. Two, and the second is why this read
 #: is not "the analytics capabilities endpoint": a tenant chooses how its
@@ -1406,11 +1420,11 @@ GROUPING_SURFACES = (SURFACE_ANALYTICS, SURFACE_INVOICE_LINES)
 #: what stops a tenant declaring a field called `customer` and leaving one
 #: request word naming two axes at two grains.
 ALWAYS_PRESENT_AXES = (
-    ("customer", GRAIN_EVENT),
-    ("provider", GRAIN_EVENT),
-    ("event_type", GRAIN_EVENT),
-    ("task_type", GRAIN_TASK),
-    ("subtask_type", GRAIN_SUBTASK),
+    (RESERVED_GROUPING_AXIS_CUSTOMER, GRAIN_EVENT),
+    (RESERVED_GROUPING_AXIS_PROVIDER, GRAIN_EVENT),
+    (RESERVED_GROUPING_AXIS_EVENT_TYPE, GRAIN_EVENT),
+    (RESERVED_GROUPING_AXIS_TASK_TYPE, GRAIN_TASK),
+    (RESERVED_GROUPING_AXIS_SUBTASK_TYPE, GRAIN_SUBTASK),
 )
 
 #: The registry owns WHICH words are always present; this module owns the grain

@@ -30,14 +30,14 @@ from apps.platform.event_types.models import (
     EventType,
     Measurement,
     ValueTypeMismatch,
-    VALUE_TYPE_DECIMAL,
-    VALUE_TYPE_INTEGER,
 )
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
+    MEASUREMENT_VALUE_TYPE_DECIMAL,
+    MEASUREMENT_VALUE_TYPE_INTEGER,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_CONSTANT,
     SOURCE_KIND_DERIVED,
@@ -98,12 +98,12 @@ class TestDeclarationsAreEventTypeLocal:
         there = _measurement(second, unit="request")
 
         here.unit = "second"
-        here.value_type = VALUE_TYPE_DECIMAL
+        here.value_type = MEASUREMENT_VALUE_TYPE_DECIMAL
         here.save()
 
         there.refresh_from_db()
         assert there.unit == "request"
-        assert there.value_type == VALUE_TYPE_INTEGER
+        assert there.value_type == MEASUREMENT_VALUE_TYPE_INTEGER
 
     def test_one_event_type_may_not_declare_a_code_twice(self):
         """The other direction: local does not mean unconstrained.
@@ -212,14 +212,14 @@ class TestTheValueTypeIsEnforced:
 
     def test_a_whole_declaration_refuses_a_fraction(self):
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_INTEGER)
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         with pytest.raises(ValueTypeMismatch):
             declared.validate_value(Decimal("2.5"))
 
     def test_a_whole_declaration_refuses_a_fraction_however_it_is_spelled(self):
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_INTEGER)
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         for value in ("2.5", 2.5, Decimal("0.0001")):
             with pytest.raises(ValueTypeMismatch):
@@ -233,7 +233,7 @@ class TestTheValueTypeIsEnforced:
         nobody can reconcile back to what the supplier reported.
         """
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_INTEGER)
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         with pytest.raises(ValueTypeMismatch) as refused:
             declared.validate_value("2.5")
@@ -247,28 +247,28 @@ class TestTheValueTypeIsEnforced:
         and a check that read the string instead of the value would refuse it.
         """
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_INTEGER)
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         for value in (2, "2", Decimal("2"), Decimal("2.0"), 2.0):
             assert declared.validate_value(value) == Decimal("2")
 
     def test_a_decimal_declaration_accepts_a_fraction(self):
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_DECIMAL)
+                                value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
         assert declared.validate_value("2.5") == Decimal("2.5")
 
     def test_a_flag_is_not_the_number_one(self):
         """`bool` subclasses `int`, so `True` passes every numeric test there is."""
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_INTEGER)
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         with pytest.raises(ValueTypeMismatch):
             declared.validate_value(True)
 
     def test_something_that_is_not_a_number_is_refused(self):
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_DECIMAL)
+                                value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
         for value in ("plenty", None, [1], float("nan"), float("inf")):
             with pytest.raises(ValueTypeMismatch):
@@ -281,7 +281,7 @@ class TestTheValueTypeIsEnforced:
         seventeen digits of precision nobody sent.
         """
         declared = _measurement(_event_type(_tenant()),
-                                value_type=VALUE_TYPE_DECIMAL)
+                                value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
         assert declared.validate_value(0.1) == Decimal("0.1")
 

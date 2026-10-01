@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.dimension_def_out_scope import DimensionDefOutScope
 
 
 
@@ -25,14 +26,14 @@ class DimensionDefOut:
             key (str):
             max_cardinality (int):
             retired (bool):
-            scope (str):
+            scope (DimensionDefOutScope):
             slot (str):
      """
 
     key: str
     max_cardinality: int
     retired: bool
-    scope: str
+    scope: DimensionDefOutScope
     slot: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -47,7 +48,7 @@ class DimensionDefOut:
 
         retired = self.retired
 
-        scope = self.scope
+        scope = self.scope.value
 
         slot = self.slot
 
@@ -75,7 +76,10 @@ class DimensionDefOut:
 
         retired = d.pop("retired")
 
-        scope = d.pop("scope")
+        scope = DimensionDefOutScope(d.pop("scope"))
+
+
+
 
         slot = d.pop("slot")
 
