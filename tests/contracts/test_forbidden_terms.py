@@ -378,7 +378,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # over: a `RenameField(old_name=...)` that HAS to spell the retired
         # word, and a `RunPython` that has to recognise the two readings the
         # old column had to carry each to what it actually meant.
-        "historical-migrations": (UNTIL_SLICE_8, 265, 19),
+        # 265 -> 266 in #573: one migration, adding the column an Event Type
+        # keeps its last-published declaration in. It names no retired word,
+        # so the number moved for the file existing.
+        "historical-migrations": (UNTIL_SLICE_8, 266, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

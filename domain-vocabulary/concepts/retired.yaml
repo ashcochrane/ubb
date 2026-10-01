@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,900 of 2,333 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,903 of 2,337 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2606,6 +2606,17 @@ measurement_key:
     # files and only the denominator moves. `units` is therefore unmoved by
     # construction rather than by a second take: the measure is taken over the
     # swept set, and not one of its files changed.
+    #
+    # 2026-10-01, #573 (an Event Type keeps its last-published declaration
+    # readable): 1,900 of 2,333 -> 1,903 of 2,337 tracked files (`units` 44
+    # files / 122 occurrences, UNMOVED). FOUR files arrived and none left.
+    # Three are swept — the kernel read (`event_types/publication.py`) and the
+    # two test modules that hold it — and one is EXCLUDED: the migration that
+    # adds the column, so `historical-migrations` goes 265 -> 266 and the
+    # exclusions 433 -> 434. The reported-cost mapping's representation
+    # `major_units_decimal` is spelled in both test modules and does not count:
+    # the matcher requires a non-identifier character on each side of the
+    # token, and that value has an underscore on both.
 
     - term: units
       retired_as: >-
