@@ -381,7 +381,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 265 -> 266 in #573: one migration, adding the column an Event Type
         # keeps its last-published declaration in. It names no retired word,
         # so the number moved for the file existing.
-        "historical-migrations": (UNTIL_SLICE_8, 266, 19),
+        # 266 -> 268 in #575: two state-only migrations, each following a
+        # `choices=` list onto the set generated from the registry. Neither
+        # names a retired word, so the number moved for the files existing.
+        "historical-migrations": (UNTIL_SLICE_8, 268, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         "the-vocabulary-registry": ("permanent", 10, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),

@@ -32,7 +32,7 @@ import re
 
 import pytest
 
-from _helpers import REPO_ROOT, module_literal
+from _helpers import REPO_ROOT
 from tools.vocabulary import load_registry
 
 #: Where the server says what a rule selects on.
@@ -42,8 +42,14 @@ RATE_MODULE = "ubb-platform/apps/metering/pricing/models.py"
 CONSOLE_SELECTORS_MODULE = "apps/ui/src/features/pricing/lib/rules.ts"
 CONSOLE_SELECTORS_NAME = "NAMED_SELECTORS"
 
-#: The axes every tenant may group by whatever it declares.
-RESERVED_KEYS_MODULE = "ubb-platform/apps/platform/grouping_fields/models.py"
+#: The axes every tenant may group by whatever it declares: the registry's own
+#: concept, which the server's reserved words are read off (#575). Read from the
+#: registry rather than out of the server module, because that module no longer
+#: spells them — `test_grouping_axis_vocabulary.py` is what holds it to that.
+RESERVED_AXES_CONCEPT = "reserved_grouping_axis"
+
+#: And the two axes UBB owns one level above what a tenant declares.
+ROLLUPS_CONCEPT = "analytics_rollup"
 
 #: The published bodies a rule is read and written through: a book's rule, a
 #: change to one, and one customer's own deal.
@@ -115,9 +121,9 @@ def console_selectors():
 @pytest.fixture(scope="module")
 def axes():
     """Every axis a report may group by that is UBB's rather than a tenant's."""
-    rollups = load_registry(REPO_ROOT / "domain-vocabulary").concepts[
-        "analytics_rollup"].values
-    return set(module_literal(RESERVED_KEYS_MODULE, "RESERVED_KEYS")) | set(rollups)
+    concepts = load_registry(REPO_ROOT / "domain-vocabulary").concepts
+    return (set(concepts[RESERVED_AXES_CONCEPT].values)
+            | set(concepts[ROLLUPS_CONCEPT].values))
 
 
 @pytest.fixture(scope="module")
@@ -196,9 +202,10 @@ def test_nothing_a_rule_carries_but_its_selectors_is_an_axis(axes, rule_terms):
     What a rule IS — the quantity it prices, how it derives the price, what it
     charges, which book holds it and when it holds — is pricing's alone, and an
     axis spelled like one of those would make a pricing concept something a
-    report groups by. The console cannot add such an axis on its own account:
-    `test_grouping_axis_vocabulary.py` holds its words for UBB's axes equal to
-    the server's reserved set, which is the set read here.
+    report groups by. Neither tree can add such an axis on its own account:
+    `test_grouping_axis_vocabulary.py` holds the server's reserved words and
+    the console's wording to the registry's declaration, which is the set read
+    here.
     """
     shared = rule_terms & axes
     assert not shared, (

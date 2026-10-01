@@ -3,12 +3,13 @@
 **Status:** accepted — superseded in part
 **Date:** 2026-07-27
 **Superseded in part by:** ADR-0006 on its central noun · ADR-0008 on invariant 7 · ADR-0007 on its
-Migration note · slice 5 (#407) on what a `Task` carries
+Migration note · slice 5 (#407) on what a `Task` carries · the owner's ruling on #544 (2026-09-25,
+landed by #575) on how many keys are reserved and where they are declared
 **Rewritten:** 2026-08-12, under the canonical noun (#283, slice 2 of #155)
 **Design:** the 2026-07-27 unified-model design and its plan, under `docs/plans/` — frozen history,
 and they still spell the noun this ADR has since renamed
 
-## What the four supersessions mean
+## What the five supersessions mean
 
 Stated here because three of them are easy to read as deletions, and none is.
 
@@ -26,6 +27,13 @@ Stated here because three of them are easy to read as deletions, and none is.
   Nothing left the vocabulary: both keys are still reserved, still columns on `Posting` and `Rate`,
   and still selectors a rule may pin on. This is the one supersession that changes an arity rather
   than a name, which is why the Decision now spells out what it does not touch.
+- **The reserved keys are five, and they are a declared concept.** This record names four, and they
+  are still the four a rule selects on. The fifth, `customer`, has been reserved since slice 7 made
+  the customer an axis every posting carries (#498); it is a word a tenant may not declare and is
+  not a selector. The owner ruled the five canonical public vocabulary (#544), so they are declared
+  once, as the registry's `reserved_grouping_axis`, and the server's list, the console's wording
+  and the SDK's constants are all read off that declaration (#575). This one is a correction of a
+  count and reads as one: the Decision's sentence stands, with the correction beside it.
 
 ## Context
 
@@ -37,7 +45,8 @@ returned fields it could not accept.
 ## Decision
 
 One per-tenant `GroupingField` registry is the sole vocabulary for analytics grouping and rate
-selection. Four reserved keys (`provider`, `event_type`, `task_type`, `subtask_type`) plus ten
+selection. Four reserved keys (`provider`, `event_type`, `task_type`, `subtask_type`) —
+**SUPERSEDED IN PART by the ruling on #544: FIVE words are reserved, see the note below** — plus ten
 tenant slots (`grouping_field_1`..`grouping_field_10`) exist as columns on `Posting` and `Rate` —
 the fourteen selectors. ~~`Task` carries the ten slots and the two `*_type` keys, and no more~~
 **SUPERSEDED by slice 5 (#407): a `Task` carries the ten slots and ONE `*_type` key.** It is still
@@ -53,6 +62,18 @@ altitude the row is at, so the posting's two axes are filled from that one colum
 heights — the root's kind on `task_type`, the leaf's on `subtask_type`. A reader coming here from a
 `Rate` sees no difference; a reader coming here from a `Task` finds one column where this clause
 promised two.
+
+**Five reserved keys, of which four are selectors** (#544, landed by #575). The FOURTEEN SELECTORS
+ARE UNCHANGED by this too. *Reserved* means a word a tenant may not bind to a slot (invariant 6),
+and that set gained `customer` when the customer became a grouping axis (#498) — without the
+reservation a tenant could declare a field of that name, and one grouping request word would name
+two axes at two grains. A rule still reaches a customer through its own relation and never through
+a selector, so which words are reserved and which columns a rule may pin on are two lists with two
+owners: the registry concept `reserved_grouping_axis` (`domain-vocabulary/concepts/economics.yaml`)
+declares the first, and `Rate.SELECTORS` is the second. `RESERVED_KEYS` in
+`apps/platform/grouping_fields/models.py` is the set generated from that concept and spells none of
+the five itself; `tests/contracts/test_grouping_axis_vocabulary.py` holds the server and the console
+to that.
 
 **Ten slots, not six** (#276). The widening is not about migration cost: adding a nullable column to
 a modern Postgres table is a catalog write. It is about demand having nowhere else to go — #273
@@ -304,9 +325,14 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
 Minor findings surfaced during review and out of scope for the task that raised them, recorded here
 so they don't vanish silently. Each was re-checked against the tree when this ADR was rewritten.
 
-- `DimensionService.admit`'s and `.declare`'s `scope` argument is not validated against
+- ~~`DimensionService.admit`'s and `.declare`'s `scope` argument is not validated against
   `SCOPE_CHOICES` — an unrecognized scope string is stored rather than rejected at the door, and
-  Django's `choices` is not a database constraint.
+  Django's `choices` is not a database constraint.~~ **Closed at the door by #575.** The contract now
+  publishes a Grouping Field's scope as a closed `enum` — the registry's `grouping_field_scope` — so
+  `.declare`, the one place a scope is STORED, refuses anything else with a 422. `.admit` stores no
+  scope: it compares the one its caller passes against the declared field's, so an unrecognised one
+  matches no declaration and is refused per key. What is still true is the last clause — nothing at
+  the DATABASE refuses one, so a row written before #575 keeps whatever it was sent.
 - `TaskType.key` is a `SlugField` on the model but `TaskTypeIn.key` is a plain `str` in the API
   schema, so slug format is enforced nowhere on the write path.
 - `TaskTypeIn.required_dimensions` caps its list at six entries while ten slots can be declared, so

@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.event_type_out_costing_method import EventTypeOutCostingMethod
+from ..models.event_type_out_declaration_status import EventTypeOutDeclarationStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,7 +30,7 @@ class EventTypeOut:
     """ 
         Attributes:
             costing_method (EventTypeOutCostingMethod):
-            declaration_status (str):
+            declaration_status (EventTypeOutDeclarationStatus):
             key (str):
             measurements (list[MeasurementOut]):
             publication_blockers (list[str]):
@@ -43,7 +44,7 @@ class EventTypeOut:
      """
 
     costing_method: EventTypeOutCostingMethod
-    declaration_status: str
+    declaration_status: EventTypeOutDeclarationStatus
     key: str
     measurements: list[MeasurementOut]
     publication_blockers: list[str]
@@ -65,7 +66,7 @@ class EventTypeOut:
         from ..models.reported_cost_mapping_out import ReportedCostMappingOut
         costing_method = self.costing_method.value
 
-        declaration_status = self.declaration_status
+        declaration_status = self.declaration_status.value
 
         key = self.key
 
@@ -148,7 +149,10 @@ class EventTypeOut:
 
 
 
-        declaration_status = d.pop("declaration_status")
+        declaration_status = EventTypeOutDeclarationStatus(d.pop("declaration_status"))
+
+
+
 
         key = d.pop("key")
 

@@ -1243,6 +1243,31 @@ CONCEPTS_IN_THE_CONTRACT = {
     # the schema, whose subject it was. One node, because a state sits on each
     # measure and each measure on a row resolves independently.
     "measure_status": Published(1, ENUM),  # EconomicMeasureOut.status
+    # #575 (the Code Builder's registry prefactor) — THREE VALUE SETS DECLARED
+    # ON THE CONTRACT BEFORE THE BLUEPRINT THAT READS THEM IS BUILT, so that a
+    # review of vocabulary and a review of that contract can fail separately.
+    # None of the three had a G4 debt to delete: two are concepts coined in the
+    # same commit that marks them, and the third never declared a contract
+    # consumer until this one — so the seeding and its floor do not move.
+    #
+    # ⚠ THE LIFECYCLE IS ON TWO RESPONSES AND THE TICKET NAMED ONE. An Event
+    # Type's representation carries it, and so does a pricing book's publish
+    # record, which took the same concept in slice 4. Both stood bare while the
+    # concept had no contract consumer and both are marked now that it has:
+    # `test_no_advertised_concept_reaches_the_contract_unmarked` requires it of
+    # every property named for an advertised concept, which is exactly the rule
+    # that a value published on two responses is enumerated on both.
+    "declaration_status": Published(2, ENUM),  # EventTypeOut + BookPublishOut
+    # In and out, on the declared quantity. The refusal of anything else was
+    # already the model's, backed by a database check, so this `enum` describes
+    # a rule that was in force before the contract stated it.
+    "measurement_value_type": Published(2, ENUM),  # MeasurementIn/Out
+    # In and out, on the declared Grouping Field. ⚠ NOT on the discovery row's
+    # `source_grain`, which answers these three values PLUS a fourth no declared
+    # field can be scoped to: a marker there would publish an `enum` refusing
+    # the server's own answer. That field stays a plain string, by a decision
+    # recorded at `apps/metering/queries.py::GROUPING_GRAINS`.
+    "grouping_field_scope": Published(2, ENUM),  # the Grouping Field, in + out
 }
 
 
@@ -1712,6 +1737,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # the set rather than three of its members.
     placed("measure_status", {"EconomicMeasureOut"})
 
+    # #575's three. The lifecycle is OUT only on both responses: a declaration
+    # is published by an act, never by a caller stating that it is. The other
+    # two are declared by a tenant and read back, so each is in and out — and
+    # the scope is absent from `GroupingOptionOut`, for the reason given at its
+    # row in `CONCEPTS_IN_THE_CONTRACT`.
+    placed("declaration_status", {"EventTypeOut", "BookPublishOut"})
+    placed("measurement_value_type", {"MeasurementIn", "MeasurementOut"})
+    placed("grouping_field_scope", {"DimensionDefIn", "DimensionDefOut"})
+
     # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
     # ONE. Both on the discovery contract's row and on nothing else, which is
     # the whole placement argument: an axis's kind is a property of the axis, so
@@ -1793,9 +1827,12 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
     - Advertised only. A concept the backend does not yet serve *must* stay
       unmarked — `openapi/README.md` is explicit that marking one fails the
       export — and a concept the registry gives no `openapi` consumer may not
-      be marked at all. `EventTypeOut.declaration_status` is the live example
-      of the second: a `closed` concept, correctly bare, and a rule keyed on
-      kind alone would demand a marker the applier refuses.
+      be marked at all. `EventTypeOut.declaration_status` was the live example
+      of the second until #575 gave the concept its contract consumer: a
+      `closed` concept, correctly bare, where a rule keyed on kind alone would
+      have demanded a marker the applier refuses. No property is in that
+      position today; the restriction stays for the next closed concept that
+      is declared ahead of its contract consumer.
     - By name only. A field carrying a concept under a different name is real
       (`TenantConfigOut.products` carries `tenant_product`) and cannot be found
       mechanically, so this makes the easy half of the claim rather than

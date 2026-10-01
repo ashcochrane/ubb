@@ -557,7 +557,9 @@ export const CUSTOMER_BILLING_MODE_LABEL_KEYS = {
 // response shape, the structured paths and the reported-cost mapping, because
 // an incorrect mapping produces an incorrect supplier cost — so a later change
 // is a revised publication, never a silent reinterpretation of integrations
-// already generated and deployed (#193 §B7).
+// already generated and deployed (#193 §B7). A change to a pricing book
+// carries the same two states for the same reason: a draft is an intention
+// that writes no rule, and publishing is the act that puts it in force.
 //
 // Declared in concepts/economics.yaml.
 
@@ -609,6 +611,33 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // No constants: this kind declares no values by construction. The section is
 // here so that fact is visible, rather than looking like a concept the
 // generator lost.
+
+
+// --- grouping_field_scope ---------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// The level at which a declared Grouping Field's value is constant: set once
+// on a Task or on a Subtask and inherited by every event beneath it, or sent
+// with each event. Fixed when the field is declared and never changed
+// afterwards, because re-scoping would leave old and new rows disagreeing
+// about where a value came from.
+//
+// Declared in concepts/economics.yaml.
+
+export const GROUPING_FIELD_SCOPE_VALUES = [
+  "task",
+  "subtask",
+  "event",
+] as const;
+
+export type GroupingFieldScope = (typeof GROUPING_FIELD_SCOPE_VALUES)[number];
+
+export const GROUPING_FIELD_SCOPE_LABEL_KEYS = {
+  "task": "grouping_field_scope.task",
+  "subtask": "grouping_field_scope.subtask",
+  "event": "grouping_field_scope.event",
+} as const satisfies Record<GroupingFieldScope, string>;
 
 
 // --- grouping_field_value ---------------------------------------------------
@@ -741,6 +770,31 @@ export const MEASURE_STATUS_LABEL_KEYS = {
 // No constants: this kind declares no values by construction. The section is
 // here so that fact is visible, rather than looking like a concept the
 // generator lost.
+
+
+// --- measurement_value_type -------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What kind of number a declared quantity carries: a whole count, or one that
+// may carry a fraction. The declaration says which so that a count arriving
+// with a fraction is refused as the upstream defect it is, rather than rounded
+// at the door — a quantity UBB rounded is one nobody can reconcile back to
+// what the supplier reported.
+//
+// Declared in concepts/economics.yaml.
+
+export const MEASUREMENT_VALUE_TYPE_VALUES = [
+  "integer",
+  "decimal",
+] as const;
+
+export type MeasurementValueType = (typeof MEASUREMENT_VALUE_TYPE_VALUES)[number];
+
+export const MEASUREMENT_VALUE_TYPE_LABEL_KEYS = {
+  "integer": "measurement_value_type.integer",
+  "decimal": "measurement_value_type.decimal",
+} as const satisfies Record<MeasurementValueType, string>;
 
 
 // --- measurements_status ----------------------------------------------------
@@ -1193,6 +1247,39 @@ export const RECOGNITION_METHOD_LABEL_KEYS = {
   "straight_line": "recognition_method.straight_line",
   "on_receipt": "recognition_method.on_receipt",
 } as const satisfies Record<RecognitionMethod, string>;
+
+
+// --- reserved_grouping_axis -------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// The grouping axes every tenant has, whatever it declares: the customer a
+// posting is attributed to, the supplier, the Event Type, and the kind of Task
+// and of Subtask the work ran under. UBB reserves the five words, so a tenant
+// may not declare a Grouping Field keyed by one and a grouping request can
+// never name two axes with one word. They name what every posting carries
+// rather than anything a tenant supplies, which is why reserving them
+// catalogues nobody's business.
+//
+// Declared in concepts/economics.yaml.
+
+export const RESERVED_GROUPING_AXIS_VALUES = [
+  "customer",
+  "provider",
+  "event_type",
+  "task_type",
+  "subtask_type",
+] as const;
+
+export type ReservedGroupingAxis = (typeof RESERVED_GROUPING_AXIS_VALUES)[number];
+
+export const RESERVED_GROUPING_AXIS_LABEL_KEYS = {
+  "customer": "reserved_grouping_axis.customer",
+  "provider": "reserved_grouping_axis.provider",
+  "event_type": "reserved_grouping_axis.event_type",
+  "task_type": "reserved_grouping_axis.task_type",
+  "subtask_type": "reserved_grouping_axis.subtask_type",
+} as const satisfies Record<ReservedGroupingAxis, string>;
 
 
 // --- revenue_basis ----------------------------------------------------------

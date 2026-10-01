@@ -42,6 +42,7 @@ from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
 from .book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
 from .book_publish_in import BookPublishIn
 from .book_publish_out import BookPublishOut
+from .book_publish_out_declaration_status import BookPublishOutDeclarationStatus
 from .business_margin_out import BusinessMarginOut
 from .business_margin_totals import BusinessMarginTotals
 from .ceiling_episode_row import CeilingEpisodeRow
@@ -83,7 +84,9 @@ from .customer_spend_pool_status_out_enforce_mode import CustomerSpendPoolStatus
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
 from .dimension_def_in import DimensionDefIn
+from .dimension_def_in_scope import DimensionDefInScope
 from .dimension_def_out import DimensionDefOut
+from .dimension_def_out_scope import DimensionDefOutScope
 from .dimension_registry_in import DimensionRegistryIn
 from .dimension_registry_out import DimensionRegistryOut
 from .earnings_out import EarningsOut
@@ -99,6 +102,7 @@ from .event_type_in import EventTypeIn
 from .event_type_in_costing_method import EventTypeInCostingMethod
 from .event_type_out import EventTypeOut
 from .event_type_out_costing_method import EventTypeOutCostingMethod
+from .event_type_out_declaration_status import EventTypeOutDeclarationStatus
 from .event_type_update_in import EventTypeUpdateIn
 from .event_type_update_in_costing_method_type_0 import EventTypeUpdateInCostingMethodType0
 from .grant_list_response import GrantListResponse
@@ -130,8 +134,10 @@ from .me_subscription_invoice_out import MeSubscriptionInvoiceOut
 from .me_usage_invoice_out import MeUsageInvoiceOut
 from .measurement_in import MeasurementIn
 from .measurement_in_source_kind import MeasurementInSourceKind
+from .measurement_in_value_type import MeasurementInValueType
 from .measurement_out import MeasurementOut
 from .measurement_out_source_kind import MeasurementOutSourceKind
+from .measurement_out_value_type import MeasurementOutValueType
 from .member_list_response import MemberListResponse
 from .member_out import MemberOut
 from .member_role_update_in import MemberRoleUpdateIn
@@ -373,6 +379,7 @@ __all__ = (
     "BookChangeInRateStructureType0",
     "BookPublishIn",
     "BookPublishOut",
+    "BookPublishOutDeclarationStatus",
     "BusinessMarginOut",
     "BusinessMarginTotals",
     "CeilingEpisodeRow",
@@ -414,7 +421,9 @@ __all__ = (
     "DebitCreditResponse",
     "DebitRequest",
     "DimensionDefIn",
+    "DimensionDefInScope",
     "DimensionDefOut",
+    "DimensionDefOutScope",
     "DimensionRegistryIn",
     "DimensionRegistryOut",
     "EarningsOut",
@@ -430,6 +439,7 @@ __all__ = (
     "EventTypeInCostingMethod",
     "EventTypeOut",
     "EventTypeOutCostingMethod",
+    "EventTypeOutDeclarationStatus",
     "EventTypeUpdateIn",
     "EventTypeUpdateInCostingMethodType0",
     "GrantListResponse",
@@ -458,8 +468,10 @@ __all__ = (
     "MarginThresholdOut",
     "MeasurementIn",
     "MeasurementInSourceKind",
+    "MeasurementInValueType",
     "MeasurementOut",
     "MeasurementOutSourceKind",
+    "MeasurementOutValueType",
     "MeBalanceResponse",
     "MemberListResponse",
     "MemberOut",

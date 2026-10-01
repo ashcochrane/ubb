@@ -5,6 +5,7 @@ from django.db import IntegrityError, transaction
 from apps.platform.grouping_fields.models import (
     FORBIDDEN_KEYS, RESERVED_KEYS, SLOTS, GroupingField, GroupingFieldValue,
 )
+from core.vocabulary import GROUPING_FIELD_SCOPE_VALUES
 
 KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{1,63}")
 
@@ -45,6 +46,17 @@ class DimensionService:
         if slot not in SLOTS:
             raise DimensionError(
                 f"{slot!r} is not a slot: the slots are {', '.join(SLOTS)}")
+        # The contract publishes the scope as a closed `enum`, on the
+        # declaration and on its representation (#575). Until it did, a scope
+        # nobody declared was simply stored — `choices=` is not a constraint —
+        # and the read would then have answered a value its own `enum` refuses.
+        # A stored scope also decides which call a value is accepted on
+        # (`_bindings` below), so one that matches no call is a field that can
+        # never take a value.
+        if scope not in GROUPING_FIELD_SCOPE_VALUES:
+            raise DimensionError(
+                f"{scope!r} is not a scope: the scopes are "
+                f"{', '.join(sorted(GROUPING_FIELD_SCOPE_VALUES))}")
 
         existing = GroupingField.objects.filter(tenant=tenant, key=key).first()
         if existing is None:

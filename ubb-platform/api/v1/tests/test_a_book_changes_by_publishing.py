@@ -322,7 +322,7 @@ class EverySlotIsReachableThroughAChangeBodyTest(_APublishingTenantMixin,
 
     def test_a_rule_pinned_on_the_seventh_slot_can_be_repriced(self):
         DimensionService.declare(self.tenant, key=TIER,
-                                 slot=UNREACHABLE_SLOT, scope="tenant")
+                                 slot=UNREACHABLE_SLOT, scope="event")
         pinned = rate_in_default_book(
             self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
             measurement_key=QUANTITY, rate_per_unit_micros=BEFORE,

@@ -137,8 +137,20 @@ VALUE_SETS = {
     # had not been declared first.
     "ubb-platform/apps/metering/usage/models.py": 5,
     "ubb-platform/apps/platform/customers/models.py": 3,
+    # 3, RE-TAKEN FROM THE CENSUS IN #575 AND FOUND UNMOVED — which is worth a
+    # line, because that ticket's own criterion expected it to move. The
+    # Measurement's value type stopped being this model's private pair and
+    # became a comprehension over the frozenset generated from
+    # `measurement_value_type`, so the census now reads the file as serving that
+    # concept in full. It is counted all the same, for the reason the posting's
+    # lists are: this inventory counts the SHAPE and not the provenance. What
+    # changed is which of the three are still the module's own — two, the
+    # quarantine's: which name went unrecognised, and how it was resolved.
     "ubb-platform/apps/platform/event_types/models.py": 3,
     "ubb-platform/apps/platform/events/models.py": 1,
+    # 2, re-taken in #575 and unmoved for the same reason: the scope is now a
+    # comprehension over `grouping_field_scope`'s generated set. The other is
+    # the slot list, which is ten column names and nobody's vocabulary.
     "ubb-platform/apps/platform/grouping_fields/models.py": 2,
     "ubb-platform/apps/platform/membership/models.py": 4,
     "ubb-platform/apps/platform/plans/models.py": 1,

@@ -1,6 +1,11 @@
 from django.db import models
 
 from core.models import BaseModel
+from core.vocabulary import (
+    GROUPING_FIELD_SCOPE_EVENT,
+    GROUPING_FIELD_SCOPE_VALUES,
+    RESERVED_GROUPING_AXIS_VALUES,
+)
 
 # Ten tenant-owned slots (D2), widened from six in #276 and spelled for the
 # concept they hold rather than for the retired one (ADR-0006 §2 — no short
@@ -38,10 +43,28 @@ SLOT_MAX_LENGTH = max(len(slot) for slot, _ in SLOT_CHOICES)
 # The level at which a grouping field's value is CONSTANT (D6). Task- and
 # subtask-scoped values are set once on the unit and inherited by its events;
 # event-scoped values are sent per call.
-SCOPE_CHOICES = [("task", "Task"), ("subtask", "Subtask"), ("event", "Event")]
+#
+# The three are the registry's `grouping_field_scope` (#575), read off the
+# generated set rather than typed, so this column, the refusal at declaration
+# (`services.DimensionService.declare`) and the contract's `enum` cannot name
+# different scopes. Both halves of each pair are the identity: ADR-0008 §4 puts
+# every human-facing word in the console's locale catalogue, keyed off the
+# concept's label keys, and English authored here would be wording nothing can
+# reach.
+SCOPE_CHOICES = [(value, value)
+                 for value in sorted(GROUPING_FIELD_SCOPE_VALUES)]
 
 # Always-present axes that are never declared and never retired (D1). A tenant
 # may not bind one of these words to a dim slot.
+#
+# The words are the registry's `reserved_grouping_axis` (#544, landed by #575):
+# ruled canonical because the server reserves them, a client sends them and the
+# discovery read publishes them. This tuple is that set and nothing else, so a
+# sixth axis is reserved here by declaring it there, and the console's wording
+# and the SDK's constants are generated from the same declaration.
+# `tests/contracts/test_grouping_axis_vocabulary.py` holds this assignment to
+# spelling none of the words itself. Sorted only so the tuple is the same on
+# every machine; nothing reads its order.
 #
 # ⚠ **FIVE, AND THE FIFTH IS NOT A RATE SELECTOR — WHICH IS WHY THIS TUPLE AND
 # `Rate.SELECTORS` ARE TWO LISTS RATHER THAN ONE** (#498, slice 7 §6). They ask
@@ -58,8 +81,7 @@ SCOPE_CHOICES = [("task", "Task"), ("subtask", "Subtask"), ("event", "Event")]
 # two different grains, with nothing to say which the caller meant. A rule still
 # pins a customer through `Rate.customer`, its own relation, and never through a
 # selector — so the fifth word belongs here and nowhere near that list.
-RESERVED_KEYS = ("provider", "event_type", "task_type", "subtask_type",
-                 "customer")
+RESERVED_KEYS = tuple(sorted(RESERVED_GROUPING_AXIS_VALUES))
 
 # Correlation identifiers (D9): unbounded by construction, so they are filter
 # parameters and may never be declared as grouping fields.
@@ -90,7 +112,8 @@ class GroupingField(BaseModel):
                                related_name="grouping_fields")
     key = models.CharField(max_length=64)
     slot = models.CharField(max_length=SLOT_MAX_LENGTH, choices=SLOT_CHOICES)
-    scope = models.CharField(max_length=8, choices=SCOPE_CHOICES, default="event")
+    scope = models.CharField(max_length=8, choices=SCOPE_CHOICES,
+                             default=GROUPING_FIELD_SCOPE_EVENT)
     # Keyspace guard, not an invariant (D4): bounding distinct values is what
     # makes the rate cache safely keyed by them. Raise only, never lower.
     max_cardinality = models.IntegerField(default=100)

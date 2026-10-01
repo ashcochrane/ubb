@@ -142,10 +142,19 @@ class TheRegistryDeclaresTenSlotsTest(SimpleTestCase):
         `Rate.SELECTORS` — a rule pins a customer through its own relation —
         which is why the two lists stopped being the same list here and are
         asserted apart, below.
+
+        ⚠ **THE FIVE ARE SPELLED HERE ON PURPOSE, AND NOWHERE IN THE CODE THIS
+        TESTS.** Since #575 the tuple is the registry's `reserved_grouping_axis`
+        read off the generated set, so the server holds no copy of the words —
+        and a test is the one place a copy belongs, because it is what makes a
+        sixth axis come past a person rather than arrive by declaration alone.
+        Compared as a SET: the tuple is sorted only so it is the same on every
+        machine, and nothing reads its order.
         """
-        self.assertEqual(RESERVED_KEYS,
-                         ("provider", "event_type", "task_type",
-                          "subtask_type", "customer"))
+        self.assertEqual(set(RESERVED_KEYS),
+                         {"provider", "event_type", "task_type",
+                          "subtask_type", "customer"})
+        self.assertEqual(len(RESERVED_KEYS), len(set(RESERVED_KEYS)))
         for axis in RESERVED_KEYS:
             with self.subTest(axis=axis):
                 self.assertNotIn(axis, SLOTS)

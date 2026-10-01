@@ -14,7 +14,8 @@ from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.vocabulary import (
-    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT,
+    GROUPING_FIELD_SCOPE_EVENT, PRICING_MODE_EVENT_PRICED,
+    RATE_STRUCTURE_PER_UNIT,
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_VALUES,
     TASK_TYPE_KIND_TASK)
 
@@ -2261,21 +2262,32 @@ class BookChangeDiffOut(Schema):
     after: Optional[RuleTermsOut] = None
 
 
+#: Whether a declaration is still a draft or has been published. `closed` — UBB
+#: owns both values — so the export writes a real `enum` here and this file
+#: spells neither.
+#:
+#: ONE CONCEPT ON TWO RESPONSES, AND BOTH ARE MARKED (#575). A pricing book's
+#: publish record and an Event Type's representation each carry the lifecycle,
+#: from two models that each hold the pair by reference. They stood unmarked
+#: together while the concept declared no contract consumer, and they are marked
+#: together now that it does: a value published on two responses and enumerated
+#: on one would state an agreed set as closed in one place and as an open string
+#: in the other.
+#:
+#: NO HAND-WRITTEN `description`: the registry owns this concept's summary and
+#: generates its values, and a sentence restating either here would be a second
+#: copy no gate reads.
+DeclarationStatus = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "declaration_status"})]
+
+
 class BookPublishOut(Schema):
     """A change to a book: an intention while it is a draft, a decision once
     published.
-
-    ⚠ `declaration_status` is deliberately UNMARKED, on the same footing as
-    `EventTypeOut.declaration_status`: the concept declares no `openapi`
-    consumer in the registry, and the applier refuses a marker for a concept
-    that contributes nothing. A field is marked by the ticket that declares its
-    concept's contract consumer, never by one passing nearby. The FIELD is still
-    final under ADR-0007 §3 — gaining an `enum` later is additive, and its
-    values are already the registry's.
     """
     id: str
     book_id: str
-    declaration_status: str
+    declaration_status: DeclarationStatus
     effective_at: str
     published_at: Optional[str] = None
     #: An immutable snapshot of the principal whose decision this was, taken at
@@ -2815,6 +2827,24 @@ class PaginatedRates(Paginated[RateOut]):
     pass
 
 
+#: The level a declared Grouping Field's value is constant at. `closed` — UBB
+#: owns all three — so the export writes a real `enum` on the declaration and on
+#: its representation, and this file spells none of them (#575).
+#:
+#: ⚠ THE REQUEST SIDE IS ENFORCED, AND IT HAD TO START BEING. An `enum` on a
+#: request field is a promise that the server refuses anything else, and until
+#: this marker arrived a declaration stored whatever scope it was sent — which
+#: would have let the representation answer a value its own `enum` refuses.
+#: `DimensionService.declare` is where the refusal lives.
+#:
+#: ⚠ `GroupingOptionOut.source_grain` BELOW IS NOT THIS CONCEPT AND IS
+#: DELIBERATELY UNMARKED. It answers these three plus a fourth that no declared
+#: field can be scoped to; `apps/metering/queries.py` records the decision at
+#: the set itself.
+GroupingFieldScope = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "grouping_field_scope"})]
+
+
 class DimensionDefIn(Schema):
     key: str = Field(max_length=64)
     # Both bounds are read off the registry's own vocabulary rather than typed,
@@ -2824,7 +2854,7 @@ class DimensionDefIn(Schema):
     # said six-and-eight would reject every one of the new ones. Neither is a
     # property rename and neither narrows anything a caller could already send.
     slot: str = Field(max_length=SLOT_MAX_LENGTH)
-    scope: str = "event"
+    scope: GroupingFieldScope = GROUPING_FIELD_SCOPE_EVENT
     max_cardinality: int = Field(default=100, ge=1, le=100_000)
 
 
@@ -2836,7 +2866,7 @@ class DimensionRegistryIn(Schema):
 class DimensionDefOut(Schema):
     key: str
     slot: str
-    scope: str
+    scope: GroupingFieldScope
     max_cardinality: int
     retired: bool
 
@@ -2887,11 +2917,16 @@ AnalyticsRollup = Annotated[
 #: with no typed client, and a value a reader cannot interpret fails that
 #: whether or not a generated enum would have constrained it.
 #:
-#: Leaving them undeclared is `event_types.VALUE_TYPE_CHOICES`' position and its
-#: argument: the contract does not RESTATE the set, so there is still exactly
-#: one place the values live. What a concept would buy is the published `enum`
-#: and the console wording, and neither is owed by a ticket that names two
-#: concepts and no more.
+#: Leaving them undeclared rests on one argument: the contract does not RESTATE
+#: the set, so there is still exactly one place the values live. What a concept
+#: would buy is the published `enum` and the console wording, and neither is
+#: owed by a ticket that names two concepts and no more.
+#:
+#: ⚠ #575 REVISITED THE FIRST OF THE TWO AND LEFT IT WHERE IT IS. Three of the
+#: grains are now the registry's `grouping_field_scope`; the fourth is not, so
+#: marking `source_grain` with that concept would enumerate three values on a
+#: field that answers four. `apps/metering/queries.py::GROUPING_GRAINS` carries
+#: the whole reasoning.
 SOURCE_GRAIN_MEANING = (
     "The grain this axis's value is constant at: 'event', 'task' or 'subtask' "
     "for a declared field — the scope it was declared with — and 'measurement' "
@@ -3698,6 +3733,14 @@ Unit = Annotated[str, Field(json_schema_extra={"x-ubb-concept": "unit"})]
 SourceShapeId = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "source_shape_id"})]
 
+#: What kind of number a declared quantity carries. `closed` — UBB owns both
+#: values — so the export writes a real `enum` on the declaration and on its
+#: representation (#575). The refusal of anything else was already the model's,
+#: backed by a database check, so the `enum` describes a rule that was in force
+#: before the contract said so.
+MeasurementValueType = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "measurement_value_type"})]
+
 
 class ProviderIn(Schema):
     """Declare a supplier. The key is the tenant's own handle for it."""
@@ -3764,7 +3807,7 @@ class MeasurementIn(Schema):
     with two answers.
     """
     display_name: str = Field(default="", max_length=200)
-    value_type: str = Field(max_length=16)
+    value_type: MeasurementValueType = Field(max_length=16)
     #: `max_length` bounds how LONG a unit may be, which the column behind it
     #: already does. It says nothing about which spellings UBB knows, and the
     #: block beside it says nothing about which ones it accepts.
@@ -3780,7 +3823,7 @@ class MeasurementIn(Schema):
 class MeasurementOut(Schema):
     code: str
     display_name: str
-    value_type: str
+    value_type: MeasurementValueType
     unit: Unit
     required_for_costing: bool
     source_kind: SourceKind
@@ -3909,14 +3952,11 @@ class EventTypeOut(Schema):
     category_key: Optional[str] = None
     source_shape_id: SourceShapeId
     source_shape_label: str
-    #: `draft` or `published`. Deliberately UNMARKED: `declaration_status`
-    #: declares no `openapi` consumer in the registry, and the applier refuses
-    #: a marker for a concept that contributes nothing rather than emitting an
-    #: empty one. A field is marked by the ticket that declares its concept's
-    #: contract consumer, never by one passing nearby. The FIELD is still final
-    #: under ADR-0007 §3 — gaining an `enum` later is additive, and its values
-    #: are already the registry's.
-    declaration_status: str
+    #: Whether the declaration is a draft or is published — the lifecycle the
+    #: Code Builder reads before it will generate against this Event Type.
+    #: Marked since #575, the ticket that declared the concept's contract
+    #: consumer; see `DeclarationStatus` for the other response carrying it.
+    declaration_status: DeclarationStatus
     #: Bumped by each publication that pins something different. A tenant's
     #: generated code was generated against a revision, so the revision is what
     #: tells them their integration has become a reading of a contract that

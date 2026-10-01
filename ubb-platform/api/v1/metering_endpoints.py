@@ -66,7 +66,7 @@ from apps.platform.event_types.costing import (
     admits_a_caller_supplied_cost, cost_declaration)
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    SOURCE_KIND_CALLER_SUPPLIED)
+    GROUPING_FIELD_SCOPE_EVENT, SOURCE_KIND_CALLER_SUPPLIED)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -289,7 +289,7 @@ def record_sync_item(tenant, item, customers, task_exists):
     # failure below, and never reaches record_usage.
     try:
         dimension_slots = DimensionService.admit(
-            tenant, item.grouping_fields, scope="event")
+            tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     except DimensionError as exc:
         return _rejected("validation_error", str(exc))
     try:
@@ -338,7 +338,8 @@ def record_usage(request, payload: RecordUsageRequest):
     # record.
     try:
         dimension_slots = DimensionService.admit(
-            request.auth.tenant, payload.grouping_fields, scope="event")
+            request.auth.tenant, payload.grouping_fields,
+            scope=GROUPING_FIELD_SCOPE_EVENT)
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
     try:

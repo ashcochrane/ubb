@@ -173,7 +173,8 @@ historical money attribution, and nothing here is. An Event Type with no categor
 (`apps/platform/event_types/models.py:EventCategory`)
 
 **Measurement (declared quantity)**:
-One declared quantity beneath an Event Type — a code and display name, a value type, a unit, whether
+One declared quantity beneath an Event Type — a code and display name, a value type (`integer` or
+`decimal`, the registry's `measurement_value_type`), a unit, whether
 its absence blocks a complete cost (`required_for_costing`), and where the number comes from (a
 source kind plus a structured `source_path`). Before it, measured quantities travelled in a bare
 JSON bag and **a misspelled quantity was silently free**: it hit a `continue`, contributed nothing,
@@ -258,7 +259,21 @@ server-side and then matched by no publish body at all. (ADR-0005)
 **Scope**:
 The level at which a grouping field's value is constant — `task`, `subtask`, or `event` — governing
 inheritance down the task tree; immutable once declared, since re-scoping would make old and new
-rows disagree about where a value came from. (ADR-0005)
+rows disagree about where a value came from. The three are the registry's `grouping_field_scope`,
+published on the contract as a closed set since #575, and a declaration naming any other scope is
+refused rather than stored. (ADR-0005)
+_Avoid_: reading the `source_grain` a grouping axis resolves at as this set — it answers these three
+plus `measurement`, a grain no declared field can be scoped to.
+
+**Reserved grouping axis**:
+One of the five axes every tenant has whatever it declares — `customer`, `provider`, `event_type`,
+`task_type`, `subtask_type` — and therefore a word a tenant may not declare a Grouping Field under.
+Declared once, as the registry's `reserved_grouping_axis`: the server's reserved list, the console's
+wording and the SDK's constants are all read off that one declaration, so none of them keeps a list
+of its own (#544, landed by #575).
+(`apps/platform/grouping_fields/models.py:RESERVED_KEYS`; ADR-0005)
+_Avoid_: reading it as the **Selector** list — four of the five are selectors and the customer is
+not; a rule reaches a customer through its own relation.
 
 **Task type**:
 A tenant's declared kind of work, carrying server-side policy (a COGS ceiling, a **Silence

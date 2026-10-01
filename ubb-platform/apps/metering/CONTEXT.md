@@ -318,7 +318,7 @@ expecting a rule to say which kind it is — read the book it is in.
 One of the fourteen columns (`provider`, `event_type`, `task_type`, `subtask_type`,
 `grouping_field_1`..`grouping_field_10`) that both `Posting` and `Rate` carry — the single
 vocabulary a `GroupingField` is declared into and a `Rate` is matched against. `""` means "not set"
-on an event and "matches anything" on a Rate. Only the four reserved axes are indexed: the ten slots
+on an event and "matches anything" on a Rate. Only the four named selectors are indexed: the ten slots
 carry no index of their own, because no query selects rows by one — every read of a slot groups by
 it inside a tenant and time window (#276).
 (ADR-0005; `apps/metering/pricing/models.py:Rate.SELECTORS`)

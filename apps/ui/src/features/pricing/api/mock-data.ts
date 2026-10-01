@@ -58,7 +58,7 @@ export const MOCK_GROUPING_FIELDS: GroupingFieldDef[] =
   MOCK_DECLARED_AXIS_KEYS.map((key, index) => ({
     key,
     slot: `grouping_field_${index + 1}`,
-    scope: "usage_event",
+    scope: "event",
     max_cardinality: 200,
     retired: false,
   }));

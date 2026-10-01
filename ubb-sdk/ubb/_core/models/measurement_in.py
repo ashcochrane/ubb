@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.measurement_in_source_kind import MeasurementInSourceKind
+from ..models.measurement_in_value_type import MeasurementInValueType
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -33,7 +34,7 @@ class MeasurementIn:
         Attributes:
             source_kind (MeasurementInSourceKind):
             unit (str):
-            value_type (str):
+            value_type (MeasurementInValueType):
             display_name (str | Unset):  Default: ''.
             required_for_costing (bool | Unset):  Default: False.
             source_path (list[str] | Unset):
@@ -41,7 +42,7 @@ class MeasurementIn:
 
     source_kind: MeasurementInSourceKind
     unit: str
-    value_type: str
+    value_type: MeasurementInValueType
     display_name: str | Unset = ''
     required_for_costing: bool | Unset = False
     source_path: list[str] | Unset = UNSET
@@ -56,7 +57,7 @@ class MeasurementIn:
 
         unit = self.unit
 
-        value_type = self.value_type
+        value_type = self.value_type.value
 
         display_name = self.display_name
 
@@ -97,7 +98,10 @@ class MeasurementIn:
 
         unit = d.pop("unit")
 
-        value_type = d.pop("value_type")
+        value_type = MeasurementInValueType(d.pop("value_type"))
+
+
+
 
         display_name = d.pop("display_name", UNSET)
 

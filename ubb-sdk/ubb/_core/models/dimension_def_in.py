@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.dimension_def_in_scope import DimensionDefInScope
 from ..types import UNSET, Unset
 
 
@@ -26,13 +27,13 @@ class DimensionDefIn:
             key (str):
             slot (str):
             max_cardinality (int | Unset):  Default: 100.
-            scope (str | Unset):  Default: 'event'.
+            scope (DimensionDefInScope | Unset):  Default: DimensionDefInScope.EVENT.
      """
 
     key: str
     slot: str
     max_cardinality: int | Unset = 100
-    scope: str | Unset = 'event'
+    scope: DimensionDefInScope | Unset = DimensionDefInScope.EVENT
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -46,7 +47,10 @@ class DimensionDefIn:
 
         max_cardinality = self.max_cardinality
 
-        scope = self.scope
+        scope: str | Unset = UNSET
+        if not isinstance(self.scope, Unset):
+            scope = self.scope.value
+
 
 
         field_dict: dict[str, Any] = {}
@@ -73,7 +77,15 @@ class DimensionDefIn:
 
         max_cardinality = d.pop("max_cardinality", UNSET)
 
-        scope = d.pop("scope", UNSET)
+        _scope = d.pop("scope", UNSET)
+        scope: DimensionDefInScope | Unset
+        if isinstance(_scope,  Unset):
+            scope = UNSET
+        else:
+            scope = DimensionDefInScope(_scope)
+
+
+
 
         dimension_def_in = cls(
             key=key,

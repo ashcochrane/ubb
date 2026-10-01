@@ -10,6 +10,8 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_PARENT_TASK_NOT_ACTIVE,
     AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
     COSTING_STATUS_KNOWN,
+    GROUPING_FIELD_SCOPE_SUBTASK,
+    GROUPING_FIELD_SCOPE_TASK,
     OUTCOME_REASON_PARENT_CLOSED,
     OUTCOME_REASON_VALUES,
     PRICING_MODE_EVENT_PRICED,
@@ -497,7 +499,9 @@ class StartDeclaration:
         are spelled the same — `RiskService.resolve_start_policy` makes that
         argument in full.
         """
-        return "subtask" if self.parent_task_id is not None else "task"
+        return (GROUPING_FIELD_SCOPE_SUBTASK
+                if self.parent_task_id is not None
+                else GROUPING_FIELD_SCOPE_TASK)
 
     def slots(self, tenant):
         """What this declaration's grouping values bind to, RECORDING NOTHING.

@@ -5,6 +5,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_STOPPED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
+    GROUPING_FIELD_SCOPE_SUBTASK, GROUPING_FIELD_SCOPE_TASK,
     PRICING_MODE_EVENT_PRICED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 from core.crossing import past_floor
@@ -131,12 +132,13 @@ class RiskService:
         # registry's `task_type_kind` — two values, saying which altitude a
         # DECLARED KIND OF WORK is meant for. This is `GroupingField.scope` —
         # three values including `event`, saying where a grouping field's value
-        # is SET and therefore how far down it is inherited (ADR-0005). Held as
-        # literals because that concept has no registry seat to import from, and
-        # left as its own line rather than aliased to `kind`: folding them
-        # together would make one word of two facts, which is the collision
+        # is SET and therefore how far down it is inherited (ADR-0005). It is the
+        # registry's `grouping_field_scope` since #575 and is held by reference,
+        # and it stays its own line rather than being aliased to `kind`: folding
+        # them together would make one word of two facts, which is the collision
         # ADR-0006 §3 uses as its worked example.
-        scope = "subtask" if is_subtask else "task"
+        scope = (GROUPING_FIELD_SCOPE_SUBTASK if is_subtask
+                 else GROUPING_FIELD_SCOPE_TASK)
         try:
             slot_values = DimensionService.admit(tenant, grouping_values or {}, scope=scope)
         except DimensionError as exc:

@@ -778,7 +778,7 @@
         "type": "object"
       },
       "BookPublishOut": {
-        "description": "A change to a book: an intention while it is a draft, a decision once\npublished.\n\n\u26a0 `declaration_status` is deliberately UNMARKED, on the same footing as\n`EventTypeOut.declaration_status`: the concept declares no `openapi`\nconsumer in the registry, and the applier refuses a marker for a concept\nthat contributes nothing. A field is marked by the ticket that declares its\nconcept's contract consumer, never by one passing nearby. The FIELD is still\nfinal under ADR-0007 \u00a73 \u2014 gaining an `enum` later is additive, and its\nvalues are already the registry's.",
+        "description": "A change to a book: an intention while it is a draft, a decision once\npublished.",
         "properties": {
           "actor_display": {
             "title": "Actor Display",
@@ -804,8 +804,13 @@
             "type": "array"
           },
           "declaration_status": {
+            "enum": [
+              "draft",
+              "published"
+            ],
             "title": "Declaration Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "declaration_status"
           },
           "diff": {
             "anyOf": [
@@ -2344,8 +2349,14 @@
           },
           "scope": {
             "default": "event",
+            "enum": [
+              "task",
+              "subtask",
+              "event"
+            ],
             "title": "Scope",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grouping_field_scope"
           },
           "slot": {
             "maxLength": 17,
@@ -2375,8 +2386,14 @@
             "type": "boolean"
           },
           "scope": {
+            "enum": [
+              "task",
+              "subtask",
+              "event"
+            ],
             "title": "Scope",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grouping_field_scope"
           },
           "slot": {
             "title": "Slot",
@@ -2796,8 +2813,13 @@
             "x-ubb-concept": "costing_method"
           },
           "declaration_status": {
+            "enum": [
+              "draft",
+              "published"
+            ],
             "title": "Declaration Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "declaration_status"
           },
           "key": {
             "title": "Key",
@@ -3944,9 +3966,14 @@
             ]
           },
           "value_type": {
+            "enum": [
+              "integer",
+              "decimal"
+            ],
             "maxLength": 16,
             "title": "Value Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "measurement_value_type"
           }
         },
         "required": [
@@ -4009,8 +4036,13 @@
             ]
           },
           "value_type": {
+            "enum": [
+              "integer",
+              "decimal"
+            ],
             "title": "Value Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "measurement_value_type"
           }
         },
         "required": [

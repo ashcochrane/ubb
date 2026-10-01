@@ -24,10 +24,9 @@ from core.vocabulary import REVENUE_BASIS_VALUES
 #: provenance of a revenue number was destroyed before.
 #:
 #: UBB owns this pair and the registry declares no concept for it — legal, and
-#: legal for the reason `event_types.VALUE_TYPE_CHOICES` gives for its own pair:
-#: the contract does not RESTATE the set. The one economic query publishes these
-#: words on a plain string whose meaning its schema states in prose, so this
-#: stays the one place the values live.
+#: legal because the contract does not RESTATE the set. The one economic query
+#: publishes these words on a plain string whose meaning its schema states in
+#: prose, so this stays the one place the values live.
 REVENUE_SOURCE_SUBSCRIPTION = "subscription"
 REVENUE_SOURCE_TENANT_SUPPLIED = "tenant_supplied"
 REVENUE_SOURCES = (REVENUE_SOURCE_SUBSCRIPTION, REVENUE_SOURCE_TENANT_SUPPLIED)

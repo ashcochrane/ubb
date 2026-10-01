@@ -54,7 +54,7 @@ import {
   formatMicros,
   formatPercent,
 } from "@/lib/format";
-import { UBB_AXIS_TITLES, type UbbAxis } from "@/lib/grouping-axis";
+import { isUbbAxis, ubbAxisTitle } from "@/lib/grouping-axis";
 import { ABSENT_LABEL, labelMap, tenantDefinedLabel } from "@/lib/localisation";
 import { AT_LEAST, AT_MOST, partialTotalNote } from "@/lib/supplier-cost";
 import { eventsHave } from "@/lib/total-reading";
@@ -469,7 +469,7 @@ export function horizonNote(caveats: {
 /** An axis the context names, in words: UBB's own axes by UBB's word, any other
  *  as the tenant declared it. */
 function axisWords(name: string): string {
-  return name in UBB_AXIS_TITLES
-    ? UBB_AXIS_TITLES[name as UbbAxis].toLowerCase()
+  return isUbbAxis(name)
+    ? ubbAxisTitle(name).toLowerCase()
     : tenantDefinedLabel(name);
 }

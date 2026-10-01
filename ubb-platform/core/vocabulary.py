@@ -500,7 +500,9 @@ CUSTOMER_BILLING_MODE_VALUES = frozenset({
 # response shape, the structured paths and the reported-cost mapping, because
 # an incorrect mapping produces an incorrect supplier cost — so a later change
 # is a revised publication, never a silent reinterpretation of integrations
-# already generated and deployed (#193 §B7).
+# already generated and deployed (#193 §B7). A change to a pricing book carries
+# the same two states for the same reason: a draft is an intention that writes
+# no rule, and publishing is the act that puts it in force.
 #
 # Declared in concepts/economics.yaml.
 
@@ -548,6 +550,29 @@ DECLARATION_STATUS_VALUES = frozenset({
 # No constants: this kind declares no values by construction. The section is
 # here so that fact is visible, rather than looking like a concept the
 # generator lost.
+
+
+# --- grouping_field_scope ----------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# The level at which a declared Grouping Field's value is constant: set once on
+# a Task or on a Subtask and inherited by every event beneath it, or sent with
+# each event. Fixed when the field is declared and never changed afterwards,
+# because re-scoping would leave old and new rows disagreeing about where a
+# value came from.
+#
+# Declared in concepts/economics.yaml.
+
+GROUPING_FIELD_SCOPE_TASK = 'task'
+GROUPING_FIELD_SCOPE_SUBTASK = 'subtask'
+GROUPING_FIELD_SCOPE_EVENT = 'event'
+
+GROUPING_FIELD_SCOPE_VALUES = frozenset({
+    GROUPING_FIELD_SCOPE_TASK,
+    GROUPING_FIELD_SCOPE_SUBTASK,
+    GROUPING_FIELD_SCOPE_EVENT,
+})
 
 
 # --- grouping_field_value ----------------------------------------------------
@@ -675,6 +700,27 @@ MEASURE_STATUS_VALUES = frozenset({
 # No constants: this kind declares no values by construction. The section is
 # here so that fact is visible, rather than looking like a concept the
 # generator lost.
+
+
+# --- measurement_value_type --------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What kind of number a declared quantity carries: a whole count, or one that
+# may carry a fraction. The declaration says which so that a count arriving
+# with a fraction is refused as the upstream defect it is, rather than rounded
+# at the door — a quantity UBB rounded is one nobody can reconcile back to what
+# the supplier reported.
+#
+# Declared in concepts/economics.yaml.
+
+MEASUREMENT_VALUE_TYPE_INTEGER = 'integer'
+MEASUREMENT_VALUE_TYPE_DECIMAL = 'decimal'
+
+MEASUREMENT_VALUE_TYPE_VALUES = frozenset({
+    MEASUREMENT_VALUE_TYPE_INTEGER,
+    MEASUREMENT_VALUE_TYPE_DECIMAL,
+})
 
 
 # --- measurements_status -----------------------------------------------------
@@ -1073,6 +1119,35 @@ RECOGNITION_METHOD_ON_RECEIPT = 'on_receipt'
 RECOGNITION_METHOD_VALUES = frozenset({
     RECOGNITION_METHOD_STRAIGHT_LINE,
     RECOGNITION_METHOD_ON_RECEIPT,
+})
+
+
+# --- reserved_grouping_axis --------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# The grouping axes every tenant has, whatever it declares: the customer a
+# posting is attributed to, the supplier, the Event Type, and the kind of Task
+# and of Subtask the work ran under. UBB reserves the five words, so a tenant
+# may not declare a Grouping Field keyed by one and a grouping request can
+# never name two axes with one word. They name what every posting carries
+# rather than anything a tenant supplies, which is why reserving them
+# catalogues nobody's business.
+#
+# Declared in concepts/economics.yaml.
+
+RESERVED_GROUPING_AXIS_CUSTOMER = 'customer'
+RESERVED_GROUPING_AXIS_PROVIDER = 'provider'
+RESERVED_GROUPING_AXIS_EVENT_TYPE = 'event_type'
+RESERVED_GROUPING_AXIS_TASK_TYPE = 'task_type'
+RESERVED_GROUPING_AXIS_SUBTASK_TYPE = 'subtask_type'
+
+RESERVED_GROUPING_AXIS_VALUES = frozenset({
+    RESERVED_GROUPING_AXIS_CUSTOMER,
+    RESERVED_GROUPING_AXIS_PROVIDER,
+    RESERVED_GROUPING_AXIS_EVENT_TYPE,
+    RESERVED_GROUPING_AXIS_TASK_TYPE,
+    RESERVED_GROUPING_AXIS_SUBTASK_TYPE,
 })
 
 

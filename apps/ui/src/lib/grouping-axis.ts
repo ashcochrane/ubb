@@ -12,53 +12,41 @@
 // contract (`useGroupingOptions`); this module holds only what turns one of its
 // rows into words.
 //
-// ⚠ **WHERE EACH WORD COMES FROM, AND THE ONE SET THAT HAS NO REGISTRY HOME.**
-// A picker row needs four kinds of word, and three of them are the localisation
-// layer's, reached the ordinary way — identity from `@/lib/vocabulary`,
-// expression from `@/locales` (ADR-0008 §4):
+// ⚠ **WHERE EACH WORD COMES FROM.** A picker row needs four kinds of word. Three
+// are UBB's and are the localisation layer's, reached the ordinary way —
+// identity from `@/lib/vocabulary`, expression from `@/locales` (ADR-0008 §4):
 //
 //   * the two KINDS (`field` / `rollup`) — `analytics_grouping_kind`, bound
 //     where the mark renders, in `components/shared/grouping-axis-label.tsx`;
 //   * the two ROLLUP axes — `analytics_rollup`, resolved by `axisName` below
 //     so that a rollup this build predates falls to the unworded branch rather
 //     than to a guess;
-//   * a TENANT's own axis — not UBB's to word at all. It renders exactly as the
-//     tenant declared it, which is what the contract sends in `label`.
+//   * UBB's five RESERVED axes — `reserved_grouping_axis`, resolved the same
+//     way and for the same reason.
 //
-// The fourth is UBB's five reserved axes, and they are authored below as
-// CONSOLE COPY rather than catalogue wording. The reason is that the registry
-// declares concepts by their VALUES, and these five are not values — they are
-// the names of fields, the same kind of thing as the column headings this
-// console already authors ("Kind of work" over the runs table, "Event type"
-// over the ledger). G6 refuses a catalogue key no concept declares, so wording
-// them there would mean coining a registry concept for a set of field names,
-// which is a registry act and not a console one.
+// The fourth is a TENANT's own axis, which is not UBB's to word at all. It
+// renders exactly as the tenant declared it, which is what the contract sends
+// in `label`.
 //
-// ⚠ **AND THE CONTRACT WAS SAYING SOMETHING ELSE.** `GroupingOptionOut`'s
-// published description used to end that rule with *"UBB's own wording for its
-// own axes lives in the localisation layer"* — false the moment the five were
-// authored here, and shipped in `openapi/v1.json` to every tenant. It now says
-// what is actually true of any client: the registry owns identity, the surface
-// that renders an axis owns its expression, and UBB does not derive English
-// from its own token and publish it as though somebody had chosen it. That is
-// a better sentence for a CONTRACT anyway — where a particular console keeps
-// its copy was never a tenant's business.
-//
-// ⚠ **RESIDUAL, recorded rather than left for a reader to notice.** These five
-// still are not registry-declared, so nothing generates them, and the only
-// thing tying them to the server is the cross-tree check named at
-// `UBB_AXIS_TITLES` rather than anything a generator would refuse. If a concept
-// is ever coined for UBB's own axis names, the catalogue becomes their home and
-// this object goes. The residual now covers the pricing feature's rate
-// selectors too: #509 took four of these words for them (`selectorTitle` in
-// `features/pricing/lib/rules.ts`) rather than keeping a second copy there, so
-// the same answer will serve both. Nobody owns the question yet.
+// ⚠ **THE FIVE WERE CONSOLE COPY UNTIL #575, AND THE REASON THEY WERE IS WORTH
+// KEEPING.** They were authored in this file as an object literal, because the
+// registry declares concepts by their VALUES and these read as the names of
+// fields — the same kind of thing as a column heading. The note that stood here
+// ended "nobody owns the question yet". The owner then ruled them canonical
+// (#544): the server reserves them, a client sends them as the name half of the
+// request word, and the discovery contract publishes them, so they ARE values —
+// of `reserved_grouping_axis`. Their identity is generated into
+// `@/lib/vocabulary` and their wording lives in the catalogue, which is also
+// what the pricing feature's rate selectors read four of them through
+// (`selectorTitle` in `features/pricing/lib/rules.ts`).
 
 import { resolveLabel } from "@/lib/localisation";
 import type { MeteringSchemas } from "@/api/types";
 import {
   ANALYTICS_GROUPING_KIND_VALUES,
   ANALYTICS_ROLLUP_LABEL_KEYS,
+  RESERVED_GROUPING_AXIS_LABEL_KEYS,
+  type ReservedGroupingAxis,
 } from "@/lib/vocabulary";
 
 /** One axis this tenant may group by, exactly as the discovery contract states it. */
@@ -85,53 +73,36 @@ export const FIELD_KIND: GroupingKind = "field";
 export const ROLLUP_KIND: GroupingKind = "rollup";
 
 /**
- * UBB's words for the five axes every tenant has, whatever it declares.
+ * One of the axes every tenant has, whatever it declares.
  *
- * These are the server's `RESERVED_KEYS`, and the discovery contract sends them
- * with an empty `label` precisely because their wording is UBB's rather than
- * the tenant's.
+ * The registry's `reserved_grouping_axis`, under the name this console's call
+ * sites already use. The server's `RESERVED_KEYS` is generated from the same
+ * declaration, so neither side keeps a list the other could drift from: a sixth
+ * is declared once, in `domain-vocabulary/`, and arrives here as a wider union
+ * with a label key the catalogue is then required to word (G6).
  *
- * ⚠ **THE AGREEMENT WITH THAT LIST IS CHECKED, AND NOT FROM HERE.** A vitest
- * case comparing this map against five literals typed beside it would be one
- * party to an agreement checking its own side, and a sixth reserved word on the
- * server would be invisible to it. `tests/contracts/
- * test_grouping_axis_vocabulary.py` reads BOTH trees as text — the Python with
- * `ast`, this object with a regex — and pins the two sets equal in both
- * directions: an axis the server offers with no word here would render as a
- * marked token instead of the word UBB chose, and a word here for an axis the
- * server never offers is copy no render can reach.
- *
- * ⚠ **FOUR OF THESE WORDS ALSO LABEL A RULE'S SELECTORS (#509)**, so changing
- * one changes the pricing screens too. The customer is the one that does not:
- * it is an axis a report groups by and never something a rule selects on, and
- * `tests/contracts/test_rate_selector_vocabulary.py` holds the pricing
+ * ⚠ **FOUR OF THESE ALSO LABEL A RULE'S SELECTORS (#509)**, so rewording one in
+ * the catalogue rewords the pricing screens too. The customer is the one that
+ * does not: it is an axis a report groups by and never something a rule selects
+ * on, and `tests/contracts/test_rate_selector_vocabulary.py` holds the pricing
  * feature's list to the server's selectors so it cannot come back that way.
  */
-export const UBB_AXIS_TITLES = {
-  customer: "Customer",
-  provider: "Provider",
-  event_type: "Event type",
-  task_type: "Kind of work",
-  subtask_type: "Kind of subtask",
-} as const;
+export type UbbAxis = ReservedGroupingAxis;
 
-/** One of the axes every tenant has, whatever it declares. */
-export type UbbAxis = keyof typeof UBB_AXIS_TITLES;
+/** Whether an axis name off the wire is one UBB reserves, and so has UBB's word. */
+export function isUbbAxis(name: string): name is UbbAxis {
+  return Object.hasOwn(RESERVED_GROUPING_AXIS_LABEL_KEYS, name);
+}
 
 /**
  * UBB's word for one of its own axes, where the caller knows it has one.
  *
  * The typed form, for a surface naming the axes it offers rather than reading
- * them off the contract: a name with no word here is a `tsc` failure at that
- * call site instead of a blank in a picker.
+ * them off the contract: a name the registry does not reserve is a `tsc`
+ * failure at that call site instead of a blank in a picker.
  */
 export function ubbAxisTitle(axis: UbbAxis): string {
-  return UBB_AXIS_TITLES[axis];
-}
-
-/** The same lookup over an axis name off the wire, which may be one UBB has no word for. */
-function titleForAxisNamed(name: string): string | undefined {
-  return (UBB_AXIS_TITLES as Readonly<Record<string, string | undefined>>)[name];
+  return resolveLabel(RESERVED_GROUPING_AXIS_LABEL_KEYS, axis).text;
 }
 
 /**
@@ -141,8 +112,8 @@ function titleForAxisNamed(name: string): string | undefined {
  * derived here rather than declared at the call site so that two pickers cannot
  * answer the same row two different ways:
  *
- *   `worded`   UBB has a word for this axis — the catalogue's for a rollup, the
- *              authored one above for a reserved field.
+ *   `worded`   UBB has a word for this axis, and the catalogue carries it — a
+ *              rollup's, or a reserved field's.
  *   `tenant`   the tenant's own key, sent on the row. Rendered verbatim.
  *   `unworded` nothing has a word for it. The token is the only true thing
  *              known about it, and the call site marks it as unrecognised
@@ -162,10 +133,9 @@ export function axisName(option: GroupingOption): AxisName {
   }
   if (option.label !== "") return { kind: "tenant", text: option.label };
   const name = axisNameOf(option.key);
-  const title = titleForAxisNamed(name);
-  return title === undefined
-    ? { kind: "unworded", text: name }
-    : { kind: "worded", text: title };
+  return isUbbAxis(name)
+    ? { kind: "worded", text: ubbAxisTitle(name) }
+    : { kind: "unworded", text: name };
 }
 
 /** The axis's own name, with its kind taken off the front. */
