@@ -27,11 +27,16 @@ T = TypeVar("T", bound="IntegrationBlueprintArgument")
 class IntegrationBlueprintArgument:
     """ One token of a call, and where its value comes from.
 
-    `name` says where the token sits: a field of the operation's request, the
-    credential `api_key`, `<field>.<key>` for the value under a declared key
-    of an object field, or `<name>.<declared field>` for a declared element
-    that says how a runtime value is read — `measurements.<key>.source_path`
-    is the path a quantity is read by.
+    `name` says where the token sits, as one to three segments joined by
+    dots. `<field>` is a field of the operation's request, or the credential
+    `api_key`; for a field holding an object of declared keys
+    (`grouping_fields`, `measurements`) it is one key of that object, carried
+    as the literal. `<field>.<key>` is the value under a declared key.
+    `<field>.<element>` and `<field>.<key>.<element>` are declared facts
+    about that value — `task_type.pricing_mode`,
+    `measurements.<key>.source_path`. A dot or a percent sign inside a
+    declared key is percent-encoded in a name, so a name always splits on its
+    dots.
 
     Exactly one of `value`, `parameter_name` and `environment_variable` is
     set, by `binding_class` — except a `platform_known` token with

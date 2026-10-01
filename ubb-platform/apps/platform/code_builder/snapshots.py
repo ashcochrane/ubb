@@ -1,7 +1,7 @@
 """Storing a resolved Blueprint's content, and reading one back by fingerprint.
 
-Three functions and nothing else may be done with a snapshot: compose its
-fingerprint, store it, read it. Plain data in and out, for the reason every
+What may be done with a snapshot is compose its fingerprint, store it and read
+it, and this module is all of it. Plain data in and out, for the reason every
 read in the kernel gives — a caller needs what the snapshot says and has no
 business holding a record it could save.
 

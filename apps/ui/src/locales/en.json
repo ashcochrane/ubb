@@ -204,6 +204,8 @@
   "reserved_grouping_axis.provider": "Provider",
   "reserved_grouping_axis.subtask_type": "Kind of subtask",
   "reserved_grouping_axis.task_type": "Kind of work",
+  "response_shape_representation.json": "JSON document",
+  "response_shape_representation.python_object": "Python object",
   "revenue_basis.recognised": "Recognised",
   "revenue_basis.recorded": "Recorded",
   "source_kind.caller_supplied": "Caller supplied",

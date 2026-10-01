@@ -35,6 +35,8 @@ so advice is the entire product.
 import re
 
 from core.vocabulary import (
+    RESPONSE_SHAPE_REPRESENTATION_JSON,
+    RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
     SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1,
     SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1,
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
@@ -104,15 +106,10 @@ SHAPE_CONVENTIONS = {
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1: CONVENTION_SNAKE,
 }
 
-#: What a supplier's response IS when a declared path is read from it: the JSON
-#: document its web API returns, or the object its Python library hands back.
-#: The same number sits in both, and they are read by different code — any
-#: target can walk a JSON document, and only Python can hold a Python object.
-REPRESENTATION_JSON = "json"
-REPRESENTATION_PYTHON_OBJECT = "python_object"
-
-#: Which of the two each response shape UBB RECOGNISES is (#576, owner ruling
-#: of 2026-09-25, item 6).
+#: Which representation each response shape UBB RECOGNISES is — the JSON
+#: document a web API returns, or the object a Python library hands back
+#: (#576, owner ruling of 2026-09-25, item 6). The two words are the
+#: registry's `response_shape_representation`, held by reference.
 #:
 #: DECLARED, NOT PARSED OUT OF THE IDENTIFIER. Two of the three ids happen to
 #: carry `python` as a segment and one carries `rest`, and reading the answer
@@ -127,9 +124,11 @@ REPRESENTATION_PYTHON_OBJECT = "python_object"
 #: Builder treats a shape missing from this table as one no target can read
 #: until a renderer defines how to traverse it.
 SHAPE_REPRESENTATIONS = {
-    SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1: REPRESENTATION_JSON,
-    SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1: REPRESENTATION_PYTHON_OBJECT,
-    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1: REPRESENTATION_PYTHON_OBJECT,
+    SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1: RESPONSE_SHAPE_REPRESENTATION_JSON,
+    SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1:
+        RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
+    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1:
+        RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
 }
 
 

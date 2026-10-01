@@ -19,7 +19,8 @@ be done with one.
 (#184 §2):
 
 * *not tenant configuration* — nothing resolves, rates, prices or enforces from
-  it, and no production path reads it;
+  it. What reads it is the route that returns a Blueprint by its fingerprint,
+  and the verification that will run one;
 * *not editable and not published* — it has no lifecycle, only an existence;
 * *prunable* — it may be deleted at any time, by retention, by a sandbox reset
   or with its tenant, and a fingerprint whose snapshot is gone answers
@@ -41,9 +42,9 @@ from core.transitions import FROZEN
 FINGERPRINT_PREFIX = "sha256:"
 
 #: A fingerprint in full — the prefix and the digest's 64 lowercase hex
-#: characters. One pattern, read by the database check below and by the route
-#: that is addressed by one.
-FINGERPRINT_PATTERN = r"^sha256:[0-9a-f]{64}$"
+#: characters. One pattern, read by the database check below and by
+#: `snapshots.is_a_fingerprint`, which is asked before a lookup by one.
+FINGERPRINT_PATTERN = f"^{FINGERPRINT_PREFIX}[0-9a-f]{{64}}$"
 
 FINGERPRINT_LENGTH = len(FINGERPRINT_PREFIX) + 64
 

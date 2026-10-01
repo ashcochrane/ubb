@@ -2,10 +2,11 @@
 # tenant's integration must be, in the words a renderer and a console read.
 #
 # A DOMAIN OF ITS OWN (#576), because every concept here is consumed by the
-# Blueprint and by nothing else. The value sets the Blueprint shares with the
-# registries it resolves from — the reserved grouping axes, a quantity's value
-# type, a Grouping Field's scope, a declaration's status — were declared where
-# they are held (#575) and are consumed from there, never redeclared here.
+# Blueprint and by nothing else. A value set that belongs to a registry the
+# Blueprint resolves FROM — a Grouping Field's scope, a declaration's status,
+# a kind of work's pricing mode, a response shape's representation — is
+# declared where that registry holds it, and is read from there rather than
+# redeclared here.
 #
 # WHAT IS DELIBERATELY NOT HERE. The symbols a generated file spells
 # (`UBB_API_KEY`, `UBB_BASE_URL`, the reserved stop exit status) belong to the

@@ -4313,11 +4313,16 @@ class IntegrationBlueprintProvenance(Schema):
 class IntegrationBlueprintArgument(Schema):
     """One token of a call, and where its value comes from.
 
-    `name` says where the token sits: a field of the operation's request, the
-    credential `api_key`, `<field>.<key>` for the value under a declared key
-    of an object field, or `<name>.<declared field>` for a declared element
-    that says how a runtime value is read — `measurements.<key>.source_path`
-    is the path a quantity is read by.
+    `name` says where the token sits, as one to three segments joined by
+    dots. `<field>` is a field of the operation's request, or the credential
+    `api_key`; for a field holding an object of declared keys
+    (`grouping_fields`, `measurements`) it is one key of that object, carried
+    as the literal. `<field>.<key>` is the value under a declared key.
+    `<field>.<element>` and `<field>.<key>.<element>` are declared facts
+    about that value — `task_type.pricing_mode`,
+    `measurements.<key>.source_path`. A dot or a percent sign inside a
+    declared key is percent-encoded in a name, so a name always splits on its
+    dots.
 
     Exactly one of `value`, `parameter_name` and `environment_variable` is
     set, by `binding_class` — except a `platform_known` token with
@@ -4347,9 +4352,10 @@ class IntegrationBlueprintCall(Schema):
 class IntegrationBlueprintRemediationRequest(Schema):
     """The API request that fixes a diagnostic, ready to copy.
 
-    UBB never sends it. The route names the object by its key, and `body` is
-    the operation's published fields with every value left empty — null for
-    an operation that takes no body.
+    UBB never sends it. It names the object by its key and carries nothing
+    else of yours: the key is in `route`, or in `body` for an operation that
+    declares a new object, and every other field of `body` is left empty.
+    `body` is null for an operation that takes none.
     """
     method: str
     route: str
@@ -4363,8 +4369,9 @@ class IntegrationBlueprintDiagnostic(Schema):
     Coded and addressed, with no message: `code` says what is true, and
     `object_kind`, `key` and `field` say of which declaration. `key` is null
     where nothing was selected, and is `<event type>:<code>` for a
-    Measurement. `remediation_request` is set where the console has no screen
-    for the object.
+    Measurement. `remediation_request` is set for an Event Type, a
+    Measurement, a reported-cost mapping and a Grouping Field, and null for a
+    kind of work.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode

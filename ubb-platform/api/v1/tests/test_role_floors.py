@@ -18,7 +18,10 @@ The carve, restated as rules (the machine form of #74's table):
   create/list/revoke, Admin-gated"; the members list beside it stays Read).
 * Every **write** floors at **Admin** (changes the rules or moves money) EXCEPT
   the enumerated **Write** routes below (day-to-day data ops, plus the driver's
-  amendment that a customer top-up — money *into* your own wallet — is Write).
+  amendment that a customer top-up — money *into* your own wallet — is Write)
+  and the one non-GET that floors at **Read**: resolving an Integration
+  Blueprint, which stores a derived fixture and changes nothing a tenant
+  configured (#576; the argument is at ``_READ_FLOORED_WRITES``).
 """
 from api.v1.api import api
 
@@ -39,7 +42,7 @@ _GET_ADMIN_EXCEPTIONS = {("GET", "/tenant/invitations")}
 # Resolving an Integration Blueprint is a POST because it STORES: the
 # fingerprint a generated file is stamped with has to name a snapshot that
 # exists. What it stores is a derived fixture — no configuration, no money and
-# nothing any production path reads — and the people it exists for are the
+# nothing that costs, prices or enforces — and the people it exists for are the
 # developers who may read a tenant's declarations and not change them. So the
 # verb is the storage's and the floor is the reader's, and the route is the one
 # place the carve's "every write is Admin unless listed as Write" does not

@@ -1329,6 +1329,28 @@ RESERVED_GROUPING_AXIS_VALUES = frozenset({
 })
 
 
+# --- response_shape_representation -------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a supplier's response is when a declared path is read from it: the JSON
+# document its web API returns, or the object its Python library hands back.
+# The same number sits in both and they are read by different code — any target
+# can walk a JSON document, and only Python can hold a Python object — so it
+# decides which Code Builder targets can read an Event Type's declared paths,
+# and how a renderer reaches into the response.
+#
+# Declared in concepts/economics.yaml.
+
+RESPONSE_SHAPE_REPRESENTATION_JSON = 'json'
+RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT = 'python_object'
+
+RESPONSE_SHAPE_REPRESENTATION_VALUES = frozenset({
+    RESPONSE_SHAPE_REPRESENTATION_JSON,
+    RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
+})
+
+
 # --- revenue_basis -----------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.

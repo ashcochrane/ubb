@@ -178,7 +178,7 @@ def _default_terms():
             for name in _RULE_FIELDS}
 
 
-def _rules_in_force_at(book, instant):
+def rules_in_force_at(book, instant):
     """The book as it stands at `instant`, on the half-open range resolution
     reads: a rule covers `[valid_from, valid_to)`, so one closing exactly at
     `instant` is already gone and one opening exactly then is already there.
@@ -344,7 +344,7 @@ def plan_changes(book, changes, effective_at):
     rule.
     """
     in_force = list(
-        _rules_in_force_at(book, effective_at).select_related("measurement"))
+        rules_in_force_at(book, effective_at).select_related("measurement"))
     still_open = list(Rate.objects.filter(
         valid_to__isnull=True,
         **{book.REFERENCE_COLUMN: book}).select_related("measurement"))

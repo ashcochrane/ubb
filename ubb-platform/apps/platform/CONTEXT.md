@@ -916,9 +916,10 @@ call the integration makes, each token of each call with the class saying where 
 from, how ready each call is, and what stands in the way. A developer states a target, a kind of
 work, the Event Types inside it and — only if they create them — the Subtask kinds; everything else
 is looked up. It decides meaning and never expression: it emits no code, and a renderer turns it
-into a file. It restates no registry fact — a literal names the declaration it was read from, and a
-reader who wants the declaration reads it from the route that owns it. Resolved by the composition
-layer, because it reads the kernel's registries and metering's rules together.
+into a file. Every literal names the declaration it was read from, so the document is a reading of
+the registries and never a second place a fact is held; for an Event Type it carries what was last
+**published**, which the catalogue's own routes stop serving once a draft edit lands. Resolved by
+the composition layer, because it reads the kernel's registries and metering's rules together.
 (`api/v1/integration_blueprint.py`; `api/v1/code_builder_endpoints.py`)
 _Avoid_: "Plan" (a live kernel concept — the catalogue of fees and markup) and "Resolved Contract";
 calling a generated call site an "operation", which the contract reserves for an OpenAPI operation.
@@ -928,7 +929,8 @@ Where one token of a generated call gets its value, assigned by three ordered qu
 resolve it now from the tenant's published configuration? If not it is `runtime_bound`, a required
 parameter. If so, is it on the withhold list? Then it is a `secret_reference`, a lookup of a named
 environment variable. Otherwise it is `platform_known`, a literal. Classification is per token, not
-per line: a declared key beside the runtime value under it is two tokens of two classes. A value
+per line: a declared key beside the runtime value under it is two tokens of two classes, and a token
+is named for where it sits — the field, the key under it, the declared fact about it. A value
 UBB would know and the tenant has not configured keeps its class and says `configured: false` — a
 state, never a fourth class.
 (`api/v1/integration_blueprint.py:binding_class_of`)
@@ -957,17 +959,17 @@ that cost and price the selected quantities, the default markup, and the tenant 
 provisioned from. Its `configuration_fingerprint` is `sha256:` and the hash of that content, all of
 it, so the same content is one fingerprint and one row. That includes which publication each Event
 Type was resolved from: republishing an unchanged declaration moves the revision and therefore the
-fingerprint. A **derived test fixture** — never tenant configuration, never read by a production
-path, and prunable: a sandbox reset removes it, and a fingerprint whose snapshot is gone answers
-not-found. A draft preview stores none.
+fingerprint. A **derived test fixture** — never tenant configuration, read by nothing that costs,
+prices or enforces, and prunable: a sandbox reset removes it, and a fingerprint whose snapshot is
+gone answers not-found. A draft preview stores none.
 (`apps/platform/code_builder/models.py:BlueprintSnapshot`; `apps/platform/code_builder/snapshots.py`)
 _Avoid_: reading the fingerprint as a catalogue-wide configuration revision — it names one
 resolution of one selection.
 
 **Response-shape representation**:
 What a supplier's response *is* when a declared path is read from it — the JSON a web API returns,
-or the object a Python library hands back — declared per recognised response shape, never parsed
-out of the shape's identifier. It decides which targets can read a shape: a shell file reads JSON
+or the object a Python library hands back (the registry's `response_shape_representation`) —
+declared per recognised response shape, never parsed out of the shape's identifier. It decides which targets can read a shape: a shell file reads JSON
 only, Python reads both, and a tenant's own wrapper declares none, so no target reads it until a
 renderer defines how to traverse one.
 (`apps/platform/event_types/source_paths.py:SHAPE_REPRESENTATIONS`)

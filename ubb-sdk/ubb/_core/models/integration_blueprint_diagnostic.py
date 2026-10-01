@@ -32,8 +32,9 @@ class IntegrationBlueprintDiagnostic:
     Coded and addressed, with no message: `code` says what is true, and
     `object_kind`, `key` and `field` say of which declaration. `key` is null
     where nothing was selected, and is `<event type>:<code>` for a
-    Measurement. `remediation_request` is set where the console has no screen
-    for the object.
+    Measurement. `remediation_request` is set for an Event Type, a
+    Measurement, a reported-cost mapping and a Grouping Field, and null for a
+    kind of work.
 
         Attributes:
             code (IntegrationBlueprintDiagnosticCode):

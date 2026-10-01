@@ -26,9 +26,10 @@ T = TypeVar("T", bound="IntegrationBlueprintRemediationRequest")
 class IntegrationBlueprintRemediationRequest:
     """ The API request that fixes a diagnostic, ready to copy.
 
-    UBB never sends it. The route names the object by its key, and `body` is
-    the operation's published fields with every value left empty — null for
-    an operation that takes no body.
+    UBB never sends it. It names the object by its key and carries nothing
+    else of yours: the key is in `route`, or in `body` for an operation that
+    declares a new object, and every other field of `body` is left empty.
+    `body` is null for an operation that takes none.
 
         Attributes:
             method (str):

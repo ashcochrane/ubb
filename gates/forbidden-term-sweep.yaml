@@ -454,7 +454,9 @@ exclusions:
 
   - id: the-vocabulary-registry
     permanence: permanent
-    files: 10
+    # 10 -> 11 in #576: `concepts/code-builder.yaml`, the domain file for the
+    # value sets only an Integration Blueprint publishes.
+    files: 11
     paths:
       - domain-vocabulary/**
     reason: >-

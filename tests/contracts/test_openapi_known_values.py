@@ -1290,11 +1290,14 @@ CONCEPTS_IN_THE_CONTRACT = {
     # rather than inside a union.
     #
     # ⚠ WHAT THE COUNT CANNOT SEE, SAID AT THE ROW. A literal on a Blueprint
-    # is untyped JSON, and one of them carries a closed concept's value: the
-    # representation a caller-supplied cost is stated in. It is the Event
-    # Type's own declared value, marked on the route that declares it
-    # (`amount_representation` above) and unmarkable here for #349's reason —
-    # marking needs a typed node.
+    # is untyped JSON, and some of them carry a closed concept's value: how a
+    # kind of work is sold, what kind of number a quantity is, how an Event
+    # Type is costed, the representation a caller-supplied cost is stated in,
+    # and what a response shape is. Each is a declared value restated with
+    # the declaration it came from, marked on the route that declares it
+    # where one does (`pricing_mode`, `measurement_value_type`,
+    # `costing_method` and `amount_representation` above), and unmarkable
+    # here for #349's reason — marking needs a typed node.
     "code_target": Published(2, ENUM),            # the selection + the Blueprint
     "integration_readiness": Published(2, ENUM),  # the Blueprint + each call
     "binding_class": Published(1, ENUM),          # each argument

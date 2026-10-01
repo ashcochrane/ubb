@@ -1484,6 +1484,32 @@ export const RESERVED_GROUPING_AXIS_LABEL_KEYS = {
 } as const satisfies Record<ReservedGroupingAxis, string>;
 
 
+// --- response_shape_representation ------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What a supplier's response is when a declared path is read from it: the JSON
+// document its web API returns, or the object its Python library hands back.
+// The same number sits in both and they are read by different code — any
+// target can walk a JSON document, and only Python can hold a Python object —
+// so it decides which Code Builder targets can read an Event Type's declared
+// paths, and how a renderer reaches into the response.
+//
+// Declared in concepts/economics.yaml.
+
+export const RESPONSE_SHAPE_REPRESENTATION_VALUES = [
+  "json",
+  "python_object",
+] as const;
+
+export type ResponseShapeRepresentation = (typeof RESPONSE_SHAPE_REPRESENTATION_VALUES)[number];
+
+export const RESPONSE_SHAPE_REPRESENTATION_LABEL_KEYS = {
+  "json": "response_shape_representation.json",
+  "python_object": "response_shape_representation.python_object",
+} as const satisfies Record<ResponseShapeRepresentation, string>;
+
+
 // --- revenue_basis ----------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.

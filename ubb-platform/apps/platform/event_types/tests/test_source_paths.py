@@ -26,8 +26,6 @@ from apps.platform.event_types.source_paths import (
     ACCESS_SUBSCRIPT,
     CONVENTION_LOWER_CAMEL,
     CONVENTION_SNAKE,
-    REPRESENTATION_JSON,
-    REPRESENTATION_PYTHON_OBJECT,
     SHAPE_CONVENTIONS,
     SHAPE_REPRESENTATIONS,
     SourcePathNotRenderable,
@@ -36,6 +34,7 @@ from apps.platform.event_types.source_paths import (
     render,
 )
 from core.vocabulary import (
+    RESPONSE_SHAPE_REPRESENTATION_VALUES,
     SOURCE_SHAPE_ID_CUSTOM,
     SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1,
     SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1,
@@ -286,8 +285,8 @@ class TestEveryRecognisedShapeDeclaresWhatItIs:
         be told how to read — and the Code Builder would block it on every
         target with nothing saying the declaration was simply never made."""
         assert set(SHAPE_REPRESENTATIONS) == set(RECOGNISED_RESPONSE_SHAPES)
-        assert set(SHAPE_REPRESENTATIONS.values()) == {
-            REPRESENTATION_JSON, REPRESENTATION_PYTHON_OBJECT}
+        assert set(SHAPE_REPRESENTATIONS.values()) == set(
+            RESPONSE_SHAPE_REPRESENTATION_VALUES)
 
     def test_a_shape_naming_no_shape_declares_none(self):
         assert SOURCE_SHAPE_ID_CUSTOM not in SHAPE_REPRESENTATIONS

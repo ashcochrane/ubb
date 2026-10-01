@@ -74,15 +74,16 @@ def resolve_blueprint(request, payload: IntegrationBlueprintSelectionIn):
     Resolved from PUBLISHED configuration: an Event Type revised since it was
     published resolves from what it last published. The resolved content is
     stored, and `configuration_fingerprint` identifies it — the same selection
-    over unchanged configuration answers the same fingerprint. Nothing else is
-    written, and no configuration is changed.
+    answers the same fingerprint for as long as the configuration in force is
+    the same. Nothing else is written, and no configuration is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers
     `configuration_fingerprint: null`.
 
     `422 validation_error` answers a `target` that is not one of the published
-    targets, or a selection naming more than 50 Event Types or Subtask kinds.
+    targets, or a selection naming more than 50 distinct Event Types or more
+    than 50 distinct Subtask kinds.
     `403 forbidden` answers a draft preview asked for below the admin role.
     """
     _product_check(request)

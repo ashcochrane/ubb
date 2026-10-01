@@ -51,8 +51,8 @@ audit entry — and no path through it declares, edits or publishes configuratio
 request a diagnostic offers, for an admin exactly as for anybody else.
 
 It floors at **Read**, the one non-GET on the tenant surface that does. What it stores is a derived
-test fixture: nothing costs, prices or enforces from it, no production path reads it, and it may be
-deleted at any time. A **draft preview** is the same route asked a different question and is
+test fixture: nothing costs, prices or enforces from it, the only things that read it are the route
+that returns one and the verification that will run one, and it may be deleted at any time. A **draft preview** is the same route asked a different question and is
 **Admin**'s; it stores nothing and carries no fingerprint.
 
 The snapshot's tenant, fingerprint and content are declared `FROZEN` and a trigger holds them.
@@ -65,22 +65,36 @@ The field table gives an argument a `name` and exactly one of a literal, a param
 environment variable. Classification is per token (#156 §6.1), and one wire field routinely holds
 two classes, so:
 
-- a published field of the call's request is named for itself (`task_type`); the credential every
-  call carries is `api_key`;
-- an entry of an object-valued field (`grouping_fields`, `measurements`) is **two tokens** — the
-  key, named for the field and carrying the declared key as its literal, and the value under it,
-  named `<field>.<key>`;
-- a declared element that says how a runtime value becomes the field's value is named for the
-  value it qualifies and the declaration's own published field: `measurements.<key>.source_path`,
-  `provider_cost_micros.amount_representation`.
+- **`<field>`** — a published field of the call's request is named for itself (`task_type`); the
+  credential every call carries is `api_key`. For a field holding an object of declared keys
+  (`grouping_fields`, `measurements`) a token named for the field is one **key** of it, carried as
+  the literal;
+- **`<field>.<key>`** — the **value** under a declared key. So an entry is two tokens, and a known
+  key sits beside a runtime value;
+- **`<field>.<element>`** and **`<field>.<key>.<element>`** — a **declared fact** about the value it
+  is named under, spelled as the declaration's own published field: `task_type.pricing_mode`,
+  `event_type.costing_method`, `measurements.<key>.source_path`,
+  `provider_cost_micros.amount_representation`. One is UBB's fact and not the tenant's, and is named
+  for its registry concept: `event_type.response_shape_representation`.
 
-A published field name never contains a dot, so a consumer builds these names from a key it
-already holds and never takes one apart. The table gains no field for any of this, which is what
-lets the tickets that lift a blocked case leave it unchanged.
+**A key is one segment whatever it contains.** A declared key is the tenant's own word and may
+hold a dot; a dot or a percent sign inside one is percent-encoded in a name. So a name always
+splits on its dots, and a key that ends like an element cannot be read as one. The key's own token
+carries it unencoded.
 
-A literal is untyped JSON. Where one carries a closed concept's value — the representation of a
-supplied cost does — the contract cannot mark it there; it is the declaration's own value, marked
-on the route that declares it.
+**The declared facts are in the document because nothing else serves them.** A Blueprint resolves
+an Event Type from what it last published, and the catalogue's routes serve the draft once an edit
+lands — so the costing method, each quantity's value type, unit and required flag, and the response
+shape would otherwise be readable nowhere. Each carries the declaration it came from, which is what
+keeps the document a reading of the registries and not a second holder of their facts.
+
+The table gains no field for any of this, which is what lets the tickets that lift a blocked case
+leave it unchanged.
+
+A literal is untyped JSON. Where one carries a closed concept's value — a pricing mode, a costing
+method, a quantity's value type, an amount representation, a response shape's representation — the
+contract cannot mark it there. Each is a declared value, marked on the route that declares it where
+one does.
 
 ### 4. The fingerprint is the hash of all the stored content, the publication included
 
@@ -96,6 +110,9 @@ holds what it declares, so a change to one moves the fingerprint the same way.
 
 A selection is a set: it is resolved in key order whatever order it was sent in, so one
 integration has one fingerprint.
+
+The content holds the rules **in force now**, so a rule scheduled to open or close moves the
+fingerprint when its moment passes, with no write to configuration.
 
 ### 5. The fifth question is asked by the Blueprint, not answered to it
 
@@ -122,6 +139,8 @@ other route here holds.
 | §2 — the database refuses a change through every door and admits a delete | `ubb-platform/apps/platform/code_builder/tests/test_snapshots.py` — `ASnapshotNeverChangesTest`: `test_save_is_refused`, `test_a_queryset_update_is_refused`, `test_raw_sql_is_refused`, `test_a_snapshot_may_be_deleted` |
 | §2 — a sandbox reset takes it | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `TestASandboxResetWipesTheSnapshots`: `test_a_reset_removes_them_whether_or_not_it_keeps_configuration` |
 | §3 — a known key beside a runtime value; a runtime root and a known path; each class fills its own field | same module — `TestEachTokenHasItsOwnClass`: `test_a_known_key_sits_beside_a_runtime_value_on_one_call`, `test_a_quantity_read_from_the_response_is_a_runtime_root_and_a_known_path`, `test_each_class_fills_its_own_field_and_no_other` |
+| §3 — a key is one segment whatever it contains | same module — `test_a_key_is_one_segment_of_a_name_whatever_it_contains` |
+| §3 — the declared facts travel with the declaration they came from, and are the published ones | same module — `TestTheSelectionIsTheOnlyInput`: `test_a_kind_of_work_says_how_it_is_sold_and_what_it_may_spend`, `test_an_event_type_says_what_it_published_about_itself`, `test_a_revised_event_types_facts_are_the_published_ones`, `test_the_response_shape_and_what_it_is_travel_with_the_paths` |
 | §3 — every bare name is a field its operation publishes | same module — `TestEveryCallNamesARealOperation`: `test_every_bare_argument_is_a_field_its_operation_publishes` |
 | §4 — the fingerprint is the hash of the stored content; a republication and a changed kind each move it; order does not | same module — `test_the_fingerprint_is_the_hash_of_the_stored_content`, `test_a_republication_is_a_new_fingerprint_though_the_declaration_is_the_same`, `test_a_changed_kind_of_work_is_a_new_fingerprint`, `test_the_same_selection_in_another_order_is_the_same_blueprint` |
 | §5 — the request takes no path, and the question is put as a diagnostic | same module — `TestTheSelectionIsTheOnlyInput`: `test_the_request_publishes_the_selection_and_nothing_else`, `test_where_no_mapping_resolves_the_blueprint_asks_and_takes_no_path` |
@@ -135,7 +154,8 @@ other route here holds.
   costs a regeneration.
 - **The token names are public.** A renderer and a console build them; changing the convention is a
   contract change to both, which is why it is recorded here rather than left in a docstring.
-- **A closed value can cross inside a literal unmarked.** One does today. Typing it would mean a
-  field per declared element, which the field table deliberately does not have.
+- **A closed value can cross inside a literal unmarked.** Five kinds do today (§3 names them).
+  Typing them would mean a field per declared element, which the field table deliberately does not
+  have.
 - **A sandbox reset invalidates every fingerprint resolved in that sandbox.** A developer resolves
   again; with the same configuration that is the same fingerprint.

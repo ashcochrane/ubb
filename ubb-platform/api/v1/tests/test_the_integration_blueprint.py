@@ -16,22 +16,29 @@ body or over what the database holds afterwards. Nothing imports the resolver:
 a consumer cannot, and a test that could would be free to agree with a mistake
 the response does not show.
 
-**Where a fixture writes a row directly it says so**, and there are two
-reasons it ever does: a state no route can produce but the tables admit (a
-kind requiring a Grouping Field nobody declared), and a tenant's secrets,
-which no route sets to a known value.
+**Where a fixture writes a row directly it says so, at the write.** Each is
+something no route in this module's reach produces: a state the tables admit
+and the registries refuse (a kind requiring a Grouping Field nobody declared,
+a Grouping Field retired), a value no route sets to something a test can know
+(a tenant's secrets, a key's role, the instant of a publication), and the
+rules and markup a metering-only tenant has no route to declare.
 """
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from django.apps import apps as django_apps
+from django.db.models import JSONField
 from django.test import Client
+from django.utils import timezone
 
 from api.v1.api import api
 from apps.platform.code_builder.models import BlueprintSnapshot
+from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.membership.roles import READ
+from apps.platform.work.models import TaskType
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from apps.platform.tenants.tasks import (
@@ -177,6 +184,24 @@ class _Routes:
         TenantApiKey.objects.filter(pk=key.pk).update(role=READ)
         return raw
 
+    # -- the two states the tables admit and no route produces ---------------
+
+    def _retire(self, key):
+        """A Grouping Field retired. Written to the row: the registry keeps a
+        retirement instant and publishes it, and no route sets one yet."""
+        GroupingField.objects.filter(tenant=self.tenant, key=key).update(
+            retired_at=timezone.now())
+
+    def _require_without_declaring(self, kind, *fields):
+        """A kind of work requiring Grouping Fields the registry would have
+        refused. Written to the row, on the one column of a kind that holds a
+        list — found by its type, so this module spells no column name."""
+        (holding_the_list,) = [
+            field.name for field in TaskType._meta.concrete_fields
+            if isinstance(field, JSONField)]
+        TaskType.objects.filter(tenant=self.tenant, key=kind).update(
+            **{holding_the_list: list(fields)})
+
     # -- configuration, declared the way a tenant declares it ----------------
 
     def _grouping_fields(self, *fields):
@@ -202,8 +227,8 @@ class _Routes:
             measurements = {"input_tokens": INPUT_TOKENS}
         for code, declared in measurements.items():
             self._call("put",
-                       f"/api/v1/event-types/{key}/measurements/{code}",
-                       declared)
+                       f"/api/v1/event-types/{key}/measurements/"
+                       f"{quote(code, safe='')}", declared)
         if mapping:
             self._call("put",
                        f"/api/v1/event-types/{key}/reported-cost-mapping",
@@ -374,6 +399,11 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
         assert refused.status_code == 422, refused.content
         assert refused.json()["code"] == "validation_error"
         assert accepted.status_code == 200, accepted.content
+        # Fifty DISTINCT names: a selection is a set, so naming one twice
+        # does not count twice.
+        repeated = self._send("post", BLUEPRINTS, {
+            "target": "python_sdk", field: [*names[:50], names[0]]})
+        assert repeated.status_code == 200, repeated.content
         # And the number a caller is told is the number that is enforced.
         _, _, operation = _operations()[
             "api_v1_code_builder_endpoints_resolve_blueprint"]
@@ -427,6 +457,100 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
                     "task_type")["provenance"] == {
             "object_kind": "subtask_type", "key": SUBTASK_KIND,
             "published_revision": None, "published_at": None}
+
+    def test_a_kind_of_work_says_how_it_is_sold_and_what_it_may_spend(self):
+        """Neither is sent on a start; both are what the kind declares, beside
+        the call that starts the work. A ceiling is a figure or the
+        declaration that there is none — never a figure of nothing."""
+        self._complete_configuration()
+
+        blueprint = self._complete(subtask_types=[SUBTASK_KIND])
+        capped, uncapped = _the_start(blueprint), _the_subtask_start(blueprint)
+
+        from_the_kind = _one(capped, "task_type")["provenance"]
+        assert _one(capped, "task_type.pricing_mode")["value"] == (
+            "event_priced")
+        assert _one(capped, "task_type.uncapped")["value"] is False
+        assert _one(capped, "task_type.task_cogs_ceiling_micros")[
+            "value"] == 5_000_000
+        for name in ("task_type.pricing_mode", "task_type.uncapped",
+                     "task_type.task_cogs_ceiling_micros"):
+            assert _one(capped, name)["provenance"] == from_the_kind
+            assert _one(capped, name)["binding_class"] == "platform_known"
+        assert _one(uncapped, "task_type.uncapped")["value"] is True
+        assert _named(uncapped, "task_type.task_cogs_ceiling_micros") == []
+
+    def test_an_event_type_says_what_it_published_about_itself(self):
+        """How it is costed, and of each quantity what kind of number it is,
+        what it counts and whether a cost needs it."""
+        self._complete_configuration()
+
+        record = _the_record(self._complete())
+
+        from_the_event_type = _one(record, "event_type")["provenance"]
+        declared = {
+            "event_type.costing_method": "calculated",
+            "measurements.input_tokens.value_type": "integer",
+            "measurements.input_tokens.unit": "token",
+            "measurements.input_tokens.required_for_costing": True,
+            "measurements.searches.unit": "search",
+            "measurements.searches.required_for_costing": False,
+        }
+        for name, value in declared.items():
+            fact = _one(record, name)
+            assert fact["value"] == value, name
+            assert fact["binding_class"] == "platform_known", name
+            assert fact["provenance"] == from_the_event_type, name
+
+    def test_a_revised_event_types_facts_are_the_published_ones(self):
+        """The Event Type's own route serves the draft once an edit lands, so
+        this document is the only place the published facts can be read."""
+        self._complete_configuration()
+        self._call("put", f"/api/v1/event-types/{EVENT}/measurements/"
+                          "input_tokens",
+                   {**INPUT_TOKENS, "unit": "character",
+                    "required_for_costing": False})
+        live = self._call("get", f"/api/v1/event-types/{EVENT}")
+        assert {m["code"]: m["unit"] for m in live["measurements"]}[
+            "input_tokens"] == "character"
+
+        record = _the_record(self._complete())
+
+        assert _one(record, "measurements.input_tokens.unit")[
+            "value"] == "token"
+        assert _one(record, "measurements.input_tokens.required_for_costing")[
+            "value"] is True
+
+    def test_the_response_shape_and_what_it_is_travel_with_the_paths(self):
+        """Which shape the paths are written against, and whether that shape
+        is a JSON document or a Python object — UBB's own declaration about
+        the shape, which is what decides how a path is walked."""
+        self._a_kind()
+        self._event_type("from.an.object", shape=A_PYTHON_SHAPE)
+        self._event_type("from.json", shape=A_JSON_SHAPE)
+        self._event_type("from.a.wrapper", shape="custom", label="wrapper")
+        self._event_type("reads.nothing",
+                         measurements={"searches": SEARCHES})
+
+        blueprint = self._complete(event_types=[
+            "from.an.object", "from.json", "from.a.wrapper", "reads.nothing"])
+
+        def shape_of(event_type):
+            record = _the_record(blueprint, event_type)
+            return [(a["name"], a["value"]) for a in record["arguments"]
+                    if "shape" in a["name"]]
+
+        assert shape_of("from.an.object") == [
+            ("event_type.source_shape_id", A_PYTHON_SHAPE),
+            ("event_type.response_shape_representation", "python_object")]
+        assert shape_of("from.json") == [
+            ("event_type.source_shape_id", A_JSON_SHAPE),
+            ("event_type.response_shape_representation", "json")]
+        # A wrapper declares no representation, so none is claimed for it.
+        assert shape_of("from.a.wrapper") == [
+            ("event_type.source_shape_id", "custom")]
+        # Nothing is read off the response, so its shape says nothing.
+        assert shape_of("reads.nothing") == []
 
     def test_the_supplier_is_the_event_types_own(self):
         self._complete_configuration()
@@ -630,6 +754,42 @@ class TestEachTokenHasItsOwnClass(_Routes):
         assert len(set(parameters)) == 2, parameters
         for parameter in parameters:
             assert parameter.isidentifier(), parameter
+
+    def test_a_key_is_one_segment_of_a_name_whatever_it_contains(self):
+        """A quantity named `tokens`, read by a path, and another named
+        `tokens.source_path`, supplied by the caller. Left as they are the
+        second quantity's value would take the name of the first one's path.
+        A dot inside a key is encoded, so each token has a name of its own
+        and every name splits on its dots into at most three segments."""
+        dotted, already_encoded = "tokens.source_path", "tokens%2Esource_path"
+        self._a_kind()
+        self._event_type(measurements={
+            "tokens": INPUT_TOKENS, dotted: SEARCHES,
+            already_encoded: SEARCHES})
+
+        record = _the_record(self._complete())
+
+        # The keys travel as declared.
+        assert sorted(a["value"] for a in _named(record, "measurements")) == [
+            "tokens", already_encoded, dotted]
+        path = _one(record, "measurements.tokens.source_path")
+        assert (path["binding_class"], path["value"]) == (
+            "platform_known", ["usage", "input_tokens"])
+        supplied = _one(record, "measurements.tokens%2Esource_path")
+        assert supplied["binding_class"] == "runtime_bound"
+        # The sign the encoding uses is encoded too, so a key that already
+        # looks encoded is not taken for the key it looks like.
+        assert _one(record, "measurements.tokens%252Esource_path")[
+            "binding_class"] == "runtime_bound"
+        assert (supplied["parameter_name"]
+                != _one(record, "measurements.tokens%252Esource_path")[
+                    "parameter_name"])
+        names = [argument["name"] for argument in record["arguments"]]
+        assert all(len(name.split(".")) <= 3 for name in names), names
+        # No two tokens of one class share a name.
+        classed = [(a["name"], a["binding_class"], str(a["value"]))
+                   for a in record["arguments"] if a["name"] != "measurements"]
+        assert len(classed) == len(set(classed))
 
     def test_a_declared_name_never_takes_a_parameter_the_call_already_has(
             self):
@@ -873,14 +1033,6 @@ class TestReadinessMeansWhatItIsPinnedToMean(_Routes):
             "task_type", KIND, "required_grouping_fields")
         assert _named(_the_start(blueprint), "grouping_fields.region") == []
 
-    def _retire(self, key):
-        """A Grouping Field retired. Written to the row: the registry keeps a
-        retirement instant and publishes it, and no route sets one yet."""
-        from django.utils import timezone
-        from apps.platform.grouping_fields.models import GroupingField
-        GroupingField.objects.filter(tenant=self.tenant, key=key).update(
-            retired_at=timezone.now())
-
     def test_a_required_grouping_field_that_is_retired_blocks_the_start(self):
         """A retired field accepts no value it has not already seen, so a kind
         that requires one starts only by accident. The fix is the kind's:
@@ -903,12 +1055,10 @@ class TestReadinessMeansWhatItIsPinnedToMean(_Routes):
     def test_a_required_grouping_field_nobody_declared_blocks_the_start(self):
         """No route can produce this — the registry refuses a kind requiring
         an undeclared field — but the column is a list of keys, so the tables
-        admit it. Written to the row for that reason."""
-        from apps.platform.work.models import TaskType
+        admit it."""
         self._a_kind()
         self._event_type()
-        TaskType.objects.filter(tenant=self.tenant, key=KIND).update(
-            required_dimensions=["ghost"])
+        self._require_without_declaring(KIND, "ghost")
 
         blueprint = self._complete()
 
@@ -1183,8 +1333,16 @@ class TestEveryCallNamesARealOperation(_Routes):
         The credential is the one token that is not a body field."""
         operations = _operations()
         self._complete_configuration()
+        self._event_type(
+            "billed.by.supplier", costing_method="reported", measurements={},
+            mapping={"source_kind": "caller_supplied",
+                     "amount_representation": "micros", "currency": "usd"})
 
-        blueprint = self._complete(subtask_types=[SUBTASK_KIND])
+        blueprint = self._complete(
+            event_types=[EVENT, "billed.by.supplier"],
+            subtask_types=[SUBTASK_KIND])
+        assert _named(_the_record(blueprint, "billed.by.supplier"),
+                      "provider_cost_micros")
 
         checked = 0
         for call in blueprint["calls"]:
@@ -1315,12 +1473,13 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
 
     def test_a_changed_kind_of_work_is_a_new_fingerprint(self):
         """A kind carries no date, so the fingerprint is what says a held file
-        has gone stale — including for a fact no call spells, like the ceiling
-        the kind declares."""
+        has gone stale — including for a fact no call spells, like how long
+        the kind may go quiet."""
         self._complete_configuration()
         before = self._complete()
 
-        self._kinds({"key": KIND, "task_cogs_ceiling_micros": 9_000_000,
+        self._kinds({"key": KIND, "task_cogs_ceiling_micros": 5_000_000,
+                     "silence_window_seconds": 1200,
                      "required_grouping_fields": ["environment"]})
         after = self._complete()
 
@@ -1586,18 +1745,10 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     def _every_remediation(self):
         """One Blueprint per situation, between them offering a request for
         every kind of object that has no screen."""
-        from django.utils import timezone
-        from apps.platform.grouping_fields.models import GroupingField
-        from apps.platform.work.models import TaskType
         self._grouping_fields(("environment", "task"))
         self._a_kind(required_grouping_fields=["environment"])
-        # Two states no route produces and the tables admit: a requirement
-        # naming a field nobody declared, and a field retired.
-        TaskType.objects.filter(tenant=self.tenant, key=KIND).update(
-            required_dimensions=["environment", "ghost"])
-        GroupingField.objects.filter(
-            tenant=self.tenant, key="environment").update(
-            retired_at=timezone.now())
+        self._require_without_declaring(KIND, "environment", "ghost")
+        self._retire("environment")
         self._event_type("draft.only", publish=False, provider="acme-ai")
         self._event_type("unshaped", shape="")
         self._event_type("wrapped", shape="custom", label="acme-wrapper-v2")
@@ -1696,6 +1847,29 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
             pattern = "^" + re.sub(r"\\{\w+\\}", "[^/]+",
                                    re.escape(path)) + "$"
             assert re.match(pattern, request["route"]), (request, path)
+
+    def test_a_request_that_declares_an_object_carries_its_key_in_the_body(
+            self):
+        """Where the operation takes the key in its body rather than its
+        route, a body with the key left empty would be a request to declare
+        nothing in particular."""
+        by_code = {d["code"]: d["remediation_request"]
+                   for d in self._every_remediation()}
+
+        declare = by_code["event_type_not_declared"]
+        assert declare["route"] == "/api/v1/event-types"
+        assert declare["body"]["key"] == "missing.entirely"
+        assert [value for name, value in declare["body"].items()
+                if name != "key"] == [None] * (len(declare["body"]) - 1)
+        field = by_code["required_grouping_field_not_declared"]
+        assert field["route"] == "/api/v1/metering/grouping-fields"
+        assert field["body"] == {"grouping_fields": [
+            {"key": "ghost", "slot": None, "scope": None,
+             "max_cardinality": None}]}
+        # And where the route carries the key, the body does not repeat it.
+        revise = by_code["response_shape_not_declared"]
+        assert revise["route"] == "/api/v1/event-types/unshaped"
+        assert set(revise["body"].values()) == {None}
 
     def test_each_body_is_a_skeleton_of_fields_the_operation_publishes(self):
         """Published field names with nothing filled in but the object's own

@@ -3383,7 +3383,7 @@
         "type": "object"
       },
       "IntegrationBlueprintArgument": {
-        "description": "One token of a call, and where its value comes from.\n\n`name` says where the token sits: a field of the operation's request, the\ncredential `api_key`, `<field>.<key>` for the value under a declared key\nof an object field, or `<name>.<declared field>` for a declared element\nthat says how a runtime value is read \u2014 `measurements.<key>.source_path`\nis the path a quantity is read by.\n\nExactly one of `value`, `parameter_name` and `environment_variable` is\nset, by `binding_class` \u2014 except a `platform_known` token with\n`configured` false, which has no value yet.",
+        "description": "One token of a call, and where its value comes from.\n\n`name` says where the token sits, as one to three segments joined by\ndots. `<field>` is a field of the operation's request, or the credential\n`api_key`; for a field holding an object of declared keys\n(`grouping_fields`, `measurements`) it is one key of that object, carried\nas the literal. `<field>.<key>` is the value under a declared key.\n`<field>.<element>` and `<field>.<key>.<element>` are declared facts\nabout that value \u2014 `task_type.pricing_mode`,\n`measurements.<key>.source_path`. A dot or a percent sign inside a\ndeclared key is percent-encoded in a name, so a name always splits on its\ndots.\n\nExactly one of `value`, `parameter_name` and `environment_variable` is\nset, by `binding_class` \u2014 except a `platform_known` token with\n`configured` false, which has no value yet.",
         "properties": {
           "binding_class": {
             "enum": [
@@ -3487,7 +3487,7 @@
         "type": "object"
       },
       "IntegrationBlueprintDiagnostic": {
-        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set where the console has no screen\nfor the object.",
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work.",
         "properties": {
           "code": {
             "enum": [
@@ -3629,7 +3629,7 @@
         "type": "object"
       },
       "IntegrationBlueprintRemediationRequest": {
-        "description": "The API request that fixes a diagnostic, ready to copy.\n\nUBB never sends it. The route names the object by its key, and `body` is\nthe operation's published fields with every value left empty \u2014 null for\nan operation that takes no body.",
+        "description": "The API request that fixes a diagnostic, ready to copy.\n\nUBB never sends it. It names the object by its key and carries nothing\nelse of yours: the key is in `route`, or in `body` for an operation that\ndeclares a new object, and every other field of `body` is left empty.\n`body` is null for an operation that takes none.",
         "properties": {
           "body": {
             "anyOf": [
@@ -11996,7 +11996,7 @@
     },
     "/api/v1/code-builder/blueprints": {
       "post": {
-        "description": "Resolve a selection into an Integration Blueprint.\n\nThe Blueprint says what your integration code must mean: every call, each\ntoken of each call with where its value comes from, how ready each call\nis, and what stands in the way.\n\nResolved from PUBLISHED configuration: an Event Type revised since it was\npublished resolves from what it last published. The resolved content is\nstored, and `configuration_fingerprint` identifies it \u2014 the same selection\nover unchanged configuration answers the same fingerprint. Nothing else is\nwritten, and no configuration is changed.\n\nWith `draft_preview: true` the Blueprint resolves from draft declarations\ninstead. That requires the admin role, stores nothing and answers\n`configuration_fingerprint: null`.\n\n`422 validation_error` answers a `target` that is not one of the published\ntargets, or a selection naming more than 50 Event Types or Subtask kinds.\n`403 forbidden` answers a draft preview asked for below the admin role.",
+        "description": "Resolve a selection into an Integration Blueprint.\n\nThe Blueprint says what your integration code must mean: every call, each\ntoken of each call with where its value comes from, how ready each call\nis, and what stands in the way.\n\nResolved from PUBLISHED configuration: an Event Type revised since it was\npublished resolves from what it last published. The resolved content is\nstored, and `configuration_fingerprint` identifies it \u2014 the same selection\nanswers the same fingerprint for as long as the configuration in force is\nthe same. Nothing else is written, and no configuration is changed.\n\nWith `draft_preview: true` the Blueprint resolves from draft declarations\ninstead. That requires the admin role, stores nothing and answers\n`configuration_fingerprint: null`.\n\n`422 validation_error` answers a `target` that is not one of the published\ntargets, or a selection naming more than 50 distinct Event Types or more\nthan 50 distinct Subtask kinds.\n`403 forbidden` answers a draft preview asked for below the admin role.",
         "operationId": "api_v1_code_builder_endpoints_resolve_blueprint",
         "parameters": [],
         "requestBody": {

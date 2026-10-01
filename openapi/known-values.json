@@ -447,6 +447,12 @@
       "kind": "closed",
       "representation": "none"
     },
+    "response_shape_representation": {
+      "advertised": false,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "none"
+    },
     "revenue_basis": {
       "advertised": true,
       "backend_serves": "2 of 2 values",

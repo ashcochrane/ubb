@@ -15,9 +15,14 @@ code, names no import and formats nothing.
 Fields (kernel, through their read contracts), the Event Type catalogue
 (kernel), and the rules that cost and price an event (metering). ADR-001 rule 4
 lets this layer read any product, so it adds no channel and no `queries.py`
-(#184 §2). Nothing here restates a registry fact as a second source of truth
-(ADR-0006 §4): a literal carries the declaration it was read from, and a
-reader who wants the declaration reads it from the route that owns it.
+(#184 §2).
+
+**Every literal says where it was read from.** A value UBB filled in carries
+the declaration it came from, so the document is a reading of the registries
+and never a second place a fact is held (ADR-0006 §4). What it carries of an
+Event Type is what that Event Type last PUBLISHED, which the registry's own
+routes stop serving the moment a draft edit lands — so for those facts this
+document is the only place a consumer can read them.
 
 **It reads and it stores one thing.** For a resolution from PUBLISHED
 configuration the caller keeps the content this returns, as an immutable
@@ -28,30 +33,37 @@ exactly as for anybody else.
 
 HOW A TOKEN IS ADDRESSED
 ------------------------
-An argument is ONE token, and its `name` says where on the call it sits:
+An argument is ONE token, and its `name` says where on the call it sits. A
+name is one, two or three segments joined by dots:
 
-* a published field of the call's request (`task_type`, `customer_id`), or the
-  credential every call carries (`api_key`);
-* for a field that is an object of declared keys (`grouping_fields`,
-  `measurements`), TWO tokens per entry — the KEY, named for the field and
-  carrying the declared key as its literal, and the VALUE under it, named
-  `<field>.<key>`. A known key beside a runtime value is the ordinary case,
-  and one token cannot be both;
-* a declared element that says how a runtime value becomes the field's value,
-  named for the value it qualifies and the declaration's own published field:
-  `measurements.<key>.source_path` is the path a quantity is read by, and
-  `provider_cost_micros.amount_representation` is what a supplied cost's
-  number represents.
+* **`<field>`** — a published field of the call's request (`task_type`,
+  `customer_id`), or the credential every call carries (`api_key`). For a
+  field that holds an object of declared keys (`grouping_fields`,
+  `measurements`) a token named for the field is one KEY of it, carrying the
+  declared key as its literal — one such token per entry.
+* **`<field>.<key>`** — the VALUE under a declared key of such a field. A known
+  key beside a runtime value is the ordinary case, and one token cannot be
+  both classes.
+* **`<field>.<element>`** and **`<field>.<key>.<element>`** — a declared fact
+  about the value it is named under, spelled as the declaration's own
+  published field: `task_type.pricing_mode`, `event_type.costing_method`,
+  `measurements.<key>.source_path`, `provider_cost_micros.amount_representation`.
+  One element is UBB's fact rather than the tenant's and is named for its
+  registry concept: `event_type.response_shape_representation`.
 
-A published field name never contains a dot, so a consumer builds these names
-from a key it already holds and never has to take one apart.
+A key is ONE segment whatever it contains: a dot or a percent sign inside a
+declared key is percent-encoded in the name (`segment`), so a name always
+splits on its dots, and a key that happens to end like an element cannot be
+taken for one. The key's own token carries it unencoded, as its literal.
 
 ⚠ A literal is untyped JSON, so a closed concept's value travelling as one —
-`amount_representation` does — carries no marker on the contract. It is the
-declaration's own value, published and marked on the route that declares it.
+a pricing mode, a costing method, a quantity's value type, an amount
+representation, a response shape's representation — carries no marker on the
+contract. Each is a declared value, marked on the route that declares it
+where one does.
 """
 import keyword
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 from urllib.parse import quote
 
 from django.db.models import Q
@@ -60,21 +72,21 @@ from django.utils import timezone
 from api.v1 import event_type_endpoints, metering_endpoints, task_endpoints
 from api.v1.schemas import (
     EventTypeIn, EventTypeUpdateIn, MeasurementIn, ReportedCostMappingIn)
-from apps.metering.pricing.models import Rate, TenantDefaultMarkup
+from apps.metering.pricing.models import (
+    CostBook, PricingBook, TenantDefaultMarkup)
+from apps.metering.pricing.services.book_service import rules_in_force_at
 from apps.platform.code_builder.withheld import (
     API_KEY, environment_variable, is_withheld)
 from apps.platform.event_types.models import (
-    REPORTED_COST_PARAMETER, EventType, Measurement, ReportedCostMapping)
+    REPORTED_COST_PARAMETER, EventType)
 from apps.platform.event_types.publication import (
-    PublishedDeclaration, PublishedMeasurement, PublishedReportedCostMapping,
-    last_published_declaration)
+    draft_declaration, last_published_declaration)
 from apps.platform.event_types.source_paths import (
-    REPRESENTATION_JSON, REPRESENTATION_PYTHON_OBJECT, SHAPE_REPRESENTATIONS,
-    advisories)
+    SHAPE_REPRESENTATIONS, advisories)
 from apps.platform.grouping_fields.models import SLOTS
 from apps.platform.grouping_fields.queries import declared_grouping_fields
 from apps.platform.tenants.services.sandbox_service import (
-    COPIED_TO_A_SANDBOX)
+    copied_to_a_sandbox)
 from apps.platform.work.queries import task_type_policy
 from core.problems import Problem
 from core.vocabulary import (
@@ -117,6 +129,8 @@ from core.vocabulary import (
     INTEGRATION_READINESS_BLOCKED,
     INTEGRATION_READINESS_COMPLETE,
     INTEGRATION_READINESS_SCAFFOLD,
+    RESPONSE_SHAPE_REPRESENTATION_JSON,
+    RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_CONSTANT,
     SOURCE_KIND_DERIVED,
@@ -137,6 +151,8 @@ RENDERER_CONTRACT_VERSION = 1
 #: The SDK major the Python target is generated against (owner item 3,
 #: 2026-09-25). Stated only for that target: a shell file uses no SDK, and a
 #: number there would be a version of nothing.
+#: `tests/contracts/test_the_blueprint_targets_the_sdk_that_ships.py` holds the
+#: number to the SDK's own version.
 SDK_MAJOR_VERSION = {CODE_TARGET_PYTHON_SDK: 3, CODE_TARGET_SHELL_HTTP: None}
 
 #: Which response representations each target can read (owner item 6). A shell
@@ -145,9 +161,10 @@ SDK_MAJOR_VERSION = {CODE_TARGET_PYTHON_SDK: 3, CODE_TARGET_SHELL_HTTP: None}
 #: own wrapper — is in neither set, so no target reads it until a renderer
 #: defines how to traverse one.
 READABLE_REPRESENTATIONS = {
-    CODE_TARGET_PYTHON_SDK: frozenset({REPRESENTATION_JSON,
-                                       REPRESENTATION_PYTHON_OBJECT}),
-    CODE_TARGET_SHELL_HTTP: frozenset({REPRESENTATION_JSON}),
+    CODE_TARGET_PYTHON_SDK: frozenset({
+        RESPONSE_SHAPE_REPRESENTATION_JSON,
+        RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT}),
+    CODE_TARGET_SHELL_HTTP: frozenset({RESPONSE_SHAPE_REPRESENTATION_JSON}),
 }
 
 #: Where, in the content kept under a fingerprint, the Blueprint itself is —
@@ -155,9 +172,10 @@ READABLE_REPRESENTATIONS = {
 #: from. Named because the route that reads one back reads it by this.
 BLUEPRINT = "blueprint"
 
-#: How many Event Types, and how many Subtask kinds, one selection may name.
-#: The resolution is a READ-floor call that reads several rows per name, so
-#: the bound is what keeps an expensive read safe at that floor.
+#: How many distinct Event Types, and how many distinct Subtask kinds, one
+#: selection may name. The resolution is a READ-floor call that reads several
+#: rows per name, so the bound is what keeps an expensive read safe at that
+#: floor.
 MAXIMUM_SELECTED = 50
 
 #: Least ready first. An integration is as ready as its least ready call, so
@@ -227,8 +245,8 @@ _SCOPE_OF_A_START = {
     TASK_TYPE_KIND_SUBTASK: GROUPING_FIELD_SCOPE_SUBTASK,
 }
 
-#: The parameter a quantity or a cost read off the supplier's response is read
-#: FROM: the response object itself, which only the tenant's code ever holds.
+#: The parameter a quantity read off the supplier's response is read FROM: the
+#: response object itself, which only the tenant's code ever holds.
 RESPONSE_PARAMETER = "response"
 
 
@@ -240,7 +258,7 @@ def _operation_id(view):
     """The operationId the contract publishes for a route's handler.
 
     Read off the handler rather than spelled, so a renamed handler moves the
-    name here with it. The contract test holds every one of these to
+    name here with it. The Blueprint's own tests hold every one of these to
     `openapi/v1.json`, which is what makes it a real operation rather than a
     string that happens to look like one.
     """
@@ -253,70 +271,86 @@ CLOSE_TASK = _operation_id(task_endpoints.close_task)
 
 
 class _Remediation(NamedTuple):
-    """One request a diagnostic may offer: the operation, and its body's shape."""
+    """One request a diagnostic may offer: the operation, and its body."""
     view: object
     method: str
     #: The published path, with the object's key as its only parameters.
     path: str
-    #: The body's published fields, or `None` for an operation taking no body.
-    fields: tuple | None
+    #: The body for an object's key: the operation's published fields with
+    #: nothing filled in but that key, or `None` for an operation taking none.
+    body: Callable
 
 
-def _fields_of(schema):
-    return tuple(schema.model_fields)
+def _no_body(key):
+    return None
 
 
-_DECLARE_EVENT_TYPE = _Remediation(
-    event_type_endpoints.declare_event_type, "POST",
-    "/api/v1/event-types", _fields_of(EventTypeIn))
-_REVISE_EVENT_TYPE = _Remediation(
-    event_type_endpoints.revise_event_type, "PATCH",
-    "/api/v1/event-types/{key}", _fields_of(EventTypeUpdateIn))
-_PUBLISH_EVENT_TYPE = _Remediation(
-    event_type_endpoints.publish_event_type, "POST",
-    "/api/v1/event-types/{key}/publish", None)
-_DECLARE_MEASUREMENT = _Remediation(
-    event_type_endpoints.declare_measurement, "PUT",
-    "/api/v1/event-types/{key}/measurements/{code}",
-    _fields_of(MeasurementIn))
-_DECLARE_MAPPING = _Remediation(
-    event_type_endpoints.declare_reported_cost_mapping, "PUT",
-    "/api/v1/event-types/{key}/reported-cost-mapping",
-    _fields_of(ReportedCostMappingIn))
+def _the_fields_of(schema):
+    """A body of `schema`'s published fields, every one empty — except `key`,
+    where the operation takes the object's key in its body rather than its
+    route."""
+    names = tuple(schema.model_fields)
+
+    def body(key):
+        skeleton = dict.fromkeys(names)
+        if "key" in skeleton:
+            skeleton["key"] = key
+        return skeleton
+    return body
+
+
 #: The Grouping Field registry takes a list of declarations under one field.
 #: Its row is spelled here rather than read off the route's request schema,
 #: which a later rename moves: a Blueprint binds to the published field names
 #: and to no schema of that registry.
 _GROUPING_FIELDS = "grouping_fields"
 _GROUPING_FIELD_ROW = ("key", "slot", "scope", "max_cardinality")
+
+
+def _one_grouping_field(key):
+    return {_GROUPING_FIELDS: [{**dict.fromkeys(_GROUPING_FIELD_ROW),
+                                "key": key}]}
+
+
+_DECLARE_EVENT_TYPE = _Remediation(
+    event_type_endpoints.declare_event_type, "POST",
+    "/api/v1/event-types", _the_fields_of(EventTypeIn))
+_REVISE_EVENT_TYPE = _Remediation(
+    event_type_endpoints.revise_event_type, "PATCH",
+    "/api/v1/event-types/{key}", _the_fields_of(EventTypeUpdateIn))
+_PUBLISH_EVENT_TYPE = _Remediation(
+    event_type_endpoints.publish_event_type, "POST",
+    "/api/v1/event-types/{key}/publish", _no_body)
+_DECLARE_MEASUREMENT = _Remediation(
+    event_type_endpoints.declare_measurement, "PUT",
+    "/api/v1/event-types/{key}/measurements/{code}",
+    _the_fields_of(MeasurementIn))
+_DECLARE_MAPPING = _Remediation(
+    event_type_endpoints.declare_reported_cost_mapping, "PUT",
+    "/api/v1/event-types/{key}/reported-cost-mapping",
+    _the_fields_of(ReportedCostMappingIn))
 _DECLARE_GROUPING_FIELD = _Remediation(
     metering_endpoints.declare_grouping_fields, "PUT",
-    "/api/v1/metering/grouping-fields", (_GROUPING_FIELDS,))
+    "/api/v1/metering/grouping-fields", _one_grouping_field)
 
 
-def _remediation_request(remediation, *, body_key=None, **route_keys):
+def _remediation_request(remediation, *, key, code=None):
     """The request that fixes a diagnostic, ready to copy and never performed.
 
-    It names the object by its key and nothing else of the tenant's: the route
-    carries the key, and the body is the operation's published fields with
-    every value left empty. No secret is reachable from here — the function is
-    handed keys and field names.
+    It names the object by its key and nothing else of the tenant's. The key
+    goes where the operation takes it — in the route, or in the body for an
+    operation that declares a new object — and every other field of the body
+    is left empty. No secret is reachable from here: the function is handed
+    keys and field names.
     """
-    body = None
-    if remediation.fields is not None:
-        body = {field: None for field in remediation.fields}
-        if remediation is _DECLARE_GROUPING_FIELD:
-            row = {field: None for field in _GROUPING_FIELD_ROW}
-            row["key"] = body_key
-            body = {_GROUPING_FIELDS: [row]}
-        elif body_key is not None:
-            body["key"] = body_key
+    in_the_route = {"key": key} if code is None else {"key": key, "code": code}
     return {
         "method": remediation.method,
         "route": remediation.path.format(**{
-            name: quote(value, safe="") for name, value in route_keys.items()}),
+            name: quote(value, safe="")
+            for name, value in in_the_route.items()}),
         "operation_id": _operation_id(remediation.view),
-        "body": body,
+        "body": remediation.body(key),
     }
 
 
@@ -324,9 +358,16 @@ def _remediation_request(remediation, *, body_key=None, **route_keys):
 # Tokens
 # ---------------------------------------------------------------------------
 
-#: A value this resolution could not produce. Distinct from `None`, which is a
-#: literal a declaration may legitimately hold.
-_NOT_RESOLVED = object()
+def segment(key):
+    """A declared key as ONE segment of a token's name.
+
+    A key is the tenant's own word and may contain a dot, which is what joins
+    a name's segments. Encoding it — and the percent sign the encoding uses —
+    is what keeps a name splitting on its dots into the field, the key and the
+    declared element, whatever the key is. A key with neither character is
+    its own segment, which is nearly all of them.
+    """
+    return key.replace("%", "%25").replace(".", "%2E")
 
 
 def binding_class_of(token, *, resolvable):
@@ -386,20 +427,21 @@ def _credential():
                   environment=environment_variable(API_KEY))
 
 
-def _provenance(object_kind, key, published=None):
+def _provenance(object_kind, key, publication=None):
     """Which declaration a value was read from.
 
     An Event Type's facts also say which publication, in the names the Event
     Type's own route serves. A kind of work and a Grouping Field have no
-    publish record, so they carry neither — a held file is told from a
-    current one by the fingerprint (ADR-0012).
+    publish record, and a draft preview resolves from no publication, so
+    those carry neither — a held file is told from a current one by the
+    fingerprint (ADR-0012).
     """
     return {
         "object_kind": object_kind, "key": key,
-        "published_revision": (published.published_revision
-                               if published else None),
-        "published_at": (published.published_at.isoformat()
-                         if published and published.published_at else None),
+        "published_revision": (publication.published_revision
+                               if publication else None),
+        "published_at": (publication.published_at.isoformat()
+                         if publication else None),
     }
 
 
@@ -495,22 +537,31 @@ class _Resolution:
                    key=_LEAST_READY_FIRST.index)
 
 
-def _refuse_the_selection(target, event_types, subtask_types):
-    """What a selection may not be. The marker on the contract is applied when
-    the document is exported and refuses nothing here, so the request-side
-    value set is held in code."""
+def _the_selection(target, event_types, subtask_types):
+    """The selection as it is resolved: a SET, in key order, or a refusal.
+
+    The Event Types and the Subtask kinds are resolved in key order whatever
+    order they were sent in and however often one was named, so one
+    integration has one fingerprint.
+
+    The refusals are held in code. The marker that enumerates `target` on the
+    contract is applied when the document is exported and refuses nothing
+    here.
+    """
     if target not in CODE_TARGET_VALUES:
         raise Problem(
             "validation_error",
             f"{target!r} is not a target: the targets are "
             f"{', '.join(sorted(CODE_TARGET_VALUES))}")
-    for name, selected in (("event_types", event_types),
-                           ("subtask_types", subtask_types)):
-        if len(selected) > MAXIMUM_SELECTED:
+    selected = {"event_types": sorted(set(event_types)),
+                "subtask_types": sorted(set(subtask_types))}
+    for name, keys in selected.items():
+        if len(keys) > MAXIMUM_SELECTED:
             raise Problem(
                 "validation_error",
-                f"{name} names {len(selected)} entries; one selection may "
-                f"name at most {MAXIMUM_SELECTED}")
+                f"{name} names {len(keys)} distinct entries; one selection "
+                f"may name at most {MAXIMUM_SELECTED}")
+    return selected["event_types"], selected["subtask_types"]
 
 
 def resolve(tenant, *, target, task_type=None, event_types=(),
@@ -522,14 +573,9 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
     document, so it cannot also be inside it. `content` is `None` for a draft
     preview: a preview is not resolved from published configuration, so there
     is nothing it may be stored or verified as.
-
-    A selection is a SET. The Event Types and the Subtask kinds are resolved
-    in key order whatever order they were sent in, so one integration has one
-    fingerprint.
     """
-    _refuse_the_selection(target, event_types, subtask_types)
-    event_types = sorted(set(event_types))
-    subtask_types = sorted(set(subtask_types))
+    event_types, subtask_types = _the_selection(target, event_types,
+                                                subtask_types)
     resolution = _Resolution(tenant, target, draft_preview)
     declared_fields = {field["key"]: field
                        for field in declared_grouping_fields(tenant.id)}
@@ -559,15 +605,16 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
     if draft_preview:
         return document, None
 
-    declared = [declaration for declaration in resolved_event_types
-                if declaration is not None]
     content = {
         "selection": {"target": target, "task_type": task_type,
                       "event_types": event_types,
                       "subtask_types": subtask_types},
         BLUEPRINT: document,
-        "configuration": _configuration(tenant, kinds, declared,
-                                        declared_fields),
+        "configuration": _configuration(
+            tenant, kinds,
+            [resolved for resolved in resolved_event_types
+             if resolved is not None],
+            declared_fields),
     }
     return document, content
 
@@ -601,8 +648,20 @@ def _start(resolution, altitude, key, declared_fields):
             object_kind, key or None)
         return None
 
-    kind_provenance = _provenance(object_kind, key)
-    call.add(_known("task_type", key, kind_provenance))
+    declared_by_the_kind = _provenance(object_kind, key)
+    call.add(_known("task_type", key, declared_by_the_kind),
+             # How this kind of work is sold, and what it may spend: a figure,
+             # or the declaration that it has none. Neither is sent on a start
+             # — the kind applies both — and both are what a reader of the
+             # generated file is owed beside the call that starts the work.
+             _known("task_type.pricing_mode", policy["pricing_mode"],
+                    declared_by_the_kind),
+             _known("task_type.uncapped", policy["uncapped"],
+                    declared_by_the_kind))
+    if not policy["uncapped"]:
+        call.add(_known("task_type.task_cogs_ceiling_micros",
+                        policy["task_cogs_ceiling_micros"],
+                        declared_by_the_kind))
     if policy["retired"]:
         resolution.report(call, DIAGNOSTIC_CODE_TASK_TYPE_RETIRED,
                           object_kind, key, field="retired")
@@ -614,7 +673,7 @@ def _start(resolution, altitude, key, declared_fields):
                 call, DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_NOT_DECLARED,
                 CONFIGURATION_OBJECT_KIND_GROUPING_FIELD, required,
                 remediation_request=_remediation_request(
-                    _DECLARE_GROUPING_FIELD, body_key=required))
+                    _DECLARE_GROUPING_FIELD, key=required))
             continue
         # The two below are fixed where the requirement is declared: a field's
         # scope never changes and nothing un-retires one, so what a tenant can
@@ -634,8 +693,9 @@ def _start(resolution, altitude, key, declared_fields):
                 CONFIGURATION_OBJECT_KIND_GROUPING_FIELD, required)),
             # Required because this kind of work declares it — which is the
             # declaration the value's presence comes from.
-            _runtime(f"{_GROUPING_FIELDS}.{required}",
-                     call.parameters.named_for(required), kind_provenance))
+            _runtime(f"{_GROUPING_FIELDS}.{segment(required)}",
+                     call.parameters.named_for(required),
+                     declared_by_the_kind))
     return {"kind": altitude, **policy}
 
 
@@ -657,35 +717,6 @@ def _record_call(resolution):
     return call
 
 
-def _the_draft(tenant, key):
-    """An Event Type's LIVE declaration, in the shape a publication is read in.
-
-    The draft preview's read. The published read never answers with a draft,
-    so a preview reads the rows itself — and claims no publication for them:
-    the revision and its date are left empty rather than borrowed from a
-    publication that said something else.
-    """
-    event_type = EventType.objects.filter(tenant=tenant, key=key).first()
-    if event_type is None:
-        return None
-    mapping = (ReportedCostMapping.objects.filter(event_type=event_type)
-               .values(*ReportedCostMapping.PINNED).first())
-    return PublishedDeclaration(
-        **{name: getattr(event_type, name) for name in EventType.PINNED},
-        published_revision=None, published_at=None,
-        measurements=tuple(
-            PublishedMeasurement(**{**declared, "source_path": tuple(
-                declared["source_path"])})
-            for declared in Measurement.objects.filter(event_type=event_type)
-            .order_by("code").values(*Measurement.PINNED)),
-        reported_cost_mapping=(None if mapping is None else
-                               PublishedReportedCostMapping(**{
-                                   **mapping,
-                                   "source_path": tuple(mapping["source_path"]),
-                                   "currency_path": tuple(
-                                       mapping["currency_path"])})))
-
-
 def _record(resolution, key):
     """The call that records one Event Type. Returns what it resolved from,
     with the supplier beside it, or `None` where nothing could be.
@@ -696,6 +727,9 @@ def _record(resolution, key):
     progress. What decides "nothing published" is the read answering `None` —
     never the revision count, which a row can carry with no publication left
     to read.
+
+    A draft preview reads the draft instead, through the catalogue's own read
+    for one, and claims no publication for what it resolves.
     """
     tenant = resolution.tenant
     call = _record_call(resolution)
@@ -707,15 +741,21 @@ def _record(resolution, key):
             call, DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED,
             CONFIGURATION_OBJECT_KIND_EVENT_TYPE, key,
             remediation_request=_remediation_request(
-                _DECLARE_EVENT_TYPE, body_key=key))
+                _DECLARE_EVENT_TYPE, key=key))
         return None
 
-    declaration = (_the_draft(tenant, key) if resolution.draft_preview
-                   else last_published_declaration(tenant=tenant, key=key))
-    published = None if resolution.draft_preview else declaration
-    provenance = _provenance(CONFIGURATION_OBJECT_KIND_EVENT_TYPE, key,
-                             published)
-    call.add(_known("event_type", key, provenance))
+    if resolution.draft_preview:
+        declaration, publication = draft_declaration(tenant=tenant,
+                                                     key=key), None
+    else:
+        declaration = publication = last_published_declaration(tenant=tenant,
+                                                               key=key)
+    declared_by = _provenance(CONFIGURATION_OBJECT_KIND_EVENT_TYPE, key,
+                              publication)
+    # The key is the tenant's own declared word whether or not anything is
+    # published under it. Everything BENEATH it is resolved from a
+    # publication or not at all.
+    call.add(_known("event_type", key, declared_by))
     publish = _remediation_request(_PUBLISH_EVENT_TYPE, key=key)
     if declaration is None:
         resolution.report(call, DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
@@ -730,6 +770,8 @@ def _record(resolution, key):
             CONFIGURATION_OBJECT_KIND_EVENT_TYPE, key,
             field="declaration_status", remediation_request=publish)
 
+    call.add(_known("event_type.costing_method", declaration.costing_method,
+                    declared_by))
     # The supplier is not pinned by a publication — it may be corrected
     # without one — so it is the catalogue's current answer.
     supplier = live["provider__key"]
@@ -737,31 +779,39 @@ def _record(resolution, key):
         call.add(_known("provider", supplier, _provenance(
             CONFIGURATION_OBJECT_KIND_PROVIDER, supplier)))
 
-    reads_the_response = _quantities(resolution, call, declaration, provenance)
+    reads_the_response = _quantities(resolution, call, declaration,
+                                     declared_by)
     reads_the_response |= _reported_cost(resolution, call, declaration,
-                                         provenance)
+                                         declared_by)
     if reads_the_response:
-        _response_shape(resolution, call, declaration)
-    return {"declaration": declaration, "provider_key": supplier or None,
-            "published": published}
+        _response_shape(resolution, call, declaration, declared_by)
+    return {"declaration": declaration, "provider_key": supplier or None}
 
 
-def _quantities(resolution, call, declaration, provenance):
-    """A token pair per declared quantity. Returns whether any is read off
+def _quantities(resolution, call, declaration, declared_by):
+    """The tokens of each declared quantity. Returns whether any is read off
     the supplier's response."""
     key = declaration.key
     reads_the_response = False
     for quantity in declaration.measurements:
-        member = f"measurements.{quantity.code}"
+        member = f"measurements.{segment(quantity.code)}"
         address = f"{key}:{quantity.code}"
         declare = _remediation_request(_DECLARE_MEASUREMENT, key=key,
                                        code=quantity.code)
-        call.add(_known("measurements", quantity.code, provenance))
+        call.add(
+            _known("measurements", quantity.code, declared_by),
+            # What kind of number it is, what it counts and whether a cost
+            # needs it — as published, which a revised Event Type's own route
+            # no longer shows.
+            _known(f"{member}.value_type", quantity.value_type, declared_by),
+            _known(f"{member}.unit", quantity.unit, declared_by),
+            _known(f"{member}.required_for_costing",
+                   quantity.required_for_costing, declared_by))
         if quantity.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
             reads_the_response = True
             path = list(quantity.source_path)
-            call.add(_runtime(member, RESPONSE_PARAMETER, provenance),
-                     _known(f"{member}.source_path", path, provenance))
+            call.add(_runtime(member, RESPONSE_PARAMETER, declared_by),
+                     _known(f"{member}.source_path", path, declared_by))
             if advisories(declaration.source_shape_id, path):
                 resolution.report(
                     call, DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH,
@@ -770,7 +820,7 @@ def _quantities(resolution, call, declaration, provenance):
         elif quantity.source_kind == SOURCE_KIND_CALLER_SUPPLIED:
             call.add(_runtime(member,
                               call.parameters.named_for(quantity.code),
-                              provenance))
+                              declared_by))
         elif quantity.source_kind == SOURCE_KIND_CONSTANT:
             # A constant's value has nowhere to be declared yet, so there is
             # none to carry — and one is never made up.
@@ -793,7 +843,7 @@ def _quantities(resolution, call, declaration, provenance):
     return reads_the_response
 
 
-def _reported_cost(resolution, call, declaration, provenance):
+def _reported_cost(resolution, call, declaration, declared_by):
     """The supplier's own cost figure, where the Event Type is costed from
     one. Returns whether it is read off the supplier's response."""
     if declaration.costing_method != COSTING_METHOD_REPORTED:
@@ -807,7 +857,7 @@ def _reported_cost(resolution, call, declaration, provenance):
             CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
             remediation_request=declare)
         return False
-    if mapping.source_kind != SOURCE_KIND_CALLER_SUPPLIED:
+    if mapping.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
         # A cost read off the supplier's response has no truthful request
         # field: the one that exists means the caller supplied the figure. So
         # the call fills none, rather than the wrong one.
@@ -815,19 +865,24 @@ def _reported_cost(resolution, call, declaration, provenance):
             call, DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED,
             CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
             field="source_kind", remediation_request=declare)
-        return mapping.source_kind == SOURCE_KIND_PROVIDER_RESPONSE
+        return True
+    if mapping.source_kind != SOURCE_KIND_CALLER_SUPPLIED:
+        raise ValueError(
+            f"{mapping.source_kind!r} is not a source kind a reported cost "
+            f"may be declared with")
     call.add(
-        _runtime("provider_cost_micros", REPORTED_COST_PARAMETER, provenance),
+        _runtime("provider_cost_micros", REPORTED_COST_PARAMETER, declared_by),
         _known("provider_cost_micros.amount_representation",
-               mapping.amount_representation, provenance))
+               mapping.amount_representation, declared_by))
     if mapping.currency:
-        call.add(_known("currency", mapping.currency, provenance))
+        call.add(_known("currency", mapping.currency, declared_by))
     return False
 
 
-def _response_shape(resolution, call, declaration):
-    """Whether this target can read the shape the declared paths are written
-    against. Asked only where something is read off the response."""
+def _response_shape(resolution, call, declaration, declared_by):
+    """Which shape the declared paths are written against, what that shape
+    is, and whether this target can read it. Asked only where something is
+    read off the response."""
     key = declaration.key
     revise = _remediation_request(_REVISE_EVENT_TYPE, key=key)
     shape = declaration.source_shape_id
@@ -836,7 +891,15 @@ def _response_shape(resolution, call, declaration):
                           CONFIGURATION_OBJECT_KIND_EVENT_TYPE, key,
                           field="source_shape_id", remediation_request=revise)
         return
+    call.add(_known("event_type.source_shape_id", shape, declared_by))
     representation = SHAPE_REPRESENTATIONS.get(shape)
+    if representation is not None:
+        # UBB's fact about the shape rather than the tenant's about their
+        # Event Type: a JSON document or a Python object, which is what
+        # decides how a path is walked. Absent for a shape that declares
+        # none, which is what the diagnostic below then says.
+        call.add(_known("event_type.response_shape_representation",
+                        representation, declared_by))
     if representation not in READABLE_REPRESENTATIONS[resolution.target]:
         resolution.report(
             call, DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET,
@@ -853,7 +916,7 @@ def _configuration(tenant, kinds, event_types, declared_fields):
     tenant's configuration would (#184 §13 step 2).
 
     Kept beside the Blueprint and hashed with it, so a fact no call spells —
-    the ceiling a kind declares, the rule that costs a quantity — still moves
+    a window a kind declares, the rule that costs a quantity — still moves
     the fingerprint when it changes.
 
     ⚠ WHAT IS NOT HERE: the agreed price of a kind of work sold whole. Nothing
@@ -873,16 +936,24 @@ def _configuration(tenant, kinds, event_types, declared_fields):
         "grouping_fields": [declared_fields[key] for key in required],
         "event_types": [_event_type_content(resolved)
                         for resolved in event_types],
-        "cost_rates": _rules(tenant, codes, keys, book="cost_book"),
-        "pricing_rules": _rules(tenant, codes, keys, book="pricing_book"),
+        "cost_rates": _rules(
+            CostBook.objects.filter(tenant=tenant), codes, keys,
+            lambda book: {"key": book.key, "is_default": book.is_default,
+                          "provider_key": book.provider_key,
+                          "currency": book.currency}),
+        # A Pricing Book may be one customer's own. Those are left out: a
+        # sandbox runs the lifecycle for a customer of its own, who has none.
+        "pricing_rules": _rules(
+            PricingBook.objects.filter(tenant=tenant, customer__isnull=True),
+            codes, keys,
+            lambda book: {"key": book.key, "is_default": book.is_default}),
         "default_markup_micro_percent": (
             TenantDefaultMarkup.objects.filter(tenant=tenant)
             .values_list("markup_micro_percent", flat=True).first()),
         # What a sandbox is provisioned from, by the provisioning's own list:
         # an allowlist, so a column added to the tenant is not kept here by
         # default — and none of the three is a secret.
-        "tenant": {field: getattr(tenant, field)
-                   for field in COPIED_TO_A_SANDBOX},
+        "tenant": copied_to_a_sandbox(tenant),
     }
 
 
@@ -907,38 +978,37 @@ def _event_type_content(resolved):
     }
 
 
-def _rules(tenant, codes, event_type_keys, *, book):
-    """The tenant-wide rules in force that can cost, or price, a selected
-    quantity — the ones in a cost book, or the ones in a Pricing Book.
+def _rules(books, codes, event_type_keys, book_content):
+    """The tenant-wide rules in force, in each of `books`, that can cost or
+    price a selected quantity.
 
-    A customer's own rules are left out: a sandbox runs the lifecycle for a
-    customer of its own, who has none. A rule pinned to another Event Type is
-    left out because no selected call can match it.
+    In force by the book service's own reading of a rule's window, so this
+    and resolution cannot come to disagree about a rule opening or closing at
+    the instant asked. A customer's own rule is left out for the reason their
+    own book is, and a rule pinned to another Event Type because no selected
+    call can match it.
+
+    ⚠ The instant is NOW, so a rule scheduled to open or close moves the
+    content — and the fingerprint — when its moment passes, with no write to
+    configuration. That is the content being true of what is in force.
     """
     now = timezone.now()
-    # A Pricing Book may be one customer's own; a cost book never is.
-    tenant_wide = ({"pricing_book__customer__isnull": True}
-                   if book == "pricing_book" else {})
-    rules = (Rate.objects
-             .filter(tenant=tenant, customer__isnull=True,
-                     measurement__code__in=codes, valid_from__lte=now,
-                     **{f"{book}__isnull": False}, **tenant_wide)
-             .filter(Q(valid_to__isnull=True) | Q(valid_to__gt=now))
-             .filter(Q(event_type="") | Q(event_type__in=event_type_keys))
-             .select_related(book, "measurement")
-             .order_by(f"{book}__key", "measurement__code", "provider",
-                       "event_type", "task_type", "subtask_type",
-                       "valid_from", "id"))
-    return [_rule_content(rule, getattr(rule, book)) for rule in rules]
+    content = []
+    for book in books.order_by("key", "id"):
+        described = book_content(book)
+        rules = (rules_in_force_at(book, now)
+                 .filter(customer__isnull=True, measurement__code__in=codes)
+                 .filter(Q(event_type="") | Q(event_type__in=event_type_keys))
+                 .select_related("measurement")
+                 .order_by("measurement__code", "provider", "event_type",
+                           "task_type", "subtask_type", "valid_from", "id"))
+        content += [_rule_content(rule, described) for rule in rules]
+    return content
 
 
 def _rule_content(rule, book):
     return {
-        "book": {"key": book.key, "is_default": book.is_default,
-                 # A cost book names its supplier and its currency; a Pricing
-                 # Book names neither.
-                 "provider_key": getattr(book, "provider_key", None),
-                 "currency": getattr(book, "currency", None)},
+        "book": book,
         "measurement_code": rule.measurement.code,
         "provider": rule.provider,
         "event_type": rule.event_type,
