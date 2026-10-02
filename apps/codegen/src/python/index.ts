@@ -3,7 +3,7 @@
  */
 import type { ResolvedIntegrationBlueprint } from "../blueprint.ts";
 import { COMMENTS, ENVIRONMENT, PYTHON } from "../catalogue.ts";
-import { hash } from "../comments.ts";
+import { asComments } from "../comments.ts";
 import type { RenderedFile } from "../render.ts";
 import { renderCallSites } from "./callSites.ts";
 import { renderModule } from "./module.ts";
@@ -17,12 +17,12 @@ import { renderVerifyScript } from "./verify.ts";
  */
 function renderEnvironmentExample(plan: Plan): string {
   return `${[
-    ...hash(COMMENTS.environmentFile),
+    ...asComments(COMMENTS.environmentFile),
     "",
-    ...hash(COMMENTS.apiKey),
+    ...asComments(COMMENTS.apiKey),
     `${plan.credential.binding.environmentVariable}=`,
     "",
-    ...hash(COMMENTS.baseUrl),
+    ...asComments(COMMENTS.baseUrl),
     `${ENVIRONMENT.baseUrl}=`,
   ].join("\n")}\n`;
 }

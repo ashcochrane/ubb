@@ -13,21 +13,28 @@ So its enforcement is checked here, the way the contract suite's own is:
    no `continue-on-error`, on a workflow with no path filter. A renderer
    change touches `apps/codegen`; a contract change that breaks the renderer
    touches `openapi/` or the platform, so a filter naming either would stop
-   the suite running for the other.
+   the suite running for the other. They sit in a job of their own, so no
+   unrelated step failing ahead of them can stop them running.
 2. **Each step runs what its name says**, found by the command and not only
    by the name, so a step renamed onto another command does not pass.
 3. **The job can run it**: it installs the SDK the generated code is executed
    against, and it does so before the tests.
-4. **Its fixtures are held by the platform's suite.** The Blueprints it
+4. **No case is silenced in the source**: a skipped case, or one marked to
+   run alone, leaves the step green over less than it claims.
+5. **Its fixtures are held by the platform's suite.** The Blueprints it
    renders are committed files, and the test that holds each one equal to
    what the route answers is collected by the platform suite's defaults.
 
-Every claim carries a negative control over a synthetic workflow, through the
-same predicate the real one is read with.
+Claims 1 to 4 each carry negative controls, through the same predicate the
+real workflow and the real sources are read with. Claim 5 is two readings of
+the tree with a vacuity floor each and no control of its own: what would make
+either pass over nothing is a path that stopped resolving, and both fail on
+that.
 """
 
 import ast
 import json
+import re
 
 import yaml
 
@@ -37,7 +44,12 @@ from tools.gates.enforcement import collection_faults, step_faults
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PACKAGE = REPO_ROOT / "apps" / "codegen"
 
-JOB = "contract"
+JOB = "codegen"
+
+#: A case silenced where it is written: skipped, deferred, expected to fail,
+#: made conditional, or marked to run alone. Matched as a modifier on a call,
+#: whatever follows it — `.skip(`, `.skip.each(`, `.skipIf(…)(`.
+SILENCER = re.compile(r"\.(skip|only|todo|fails|skipIf|runIf)\b")
 
 #: The steps, by name, and the command each must run.
 STEPS = {
@@ -116,16 +128,19 @@ def test_the_suite_has_tests_to_run():
     assert 'include: ["tests/**/*.test.ts"]' in config
 
 
+def silencers(source):
+    """Every modifier in `source` that takes a case out of the run."""
+    return [match.group(0) for match in SILENCER.finditer(source)]
+
+
 def test_no_renderer_test_is_skipped_or_run_alone():
     """A `.skip` silences a case and a `.only` silences every other case in
     its file, and either leaves the step green."""
-    silenced = []
-    for path in sorted((PACKAGE / "tests").rglob("*.ts")):
-        text = path.read_text(encoding="utf-8")
-        for marker in (".skip(", ".only(", ".todo(", "it.skipIf", "describe.skipIf"):
-            if marker in text:
-                silenced.append(f"{path.name}: {marker}")
+    read = sorted((PACKAGE / "tests").rglob("*.ts"))
+    silenced = [f"{path.name}: {marker}" for path in read
+                for marker in silencers(path.read_text(encoding="utf-8"))]
 
+    assert len(read) >= 7, [path.name for path in read]
     assert silenced == []
 
 
@@ -217,3 +232,17 @@ def test_negative_control_a_job_with_no_sdk_is_flagged():
 def test_negative_control_an_sdk_installed_too_late_is_flagged():
     faults = renderer_faults(_synthetic(install_last=True))
     assert faults == ["the SDK is installed after the tests that need it"]
+
+
+def test_negative_control_a_silenced_case_is_flagged():
+    for source in ('it.skip("x", () => {})', 'describe.only("x", () => {})',
+                   'it.skip.each([1])("x", () => {})', 'it.todo("x")',
+                   'it.skipIf(process.env.CI)("x", () => {})',
+                   'it.runIf(hasPython)("x", () => {})',
+                   'it.fails("x", () => {})'):
+        assert silencers(source), source
+
+
+def test_positive_control_an_ordinary_case_is_not_flagged():
+    assert silencers('it("skips nothing and runs only once", () => {})') == []
+    assert silencers('it.each(CASES)("refuses %s", () => {})') == []

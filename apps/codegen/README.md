@@ -19,8 +19,9 @@ are in scope under `src/`, and a non-relative import, `Date`, `fetch`, `process`
 are lint errors there.
 
 It renders a Blueprint that is not ready, as files that say what is missing and refuse to run. It
-throws `BlueprintNotRenderable` only for a document it cannot read: an unknown `schema_version` or
-`renderer_contract_version`, a target with no renderer, or a token that breaks the contract.
+throws `BlueprintNotRenderable` for a document it cannot read — an unknown `schema_version` or
+`renderer_contract_version`, a target with no renderer, an SDK major or an operation it is not
+written for, or a token that breaks what the contract promises. ADR-0016 §7 has the list.
 
 ## What an artifact is
 
@@ -28,10 +29,10 @@ For the `python_sdk` target (SDK v3), `render` returns:
 
 | `kind` | `path` | What it is |
 |---|---|---|
-| `module` | `ubb_integration.py` | Every value the Blueprint resolved. Dropped in, never edited, replaced whole on regeneration. |
-| `call_site` | `call_sites/<name>.py` | One block per place a tenant's own code calls the module. **No generated value appears in one.** |
+| `module` | `ubb_integration.py` | Every value the Blueprint resolved that running code needs. Dropped in, never edited, replaced whole on regeneration. |
+| `call_site` | `call_sites/<name>.py` | One block per place a tenant's own code calls the module. **No generated value appears in one**: no string, number or bytes literal, only names. |
 | `environment_example` | `.env.example` | `UBB_API_KEY=` and `UBB_BASE_URL=`, with nothing after the equals sign. |
-| `verify_script` | `verify_integration.py` | Checks the declared paths against a response the tenant's supplier really returned. Calls nothing. |
+| `verify_script` | `verify_integration.py` | Checks the declared paths against a response the tenant's supplier really returned. Calls nothing. Holds the declared paths, so it is replaced with the module. |
 
 The `shell_http` target is not rendered yet; its two catalogue symbols are declared.
 
@@ -66,7 +67,9 @@ that raises, naming the token.
 Two classes and no third. **Provenance** is generated from the Blueprint in one form,
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
-closed and versioned: `CATALOGUE_VERSION`, pinned whole by `tests/__snapshots__/catalogue.v1.json`.
+closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
+`tests/__snapshots__/catalogue.v1.json` — a file named for the version, so a change under an
+unchanged number is a diff a reviewer reads.
 Its symbols (`UBB_API_KEY`, `UBB_BASE_URL`, `stop_requested`, `UBB_EXIT_STOP_REQUESTED` = 20) are the
 renderer's own and are not registry concepts.
 
@@ -98,7 +101,7 @@ dependencies installed (`pip install -e ./ubb-sdk`). The SDK itself is taken fro
 `UBB_CODEGEN_PYTHON` names the interpreter; unset, it is `python`. There is no skip: without one,
 the tests fail.
 
-CI runs all three in the `contract` job on every push and pull request, and
+CI runs all three in the `codegen` job on every push and pull request, and
 `tests/contracts/test_the_renderer_suite_is_enforced.py` holds the steps to being unconditional.
 
 Decisions and their reasons: `docs/adr/0016-generated-integration-code-is-a-module-and-value-free-call-sites.md`.

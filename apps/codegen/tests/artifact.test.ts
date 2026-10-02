@@ -142,8 +142,9 @@ describe.each(BRANCH_NAMES)("the %s artifact", (branch) => {
 
     expect(blocks.length).toBeGreaterThan(0);
     for (const [path, facts] of blocks) {
-      // Not one literal of any kind: there is nothing in a block that a
-      // change of configuration could make stale.
+      // Not one string, number or bytes literal — `...`, where the tenant's
+      // own code goes, is the only constant a block holds. So there is no
+      // value in a block for a change of configuration to make stale.
       expect(facts.constants, path).toEqual([]);
     }
   });
@@ -200,10 +201,14 @@ describe.each(BRANCH_NAMES)("the %s artifact", (branch) => {
     }
   });
 
-  it("states every platform-known token once beside where it applies", () => {
+  it("states every platform-known token in the function for its call", () => {
     const blueprint = BRANCHES[branch]!();
-    const stated = moduleOf(branch)
-      .contents.split("\n")
+    // Below the header only, and only indented comments: the header's own
+    // list of declarations must not be what satisfies this.
+    const lines = moduleOf(branch).contents.split("\n");
+    const stated = lines
+      .slice(lines.findIndex((line) => line.startsWith("from ")))
+      .filter((line) => /^ {8,}# /.test(line))
       .map((line) => line.trim())
       .filter((line) => line.startsWith("# "))
       .map((line) => provenanceOf(commentText(line)))
@@ -370,7 +375,10 @@ describe("the header", () => {
       expect.arrayContaining(["configuration_fingerprint = null", ...COMMENTS.draftPreview]),
     );
     expect(lines).toContain('event_type = "chat.completion"');
-    expect(lines.filter((line) => line.includes("published_"))).toEqual([]);
+    // Nothing in a preview's header says anything was published.
+    expect(lines.filter((line) => /publish/i.test(line))).toEqual(
+      COMMENTS.draftPreview.filter((line) => /publish/i.test(line)),
+    );
     // And a published one is not labelled a preview.
     expect(header("calculated-cost")).not.toEqual(
       expect.arrayContaining([...COMMENTS.draftPreview]),
@@ -454,6 +462,39 @@ describe("the shapes a value takes", () => {
     );
     expect(Object.values(compiled(render(blueprint))).every((refusal) => refusal === null)).toBe(
       true,
+    );
+  });
+
+  it("guesses no way to read a path whose shape declares no representation", () => {
+    // NOT a Blueprint the routes answered, but the shape of one: for a
+    // tenant's own response shape the resolver emits no representation token
+    // (and blocks the call). The calculated-cost fixture, with that token
+    // taken out.
+    const blueprint = fixture("calculated-cost");
+    for (const call of blueprint.calls) {
+      call.arguments = call.arguments.filter(
+        (argument) => argument.name !== "event_type.response_shape_representation",
+      );
+    }
+
+    const files = render(blueprint);
+    const module = only(files, "module").contents;
+
+    expect(module).toContain('"input_tokens": _not_configured("measurements.input_tokens"),');
+    expect(module).not.toMatch(/response[.[]/);
+    expect(Object.values(compiled(files)).filter((refusal) => refusal !== null)).toEqual([]);
+  });
+
+  it("asks a record block whose work the event belongs to, and guesses for neither", () => {
+    const block = (path: string) =>
+      rendered("explicit-subtasks").find((file) => file.path === path)!.contents;
+
+    // An event may belong to the Task or to a Subtask, so its block reads the
+    // id off no handle. A Subtask's parent is the work it sits inside.
+    expect(block("call_sites/record_gemini_generate.py")).toContain("    task_id=task_id,\n");
+    expect(block("call_sites/backfill_gemini_generate.py")).toContain("    task_id=task_id,\n");
+    expect(block("call_sites/start_subtask_summarise.py")).toContain(
+      "    parent_task_id=task.task_id,\n",
     );
   });
 

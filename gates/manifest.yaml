@@ -1018,11 +1018,11 @@ gates:
     source: ADR-0008 §5, #158 §5.2
     status: owned_by_slice_builder
     blocked_on: >-
-      The Integration Blueprint contract has landed (#576) and its tests hold
-      the operation-ID half already. The Python renderer has landed (#577) and
-      its suite holds that every declared name is preserved and that each
-      generated call reaches the operation its Blueprint names; the shell
-      renderer and the verify stage have not. #184 lands them, and its flip
+      The shell renderer and the verify stage. The Integration Blueprint
+      contract has landed (#576) and its tests hold the operation-ID half; the
+      Python renderer has landed (#577) and its suite holds that every
+      declared name is preserved and that each generated call reaches the
+      operation its Blueprint names. #184 lands the rest, and its flip
       installs this row.
 
   G24:
@@ -1031,12 +1031,12 @@ gates:
     source: ADR-0008 §5, #158 §5.2
     status: owned_by_slice_builder
     blocked_on: >-
-      `ubb-codegen` has landed with its Python target (#577): ten branches are
-      pinned under `apps/codegen/tests/__snapshots__/` and the suite runs in
-      CI's `contract` job, held armed by
-      `tests/contracts/test_the_renderer_suite_is_enforced.py`. The shell
-      target's branches are not rendered yet. #184 lands them, and its flip
-      installs this row over both.
+      The shell target's branches, rendered and pinned beside the Python
+      target's. `ubb-codegen` has landed with its Python target (#577): its
+      branches are pinned under `apps/codegen/tests/__snapshots__/` and the
+      suite runs in CI's `codegen` job, held armed by
+      `tests/contracts/test_the_renderer_suite_is_enforced.py`. #184 lands the
+      shell target, and its flip installs this row over both.
 
   G25:
     statement: >-
@@ -1046,11 +1046,11 @@ gates:
     source: ADR-0008 §5, #158 §5.3
     status: owned_by_slice_builder
     blocked_on: >-
-      A Python artifact is generated (#577) and its own suite runs it against a
-      local stand-in, which is not this gate: nothing yet runs a complete
-      artifact against the real application. #184 lands the execution harness;
-      ADR-0008 §5 forbids CI repairing the code it runs, so the harness is part
-      of the gate rather than scaffolding around it.
+      An execution harness that runs a complete artifact against the real
+      application. A Python artifact is generated (#577) and its own suite
+      runs it against a local stand-in, which is not this gate. #184 lands the
+      harness; ADR-0008 §5 forbids CI repairing the code it runs, so the
+      harness is part of the gate rather than scaffolding around it.
 
   G26:
     statement: >-
@@ -1062,11 +1062,12 @@ gates:
     source: "#156 §13, #158 §8"
     status: owned_by_slice_builder
     blocked_on: >-
-      The five run over the Python target's generated source, fixtures and
-      snapshots in `ubb-codegen`'s own suite (#577), beside the Blueprint's
-      test that no secret reaches a document or a stored row (#576). The shell
-      target has no generated source to inspect yet. #184 lands it, and its
-      flip installs this row over both targets.
+      The shell target's generated source, which does not exist yet. For the
+      Python target the renderer's suite already holds the renderer's half of
+      the five over its generated source, fixtures and snapshots (#577),
+      beside the Blueprint's test that no secret reaches a document or a
+      stored row (#576). #184 lands the shell target, and its flip installs
+      this row over both.
 
   G27:
     statement: >-

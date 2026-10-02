@@ -9,7 +9,7 @@ export type { FileKind, RenderedFile } from "./render.ts";
 export { BlueprintNotRenderable } from "./blueprint.ts";
 export type { ResolvedIntegrationBlueprint } from "./blueprint.ts";
 export {
-  AMOUNT_REPRESENTATIONS,
+  AMOUNT_REPRESENTATION,
   BASE_URL_DEFAULT,
   CATALOGUE_VERSION,
   COMMENTS,
@@ -20,6 +20,6 @@ export {
   PYTHON,
   READINESS_COMMENTS,
   REMEDIATION,
-  RESPONSE_REPRESENTATIONS,
+  RESPONSE_REPRESENTATION,
   SHELL,
 } from "./catalogue.ts";

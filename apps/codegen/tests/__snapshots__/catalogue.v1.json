@@ -1,9 +1,9 @@
 {
-  "AMOUNT_REPRESENTATIONS": [
-    "micros",
-    "minor_units",
-    "major_units_decimal"
-  ],
+  "AMOUNT_REPRESENTATION": {
+    "micros": "micros",
+    "minorUnits": "minor_units",
+    "majorUnitsDecimal": "major_units_decimal"
+  },
   "BASE_URL_DEFAULT": "https://api.ubb.dev",
   "CATALOGUE_VERSION": 1,
   "COMMENTS": {
@@ -117,15 +117,17 @@
       "leaves the work open."
     ],
     "callSiteSubtask": [
-      "Only where your code creates this Subtask. Pass its task_id when",
-      "recording to attribute an event to it."
+      "Only where your code creates this Subtask, inside the work it is part",
+      "of. Pass its task_id when recording to attribute an event to it."
     ],
     "callSiteRecord": [
       "After each call to your supplier. idempotency_key identifies this one",
-      "call, and is the same if you retry it."
+      "call, and is the same if you retry it. task_id is the task_id of the",
+      "handle the event belongs to: the work's own, or a Subtask's."
     ],
     "callSiteBackfill": [
-      "When recording work that has already happened, one event at a time."
+      "When recording work that has already happened, one event at a time.",
+      "task_id is the task_id of the handle the event belongs to."
     ],
     "callSiteStop": [
       "Around whatever runs the work, where you can act on a stop's scope.",
@@ -139,7 +141,7 @@
   "MESSAGES": {
     "notReady": "is not ready to run. The generated file's header lists what to declare.",
     "notConfigured": "has no configured value",
-    "stop": "UBB requested a stop. The event was recorded and must not be sent again: %r",
+    "stop": "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
     "float": "is a binary float, and a reported cost is money: pass its decimal text or an integer",
     "flag": "is a flag, not a reported cost",
     "missing": "no cost was reported, and a missing cost is not a zero",
@@ -160,7 +162,9 @@
     "verifyNotZero": "is not zero (a constant zero is what a path to the wrong field reads)",
     "verifyDistinct": "is read from a path no other quantity is read from",
     "verifyPassed": "Every check passed.",
-    "verifyFailed": "check(s) failed."
+    "verifyFailed": "check(s) failed.",
+    "verifyOk": "ok  ",
+    "verifyFail": "FAIL"
   },
   "MICROS_PER_MINOR_UNIT": {
     "aud": 10000,
@@ -225,7 +229,7 @@
       "UBBIntegrationNotReady; the others run."
     ],
     "complete": [
-      "COMPLETE. Every call resolves from published configuration."
+      "COMPLETE. Every call has what it needs to run."
     ]
   },
   "REMEDIATION": {
@@ -301,10 +305,10 @@
       "call, or correct it with the request below."
     ]
   },
-  "RESPONSE_REPRESENTATIONS": [
-    "json",
-    "python_object"
-  ],
+  "RESPONSE_REPRESENTATION": {
+    "json": "json",
+    "pythonObject": "python_object"
+  },
   "SHELL": {
     "stopMetadata": "stop_requested",
     "stopExitStatusName": "UBB_EXIT_STOP_REQUESTED",

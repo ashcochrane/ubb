@@ -168,12 +168,10 @@ def _load(directory):
     return importlib.import_module(MODULE)
 
 
-def _private(module, wanted):
-    """A helper of the module by the name it was rendered under."""
-    return getattr(module, wanted)
-
-
 def _the_amount(amount):
+    """A case's amount as the value it stands for. The platform test that
+    writes the cases reads them the same way; the two cannot share a module,
+    since this one runs with no platform on its path."""
     kind, text = amount["type"], amount["text"]
     if kind == "decimal":
         return Decimal(text)
@@ -205,13 +203,12 @@ def reported_cost(directory, cases_path):
 
     disagreements = []
     for case in cases["amounts"]:
-        got = answered(_private(module, "_to_micros"),
-                       _the_amount(case["amount"]), case["representation"],
-                       case["currency"])
+        got = answered(module._to_micros, _the_amount(case["amount"]),
+                       case["representation"], case["currency"])
         if got != case["expected"]:
             disagreements.append({"case": case, "got": got})
     for case in cases["currencies"]:
-        got = answered(_private(module, "_pin_currency"), case["declared"],
+        got = answered(module._pin_currency, case["declared"],
                        case["reported"])
         if got != case["expected"]:
             disagreements.append({"case": case, "got": got})

@@ -125,7 +125,8 @@ def unit_of_work(
             yield task
     except UBBStopRequested as stop:
         _LOGGER.warning(
-            "UBB requested a stop. The event was recorded and must not be sent again: %r",
+            "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
+            stop.idempotency_key,
             stop.result,
         )
         raise

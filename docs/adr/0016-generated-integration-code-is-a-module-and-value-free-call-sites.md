@@ -36,16 +36,27 @@ committed. A hand-written type would be a second place the document's shape is w
 
 A token is read into one of four types, and a secret reference's type carries the name of a
 variable and nothing else. Whatever a document puts in the `value` of a secret token is never
-copied out of it: there is no type through which a secret's value could reach a file.
+copied out of it, so past the reader there is no type through which a secret token's value could
+reach a file. The document itself arrives as the contract types it — a token's `value` is untyped
+JSON — so the secret is unrepresentable from the reader onward and ignored at it. That a Blueprint
+carries no secret anywhere is the server's test to hold (ADR-0015).
 
 ### 2. The module holds every value; a call site holds none, and its names are final
 
 An artifact is one module, the call-site blocks, an `.env.example` and a verify script. Every value
-the Blueprint resolved is in the module, so replacing the module is the whole of regenerating.
+the Blueprint resolved that running code needs is in the module; the verify script holds the
+declared paths again, to check them. Regenerating replaces those two files and touches no
+call-site block.
 
-A call-site block is built from the name of a function the module exports and the names of
-parameters. It has no field a literal could arrive through, and the suite asks Python's parser to
-confirm that no block contains a constant of any kind.
+A call-site block is written from the names of functions the module exports, the names of
+parameters, and fixed text. No type holds a literal out of one — a block is lines of text — so the
+suite does: Python's parser is asked for every string, number and bytes literal in every block of
+every branch, and there must be none. `...`, where the tenant's own code goes, is the one constant
+a block contains.
+
+Which work an event belongs to is the tenant's to say, so a record block asks for `task_id` by
+name and reads it off nothing. A Subtask's parent is the work the block sits inside, so that one
+id is read off the handle.
 
 **What a block does contain is therefore a contract with code UBB never sees:**
 
@@ -108,15 +119,34 @@ committed fixture inside the test and says what it changed.
 A comment is either one statement generated from the Blueprint, in the single form
 `<name> = <json>[ · <qualifier> <json>]...`, or a line of the renderer catalogue. There are no
 docstrings. The catalogue is closed and versioned, and holds a sentence for every diagnostic code
-and every verdict, checked against the registry's value sets. Its symbols are the renderer's own
-and are not registry concepts.
+and every verdict. Its symbols are the renderer's own and are not registry concepts.
+
+**The catalogue restates five registry value sets, and that is an exception recorded here.** The
+verdicts, the diagnostic codes, the pricing modes, the amount representations and the response
+representations are spelled in it as keys, where the coding standards ask for a generated name.
+The registry generates no artifact for this package. Each set is instead held equal to the
+registry's by a test, against the SDK's generated vocabulary, and the sets the contract marks are
+exhaustive by type as well. A generated target for this package would retire the exception.
+
+The version is a convention with a tripwire, not a refusal: the whole catalogue is pinned in a file
+named for its version, so a change under an unchanged number is a diff of that file.
 
 ### 7. A document the renderer cannot read is refused, not guessed at
 
-`render` throws `BlueprintNotRenderable` for a `schema_version` or `renderer_contract_version`
-outside the set it reads, a target with no renderer, an operation it has no call for, a secret with
-no setup instructions, a parameter Python cannot bind, or a number too large to carry exactly. A
-Blueprint that is merely not ready is never refused.
+`render` throws `BlueprintNotRenderable` for:
+
+- a `schema_version` or `renderer_contract_version` outside the set it reads;
+- a target with no renderer, an SDK major it is not written against, or an operation it has no
+  call for;
+- no start of the work itself, or more than one;
+- a secret with no setup instructions in the catalogue, a second secret on one call, or two calls
+  naming different credentials;
+- a token the convention cannot place: a fact named under a field the call does not carry, a fact
+  or a keyed value of the wrong class, a path that is not a list of segments;
+- a parameter Python cannot bind, or one spelled like a name the boundary must be able to say;
+- a number too large to carry exactly.
+
+A Blueprint that is merely not ready is never refused.
 
 ### 8. What this ADR does not decide
 
@@ -128,7 +158,7 @@ agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 an
 
 | Rule | Test |
 |---|---|
-| §1 — the suite runs unconditionally in CI and can fail it | `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_ci_runs_the_renderers_suite_and_can_fail_on_it`, `test_no_renderer_test_is_skipped_or_run_alone`, `test_the_package_defines_the_scripts_the_steps_run` |
+| §1 — the suite runs unconditionally in CI, in a job of its own, and can fail it | `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_ci_runs_the_renderers_suite_and_can_fail_on_it`, `test_no_renderer_test_is_skipped_or_run_alone`, `test_the_package_defines_the_scripts_the_steps_run` |
 | §1 — a secret token's value changes nothing | `apps/codegen/tests/snapshots.test.ts` — "writes the same files whatever a secret token carries as a value" |
 | §2 — no generated value in a call-site block; its names are exports, parameters and handles | `apps/codegen/tests/artifact.test.ts` — "puts no generated value in a call-site block", "names nothing in a call-site block but exports, parameters and the handles" |
 | §2 — a shared name is taken by neither key | `apps/codegen/tests/execution.test.ts` — "name each function for its declared key, and never share a name" |
@@ -140,7 +170,7 @@ agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 an
 | §4 — the conversion is the platform's, case for case | same module — "is converted exactly as the platform converts it, case for case"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_the_reported_cost_cases_carry_this_platforms_answers`, `test_the_currency_table_is_this_platforms` |
 | §5 — every committed Blueprint is what the route answers, and none is added by hand | same platform module — `test_a_committed_blueprint_is_what_the_route_answers`, `test_every_committed_blueprint_is_one_this_module_produces`; `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_every_blueprint_the_suite_renders_is_one_the_platform_holds` |
 | §6 — every comment is provenance or a catalogue member, and states only what the Blueprint carries | `apps/codegen/tests/artifact.test.ts` — "carries only comments that are provenance or a catalogue member", "states in a provenance comment only what the Blueprint carries" |
-| §6 — a sentence for every code and verdict, and no other | `apps/codegen/tests/catalogue.test.ts` — "has remediation for every diagnostic code, and for no other" |
+| §6 — a sentence for every code and verdict, and no other; each restated set equal to the registry's | `apps/codegen/tests/catalogue.test.ts` — "has remediation for every diagnostic code, and for no other", "says what every verdict means, and no other", "converts every amount representation, and no other", "says what delivering means under every pricing mode, and no other", "reads every response shape representation, and no other" |
 | §7 — what is refused | `apps/codegen/tests/artifact.test.ts` — "refuses %s rather than writing a file that is wrong" |
 
 ## Consequences

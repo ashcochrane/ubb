@@ -15,12 +15,10 @@
  */
 import type { Json } from "../blueprint.ts";
 import { COMMENTS, MESSAGES } from "../catalogue.ts";
-import { hash, statement, tokenStatement } from "../comments.ts";
+import { asComments, statement, tokenStatement } from "../comments.ts";
 import { literalOf, type Call, type Entry } from "../tokens.ts";
-import type { Plan } from "./plan.ts";
-import { pyLiteral, pyString } from "./syntax.ts";
-
-const INDENT = "    ";
+import { FACT, FIELD, type Plan } from "./plan.ts";
+import { INDENT, pyLiteral, pyString } from "./syntax.ts";
 
 interface Read {
   readonly entry: Entry;
@@ -33,7 +31,7 @@ function reads(call: Call): Read[] {
     field.shape !== "keyed"
       ? []
       : field.entries.flatMap((entry) => {
-          const path = entry.facts.find((fact) => fact.element === "source_path");
+          const path = entry.facts.find((fact) => fact.element === FACT.sourcePath);
           return path === undefined
             ? []
             : [{ entry, path: path.token.binding.value, statement: tokenStatement(path.token) }];
@@ -44,13 +42,13 @@ function reads(call: Call): Read[] {
 function declaredPaths(plan: Plan): string[] {
   const lines: string[] = [];
   for (const record of plan.records) {
-    const eventType = literalOf(record.call, "event_type");
+    const eventType = literalOf(record.call, FIELD.eventType);
     const found = reads(record.call);
     if (typeof eventType !== "string" || found.length === 0) continue;
     lines.push(`${INDENT}${pyString(eventType)}: {`);
     for (const read of found) {
       lines.push(
-        ...hash([read.statement], INDENT.repeat(2)),
+        ...asComments([read.statement], INDENT.repeat(2)),
         `${INDENT.repeat(2)}${pyString(read.entry.keyText)}: ${pyLiteral(read.path)},`,
       );
     }
@@ -60,16 +58,16 @@ function declaredPaths(plan: Plan): string[] {
 }
 
 export function renderVerifyScript(plan: Plan): string {
-  const fingerprint = plan.blueprint.configuration_fingerprint ?? null;
-  const say = (message: string) => pyString(message);
+  const fingerprint = plan.header.configuration_fingerprint ?? null;
+  const say = pyString;
   const lines = [
-    ...hash(COMMENTS.verify),
-    ...hash([statement("configuration_fingerprint", fingerprint)]),
+    ...asComments(COMMENTS.verify),
+    ...asComments([statement("configuration_fingerprint", fingerprint)]),
     "",
     "import json",
     "import sys",
     "",
-    ...hash(COMMENTS.verifyPaths),
+    ...asComments(COMMENTS.verifyPaths),
     "DECLARED_PATHS = {",
     ...declaredPaths(plan),
     "}",
@@ -104,7 +102,7 @@ export function renderVerifyScript(plan: Plan): string {
     `${INDENT}def check(passed, quantity, message):`,
     `${INDENT.repeat(2)}nonlocal failures`,
     `${INDENT.repeat(2)}failures += 0 if passed else 1`,
-    `${INDENT.repeat(2)}verdict = "ok  " if passed else "FAIL"`,
+    `${INDENT.repeat(2)}verdict = ${say(MESSAGES.verifyOk)} if passed else ${say(MESSAGES.verifyFail)}`,
     `${INDENT.repeat(2)}print(f"  {verdict} {json.dumps(quantity, ensure_ascii=False)} {message}")`,
     "",
     `${INDENT}for quantity, segments in declared.items():`,

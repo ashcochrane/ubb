@@ -401,29 +401,6 @@ jobs:
       - name: TypeScript smoke gate — committed spec generates clean types
         run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts
 
-      # `ubb-codegen` (#577): the renderer that turns an Integration Blueprint
-      # into the files a tenant is handed. It lives in this job because this is
-      # the one job with both Node and Python: its tests render committed
-      # Blueprints, then COMPILE and RUN the Python they wrote against the SDK
-      # in this checkout. The SDK is installed for its dependencies; the tests
-      # point the interpreter at the checkout's own copy.
-      #
-      # Ahead of the console's steps on purpose, so a red console cannot stop
-      # these running. `tests/contracts/test_the_renderer_suite_is_enforced.py`
-      # holds all three steps to being unconditional and able to fail the run —
-      # no `if:`, no `continue-on-error`, and no path filter on the workflow.
-      - name: Install the SDK the generated code is run against
-        run: pip install -e ./ubb-sdk
-
-      - name: Codegen typecheck — the renderer compiles against the committed contract
-        run: pnpm --dir apps/codegen typecheck
-
-      - name: Codegen lint — the renderer stays a pure function
-        run: pnpm --dir apps/codegen lint
-
-      - name: Codegen tests — every renderer branch, compiled and run
-        run: pnpm --dir apps/codegen test
-
       # The gates above only prove the SPEC is self-consistent and that a client
       # can be generated from it. Neither compiles the console, which is how the
       # app drifted three contract changes behind the API (#129, #131, #132)
@@ -435,3 +412,54 @@ jobs:
 
       - name: UI tests
         run: pnpm --dir apps/ui test
+
+  # `ubb-codegen` (#577): the renderer that turns an Integration Blueprint into
+  # the files a tenant is handed. Its tests render committed Blueprints, then
+  # COMPILE and RUN the Python they wrote against the SDK in this checkout, so
+  # the job needs Node and Python both.
+  #
+  # A job of its own rather than more steps at the end of `contract`: a step
+  # runs only if every step before it passed, and nothing about the spec's
+  # drift gate or the console's snapshot should be able to stop the renderer's
+  # suite running. No services and no settings — nothing here touches Django.
+  #
+  # `tests/contracts/test_the_renderer_suite_is_enforced.py` holds the three
+  # steps to being unconditional and able to fail the run: no `if:`, no
+  # `continue-on-error`, and no path filter on the workflow.
+  codegen:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: ubb-sdk/pyproject.toml
+
+      # For its dependencies. The tests point the interpreter at the
+      # checkout's own copy of the SDK, so what is run against is this tree's.
+      - name: Install the SDK the generated code is run against
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./ubb-sdk
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install workspace dependencies (locked)
+        run: pnpm install --frozen-lockfile
+
+      - name: Codegen typecheck — the renderer compiles against the committed contract
+        run: pnpm --dir apps/codegen typecheck
+
+      - name: Codegen lint — the renderer stays a pure function
+        run: pnpm --dir apps/codegen lint
+
+      - name: Codegen tests — every renderer branch, compiled and run
+        run: pnpm --dir apps/codegen test

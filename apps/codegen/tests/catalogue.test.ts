@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import * as catalogue from "../src/catalogue.ts";
 import {
-  AMOUNT_REPRESENTATIONS,
+  AMOUNT_REPRESENTATION,
   BASE_URL_DEFAULT,
   CATALOGUE_VERSION,
   COMMENTS,
@@ -26,7 +26,7 @@ import {
   PYTHON,
   READINESS_COMMENTS,
   REMEDIATION,
-  RESPONSE_REPRESENTATIONS,
+  RESPONSE_REPRESENTATION,
   SHELL,
 } from "../src/index.ts";
 import { FIXTURE_NAMES, fixture, FIXTURES, PACKAGE_ROOT, REPO_ROOT } from "./support/fixtures.ts";
@@ -99,7 +99,9 @@ describe("what the catalogue says about a registry concept", () => {
   });
 
   it("converts every amount representation, and no other", () => {
-    expect([...AMOUNT_REPRESENTATIONS].sort()).toEqual(REGISTRY.values.amount_representation);
+    expect(Object.values(AMOUNT_REPRESENTATION).sort()).toEqual(
+      REGISTRY.values.amount_representation,
+    );
   });
 
   it("says what delivering means under every pricing mode, and no other", () => {
@@ -107,7 +109,7 @@ describe("what the catalogue says about a registry concept", () => {
   });
 
   it("reads every response shape representation, and no other", () => {
-    expect([...RESPONSE_REPRESENTATIONS].sort()).toEqual(
+    expect(Object.values(RESPONSE_REPRESENTATION).sort()).toEqual(
       REGISTRY.values.response_shape_representation,
     );
   });
@@ -148,8 +150,10 @@ describe("the catalogue's text", () => {
 
   it("is pinned, whole, to its version", async () => {
     // Every exported member, as it stands. A member added, removed or
-    // reworded changes this file — and the file is named for the version, so
-    // a change under an unchanged number is a diff a reviewer reads as one.
+    // reworded fails here until the file is re-taken. Re-taking it is one
+    // command, so what this buys is not a refusal: it is that a change under
+    // an unchanged number shows up as a diff of a file named for the version,
+    // and a new number as a new file.
     const whole = Object.fromEntries(
       Object.entries(catalogue).sort(([left], [right]) => left.localeCompare(right)),
     );

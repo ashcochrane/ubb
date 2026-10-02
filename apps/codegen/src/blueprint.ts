@@ -47,3 +47,8 @@ export class BlueprintNotRenderable extends Error {
     this.name = "BlueprintNotRenderable";
   }
 }
+
+/** Refuse a document, saying why. */
+export function refuse(message: string): never {
+  throw new BlueprintNotRenderable(message);
+}

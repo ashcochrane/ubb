@@ -3,13 +3,23 @@
  *
  * A generated file carries two classes of comment and no third (#184 §6).
  * PROVENANCE is generated from the Blueprint in one grammatical form
- * (`comments.ts`). CONTRACT is fixed prose, and all of it is here: nothing a
- * target writes into a comment, a message or a symbol is spelled anywhere
- * else in this package, so what a file may assert is one reviewable list.
+ * (`comments.ts`). CONTRACT is fixed prose, and every line of it is here —
+ * with the messages generated code raises and prints, and the names a
+ * tenant's own code can see — so what a file may ASSERT is one reviewable
+ * list. The shape of the code around those lines is each target's own.
  *
- * It is CLOSED and VERSIONED. `CATALOGUE_VERSION` moves whenever a member is
- * added, removed or reworded, and the package's tests pin the version to the
- * content, so a change that forgets the number is red.
+ * It is CLOSED and VERSIONED. `CATALOGUE_VERSION` is meant to move whenever a
+ * member is added, removed or reworded. What the package's tests hold is
+ * weaker and is said plainly: the whole catalogue is pinned in a file named
+ * for its version, so a change under an unchanged number is a diff of that
+ * file a reviewer reads — nothing refuses it by itself.
+ *
+ * WHERE IT RESTATES A REGISTRY VALUE. The verdicts, the diagnostic codes, the
+ * pricing modes, the amount representations and the response
+ * representations are registry concepts, and their values are spelled here
+ * as keys. The registry generates no artifact for this package, so each set
+ * is held equal to the registry's by `tests/catalogue.test.ts`, and the three
+ * the contract marks are also exhaustive by type.
  *
  * The symbols are the renderer's own and are deliberately not registry
  * concepts (owner ruling of 2026-09-25, item 9): the domain registry names
@@ -85,14 +95,17 @@ export const MICROS_PER_MINOR_UNIT: Readonly<Record<string, number>> = {
 };
 
 /** How a cost a supplier reports is declared to be represented. */
-export const AMOUNT_REPRESENTATIONS = [
-  "micros",
-  "minor_units",
-  "major_units_decimal",
-] as const;
+export const AMOUNT_REPRESENTATION = {
+  micros: "micros",
+  minorUnits: "minor_units",
+  majorUnitsDecimal: "major_units_decimal",
+} as const;
 
 /** The two things a response a path is read off can be. */
-export const RESPONSE_REPRESENTATIONS = ["json", "python_object"] as const;
+export const RESPONSE_REPRESENTATION = {
+  json: "json",
+  pythonObject: "python_object",
+} as const;
 
 /** How a kind of work is sold, where this target says something about it. */
 export const PRICING_MODE_COMMENTS: Readonly<Record<string, readonly string[]>> = {
@@ -119,7 +132,7 @@ export const READINESS_COMMENTS: Readonly<Record<IntegrationReadiness, readonly 
     "UBBIntegrationNotReady; the others run.",
   ],
   complete: [
-    "COMPLETE. Every call resolves from published configuration.",
+    "COMPLETE. Every call has what it needs to run.",
   ],
 };
 
@@ -304,15 +317,17 @@ export const COMMENTS = {
     "leaves the work open.",
   ],
   callSiteSubtask: [
-    "Only where your code creates this Subtask. Pass its task_id when",
-    "recording to attribute an event to it.",
+    "Only where your code creates this Subtask, inside the work it is part",
+    "of. Pass its task_id when recording to attribute an event to it.",
   ],
   callSiteRecord: [
     "After each call to your supplier. idempotency_key identifies this one",
-    "call, and is the same if you retry it.",
+    "call, and is the same if you retry it. task_id is the task_id of the",
+    "handle the event belongs to: the work's own, or a Subtask's.",
   ],
   callSiteBackfill: [
     "When recording work that has already happened, one event at a time.",
+    "task_id is the task_id of the handle the event belongs to.",
   ],
   callSiteStop: [
     "Around whatever runs the work, where you can act on a stop's scope.",
@@ -324,7 +339,7 @@ export const COMMENTS = {
 export const MESSAGES = {
   notReady: "is not ready to run. The generated file's header lists what to declare.",
   notConfigured: "has no configured value",
-  stop: "UBB requested a stop. The event was recorded and must not be sent again: %r",
+  stop: "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
   float: "is a binary float, and a reported cost is money: pass its decimal text or an integer",
   flag: "is a flag, not a reported cost",
   missing: "no cost was reported, and a missing cost is not a zero",
@@ -346,4 +361,6 @@ export const MESSAGES = {
   verifyDistinct: "is read from a path no other quantity is read from",
   verifyPassed: "Every check passed.",
   verifyFailed: "check(s) failed.",
+  verifyOk: "ok  ",
+  verifyFail: "FAIL",
 } as const;

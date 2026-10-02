@@ -11,8 +11,10 @@
  * holding a token cannot read a field its class does not fill. A
  * `SecretReference` in particular carries the NAME of a variable and nothing
  * else: whatever a document put in the `value` of a secret token is never
- * copied out of it, so there is no type through which a secret's value could
- * reach a file.
+ * copied out of it, so past this module there is no type through which a
+ * secret TOKEN's value could reach a file. The document itself is untyped
+ * JSON at the boundary and is not made safe by a type: that a Blueprint
+ * carries no secret anywhere is the server's test to hold.
  *
  * WHICH TOKENS ARE ARGUMENTS, AND WHICH ARE ONLY STATED. Read off the name,
  * and off the position — never by decoding a key, and never by knowing what a
@@ -35,7 +37,7 @@
  *    choose how the value is expressed.
  */
 import {
-  BlueprintNotRenderable,
+  refuse,
   type BlueprintArgument,
   type BlueprintCall,
   type BlueprintProvenance,
@@ -120,10 +122,6 @@ export interface Call {
   readonly credentials: Token<SecretReference>[];
   /** In the order the document first names each field. */
   readonly fields: Field[];
-}
-
-function refuse(message: string): never {
-  throw new BlueprintNotRenderable(message);
 }
 
 function bindingOf(argument: BlueprintArgument): Binding {
@@ -334,6 +332,11 @@ export function parameters(call: Call): string[] {
   return names;
 }
 
+/** One declared fact out of several, by which fact it is. */
+export function factNamed(facts: readonly Fact[], element: string): Json | undefined {
+  return facts.find((fact) => fact.element === element)?.token.binding.value;
+}
+
 /** The literal a scalar field carries, or `undefined` for none. */
 export function literalOf(call: Call, field: string): Json | undefined {
   const found = call.fields.find(
@@ -349,5 +352,5 @@ export function factOfField(call: Call, field: string, element: string): Json | 
     (candidate): candidate is ScalarField =>
       candidate.shape === "scalar" && candidate.name === field,
   );
-  return found?.facts.find((fact) => fact.element === element)?.token.binding.value;
+  return found === undefined ? undefined : factNamed(found.facts, element);
 }

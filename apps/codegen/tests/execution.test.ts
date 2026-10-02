@@ -20,7 +20,7 @@ import { render, type RenderedFile } from "../src/index.ts";
 import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
 import { everyArgument, fixture, FIXTURES, REPO_ROOT } from "./support/fixtures.ts";
 import { compiled, reportedCost, run } from "./support/python.ts";
-import { factsOf, rendered } from "./support/rendered.ts";
+import { BRANCH_NAMES, factsOf, rendered } from "./support/rendered.ts";
 
 interface Sent {
   method: string;
@@ -31,6 +31,7 @@ interface Sent {
 
 const CONTRACT = JSON.parse(readFileSync(join(REPO_ROOT, "openapi", "v1.json"), "utf-8")) as {
   paths: Record<string, Record<string, { operationId?: string }>>;
+  components: { schemas: Record<string, { properties: Record<string, unknown> }> };
 };
 
 /** `METHOD /path` for an operationId, read off the committed contract. */
@@ -119,11 +120,7 @@ with integration.unit_of_work(customer_id="c", idempotency_key="w",
 result = server.requests
 `,
     );
-    const schemas = (
-      JSON.parse(readFileSync(join(REPO_ROOT, "openapi", "v1.json"), "utf-8")) as {
-        components: { schemas: Record<string, { properties: Record<string, unknown> }> };
-      }
-    ).components.schemas;
+    const schemas = CONTRACT.components.schemas;
 
     const [start, subtask, record] = sent;
     expect(sent).toHaveLength(5);
@@ -216,7 +213,8 @@ result = refused + [len(server.requests)]
 
 describe("the stop", () => {
   it("is caught in exactly one place, by name, and raised again", () => {
-    for (const branch of ["calculated-cost", "explicit-subtasks", "blocked", "scaffold"]) {
+    expect(BRANCH_NAMES.length).toBeGreaterThanOrEqual(10);
+    for (const branch of BRANCH_NAMES) {
       const module = factsOf(branch)["ubb_integration.py"]!;
 
       expect(module.handlers.filter((handler) => handler.catches === "UBBStopRequested")).toEqual([
@@ -234,10 +232,22 @@ describe("the stop", () => {
   });
 
   it("is not caught by any function that records", () => {
-    const module = factsOf("calculated-cost")["ubb_integration.py"]!;
-    const recording = module.handlers.filter((handler) => handler.function !== "unit_of_work");
+    // The only other handlers anywhere are the conversion's, which catch a
+    // number that will not parse and a currency that is not a string.
+    const narrow = ["(InvalidOperation, TypeError, ValueError)", "(AttributeError, KeyError)"];
+    for (const branch of BRANCH_NAMES) {
+      const module = factsOf(branch)["ubb_integration.py"]!;
+      const elsewhere = module.handlers.filter((handler) => handler.function !== "unit_of_work");
 
-    expect(recording).toEqual([]);
+      expect(
+        elsewhere.filter(
+          (handler) =>
+            !["_to_micros", "_minor_unit"].includes(handler.function ?? "") ||
+            !narrow.includes(handler.catches ?? ""),
+        ),
+        branch,
+      ).toEqual([]);
+    }
   });
 
   it("passes through a tenant's own except Exception and out of the boundary", () => {
@@ -280,6 +290,9 @@ result = {"swallowed": swallowed, "outcome": outcome, "logged": logged,
     expect(answer.paths).toEqual(["/api/v1/tasks", "/api/v1/metering/usage"]);
     const logged = answer.logged as string[];
     expect(logged).toHaveLength(1);
+    // What was logged is the key the stopped event was sent under and what
+    // the acknowledgement carried.
+    expect(logged[0]).toContain("The event sent as 'e0' was recorded");
     expect(logged[0]).toContain("customer_spend_pool");
     expect(logged[0]).toContain("stop_scope='customer'");
   });

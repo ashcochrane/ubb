@@ -20,10 +20,7 @@
  * site notices, and can never hand that name to another Event Type, which it
  * would not.
  */
-import {
-  BlueprintNotRenderable,
-  type ResolvedIntegrationBlueprint,
-} from "../blueprint.ts";
+import { refuse, type ResolvedIntegrationBlueprint } from "../blueprint.ts";
 import { ENVIRONMENT, PYTHON } from "../catalogue.ts";
 import {
   literalOf,
@@ -33,7 +30,7 @@ import {
   type SecretReference,
   type Token,
 } from "../tokens.ts";
-import { fresh, nameTail, parameterName, shortHash } from "./syntax.ts";
+import { nameTail, parameterName, shortHash, unshadowed } from "./syntax.ts";
 
 /** The operations this target has a call for, and the SDK method of each. */
 export const OPERATIONS = {
@@ -42,12 +39,29 @@ export const OPERATIONS = {
   close: { operationId: "api_v1_task_endpoints_close_task", method: null },
 } as const;
 
-/** The field of a start that says the work is contained in other work. */
-const PARENT = "parent_task_id";
+/**
+ * The request fields this target knows by name, because the SDK's surface is
+ * built around them: the one that says work is contained in other work, the
+ * two whose literal a generated function is named for, and the one a cost is
+ * denominated in.
+ */
+export const FIELD = {
+  parent: "parent_task_id",
+  kindOfWork: "task_type",
+  eventType: "event_type",
+  currency: "currency",
+} as const;
 
-/** The fields whose literal a generated function is named for. */
-const START_KEY = "task_type";
-const RECORD_KEY = "event_type";
+/** The declared facts this target acts on, by the last segment of their name. */
+export const FACT = {
+  sourcePath: "source_path",
+  responseRepresentation: "response_shape_representation",
+  amountRepresentation: "amount_representation",
+  pricingMode: "pricing_mode",
+} as const;
+
+/** The document without its calls: what a file's header states. */
+export type Header = Omit<ResolvedIntegrationBlueprint, "calls">;
 
 export interface StartPlan {
   readonly call: Call;
@@ -81,7 +95,9 @@ export interface Internal {
 }
 
 export interface Plan {
-  readonly blueprint: ResolvedIntegrationBlueprint;
+  /** Everything of the document but its calls, which are read into `calls`:
+   * no writer is handed a raw token. */
+  readonly header: Header;
   readonly calls: readonly Call[];
   readonly credential: Token<SecretReference>;
   readonly start: StartPlan;
@@ -90,23 +106,21 @@ export interface Plan {
   readonly internal: Internal;
 }
 
-function refuse(message: string): never {
-  throw new BlueprintNotRenderable(message);
-}
-
 function keyOf(call: Call, field: string): string | null {
   const literal = literalOf(call, field);
   return typeof literal === "string" && literal !== "" ? literal : null;
 }
 
 interface Wanted {
-  readonly call: Call;
   readonly prefixes: readonly string[];
   readonly key: string | null;
 }
 
-/** One tail per wanted function set, so that no two functions share a name. */
-function tails(wanted: readonly Wanted[], fixed: readonly string[]): string[] {
+/**
+ * The tail of each wanted function's name — the part after its prefix — so
+ * that no two functions share a name.
+ */
+function nameTails(wanted: readonly Wanted[], fixed: readonly string[]): string[] {
   const plain = wanted.map((entry) => (entry.key === null ? null : nameTail(entry.key)));
   const names = (index: number, tail: string) =>
     wanted[index]!.prefixes.map((prefix) => `${prefix}_${tail}`);
@@ -181,8 +195,8 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
   }
 
   const starts = calls.filter((call) => call.operationId === OPERATIONS.start.operationId);
-  const tasks = starts.filter((call) => !carries(call, PARENT));
-  const contained = starts.filter((call) => carries(call, PARENT));
+  const tasks = starts.filter((call) => !carries(call, FIELD.parent));
+  const contained = starts.filter((call) => carries(call, FIELD.parent));
   const recording = calls.filter((call) => call.operationId === OPERATIONS.record.operationId);
   const start = tasks[0];
   if (start === undefined || tasks.length > 1) {
@@ -192,17 +206,15 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
   const fixed = [PYTHON.startTask, PYTHON.unitOfWork];
   const wanted: Wanted[] = [
     ...contained.map((call) => ({
-      call,
       prefixes: [PYTHON.startSubtaskPrefix],
-      key: keyOf(call, START_KEY),
+      key: keyOf(call, FIELD.kindOfWork),
     })),
     ...recording.map((call) => ({
-      call,
       prefixes: [PYTHON.recordPrefix, PYTHON.backfillPrefix],
-      key: keyOf(call, RECORD_KEY),
+      key: keyOf(call, FIELD.eventType),
     })),
   ];
-  const named = tails(wanted, fixed);
+  const named = nameTails(wanted, fixed);
 
   const subtasks: StartPlan[] = contained.map((call, index) => ({
     call,
@@ -217,7 +229,7 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
       parameters: asked,
       name: `${PYTHON.recordPrefix}_${tail}`,
       backfillName: `${PYTHON.backfillPrefix}_${tail}`,
-      recordedAt: fresh(PYTHON.recordedAt, new Set(asked)),
+      recordedAt: unshadowed(PYTHON.recordedAt, new Set(asked)),
     };
   });
 
@@ -230,33 +242,34 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     ...subtasks.map((subtask) => subtask.name),
     ...records.flatMap((record) => [record.name, record.backfillName]),
   ]);
-  const own = (wantedName: string) => {
-    const name = fresh(wantedName, taken);
+  const ownName = (wantedName: string) => {
+    const name = unshadowed(wantedName, taken);
     taken.add(name);
     return name;
   };
   const sends = new Map(
     records.map((record) => [
       record,
-      own(`_send_${record.name.slice(PYTHON.recordPrefix.length + 1)}`),
+      ownName(`_send_${record.name.slice(PYTHON.recordPrefix.length + 1)}`),
     ]),
   );
   const internal: Internal = {
-    client: own("_client"),
-    clientHolder: own("_CLIENT"),
-    logger: own("_LOGGER"),
-    notReady: own("_not_ready"),
-    notConfigured: own("_not_configured"),
-    toMicros: own("_to_micros"),
-    pinCurrency: own("_pin_currency"),
-    minorUnit: own("_minor_unit"),
-    attribute: own("_attribute"),
-    startTask: own("_start_task"),
+    client: ownName("_client"),
+    clientHolder: ownName("_CLIENT"),
+    logger: ownName("_LOGGER"),
+    notReady: ownName("_not_ready"),
+    notConfigured: ownName("_not_configured"),
+    toMicros: ownName("_to_micros"),
+    pinCurrency: ownName("_pin_currency"),
+    minorUnit: ownName("_minor_unit"),
+    attribute: ownName("_attribute"),
+    startTask: ownName("_start_task"),
     send: (record) => sends.get(record)!,
   };
 
+  const { calls: _read, ...header } = blueprint;
   return {
-    blueprint,
+    header,
     calls,
     credential,
     start: { call: start, parameters: parameters(start), name: PYTHON.startTask },

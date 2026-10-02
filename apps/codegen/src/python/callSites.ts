@@ -1,24 +1,31 @@
 /**
  * The call-site blocks: the lines that go into code a tenant maintains.
  *
- * NO GENERATED VALUE APPEARS IN ONE (#184 §6), and that is held by what a
- * block is built from. `Block` has room for the name of a function the module
- * exports and for the names of parameters, and for nothing else: there is no
- * field a literal, a declared key or a path could arrive through. Every value
- * the Blueprint resolved lives in the module, so replacing the module is the
- * whole of regenerating and these lines never go stale.
+ * NO GENERATED VALUE APPEARS IN ONE (#184 §6). Every block is written from
+ * the plan's function names and parameter names and from fixed text; nothing
+ * here reads a token's literal, a declared key or a path. A type does not
+ * hold that — a block's body is lines of text — so the package's suite does:
+ * Python's own parser is asked for every string, number and bytes literal in
+ * every block of every branch, and there must be none. (`...` stands where
+ * the tenant's code goes and is the one constant a block contains.)
  *
- * A parameter is passed from a variable of its own name. Where the value is
- * one the SDK's handle holds — the id of the work a start returned — the
- * block reads it off the handle.
+ * What a block DOES hold are names: the functions the module exports, which
+ * are named for declared keys, and the parameters the Blueprint named. Those
+ * do not change when configuration does, which is what lets these lines be
+ * left alone when the module is replaced.
+ *
+ * A parameter is passed from a variable of its own name, with one exception:
+ * a Subtask's parent is the work the block sits inside, so its id is read
+ * off that work's handle. Which work an EVENT belongs to is the tenant's to
+ * say — the Task or one of its Subtasks — so a record block reads it off
+ * nothing and asks for it by name.
  */
 import { COMMENTS, PYTHON } from "../catalogue.ts";
-import { hash } from "../comments.ts";
+import { asComments } from "../comments.ts";
 import type { Plan } from "./plan.ts";
+import { INDENT } from "./syntax.ts";
 
-const INDENT = "    ";
-
-/** What a block may be made of: names, and never a value. */
+/** One block: where it goes, what is said above it, and its lines. */
 interface Block {
   readonly file: string;
   readonly comments: readonly string[];
@@ -36,9 +43,8 @@ export interface CallSite {
 const TASK = "task";
 const SUBTASK = "subtask";
 
-/** Parameters whose value is read off the handle rather than held by name. */
+/** The parameter whose value is read off the handle rather than held by name. */
 const FROM_THE_HANDLE: Readonly<Record<string, string>> = {
-  task_id: `${TASK}.task_id`,
   parent_task_id: `${TASK}.task_id`,
 };
 
@@ -115,7 +121,7 @@ export function renderCallSites(plan: Plan): CallSite[] {
   return blocks(plan).map((block) => ({
     path: `${PYTHON.callSiteDirectory}/${block.file}.py`,
     contents: `${[
-      ...hash(block.comments),
+      ...asComments(block.comments),
       ...(block.imports.length === 0
         ? []
         : [`from ${PYTHON.moduleName} import ${block.imports.join(", ")}`, ""]),

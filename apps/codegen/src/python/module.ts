@@ -1,10 +1,11 @@
 /**
  * The module: the one file a tenant drops in and never edits.
  *
- * Everything the Blueprint resolved is in here and nowhere else — every
- * literal, every declared path, every fact stated beside the value it is
- * about — so that when configuration changes, replacing this file is the
- * whole of regenerating.
+ * Everything a tenant's running code needs of what the Blueprint resolved is
+ * in here — every literal, every declared path, every fact stated beside the
+ * value it is about — and none of it is in a call-site block. So when
+ * configuration changes, regenerating replaces this file (and the verify
+ * script beside it) and touches no line the tenant maintains.
  *
  * THE THREE CLASSES ARE SHAPES. A `platform_known` token is written as a
  * literal. A `runtime_bound` token is a required keyword parameter of the
@@ -34,9 +35,9 @@
  * - `pricing_mode` on the kind of work: which sentence says what delivering
  *   the work does.
  */
-import { BlueprintNotRenderable, type Json } from "../blueprint.ts";
+import { refuse, type Json } from "../blueprint.ts";
 import {
-  AMOUNT_REPRESENTATIONS,
+  AMOUNT_REPRESENTATION,
   BASE_URL_DEFAULT,
   COMMENTS,
   ENVIRONMENT,
@@ -46,9 +47,11 @@ import {
   PYTHON,
   READINESS_COMMENTS,
   REMEDIATION,
+  RESPONSE_REPRESENTATION,
 } from "../catalogue.ts";
-import { hash, publication, statement, tokenStatement } from "../comments.ts";
+import { asComments, publication, statement, tokenStatement } from "../comments.ts";
 import {
+  factNamed,
   factOfField,
   literalOf,
   unconfigured,
@@ -62,10 +65,8 @@ import {
   type Token,
   type Unconfigured,
 } from "../tokens.ts";
-import { OPERATIONS, type Plan, type RecordPlan, type StartPlan } from "./plan.ts";
-import { fresh, isIdentifier, pyLiteral, pyString } from "./syntax.ts";
-
-const INDENT = "    ";
+import { FACT, FIELD, OPERATIONS, type Plan, type RecordPlan, type StartPlan } from "./plan.ts";
+import { INDENT, isIdentifier, pyLiteral, pyString, unshadowed } from "./syntax.ts";
 
 /** What the module turned out to need, found while writing its calls. */
 interface Uses {
@@ -74,16 +75,12 @@ interface Uses {
   attribute: boolean;
 }
 
-function refuse(message: string): never {
-  throw new BlueprintNotRenderable(message);
-}
-
 // ---------------------------------------------------------------------------
 // The header
 // ---------------------------------------------------------------------------
 
 function header(plan: Plan): string[] {
-  const { blueprint } = plan;
+  const blueprint = plan.header;
   const fingerprint = blueprint.configuration_fingerprint ?? null;
   const lines: string[] = [
     ...COMMENTS.generated,
@@ -186,10 +183,6 @@ function plain(plan: Plan, uses: Uses, token: Valued): string {
   }
 }
 
-function fact(facts: readonly { element: string; token: Token<Literal> }[], element: string) {
-  return facts.find((candidate) => candidate.element === element)?.token.binding.value;
-}
-
 /** A value read off `root` by a declared path, or `null` where this target
  * has no way to read one of that representation. */
 function traversal(
@@ -203,10 +196,10 @@ function traversal(
     return refuse("a declared source path is not a list of segments");
   }
   const segments = path as readonly string[];
-  if (representation === "json") {
+  if (representation === RESPONSE_REPRESENTATION.json) {
     return root + segments.map((segment) => `[${pyString(segment)}]`).join("");
   }
-  if (representation === "python_object") {
+  if (representation === RESPONSE_REPRESENTATION.pythonObject) {
     return segments.reduce((expression, segment) => {
       if (isIdentifier(segment)) return `${expression}.${segment}`;
       uses.attribute = true;
@@ -218,14 +211,14 @@ function traversal(
 
 function entryValue(plan: Plan, uses: Uses, call: Call, entry: Entry): string | null {
   if (entry.value === null) return null;
-  const path = fact(entry.facts, "source_path");
+  const path = factNamed(entry.facts, FACT.sourcePath);
   if (path !== undefined && entry.value.binding.kind === "parameter") {
     const read = traversal(
       plan,
       uses,
       entry.value.binding.name,
       path,
-      factOfField(call, "event_type", "response_shape_representation"),
+      factOfField(call, FIELD.eventType, FACT.responseRepresentation),
     );
     return read ?? notConfigured(plan, uses, entry.value.name);
   }
@@ -233,13 +226,13 @@ function entryValue(plan: Plan, uses: Uses, call: Call, entry: Entry): string | 
 }
 
 function scalarValue(plan: Plan, uses: Uses, call: Call, field: ScalarField): string {
-  const representation = fact(field.facts, "amount_representation");
+  const representation = factNamed(field.facts, FACT.amountRepresentation);
   if (representation !== undefined && field.token.binding.kind === "parameter") {
-    if (!(AMOUNT_REPRESENTATIONS as readonly Json[]).includes(representation)) {
+    if (!(Object.values(AMOUNT_REPRESENTATION) as Json[]).includes(representation)) {
       refuse(`${String(representation)} is not an amount representation this target converts`);
     }
     uses.reportedCost = true;
-    const declared = literalOf(call, "currency");
+    const declared = literalOf(call, FIELD.currency);
     return (
       `${plan.internal.toMicros}(${field.token.binding.name}, ` +
       `${pyLiteral(representation)}, ` +
@@ -253,8 +246,9 @@ function scalarValue(plan: Plan, uses: Uses, call: Call, field: ScalarField): st
 // A call to the SDK
 // ---------------------------------------------------------------------------
 
-function stated(tokens: readonly Token[], indent: string): string[] {
-  return hash(
+/** The provenance comment of each literal among `tokens`, in order. */
+function provenanceComments(tokens: readonly Token[], indent: string): string[] {
+  return asComments(
     tokens
       .filter((token): token is Token<Literal> => token.binding.kind === "literal")
       .map(tokenStatement),
@@ -266,7 +260,10 @@ function argumentLines(plan: Plan, uses: Uses, call: Call, field: Field): string
   const indent = INDENT.repeat(2);
   if (field.shape === "scalar") {
     return [
-      ...stated([field.token, ...field.facts.map((declared) => declared.token)], indent),
+      ...provenanceComments(
+        [field.token, ...field.facts.map((declared) => declared.token)],
+        indent,
+      ),
       `${indent}${field.name}=${scalarValue(plan, uses, call, field)},`,
     ];
   }
@@ -278,7 +275,10 @@ function entryLines(plan: Plan, uses: Uses, call: Call, field: KeyedField): stri
   return field.entries.flatMap((entry) => {
     const value = entryValue(plan, uses, call, entry);
     return [
-      ...stated([entry.key, ...entry.facts.map((declared) => declared.token)], indent),
+      ...provenanceComments(
+        [entry.key, ...entry.facts.map((declared) => declared.token)],
+        indent,
+      ),
       // A key no token gives a value to is stated and not sent.
       ...(value === null ? [] : [`${indent}${pyString(entry.keyText)}: ${value},`]),
     ];
@@ -290,7 +290,7 @@ function guard(plan: Plan, uses: Uses, call: Call): string[] {
   uses.notReady = true;
   const missing = unconfigured(call).map((name) => `, ${pyString(name)}`).join("");
   return [
-    ...hash(COMMENTS.notReadyCall, INDENT),
+    ...asComments(COMMENTS.notReadyCall, INDENT),
     `${INDENT}${plan.internal.notReady}(${pyString(call.operationId)}, ` +
       `${pyString(call.readiness)}${missing})`,
   ];
@@ -327,7 +327,7 @@ function passing(parameters: readonly string[]): string[] {
 
 function startFunction(plan: Plan, uses: Uses, start: StartPlan, comments: readonly string[]) {
   return [
-    ...hash(comments),
+    ...asComments(comments),
     ...signature(start.name, start.parameters, "StartedTask"),
     ...guard(plan, uses, start.call),
     ...sdkCall(plan, uses, start.call, OPERATIONS.start.method),
@@ -342,11 +342,11 @@ function unitOfWork(plan: Plan): string[] {
     refuse(`the parameter ${clash} is a name the boundary itself must be able to say`);
   }
   const taken = new Set(start.parameters);
-  const task = fresh("task", taken);
-  const stop = fresh("stop", taken);
+  const task = unshadowed("task", taken);
+  const stop = unshadowed("stop", taken);
   const inner = INDENT.repeat(3);
   return [
-    ...hash(COMMENTS.unitOfWork),
+    ...asComments(COMMENTS.unitOfWork),
     "@contextmanager",
     ...signature(PYTHON.unitOfWork, start.parameters, "Iterator[StartedTask]"),
     `${INDENT}try:`,
@@ -355,10 +355,12 @@ function unitOfWork(plan: Plan): string[] {
     `${INDENT.repeat(2)}) as ${task}:`,
     `${inner}yield ${task}`,
     `${INDENT}except UBBStopRequested as ${stop}:`,
-    // The acknowledgement as it stands, by its own description of itself:
-    // whatever it carries is logged, and nothing is worked out from it.
+    // The key the event was sent under, and the acknowledgement as it
+    // stands, by its own description of itself: whatever it carries is
+    // logged, and nothing is worked out from it.
     `${INDENT.repeat(2)}${plan.internal.logger}.warning(`,
     `${inner}${pyString(MESSAGES.stop)},`,
+    `${inner}${stop}.idempotency_key,`,
     `${inner}${stop}.result,`,
     `${INDENT.repeat(2)})`,
     `${INDENT.repeat(2)}raise`,
@@ -367,11 +369,14 @@ function unitOfWork(plan: Plan): string[] {
 
 function recordFunctions(plan: Plan, uses: Uses, record: RecordPlan): string[] {
   const send = plan.internal.send(record);
-  const behaviour = fresh("stop_behavior", new Set([...record.parameters, record.recordedAt]));
+  const behaviour = unshadowed(
+    "stop_behavior",
+    new Set([...record.parameters, record.recordedAt]),
+  );
   const readsAResponse = record.call.fields.some(
     (field) =>
       field.shape === "keyed" &&
-      field.entries.some((entry) => fact(entry.facts, "source_path") !== undefined),
+      field.entries.some((entry) => factNamed(entry.facts, FACT.sourcePath) !== undefined),
   );
   const forward = (recordedAt: string, stopBehaviour: string) => [
     `${INDENT}return ${send}(`,
@@ -393,12 +398,12 @@ function recordFunctions(plan: Plan, uses: Uses, record: RecordPlan): string[] {
     ]),
     "",
     "",
-    ...hash([...COMMENTS.record, ...(readsAResponse ? COMMENTS.response : [])]),
+    ...asComments([...COMMENTS.record, ...(readsAResponse ? COMMENTS.response : [])]),
     ...signature(record.name, record.parameters, "RecordUsageResponse"),
     ...forward("None", PYTHON.stopBehaviorRaise),
     "",
     "",
-    ...hash(COMMENTS.backfill),
+    ...asComments(COMMENTS.backfill),
     ...signature(
       record.backfillName,
       [...record.parameters, record.recordedAt],
@@ -420,14 +425,14 @@ function client(plan: Plan): string[] {
     `${clientHolder} = None`,
     "",
     "",
-    ...hash(COMMENTS.client),
+    ...asComments(COMMENTS.client),
     `def ${name}() -> UBBClient:`,
     `${INDENT}global ${clientHolder}`,
     `${INDENT}if ${clientHolder} is None:`,
     `${INDENT.repeat(2)}${clientHolder} = UBBClient(`,
-    ...hash(COMMENTS.apiKey, INDENT.repeat(3)),
+    ...asComments(COMMENTS.apiKey, INDENT.repeat(3)),
     `${INDENT.repeat(3)}api_key=os.environ[${pyString(plan.credential.binding.environmentVariable)}],`,
-    ...hash(COMMENTS.baseUrl, INDENT.repeat(3)),
+    ...asComments(COMMENTS.baseUrl, INDENT.repeat(3)),
     `${INDENT.repeat(3)}base_url=os.environ.get(${pyString(ENVIRONMENT.baseUrl)}) or ` +
       `${pyString(BASE_URL_DEFAULT)},`,
     `${INDENT.repeat(2)})`,
@@ -439,7 +444,7 @@ function notReadyHelpers(plan: Plan): string[] {
   const { notReady, notConfigured: unset } = plan.internal;
   const error = PYTHON.notReadyError;
   return [
-    ...hash(COMMENTS.notReady),
+    ...asComments(COMMENTS.notReady),
     `class ${error}(RuntimeError):`,
     `${INDENT}pass`,
     "",
@@ -463,12 +468,12 @@ function reportedCostHelpers(plan: Plan): string[] {
   const table = Object.entries(MICROS_PER_MINOR_UNIT)
     .map(([code, micros]) => `${INDENT}${pyString(code)}: ${micros},`)
     .sort();
-  const [micros, minor, major] = AMOUNT_REPRESENTATIONS;
+  const { micros, minorUnits: minor, majorUnitsDecimal: major } = AMOUNT_REPRESENTATION;
   const i2 = INDENT.repeat(2);
   const i3 = INDENT.repeat(3);
   const i4 = INDENT.repeat(4);
   return [
-    ...hash(COMMENTS.reportedCost),
+    ...asComments(COMMENTS.reportedCost),
     `class ${amount}(ValueError):`,
     `${INDENT}pass`,
     "",
@@ -579,11 +584,11 @@ function section(...blocks: (readonly string[])[]): string[] {
   return blocks.flatMap((block) => (block.length === 0 ? [] : ["", "", ...block]));
 }
 
-/** The module's text, and the names it exports. */
+/** The module's text. */
 export function renderModule(plan: Plan): string {
   const uses: Uses = { notReady: false, reportedCost: false, attribute: false };
 
-  const pricingMode = factOfField(plan.start.call, "task_type", "pricing_mode");
+  const pricingMode = factOfField(plan.start.call, FIELD.kindOfWork, FACT.pricingMode);
   const sold = typeof pricingMode === "string" ? (PRICING_MODE_COMMENTS[pricingMode] ?? []) : [];
   const start = startFunction(plan, uses, plan.start, [...COMMENTS.start, ...sold]);
   const subtasks = plan.subtasks.map((subtask) =>

@@ -7,7 +7,11 @@
  * this module is the only place a literal is spelled, so there is one
  * escaping rule and it is applied to every one of them.
  */
-import { BlueprintNotRenderable, type Json } from "../blueprint.ts";
+import { refuse, type Json } from "../blueprint.ts";
+import { endsALine, exactly } from "../text.ts";
+
+/** One level of indentation in a generated file. */
+export const INDENT = "    ";
 
 const HARD_KEYWORDS = new Set([
   "False", "None", "True", "and", "as", "assert", "async", "await", "break",
@@ -27,26 +31,9 @@ export function isIdentifier(name: string): boolean {
 /** A parameter the Blueprint names, used exactly as given — or a refusal. */
 export function parameterName(name: string): string {
   if (!isIdentifier(name)) {
-    throw new BlueprintNotRenderable(
-      `the parameter name ${JSON.stringify(name)} is not one Python can bind`,
-    );
+    return refuse(`the parameter name ${JSON.stringify(name)} is not one Python can bind`);
   }
   return name;
-}
-
-/**
- * Whether a character could end the line it is written on, or cannot be
- * written at all: the control characters, and the three line separators
- * outside ASCII (U+0085, U+2028, U+2029).
- */
-export function endsALine(codeUnit: number): boolean {
-  return (
-    codeUnit < 0x20 ||
-    codeUnit === 0x7f ||
-    codeUnit === 0x85 ||
-    codeUnit === 0x2028 ||
-    codeUnit === 0x2029
-  );
 }
 
 function escaped(codeUnit: number): string {
@@ -93,23 +80,12 @@ export function pyString(text: string): string {
   return `${out}"`;
 }
 
-function pyNumber(value: number): string {
-  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
-    // Past 2**53 the document's number was already rounded on the way in,
-    // and writing the rounded figure down would state one nobody declared.
-    throw new BlueprintNotRenderable(
-      `${value} is a whole number too large to be carried exactly`,
-    );
-  }
-  return String(value);
-}
-
 /** A literal of the document as the Python expression that evaluates to it. */
 export function pyLiteral(value: Json): string {
   if (value === null) return "None";
   if (value === true) return "True";
   if (value === false) return "False";
-  if (typeof value === "number") return pyNumber(value);
+  if (typeof value === "number") return String(exactly(value));
   if (typeof value === "string") return pyString(value);
   if (Array.isArray(value)) {
     return `[${(value as readonly Json[]).map(pyLiteral).join(", ")}]`;
@@ -119,22 +95,11 @@ export function pyLiteral(value: Json): string {
 }
 
 /**
- * A value as one line of JSON, for a comment. One line whatever it holds:
- * JSON escapes the control characters, and the three line separators it
- * leaves alone are escaped here.
+ * `wanted`, or `wanted` with underscores after it until no name in `taken`
+ * is spelled the same: a name of this package's own that no declared name
+ * can stand in front of.
  */
-export function oneLineJson(value: Json): string {
-  if (typeof value === "number") pyNumber(value);
-  return Array.from(JSON.stringify(value), (character) =>
-    endsALine(character.charCodeAt(0)) ? escaped(character.charCodeAt(0)) : character,
-  ).join("");
-}
-
-/**
- * A name of this package's own that no parameter of the file is spelled
- * like, so a declared name can never stand in front of it.
- */
-export function fresh(wanted: string, taken: ReadonlySet<string>): string {
+export function unshadowed(wanted: string, taken: ReadonlySet<string>): string {
   let name = wanted;
   while (taken.has(name)) name += "_";
   return name;

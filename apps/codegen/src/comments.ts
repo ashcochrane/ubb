@@ -16,17 +16,8 @@
  * Both are `#` comments in every file this package writes today.
  */
 import type { BlueprintProvenance, Json } from "./blueprint.ts";
-import { endsALine, oneLineJson } from "./python/syntax.ts";
+import { oneLineJson, oneLineName } from "./text.ts";
 import type { Literal, Token } from "./tokens.ts";
-
-/** A name written into a comment: itself, unless it could end the line. */
-function inline(name: string): string {
-  return Array.from(name, (character) =>
-    endsALine(character.charCodeAt(0))
-      ? `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`
-      : character,
-  ).join("");
-}
 
 /** One provenance statement: a name, its value, and what qualifies it. */
 export function statement(
@@ -37,7 +28,7 @@ export function statement(
   const tail = qualifiers
     .map(([qualifier, qualified]) => ` · ${qualifier} ${oneLineJson(qualified)}`)
     .join("");
-  return `${inline(name)} = ${oneLineJson(value)}${tail}`;
+  return `${oneLineName(name)} = ${oneLineJson(value)}${tail}`;
 }
 
 /** The qualifiers that say which declaration a value was read from. */
@@ -67,6 +58,6 @@ export function tokenStatement(token: Token<Literal>): string {
 }
 
 /** Lines of comment text as `#` comments, at an indentation. */
-export function hash(lines: readonly string[], indent = ""): string[] {
+export function asComments(lines: readonly string[], indent = ""): string[] {
   return lines.map((line) => `${indent}# ${line}`);
 }
