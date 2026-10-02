@@ -12,7 +12,7 @@
 #
 #   $ docker run --rm -v "$PWD/apps/codegen/tests/harness:/h:ro" bash:3.2 \
 #       sh -c 'apk add -q jq && bash /h/heredoc_as_an_argument.sh'
-#   /h/heredoc_as_an_argument.sh: line 29: bad substitution: no closing `)' in "$(cat <<'UBB_JQ'
+#   /h/heredoc_as_an_argument.sh: line 30: bad substitution: no closing `)' in "$(cat <<'UBB_JQ'
 #
 # and the other file, run the same way, prints what it prints everywhere.
 apostrophe="it's"
@@ -24,12 +24,13 @@ unicode='naïve–日本語'
 hyphen='cache-read'
 space='cache read tokens'
 parenthesis='unbalanced)'
+delimiter='UBB_JQ'
 
 program() {
   jq --compact-output --null-input \
     --arg v1 "$apostrophe" --arg v2 "$dollar" --arg v3 "$command" --arg v4 "$backtick" \
     --arg v5 "$backslash" --arg v6 "$unicode" --arg v7 "$hyphen" --arg v8 "$space" \
-    --arg v9 "$parenthesis" \
+    --arg v9 "$parenthesis" --arg v10 "$delimiter" \
     "$(cat <<'UBB_JQ'
   # event_type = "it's a $5 chat-completion" · provider "o'reilly & co"
   {
@@ -45,7 +46,9 @@ program() {
     "naïve–日本語": $v6,
     "cache-read": $v7,
     "cache read tokens": $v8,
-    "unbalanced)": $v9
+    "unbalanced)": $v9,
+    # measurements = "UBB_JQ"
+    "UBB_JQ": $v10
   }
 UBB_JQ
 )"

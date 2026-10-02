@@ -32,10 +32,8 @@ type Read = Member & { readonly value: Extract<Value, { kind: "read" }> };
 
 function reads(record: CallPlan): Read[] {
   return record.body.flatMap((field) =>
-    Array.isArray(field.value)
-      ? (field.value as readonly Member[]).filter(
-          (member): member is Read => member.value?.kind === "read",
-        )
+    field.shape === "keyed"
+      ? field.members.filter((member): member is Read => member.value?.kind === "read")
       : [],
   );
 }
@@ -63,6 +61,7 @@ function declaredPaths(plan: Plan): string[] {
 }
 
 export function renderVerifyScript(plan: Plan): string {
+  // A line the program prints, as the jq string that is it.
   const say = jqString;
   const unavailable = SHELL_EXIT.toolUnavailable.status;
   const program = [

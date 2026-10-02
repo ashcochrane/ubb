@@ -1,6 +1,6 @@
 # A preview of one request, for reading: the method, the URL, the headers
-# and the body. It is not the runnable file, and it says nothing about
-# whether the integration is ready.
+# and the body. It is not the runnable file and carries no verdict: the
+# header of the runnable file says whether the integration is ready.
 # operation_id = "api_v1_task_endpoints_close_task"
 
 POST $UBB_BASE_URL/api/v1/tasks/$task_id/close

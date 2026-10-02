@@ -5,8 +5,9 @@
 #
 # Run over the kinds of name a tenant can declare: an apostrophe, a dollar
 # sign, command-like text, one backtick, a backslash, characters outside
-# ASCII, a hyphen, a space and an unbalanced parenthesis. Each is used twice,
-# as a key written into the program and as a value handed to jq.
+# ASCII, a hyphen, a space, an unbalanced parenthesis and the heredoc's own
+# delimiter. Each is used twice, as a key written into the program and as a
+# value handed to jq.
 #
 # heredoc_as_an_argument.sh beside this file is the form decided against.
 apostrophe="it's"
@@ -18,12 +19,13 @@ unicode='naïve–日本語'
 hyphen='cache-read'
 space='cache read tokens'
 parenthesis='unbalanced)'
+delimiter='UBB_JQ'
 
 program() {
   jq --compact-output --null-input \
     --arg v1 "$apostrophe" --arg v2 "$dollar" --arg v3 "$command" --arg v4 "$backtick" \
     --arg v5 "$backslash" --arg v6 "$unicode" --arg v7 "$hyphen" --arg v8 "$space" \
-    --arg v9 "$parenthesis" \
+    --arg v9 "$parenthesis" --arg v10 "$delimiter" \
     --from-file /dev/stdin <<'UBB_JQ'
   # event_type = "it's a $5 chat-completion" · provider "o'reilly & co"
   {
@@ -39,7 +41,9 @@ program() {
     "naïve–日本語": $v6,
     "cache-read": $v7,
     "cache read tokens": $v8,
-    "unbalanced)": $v9
+    "unbalanced)": $v9,
+    # measurements = "UBB_JQ"
+    "UBB_JQ": $v10
   }
 UBB_JQ
 }

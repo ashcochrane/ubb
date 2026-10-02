@@ -83,7 +83,7 @@ function post<Id extends OperationId>(_operationId: Id, path: PathOf<Id>): Route
 }
 
 /** The route of each operation this target has a call for. */
-export const ROUTES: Readonly<Record<string, Route>> = {
+const ROUTES: Readonly<Record<string, Route>> = {
   [OPERATION_IDS.start]: post(OPERATION_IDS.start, "/api/v1/tasks"),
   [OPERATION_IDS.record]: post(OPERATION_IDS.record, "/api/v1/metering/usage"),
   [OPERATION_IDS.close]: post(OPERATION_IDS.close, "/api/v1/tasks/{task_id}/close"),
@@ -97,6 +97,9 @@ const CLOSE_MAY_CARRY: readonly (keyof components["schemas"]["CloseTaskRequest"]
   SHELL_FILE.outcomeReason,
   SHELL_FILE.reasonDetail,
 ];
+
+/** The field of a close that says how the work ended. */
+const OUTCOME: keyof components["schemas"]["CloseTaskRequest"] = "outcome";
 
 /** The field a stop is reported with: the key its event was sent under. */
 const IDEMPOTENCY_KEY: keyof components["schemas"]["RecordUsageRequest"] = "idempotency_key";
@@ -140,13 +143,32 @@ export interface Member {
   readonly value: Value | null;
 }
 
-/** One key of a request's body. */
-export interface BodyField {
-  readonly name: string;
-  readonly comments: readonly string[];
-  readonly value: Value | readonly Member[];
-  /** Sent only where its parameter was given. */
-  readonly optional: boolean;
+/** One key of a request's body: one value, or an object of declared keys. */
+export type BodyField =
+  | {
+      readonly shape: "scalar";
+      readonly name: string;
+      readonly comments: readonly string[];
+      readonly value: Value;
+      /** Sent only where its parameter was given. */
+      readonly optional: boolean;
+    }
+  | {
+      readonly shape: "keyed";
+      readonly name: string;
+      readonly members: readonly Member[];
+    };
+
+/**
+ * The parameters the boundary declares a failure through: the ones the close
+ * takes for the work, its outcome, and why. By the names the Blueprint gives
+ * them, which are not assumed to be the names of the fields they fill.
+ */
+export interface Closing {
+  readonly work: Parameter;
+  readonly outcome: Parameter;
+  readonly outcomeReason: Parameter;
+  readonly reasonDetail: Parameter;
 }
 
 export type CallKind = "start" | "subtask" | "record" | "close";
@@ -164,6 +186,10 @@ export interface CallPlan {
   readonly places: Readonly<Record<string, Parameter>>;
   /** The parameter a stop's event was sent under. Records only. */
   readonly sentUnder: Parameter | null;
+  /** The parameter that names the work this is contained in. Subtasks only. */
+  readonly parent: Parameter | null;
+  /** Closes only. */
+  readonly closing: Closing | null;
 }
 
 export interface Plan {
@@ -195,8 +221,24 @@ function segments(path: Json): readonly string[] {
   return path as readonly string[];
 }
 
+const PLACE = /\{([^{}]+)\}/g;
+
+/** The names of the places in a route. */
 function places(route: Route): string[] {
-  return [...route.path.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]!);
+  return [...route.path.matchAll(PLACE)].map((match) => match[1]!);
+}
+
+/** A route with each of its places written as `written` says. */
+export function routeWith(call: CallPlan, written: (parameter: Parameter) => string): string {
+  return call.route.path.replace(PLACE, (_place, name: string) => written(call.places[name]!));
+}
+
+/** The parameter a field of the body is filled from, where it is one. */
+function parameterOf(body: readonly BodyField[], name: string): Parameter | undefined {
+  const field = body.find((candidate) => candidate.name === name);
+  return field?.shape === "scalar" && field.value.kind === "parameter"
+    ? field.value.parameter
+    : undefined;
 }
 
 /** One call, with every parameter given its use and every key its value. */
@@ -268,7 +310,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
           value: { kind: "parameter", parameter: used(bound.binding.name, use) },
         };
       });
-      body.push({ name: field.name, comments: [], value: members, optional: false });
+      body.push({ shape: "keyed", name: field.name, members });
       continue;
     }
 
@@ -280,6 +322,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
     }
     if (binding.kind === "literal") {
       body.push({
+        shape: "scalar",
         name: field.name,
         comments,
         value: { kind: "literal", value: binding.value },
@@ -289,6 +332,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
     }
     if (binding.kind === "unconfigured") {
       body.push({
+        shape: "scalar",
         name: field.name,
         comments,
         value: { kind: "unconfigured", token: field.name },
@@ -306,6 +350,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
       }
       const declared = literalOf(call, FIELD.currency);
       body.push({
+        shape: "scalar",
         name: field.name,
         comments,
         value: {
@@ -319,6 +364,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
       continue;
     }
     body.push({
+      shape: "scalar",
       name: field.name,
       comments,
       value: { kind: "parameter", parameter: used(binding.name, "text") },
@@ -339,6 +385,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
     required: true,
   }));
 
+  let closing: Closing | null = null;
   if (kind === "close") {
     for (const fieldName of CLOSE_MAY_CARRY) {
       if (call.fields.some((field) => field.name === fieldName)) continue;
@@ -348,27 +395,51 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
       const parameter: Parameter = { name: fieldName, use: "text", required: false };
       asked.push(parameter);
       body.push({
+        shape: "scalar",
         name: fieldName,
         comments: [],
         value: { kind: "parameter", parameter },
         optional: true,
       });
     }
+    // The boundary declares a failure through this call, so each thing it
+    // says must be the caller's to say: a parameter, under whatever name the
+    // document gave it.
+    const said = (fieldName: string): Parameter =>
+      parameterOf(body, fieldName) ??
+      refuse(`the close takes no parameter for ${fieldName}, and a failure is declared through it`);
+    const work = Object.values(filled)[0];
+    if (work === undefined) return refuse("a close names no work in its route");
+    closing = {
+      work,
+      outcome: said(OUTCOME),
+      outcomeReason: said(SHELL_FILE.outcomeReason),
+      reasonDetail: said(SHELL_FILE.reasonDetail),
+    };
   }
 
   let sentUnder: Parameter | null = null;
   if (kind === "record") {
-    const key = body.find((field) => field.name === IDEMPOTENCY_KEY)?.value;
-    if (key === undefined || Array.isArray(key) || (key as Value).kind !== "parameter") {
-      return refuse(
+    sentUnder =
+      parameterOf(body, IDEMPOTENCY_KEY) ??
+      refuse(
         `the record ${name} names no ${IDEMPOTENCY_KEY} parameter, and a stop is ` +
           `reported with the key its event was sent under`,
       );
-    }
-    sentUnder = (key as Extract<Value, { kind: "parameter" }>).parameter;
   }
 
-  return { kind, call, name, route, parameters: asked, body, places: filled, sentUnder };
+  return {
+    kind,
+    call,
+    name,
+    route,
+    parameters: asked,
+    body,
+    places: filled,
+    sentUnder,
+    parent: kind === "subtask" ? (parameterOf(body, FIELD.parent) ?? null) : null,
+    closing,
+  };
 }
 
 /** The plan for one Blueprint, or a refusal of a document it cannot render. */

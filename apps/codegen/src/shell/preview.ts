@@ -14,7 +14,7 @@
  */
 import { ENVIRONMENT, SHELL_COMMENTS, SHELL_FILE } from "../catalogue.ts";
 import { asComments, statement } from "../comments.ts";
-import type { CallPlan, Member, Plan, Value } from "./plan.ts";
+import { routeWith, type CallPlan, type Plan, type Value } from "./plan.ts";
 import { INDENT, jqLiteral, jqString } from "./syntax.ts";
 
 export interface Preview {
@@ -48,8 +48,8 @@ function body(call: CallPlan): string[] {
   const out: string[] = ["{"];
   call.body.forEach((field, index) => {
     const comma = index === call.body.length - 1 ? "" : ",";
-    if (Array.isArray(field.value)) {
-      const members = (field.value as readonly Member[]).flatMap((member) =>
+    if (field.shape === "keyed") {
+      const members = field.members.flatMap((member) =>
         member.value === null ? [] : [[member.key, shown(member.value)] as const],
       );
       out.push(
@@ -59,17 +59,14 @@ function body(call: CallPlan): string[] {
       );
       return;
     }
-    out.push(`${INDENT}${jqString(field.name)}: ${shown(field.value as Value)}${comma}`);
+    out.push(`${INDENT}${jqString(field.name)}: ${shown(field.value)}${comma}`);
   });
   out.push("}");
   return out;
 }
 
 function preview(plan: Plan, call: CallPlan): Preview {
-  const url = call.route.path.replace(
-    /\{([^{}]+)\}/g,
-    (_place, name: string) => `$${call.places[name]!.name}`,
-  );
+  const url = routeWith(call, (parameter) => `$${parameter.name}`);
   return {
     path: `${SHELL_FILE.previewDirectory}/${call.name}.http`,
     contents: `${[

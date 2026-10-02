@@ -23,8 +23,8 @@
 # Three kinds of value appear below, and each has its own shape.
 #   A literal is a value UBB resolved from what you declared.
 #   A parameter is a value only your code holds, passed as name=value.
-#   Every one is required: leave one out, or pass it empty, and the call
-#   returns UBB_EXIT_USAGE before anything is sent, naming it.
+#   Leave out one a call requires, or pass it empty, and the call returns
+#   UBB_EXIT_USAGE before anything is sent, naming it.
 #   $UBB_API_KEY is a credential. UBB withholds it from this file.
 # A literal with no configured value is a state of a literal, not a
 # fourth kind: it is written as a call that raises, naming what is
@@ -38,10 +38,10 @@
 
 # The statuses a function returns. A stop has a status of its own, and no
 # other failure is ever returned as it. A request that fails returns the
-# status curl gave it.
+# status curl gave it; every other failure returns one of these.
 UBB_EXIT_STOP_REQUESTED=20
 UBB_EXIT_USAGE=64
-UBB_EXIT_REPORTED_COST_REFUSED=65
+UBB_EXIT_VALUE_REFUSED=65
 UBB_EXIT_TOOL_UNAVAILABLE=69
 UBB_EXIT_RESPONSE_UNREADABLE=76
 UBB_EXIT_NOT_CONFIGURED=78
@@ -185,22 +185,24 @@ _ubb_unknown() {
   printf '%s: %s %s\n' "$1" "${2%%=*}" 'is not a parameter of this call. Pass each one as name=value.' >&2
 }
 
-# A quantity is a whole number, carried exactly or not at all.
+# A quantity is a whole number, carried exactly or refused as
+# UBB_EXIT_VALUE_REFUSED.
 _ubb_whole_number() {
   case ${3#-} in
     '' | *[!0-9]* | 0?* | ????????????????*)
       printf '%s: %s %s\n' "$1" "$2" 'is not a whole number of at most 15 digits, which is what is carried exactly.' >&2
-      return "$UBB_EXIT_USAGE"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
 }
 
-# A value written into a URL is one that needs no encoding there.
+# A value written into a URL is one that needs no encoding there, or it
+# is refused as UBB_EXIT_VALUE_REFUSED.
 _ubb_url_value() {
   case $3 in
-    *[!A-Za-z0-9._~-]*)
+    . | .. | *[!A-Za-z0-9._~-]*)
       printf '%s: %s %s\n' "$1" "$2" 'cannot be written into a URL as it stands.' >&2
-      return "$UBB_EXIT_USAGE"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
 }
@@ -208,7 +210,8 @@ _ubb_url_value() {
 # A cost a supplier reports is converted to whole micros once, here, on
 # its digits as text: no arithmetic is done on the amount, so nothing can
 # round it. An amount finer than a micro is refused, never rounded. A
-# currency other than the declared one fails, never converts.
+# currency other than the declared one fails, never converts. Both are
+# UBB_EXIT_VALUE_REFUSED.
 # Pass the amount as the text your supplier wrote. A number another tool
 # has parsed, jq included, may already have been rounded.
 _ubb_known_currency() {
@@ -233,7 +236,7 @@ _ubb_known_currency() {
     [Zz][Aa][Rr]) _ubb_currency=zar; _ubb_shift=4 ;;
     *)
       printf '%s %s\n' "$1" 'is not a currency UBB holds' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
 }
@@ -250,7 +253,7 @@ _ubb_pin_currency() {
   _ubb_supplied=$_ubb_trimmed
   if [ -z "$_ubb_pinned" ] && [ -z "$_ubb_supplied" ]; then
     printf '%s\n' 'this cost is denominated in no currency' >&2
-    return "$UBB_EXIT_REPORTED_COST_REFUSED"
+    return "$UBB_EXIT_VALUE_REFUSED"
   fi
   if [ -n "$_ubb_pinned" ]; then
     _ubb_known_currency "$_ubb_pinned" || return $?
@@ -262,7 +265,7 @@ _ubb_pin_currency() {
   fi
   if [ -n "$_ubb_pinned" ] && [ -n "$_ubb_supplied" ] && [ "$_ubb_pinned" != "$_ubb_supplied" ]; then
     printf '%s: %s, %s\n' 'the supplier reported this cost in another currency than the declared one' "$_ubb_supplied" "$_ubb_pinned" >&2
-    return "$UBB_EXIT_REPORTED_COST_REFUSED"
+    return "$UBB_EXIT_VALUE_REFUSED"
   fi
   _ubb_currency=${_ubb_pinned:-$_ubb_supplied}
 }
@@ -274,7 +277,7 @@ _ubb_to_micros() {
     major_units_decimal) _ubb_shift=6 ;;
     *)
       printf '%s %s\n' "$2" 'is not an amount representation' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
   _ubb_trim "$1"
@@ -310,13 +313,13 @@ _ubb_to_micros() {
   case $_ubb_digits in
     '' | *[!0-9]*)
       printf '%s %s\n' "$1" 'is not a number' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
   case $_ubb_exponent in
     '' | *[!0-9]*)
       printf '%s %s\n' "$1" 'is not a number' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
   while :; do
@@ -334,7 +337,7 @@ _ubb_to_micros() {
   case $_ubb_exponent in
     ???????*)
       printf '%s %s\n' "$1" 'is not an amount of money that can be held: its exponent is out of range' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
   esac
   _ubb_scale=$((${_ubb_exponent_sign}${_ubb_exponent} - ${#_ubb_fraction}))
@@ -346,12 +349,12 @@ _ubb_to_micros() {
   done
   if [ "$_ubb_scale" -gt 40 ] || [ "$_ubb_scale" -lt -40 ]; then
     printf '%s %s\n' "$1" 'is not an amount of money that can be held: its exponent is out of range' >&2
-    return "$UBB_EXIT_REPORTED_COST_REFUSED"
+    return "$UBB_EXIT_VALUE_REFUSED"
   fi
   _ubb_scale=$((_ubb_scale + _ubb_shift))
   if [ "$_ubb_scale" -lt 0 ] && [ "$_ubb_digits" != 0 ]; then
     printf '%s %s\n' "$1" 'is not a whole number of micros, and a reported cost is never rounded' >&2
-    return "$UBB_EXIT_REPORTED_COST_REFUSED"
+    return "$UBB_EXIT_VALUE_REFUSED"
   fi
   while [ "$_ubb_scale" -gt 0 ] && [ "$_ubb_digits" != 0 ]; do
     _ubb_digits=${_ubb_digits}0
@@ -360,7 +363,7 @@ _ubb_to_micros() {
   case $_ubb_digits in
     ????????????????????*)
       printf '%s %s\n' "$1" 'is more micros than can be held' >&2
-      return "$UBB_EXIT_REPORTED_COST_REFUSED"
+      return "$UBB_EXIT_VALUE_REFUSED"
       ;;
     ???????????????????)
       _ubb_low=${_ubb_digits#??????????}
@@ -371,7 +374,7 @@ _ubb_to_micros() {
         { [ "$_ubb_high" -eq 9 ] && [ "$_ubb_middle" -gt 223372036 ]; } ||
         { [ "$_ubb_high" -eq 9 ] && [ "$_ubb_middle" -eq 223372036 ] && [ "$_ubb_low" -gt 854775807 ]; }; then
         printf '%s %s\n' "$1" 'is more micros than can be held' >&2
-        return "$UBB_EXIT_REPORTED_COST_REFUSED"
+        return "$UBB_EXIT_VALUE_REFUSED"
       fi
       ;;
   esac
@@ -421,7 +424,7 @@ ubb_start_task() {
     _ubb_missing ubb_start_task idempotency_key
     return "$UBB_EXIT_USAGE"
   }
-  _ubb_body=$(_ubb_jq_body_start_task) || return $?
+  _ubb_body=$(_ubb_jq_body_start_task) || return "$UBB_EXIT_VALUE_REFUSED"
   _ubb_post '/api/v1/tasks' "$_ubb_body" || return $?
   _ubb_started || return $?
   UBB_STOP_REQUESTED=
@@ -430,13 +433,14 @@ ubb_start_task() {
 # The whole piece of work, as one command you name. It is run with the
 # work's task_id as its one argument. Declare how the work ended inside
 # it, with ubb_close_task.
-# This is the one place a stop is acted on. The event that carried it was
-# recorded and charged: never send it again. The stop is logged and the
-# reserved status returned, so whatever runs this work can honour its
-# scope. Nothing is declared about work a stop interrupted.
+# This is the one place a stop is acted on, and it is acted on whatever
+# the work then returned. The event that carried it was recorded and
+# charged: never send it again. The stop is logged and the reserved
+# status returned, so whatever runs this work can honour its scope.
+# Nothing is declared about work a stop interrupted.
 # Work that returns a failure having declared no outcome is declared
-# failed. Work that returns success having declared none is left open,
-# and that is returned as UBB_EXIT_USAGE.
+# failed, unless a signal ended it. Work that returns success having
+# declared none is left open, and that is returned as UBB_EXIT_USAGE.
 ubb_unit_of_work() {
   [ "$#" -ge 1 ] || {
     printf '%s: %s\n' ubb_unit_of_work 'the first argument is the command that does the work.' >&2
@@ -447,7 +451,7 @@ ubb_unit_of_work() {
   ubb_start_task "$@" || return $?
   set -- "$_ubb_work" "$UBB_TASK_ID"
   "$1" "$2" && set -- "$1" "$2" 0 || set -- "$1" "$2" "$?"
-  if [ "$3" -eq "$UBB_EXIT_STOP_REQUESTED" ]; then
+  if [ "$3" -eq "$UBB_EXIT_STOP_REQUESTED" ] || [ -n "$UBB_STOP_REQUESTED" ]; then
     printf '%s\n' 'UBB requested a stop. The event that carried it was recorded and must not be sent again.' >&2
     printf '%s %s\n' stop_requested "${UBB_STOP_REQUESTED:-null}" >&2
     return "$UBB_EXIT_STOP_REQUESTED"
@@ -459,6 +463,7 @@ ubb_unit_of_work() {
     printf '%s: %s\n' ubb_unit_of_work 'the work ended without declaring an outcome, and is left open. Declare one with ubb_close_task.' >&2
     return "$UBB_EXIT_USAGE"
   fi
+  [ "$3" -le 128 ] || return "$3"
   ubb_close_task task_id="$2" outcome=failed \
     outcome_reason=execution_failed \
     reason_detail='exit status '"$3" ||
@@ -543,7 +548,7 @@ ubb_record_web_search() {
   _ubb_pin_currency 'usd' '' || return $?
   _ubb_to_micros "$_ubb_p_reported_cost" 'major_units_decimal' "$_ubb_currency" || return $?
   _ubb_micros_provider_cost_micros=$_ubb_micros
-  _ubb_body=$(_ubb_jq_body_record_web_search) || return $?
+  _ubb_body=$(_ubb_jq_body_record_web_search) || return "$UBB_EXIT_VALUE_REFUSED"
   _ubb_body="{\"provider_cost_micros\":$_ubb_micros_provider_cost_micros,${_ubb_body#?}"
   _ubb_post '/api/v1/metering/usage' "$_ubb_body" || return $?
   _ubb_acknowledge "$_ubb_p_idempotency_key"
@@ -594,7 +599,7 @@ ubb_close_task() {
     return "$UBB_EXIT_USAGE"
   }
   _ubb_url_value ubb_close_task task_id "$_ubb_p_task_id" || return $?
-  _ubb_body=$(_ubb_jq_body_close_task) || return $?
+  _ubb_body=$(_ubb_jq_body_close_task) || return "$UBB_EXIT_VALUE_REFUSED"
   _ubb_post '/api/v1/tasks/'"$_ubb_p_task_id"'/close' "$_ubb_body" || return $?
   _ubb_closed="$_ubb_closed $_ubb_p_task_id"
 }

@@ -182,7 +182,10 @@ def test_the_shell_tests_have_no_way_to_pass_without_a_shell():
         encoding="utf-8")
 
     assert f"process.env.{SHELL_IMAGE}" in support
-    assert support.count("shell_harness.py") >= 2
+    # Both branches, each by the call it makes: the harness run by this
+    # machine's interpreter, and the harness run inside the image.
+    assert 'join(HARNESS_DIRECTORY, "shell_harness.py")' in support
+    assert '"python3", "/harness/shell_harness.py"' in support
     assert "throw ran.error" in support
     assert "ran.status !== 0" in support
     # And the harness itself asks every shell it names: none is optional.

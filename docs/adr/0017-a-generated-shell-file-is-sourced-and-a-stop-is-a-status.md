@@ -29,14 +29,16 @@ script depends on from the day it ships (ADR-0007 §3).
 ### 1. The runnable file is POSIX shell, written to be sourced, and it owns nothing of the shell it is sourced into
 
 `ubb_integration.sh` is sourced: `. ./ubb_integration.sh`. It is the POSIX shell language and
-nothing a particular shell adds, and the only programs it runs are `jq` and `curl` — every other
-word in it is a builtin. That is what "requires curl, jq" means, and it is literal.
+nothing a particular shell adds, and the only programs it runs are `jq` and `curl`. Everything
+else it uses — `printf`, `[`, `command` — is the shell's own in every shell it was run under, and
+the suite runs it with nothing but those two on `PATH`. That is what "requires curl, jq" means.
 
 It **sets no shell option, never calls `exit`, and holds no variable that is not spelled `UBB_…`
 or `_ubb_…`**. Sourcing it defines functions and assigns constants and does nothing else: no
 tool is looked for, nothing is read from the environment, nothing is sent. A tenant's `set -e` or
 `set -u` is theirs, and the file behaves the same with either or neither, because every status is
-tested where it is produced and every variable is assigned before it is read.
+tested where it is produced and every variable is assigned before it is read. The call-site
+blocks hold to the same: none of them has a line a shell option decides whether is reached.
 
 **Preflight is lazy, and probes capability.** The first thing a call does is check, once, that jq
 is present and can run a program read from standard input that holds comments, and that curl is
@@ -66,21 +68,29 @@ naming it. Empty counts because that is what a missing value is in shell: an uns
 expands to nothing. One the call does not have is refused the same way, and only its name is
 printed.
 
-**A parameter's name is used exactly as given and never as a variable of that name.** It is
-`_ubb_p_<name>` in shell and `$p_<name>` in jq. So a quantity coded `PATH`, `IFS`, `status` or
-`then` gives a parameter of that name that is none of the things the word already means to a
-shell or to jq: there is no list of reserved words to keep, because no declared name is ever in a
-position where one would matter.
+**A parameter's name is used exactly as given, and the runnable file never has a variable of
+that name.** It is `_ubb_p_<name>` in shell and `$p_<name>` in jq. So a quantity coded `PATH`,
+`IFS`, `status` or `then` gives a parameter of that name that is none of the things the word
+already means to a shell or to jq: there is no list of reserved words to keep, because no declared
+name is ever in a position where one would matter. A call-site block does READ a variable of the
+parameter's name — `searches="$searches"` — since that variable is the tenant's own to hold the
+value in; it assigns none.
+
+**The name is the Blueprint's, and never assumed to be the name of the field it fills.** The
+boundary declares a failure through the close by whatever the close's parameters are called, and
+a Subtask block passes the work's id under whatever the parent's parameter is called.
 
 **What a call leaves behind is in a variable**, because a function returns a status and nothing
 else: `UBB_TASK_ID` after a start, `UBB_RESPONSE` after any call, `UBB_STOP_REQUESTED` after a
-stop. That is why a function of the file is never called inside `$( )` or a pipeline — both run it
-in a subshell, where what it set is lost — and why the file never does so itself.
+stop. That is why a tenant never calls one of them inside `$( )` or a pipeline — both run it in a
+subshell, where what it set is lost — and why the file never does so either: the only functions
+it runs there are the ones that set nothing (§3).
 
 **How a value is passed to jq is decided by a declared fact** (ADR-0016 §3, extended by one). A
 shell argument is always text, so: a keyed entry that declares a `value_type` is a number, checked
 as a whole number of at most fifteen digits and carried exactly or refused; one that declares a
-`source_path` is the path of a FILE holding the supplier's JSON response; a field that declares an
+`source_path` is the path of a FILE holding the supplier's JSON response, and what is read off it
+is held to the same: a whole number, or nothing is sent; a field that declares an
 `amount_representation` is a cost (§6); everything else is a JSON string.
 
 The names a call site depends on are `ubb_start_task`, `ubb_unit_of_work`, `ubb_close_task`,
@@ -98,9 +108,9 @@ jq … "$(cat <<'UBB_JQ' … UBB_JQ)"             the program as an argument
 
 **Both were run**, over an apostrophe, a dollar sign, command-like text, a backtick, a backslash,
 characters outside ASCII, a hyphen, a space, an unbalanced parenthesis and the delimiter itself,
-as keys written into the program and as values handed to it. On dash, bash 4.4 and 5.2, zsh and
-busybox ash, with jq 1.6, 1.7, 1.7.1 and 1.8.2, both carry every name unchanged, expand nothing
-and run nothing.
+as keys written into the program and as values handed to it. On dash, bash 5.2, zsh and busybox
+ash (and bash 4.4, in a probe), with jq 1.6, 1.7, 1.7.1 and 1.8.2, both carry every name
+unchanged, expand nothing and run nothing.
 
 **bash 3.2 separates them, and it is not a museum piece: it is what macOS ships as `bash` and as
 `sh`.** It reads the text of a heredoc that sits inside a command substitution as shell, and one
@@ -153,18 +163,23 @@ task-scoped and a customer-scoped stop share the status and differ here. The fie
 publish are added to that object by #585; nothing is derived or filled in.
 
 **`ubb_unit_of_work` is the boundary.** It starts the work, runs the one command it is given with
-the work's id as its argument, and reads the status that command returns:
+the work's id as its argument, and then reads two things: the status that command returned, and
+whether a stop was met while it ran.
 
-- **20**: it logs the stop — one sentence, then `stop_requested` and the metadata — declares
-  nothing, and returns 20. It never turns 20 into success.
+- **20, or a stop was met**: it logs the stop — one sentence, then `stop_requested` and the
+  metadata — declares nothing, and returns 20. It never turns a stop into success, and that does
+  not rest on the tenant: work that never looked at the status its record returned, went on and
+  returned success is still answered with 20.
 - **a failure, with no outcome declared**: it declares the work `failed`, reason
   `execution_failed`, and returns the failure's own status. Where that declaration fails as well,
-  it says so and still returns the first failure.
+  it says so and still returns the first failure. A status above 128 is a signal's, not the
+  work's: nothing is declared for it.
 - **success, with no outcome declared**: it leaves the work open and returns `UBB_EXIT_USAGE`,
   saying so. It does not guess an outcome, and it does not stay quiet.
 
 That is #184 §9's rule for the SDK's wrapper — an outcome is declared only where control flow is
-evidence — given the shape a status has.
+evidence — given the shape a status has. **It is the one decision here that wants the owner's
+ruling (§10)**: a status is weaker evidence than an exception.
 
 **Nothing on the stop's path is ever run in a subshell.** What the file runs inside `$( )` is a
 program function (§3) or the credential piped to curl, and nothing else; no function is ever in a
@@ -175,14 +190,19 @@ is still there for its caller, and its status is the one the caller sees.
 
 **`set -e` is not the mechanism.** Every status is tested where it is produced. The boundary runs
 the tenant's command on the left of `&&`, where a shell ignores `set -e` for everything inside
-it, and the call-site block says so: inside the work, each call's status is checked by hand.
+it, and the call-site block says so: inside the work, each call's status is checked by hand. The
+block that acts on a stop takes the status of the work the same way, so the line that reads it is
+reached with `set -e` on.
 
-**Every other status is a named constant too**, and each is the `sysexits.h` value for what it
-is, used for nothing else: `UBB_EXIT_USAGE` (64), `UBB_EXIT_REPORTED_COST_REFUSED` (65),
-`UBB_EXIT_TOOL_UNAVAILABLE` (69), `UBB_EXIT_RESPONSE_UNREADABLE` (76) and
-`UBB_EXIT_NOT_CONFIGURED` (78). A request that fails returns the status curl gave it, with the
-body the API answered printed. **No failure is ever returned as 20**: a request that failed with
-that very status is returned as 1.
+**Every other failure of the file's own is a named constant too**, each the `sysexits.h` value
+for what it is: `UBB_EXIT_USAGE` (64, a parameter left out, empty or not the call's, or work that
+ended without saying how), `UBB_EXIT_VALUE_REFUSED` (65, a value that was passed and cannot be
+used: a quantity, a cost, a response that does not hold what a declared path reads, a value that
+would move a route), `UBB_EXIT_TOOL_UNAVAILABLE` (69), `UBB_EXIT_RESPONSE_UNREADABLE` (76) and
+`UBB_EXIT_NOT_CONFIGURED` (78). The file gives none of them a second meaning. A request that
+fails returns the status CURL gave it, with the body the API answered printed, and curl's own
+statuses are curl's: one may be the same number as one of these. **What no failure can be is
+20**: a request that failed with that very status is returned as 1.
 
 ### 5. There is no SDK, so the wire is the renderer's, and it is typed against the contract
 
@@ -193,7 +213,8 @@ What the Python target leaves to the SDK is this renderer's knowledge here:
   compiling.
 - **Which token is not a key of the body.** A one-segment token named for a place in the route —
   `task_id` in `/api/v1/tasks/{task_id}/close` — fills that place. It must be a value that needs
-  no encoding there, or the call is refused.
+  no encoding there and is not a dot segment, which curl would resolve into another route, or the
+  call is refused.
 - **The two fields a close may carry beside its outcome**, `outcome_reason` and `reason_detail`.
   They are parameters a call may leave out, and are sent only where given.
 - **The credential's header.** The key is handed to curl on standard input and is never a word of
@@ -216,6 +237,15 @@ digit behind the point is refused; the result is compared with the largest a mon
 digit group by digit group. The only arithmetic is on the exponent and on a count of places. The
 result is written into the body by the shell, as its digits: it never becomes a jq number.
 
+**That is the one value that reaches a body other than as an argument of jq**, and it is a
+deliberate departure from #184 §10's "runtime values always go through `--arg`, `--argjson` or a
+file". What is written is not the caller's text but the converter's output, which is digits and
+an optional sign and nothing else.
+
+The conversion answers what the platform's does, which is more than the request admits: the
+contract bounds `provider_cost_micros` at zero and at twelve digits, and a negative cost or a
+larger one is converted here and refused by the API.
+
 Every multiplier is a power of ten, which is what makes moving the point enough. A currency that
 broke that is refused at render.
 
@@ -228,9 +258,9 @@ decimal it spells. **A shell caller's float is its text.** The danger a float ca
 here upstream of the file, in whatever produced the text, and the file's comment says so: pass the
 amount as the supplier wrote it, since a number another tool has parsed may already be rounded.
 
-One known difference from the platform's reader, outside the table: it accepts the decimal digits
-of every script and the shell reads ASCII digits only, so a figure written in another script's
-digits is refused here.
+Two known differences from the platform's reader, both outside the table and both refusals: it
+accepts the decimal digits of every script and the shell reads ASCII digits only, and it strips
+every character Unicode calls a space where the shell strips the ones POSIX does.
 
 The currency-disagreement proof is the helper's, as ADR-0016 §4 records for Python and for the
 same reason. #583 owes the case through the artifact.
@@ -241,7 +271,9 @@ One `request_preview` file a call: the method, the URL, the headers and the body
 same plan the runnable file is, in the same shapes — a literal as itself, a runtime value as
 `$name`, the credential as `$UBB_API_KEY`, where the API is as `$UBB_BASE_URL`. It is not run,
 defines nothing, and **carries no readiness verdict**: the header of the runnable file is where
-the verdict is stated, and a preview says of itself that it is not that file.
+the verdict is stated, and a preview says of itself that it is not that file. A value with nothing
+configured to supply it is shown in the shape it has in the file, which is not a verdict on the
+call.
 
 One a call and not one file, because the page that shows them (#579) shows a call at a time.
 
@@ -252,6 +284,8 @@ Everything ADR-0016 §7 lists that is not about an SDK, and:
 - no close of the work, or more than one;
 - a route with a place no token fills;
 - a record that names no key its event is sent under;
+- a close whose work, outcome or reason is not a parameter, since the boundary declares a failure
+  through it;
 - one parameter asked for as two kinds of value;
 - a parameter name that is not an identifier.
 
@@ -281,7 +315,22 @@ about that pairing. The image the package builds is Debian stable (dash, bash 5.
 curl 7.88) and the runner is Ubuntu (jq 1.7, curl 8), so between them the suite sees two
 generations of each tool.
 
-### 10. What this ADR does not decide
+### 10. What this ADR does not decide, and what it decides subject to the owner
+
+**Two things here are decided so that the target could be built, and are the owner's to overrule
+before a tenant holds a file.**
+
+*What the boundary declares for work that failed.* Declaring it `failed` is §9's rule for the SDK
+wrapper, carried over. But a status is weaker evidence than an exception: a work function whose
+last command is a test that came out false returns a failure it did not mean, and its work is then
+closed, irreversibly, as failed. The alternative is to declare nothing for any failure and say so
+loudly, as is done for a clean end with no outcome. It is one line of the boundary either way.
+
+*The names.* #184 §15 rules four catalogue symbols. A shell file needs more, and each is public
+from the day it ships: the five statuses of §4, the three variables a call leaves its answer in
+(`UBB_TASK_ID`, `UBB_RESPONSE`, `UBB_STOP_REQUESTED`), and the three fixed function names
+(`ubb_start_task`, `ubb_unit_of_work`, `ubb_close_task`). They are named here by the conventions
+of the four that were ruled, and none has been ruled itself.
 
 **A path for work that has already happened.** The Python target has `backfill_<name>`, which
 passes the SDK's `stop_behavior="return"`. The specification gives the shell target no batch path
@@ -304,12 +353,15 @@ and needs no new rule here.
 | §1 — preflight refuses before any request, is the same text for every tenant, and sourcing does nothing | same module — "refuses before any request where %s", "probes with nothing of the tenant's, and creates nothing", "does nothing when the file is sourced, and never ends the shell that sourced it" |
 | §2 — every runtime value a `name=value` parameter at its own call; left out, empty or not the call's is refused | `apps/codegen/tests/shell.artifact.test.ts` — "asks for every runtime value as a name=value parameter, at the call it is declared for"; `apps/codegen/tests/shell.execution.test.ts` — "refuses, naming it, a runtime value left out, passed empty, or not the call's" |
 | §2 — no declared name is a name the shell, jq or the file already has | `apps/codegen/tests/shell.artifact.test.ts` — "gives a parameter no name the shell or jq could already have a meaning for"; `apps/codegen/tests/shell.execution.test.ts` — "can never stand in front of a name the shell, jq or the file already has: %s" |
-| §2 — a quantity is a whole number carried exactly, or refused | `apps/codegen/tests/shell.execution.test.ts` — "refuses a quantity that is not a whole number it can carry exactly" |
+| §2 — a quantity is a whole number carried exactly, or refused, passed in or read off a response | `apps/codegen/tests/shell.execution.test.ts` — "refuses a quantity that is not a whole number it can carry exactly", "refuses to record from a response that does not hold what a declared path reads" |
 | §3 — both forms carry every kind of name; the chosen one is the one rendered | `apps/codegen/tests/shell.execution.test.ts` — "%s, a program carries every kind of name unchanged, expands nothing and runs nothing (%s)", "differ in one thing: only the form decided against opens a heredoc inside a substitution", "is settled the way the rendered file is written" |
 | §3 — every program in a quoted heredoc no line of which could end it; every value an argument; every key quoted | `apps/codegen/tests/shell.artifact.test.ts` — "holds every jq program in a quoted heredoc, no line of which could end it", "passes every runtime value to jq as an argument, and quotes every key" |
 | §3 — a name cannot end a heredoc, a string or a line, or run anything | `apps/codegen/tests/shell.execution.test.ts` — "cannot end a heredoc, a string or a line, or run anything: %s", "reach the wire exactly as they were declared" |
 | §4 — a stop returns the reserved status with its metadata; two scopes share it | `apps/codegen/tests/shell.execution.test.ts` — "returns the reserved status with its metadata set, the event recorded once (%s)", "shares one status between a task-scoped and a customer-scoped stop, told apart by metadata" |
-| §4 — the boundary logs and returns it, never as success; and what it does where no stop is met | same module — "is observed by the boundary, logged, and returned — never as success", "declares work that failed without declaring anything failed, and returns its status", "leaves work that ended cleanly without an outcome open, and says so" |
+| §4 — the boundary logs and returns it, never as success, whether or not the work returned it; and what it does where no stop is met | same module — "is observed by the boundary, logged, and returned — never as success", "is still a stop where the work never looked at the status that carried it", "declares work that failed without declaring anything failed, and returns its status", "declares nothing for work a signal ended, and passes its status on", "leaves work that ended cleanly without an outcome open, and says so" |
+| §1, §4 — the block that acts on a stop is reached under `set -e` | same module — "is acted on by the stop block as rendered, under set -eu, and the script goes on (%s)" |
+| §2 — a call is written by the Blueprint's parameter names, not its fields' | `apps/codegen/tests/shell.artifact.test.ts` — "writes a call by the names the Blueprint gives its parameters, not by its fields' names" |
+| §5 — a value cannot move the route it is written into | `apps/codegen/tests/shell.execution.test.ts` — "refuses a value that would change the route it is written into" |
 | §3, §4 — nothing in a subshell but a program function and curl, and no heredoc in one; the literal once | `apps/codegen/tests/shell.artifact.test.ts` — "runs nothing in a subshell but a jq program and curl, and opens no heredoc in one", "emits the reserved status through its one constant, and the literal once" |
 | §4 — an ordinary failure keeps its own status and is never taken for a stop | `apps/codegen/tests/shell.execution.test.ts` — "keeps %s its own status, with the body it was answered", "never lets a failure be taken for a stop, whatever status it failed with", "refuses an acknowledgement that %s, as neither success nor a stop" |
 | §4 — the statuses stand clear of each other and of 20 | `apps/codegen/tests/catalogue.test.ts` — "keep the stop's status clear of every other status a shell file returns" |

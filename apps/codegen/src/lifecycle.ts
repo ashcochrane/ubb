@@ -64,7 +64,7 @@ export interface Lifecycle {
   readonly closing: readonly Call[];
 }
 
-export function carries(call: Call, field: string): boolean {
+function carries(call: Call, field: string): boolean {
   return call.fields.some((candidate) => candidate.name === field);
 }
 
@@ -97,7 +97,7 @@ export function readLifecycle(
   if (credential === undefined) return refuse("no call of the Blueprint carries a credential");
   for (const other of credentials) {
     if (other.binding.environmentVariable !== credential.binding.environmentVariable) {
-      refuse("the calls of the Blueprint name different credentials, and a module has one client");
+      refuse("the calls of the Blueprint name different credentials, and a generated file has one");
     }
   }
   if (credential.binding.environmentVariable !== ENVIRONMENT.apiKey) {

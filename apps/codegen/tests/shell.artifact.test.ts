@@ -187,7 +187,7 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
       ...everyArgument(blueprint).flatMap((argument) =>
         argument.parameter_name ? [argument.parameter_name] : [],
       ),
-      "work", "task_id", "subtask_id",
+      "work", "task_id", "subtask_id", "work_status",
       SHELL.stopExitStatusName, SHELL_FILE.taskId,
       "if", "then", "fi", "return", "eq",
     ]);
@@ -200,7 +200,11 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
 
   it("writes every platform-known value a call sends as the JSON that means it", () => {
     const blueprint = BRANCHES[branch]!();
-    const programs = heredocs(moduleOf(branch).contents).flatMap((heredoc) => heredoc.body);
+    // The lines of each program that ARE the program: a comment states a
+    // value too, and must not be what satisfies this.
+    const programs = heredocs(moduleOf(branch).contents)
+      .flatMap((heredoc) => heredoc.body)
+      .filter((line) => !line.trimStart().startsWith("#"));
     const all = everyArgument(blueprint);
     // A declared key is sent where a token gives it a value: the one named
     // with two segments, directly under it. A key with none is only stated.
@@ -220,11 +224,18 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
         typeof argument.value === "string" &&
         (!["grouping_fields", "measurements"].includes(argument.name) || hasAValue(index)),
     );
-    expect(sent.length).toBeGreaterThanOrEqual(branch === "shell-scaffold" ? 0 : 1);
+    // A scaffold has resolved nothing to send; every other branch has.
+    if (branch === "shell-scaffold") expect(sent).toEqual([]);
+    else expect(sent.length).toBeGreaterThan(1);
 
     for (const argument of sent) {
       const literal = JSON.stringify(argument.value);
-      expect(programs.some((line) => line.includes(literal)), argument.name).toBe(true);
+      // As a key of the keyed field it is a key of, or as the value of the
+      // field it is named for.
+      const written = ["grouping_fields", "measurements"].includes(argument.name)
+        ? `${literal}: `
+        : `${JSON.stringify(argument.name)}: ${literal}`;
+      expect(programs.some((line) => line.includes(written)), argument.name).toBe(true);
     }
   });
 
@@ -680,6 +691,58 @@ describe("the shapes a value takes in a shell file", () => {
     );
   });
 
+  it("refuses a call it has no way to write a value for, whatever verdict it was handed", () => {
+    // NOT a Blueprint the routes answered: the shell-unreadable-shape fixture
+    // with its verdicts changed to complete. A shell file still cannot read a
+    // Python library's object, so the call still refuses, naming the values.
+    const blueprint = fixture("shell-unreadable-shape");
+    blueprint.readiness = "complete";
+    for (const call of blueprint.calls) call.readiness = "complete";
+    const record = functionsOf(only(render(blueprint), "module").contents).find(
+      (defined) => defined.name === "ubb_record_chat_completion",
+    )!;
+
+    expect(record.lines.slice(1, 4)).toEqual([
+      `  # ${COMMENTS.notReadyCall[0]}`,
+      "  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'complete'" +
+        " 'measurements.input_tokens' 'measurements.output_tokens'",
+      `  return "$${SHELL_EXIT.notConfigured.name}"`,
+    ]);
+  });
+
+  it("writes a call by the names the Blueprint gives its parameters, not by its fields' names", () => {
+    // NOT a Blueprint the routes answered: the explicit-subtasks fixture with
+    // the close's two parameters, and the one that names a Subtask's parent,
+    // given names that are not the names of the fields they fill.
+    const blueprint = fixture("shell-explicit-subtasks");
+    const renamed: Record<string, string> = {
+      outcome: "how_it_ended", parent_task_id: "inside",
+    };
+    for (const call of blueprint.calls) {
+      for (const argument of call.arguments) {
+        if (call.operation_id.endsWith("close_task") && argument.name === "task_id") {
+          argument.parameter_name = "the_work";
+        }
+        if (renamed[argument.name]) argument.parameter_name = renamed[argument.name]!;
+      }
+    }
+    const files = render(blueprint);
+    const block = (path: string) => files.find((file) => file.path === path)!.contents;
+    const module = only(files, "module").contents;
+
+    expect(block("call_sites/close.sh")).toContain(
+      'ubb_close_task \\\n  the_work="$the_work" \\\n  how_it_ended="$how_it_ended" || return $?\n',
+    );
+    // A Subtask's parent is still the work it sits inside, under its new name.
+    expect(block("call_sites/ubb_start_subtask_summarise.sh")).toContain('  inside="$task_id" \\\n');
+    // And the boundary declares a failure through the close by those names.
+    expect(module).toContain('  ubb_close_task the_work="$2" how_it_ended=failed \\\n');
+    expect(module).not.toMatch(/ubb_close_task task_id=/);
+    expect(block("request_previews/ubb_close_task.http")).toContain(
+      "POST $UBB_BASE_URL/api/v1/tasks/$the_work/close\n",
+    );
+  });
+
   it("emits the reserved status through its one constant, and the literal once", () => {
     for (const branch of SHELL_BRANCH_NAMES) {
       const code = shellCode(moduleOf(branch).contents);
@@ -781,9 +844,22 @@ describe("what the shell renderer refuses", () => {
     ],
     [
       "two credentials where a file has one",
-      /name different credentials/,
+      /name different credentials, and a generated file has one/,
       (b) => {
         b.calls[0]!.arguments[0]!.environment_variable = "SOMETHING_ELSE";
+      },
+    ],
+    [
+      "a close whose outcome is not the caller's to say",
+      /the close takes no parameter for outcome, and a failure is declared through it/,
+      (b) => {
+        for (const argument of b.calls.at(-1)!.arguments) {
+          if (argument.name === "outcome") {
+            argument.binding_class = "platform_known";
+            argument.value = "delivered";
+            argument.parameter_name = null;
+          }
+        }
       },
     ],
   ];

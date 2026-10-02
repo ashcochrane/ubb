@@ -19,7 +19,11 @@
  * representations are registry concepts, and their values are spelled here
  * as keys. The registry generates no artifact for this package, so each set
  * is held equal to the registry's by `tests/catalogue.test.ts`, and the three
- * the contract marks are also exhaustive by type.
+ * the contract marks are also exhaustive by type. Three more are restated
+ * for the targets' own use and held the same way: the two stop behaviours
+ * the Python target passes, the outcome and the reason a shell boundary
+ * declares for work that failed, and the outcomes the comment above a shell
+ * close names.
  *
  * The symbols are the renderer's own and are deliberately not registry
  * concepts (owner ruling of 2026-09-25, item 9): the domain registry names
@@ -73,10 +77,13 @@ export const SHELL = {
  * that block, and no status here may come to mean a stop.
  */
 export const SHELL_EXIT = {
-  /** A parameter left out, passed empty, or not one the call has. */
+  /** A parameter left out, passed empty, or not one the call has; or work
+   * that ended without saying how. */
   usage: { name: "UBB_EXIT_USAGE", status: 64 },
-  /** A supplier's cost that cannot be held, or its currency. */
-  reportedCostRefused: { name: "UBB_EXIT_REPORTED_COST_REFUSED", status: 65 },
+  /** A value that was passed and cannot be used: a supplier's cost that
+   * cannot be held or its currency, a quantity that is not a whole number, a
+   * response that does not hold what a declared path reads. */
+  valueRefused: { name: "UBB_EXIT_VALUE_REFUSED", status: 65 },
   /** jq or curl is missing, or cannot do what the file asks of it. */
   toolUnavailable: { name: "UBB_EXIT_TOOL_UNAVAILABLE", status: 69 },
   /** A response that is not the acknowledgement the contract publishes. */
@@ -113,6 +120,9 @@ export const SHELL_FILE = {
   exponentLimit: 40,
   /** The most digits a whole number is carried through jq with. */
   exactDigits: 15,
+  /** The last status a command returns for itself: above it, a signal ended
+   * it, and it said nothing about how its work went. */
+  lastOrdinaryStatus: 128,
   /** The outcome the boundary declares for work that ended in a failure. */
   outcomeFailed: "failed",
   outcomeReasonExecutionFailed: "execution_failed",
@@ -434,8 +444,8 @@ export const SHELL_COMMENTS = {
     "Three kinds of value appear below, and each has its own shape.",
     "  A literal is a value UBB resolved from what you declared.",
     "  A parameter is a value only your code holds, passed as name=value.",
-    "  Every one is required: leave one out, or pass it empty, and the call",
-    "  returns UBB_EXIT_USAGE before anything is sent, naming it.",
+    "  Leave out one a call requires, or pass it empty, and the call returns",
+    "  UBB_EXIT_USAGE before anything is sent, naming it.",
     "  $UBB_API_KEY is a credential. UBB withholds it from this file.",
     "A literal with no configured value is a state of a literal, not a",
     "fourth kind: it is written as a call that raises, naming what is",
@@ -451,7 +461,7 @@ export const SHELL_COMMENTS = {
   statuses: [
     "The statuses a function returns. A stop has a status of its own, and no",
     "other failure is ever returned as it. A request that fails returns the",
-    "status curl gave it.",
+    "status curl gave it; every other failure returns one of these.",
   ],
   outputs: [
     "What a call leaves behind for the code that called it. They are set in",
@@ -493,16 +503,19 @@ export const SHELL_COMMENTS = {
     "was not given, was given empty, or does not have.",
   ],
   wholeNumber: [
-    "A quantity is a whole number, carried exactly or not at all.",
+    "A quantity is a whole number, carried exactly or refused as",
+    "UBB_EXIT_VALUE_REFUSED.",
   ],
   urlValue: [
-    "A value written into a URL is one that needs no encoding there.",
+    "A value written into a URL is one that needs no encoding there, or it",
+    "is refused as UBB_EXIT_VALUE_REFUSED.",
   ],
   reportedCost: [
     "A cost a supplier reports is converted to whole micros once, here, on",
     "its digits as text: no arithmetic is done on the amount, so nothing can",
     "round it. An amount finer than a micro is refused, never rounded. A",
-    "currency other than the declared one fails, never converts.",
+    "currency other than the declared one fails, never converts. Both are",
+    "UBB_EXIT_VALUE_REFUSED.",
     "Pass the amount as the text your supplier wrote. A number another tool",
     "has parsed, jq included, may already have been rounded.",
   ],
@@ -510,13 +523,14 @@ export const SHELL_COMMENTS = {
     "The whole piece of work, as one command you name. It is run with the",
     "work's task_id as its one argument. Declare how the work ended inside",
     "it, with ubb_close_task.",
-    "This is the one place a stop is acted on. The event that carried it was",
-    "recorded and charged: never send it again. The stop is logged and the",
-    "reserved status returned, so whatever runs this work can honour its",
-    "scope. Nothing is declared about work a stop interrupted.",
+    "This is the one place a stop is acted on, and it is acted on whatever",
+    "the work then returned. The event that carried it was recorded and",
+    "charged: never send it again. The stop is logged and the reserved",
+    "status returned, so whatever runs this work can honour its scope.",
+    "Nothing is declared about work a stop interrupted.",
     "Work that returns a failure having declared no outcome is declared",
-    "failed. Work that returns success having declared none is left open,",
-    "and that is returned as UBB_EXIT_USAGE.",
+    "failed, unless a signal ended it. Work that returns success having",
+    "declared none is left open, and that is returned as UBB_EXIT_USAGE.",
   ],
   record: [
     "A stop is returned as UBB_EXIT_STOP_REQUESTED, with the event recorded.",
@@ -524,7 +538,9 @@ export const SHELL_COMMENTS = {
   ],
   response: [
     "This file never calls your supplier. Pass the path of a file holding",
-    "the response it returned, as JSON.",
+    "the response it returned, as JSON. One that does not hold what a",
+    "declared path reads is refused as UBB_EXIT_VALUE_REFUSED: nothing is",
+    "sent, and a missing quantity is never recorded as none.",
   ],
   close: [
     "outcome is delivered, failed or cancelled, and UBB never guesses it. A",
@@ -561,14 +577,15 @@ export const SHELL_COMMENTS = {
     "work the event belongs to: the work's own, or a Subtask's.",
   ],
   callSiteStop: [
-    "Directly after whatever runs the work, where you can act on a stop's",
-    "scope. This is not error handling: the event was recorded and charged.",
-    "UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON.",
+    "Where the work is run, if you act on a stop's scope yourself. This is",
+    "not error handling: the event was recorded and charged.",
+    "UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON. Pass the",
+    "status on to whatever runs this code.",
   ],
   preview: [
     "A preview of one request, for reading: the method, the URL, the headers",
-    "and the body. It is not the runnable file, and it says nothing about",
-    "whether the integration is ready.",
+    "and the body. It is not the runnable file and carries no verdict: the",
+    "header of the runnable file says whether the integration is ready.",
   ],
 } as const satisfies Record<string, readonly string[]>;
 
@@ -627,6 +644,7 @@ export const SHELL_MESSAGES = {
   noTaskId: "the response carries no task_id",
   noEventId: "the acknowledgement carries no event_id",
   noValue: "the response holds no value at",
+  notWhole: "the response holds a value that is not a whole number at",
   inexact: "the response holds a number too large to be carried exactly at",
   verifyUsage: "usage: sh verify_integration.sh EVENT_TYPE captured-response.json",
 } as const;

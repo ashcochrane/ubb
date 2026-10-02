@@ -1,7 +1,10 @@
-# Directly after whatever runs the work, where you can act on a stop's
-# scope. This is not error handling: the event was recorded and charged.
-# UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON.
-if [ "$?" -eq "$UBB_EXIT_STOP_REQUESTED" ]; then
+# Where the work is run, if you act on a stop's scope yourself. This is
+# not error handling: the event was recorded and charged.
+# UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON. Pass the
+# status on to whatever runs this code.
+ubb_unit_of_work work \
+  customer_id="$customer_id" \
+  idempotency_key="$idempotency_key" && work_status=$? || work_status=$?
+if [ "$work_status" -eq "$UBB_EXIT_STOP_REQUESTED" ]; then
   :
-  return "$UBB_EXIT_STOP_REQUESTED"
 fi

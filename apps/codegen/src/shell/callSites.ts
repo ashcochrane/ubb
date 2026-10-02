@@ -4,7 +4,7 @@
  * NO GENERATED VALUE APPEARS IN ONE (#184 §6). Every block is written from
  * the plan's function names and parameter names and from fixed text; nothing
  * here reads a token's literal, a declared key or a path. A block holds no
- * quoted text but the expansion of a variable, and no number.
+ * quoted text but the expansion of a variable, and no number of its own.
  *
  * What a block DOES hold are names: the functions the runnable file defines,
  * which are named for declared keys, and the parameters the Blueprint named.
@@ -16,6 +16,11 @@
  * that work was handed. Which work an EVENT belongs to is the tenant's to say
  * — the Task or one of its Subtasks — so a record block asks for it by name.
  * `:` stands where the tenant's own code goes.
+ *
+ * EVERY BLOCK HOLDS UNDER `set -e` AND WITHOUT IT. A call inside the work is
+ * followed by `|| return $?`, and the block that acts on a stop takes the
+ * status of the work on the right of `&&` and `||`, so no shell option decides
+ * whether the line after a call is reached.
  */
 import { COMMENTS, SHELL, SHELL_COMMENTS, SHELL_FILE } from "../catalogue.ts";
 import { asComments } from "../comments.ts";
@@ -35,20 +40,21 @@ export interface CallSite {
 }
 
 /** The function a block defines for the work, and the variables it holds the
- * ids in. */
+ * ids and the status of the work in. */
 const WORK = "work";
 const TASK_ID = "task_id";
 const SUBTASK_ID = "subtask_id";
+const WORK_STATUS = "work_status";
 
-/** The parameter whose value is read off the work rather than held by name. */
-const FROM_THE_WORK: Readonly<Record<string, string>> = {
-  parent_task_id: TASK_ID,
-};
-
+/** The arguments of a call, each from a variable of the parameter's own name
+ * but the one that names the work a Subtask is part of. */
 function passed(call: CallPlan): string[] {
   return call.parameters
     .filter((parameter) => parameter.required)
-    .map((parameter) => `${parameter.name}="$${FROM_THE_WORK[parameter.name] ?? parameter.name}"`);
+    .map(
+      (parameter) =>
+        `${parameter.name}="$${parameter.name === call.parent?.name ? TASK_ID : parameter.name}"`,
+    );
 }
 
 /** A call on several lines, one argument a line, ending as `ending` says. */
@@ -61,18 +67,17 @@ function invoke(first: string, call: CallPlan, ending = ""): string[] {
 
 const OR_RETURN = " || return $?";
 
+function work(): string[] {
+  return [`${WORK}() {`, `${INDENT}${TASK_ID}=$1`, `${INDENT}:`, "}"];
+}
+
 function blocks(plan: Plan): Block[] {
+  const run = `${SHELL_FILE.unitOfWork} ${WORK}`;
   return [
     {
       file: "unit_of_work",
       comments: SHELL_COMMENTS.callSiteUnitOfWork,
-      body: [
-        `${WORK}() {`,
-        `${INDENT}${TASK_ID}=$1`,
-        `${INDENT}:`,
-        "}",
-        ...invoke(`${SHELL_FILE.unitOfWork} ${WORK}`, plan.start),
-      ],
+      body: [...work(), ...invoke(run, plan.start)],
     },
     ...plan.subtasks.map((subtask) => ({
       file: subtask.name,
@@ -96,9 +101,11 @@ function blocks(plan: Plan): Block[] {
       file: "stop",
       comments: SHELL_COMMENTS.callSiteStop,
       body: [
-        `if [ "$?" -eq "$${SHELL.stopExitStatusName}" ]; then`,
+        // The status of the work, whichever way it ended, taken where no
+        // `set -e` can end the script before it is read.
+        ...invoke(run, plan.start, ` && ${WORK_STATUS}=$? || ${WORK_STATUS}=$?`),
+        `if [ "$${WORK_STATUS}" -eq "$${SHELL.stopExitStatusName}" ]; then`,
         `${INDENT}:`,
-        `${INDENT}return "$${SHELL.stopExitStatusName}"`,
         "fi",
       ],
     },

@@ -17,7 +17,7 @@ import type { Header } from "./lifecycle.ts";
 import type { Call, Token } from "./tokens.ts";
 
 /** Every token of a call, with the declaration each was read from. */
-export function everyToken(call: Call): Token[] {
+function everyToken(call: Call): Token[] {
   const tokens: Token[] = [...call.credentials];
   for (const field of call.fields) {
     if (field.shape === "scalar") {

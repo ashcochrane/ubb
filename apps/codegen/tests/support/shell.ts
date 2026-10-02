@@ -59,10 +59,8 @@ export interface RunOptions {
   /** `sh` unless a test is about `bash`. */
   shell?: "sh" | "bash";
   answers?: Answer[];
-  /** Laid over the environment; `null` unsets a variable. `{PATH}` in a value
-   * is the PATH the harness itself has. */
+  /** Laid over the environment; `null` unsets a variable. */
   environment?: Record<string, string | null>;
-  arguments?: string[];
 }
 
 function harness(directory: string, ...argv: string[]): unknown {
@@ -137,7 +135,7 @@ export function reportedCostInShell(
     writeFileSync(
       join(directory, "__messages__.json"),
       JSON.stringify({
-        refused_status: SHELL_EXIT.reportedCostRefused.status,
+        refused_status: SHELL_EXIT.valueRefused.status,
         // What a refusal about the currency, and not about the amount, says.
         currency: [MESSAGES.currencyUnknown, MESSAGES.currencyNone, MESSAGES.currencyDisagrees],
       }),

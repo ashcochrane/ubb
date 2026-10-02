@@ -57,8 +57,16 @@ import { asComments } from "../comments.ts";
 import { headerText } from "../header.ts";
 import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
-import { factOfField, unconfigured } from "../tokens.ts";
-import type { BodyField, CallPlan, Member, Parameter, Plan, Value } from "./plan.ts";
+import { factOfField } from "../tokens.ts";
+import {
+  routeWith,
+  type BodyField,
+  type CallPlan,
+  type Member,
+  type Parameter,
+  type Plan,
+  type Value,
+} from "./plan.ts";
 import {
   INDENT,
   jqLiteral,
@@ -114,7 +122,9 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
       `${I1}getpath($path) as $value`,
       `${I1}| if $value == null`,
       `${I1}  then error(${jqString(`${SHELL_MESSAGES.noValue} `)} + ($path | tojson))`,
-      `${I1}  elif ($value | type) == "number" and ($value > ${most} or $value < -${most})`,
+      `${I1}  elif ($value | type) != "number" or $value != ($value | floor)`,
+      `${I1}  then error(${jqString(`${SHELL_MESSAGES.notWhole} `)} + ($path | tojson))`,
+      `${I1}  elif $value > ${most} or $value < -${most}`,
       `${I1}  then error(${jqString(`${SHELL_MESSAGES.inexact} `)} + ($path | tojson))`,
       `${I1}  else $value end;`,
     );
@@ -170,35 +180,42 @@ function memberLine(member: Member, needs: Set<string>): Line {
  * given is added after the object. */
 function bodyProgram(call: CallPlan): string[] {
   const needs = new Set<string>();
-  const always = call.body.filter((field) => !field.optional);
+  const always = call.body.filter((field) => !givenOnly(field));
   const lines: string[] = [];
   const last = always.map(sent).lastIndexOf(true);
   always.forEach((field, index) => {
     // A converted cost is stated where it is converted, in the shell.
     if (!sent(field)) return;
     const comma = index === last ? "" : ",";
-    lines.push(...field.comments.map((comment) => `${I1}# ${comment}`));
-    if (Array.isArray(field.value)) {
+    if (field.shape === "keyed") {
       const inner = members(
-        (field.value as readonly Member[]).map((member) => memberLine(member, needs)),
+        field.members.map((member) => memberLine(member, needs)),
         I2,
       );
       lines.push(`${I1}${jqString(field.name)}: {`, ...inner, `${I1}}${comma}`);
       return;
     }
-    lines.push(`${I1}${jqString(field.name)}: ${jqValue(field.value as Value, needs)}${comma}`);
+    lines.push(
+      ...field.comments.map((comment) => `${I1}# ${comment}`),
+      `${I1}${jqString(field.name)}: ${jqValue(field.value, needs)}${comma}`,
+    );
   });
-  const optional = call.body
-    .filter((field) => field.optional)
-    .map((field) => {
-      const variable = `$${jqVariable(((field.value as Value) as { parameter: Parameter }).parameter.name)}`;
-      return `+ (if ${variable} == "" then {} else {${jqString(field.name)}: ${variable}} end)`;
-    });
-  return [...jqDefinitions(needs), "{", ...lines, "}", ...optional];
+  const whereGiven = call.body.flatMap((field) => {
+    if (field.shape !== "scalar" || !field.optional || field.value.kind !== "parameter") return [];
+    const variable = `$${jqVariable(field.value.parameter.name)}`;
+    return [`+ (if ${variable} == "" then {} else {${jqString(field.name)}: ${variable}} end)`];
+  });
+  return [...jqDefinitions(needs), "{", ...lines, "}", ...whereGiven];
 }
 
+/** Whether a field is sent only where its parameter was given. */
+function givenOnly(field: BodyField): boolean {
+  return field.shape === "scalar" && field.optional;
+}
+
+/** Whether jq writes a field: every one but a cost, which the shell writes. */
 function sent(field: BodyField): boolean {
-  return Array.isArray(field.value) || (field.value as Value).kind !== "cost";
+  return field.shape === "keyed" || field.value.kind !== "cost";
 }
 
 /** The function that is the jq program of `name`, and nothing else. */
@@ -429,7 +446,7 @@ function acknowledgement(): string[] {
 }
 
 function parameterHelpers(uses: Uses): string[] {
-  const usage = status(SHELL_EXIT.usage);
+  const refused = status(SHELL_EXIT.valueRefused);
   const lines = [
     ...asComments(SHELL_COMMENTS.parameters),
     "_ubb_missing() {",
@@ -449,7 +466,7 @@ function parameterHelpers(uses: Uses): string[] {
       `${I1}case \${3#-} in`,
       `${I2}'' | *[!0-9]* | 0?* | ${tooLong}*)`,
       `${I3}printf '%s: %s %s\\n' "$1" "$2" ${shWord(SHELL_MESSAGES.wholeNumber)} >&2`,
-      `${I3}return ${usage}`,
+      `${I3}return ${refused}`,
       `${I3};;`,
       `${I1}esac`,
       "}",
@@ -461,9 +478,9 @@ function parameterHelpers(uses: Uses): string[] {
       ...asComments(SHELL_COMMENTS.urlValue),
       "_ubb_url_value() {",
       `${I1}case $3 in`,
-      `${I2}*[!A-Za-z0-9._~-]*)`,
+      `${I2}. | .. | *[!A-Za-z0-9._~-]*)`,
       `${I3}printf '%s: %s %s\\n' "$1" "$2" ${shWord(SHELL_MESSAGES.urlValue)} >&2`,
-      `${I3}return ${usage}`,
+      `${I3}return ${refused}`,
       `${I3};;`,
       `${I1}esac`,
       "}",
@@ -502,22 +519,18 @@ function eitherCase(code: string): string {
 }
 
 function reportedCostHelpers(): string[] {
-  const refused = status(SHELL_EXIT.reportedCostRefused);
+  const refused = status(SHELL_EXIT.valueRefused);
   const refuseAmount = (message: string, indent: string) => [
     `${indent}printf '%s %s\\n' "$1" ${shWord(message)} >&2`,
     `${indent}return ${refused}`,
   ];
   const limit = SHELL_FILE.microsLimit;
-  const byShift = new Map<number, string[]>();
-  for (const [code, micros] of Object.entries(MICROS_PER_MINOR_UNIT).sort()) {
-    const places = shift(micros);
-    byShift.set(places, [...(byShift.get(places) ?? []), code]);
-  }
-  const currencies = [...byShift.entries()].flatMap(([places, codes]) =>
-    codes.map(
-      (code) => `${I2}${eitherCase(code)}) _ubb_currency=${code}; _ubb_shift=${places} ;;`,
-    ),
-  );
+  const currencies = Object.entries(MICROS_PER_MINOR_UNIT)
+    .sort()
+    .map(
+      ([code, micros]) =>
+        `${I2}${eitherCase(code)}) _ubb_currency=${code}; _ubb_shift=${shift(micros)} ;;`,
+    );
   const { micros, minorUnits: minor, majorUnitsDecimal: major } = AMOUNT_REPRESENTATION;
   const stripZeros = (variable: string, indent: string) => [
     `${indent}while :; do`,
@@ -673,10 +686,23 @@ function reportedCostHelpers(): string[] {
 // A call
 // ---------------------------------------------------------------------------
 
+/** Every token of a call the plan had no value to write for, by name. */
+function unwritten(call: CallPlan): string[] {
+  const named = (value: Value | null) => (value?.kind === "unconfigured" ? [value.token] : []);
+  return call.body.flatMap((field) =>
+    field.shape === "keyed"
+      ? field.members.flatMap((member) => named(member.value))
+      : named(field.value),
+  );
+}
+
 function guard(uses: Uses, call: CallPlan): string[] {
-  if (call.call.readiness === "complete") return [];
+  // By the server's verdict, and by this target's own: a value it has no way
+  // to write is a call it does not send, whatever the verdict says.
+  const names = unwritten(call);
+  if (call.call.readiness === "complete" && names.length === 0) return [];
   uses.notReady = true;
-  const missing = unconfigured(call.call)
+  const missing = names
     .map((name) => ` ${shWord(name)}`)
     .join("");
   return [
@@ -688,7 +714,7 @@ function guard(uses: Uses, call: CallPlan): string[] {
 
 /** Reading `name=value` arguments into the function's own variables, and
  * refusing one that is left out, passed empty, or not the call's. */
-function arguments_(call: CallPlan): string[] {
+function readArguments(call: CallPlan): string[] {
   const usage = status(SHELL_EXIT.usage);
   return [
     ...call.parameters.map((parameter) => `${I1}${shVariable(parameter.name)}=`),
@@ -731,21 +757,18 @@ function checks(uses: Uses, call: CallPlan): string[] {
 }
 
 /** The fields the shell converts and writes into the body itself. */
-function costs(call: CallPlan): { field: BodyField; value: Extract<Value, { kind: "cost" }> }[] {
+function costs(call: CallPlan): { field: Cost; value: Extract<Value, { kind: "cost" }> }[] {
   return call.body.flatMap((field) =>
-    !Array.isArray(field.value) && (field.value as Value).kind === "cost"
-      ? [{ field, value: field.value as Extract<Value, { kind: "cost" }> }]
-      : [],
+    field.shape === "scalar" && field.value.kind === "cost" ? [{ field, value: field.value }] : [],
   );
 }
+
+type Cost = Extract<BodyField, { shape: "scalar" }>;
 
 function path(call: CallPlan): string {
   // Fixed text as the contract spells it, and the value of a parameter where
   // the route has a place.
-  const filled = call.route.path.replace(
-    /\{([^{}]+)\}/g,
-    (_place, name: string) => `'"$${shVariable(call.places[name]!.name)}"'`,
-  );
+  const filled = routeWith(call, (parameter) => `'"$${shVariable(parameter.name)}"'`);
   return `'${filled}'`.replace(/''$/, "").replace(/^''/, "");
 }
 
@@ -761,11 +784,8 @@ function ending(call: CallPlan): string[] {
       // Called as a plain command and last, so the status it returns — the
       // stop's, where there is one — is the status of the record itself.
       return [`${I1}_ubb_acknowledge "$${shVariable(call.sentUnder!.name)}"`];
-    case "close": {
-      const closed = Object.values(call.places)[0];
-      if (closed === undefined) return refuse("a close names no work in its route");
-      return [`${I1}_ubb_closed="$_ubb_closed $${shVariable(closed.name)}"`];
-    }
+    case "close":
+      return [`${I1}_ubb_closed="$_ubb_closed $${shVariable(call.closing!.work.name)}"`];
   }
 }
 
@@ -773,7 +793,7 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
   const converted = costs(call);
   if (converted.length > 0) {
     uses.reportedCost = true;
-    if (!call.body.some((field) => !field.optional && sent(field))) {
+    if (!call.body.some((field) => !givenOnly(field) && sent(field))) {
       refuse(`the call ${call.name} sends nothing but a converted cost`);
     }
   }
@@ -793,7 +813,7 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
     ...guard(uses, call),
     `${I1}_ubb_preflight || return $?`,
     `${I1}_ubb_environment || return $?`,
-    ...arguments_(call),
+    ...readArguments(call),
     ...checks(uses, call),
     ...converted.flatMap(({ field, value }) => [
       ...asComments(field.comments, I1),
@@ -801,7 +821,9 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
       `${I1}_ubb_to_micros "$${shVariable(value.parameter.name)}" ${shWord(value.representation)} "$_ubb_currency" || return $?`,
       `${I1}_ubb_micros_${wireName(field.name)}=$_ubb_micros`,
     ]),
-    ...capture("_ubb_body", body, [], ["return $?"]),
+    // Where jq cannot build the body, what it was handed is why: a response
+    // that does not hold what a declared path reads, or is not one.
+    ...capture("_ubb_body", body, [], [`return ${status(SHELL_EXIT.valueRefused)}`]),
     // A converted cost is written into the body as its digits, by the shell:
     // it never becomes a jq number, which could not hold all of them.
     ...converted.map(
@@ -814,9 +836,10 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
   ];
 }
 
-function unitOfWork(): string[] {
+function unitOfWork(plan: Plan): string[] {
   const usage = status(SHELL_EXIT.usage);
   const name = SHELL_FILE.unitOfWork;
+  const close = plan.close.closing!;
   const closed = (then: string) => [
     `${I1}case " $_ubb_closed " in`,
     `${I2}*" $2 "*) ${then} ;;`,
@@ -837,7 +860,9 @@ function unitOfWork(): string[] {
     // has that a function it calls cannot write over.
     `${I1}set -- "$_ubb_work" "$${SHELL_FILE.taskId}"`,
     `${I1}"$1" "$2" && set -- "$1" "$2" 0 || set -- "$1" "$2" "$?"`,
-    `${I1}if [ "$3" -eq ${STOP} ]; then`,
+    // A stop the work met is acted on here whatever the work then returned:
+    // one whose status was never checked is still a stop, and is not success.
+    `${I1}if [ "$3" -eq ${STOP} ] || [ -n "$${SHELL_FILE.stopRequested}" ]; then`,
     `${I2}${say(SHELL_MESSAGES.stop)}`,
     `${I2}printf '%s %s\\n' ${SHELL.stopMetadata} "\${${SHELL_FILE.stopRequested}:-null}" >&2`,
     `${I2}return ${STOP}`,
@@ -847,9 +872,12 @@ function unitOfWork(): string[] {
     `${I2}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.outcomeRequired)} >&2`,
     `${I2}return ${usage}`,
     `${I1}fi`,
-    `${I1}${SHELL_FILE.closeTask} task_id="$2" outcome=${SHELL_FILE.outcomeFailed} \\`,
-    `${I2}${SHELL_FILE.outcomeReason}=${SHELL_FILE.outcomeReasonExecutionFailed} \\`,
-    `${I2}${SHELL_FILE.reasonDetail}=${shWord(`${SHELL_MESSAGES.exitStatus} `)}"$3" ||`,
+    // Work ended by a signal has said nothing about itself, and nothing is
+    // declared for it: the status is passed on as it is.
+    `${I1}[ "$3" -le ${SHELL_FILE.lastOrdinaryStatus} ] || return "$3"`,
+    `${I1}${plan.close.name} ${close.work.name}="$2" ${close.outcome.name}=${SHELL_FILE.outcomeFailed} \\`,
+    `${I2}${close.outcomeReason.name}=${SHELL_FILE.outcomeReasonExecutionFailed} \\`,
+    `${I2}${close.reasonDetail.name}=${shWord(`${SHELL_MESSAGES.exitStatus} `)}"$3" ||`,
     `${I2}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.failureNotDeclared)} >&2`,
     `${I1}return "$3"`,
     "}",
@@ -899,7 +927,7 @@ export function renderModule(plan: Plan): string {
       uses.notReady ? notReadyHelper() : [],
       uses.reportedCost ? reportedCostHelpers() : [],
       start,
-      unitOfWork(),
+      unitOfWork(plan),
       ...subtasks,
       ...records,
       close,

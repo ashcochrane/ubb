@@ -286,12 +286,16 @@ printf 'status=%s\\n' "$?"
     const ran = runShell(
       rendered("shell-direct-task-events"),
       `${SOURCE}
-ubb_close_task task_id='t-1/../../customers' outcome=delivered
-printf 'status=%s\\n' "$?"
+for work in 't-1/../../customers' .. . 't 1' 't?x=1' 't#1' 't%2e'; do
+  ubb_close_task task_id="$work" outcome=delivered
+  printf 'status_%s=%s\\n' "$((count = \${count:-0} + 1))" "$?"
+done
 `,
     );
 
-    expect(said(ran)).toEqual({ status: String(SHELL_EXIT.usage.status) });
+    // A slash, a dot segment curl would resolve, and anything a URL gives a
+    // meaning to: each refused, and nothing sent to a route nobody named.
+    expect(Object.values(said(ran))).toEqual(Array(7).fill(String(SHELL_EXIT.valueRefused.status)));
     expect(ran.stderr).toContain(`ubb_close_task: task_id ${SHELL_MESSAGES.urlValue}`);
     expect(ran.requests).toEqual([]);
   });
@@ -367,7 +371,7 @@ printf 'echoed=%s\\n' "$?"
     const ran = runShell(
       rendered("shell-direct-task-events"),
       `${SOURCE}
-for quantity in three 1.5 '' 007 1e3 9999999999999999 '3; touch made' '"3"'; do
+for quantity in three 1.5 007 1e3 9999999999999999 '3; touch made-by-a-quantity' '"3"'; do
   ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches="$quantity"
   printf 'status_%s=%s\\n' "$((count = \${count:-0} + 1))" "$?"
 done
@@ -375,11 +379,22 @@ ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches=9999999
 printf 'largest=%s\\n' "$?"
 ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches=0
 printf 'zero=%s\\n' "$?"
+ls
 `,
     );
     const answers = said(ran);
 
-    expect(Object.values(answers).slice(0, 8)).toEqual(Array(8).fill(String(SHELL_EXIT.usage.status)));
+    // Refused as a value, by the file, each naming the parameter: not as a
+    // parameter left out, and not by jq or by the API.
+    expect(Object.values(answers).slice(0, 7)).toEqual(
+      Array(7).fill(String(SHELL_EXIT.valueRefused.status)),
+    );
+    expect(
+      ran.stderr.split("\n").filter((line) =>
+        line.startsWith(`ubb_record_search_run: searches ${SHELL_MESSAGES.wholeNumber}`),
+      ),
+    ).toHaveLength(7);
+    expect(ran.stdout).not.toMatch(/made-by/);
     expect(answers.largest).toBe("0");
     expect(answers.zero).toBe("0");
     expect(ran.requests.map((request) => request.raw)).toEqual([
@@ -418,22 +433,28 @@ printf 'zero=%s\\n' "$?"
       `${SOURCE}
 printf '%s' '{"usageMetadata":{"promptTokenCount":12}}' >missing.json
 printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":9007199254740993}}' >inexact.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":"340"}}' >text.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3.5}}' >fraction.json
 printf '%s' 'not json' >malformed.json
-for response in missing.json inexact.json malformed.json absent.json; do
+for response in missing.json inexact.json text.json fraction.json malformed.json absent.json; do
   ubb_record_chat_completion customer_id=c idempotency_key=e task_id=t response="$response" searches=1
   printf '%s=%s\\n' "\${response%.json}" "$?"
 done
 `,
     );
     const answers = said(ran);
+    const refused = String(SHELL_EXIT.valueRefused.status);
 
-    expect(Object.keys(answers)).toEqual(["missing", "inexact", "malformed", "absent"]);
-    for (const answer of Object.values(answers)) {
-      expect(Number(answer)).toBeGreaterThan(0);
-      expect(Number(answer)).not.toBe(SHELL.stopExitStatus);
-    }
+    // One named status whichever way the response fails to hold the value.
+    expect(answers).toEqual({
+      missing: refused, inexact: refused, text: refused, fraction: refused,
+      malformed: refused, absent: refused,
+    });
     expect(ran.stderr).toContain(`${SHELL_MESSAGES.noValue} ["usageMetadata","candidatesTokenCount"]`);
     expect(ran.stderr).toContain(`${SHELL_MESSAGES.inexact} ["usageMetadata","candidatesTokenCount"]`);
+    expect(
+      ran.stderr.split(`${SHELL_MESSAGES.notWhole} ["usageMetadata","candidatesTokenCount"]`),
+    ).toHaveLength(3);
     expect(ran.requests).toEqual([]);
   });
 });
@@ -602,6 +623,64 @@ printf 'status=%s\\n' "$?"
     });
   });
 
+  it("is still a stop where the work never looked at the status that carried it", () => {
+    // The work ignores what its record returned, carries on, declares the
+    // work delivered and returns success. The boundary does not.
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+work() {
+  ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$1" searches=1
+  ubb_close_task task_id="$1" outcome=delivered
+}
+ubb_unit_of_work work customer_id=c idempotency_key=w
+printf 'status=%s\\n' "$?"
+`,
+      { answers: [stop("task", "task_cogs_ceiling")] },
+    );
+
+    expect(said(ran)).toEqual({ status: "20" });
+    expect(ran.stderr).toContain(SHELL_MESSAGES.stop);
+    expect(ran.stderr).toContain(`${SHELL.stopMetadata} {"event_id":"event_2","idempotency_key":"e1"`);
+  });
+
+  it.each(["sh", "bash"] as const)(
+    "is acted on by the stop block as rendered, under set -eu, and the script goes on (%s)",
+    (shell) => {
+      // The blocks themselves, pasted: the record inside the work, and the
+      // block that runs the work and reads how it ended.
+      const files = rendered("shell-direct-task-events");
+      const block = (name: string) =>
+        files
+          .find((file) => file.path === `call_sites/${name}.sh`)!
+          .contents.split("\n")
+          .filter((line) => line !== "" && !line.startsWith("#"));
+      const ran = runShell(
+        files,
+        [
+          "set -eu",
+          SOURCE,
+          "customer_id=c idempotency_key=w searches=1",
+          "work() {",
+          "  task_id=$1",
+          ...block("ubb_record_search_run").map((line) => `  ${line}`),
+          "}",
+          ...block("stop").map((line) =>
+            line === "  :" ? `  printf 'acted_on=%s\\n' "$UBB_STOP_REQUESTED"` : line,
+          ),
+          `printf 'status=%s\\n' "$work_status"`,
+        ].join("\n"),
+        { shell, answers: [stop("customer", "customer_spend_pool")] },
+      );
+      const answers = said(ran);
+
+      // Reached, which `set -e` would have prevented had the block called
+      // the boundary as a plain command.
+      expect(answers.status).toBe("20");
+      expect(JSON.parse(answers.acted_on!)).toMatchObject({ stop_scope: "customer" });
+    },
+  );
+
   it("starts a new piece of work with no stop of an earlier one's", () => {
     const ran = runShell(
       rendered("shell-direct-task-events"),
@@ -764,6 +843,19 @@ printf 'status=%s\\n' "$?"
     expect(delivered.requests).toHaveLength(2);
   });
 
+  it("declares nothing for work a signal ended, and passes its status on", () => {
+    // 130 and 143 are what a shell reports for work ended by an interrupt
+    // and by a termination: the work said nothing about itself.
+    for (const status of ["130", "143"]) {
+      const ran = boundary(`  return ${status}`);
+
+      expect(said(ran)).toEqual({ status });
+      expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
+    }
+    // The last status that is the work's own is still declared failed.
+    expect(boundary("  return 128").requests).toHaveLength(2);
+  });
+
   it("starts nothing and runs nothing where the start itself is refused", () => {
     const ran = runShell(
       rendered("shell-direct-task-events"),
@@ -881,12 +973,13 @@ for cost in 0.0000001 free 9223372036854.775808 1e41 ''; do
 done
 `,
     );
-    const refused = String(SHELL_EXIT.reportedCostRefused.status);
+    const refused = String(SHELL_EXIT.valueRefused.status);
 
     // The last is a parameter passed empty: refused as one, like any other.
     expect(Object.values(said(ran))).toEqual([
       refused, refused, refused, refused, String(SHELL_EXIT.usage.status),
     ]);
+    expect(ran.stderr).toContain(`ubb_record_web_search: reported_cost ${SHELL_MESSAGES.missing}`);
     expect(ran.stderr).toContain(`0.0000001 ${MESSAGES.fractional}`);
     expect(ran.stderr).toContain(`free ${MESSAGES.notANumber}`);
     expect(ran.stderr).toContain(`9223372036854.775808 ${MESSAGES.tooLarge}`);
@@ -910,7 +1003,7 @@ printf 'disagrees=%s\\n' "$?"
 
     expect(said(ran)).toEqual({
       agrees: "0 usd",
-      disagrees: String(SHELL_EXIT.reportedCostRefused.status),
+      disagrees: String(SHELL_EXIT.valueRefused.status),
     });
     expect(ran.stderr).toContain(`${MESSAGES.currencyDisagrees}: eur, usd`);
   });
@@ -1050,6 +1143,10 @@ printf 'record=%s\\n' "$?"
     );
 
     expect(said(ran)).toEqual({ start: "0", record: String(SHELL_EXIT.notConfigured.status) });
+    // Naming the two quantities it has no way to read.
+    expect(ran.stderr).toContain(
+      `measurements.input_tokens ${MESSAGES.notConfigured}. measurements.output_tokens ${MESSAGES.notConfigured}.`,
+    );
     expect(ran.requests).toHaveLength(1);
   });
 
@@ -1344,6 +1441,7 @@ describe("the two ways a jq program can arrive through a quoted heredoc", () => 
     "cache-read": "cache-read",
     "cache read tokens": "cache read tokens",
     "unbalanced)": "unbalanced)",
+    UBB_JQ: "UBB_JQ",
   };
 
   it.each(

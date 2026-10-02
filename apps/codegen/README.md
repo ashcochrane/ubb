@@ -62,8 +62,10 @@ ADR-0017 has the reasons. In short:
   So a function of the file is never called inside `$( )` or a pipeline.
 - **A stop is the status `UBB_EXIT_STOP_REQUESTED` (20)**, returned by the record that was answered
   with one, with the stop's metadata in `UBB_STOP_REQUESTED` as one line of JSON. `ubb_unit_of_work`
-  is the boundary: it logs the stop and returns 20, never 0. Every other failure has another status
-  — a named `sysexits.h` value, or curl's own for a request that failed.
+  is the boundary: it logs the stop and returns 20, never 0 — whether or not the work it ran
+  returned the stop's status. Every other failure has another status: a named `sysexits.h` value
+  for the file's own refusals (`UBB_EXIT_USAGE`, `UBB_EXIT_VALUE_REFUSED`, …), or curl's own for a
+  request that failed.
 - **A response a path is read off is a file**: `response=` is the path of a file holding the
   supplier's JSON.
 - **A supplier's cost is text**, converted to whole micros on its digits with no arithmetic on the

@@ -227,7 +227,7 @@ describe("the catalogue's text", () => {
     }
   });
 
-  it("is messages a Python string, an f-string, a jq string and a shell word can hold as they stand", () => {
+  it("is messages a Python string, an f-string and a jq string can hold as they stand", () => {
     const messages = [...Object.values(MESSAGES), ...Object.values(SHELL_MESSAGES)];
 
     expect(messages.length).toBeGreaterThan(40);
@@ -235,6 +235,9 @@ describe("the catalogue's text", () => {
       expect(message, message).toMatch(/^[\x20-\x7e]+$/);
       expect(message, message).not.toMatch(/["{}\\]/);
     }
+    // An apostrophe is allowed, and one message has one: in a shell file a
+    // message is a quoted word, which the renderer escapes it into.
+    expect(messages.filter((message) => message.includes("'"))).not.toEqual([]);
   });
 
   it("names its own version in the line that says what generated a file", () => {

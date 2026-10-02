@@ -65,7 +65,7 @@ def _environment(server, changes):
         if value is None:
             environment.pop(name, None)
         else:
-            environment[name] = value.replace("{PATH}", os.environ["PATH"])
+            environment[name] = value
     return environment
 
 
@@ -78,7 +78,7 @@ def run(plan_path):
         server.queue(answer["path"], **answer.get("answer", {}))
     script = Path("__script__.sh")
     script.write_bytes(plan["script"].encode("utf-8"))
-    ran = _ran([plan.get("shell", "sh"), str(script), *plan.get("arguments", [])],
+    ran = _ran([plan.get("shell", "sh"), str(script)],
                _environment(server, plan.get("environment")))
     return {**ran, "requests": server.requests}
 
