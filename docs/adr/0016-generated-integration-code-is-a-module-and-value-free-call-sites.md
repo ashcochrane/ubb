@@ -1,0 +1,162 @@
+# ADR-0016: Generated integration code is a module and value-free call sites, and the names in it are a contract
+
+**Status:** accepted
+**Date:** 2026-10-02
+**Decision records:** the consolidated Code Builder specification on #184 (four comments,
+2026-09-25) — §1 the three components, §5 the renderer package, §6 the artifact, §7 the classes as
+shapes, §9 the runtime contract, §10 the catalogue's home — and the owner's rulings of the same day
+(item 9: the catalogue's symbols are the renderer's and are not registry concepts) ·
+`docs/plans/2026-08-04-code-builder-inputs-decision.md` (#156 §6, §7, §10)
+**Companion:** ADR-0015 is the document this renders and §3 there is the token convention §3 here
+reads; ADR-0008 §5 names the gates (G23 to G26) the suite here is the first half of; ADR-0007 §3 is
+why a name a tenant's code depends on is final on the day it ships
+
+## Context
+
+ADR-0015 recorded what the server answers. This ADR records the second of #184's three components
+as built (#577): `ubb-codegen`, which turns that answer into files, and its Python target.
+
+The specification settled most of it. Four things were left to the build, and each is expensive to
+change once a tenant has a generated file in their repository: what a tenant's own code is allowed
+to depend on, how a token becomes an argument without the renderer knowing what a field means,
+where the Blueprints a renderer is tested against come from, and what a renderer does with a
+document it cannot read.
+
+## Decision
+
+### 1. One pure function, in a package that cannot reach anything
+
+`render(blueprint)` returns the files of an artifact. It lives in `apps/codegen`, a workspace
+package beside the console, and imports nothing but its own modules. Its source is compiled with no
+DOM and no Node types in scope and linted against a non-relative import, a clock, a network call
+and randomness, so purity is a property of the build and not of care.
+
+The Blueprint's type is generated from the committed contract on every typecheck and is never
+committed. A hand-written type would be a second place the document's shape is written down.
+
+A token is read into one of four types, and a secret reference's type carries the name of a
+variable and nothing else. Whatever a document puts in the `value` of a secret token is never
+copied out of it: there is no type through which a secret's value could reach a file.
+
+### 2. The module holds every value; a call site holds none, and its names are final
+
+An artifact is one module, the call-site blocks, an `.env.example` and a verify script. Every value
+the Blueprint resolved is in the module, so replacing the module is the whole of regenerating.
+
+A call-site block is built from the name of a function the module exports and the names of
+parameters. It has no field a literal could arrive through, and the suite asks Python's parser to
+confirm that no block contains a constant of any kind.
+
+**What a block does contain is therefore a contract with code UBB never sees:**
+
+- `start_task` and `unit_of_work`, fixed;
+- `start_subtask_<name>`, `record_<name>` and `backfill_<name>`, where `<name>` is the declared key
+  with every character outside ASCII letters and digits written as an underscore;
+- each `runtime_bound` token's `parameter_name`, exactly as the Blueprint gives it.
+
+Naming a function for a key is this renderer's naming. It is not a second spelling of the key,
+which is only ever written as a literal.
+
+**Two keys that would share a function name both take a suffix that is a function of the key.**
+Neither keeps the plain name. So selecting a second Event Type can make an existing function's
+name disappear, which a call site notices at import, and can never hand that name to the other
+Event Type, which would record one supplier's usage as another's and say nothing.
+
+The module's own names are chosen so that no parameter is spelled like one, so a declared name can
+never stand in front of the client, the conversion or the SDK keywords.
+
+### 3. A token is placed by its name and its position, and never by what its field means
+
+`src/tokens.ts` is the only reader of ADR-0015 §3's convention, and it never decodes a key:
+
+1. `api_key` is the credential, read from the environment by the name the Blueprint gives.
+2. A one-segment name is a field the request publishes, and is passed under exactly that name.
+3. For the two fields that hold an object of declared keys, each one-segment token is a key; the
+   tokens named under it follow it directly, share one `<field>.<segment>` prefix read off the
+   first of them, and the one named exactly that prefix is the value.
+4. Every other token is a declared fact: stated in a comment beside the value it is about, never
+   sent, never asked for.
+
+Three facts change how a value is written, and the list is closed: `source_path`,
+`response_shape_representation` and `amount_representation`. A path is written segment by segment
+as declared. A segment Python cannot spell as an attribute is reached with `getattr`, which changes
+the syntax and not the name. A fourth, `pricing_mode`, chooses a sentence of comment.
+
+A call that is not ready raises before it sends anything, naming every token with no configured
+value, and is still written beneath the guard so the file shows the lifecycle's shape.
+
+### 4. The stop is caught once, and the conversion is the platform's
+
+`UBBStopRequested` is caught in exactly one place, `unit_of_work`, which logs the acknowledgement
+as it stands and raises again. No function that records has a handler. The path for work that has
+already happened passes `stop_behavior="return"`; the live path passes `"raise"`.
+
+A cost a supplier reports is converted to whole micros in the tenant's process, by a helper written
+into the module. Its definition is the platform's `to_micros` and `pin_currency`, and it is held to
+them case for case: the platform writes a table of its own answers, and the suite runs the
+generated helper over that table.
+
+### 5. Fixtures are what the platform answered
+
+Every Blueprint the suite renders is a committed file that a platform test produces through the
+tenant's own routes and holds equal to the route's answer. A Blueprint added by hand beside them
+fails that test. Where a test needs a document the routes cannot produce, it derives one from a
+committed fixture inside the test and says what it changed.
+
+### 6. Comments are provenance or catalogue, and the catalogue is the renderer's
+
+A comment is either one statement generated from the Blueprint, in the single form
+`<name> = <json>[ · <qualifier> <json>]...`, or a line of the renderer catalogue. There are no
+docstrings. The catalogue is closed and versioned, and holds a sentence for every diagnostic code
+and every verdict, checked against the registry's value sets. Its symbols are the renderer's own
+and are not registry concepts.
+
+### 7. A document the renderer cannot read is refused, not guessed at
+
+`render` throws `BlueprintNotRenderable` for a `schema_version` or `renderer_contract_version`
+outside the set it reads, a target with no renderer, an operation it has no call for, a secret with
+no setup instructions, a parameter Python cannot bind, or a number too large to carry exactly. A
+Blueprint that is merely not ready is never refused.
+
+### 8. What this ADR does not decide
+
+The shell target (#578). The page that calls `render` (#579). Execution against the real
+application (#582). How a cost read off a supplier's response, a constant's value or a missing
+agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 and needs no new rule.
+
+## What proves it
+
+| Rule | Test |
+|---|---|
+| §1 — the suite runs unconditionally in CI and can fail it | `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_ci_runs_the_renderers_suite_and_can_fail_on_it`, `test_no_renderer_test_is_skipped_or_run_alone`, `test_the_package_defines_the_scripts_the_steps_run` |
+| §1 — a secret token's value changes nothing | `apps/codegen/tests/snapshots.test.ts` — "writes the same files whatever a secret token carries as a value" |
+| §2 — no generated value in a call-site block; its names are exports, parameters and handles | `apps/codegen/tests/artifact.test.ts` — "puts no generated value in a call-site block", "names nothing in a call-site block but exports, parameters and the handles" |
+| §2 — a shared name is taken by neither key | `apps/codegen/tests/execution.test.ts` — "name each function for its declared key, and never share a name" |
+| §2 — a declared name cannot stand in front of the module's own | same module — "can never stand in front of one of the module's own names" |
+| §3 — every runtime value is a required parameter at its own call; every literal reads back unchanged | `apps/codegen/tests/artifact.test.ts` — "asks for every runtime value as a required parameter, at the call it is declared for", "writes every platform-known argument as the literal Python reads back unchanged" |
+| §3 — declared names reach the wire as declared, and cannot end a line | `apps/codegen/tests/execution.test.ts` — "reach the wire exactly as they were declared", "cannot end a line or start a statement, whatever they hold" |
+| §3 — a call that is not ready raises, naming what is missing | same module — "raises from every call that is not ready, naming what is missing" |
+| §4 — one catch, by name, raised again | same module — "is caught in exactly one place, by name, and raised again", "passes through a tenant's own except Exception and out of the boundary" |
+| §4 — the conversion is the platform's, case for case | same module — "is converted exactly as the platform converts it, case for case"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_the_reported_cost_cases_carry_this_platforms_answers`, `test_the_currency_table_is_this_platforms` |
+| §5 — every committed Blueprint is what the route answers, and none is added by hand | same platform module — `test_a_committed_blueprint_is_what_the_route_answers`, `test_every_committed_blueprint_is_one_this_module_produces`; `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_every_blueprint_the_suite_renders_is_one_the_platform_holds` |
+| §6 — every comment is provenance or a catalogue member, and states only what the Blueprint carries | `apps/codegen/tests/artifact.test.ts` — "carries only comments that are provenance or a catalogue member", "states in a provenance comment only what the Blueprint carries" |
+| §6 — a sentence for every code and verdict, and no other | `apps/codegen/tests/catalogue.test.ts` — "has remediation for every diagnostic code, and for no other" |
+| §7 — what is refused | `apps/codegen/tests/artifact.test.ts` — "refuses %s rather than writing a file that is wrong" |
+
+## Consequences
+
+- **Renaming a generated function, or changing how a key becomes a name, breaks tenant code.** It
+  is a new renderer contract and is announced as one.
+- **A second Event Type whose key differs from a selected one only in punctuation renames the
+  first one's functions.** That is loud by design, and it is the price of never recording under
+  the wrong Event Type.
+- **Every fact the Blueprint carries is in the file as a comment.** A module is long. What it buys
+  is that the provenance survives the copy that strips the console's labels.
+- **The suite needs a Python interpreter.** There is no skip: a renderer whose output nobody
+  compiled has not been tested.
+- **A new diagnostic code, verdict, amount representation or pricing mode reddens the catalogue's
+  tests** until the renderer says something about it. A new document shape is refused until the
+  renderer is taught to read it.
+- **The module converts money in a process UBB never sees.** The table of cases is the only thing
+  that holds it to the platform, so a change to `to_micros` is a change to that table and to every
+  module already generated.

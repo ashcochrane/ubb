@@ -401,6 +401,29 @@ jobs:
       - name: TypeScript smoke gate — committed spec generates clean types
         run: npx --yes openapi-typescript@7.13.0 openapi/v1.json -o /tmp/ubb-v1.d.ts
 
+      # `ubb-codegen` (#577): the renderer that turns an Integration Blueprint
+      # into the files a tenant is handed. It lives in this job because this is
+      # the one job with both Node and Python: its tests render committed
+      # Blueprints, then COMPILE and RUN the Python they wrote against the SDK
+      # in this checkout. The SDK is installed for its dependencies; the tests
+      # point the interpreter at the checkout's own copy.
+      #
+      # Ahead of the console's steps on purpose, so a red console cannot stop
+      # these running. `tests/contracts/test_the_renderer_suite_is_enforced.py`
+      # holds all three steps to being unconditional and able to fail the run —
+      # no `if:`, no `continue-on-error`, and no path filter on the workflow.
+      - name: Install the SDK the generated code is run against
+        run: pip install -e ./ubb-sdk
+
+      - name: Codegen typecheck — the renderer compiles against the committed contract
+        run: pnpm --dir apps/codegen typecheck
+
+      - name: Codegen lint — the renderer stays a pure function
+        run: pnpm --dir apps/codegen lint
+
+      - name: Codegen tests — every renderer branch, compiled and run
+        run: pnpm --dir apps/codegen test
+
       # The gates above only prove the SPEC is self-consistent and that a client
       # can be generated from it. Neither compiles the console, which is how the
       # app drifted three contract changes behind the API (#129, #131, #132)

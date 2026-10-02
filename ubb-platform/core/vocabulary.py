@@ -1475,11 +1475,12 @@ SPEND_POOL_ENFORCE_MODE_VALUES = frozenset({
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
 #
-# What the generated integration wrapper does when UBB signals a spend stop.
-# The default raises, and the signal derives from `BaseException` so a tenant's
-# own broad handler cannot swallow it; `return` is available for callers who
-# deliberately want to inspect the signal in line, and the generated code says
-# which one it selected (#179 §1).
+# What a recording call does when UBB signals a spend stop. It is a keyword of
+# the SDK's own call, which generated integration code passes and does not
+# implement. The default raises, and the signal derives from `BaseException` so
+# a tenant's own broad handler cannot swallow it; `return` hands the signal
+# back on the acknowledgement, for a caller recording work that has already
+# happened. Generated code spells the value on each of its two paths (#179 §1).
 #
 # Declared in concepts/tasks.yaml.
 

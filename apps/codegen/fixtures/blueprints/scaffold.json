@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "renderer_contract_version": 1,
+  "target": "python_sdk",
+  "sdk_major_version": 3,
+  "configuration_fingerprint": "sha256:02829957644d3e567651bd1f34b3ed57845264d58d20c3b0989581cd843b2c52",
+  "readiness": "scaffold",
+  "calls": [
+    {
+      "operation_id": "api_v1_task_endpoints_start_task",
+      "readiness": "scaffold",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_type",
+          "binding_class": "platform_known",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": false,
+          "provenance": null
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "readiness": "scaffold",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "event_type",
+          "binding_class": "platform_known",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": false,
+          "provenance": null
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_task_endpoints_close_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "outcome",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "outcome",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "blocking",
+      "code": "task_type_not_selected",
+      "object_kind": "task_type",
+      "key": null,
+      "field": null,
+      "remediation_request": null
+    },
+    {
+      "severity": "blocking",
+      "code": "event_type_not_selected",
+      "object_kind": "event_type",
+      "key": null,
+      "field": null,
+      "remediation_request": null
+    }
+  ]
+}

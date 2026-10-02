@@ -59,6 +59,11 @@ Django (`pip install -r tests/contracts/requirements.txt` — two pinned package
 - `python -m tools.gates` — is every claim in `gates/manifest.yaml` true? And
   `python -m tools.gates ratchet` — does the migration ledger owe more than the base branch's did?
 
+- Code Builder renderer (`apps/codegen`, ADR-0016; from the git root):
+  `pnpm --dir apps/codegen typecheck` · `lint` · `test`. Its tests run the Python they render, so
+  they need an interpreter with the SDK's dependencies (`UBB_CODEGEN_PYTHON`, default `python`);
+  its fixtures are written by the platform suite — see `apps/codegen/README.md`
+
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 
 ## Conventions

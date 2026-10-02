@@ -46,3 +46,9 @@ ubb-sdk/ubb/_operations.py text eol=lf
 # authorisations file is hand-authored and only ever parsed as YAML, so it needs
 # no pin — this list is for what a gate compares byte for byte.
 ubb-sdk/operation-coverage.yaml text eol=lf
+
+# The renderer's snapshots (#577) are the files `ubb-codegen` returns, compared
+# with what it renders byte for byte, and what it renders ends its lines with LF
+# on every platform. Pinned so a checkout with core.autocrlf set does not hand
+# the suite a snapshot that differs from the rendering only in its line endings.
+apps/codegen/tests/__snapshots__/** text eol=lf

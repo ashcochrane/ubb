@@ -11,17 +11,22 @@ varies per module (the products, the billing mode, the switch, the balance),
 so it is a function of those and nothing else; what a module does with the
 tenant — which routes it drives, what it asserts — stays the module's own.
 """
+import json
 import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
+from django.db.models import JSONField
 from django.test import Client
+from django.utils import timezone
 
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingField
+from apps.platform.membership.roles import READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
@@ -195,3 +200,145 @@ def a_tenant_selling_whole_work(*, products=("metering", "billing"),
         wallet = Wallet.objects.create(customer=customer,
                                        balance_micros=balance_micros)
     return ATenantSellingWholeWork(tenant, raw_key, customer, wallet)
+
+
+# ---------------------------------------------------------------------------
+# An Integration Blueprint's configuration, declared through the tenant's routes
+# ---------------------------------------------------------------------------
+#
+# SHARED SINCE #577, which is when a second module needed it: the Blueprint's
+# own suite built this, and the module that holds the renderer's committed
+# fixtures to what the route answers declares configuration the same way.
+
+BLUEPRINTS = "/api/v1/code-builder/blueprints"
+
+KIND = "report_generation"
+SUBTASK_KIND = "summarise"
+EVENT = "chat.completion"
+
+INPUT_TOKENS = {"display_name": "Input tokens", "value_type": "integer",
+                "unit": "token", "required_for_costing": True,
+                "source_kind": "provider_response",
+                "source_path": ["usage", "input_tokens"]}
+SEARCHES = {"display_name": "Searches", "value_type": "integer",
+            "unit": "search", "required_for_costing": False,
+            "source_kind": "caller_supplied", "source_path": []}
+
+#: A shape whose paths are read off a Python library's object, and one whose
+#: paths are read off the JSON a web API returns.
+A_PYTHON_SHAPE = "openai.responses.python.v1"
+A_JSON_SHAPE = "google.gemini.rest.v1"
+
+
+class BlueprintRoutes:
+    """The tenant's own routes, and the fixtures built out of them."""
+
+    def setup_method(self):
+        self.tenant, self.raw_key = a_tenant()
+        self.client = Client()
+
+    # -- the routes --------------------------------------------------------
+
+    def _send(self, method, path, data=None, key=None):
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {key or self.raw_key}"}
+        if method == "get":
+            return self.client.get(path, **auth)
+        return getattr(self.client, method)(
+            path, data=json.dumps(data or {}),
+            content_type="application/json", **auth)
+
+    def _call(self, method, path, data=None, key=None):
+        response = self._send(method, path, data, key)
+        assert response.status_code < 300, response.content
+        return response.json() if response.content else None
+
+    def _resolve(self, key=None, **selection):
+        selection.setdefault("target", "python_sdk")
+        return self._call("post", BLUEPRINTS, selection, key)
+
+    def _a_read_key(self):
+        """A key at the READ floor. Written to the row: a key's role has no
+        route of its own in this module's reach, and the floor is the subject
+        rather than how a key comes to have one."""
+        key, raw = TenantApiKey.create_key(self.tenant, label="read-only")
+        TenantApiKey.objects.filter(pk=key.pk).update(role=READ)
+        return raw
+
+    # -- the two states the tables admit and no route produces ---------------
+
+    def _retire(self, key):
+        """A Grouping Field retired. Written to the row: the registry keeps a
+        retirement instant and publishes it, and no route sets one yet."""
+        GroupingField.objects.filter(tenant=self.tenant, key=key).update(
+            retired_at=timezone.now())
+
+    def _require_without_declaring(self, kind, *fields):
+        """A kind of work requiring Grouping Fields the registry would have
+        refused. Written to the row, on the one column of a kind that holds a
+        list — found by its type, so this module spells no column name."""
+        (holding_the_list,) = [
+            field.name for field in TaskType._meta.concrete_fields
+            if isinstance(field, JSONField)]
+        TaskType.objects.filter(tenant=self.tenant, key=kind).update(
+            **{holding_the_list: list(fields)})
+
+    # -- configuration, declared the way a tenant declares it ----------------
+
+    def _grouping_fields(self, *fields):
+        self._call("put", "/api/v1/metering/grouping-fields",
+                   {"grouping_fields": [
+                       {"key": key, "slot": f"grouping_field_{position}",
+                        "scope": scope}
+                       for position, (key, scope) in enumerate(fields, 1)]})
+
+    def _kinds(self, *kinds):
+        self._call("put", "/api/v1/task-types", {"task_types": list(kinds)})
+
+    def _event_type(self, key=EVENT, *, costing_method="calculated",
+                    shape=A_PYTHON_SHAPE, label="", provider=None,
+                    measurements=None, mapping=None, publish=True):
+        if provider:
+            self._call("post", "/api/v1/providers", {"key": provider})
+        self._call("post", "/api/v1/event-types",
+                   {"key": key, "costing_method": costing_method,
+                    "source_shape_id": shape, "source_shape_label": label,
+                    "provider_key": provider})
+        if measurements is None:
+            measurements = {"input_tokens": INPUT_TOKENS}
+        for code, declared in measurements.items():
+            self._call("put",
+                       f"/api/v1/event-types/{key}/measurements/"
+                       f"{quote(code, safe='')}", declared)
+        if mapping:
+            self._call("put",
+                       f"/api/v1/event-types/{key}/reported-cost-mapping",
+                       mapping)
+        if publish:
+            return self._publish(key)
+        return self._call("get", f"/api/v1/event-types/{key}")
+
+    def _publish(self, key=EVENT):
+        return self._call("post", f"/api/v1/event-types/{key}/publish")
+
+    def _a_kind(self, key=KIND, **declared):
+        declared.setdefault("uncapped", True)
+        self._kinds({"key": key, **declared})
+
+    def _complete_configuration(self):
+        """One kind of work requiring one Task-scoped Grouping Field, one
+        Subtask kind requiring a Subtask-scoped one, and one published Event
+        Type with a supplier — everything a complete Blueprint resolves."""
+        self._grouping_fields(("environment", "task"), ("phase", "subtask"))
+        self._kinds(
+            {"key": KIND, "task_cogs_ceiling_micros": 5_000_000,
+             "required_grouping_fields": ["environment"]},
+            {"key": SUBTASK_KIND, "kind": "subtask", "uncapped": True,
+             "required_grouping_fields": ["phase"]})
+        return self._event_type(
+            provider="openai",
+            measurements={"input_tokens": INPUT_TOKENS, "searches": SEARCHES})
+
+    def _complete(self, **selection):
+        selection.setdefault("task_type", KIND)
+        selection.setdefault("event_types", [EVENT])
+        return self._resolve(**selection)

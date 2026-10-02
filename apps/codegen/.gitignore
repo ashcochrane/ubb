@@ -1,0 +1,4 @@
+# The Blueprint's types, generated from the committed contract on every
+# typecheck (`pnpm contract:types`). Never committed: a committed copy is a
+# second place the contract is written down.
+src/generated/
