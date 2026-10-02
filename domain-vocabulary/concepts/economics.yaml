@@ -1116,6 +1116,35 @@ source_shape_label:
     - surface: backend
       path: ubb-platform/apps/platform/event_types/models.py
 
+response_shape_representation:
+  kind: closed
+  # DECLARED BY THE TICKET THAT FIRST READS IT (#576, owner ruling of
+  # 2026-09-25, item 6). Which of the two each recognised response shape is,
+  # is declared beside the shape registry — never read out of the shape's
+  # identifier, where two of the three ids happen to carry a word that would
+  # answer it.
+  #
+  # NO CONTRACT CONSUMER, AND THAT IS A STATEMENT ABOUT WHERE IT TRAVELS. An
+  # Integration Blueprint publishes the value as a LITERAL beside the paths it
+  # qualifies, and a literal is untyped JSON: there is no schema node for a
+  # marker to sit on. So the value crosses the wire and the contract cannot
+  # enumerate it there — the residual #349 recorded for a closed value inside
+  # an untyped record, arriving a second time.
+  summary: >-
+    What a supplier's response is when a declared path is read from it: the
+    JSON document its web API returns, or the object its Python library hands
+    back. The same number sits in both and they are read by different code —
+    any target can walk a JSON document, and only Python can hold a Python
+    object — so it decides which Code Builder targets can read an Event
+    Type's declared paths, and how a renderer reaches into the response.
+  values:
+    - json
+    - python_object
+  label_key_prefix: response_shape_representation
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/event_types/source_paths.py
+
 amount_representation:
   kind: closed
   summary: >-

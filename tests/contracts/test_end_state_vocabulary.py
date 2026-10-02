@@ -45,9 +45,13 @@ def registry():
 #: apart from the webhook catalogue, since the ledger and the queue are
 #: independent contracts. Named here so deleting a domain file is a failure
 #: rather than a quietly smaller registry.
-DOMAIN_FILES = ("economics.yaml", "governance.yaml", "payment-rails.yaml",
-                "retired.yaml", "spend-controls.yaml", "tasks.yaml",
-                "webhooks.yaml")
+#:
+#: `code-builder.yaml` joined in #576: the six value sets an Integration
+#: Blueprint publishes are consumed by the Blueprint and by nothing else, so
+#: they are a domain of their own rather than a tail on the unit of work's.
+DOMAIN_FILES = ("code-builder.yaml", "economics.yaml", "governance.yaml",
+                "payment-rails.yaml", "retired.yaml", "spend-controls.yaml",
+                "tasks.yaml", "webhooks.yaml")
 
 
 def test_the_registry_is_split_across_the_declared_domains(registry):

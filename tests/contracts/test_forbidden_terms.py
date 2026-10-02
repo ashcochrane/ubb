@@ -386,7 +386,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # names a retired word, so the number moved for the files existing.
         "historical-migrations": (UNTIL_SLICE_8, 268, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
-        "the-vocabulary-registry": ("permanent", 10, 1),
+        # 10 -> 11 in #576: the registry gained a domain file of its own for
+        # the Code Builder's concepts. ⚠ The migrations count above did NOT
+        # move for that ticket's one migration: it belongs to a twentieth app
+        # the rule does not name, it spells no retired word, and it is swept.
+        "the-vocabulary-registry": ("permanent", 11, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
         "checks-whose-subject-is-a-retired-word": ("permanent", 14, 14),
         "the-workflows-foreign-input-names": ("permanent", 1, 1),

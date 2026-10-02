@@ -67,6 +67,17 @@
       "kind": "closed",
       "representation": "enum"
     },
+    "binding_class": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "platform_known",
+        "runtime_bound",
+        "secret_reference"
+      ]
+    },
     "ceiling_basis": {
       "advertised": true,
       "backend_serves": "2 of 2 values",
@@ -87,6 +98,31 @@
         "ceiling_reached",
         "indeterminate",
         "not_applicable"
+      ]
+    },
+    "code_target": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "python_sdk",
+        "shell_http"
+      ]
+    },
+    "configuration_object_kind": {
+      "advertised": true,
+      "backend_serves": "7 of 7 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "task_type",
+        "subtask_type",
+        "event_type",
+        "measurement",
+        "reported_cost_mapping",
+        "provider",
+        "grouping_field"
       ]
     },
     "control_family": {
@@ -138,6 +174,41 @@
         "published"
       ]
     },
+    "diagnostic_code": {
+      "advertised": true,
+      "backend_serves": "17 of 17 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "task_type_not_selected",
+        "task_type_not_declared",
+        "task_type_retired",
+        "required_grouping_field_not_declared",
+        "required_grouping_field_retired",
+        "required_grouping_field_wrong_scope",
+        "event_type_not_selected",
+        "event_type_not_declared",
+        "event_type_not_published",
+        "event_type_revised_since_publication",
+        "reported_cost_mapping_missing",
+        "reported_cost_provider_response_unsupported",
+        "constant_value_not_declared",
+        "derived_measurement_unsupported",
+        "response_shape_not_declared",
+        "response_shape_not_readable_by_target",
+        "source_path_convention_mismatch"
+      ]
+    },
+    "diagnostic_severity": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "advisory",
+        "blocking"
+      ]
+    },
     "event_type_key": {
       "advertised": false,
       "backend_serves": null,
@@ -172,6 +243,17 @@
       "backend_serves": null,
       "kind": "free_text",
       "representation": "none"
+    },
+    "integration_readiness": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "scaffold",
+        "blocked",
+        "complete"
+      ]
     },
     "live_counter_maintenance_enabled": {
       "advertised": false,
@@ -362,6 +444,12 @@
     "reserved_grouping_axis": {
       "advertised": false,
       "backend_serves": "5 of 5 values",
+      "kind": "closed",
+      "representation": "none"
+    },
+    "response_shape_representation": {
+      "advertised": false,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
       "representation": "none"
     },

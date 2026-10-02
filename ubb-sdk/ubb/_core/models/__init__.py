@@ -118,6 +118,20 @@ from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGrouping
 from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
 from .inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from .inherited_rule_out import InheritedRuleOut
+from .integration_blueprint_argument import IntegrationBlueprintArgument
+from .integration_blueprint_argument_binding_class import IntegrationBlueprintArgumentBindingClass
+from .integration_blueprint_call import IntegrationBlueprintCall
+from .integration_blueprint_call_readiness import IntegrationBlueprintCallReadiness
+from .integration_blueprint_diagnostic import IntegrationBlueprintDiagnostic
+from .integration_blueprint_diagnostic_code import IntegrationBlueprintDiagnosticCode
+from .integration_blueprint_diagnostic_object_kind import IntegrationBlueprintDiagnosticObjectKind
+from .integration_blueprint_diagnostic_severity import IntegrationBlueprintDiagnosticSeverity
+from .integration_blueprint_provenance import IntegrationBlueprintProvenance
+from .integration_blueprint_provenance_object_kind import IntegrationBlueprintProvenanceObjectKind
+from .integration_blueprint_remediation_request import IntegrationBlueprintRemediationRequest
+from .integration_blueprint_remediation_request_body_type_0 import IntegrationBlueprintRemediationRequestBodyType0
+from .integration_blueprint_selection_in import IntegrationBlueprintSelectionIn
+from .integration_blueprint_selection_in_target import IntegrationBlueprintSelectionInTarget
 from .invitation_create_in import InvitationCreateIn
 from .invitation_list_response import InvitationListResponse
 from .invitation_out import InvitationOut
@@ -218,6 +232,9 @@ from .reported_cost_mapping_out_source_kind import ReportedCostMappingOutSourceK
 from .resolution_run_in import ResolutionRunIn
 from .resolution_run_out import ResolutionRunOut
 from .resolution_run_selector_out import ResolutionRunSelectorOut
+from .resolved_integration_blueprint import ResolvedIntegrationBlueprint
+from .resolved_integration_blueprint_readiness import ResolvedIntegrationBlueprintReadiness
+from .resolved_integration_blueprint_target import ResolvedIntegrationBlueprintTarget
 from .revenue_context_out import RevenueContextOut
 from .rule_terms_out import RuleTermsOut
 from .rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
@@ -455,6 +472,20 @@ __all__ = (
     "InheritedPricingRulePricingMethodType0",
     "InheritedPricingRuleRateStructure",
     "InheritedRuleOut",
+    "IntegrationBlueprintArgument",
+    "IntegrationBlueprintArgumentBindingClass",
+    "IntegrationBlueprintCall",
+    "IntegrationBlueprintCallReadiness",
+    "IntegrationBlueprintDiagnostic",
+    "IntegrationBlueprintDiagnosticCode",
+    "IntegrationBlueprintDiagnosticObjectKind",
+    "IntegrationBlueprintDiagnosticSeverity",
+    "IntegrationBlueprintProvenance",
+    "IntegrationBlueprintProvenanceObjectKind",
+    "IntegrationBlueprintRemediationRequest",
+    "IntegrationBlueprintRemediationRequestBodyType0",
+    "IntegrationBlueprintSelectionIn",
+    "IntegrationBlueprintSelectionInTarget",
     "InvitationCreateIn",
     "InvitationListResponse",
     "InvitationOut",
@@ -555,6 +586,9 @@ __all__ = (
     "ResolutionRunIn",
     "ResolutionRunOut",
     "ResolutionRunSelectorOut",
+    "ResolvedIntegrationBlueprint",
+    "ResolvedIntegrationBlueprintReadiness",
+    "ResolvedIntegrationBlueprintTarget",
     "RevenueContextOut",
     "RuleTermsOut",
     "RuleTermsOutPricingMethodType0",

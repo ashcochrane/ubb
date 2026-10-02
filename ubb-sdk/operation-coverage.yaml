@@ -38,10 +38,10 @@ version: 1
 # The ratchet compares the set, not this total: wrapping three while publishing
 # two unwrapped ones lowers the number and opens two gaps.
 summary:
-  operations: 155
-  unwrapped: 80
+  operations: 157
+  unwrapped: 82
   wrapped: 75
-  generated_only: 80
+  generated_only: 82
   not_yet_wrapped: 0
 
 operations:
@@ -177,6 +177,14 @@ operations:
     disposition: wrapped
     wrapped_by:
       - ubb-sdk/ubb/billing.py::BillingClient.withdraw
+  - operation_id: api_v1_code_builder_endpoints_get_blueprint
+    method: GET
+    path: /api/v1/code-builder/blueprints/{configuration_fingerprint}
+    disposition: generated_only
+  - operation_id: api_v1_code_builder_endpoints_resolve_blueprint
+    method: POST
+    path: /api/v1/code-builder/blueprints
+    disposition: generated_only
   - operation_id: api_v1_connect_endpoints_connect_start
     method: POST
     path: /api/v1/connect/start

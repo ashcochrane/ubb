@@ -1,6 +1,6 @@
 """The one versioned NinjaAPI (#77, ADR-002 Stage 1).
 
-Eighteen routers — fourteen composition-layer, four product-owned — mounted on a
+Nineteen routers — fifteen composition-layer, four product-owned — mounted on a
 single API served at ``/api/v1/``. Products expose ``Router`` objects; this
 module (the composition layer) mounts them, so ADR-001's import matrix is
 respected, not amended. Per-router ``auth=`` preserves the pre-restructure
@@ -17,6 +17,7 @@ from ninja import NinjaAPI
 
 from api.v1.audit_endpoints import audit_router
 from api.v1.billing_endpoints import billing_router
+from api.v1.code_builder_endpoints import code_builder_router
 from api.v1.connect_endpoints import connect_router
 from api.v1.endpoints import root_router
 from api.v1.event_type_endpoints import event_type_router
@@ -104,6 +105,11 @@ api.add_router("audit/", audit_router)
 # mean something for every tenant, and a family a tenant lacks returns no
 # rows. api/v1/spend_control_endpoints.py carries the argument.
 api.add_router("spend-controls/", spend_control_router)
+# The Code Builder's Integration Blueprint (#576), at a prefix of its own and
+# GATED on metering like the registries it resolves from (ADR-0011 §2). It is
+# resolved from the kernel and from metering together and belongs to neither;
+# api/v1/code_builder_endpoints.py carries the argument.
+api.add_router("code-builder/", code_builder_router)
 # Mounted at the root prefix, before root_router: their concrete paths
 # (/plans, /customers/{external_id}/plan; /event-types, /providers,
 # /event-categories) must bind before root_router's catch-alls, since

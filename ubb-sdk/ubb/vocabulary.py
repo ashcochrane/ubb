@@ -333,6 +333,32 @@ AUDIT_ACTION_VALUES = frozenset({
 })
 
 
+# --- binding_class -----------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# When, and from where, one token of a generated call gets its value.
+# `platform_known` is resolved now from the tenant's own published
+# configuration and is written as a literal. `runtime_bound` is known only to
+# the tenant's code when it runs and is written as a required parameter.
+# `secret_reference` is a value UBB may know and deliberately withholds, and is
+# written as a lookup of a named environment variable. A value UBB should know
+# and the tenant has not configured keeps its class and says so beside it; it
+# is a state of the first class, never a fourth one.
+#
+# Declared in concepts/code-builder.yaml.
+
+BINDING_CLASS_PLATFORM_KNOWN = 'platform_known'
+BINDING_CLASS_RUNTIME_BOUND = 'runtime_bound'
+BINDING_CLASS_SECRET_REFERENCE = 'secret_reference'
+
+BINDING_CLASS_VALUES = frozenset({
+    BINDING_CLASS_PLATFORM_KNOWN,
+    BINDING_CLASS_RUNTIME_BOUND,
+    BINDING_CLASS_SECRET_REFERENCE,
+})
+
+
 # --- ceiling_basis -----------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -410,6 +436,59 @@ CEILING_STATUS_VALUES = frozenset({
     CEILING_STATUS_CEILING_REACHED,
     CEILING_STATUS_INDETERMINATE,
     CEILING_STATUS_NOT_APPLICABLE,
+})
+
+
+# --- code_target -------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a generated integration is written for: the Python SDK, or a shell file
+# speaking raw HTTP. One selection rather than a language and a client, because
+# the two never vary independently — the target is the thing a developer can
+# actually run. A target decides which response shapes an integration can read,
+# so it is part of what a Blueprint resolves and not only of how one is
+# rendered.
+#
+# Declared in concepts/code-builder.yaml.
+
+CODE_TARGET_PYTHON_SDK = 'python_sdk'
+CODE_TARGET_SHELL_HTTP = 'shell_http'
+
+CODE_TARGET_VALUES = frozenset({
+    CODE_TARGET_PYTHON_SDK,
+    CODE_TARGET_SHELL_HTTP,
+})
+
+
+# --- configuration_object_kind -----------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which kind of tenant declaration a Blueprint's provenance or diagnostic
+# points at: a kind of work at either altitude, an Event Type, one of its
+# Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
+# With the object's key it names the declaration a value came from, or the one
+# a fix belongs to.
+#
+# Declared in concepts/code-builder.yaml.
+
+CONFIGURATION_OBJECT_KIND_TASK_TYPE = 'task_type'
+CONFIGURATION_OBJECT_KIND_SUBTASK_TYPE = 'subtask_type'
+CONFIGURATION_OBJECT_KIND_EVENT_TYPE = 'event_type'
+CONFIGURATION_OBJECT_KIND_MEASUREMENT = 'measurement'
+CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING = 'reported_cost_mapping'
+CONFIGURATION_OBJECT_KIND_PROVIDER = 'provider'
+CONFIGURATION_OBJECT_KIND_GROUPING_FIELD = 'grouping_field'
+
+CONFIGURATION_OBJECT_KIND_VALUES = frozenset({
+    CONFIGURATION_OBJECT_KIND_TASK_TYPE,
+    CONFIGURATION_OBJECT_KIND_SUBTASK_TYPE,
+    CONFIGURATION_OBJECT_KIND_EVENT_TYPE,
+    CONFIGURATION_OBJECT_KIND_MEASUREMENT,
+    CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING,
+    CONFIGURATION_OBJECT_KIND_PROVIDER,
+    CONFIGURATION_OBJECT_KIND_GROUPING_FIELD,
 })
 
 
@@ -526,6 +605,80 @@ DECLARATION_STATUS_VALUES = frozenset({
 })
 
 
+# --- diagnostic_code ---------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a Blueprint diagnostic reports, as one closed code per condition. Four
+# are structural and leave a call a scaffold: no kind of work or no Event Type
+# selected, or one selected that is not declared. The rest either block a call
+# — a retired kind, a required Grouping Field that cannot be supplied, an Event
+# Type with nothing published, a cost or a quantity UBB cannot yet carry, a
+# response shape the target cannot read — or advise without blocking: a
+# declaration revised since it was published, or a path that looks inconsistent
+# with its declared shape.
+#
+# Declared in concepts/code-builder.yaml.
+
+DIAGNOSTIC_CODE_TASK_TYPE_NOT_SELECTED = 'task_type_not_selected'
+DIAGNOSTIC_CODE_TASK_TYPE_NOT_DECLARED = 'task_type_not_declared'
+DIAGNOSTIC_CODE_TASK_TYPE_RETIRED = 'task_type_retired'
+DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_NOT_DECLARED = 'required_grouping_field_not_declared'
+DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_RETIRED = 'required_grouping_field_retired'
+DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE = 'required_grouping_field_wrong_scope'
+DIAGNOSTIC_CODE_EVENT_TYPE_NOT_SELECTED = 'event_type_not_selected'
+DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED = 'event_type_not_declared'
+DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED = 'event_type_not_published'
+DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION = 'event_type_revised_since_publication'
+DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING = 'reported_cost_mapping_missing'
+DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED = 'reported_cost_provider_response_unsupported'
+DIAGNOSTIC_CODE_CONSTANT_VALUE_NOT_DECLARED = 'constant_value_not_declared'
+DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED = 'derived_measurement_unsupported'
+DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED = 'response_shape_not_declared'
+DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET = 'response_shape_not_readable_by_target'
+DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH = 'source_path_convention_mismatch'
+
+DIAGNOSTIC_CODE_VALUES = frozenset({
+    DIAGNOSTIC_CODE_TASK_TYPE_NOT_SELECTED,
+    DIAGNOSTIC_CODE_TASK_TYPE_NOT_DECLARED,
+    DIAGNOSTIC_CODE_TASK_TYPE_RETIRED,
+    DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_NOT_DECLARED,
+    DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_RETIRED,
+    DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE,
+    DIAGNOSTIC_CODE_EVENT_TYPE_NOT_SELECTED,
+    DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED,
+    DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
+    DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION,
+    DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING,
+    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED,
+    DIAGNOSTIC_CODE_CONSTANT_VALUE_NOT_DECLARED,
+    DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED,
+    DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED,
+    DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET,
+    DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH,
+})
+
+
+# --- diagnostic_severity -----------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Whether a Blueprint diagnostic lowers readiness. `blocking` says a call lacks
+# something it cannot run without. `advisory` says something looks inconsistent
+# and changes nothing: UBB warns about a declaration and never rewrites one, so
+# an advisory leaves a complete integration complete.
+#
+# Declared in concepts/code-builder.yaml.
+
+DIAGNOSTIC_SEVERITY_ADVISORY = 'advisory'
+DIAGNOSTIC_SEVERITY_BLOCKING = 'blocking'
+
+DIAGNOSTIC_SEVERITY_VALUES = frozenset({
+    DIAGNOSTIC_SEVERITY_ADVISORY,
+    DIAGNOSTIC_SEVERITY_BLOCKING,
+})
+
+
 # --- event_type_key ----------------------------------------------------------
 #
 # tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -630,6 +783,31 @@ GROUPING_FIELD_SCOPE_VALUES = frozenset({
 # No constants: this kind declares no values by construction. The section is
 # here so that fact is visible, rather than looking like a concept the
 # generator lost.
+
+
+# --- integration_readiness ---------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# How ready one generated call, or the whole integration, is to run. `scaffold`
+# means a structural selection is missing — no kind of work, or no Event Type —
+# so the code teaches the lifecycle's shape and cannot run. `blocked` means the
+# structure is known and a selected call lacks something mandatory. `complete`
+# means everything resolves from published configuration and every call is
+# renderable for the target. The integration is as ready as its least ready
+# call, and an advisory never lowers it.
+#
+# Declared in concepts/code-builder.yaml.
+
+INTEGRATION_READINESS_SCAFFOLD = 'scaffold'
+INTEGRATION_READINESS_BLOCKED = 'blocked'
+INTEGRATION_READINESS_COMPLETE = 'complete'
+
+INTEGRATION_READINESS_VALUES = frozenset({
+    INTEGRATION_READINESS_SCAFFOLD,
+    INTEGRATION_READINESS_BLOCKED,
+    INTEGRATION_READINESS_COMPLETE,
+})
 
 
 # --- live_counter_maintenance_enabled ----------------------------------------
@@ -1159,6 +1337,28 @@ RESERVED_GROUPING_AXIS_VALUES = frozenset({
     RESERVED_GROUPING_AXIS_EVENT_TYPE,
     RESERVED_GROUPING_AXIS_TASK_TYPE,
     RESERVED_GROUPING_AXIS_SUBTASK_TYPE,
+})
+
+
+# --- response_shape_representation -------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a supplier's response is when a declared path is read from it: the JSON
+# document its web API returns, or the object its Python library hands back.
+# The same number sits in both and they are read by different code — any target
+# can walk a JSON document, and only Python can hold a Python object — so it
+# decides which Code Builder targets can read an Event Type's declared paths,
+# and how a renderer reaches into the response.
+#
+# Declared in concepts/economics.yaml.
+
+RESPONSE_SHAPE_REPRESENTATION_JSON = 'json'
+RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT = 'python_object'
+
+RESPONSE_SHAPE_REPRESENTATION_VALUES = frozenset({
+    RESPONSE_SHAPE_REPRESENTATION_JSON,
+    RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
 })
 
 

@@ -28,7 +28,7 @@ from apps.platform.event_types.models import (
 )
 from apps.platform.event_types.publication import (
     PublishedDeclaration, PublishedMeasurement, PublishedReportedCostMapping,
-    last_published_declaration,
+    draft_declaration, last_published_declaration,
 )
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
@@ -333,3 +333,52 @@ def test_a_revision_locks_the_row_before_it_asks_whether_it_is_published():
     assert locked_at < returned_to_draft_at
     assert EventType.objects.get(pk=published.pk).declaration_status \
         == DECLARATION_STATUS_DRAFT
+
+
+# ---------------------------------------------------------------------------
+# The draft has a read of its own (#576)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+def test_the_draft_read_answers_the_edit_and_claims_no_publication():
+    """Published, then revised: the two reads answer two declarations. The
+    draft one says what the rows say now, and says it is no publication —
+    which is how a caller holding only the answer tells them apart."""
+    published = _published()
+    _recount(published)
+
+    draft = draft_declaration(tenant=published.tenant, key=KEY)
+    last = _read(published)
+
+    assert draft.measurements[0].unit == UNIT_CALL
+    assert last.measurements[0].unit == UNIT_TOKEN
+    assert (draft.published_revision, draft.published_at) == (None, None)
+    assert last.published_revision == 1
+    # The same shape apart from what was edited and what a draft cannot
+    # claim, so a caller resolves a draft exactly as it resolves a
+    # publication.
+    assert draft._replace(
+        published_revision=last.published_revision,
+        published_at=last.published_at,
+        measurements=last.measurements) == last
+
+
+@pytest.mark.django_db
+def test_the_draft_read_answers_a_declaration_never_published():
+    """Where the published read has nothing to say, by design."""
+    declared = _declared()
+
+    assert _read(declared) is None
+    draft = draft_declaration(tenant=declared.tenant, key=KEY)
+    assert (draft.key, draft.costing_method) == (KEY, COSTING_METHOD_REPORTED)
+    assert [quantity.code for quantity in draft.measurements] == [
+        "input_tokens"]
+    assert draft.reported_cost_mapping is not None
+
+
+@pytest.mark.django_db
+def test_the_draft_read_answers_none_for_a_key_nobody_declared():
+    tenant = Tenant.objects.create(name="T")
+
+    assert draft_declaration(tenant=tenant, key="not.declared") is None
+    assert draft_declaration(tenant=tenant, key="") is None

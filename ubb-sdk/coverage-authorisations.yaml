@@ -491,3 +491,26 @@ authorisations:
       three to need argument when it is wrapped — which is a reason to let the
       ticket that owns the client shape it, not a reason to pre-empt that
       ticket here.
+  - id: code-builder-576-the-integration-blueprint
+    issue: 576
+    operations_added: 2
+    reason: >-
+      TWO NEW OPERATIONS AT A NEW PREFIX, both `generated_only`: resolving a
+      selection into an Integration Blueprint
+      (`POST /code-builder/blueprints`) and reading one back by the fingerprint
+      a generated file was stamped with
+      (`GET /code-builder/blueprints/{configuration_fingerprint}`).
+
+      WHY NEITHER IS WRAPPED, AND WHY THAT IS NOT A DEFERRAL. The hand-written
+      client is what a tenant's integration calls while it runs: start work,
+      record usage, close. A Blueprint is read BEFORE that code exists — by the
+      console's builder page and by a renderer that turns it into the very
+      calls the client wraps — and no running integration asks for one. A
+      convenience method here would be an ergonomic surface with no caller,
+      on a client whose every other method is a call site of generated code.
+
+      The contract says the document is consumable from raw HTTP with no typed
+      client (#184 §3), and the generated core carries its models for a caller
+      who wants them typed. If a command-line builder or a coding-agent
+      surface ever consumes a Blueprint from Python, that consumer decides the
+      handle's shape; nothing here pre-empts it.

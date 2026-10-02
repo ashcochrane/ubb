@@ -35,6 +35,8 @@ so advice is the entire product.
 import re
 
 from core.vocabulary import (
+    RESPONSE_SHAPE_REPRESENTATION_JSON,
+    RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
     SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1,
     SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1,
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
@@ -102,6 +104,31 @@ SHAPE_CONVENTIONS = {
     SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1: CONVENTION_LOWER_CAMEL,
     SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1: CONVENTION_SNAKE,
     SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1: CONVENTION_SNAKE,
+}
+
+#: Which representation each response shape UBB RECOGNISES is — the JSON
+#: document a web API returns, or the object a Python library hands back
+#: (#576, owner ruling of 2026-09-25, item 6). The two words are the
+#: registry's `response_shape_representation`, held by reference.
+#:
+#: DECLARED, NOT PARSED OUT OF THE IDENTIFIER. Two of the three ids happen to
+#: carry `python` as a segment and one carries `rest`, and reading the answer
+#: off that would make a naming habit load-bearing: the next shape UBB learns
+#: may be named for neither. Keyed on the generated names beside the table
+#: above and for its reason — it cannot drift from the registry — and held by
+#: the same kind of test, so a shape UBB learns cannot arrive saying nothing
+#: about what it is.
+#:
+#: `custom` is absent by construction, as it is above: a tenant's own wrapper
+#: declares no representation, so nothing here can say what reads it. The Code
+#: Builder treats a shape missing from this table as one no target can read
+#: until a renderer defines how to traverse it.
+SHAPE_REPRESENTATIONS = {
+    SOURCE_SHAPE_ID_GOOGLE_GEMINI_REST_V1: RESPONSE_SHAPE_REPRESENTATION_JSON,
+    SOURCE_SHAPE_ID_GOOGLE_GENAI_PYTHON_V1:
+        RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
+    SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1:
+        RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
 }
 
 

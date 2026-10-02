@@ -116,6 +116,14 @@ API_V1_BILLING_ENDPOINTS_WITHDRAW = Operation(
     'api_v1_billing_endpoints_withdraw',
     'post',
     '/api/v1/billing/customers/{customer_id}/withdraw')
+API_V1_CODE_BUILDER_ENDPOINTS_GET_BLUEPRINT = Operation(
+    'api_v1_code_builder_endpoints_get_blueprint',
+    'get',
+    '/api/v1/code-builder/blueprints/{configuration_fingerprint}')
+API_V1_CODE_BUILDER_ENDPOINTS_RESOLVE_BLUEPRINT = Operation(
+    'api_v1_code_builder_endpoints_resolve_blueprint',
+    'post',
+    '/api/v1/code-builder/blueprints')
 API_V1_CONNECT_ENDPOINTS_CONNECT_START = Operation(
     'api_v1_connect_endpoints_connect_start', 'post', '/api/v1/connect/start')
 API_V1_CONNECT_ENDPOINTS_CONNECT_STATUS = Operation(
