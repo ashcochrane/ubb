@@ -31,7 +31,7 @@ For the `python_sdk` target (SDK v3), `render` returns:
 |---|---|---|
 | `module` | `ubb_integration.py` | Every value the Blueprint resolved that running code needs. Dropped in, never edited, replaced whole on regeneration. |
 | `call_site` | `call_sites/<name>.py` | One block per place a tenant's own code calls the module. **No generated value appears in one**: no string, number or bytes literal, only names. |
-| `environment_example` | `.env.example` | `UBB_API_KEY=` and `UBB_BASE_URL=`, with nothing after the equals sign. |
+| `environment_example` | `.env.example` | `UBB_API_KEY=` and `UBB_BASE_URL=`, with nothing after the equals sign. Both are required: the renderer holds no default host (ADR-0016 §8). |
 | `verify_script` | `verify_integration.py` | Checks the declared paths against a response the tenant's supplier really returned. Calls nothing. Holds the declared paths, so it is replaced with the module. |
 
 The `shell_http` target is not rendered yet; its two catalogue symbols are declared.

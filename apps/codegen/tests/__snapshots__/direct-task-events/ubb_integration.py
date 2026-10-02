@@ -39,6 +39,7 @@ from typing import Iterator
 from ubb import RecordUsageResponse, StartedTask, UBBClient, UBBStopRequested
 
 __all__ = [
+    "UBBEnvironmentNotSet",
     "start_task",
     "unit_of_work",
     "record_reply_sent",
@@ -52,18 +53,28 @@ _LOGGER = logging.getLogger("ubb_integration")
 _CLIENT = None
 
 
+# What building the client raises when a variable it needs is not set.
+class UBBEnvironmentNotSet(RuntimeError):
+    pass
+
+
 # The client is built on first use, so importing this file needs no
 # credentials.
 def _client() -> UBBClient:
     global _CLIENT
     if _CLIENT is None:
+        # Not a secret, and required: the base URL of the UBB API this code
+        # calls. This file holds no address of its own.
+        base_url = os.environ.get("UBB_BASE_URL")
+        if not base_url:
+            raise UBBEnvironmentNotSet(
+                "UBB_BASE_URL is not set. Set it in the environment this code runs in."
+            )
         _CLIENT = UBBClient(
             # A credential. Set it in the environment this code runs in, and never
             # write its value into a file.
             api_key=os.environ["UBB_API_KEY"],
-            # Not a secret. Set it to point this file at another server; unset or
-            # empty, the default is used.
-            base_url=os.environ.get("UBB_BASE_URL") or "https://api.ubb.dev",
+            base_url=base_url,
         )
     return _CLIENT
 

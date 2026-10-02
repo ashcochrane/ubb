@@ -498,10 +498,14 @@ describe("the shapes a value takes", () => {
     );
   });
 
-  it("emits no base URL the Blueprint did not carry but the catalogue's default", () => {
-    expect(moduleOf("calculated-cost").contents).toContain(
-      `os.environ.get("${ENVIRONMENT.baseUrl}") or "https://api.ubb.dev"`,
-    );
+  it("writes no host into any file: where the API is, is read from the environment", () => {
+    for (const branch of BRANCH_NAMES) {
+      for (const file of rendered(branch)) {
+        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/https?:\/\//);
+        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/localhost|\bubb\.dev\b/);
+      }
+      expect(moduleOf(branch).contents).toContain(`os.environ.get("${ENVIRONMENT.baseUrl}")`);
+    }
   });
 });
 

@@ -38,7 +38,6 @@
 import { refuse, type Json } from "../blueprint.ts";
 import {
   AMOUNT_REPRESENTATION,
-  BASE_URL_DEFAULT,
   COMMENTS,
   ENVIRONMENT,
   MESSAGES,
@@ -425,16 +424,27 @@ function client(plan: Plan): string[] {
     `${clientHolder} = None`,
     "",
     "",
+    ...asComments(COMMENTS.environmentNotSet),
+    `class ${PYTHON.environmentError}(RuntimeError):`,
+    `${INDENT}pass`,
+    "",
+    "",
     ...asComments(COMMENTS.client),
     `def ${name}() -> UBBClient:`,
     `${INDENT}global ${clientHolder}`,
     `${INDENT}if ${clientHolder} is None:`,
+    // Where the API is, is read and never defaulted: an unset or an empty
+    // variable refuses here, before any client exists to send anything.
+    ...asComments(COMMENTS.baseUrl, INDENT.repeat(2)),
+    `${INDENT.repeat(2)}base_url = os.environ.get(${pyString(ENVIRONMENT.baseUrl)})`,
+    `${INDENT.repeat(2)}if not base_url:`,
+    `${INDENT.repeat(3)}raise ${PYTHON.environmentError}(`,
+    `${INDENT.repeat(4)}${pyString(`${ENVIRONMENT.baseUrl} ${MESSAGES.environmentNotSet}`)}`,
+    `${INDENT.repeat(3)})`,
     `${INDENT.repeat(2)}${clientHolder} = UBBClient(`,
     ...asComments(COMMENTS.apiKey, INDENT.repeat(3)),
     `${INDENT.repeat(3)}api_key=os.environ[${pyString(plan.credential.binding.environmentVariable)}],`,
-    ...asComments(COMMENTS.baseUrl, INDENT.repeat(3)),
-    `${INDENT.repeat(3)}base_url=os.environ.get(${pyString(ENVIRONMENT.baseUrl)}) or ` +
-      `${pyString(BASE_URL_DEFAULT)},`,
+    `${INDENT.repeat(3)}base_url=base_url,`,
     `${INDENT.repeat(2)})`,
     `${INDENT}return ${clientHolder}`,
   ];
@@ -597,6 +607,7 @@ export function renderModule(plan: Plan): string {
   const records = plan.records.map((record) => recordFunctions(plan, uses, record));
 
   const exported = [
+    PYTHON.environmentError,
     ...(uses.reportedCost ? [PYTHON.amountRefused, PYTHON.currencyRefused] : []),
     ...(uses.notReady ? [PYTHON.notReadyError] : []),
     PYTHON.startTask,

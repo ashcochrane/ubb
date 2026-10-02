@@ -4,7 +4,6 @@
     "minorUnits": "minor_units",
     "majorUnitsDecimal": "major_units_decimal"
   },
-  "BASE_URL_DEFAULT": "https://api.ubb.dev",
   "CATALOGUE_VERSION": 1,
   "COMMENTS": {
     "generated": [
@@ -52,8 +51,11 @@
       "write its value into a file."
     ],
     "baseUrl": [
-      "Not a secret. Set it to point this file at another server; unset or",
-      "empty, the default is used."
+      "Not a secret, and required: the base URL of the UBB API this code",
+      "calls. This file holds no address of its own."
+    ],
+    "environmentNotSet": [
+      "What building the client raises when a variable it needs is not set."
     ],
     "notReady": [
       "What a call raises until the declarations it needs are made. The",
@@ -141,6 +143,7 @@
   "MESSAGES": {
     "notReady": "is not ready to run. The generated file's header lists what to declare.",
     "notConfigured": "has no configured value",
+    "environmentNotSet": "is not set. Set it in the environment this code runs in.",
     "stop": "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
     "float": "is a binary float, and a reported cost is money: pass its decimal text or an integer",
     "flag": "is a flag, not a reported cost",
@@ -210,6 +213,7 @@
     "backfillPrefix": "backfill",
     "unkeyed": "usage",
     "notReadyError": "UBBIntegrationNotReady",
+    "environmentError": "UBBEnvironmentNotSet",
     "amountRefused": "ReportedCostNotRepresentable",
     "currencyRefused": "ReportedCostCurrencyRefused",
     "logger": "ubb_integration",

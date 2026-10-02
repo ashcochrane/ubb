@@ -16,7 +16,6 @@ import { describe, expect, it } from "vitest";
 import * as catalogue from "../src/catalogue.ts";
 import {
   AMOUNT_REPRESENTATION,
-  BASE_URL_DEFAULT,
   CATALOGUE_VERSION,
   COMMENTS,
   ENVIRONMENT,
@@ -44,12 +43,17 @@ const REGISTRY = registry(
 describe("the catalogue's symbols", () => {
   it("are the ones ruled, spelled as ruled", () => {
     expect(ENVIRONMENT).toEqual({ apiKey: "UBB_API_KEY", baseUrl: "UBB_BASE_URL" });
-    expect(BASE_URL_DEFAULT).toBe("https://api.ubb.dev");
     expect(SHELL).toEqual({
       stopMetadata: "stop_requested",
       stopExitStatusName: "UBB_EXIT_STOP_REQUESTED",
       stopExitStatus: 20,
     });
+  });
+
+  it("hold no host: where the API is, is not the renderer's to say", () => {
+    // Owner ruling on PR #597: the renderer keeps no second copy of the
+    // platform's service location. Nothing in the catalogue is an address.
+    expect(JSON.stringify(catalogue)).not.toMatch(/https?:\/\/|localhost/);
   });
 
   it("name the credential the server withholds under the same variable", () => {

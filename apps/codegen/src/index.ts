@@ -10,7 +10,6 @@ export { BlueprintNotRenderable } from "./blueprint.ts";
 export type { ResolvedIntegrationBlueprint } from "./blueprint.ts";
 export {
   AMOUNT_REPRESENTATION,
-  BASE_URL_DEFAULT,
   CATALOGUE_VERSION,
   COMMENTS,
   ENVIRONMENT,

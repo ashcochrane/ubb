@@ -68,10 +68,20 @@ id is read off the handle.
 Naming a function for a key is this renderer's naming. It is not a second spelling of the key,
 which is only ever written as a literal.
 
+**What "no generated value" means, as ruled (§9).** #184 §6 says no generated value may appear in
+a call-site block, "that excludes kinds of work, Event Types, Measurement names". The rule is about
+VALUES: a block never supplies a tenant-declared Event Type, Measurement name, grouping value or
+any other argument as a literal, so nothing in a block can go stale when configuration moves. A
+function named for the declared object it is about is a SYMBOL derived from the selected contract,
+and is not a value in that sense. The alternative, a name by position, would silently change what
+a call means when the selection changes.
+
 **Two keys that would share a function name both take a suffix that is a function of the key.**
 Neither keeps the plain name. So selecting a second Event Type can make an existing function's
 name disappear, which a call site notices at import, and can never hand that name to the other
-Event Type, which would record one supplier's usage as another's and say nothing.
+Event Type, which would record one supplier's usage as another's and say nothing. **That is the
+invariant: a generated function is never silently reattributed to another declared object.** A
+collision may change a symbol loudly; it is deliberately no more elaborate than that.
 
 The module's own names are chosen so that no parameter is spelled like one, so a declared name can
 never stand in front of the client, the conversion or the SDK keywords.
@@ -102,10 +112,23 @@ value, and is still written beneath the guard so the file shows the lifecycle's 
 as it stands and raises again. No function that records has a handler. The path for work that has
 already happened passes `stop_behavior="return"`; the live path passes `"raise"`.
 
+What is logged today is the key the event was sent under and the acknowledgement's own `repr`.
+**That is a fallback and is temporary (§9).** The SDK's models cannot be turned back into a
+dictionary yet (#596), and the stop's contracted explanation — the reason, the mechanism that
+applied it, the scope, the limit and the spend measured against it — is not all published yet
+(#569). When that lands, the boundary states those fields by name. It never relies on an SDK
+object's `repr` as its structured account of a stop.
+
 A cost a supplier reports is converted to whole micros in the tenant's process, by a helper written
 into the module. Its definition is the platform's `to_micros` and `pin_currency`, and it is held to
 them case for case: the platform writes a table of its own answers, and the suite runs the
 generated helper over that table.
+
+A currency that disagrees with the declared one is refused by that helper, and here that is proved
+by calling the helper: for a cost the caller supplies, generated code has no supplier currency to
+pass. **It is not the end-to-end proof (§9).** The ticket that carries a cost read off a
+supplier's response (#583) passes the response's currency and owes the real case, through the
+generated artifact: a response reporting a currency other than the contract's is refused.
 
 ### 5. Fixtures are what the platform answered
 
@@ -148,7 +171,39 @@ named for its version, so a change under an unchanged number is a diff of that f
 
 A Blueprint that is merely not ready is never refused.
 
-### 8. What this ADR does not decide
+### 8. Where the API is, is not the renderer's to say
+
+`UBB_BASE_URL` is read from the environment and is **required**. A generated file holds no host:
+with the variable unset or empty it refuses to build a client, naming the variable, before anything
+is sent.
+
+#184 §4 and #156 §7 describe a default, "the canonical host". No operational hostname is ratified
+by the platform's contract, and the only one written down was quoted by a dated decision from a
+prototype. A renderer that wrote it into tenants' files would make it a public contract by
+accident, so it does not (§9). The SDK's own default is a developer's localhost and is not
+inherited either: a file that fell back to it would send production usage nowhere.
+
+**The rule for every target:** the renderer never holds its own copy of the platform's service
+location. If the SDK comes to own a canonical production base URL, generated Python inherits the
+SDK's default and does not restate it; until then the variable is required. The shell target
+follows the same source and holds no host of its own.
+
+### 9. The owner's rulings on this record
+
+The owner reviewed these decisions on PR #597 on 2026-10-02 and approved §1 to §7 as built, with
+five rulings:
+
+1. **Generated function names stand** (§2): symbolic identifiers derived from the selected
+   contract are not the values §6 prohibits, semantic names are preferred to positional ones, and
+   the collision rule stays as it is.
+2. **The fixed-price fixture is route-built**, not synthetic as the ticket's criterion said: a
+   real route-built Blueprint is stronger evidence. A missing agreed price stays #586's.
+3. **The currency-disagreement proof here is the helper's**, accepted for this ticket; #583 owes
+   the generated-artifact case (§4).
+4. **The default host is removed** (§8). This is the one thing the review changed.
+5. **#596 does not block this, and `repr` is temporary** (§4).
+
+### 10. What this ADR does not decide
 
 The shell target (#578). The page that calls `render` (#579). Execution against the real
 application (#582). How a cost read off a supplier's response, a constant's value or a missing
@@ -171,6 +226,7 @@ agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 an
 | §5 — every committed Blueprint is what the route answers, and none is added by hand | same platform module — `test_a_committed_blueprint_is_what_the_route_answers`, `test_every_committed_blueprint_is_one_this_module_produces`; `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_every_blueprint_the_suite_renders_is_one_the_platform_holds` |
 | §6 — every comment is provenance or a catalogue member, and states only what the Blueprint carries | `apps/codegen/tests/artifact.test.ts` — "carries only comments that are provenance or a catalogue member", "states in a provenance comment only what the Blueprint carries" |
 | §6 — a sentence for every code and verdict, and no other; each restated set equal to the registry's | `apps/codegen/tests/catalogue.test.ts` — "has remediation for every diagnostic code, and for no other", "says what every verdict means, and no other", "converts every amount representation, and no other", "says what delivering means under every pricing mode, and no other", "reads every response shape representation, and no other" |
+| §8 — no file holds a host; unset or empty refuses, naming the variable, and sends nothing | `apps/codegen/tests/artifact.test.ts` — "writes no host into any file: where the API is, is read from the environment"; `apps/codegen/tests/execution.test.ts` — "holds no host of its own: with the variable unset or empty it refuses, naming it"; `apps/codegen/tests/catalogue.test.ts` — "hold no host: where the API is, is not the renderer's to say" |
 | §7 — what is refused | `apps/codegen/tests/artifact.test.ts` — "refuses %s rather than writing a file that is wrong" |
 
 ## Consequences
@@ -187,6 +243,8 @@ agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 an
 - **A new diagnostic code, verdict, amount representation or pricing mode reddens the catalogue's
   tests** until the renderer says something about it. A new document shape is refused until the
   renderer is taught to read it.
+- **A generated file does not run until `UBB_BASE_URL` is set.** One more line of setup, in
+  exchange for no tenant ever sending usage to an address nobody chose.
 - **The module converts money in a process UBB never sees.** The table of cases is the only thing
   that holds it to the platform, so a change to `to_micros` is a change to that table and to every
   module already generated.

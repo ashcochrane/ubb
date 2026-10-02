@@ -161,28 +161,35 @@ result = {"sent": [request["authorization"] for request in server.requests],
     expect(answer.held).toBe(false);
   });
 
-  it("falls back to the canonical host when the variable is unset or empty", () => {
-    const answer = run<string[]>(
+  it("holds no host of its own: with the variable unset or empty it refuses, naming it", () => {
+    const answer = run<{ refused: string[]; sent: number; set: string }>(
       rendered("direct-task-events"),
       `
 import os
-bases = []
+integration = load()
+refused = []
 for value in (None, ""):
     if value is None:
         del os.environ["UBB_BASE_URL"]
     else:
         os.environ["UBB_BASE_URL"] = value
-    integration = load()
-    integration._CLIENT = None
-    bases.append(integration._client()._base_url)
+    try:
+        integration.start_task(customer_id="c", idempotency_key="w")
+    except integration.UBBEnvironmentNotSet as error:
+        refused.append(str(error))
+sent = len(server.requests)
 os.environ["UBB_BASE_URL"] = "http://127.0.0.1:1/"
-integration._CLIENT = None
-bases.append(integration._client()._base_url)
-result = bases
+result = {"refused": refused, "sent": sent,
+          "set": integration._client()._base_url}
 `,
     );
 
-    expect(answer).toEqual(["https://api.ubb.dev", "https://api.ubb.dev", "http://127.0.0.1:1"]);
+    // Not the SDK's own default either, which is a developer's localhost: a
+    // file that fell back to it would send production usage to nobody.
+    expect(answer.refused).toHaveLength(2);
+    for (const message of answer.refused) expect(message).toContain("UBB_BASE_URL");
+    expect(answer.sent).toBe(0);
+    expect(answer.set).toBe("http://127.0.0.1:1");
   });
 
   it("raises TypeError, naming it, when a runtime value is left out", () => {

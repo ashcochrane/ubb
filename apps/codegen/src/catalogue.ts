@@ -33,16 +33,25 @@ import type {
 
 export const CATALOGUE_VERSION = 1;
 
-/** The environment a generated file reads, and the instructions each needs. */
+/**
+ * The environment a generated file reads, and the instructions each needs.
+ *
+ * ⚠ THERE IS NO DEFAULT HOST HERE, AND THAT IS A RULING (owner review of
+ * PR #597, 2026-10-02). Where the API is belongs to the platform's contract,
+ * and no operational hostname is ratified by it: the renderer must not turn a
+ * hostname a dated document quoted into a public contract by writing it into
+ * tenants' files. So `UBB_BASE_URL` is REQUIRED, and a generated file refuses
+ * to build a client without it. The SDK's own default is a developer's
+ * localhost and is not inherited either. The day a canonical host is
+ * formally established, the target that has an SDK inherits the SDK's
+ * default, and no target holds a copy of its own.
+ */
 export const ENVIRONMENT = {
   /** The tenant's credential. Withheld by the server; read here by name. */
   apiKey: "UBB_API_KEY",
-  /** Where the API is. Not a secret, so it has a default. */
+  /** Where the API is. Not a secret, and required. */
   baseUrl: "UBB_BASE_URL",
 } as const;
-
-/** The canonical host, used where `UBB_BASE_URL` is not set (#158 §5.4). */
-export const BASE_URL_DEFAULT = "https://api.ubb.dev";
 
 /**
  * What a shell file calls the stop, declared here so both targets take it
@@ -73,6 +82,7 @@ export const PYTHON = {
   /** What an unkeyed call is named after, where no declared key names it. */
   unkeyed: "usage",
   notReadyError: "UBBIntegrationNotReady",
+  environmentError: "UBBEnvironmentNotSet",
   amountRefused: "ReportedCostNotRepresentable",
   currencyRefused: "ReportedCostCurrencyRefused",
   logger: "ubb_integration",
@@ -252,8 +262,11 @@ export const COMMENTS = {
     "write its value into a file.",
   ],
   baseUrl: [
-    "Not a secret. Set it to point this file at another server; unset or",
-    "empty, the default is used.",
+    "Not a secret, and required: the base URL of the UBB API this code",
+    "calls. This file holds no address of its own.",
+  ],
+  environmentNotSet: [
+    "What building the client raises when a variable it needs is not set.",
   ],
   notReady: [
     "What a call raises until the declarations it needs are made. The",
@@ -339,6 +352,7 @@ export const COMMENTS = {
 export const MESSAGES = {
   notReady: "is not ready to run. The generated file's header lists what to declare.",
   notConfigured: "has no configured value",
+  environmentNotSet: "is not set. Set it in the environment this code runs in.",
   stop: "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
   float: "is a binary float, and a reported cost is money: pass its decimal text or an integer",
   flag: "is a flag, not a reported cost",
