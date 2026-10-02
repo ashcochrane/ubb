@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,944 of 2,381 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,075 of 2,512 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2649,6 +2649,27 @@ measurement_key:
     # deliberate addition, and this ticket's is a twentieth app. Its one
     # migration creates a table and names no retired word, so it needs no
     # excuse and is not given one: it is swept like any source file.
+    #
+    # 2026-10-02, #577 (`ubb-codegen` and the Python renderer): 1,944 of 2,381
+    # -> 2,075 of 2,512 tracked files (`units` 44 files / 122 occurrences,
+    # UNMOVED). 131 files arrived, none left, and ALL 131 are swept: the
+    # exclusions stand at 437. 128 are the new package under `apps/codegen` —
+    # 13 source modules, 8 test and harness files, 8 of configuration and
+    # documentation, 11 fixtures the platform writes, and 88 snapshots. The
+    # other 3 are the platform test that holds those fixtures, the contract
+    # test that holds the package's CI job armed, and the ADR. (Taken twice:
+    # 2,074 of 2,511 before the review pass, which added one source module.)
+    #
+    # ⚠ THE 88 SNAPSHOTS ARE GENERATED TEXT, AND THEY ARE SWEPT ON PURPOSE.
+    # They are the files a tenant is handed, so a retired word in one is a
+    # retired word UBB writes into somebody else's repository. They take no
+    # exclusion and need none: no generated file spells one.
+    #
+    # The amount representations `minor_units` and `major_units_decimal` are
+    # spelled throughout the package — in the catalogue, the generated
+    # conversion, the fixtures and the snapshots — and do not count, for the
+    # reason #573's entry gives: the matcher requires a non-identifier
+    # character on each side of the token, and both have an underscore there.
 
     - term: units
       retired_as: >-

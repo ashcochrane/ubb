@@ -1,0 +1,761 @@
+{
+  "amounts": [
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "0.00123"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1230
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "12.5"
+      },
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 125000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1230"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1230
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "0.000000"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 0
+      }
+    },
+    {
+      "amount": {
+        "type": "string",
+        "text": "0.1"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 100000
+      }
+    },
+    {
+      "amount": {
+        "type": "string",
+        "text": " 0.5 "
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 500000
+      }
+    },
+    {
+      "amount": {
+        "type": "string",
+        "text": "1_000"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.000000000"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "-0.5"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": -500000
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "9223372036854.775807"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 9223372036854775807
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "0.0000001"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.5"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.0001"
+      },
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 10001
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.00001"
+      },
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1E-9"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1E+3"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000000000
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.0000000000000000000000000000001"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "123456789012.3456789012345678901234567"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "float",
+        "text": "0.1"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "float",
+        "text": "2.0"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "boolean",
+        "text": "true"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "none",
+        "text": ""
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "string",
+        "text": "free"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "string",
+        "text": ""
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "Infinity"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "NaN"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1E+999999999"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1E-999999999"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "1.00000000000000000000000000000000000000000000000000"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "10000000000000"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "decimal",
+        "text": "-10000000000000"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "9223372036854775807"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9223372036854775807
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "9223372036854775808"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "hundredths_of_a_farthing",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "eur",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "USD",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "jpy",
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "",
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "micros",
+      "currency": "jpy",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "major_units_decimal",
+      "currency": "xyz",
+      "expected": {
+        "answer": 1000000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "aud",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "brl",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "cad",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "chf",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "czk",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "dkk",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "eur",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "gbp",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "hkd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "inr",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "mxn",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "nok",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "nzd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "pln",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "sek",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "sgd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "amount": {
+        "type": "integer",
+        "text": "1"
+      },
+      "representation": "minor_units",
+      "currency": "zar",
+      "expected": {
+        "answer": 10000
+      }
+    }
+  ],
+  "currencies": [
+    {
+      "declared": "usd",
+      "reported": "usd",
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": "usd",
+      "reported": null,
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": "usd",
+      "reported": " USD ",
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": "usd",
+      "reported": "eur",
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "declared": "USD",
+      "reported": "usd",
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": " Usd ",
+      "reported": null,
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": "xyz",
+      "reported": null,
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "declared": "",
+      "reported": "gbp",
+      "expected": {
+        "answer": "gbp"
+      }
+    },
+    {
+      "declared": "",
+      "reported": "jpy",
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "declared": "",
+      "reported": null,
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "declared": "usd",
+      "reported": "",
+      "expected": {
+        "answer": "usd"
+      }
+    },
+    {
+      "declared": "gbp",
+      "reported": "GBP",
+      "expected": {
+        "answer": "gbp"
+      }
+    }
+  ]
+}
