@@ -1,4 +1,4 @@
-"""The renderer's committed fixtures are what this platform answers (#577).
+"""The renderer's committed fixtures are what this platform answers (#577, #578).
 
 `ubb-codegen` turns an Integration Blueprint into files, and its tests render
 committed Blueprints. A renderer tested against a Blueprint somebody imagined
@@ -7,12 +7,22 @@ proves nothing about the one the route answers, so every Blueprint under
 and published through the tenant's own routes, the Blueprint asked for through
 its own route, and the answer held equal to the committed file.
 
-The same holds for the arithmetic. The generated module converts a supplier's
+**One file per branch and per target.** A Blueprint is resolved FOR a target,
+so each branch is committed twice: under its own name for the Python target,
+and under `shell-<name>` for the shell one. The two are the same declarations
+wherever both targets can read them. Where they cannot be — a shell file reads
+the JSON a web API returns and never a Python library's object — the shell
+fixture declares the JSON shape, and `shell-unreadable-shape` is the Python
+branch's own configuration asked for as shell, which is blocked.
+
+The same holds for the arithmetic. A generated file converts a supplier's
 reported cost to micros in the tenant's own process, and the definition of
 that conversion is `to_micros` and `pin_currency` in this tree. The case table
 under `apps/codegen/fixtures/` carries this platform's answer to each case, so
 the renderer's tests execute the generated conversion against expectations it
-did not write.
+did not write. Each case carries two answers, because a shell file holds text
+and nothing else: what this platform answers for the amount as the value it
+is, and what it answers for the same amount handed over as its text.
 
 **To regenerate after a deliberate change**, run this module with
 `UBB_WRITE_CODEGEN_FIXTURES=1`: each test then writes its file before holding
@@ -42,6 +52,8 @@ from core.vocabulary import (
     AMOUNT_REPRESENTATION_MICROS as MICROS,
     AMOUNT_REPRESENTATION_MINOR_UNITS as MINOR,
     AMOUNT_REPRESENTATION_VALUES,
+    CODE_TARGET_PYTHON_SDK as PYTHON,
+    CODE_TARGET_SHELL_HTTP as SHELL,
     PRICING_MODE_FIXED)
 
 from ._helpers import (
@@ -107,24 +119,39 @@ def _a_quantity(source_kind, *, unit="token", path=(), required=True,
             "source_path": list(path)}
 
 
-def _calculated_cost(routes):
+#: Where the same two token counts sit in each kind of response: on a Python
+#: library's object, and in the JSON a web API returns. A shell file reads
+#: only the second, so the branches that read a response declare it there.
+_A_SUPPLIERS_RESPONSE = {
+    A_PYTHON_SHAPE: {"provider": "openai",
+                     "input": ["usage", "input_tokens"],
+                     "output": ["usage", "output_tokens"]},
+    A_JSON_SHAPE: {"provider": "google",
+                   "input": ["usageMetadata", "promptTokenCount"],
+                   "output": ["usageMetadata", "candidatesTokenCount"]},
+}
+
+
+def _calculated_cost(routes, target=PYTHON, shape=A_PYTHON_SHAPE):
     """A kind of work with a ceiling and a required Grouping Field, and one
-    Event Type costed from quantities: two read off the supplier's Python
-    object, one the caller supplies."""
+    Event Type costed from quantities: two read off the supplier's response,
+    one the caller supplies."""
+    response = _A_SUPPLIERS_RESPONSE[shape]
     routes._grouping_fields(("environment", "task"))
     routes._kinds({"key": KIND, "task_cogs_ceiling_micros": 5_000_000,
                    "required_grouping_fields": ["environment"]})
     routes._event_type(
-        "chat.completion", provider="openai", shape=A_PYTHON_SHAPE,
+        "chat.completion", provider=response["provider"], shape=shape,
         measurements={
-            "input_tokens": INPUT_TOKENS,
+            "input_tokens": {**INPUT_TOKENS, "source_path": response["input"]},
             "output_tokens": _a_quantity("provider_response",
-                                         path=["usage", "output_tokens"]),
+                                         path=response["output"]),
             "searches": SEARCHES})
-    return routes._resolve(task_type=KIND, event_types=["chat.completion"])
+    return routes._resolve(task_type=KIND, event_types=["chat.completion"],
+                           target=target)
 
 
-def _reported_cost(routes):
+def _reported_cost(routes, target=PYTHON):
     """An Event Type costed from the supplier's own figure, which the caller
     supplies as a decimal of the major unit."""
     routes._a_kind("web_research")
@@ -134,10 +161,10 @@ def _reported_cost(routes):
         mapping={"source_kind": "caller_supplied",
                  "amount_representation": MAJOR, "currency": "usd"})
     return routes._resolve(task_type="web_research",
-                           event_types=["web.search"])
+                           event_types=["web.search"], target=target)
 
 
-def _direct_task_events(routes):
+def _direct_task_events(routes, target=PYTHON):
     """Two Event Types recorded straight against the Task: no Subtask, no
     Grouping Field, no ceiling, nothing read off a response."""
     routes._a_kind("support_reply")
@@ -145,10 +172,11 @@ def _direct_task_events(routes):
         "replies": _a_quantity("caller_supplied", unit="reply")})
     routes._event_type("search.run", measurements={"searches": SEARCHES})
     return routes._resolve(task_type="support_reply",
-                           event_types=["search.run", "reply.sent"])
+                           event_types=["search.run", "reply.sent"],
+                           target=target)
 
 
-def _explicit_subtasks(routes):
+def _explicit_subtasks(routes, target=PYTHON):
     """A Subtask kind the integration creates, with its own required Grouping
     Field, and an Event Type read off a web API's JSON — one of whose paths is
     spelled against the shape's convention, which is advice and blocks
@@ -169,27 +197,30 @@ def _explicit_subtasks(routes):
                 "provider_response",
                 path=["usage_metadata", "candidates_token_count"])})
     return routes._resolve(task_type=KIND, event_types=["gemini.generate"],
-                           subtask_types=[SUBTASK_KIND])
+                           subtask_types=[SUBTASK_KIND], target=target)
 
 
-def _fixed_price(routes):
+def _fixed_price(routes, target=PYTHON):
     """A kind of work sold whole, at one agreed price."""
     routes._kinds({"key": "report", "uncapped": True,
                    "pricing_mode": PRICING_MODE_FIXED})
     routes._event_type("reply.sent", measurements={
         "replies": _a_quantity("caller_supplied", unit="reply")})
-    return routes._resolve(task_type="report", event_types=["reply.sent"])
+    return routes._resolve(task_type="report", event_types=["reply.sent"],
+                           target=target)
 
 
-def _scaffold(routes):
+def _scaffold(routes, target=PYTHON):
     """A tenant that has declared nothing, and selected nothing."""
-    return routes._resolve()
+    return routes._resolve(target=target)
 
 
-def _blocked(routes):
+def _blocked(routes, target=PYTHON):
     """Every way a known structure can lack something it cannot run without:
     a constant with no declared value, a derived quantity, a cost read off the
-    supplier's response, and an Event Type never published."""
+    supplier's response, and an Event Type never published. Asked for as
+    shell, the first Event Type's shape is one more: a Python library's
+    object, which a shell file cannot read."""
     routes._a_kind()
     routes._event_type(
         "chat.completion", shape=A_PYTHON_SHAPE,
@@ -208,7 +239,8 @@ def _blocked(routes):
                        publish=False)
     return routes._resolve(
         task_type=KIND,
-        event_types=["chat.completion", "web.search", "draft.only"])
+        event_types=["chat.completion", "web.search", "draft.only"],
+        target=target)
 
 
 #: Declared names carrying each character a renderer could trip over. Every
@@ -221,7 +253,7 @@ ODD_QUANTITIES = (
     "class")
 
 
-def _odd_names(routes):
+def _odd_names(routes, target=PYTHON):
     """Names with an apostrophe, a dollar sign, command-like text, a backtick,
     a backslash, a quote, characters outside ASCII, a hyphen, spaces, the two
     characters a token name encodes, braces and a Python keyword."""
@@ -239,17 +271,25 @@ def _odd_names(routes):
         _a_quantity("provider_response", path=["x-usage", "total tokens"]))
     routes._publish(ODD_EVENT_TYPE)
     return routes._resolve(task_type="report-generation",
-                           event_types=[ODD_EVENT_TYPE])
+                           event_types=[ODD_EVENT_TYPE], target=target)
 
 
-def _draft_preview(routes):
+def _draft_preview(routes, target=PYTHON, shape=A_PYTHON_SHAPE):
     """What an admin is shown of configuration not yet published: resolved
     from the draft, stored nowhere, carrying no fingerprint."""
     routes._a_kind()
-    routes._event_type("chat.completion", measurements={
-        "input_tokens": INPUT_TOKENS}, publish=False)
+    routes._event_type(
+        "chat.completion", shape=shape, publish=False,
+        measurements={"input_tokens": {
+            **INPUT_TOKENS,
+            "source_path": _A_SUPPLIERS_RESPONSE[shape]["input"]}})
     return routes._resolve(task_type=KIND, event_types=["chat.completion"],
-                           draft_preview=True)
+                           draft_preview=True, target=target)
+
+
+def _as_shell(declare, **declared):
+    """The same branch, asked for as a shell file."""
+    return lambda routes: declare(routes, target=SHELL, **declared)
 
 
 #: Every committed Blueprint, by file name, and what declares it.
@@ -263,6 +303,18 @@ BLUEPRINT_FIXTURES = {
     "blocked": _blocked,
     "odd-names": _odd_names,
     "draft-preview": _draft_preview,
+    "shell-calculated-cost": _as_shell(_calculated_cost, shape=A_JSON_SHAPE),
+    "shell-reported-cost": _as_shell(_reported_cost),
+    "shell-direct-task-events": _as_shell(_direct_task_events),
+    "shell-explicit-subtasks": _as_shell(_explicit_subtasks),
+    "shell-fixed-price": _as_shell(_fixed_price),
+    "shell-scaffold": _as_shell(_scaffold),
+    "shell-blocked": _as_shell(_blocked),
+    "shell-odd-names": _as_shell(_odd_names),
+    "shell-draft-preview": _as_shell(_draft_preview, shape=A_JSON_SHAPE),
+    # The Python branch's own declarations, asked for as shell: complete for
+    # one target and blocked for the other, by the response shape alone.
+    "shell-unreadable-shape": _as_shell(_calculated_cost),
 }
 
 #: What each one must be for the renderer's branches to be the ones named: a
@@ -278,7 +330,20 @@ READINESS = {
     "blocked": "blocked",
     "odd-names": "complete",
     "draft-preview": "complete",
+    "shell-calculated-cost": "complete",
+    "shell-reported-cost": "complete",
+    "shell-direct-task-events": "complete",
+    "shell-explicit-subtasks": "complete",
+    "shell-fixed-price": "complete",
+    "shell-scaffold": "scaffold",
+    "shell-blocked": "blocked",
+    "shell-odd-names": "complete",
+    "shell-draft-preview": "complete",
+    "shell-unreadable-shape": "blocked",
 }
+
+#: The prefix that says which target a fixture was resolved for.
+_SHELL_PREFIX = "shell-"
 
 
 @pytest.mark.django_db
@@ -290,6 +355,10 @@ def test_a_committed_blueprint_is_what_the_route_answers(name):
     blueprint = BLUEPRINT_FIXTURES[name](routes)
 
     assert blueprint["readiness"] == READINESS[name], blueprint["diagnostics"]
+    # The name says which target the file was resolved for, and the renderer's
+    # tests choose their branches by it.
+    assert blueprint["target"] == (
+        SHELL if name.startswith(_SHELL_PREFIX) else PYTHON)
     _held(BLUEPRINTS / f"{name}.json", blueprint)
 
 
@@ -300,6 +369,18 @@ def test_every_committed_blueprint_is_one_this_module_produces():
 
     assert committed == sorted(BLUEPRINT_FIXTURES)
     assert sorted(READINESS) == sorted(BLUEPRINT_FIXTURES)
+
+
+def test_every_branch_is_committed_for_both_targets():
+    """A branch added for one target and forgotten for the other would leave
+    the second renderer held to less than the first."""
+    python = sorted(name for name in BLUEPRINT_FIXTURES
+                    if not name.startswith(_SHELL_PREFIX))
+    shell = sorted(name[len(_SHELL_PREFIX):] for name in BLUEPRINT_FIXTURES
+                   if name.startswith(_SHELL_PREFIX))
+
+    assert len(python) >= 9
+    assert shell == sorted(python + ["unreadable-shape"])
 
 
 @pytest.mark.django_db
@@ -338,10 +419,38 @@ def test_the_fixtures_cover_what_they_are_named_for():
         "reported_cost_provider_response_unsupported"]
     preview = resolved("draft-preview")
     assert preview["configuration_fingerprint"] is None
-    odd = resolved("odd-names")
-    assert sorted(literal(odd, "measurements")) == sorted(
-        ODD_QUANTITIES + ("read off a hyphenated key",))
-    assert literal(odd, "event_type") == [ODD_EVENT_TYPE]
+    for name in ("odd-names", "shell-odd-names"):
+        odd = resolved(name)
+        assert sorted(literal(odd, "measurements")) == sorted(
+            ODD_QUANTITIES + ("read off a hyphenated key",))
+        assert literal(odd, "event_type") == [ODD_EVENT_TYPE]
+
+    # A shell file uses no SDK, and reads a response only as JSON.
+    read_as_shell = resolved("shell-calculated-cost")
+    assert read_as_shell["sdk_major_version"] is None
+    assert read_as_shell["diagnostics"] == []
+    assert literal(read_as_shell,
+                   "event_type.response_shape_representation") == ["json"]
+    assert literal(resolved("shell-draft-preview"),
+                   "event_type.response_shape_representation") == ["json"]
+    assert resolved("shell-draft-preview")["configuration_fingerprint"] is None
+    assert literal(resolved("shell-reported-cost"),
+                   "provider_cost_micros.amount_representation") == [MAJOR]
+    assert literal(resolved("shell-fixed-price"),
+                   "task_type.pricing_mode") == [PRICING_MODE_FIXED]
+    # The one thing between the Python branch and a shell file is the shape.
+    unreadable = resolved("shell-unreadable-shape")
+    assert [d["code"] for d in unreadable["diagnostics"]] == [
+        "response_shape_not_readable_by_target"]
+    assert literal(unreadable,
+                   "event_type.response_shape_representation") == [
+                       "python_object"]
+    assert sorted({d["code"] for d in resolved("shell-blocked")["diagnostics"]
+                   }) == [
+        "constant_value_not_declared", "derived_measurement_unsupported",
+        "event_type_not_published",
+        "reported_cost_provider_response_unsupported",
+        "response_shape_not_readable_by_target"]
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +514,49 @@ AMOUNTS = [
     (_integer(1), MINOR, ""),
     (_integer(1), MICROS, "jpy"),
     (_integer(1), MAJOR, "xyz"),
+    # Every way a number can be SPELLED. A shell file is handed text and has
+    # no number type to lean on, so its reader is written out by hand — and
+    # these are the spellings a hand-written reader gets wrong.
+    (_string("+1.5"), MAJOR, "usd"),
+    (_string(".5"), MAJOR, "usd"),
+    (_string("5."), MAJOR, "usd"),
+    (_string("-.5e-3"), MAJOR, "usd"),
+    (_string("1e3"), MICROS, "usd"),
+    (_string("0.1e1"), MICROS, "usd"),
+    (_string("00012.50"), MINOR, "usd"),
+    (_string("-0"), MAJOR, "usd"),
+    (_string("-0.000"), MICROS, "usd"),
+    (_string("0e99"), MAJOR, "usd"),
+    (_string("0e-99"), MAJOR, "usd"),
+    (_string("1e41"), MICROS, "usd"),
+    (_string("10e-41"), MICROS, "usd"),
+    (_string("1__0"), MICROS, "usd"),
+    (_string("_1_"), MICROS, "usd"),
+    (_string("\t12\n"), MICROS, "usd"),
+    (_string("1 000"), MICROS, "usd"),
+    (_string("1,000"), MICROS, "usd"),
+    (_string("0x10"), MICROS, "usd"),
+    (_string("--1"), MICROS, "usd"),
+    (_string("1e"), MICROS, "usd"),
+    (_string("1e+"), MICROS, "usd"),
+    (_string("."), MICROS, "usd"),
+    (_string("e5"), MICROS, "usd"),
+    (_string("1.2.3"), MICROS, "usd"),
+    (_string("-"), MICROS, "usd"),
+    (_string("_"), MICROS, "usd"),
+    (_string("inf"), MICROS, "usd"),
+    (_string("-Infinity"), MICROS, "usd"),
+    (_string("nan"), MICROS, "usd"),
+    (_string("$1.50"), MAJOR, "usd"),
+    (_string("1.50 usd"), MAJOR, "usd"),
+    (_string("9223372036854775807"), MICROS, "usd"),
+    (_string("9223372036854775808"), MICROS, "usd"),
+    (_string("-9223372036854775807"), MICROS, "usd"),
+    (_string("922337203685477.5807"), MINOR, "usd"),
+    (_string("922337203685477.5808"), MINOR, "usd"),
+    (_string("09223372036854775807"), MICROS, "usd"),
+    (_string("1" + "0" * 30 + "e-30"), MICROS, "usd"),
+    (_string("0." + "0" * 45 + "1e46"), MICROS, "usd"),
 ] + [(_integer(1), representation, "usd")
      for representation in sorted(AMOUNT_REPRESENTATION_VALUES)
 ] + [(_integer(1), MINOR, currency)
@@ -447,12 +599,21 @@ def _answered(operation, *arguments):
 
 
 def test_the_reported_cost_cases_carry_this_platforms_answers():
+    """Each amount is answered twice. `expected` is for the value the case
+    stands for, with its type. `expected_as_text` is for the same amount
+    handed over as its text, which is all a shell file can hold: there a
+    decimal, an integer and a float of the same digits are one argument, so
+    the answer is this platform's for the text. They differ exactly where
+    the type was the reason — a binary float is refused, and its text is the
+    decimal it spells."""
     produced = {
         "amounts": [
             {"amount": amount, "representation": representation,
              "currency": currency,
              "expected": _answered(to_micros, _the_amount(amount),
-                                   representation, currency)}
+                                   representation, currency),
+             "expected_as_text": _answered(to_micros, amount["text"],
+                                           representation, currency)}
             for amount, representation, currency in AMOUNTS],
         "currencies": [
             {"declared": declared, "reported": reported,
@@ -486,3 +647,16 @@ def test_the_reported_cost_cases_reach_every_answer_there_is():
     assert outcomes(pin_currency, CURRENCIES) == {"answer", "refused"}
     assert {_answered(to_micros, *case).get("refused") for case in amounts
             } == {None, "amount", "currency"}
+
+
+def test_an_amount_as_text_is_answered_differently_only_where_the_type_was_why():
+    """The second answer of each case is not a second rule. Handing an amount
+    over as its text changes this platform's answer for a binary float and
+    for nothing else in the table: a flag's text and a missing amount's are
+    refused as they were, and every other case is the same value either way."""
+    differ = sorted({
+        amount["type"] for amount, representation, currency in AMOUNTS
+        if _answered(to_micros, _the_amount(amount), representation, currency)
+        != _answered(to_micros, amount["text"], representation, currency)})
+
+    assert differ == ["float"]

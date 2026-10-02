@@ -1,10 +1,12 @@
 /**
- * Every renderer branch, pinned as the files it returns (#577, gate G24).
+ * Every renderer branch of every target, pinned as the files it returns
+ * (#577, #578, gate G24).
  *
  * One directory per branch under `tests/__snapshots__/`, holding the files
- * exactly as `render` returned them — real `.py` files and a real
+ * exactly as `render` returned them — real `.py` and `.sh` files and a real
  * `.env.example`, so a change to what a tenant is handed is read in a diff as
- * the thing itself. `pnpm test:update` re-takes them.
+ * the thing itself. A shell branch's directory is `shell-<branch>`.
+ * `pnpm test:update` re-takes them.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +19,9 @@ import {
   BRANCH_NAMES,
   BRANCHES,
   PLANTED,
+  PYTHON_BRANCH_NAMES,
   rendered,
+  SHELL_BRANCH_NAMES,
   withAPlantedSecret,
 } from "./support/rendered.ts";
 
@@ -55,19 +59,46 @@ describe("the snapshots", () => {
     );
   });
 
+  const NAMED = [
+    "calculated-cost",
+    "reported-cost",
+    "direct-task-events",
+    "explicit-subtasks",
+    "fixed-price",
+    "scaffold",
+    "blocked",
+    "secret-references",
+  ];
+
   it("cover every branch the ticket names", () => {
-    expect(BRANCH_NAMES).toEqual(
-      expect.arrayContaining([
-        "calculated-cost",
-        "reported-cost",
-        "direct-task-events",
-        "explicit-subtasks",
-        "fixed-price",
-        "scaffold",
-        "blocked",
-        "secret-references",
-      ]),
+    expect(BRANCH_NAMES).toEqual(expect.arrayContaining(NAMED));
+  });
+
+  it("cover the same branches for the shell target, and the one only it has", () => {
+    // Every branch the Python target is pinned for, pinned for shell too —
+    // each rendered from a Blueprint resolved for that target.
+    expect(SHELL_BRANCH_NAMES).toEqual(
+      [...PYTHON_BRANCH_NAMES.map((branch) => `shell-${branch}`), "shell-unreadable-shape"].sort(),
     );
+    expect(SHELL_BRANCH_NAMES).toEqual(
+      expect.arrayContaining(NAMED.map((branch) => `shell-${branch}`)),
+    );
+    for (const branch of SHELL_BRANCH_NAMES) {
+      expect(BRANCHES[branch]!().target, branch).toBe("shell_http");
+    }
+    for (const branch of PYTHON_BRANCH_NAMES) {
+      expect(BRANCHES[branch]!().target, branch).toBe("python_sdk");
+    }
+  });
+
+  it("are kept in directories of their own, a target's files never beside another's", () => {
+    for (const branch of BRANCH_NAMES) {
+      const shell = rendered(branch).some((file) => file.path.endsWith(".sh"));
+      const python = rendered(branch).some((file) => file.path.endsWith(".py"));
+
+      expect(shell, branch).toBe(branch.startsWith("shell-"));
+      expect(python, branch).toBe(!branch.startsWith("shell-"));
+    }
   });
 });
 
@@ -84,9 +115,12 @@ describe("rendering", () => {
     expect(blueprint).toEqual(fixture("explicit-subtasks"));
   });
 
-  it("writes the same files whatever a secret token carries as a value", () => {
-    // A secret token's value is never read, so planting one changes nothing.
-    expect(render(withAPlantedSecret())).toEqual(render(fixture("calculated-cost")));
-    expect(JSON.stringify(withAPlantedSecret())).toContain(PLANTED);
-  });
+  it.each(["calculated-cost", "shell-calculated-cost"])(
+    "writes the same files whatever a secret token carries as a value: %s",
+    (name) => {
+      // A secret token's value is never read, so planting one changes nothing.
+      expect(render(withAPlantedSecret(name))).toEqual(render(fixture(name)));
+      expect(JSON.stringify(withAPlantedSecret(name))).toContain(PLANTED);
+    },
+  );
 });

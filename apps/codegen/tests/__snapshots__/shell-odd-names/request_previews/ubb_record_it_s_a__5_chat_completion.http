@@ -1,0 +1,31 @@
+# A preview of one request, for reading: the method, the URL, the headers
+# and the body. It is not the runnable file and carries no verdict: the
+# header of the runnable file says whether the integration is ready.
+# operation_id = "api_v1_metering_endpoints_record_usage"
+
+POST $UBB_BASE_URL/api/v1/metering/usage
+Authorization: Bearer $UBB_API_KEY
+Content-Type: application/json
+
+{
+  "customer_id": $customer_id,
+  "idempotency_key": $idempotency_key,
+  "task_id": $task_id,
+  "event_type": "it's a $5 chat-completion",
+  "provider": "o'reilly & co",
+  "measurements": {
+    "$HOME": $_HOME,
+    "$(whoami)": $__whoami_,
+    "back\\slash": $back_slash,
+    "back`tick": $back_tick,
+    "{braces}": $_braces_,
+    "cache-read": $cache_read,
+    "cache read tokens": $cache_read_tokens,
+    "class": $value_class,
+    "dou\"ble": $dou_ble,
+    "it's": $it_s,
+    "naïve–日本語": $na_ve____,
+    "per.cent%": $per_cent_,
+    "read off a hyphenated key": $response["x-usage"]["total tokens"]
+  }
+}

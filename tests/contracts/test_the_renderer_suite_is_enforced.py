@@ -1,11 +1,12 @@
-"""The renderer's suite runs on every change, and can fail it (#577).
+"""The renderer's suite runs on every change, and can fail it (#577, #578).
 
 `ubb-codegen` turns an Integration Blueprint into the files a tenant is
 handed, and what holds it to its rules is a suite that renders committed
-Blueprints and then compiles and runs the Python it wrote. A suite like that
-is worth exactly as much as its place in CI: the forbidden-term sweep once
-ran under `continue-on-error`, and the only end-to-end money test once sat in
-no job at all, and both stayed green for months.
+Blueprints and then runs what it wrote: the Python it compiles and imports,
+the shell it sources under `sh` and `bash`. A suite like that is worth
+exactly as much as its place in CI: the forbidden-term sweep once ran under
+`continue-on-error`, and the only end-to-end money test once sat in no job at
+all, and both stayed green for months.
 
 So its enforcement is checked here, the way the contract suite's own is:
 
@@ -17,8 +18,10 @@ So its enforcement is checked here, the way the contract suite's own is:
    unrelated step failing ahead of them can stop them running.
 2. **Each step runs what its name says**, found by the command and not only
    by the name, so a step renamed onto another command does not pass.
-3. **The job can run it**: it installs the SDK the generated code is executed
-   against, and it does so before the tests.
+3. **The job can run it**: it installs the SDK the generated Python is
+   executed against, and it checks for the shell, `curl` and `jq` the
+   generated shell is executed with, both before the tests. Nothing hands the
+   job a container to run the shell in: on the runner the tools are its own.
 4. **No case is silenced in the source**: a skipped case, or one marked to
    run alone, leaves the step green over less than it claims.
 5. **Its fixtures are held by the platform's suite.** The Blueprints it
@@ -64,6 +67,16 @@ STEPS = {
 TESTS = "Codegen tests — every renderer branch, compiled and run"
 SDK_INSTALL = "pip install -e ./ubb-sdk"
 
+#: The step that checks for what a generated shell file is run with, and what
+#: it must call: each fails the step, by name, on a runner that lacks it.
+SHELL_TOOLS = "Shell tools — what the generated shell file is run with"
+SHELL_TOOL_CHECKS = ("sh -c", "bash --version", "curl --version", "jq --version")
+
+#: What tells the suite to run the shell in a container instead of on the
+#: machine. A developer's choice on a machine with no tools of its own; set in
+#: CI, it would move the tests off the runner the step above just checked.
+SHELL_IMAGE = "UBB_CODEGEN_SHELL_IMAGE"
+
 #: The platform test that holds the committed Blueprints to the route.
 FIXTURE_HOLDER = (
     "ubb-platform/api/v1/tests/"
@@ -91,6 +104,20 @@ def renderer_faults(workflow):
                       f"generated code has no SDK to be run against")
     elif TESTS in names and min(installs) > names.index(TESTS):
         faults.append("the SDK is installed after the tests that need it")
+
+    faults += step_faults(workflow, JOB, SHELL_TOOLS)
+    for step in steps:
+        if step.get("name") != SHELL_TOOLS:
+            continue
+        for check in SHELL_TOOL_CHECKS:
+            if check not in str(step.get("run", "")):
+                faults.append(f"step `{SHELL_TOOLS}` does not run `{check}`")
+        if TESTS in names and names.index(SHELL_TOOLS) > names.index(TESTS):
+            faults.append("the shell tools are checked for after the tests "
+                          "that need them")
+    if SHELL_IMAGE in json.dumps(workflow):
+        faults.append(f"the workflow sets `{SHELL_IMAGE}`, which takes the "
+                      f"shell tests off the runner")
     return faults
 
 
@@ -123,7 +150,10 @@ def test_the_suite_has_tests_to_run():
     a green step that tested nothing."""
     found = sorted(path.name for path in (PACKAGE / "tests").glob("*.test.ts"))
 
-    assert len(found) >= 4, found
+    assert len(found) >= 6, found
+    # Each target has a module that RUNS what it rendered.
+    assert "execution.test.ts" in found
+    assert "shell.execution.test.ts" in found
     config = (PACKAGE / "vitest.config.ts").read_text(encoding="utf-8")
     assert 'include: ["tests/**/*.test.ts"]' in config
 
@@ -140,8 +170,29 @@ def test_no_renderer_test_is_skipped_or_run_alone():
     silenced = [f"{path.name}: {marker}" for path in read
                 for marker in silencers(path.read_text(encoding="utf-8"))]
 
-    assert len(read) >= 7, [path.name for path in read]
+    assert len(read) >= 11, [path.name for path in read]
     assert silenced == []
+
+
+def test_the_shell_tests_have_no_way_to_pass_without_a_shell():
+    """Where the shell is, is a setting; whether the tests run is not. The
+    one place that setting is read must run the harness either way — on the
+    machine or in the image — and neither branch may give up quietly."""
+    support = (PACKAGE / "tests" / "support" / "shell.ts").read_text(
+        encoding="utf-8")
+
+    assert f"process.env.{SHELL_IMAGE}" in support
+    # Both branches, each by the call it makes: the harness run by this
+    # machine's interpreter, and the harness run inside the image.
+    assert 'join(HARNESS_DIRECTORY, "shell_harness.py")' in support
+    assert '"python3", "/harness/shell_harness.py"' in support
+    assert "throw ran.error" in support
+    assert "ran.status !== 0" in support
+    # And the harness itself asks every shell it names: none is optional.
+    harness = (PACKAGE / "tests" / "harness" / "shell_harness.py").read_text(
+        encoding="utf-8")
+    assert 'SHELLS = ("sh", "bash")' in harness
+    assert "shutil.which" not in harness and "skip" not in harness.lower()
 
 
 def test_the_fixtures_are_held_by_a_test_the_platform_suite_collects():
@@ -170,7 +221,8 @@ def test_every_blueprint_the_suite_renders_is_one_the_platform_holds():
 # --- negative controls: the predicate flags a disarmed suite -----------------
 
 def _synthetic(step_extra=None, job_extra=None, triggers=None, rename=None,
-               drop_install=False, install_last=False):
+               drop_install=False, install_last=False, tools="first",
+               tool_checks=SHELL_TOOL_CHECKS, tools_extra=None):
     steps = [{"name": name, "run": command, **(step_extra or {})}
              for name, command in STEPS.items()]
     if rename:
@@ -180,6 +232,12 @@ def _synthetic(step_extra=None, job_extra=None, triggers=None, rename=None,
         steps.append(install)
     elif not drop_install:
         steps.insert(0, install)
+    shell_tools = {"name": SHELL_TOOLS, "run": "\n".join(tool_checks),
+                   **(tools_extra or {})}
+    if tools == "first":
+        steps.insert(0, shell_tools)
+    elif tools == "last":
+        steps.append(shell_tools)
     return {
         "on": triggers if triggers is not None else {"push": None,
                                                      "pull_request": None},
@@ -232,6 +290,39 @@ def test_negative_control_a_job_with_no_sdk_is_flagged():
 def test_negative_control_an_sdk_installed_too_late_is_flagged():
     faults = renderer_faults(_synthetic(install_last=True))
     assert faults == ["the SDK is installed after the tests that need it"]
+
+
+def test_negative_control_a_job_that_never_checks_for_the_shell_tools_is_flagged():
+    faults = renderer_faults(_synthetic(tools=None))
+    assert any("no step named" in fault and SHELL_TOOLS in fault
+               for fault in faults)
+
+
+def test_negative_control_a_tool_left_unchecked_is_flagged():
+    for dropped in SHELL_TOOL_CHECKS:
+        kept = tuple(check for check in SHELL_TOOL_CHECKS if check != dropped)
+        faults = renderer_faults(_synthetic(tool_checks=kept))
+        assert faults == [
+            f"step `{SHELL_TOOLS}` does not run `{dropped}`"], dropped
+
+
+def test_negative_control_shell_tools_checked_too_late_are_flagged():
+    faults = renderer_faults(_synthetic(tools="last"))
+    assert faults == [
+        "the shell tools are checked for after the tests that need them"]
+
+
+def test_negative_control_a_conditional_tools_check_is_flagged():
+    faults = renderer_faults(_synthetic(tools_extra={"if": "false"}))
+    assert any("conditional" in fault for fault in faults)
+
+
+def test_negative_control_shell_tests_moved_into_a_container_are_flagged():
+    workflow = _synthetic()
+    workflow["jobs"][JOB]["env"] = {SHELL_IMAGE: "some-image"}
+    assert renderer_faults(workflow) == [
+        f"the workflow sets `{SHELL_IMAGE}`, which takes the shell tests off "
+        f"the runner"]
 
 
 def test_negative_control_a_silenced_case_is_flagged():

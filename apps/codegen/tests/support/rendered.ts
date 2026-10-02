@@ -16,11 +16,11 @@ import { facts, type FileFacts } from "./python.ts";
 export const PLANTED = "planted-where-a-secret-would-be";
 
 /**
- * The calculated-cost Blueprint with a value put on every secret token: a
+ * A calculated-cost Blueprint with a value put on every secret token: a
  * document the server never answers, to show what the renderer does with one.
  */
-export function withAPlantedSecret(): ResolvedIntegrationBlueprint {
-  const blueprint = fixture("calculated-cost");
+export function withAPlantedSecret(name = "calculated-cost"): ResolvedIntegrationBlueprint {
+  const blueprint = fixture(name);
   for (const call of blueprint.calls) {
     for (const argument of call.arguments) {
       if (argument.binding_class === "secret_reference") argument.value = PLANTED;
@@ -29,8 +29,10 @@ export function withAPlantedSecret(): ResolvedIntegrationBlueprint {
   return blueprint;
 }
 
-/** Every branch with a committed snapshot, and the Blueprint it renders. */
-export const BRANCHES: Readonly<Record<string, () => ResolvedIntegrationBlueprint>> = {
+type Branches = Readonly<Record<string, () => ResolvedIntegrationBlueprint>>;
+
+/** The Python target's branches, and the Blueprint each renders. */
+export const PYTHON_BRANCHES: Branches = {
   "calculated-cost": () => fixture("calculated-cost"),
   "reported-cost": () => fixture("reported-cost"),
   "direct-task-events": () => fixture("direct-task-events"),
@@ -38,12 +40,35 @@ export const BRANCHES: Readonly<Record<string, () => ResolvedIntegrationBlueprin
   "fixed-price": () => fixture("fixed-price"),
   scaffold: () => fixture("scaffold"),
   blocked: () => fixture("blocked"),
-  "secret-references": withAPlantedSecret,
+  "secret-references": () => withAPlantedSecret(),
   "odd-names": () => fixture("odd-names"),
   "draft-preview": () => fixture("draft-preview"),
 };
 
+/**
+ * The shell target's: the same branches resolved for it, and one more — the
+ * Python branch's own declarations, which a shell file cannot read.
+ */
+export const SHELL_BRANCHES: Branches = {
+  "shell-calculated-cost": () => fixture("shell-calculated-cost"),
+  "shell-reported-cost": () => fixture("shell-reported-cost"),
+  "shell-direct-task-events": () => fixture("shell-direct-task-events"),
+  "shell-explicit-subtasks": () => fixture("shell-explicit-subtasks"),
+  "shell-fixed-price": () => fixture("shell-fixed-price"),
+  "shell-scaffold": () => fixture("shell-scaffold"),
+  "shell-blocked": () => fixture("shell-blocked"),
+  "shell-secret-references": () => withAPlantedSecret("shell-calculated-cost"),
+  "shell-odd-names": () => fixture("shell-odd-names"),
+  "shell-draft-preview": () => fixture("shell-draft-preview"),
+  "shell-unreadable-shape": () => fixture("shell-unreadable-shape"),
+};
+
+/** Every branch with a committed snapshot, and the Blueprint it renders. */
+export const BRANCHES: Branches = { ...PYTHON_BRANCHES, ...SHELL_BRANCHES };
+
 export const BRANCH_NAMES = Object.keys(BRANCHES).sort();
+export const PYTHON_BRANCH_NAMES = Object.keys(PYTHON_BRANCHES).sort();
+export const SHELL_BRANCH_NAMES = Object.keys(SHELL_BRANCHES).sort();
 
 const renderedCache = new Map<string, RenderedFile[]>();
 const factsCache = new Map<string, Record<string, FileFacts>>();

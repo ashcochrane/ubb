@@ -104,22 +104,3 @@ export function unshadowed(wanted: string, taken: ReadonlySet<string>): string {
   while (taken.has(name)) name += "_";
   return name;
 }
-
-/**
- * A declared key as the tail of a function name: its ASCII letters and
- * digits, and an underscore for everything else. Naming, not translation —
- * the key itself is only ever written as a literal.
- */
-export function nameTail(key: string): string {
-  return key.replace(/[^A-Za-z0-9]/g, "_");
-}
-
-/** Eight hexadecimal digits that are a function of `text` and nothing else. */
-export function shortHash(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16).padStart(8, "0");
-}

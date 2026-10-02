@@ -1,0 +1,580 @@
+{
+  "schema_version": 1,
+  "renderer_contract_version": 1,
+  "target": "shell_http",
+  "sdk_major_version": null,
+  "configuration_fingerprint": "sha256:b5128aebe2a52e8394346178679065c7e34db83bd86d09c2c3becbd34ef54c85",
+  "readiness": "complete",
+  "calls": [
+    {
+      "operation_id": "api_v1_task_endpoints_start_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_type",
+          "binding_class": "platform_known",
+          "value": "report_generation",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.pricing_mode",
+          "binding_class": "platform_known",
+          "value": "event_priced",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.uncapped",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.task_cogs_ceiling_micros",
+          "binding_class": "platform_known",
+          "value": 5000000,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields",
+          "binding_class": "platform_known",
+          "value": "environment",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "grouping_field",
+            "key": "environment",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields.environment",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "environment",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_task_endpoints_start_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "parent_task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "parent_task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_type",
+          "binding_class": "platform_known",
+          "value": "summarise",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "subtask_type",
+            "key": "summarise",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.pricing_mode",
+          "binding_class": "platform_known",
+          "value": "event_priced",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "subtask_type",
+            "key": "summarise",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.uncapped",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "subtask_type",
+            "key": "summarise",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields",
+          "binding_class": "platform_known",
+          "value": "phase",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "grouping_field",
+            "key": "phase",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields.phase",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "phase",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "subtask_type",
+            "key": "summarise",
+            "published_revision": null,
+            "published_at": null
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "event_type",
+          "binding_class": "platform_known",
+          "value": "gemini.generate",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.costing_method",
+          "binding_class": "platform_known",
+          "value": "calculated",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "provider",
+          "binding_class": "platform_known",
+          "value": "google",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "provider",
+            "key": "google",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "candidate_tokens",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.candidate_tokens.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.candidate_tokens.unit",
+          "binding_class": "platform_known",
+          "value": "token",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.candidate_tokens.required_for_costing",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.candidate_tokens",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "response",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.candidate_tokens.source_path",
+          "binding_class": "platform_known",
+          "value": [
+            "usage_metadata",
+            "candidates_token_count"
+          ],
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "prompt_tokens",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.prompt_tokens.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.prompt_tokens.unit",
+          "binding_class": "platform_known",
+          "value": "token",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.prompt_tokens.required_for_costing",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.prompt_tokens",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "response",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.prompt_tokens.source_path",
+          "binding_class": "platform_known",
+          "value": [
+            "usageMetadata",
+            "promptTokenCount"
+          ],
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.source_shape_id",
+          "binding_class": "platform_known",
+          "value": "google.gemini.rest.v1",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.response_shape_representation",
+          "binding_class": "platform_known",
+          "value": "json",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "gemini.generate",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_task_endpoints_close_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "outcome",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "outcome",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "advisory",
+      "code": "source_path_convention_mismatch",
+      "object_kind": "measurement",
+      "key": "gemini.generate:candidate_tokens",
+      "field": "source_path",
+      "remediation_request": {
+        "method": "PUT",
+        "route": "/api/v1/event-types/gemini.generate/measurements/candidate_tokens",
+        "operation_id": "api_v1_event_type_endpoints_declare_measurement",
+        "body": {
+          "display_name": null,
+          "value_type": null,
+          "unit": null,
+          "required_for_costing": null,
+          "source_kind": null,
+          "source_path": null
+        }
+      }
+    }
+  ]
+}
