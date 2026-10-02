@@ -19,11 +19,10 @@
  * representations are registry concepts, and their values are spelled here
  * as keys. The registry generates no artifact for this package, so each set
  * is held equal to the registry's by `tests/catalogue.test.ts`, and the three
- * the contract marks are also exhaustive by type. Three more are restated
- * for the targets' own use and held the same way: the two stop behaviours
- * the Python target passes, the outcome and the reason a shell boundary
- * declares for work that failed, and the outcomes the comment above a shell
- * close names.
+ * the contract marks are also exhaustive by type. Two more are restated for
+ * the targets' own use and held the same way: the two stop behaviours the
+ * Python target passes, and the outcomes the comment above a shell close
+ * names.
  *
  * The symbols are the renderer's own and are deliberately not registry
  * concepts (owner ruling of 2026-09-25, item 9): the domain registry names
@@ -100,7 +99,8 @@ export const SHELL_FILE = {
   callSiteDirectory: "call_sites",
   previewDirectory: "request_previews",
   startTask: "ubb_start_task",
-  unitOfWork: "ubb_unit_of_work",
+  /** The outer runner of a Task. Named for the Task, the domain's own noun. */
+  runTask: "ubb_run_task",
   closeTask: "ubb_close_task",
   startSubtaskPrefix: "ubb_start_subtask",
   recordPrefix: "ubb_record",
@@ -120,12 +120,6 @@ export const SHELL_FILE = {
   exponentLimit: 40,
   /** The most digits a whole number is carried through jq with. */
   exactDigits: 15,
-  /** The last status a command returns for itself: above it, a signal ended
-   * it, and it said nothing about how its work went. */
-  lastOrdinaryStatus: 128,
-  /** The outcome the boundary declares for work that ended in a failure. */
-  outcomeFailed: "failed",
-  outcomeReasonExecutionFailed: "execution_failed",
   /** The two fields a close may carry beside the outcome. */
   outcomeReason: "outcome_reason",
   reasonDetail: "reason_detail",
@@ -464,9 +458,18 @@ export const SHELL_COMMENTS = {
     "status curl gave it; every other failure returns one of these.",
   ],
   outputs: [
-    "What a call leaves behind for the code that called it. They are set in",
-    "your shell, so never call a function of this file inside $( ) or a",
-    "pipeline: both run it in a subshell, and what it set is lost.",
+    "What a call leaves behind for the code that called it. They are shell",
+    "variables this file sets, not settings you supply, and it exports none.",
+    "UBB_TASK_ID is the id of the work the last start created.",
+    "UBB_RESPONSE is the response to the most recent call. The next call",
+    "overwrites it.",
+    "UBB_STOP_REQUESTED is the stop the most recent record met, or the Task",
+    "ubb_run_task ran, as one line of JSON. It is empty where none was met:",
+    "each clears it before it does anything else, so a stop is never an",
+    "earlier call's.",
+    "They are set in your shell, so never call a function of this file",
+    "inside $( ) or a pipeline: both run it in a subshell, and what it set is",
+    "lost.",
   ],
   preflight: [
     "Checks, once, that jq and curl can do what this file asks of them. It",
@@ -519,18 +522,19 @@ export const SHELL_COMMENTS = {
     "Pass the amount as the text your supplier wrote. A number another tool",
     "has parsed, jq included, may already have been rounded.",
   ],
-  unitOfWork: [
-    "The whole piece of work, as one command you name. It is run with the",
-    "work's task_id as its one argument. Declare how the work ended inside",
-    "it, with ubb_close_task.",
+  runTask: [
+    "The whole of a Task, as one command you name. It is run with the Task's",
+    "task_id as its one argument. Declare how the work ended inside it, with",
+    "ubb_close_task: nothing here declares an outcome for you.",
     "This is the one place a stop is acted on, and it is acted on whatever",
     "the work then returned. The event that carried it was recorded and",
     "charged: never send it again. The stop is logged and the reserved",
     "status returned, so whatever runs this work can honour its scope.",
-    "Nothing is declared about work a stop interrupted.",
-    "Work that returns a failure having declared no outcome is declared",
-    "failed, unless a signal ended it. Work that returns success having",
-    "declared none is left open, and that is returned as UBB_EXIT_USAGE.",
+    "Work that returns a failure is not declared failed: a status is not",
+    "evidence of how the work went. Its status is returned as it is, and a",
+    "Task with no outcome declared is left open and said to be. Work that",
+    "returns success having declared none is left open too, and that is",
+    "returned as UBB_EXIT_USAGE.",
   ],
   record: [
     "A stop is returned as UBB_EXIT_STOP_REQUESTED, with the event recorded.",
@@ -562,14 +566,14 @@ export const SHELL_COMMENTS = {
     "Checks that jq can do what this script asks of it. It contacts nothing",
     "and creates nothing.",
   ],
-  callSiteUnitOfWork: [
+  callSiteRunTask: [
     "Where the piece of work begins. Everything it does goes inside the",
     "function, which is handed the work's task_id. Check the status of each",
     "call yourself: set -e does not apply inside a function run this way.",
   ],
   callSiteClose: [
-    "Inside the work, before it ends: exactly once. Work that returns",
-    "success having declared nothing is left open, and that is reported.",
+    "Inside the work, before it ends: exactly once. A Task whose work ends",
+    "having declared nothing is left open, and that is reported.",
   ],
   callSiteRecord: [
     "After each call to your supplier. idempotency_key identifies this one",
@@ -637,10 +641,10 @@ export const SHELL_MESSAGES = {
   work: "the first argument is the command that does the work.",
   outcomeRequired:
     "the work ended without declaring an outcome, and is left open. Declare one with ubb_close_task.",
-  failureNotDeclared: "the work failed, and declaring it failed did not succeed. It is left open.",
+  leftOpen:
+    "the work returned a failure and declared no outcome. None was declared for it: the Task is left open.",
   stop: "UBB requested a stop. The event that carried it was recorded and must not be sent again.",
   responseUnreadable: "the response is not the acknowledgement this call expects.",
-  exitStatus: "exit status",
   noTaskId: "the response carries no task_id",
   noEventId: "the acknowledgement carries no event_id",
   noValue: "the response holds no value at",

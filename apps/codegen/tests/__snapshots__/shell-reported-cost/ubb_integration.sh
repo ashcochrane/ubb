@@ -46,15 +46,25 @@ UBB_EXIT_TOOL_UNAVAILABLE=69
 UBB_EXIT_RESPONSE_UNREADABLE=76
 UBB_EXIT_NOT_CONFIGURED=78
 
-# What a call leaves behind for the code that called it. They are set in
-# your shell, so never call a function of this file inside $( ) or a
-# pipeline: both run it in a subshell, and what it set is lost.
+# What a call leaves behind for the code that called it. They are shell
+# variables this file sets, not settings you supply, and it exports none.
+# UBB_TASK_ID is the id of the work the last start created.
+# UBB_RESPONSE is the response to the most recent call. The next call
+# overwrites it.
+# UBB_STOP_REQUESTED is the stop the most recent record met, or the Task
+# ubb_run_task ran, as one line of JSON. It is empty where none was met:
+# each clears it before it does anything else, so a stop is never an
+# earlier call's.
+# They are set in your shell, so never call a function of this file
+# inside $( ) or a pipeline: both run it in a subshell, and what it set is
+# lost.
 UBB_TASK_ID=
 UBB_RESPONSE=
 UBB_STOP_REQUESTED=
 
 _ubb_ready=
 _ubb_closed=
+_ubb_stop_met=
 
 # Checks, once, that jq and curl can do what this file asks of them. It
 # contacts nothing and creates nothing.
@@ -172,6 +182,7 @@ _ubb_acknowledge() {
   }
   [ "$_ubb_stop" != null ] || return 0
   UBB_STOP_REQUESTED=$_ubb_stop
+  _ubb_stop_met=$_ubb_stop
   return "$UBB_EXIT_STOP_REQUESTED"
 }
 
@@ -428,22 +439,26 @@ ubb_start_task() {
   _ubb_post '/api/v1/tasks' "$_ubb_body" || return $?
   _ubb_started || return $?
   UBB_STOP_REQUESTED=
+  _ubb_stop_met=
 }
 
-# The whole piece of work, as one command you name. It is run with the
-# work's task_id as its one argument. Declare how the work ended inside
-# it, with ubb_close_task.
+# The whole of a Task, as one command you name. It is run with the Task's
+# task_id as its one argument. Declare how the work ended inside it, with
+# ubb_close_task: nothing here declares an outcome for you.
 # This is the one place a stop is acted on, and it is acted on whatever
 # the work then returned. The event that carried it was recorded and
 # charged: never send it again. The stop is logged and the reserved
 # status returned, so whatever runs this work can honour its scope.
-# Nothing is declared about work a stop interrupted.
-# Work that returns a failure having declared no outcome is declared
-# failed, unless a signal ended it. Work that returns success having
-# declared none is left open, and that is returned as UBB_EXIT_USAGE.
-ubb_unit_of_work() {
+# Work that returns a failure is not declared failed: a status is not
+# evidence of how the work went. Its status is returned as it is, and a
+# Task with no outcome declared is left open and said to be. Work that
+# returns success having declared none is left open too, and that is
+# returned as UBB_EXIT_USAGE.
+ubb_run_task() {
+  UBB_STOP_REQUESTED=
+  _ubb_stop_met=
   [ "$#" -ge 1 ] || {
-    printf '%s: %s\n' ubb_unit_of_work 'the first argument is the command that does the work.' >&2
+    printf '%s: %s\n' ubb_run_task 'the first argument is the command that does the work.' >&2
     return "$UBB_EXIT_USAGE"
   }
   _ubb_work=$1
@@ -451,7 +466,8 @@ ubb_unit_of_work() {
   ubb_start_task "$@" || return $?
   set -- "$_ubb_work" "$UBB_TASK_ID"
   "$1" "$2" && set -- "$1" "$2" 0 || set -- "$1" "$2" "$?"
-  if [ "$3" -eq "$UBB_EXIT_STOP_REQUESTED" ] || [ -n "$UBB_STOP_REQUESTED" ]; then
+  if [ "$3" -eq "$UBB_EXIT_STOP_REQUESTED" ] || [ -n "$_ubb_stop_met" ]; then
+    UBB_STOP_REQUESTED=$_ubb_stop_met
     printf '%s\n' 'UBB requested a stop. The event that carried it was recorded and must not be sent again.' >&2
     printf '%s %s\n' stop_requested "${UBB_STOP_REQUESTED:-null}" >&2
     return "$UBB_EXIT_STOP_REQUESTED"
@@ -460,14 +476,10 @@ ubb_unit_of_work() {
     *" $2 "*) return "$3" ;;
   esac
   if [ "$3" -eq 0 ]; then
-    printf '%s: %s\n' ubb_unit_of_work 'the work ended without declaring an outcome, and is left open. Declare one with ubb_close_task.' >&2
+    printf '%s: %s\n' ubb_run_task 'the work ended without declaring an outcome, and is left open. Declare one with ubb_close_task.' >&2
     return "$UBB_EXIT_USAGE"
   fi
-  [ "$3" -le 128 ] || return "$3"
-  ubb_close_task task_id="$2" outcome=failed \
-    outcome_reason=execution_failed \
-    reason_detail='exit status '"$3" ||
-    printf '%s: %s\n' ubb_unit_of_work 'the work failed, and declaring it failed did not succeed. It is left open.' >&2
+  printf '%s: %s\n' ubb_run_task 'the work returned a failure and declared no outcome. None was declared for it: the Task is left open.' >&2
   return "$3"
 }
 
@@ -503,6 +515,7 @@ UBB_JQ
 # A stop is returned as UBB_EXIT_STOP_REQUESTED, with the event recorded.
 # Return it from your own code unchanged, up to whatever runs the work.
 ubb_record_web_search() {
+  UBB_STOP_REQUESTED=
   _ubb_preflight || return $?
   _ubb_environment || return $?
   _ubb_p_customer_id=

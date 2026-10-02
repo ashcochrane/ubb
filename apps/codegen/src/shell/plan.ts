@@ -98,9 +98,6 @@ const CLOSE_MAY_CARRY: readonly (keyof components["schemas"]["CloseTaskRequest"]
   SHELL_FILE.reasonDetail,
 ];
 
-/** The field of a close that says how the work ended. */
-const OUTCOME: keyof components["schemas"]["CloseTaskRequest"] = "outcome";
-
 /** The field a stop is reported with: the key its event was sent under. */
 const IDEMPOTENCY_KEY: keyof components["schemas"]["RecordUsageRequest"] = "idempotency_key";
 
@@ -159,18 +156,6 @@ export type BodyField =
       readonly members: readonly Member[];
     };
 
-/**
- * The parameters the boundary declares a failure through: the ones the close
- * takes for the work, its outcome, and why. By the names the Blueprint gives
- * them, which are not assumed to be the names of the fields they fill.
- */
-export interface Closing {
-  readonly work: Parameter;
-  readonly outcome: Parameter;
-  readonly outcomeReason: Parameter;
-  readonly reasonDetail: Parameter;
-}
-
 export type CallKind = "start" | "subtask" | "record" | "close";
 
 export interface CallPlan {
@@ -188,8 +173,8 @@ export interface CallPlan {
   readonly sentUnder: Parameter | null;
   /** The parameter that names the work this is contained in. Subtasks only. */
   readonly parent: Parameter | null;
-  /** Closes only. */
-  readonly closing: Closing | null;
+  /** The parameter that names the Task a close ends. Closes only. */
+  readonly closes: Parameter | null;
 }
 
 export interface Plan {
@@ -385,7 +370,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
     required: true,
   }));
 
-  let closing: Closing | null = null;
+  let closes: Parameter | null = null;
   if (kind === "close") {
     for (const fieldName of CLOSE_MAY_CARRY) {
       if (call.fields.some((field) => field.name === fieldName)) continue;
@@ -402,20 +387,9 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
         optional: true,
       });
     }
-    // The boundary declares a failure through this call, so each thing it
-    // says must be the caller's to say: a parameter, under whatever name the
-    // document gave it.
-    const said = (fieldName: string): Parameter =>
-      parameterOf(body, fieldName) ??
-      refuse(`the close takes no parameter for ${fieldName}, and a failure is declared through it`);
-    const work = Object.values(filled)[0];
-    if (work === undefined) return refuse("a close names no work in its route");
-    closing = {
-      work,
-      outcome: said(OUTCOME),
-      outcomeReason: said(SHELL_FILE.outcomeReason),
-      reasonDetail: said(SHELL_FILE.reasonDetail),
-    };
+    // What the boundary reads to know a Task's outcome was declared: the
+    // parameter that names the Task, under whatever name the document gave it.
+    closes = Object.values(filled)[0] ?? refuse("a close names no work in its route");
   }
 
   let sentUnder: Parameter | null = null;
@@ -438,7 +412,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
     places: filled,
     sentUnder,
     parent: kind === "subtask" ? (parameterOf(body, FIELD.parent) ?? null) : null,
-    closing,
+    closes,
   };
 }
 
@@ -453,7 +427,7 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     return refuse(`a Blueprint has one close of the work, and this one has ${closing.length}`);
   }
 
-  const fixed = [SHELL_FILE.startTask, SHELL_FILE.unitOfWork, SHELL_FILE.closeTask];
+  const fixed = [SHELL_FILE.startTask, SHELL_FILE.runTask, SHELL_FILE.closeTask];
   const wanted: Wanted[] = [
     ...contained.map((call) => ({
       prefixes: [SHELL_FILE.startSubtaskPrefix],

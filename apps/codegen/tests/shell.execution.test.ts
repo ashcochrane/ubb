@@ -146,7 +146,7 @@ function lifecycle(blueprint: ResolvedIntegrationBlueprint, files: readonly Rend
   }
   const blocks = files.filter((file) => file.kind === "call_site").map((file) => file.path);
   const inside = blocks.filter((path) => /\/ubb_(start_subtask|record)_/.test(path));
-  const work = block(files, "call_sites/unit_of_work.sh");
+  const work = block(files, "call_sites/run_task.sh");
   const script = [
     SOURCE,
     ...Object.entries(values).map(([name, value]) => `${name}='${value}'`),
@@ -187,7 +187,7 @@ work() {
     task_id="$1" response=response.json searches=2 || return $?
   ubb_close_task task_id="$1" outcome=delivered
 }
-ubb_unit_of_work work customer_id=customer-1 idempotency_key=work-1 environment=production
+ubb_run_task work customer_id=customer-1 idempotency_key=work-1 environment=production
 printf 'status=%s\\ntask=%s\\n' "$?" "$UBB_TASK_ID"
 `,
     );
@@ -599,7 +599,7 @@ work() {
   ubb_record_search_run customer_id=c idempotency_key=e3 task_id="$1" searches=1 || return $?
   ubb_close_task task_id="$1" outcome=delivered
 }
-ubb_unit_of_work work customer_id=c idempotency_key=w
+ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
 `,
       { answers: [{ path: "/api/v1/metering/usage", answer: {} }, stop("customer", "customer_spend_pool")] },
@@ -633,7 +633,7 @@ work() {
   ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$1" searches=1
   ubb_close_task task_id="$1" outcome=delivered
 }
-ubb_unit_of_work work customer_id=c idempotency_key=w
+ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
 `,
       { answers: [stop("task", "task_cogs_ceiling")] },
@@ -680,6 +680,120 @@ printf 'status=%s\\n' "$?"
       expect(JSON.parse(answers.acted_on!)).toMatchObject({ stop_scope: "customer" });
     },
   );
+
+  it("clears an earlier call's stop before a record does anything, so a stop is never a stale one", () => {
+    // Owner ruling on PR #598. The first record meets a stop; the second is
+    // answered with none, is refused, or never gets as far as being sent.
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
+printf 'first=%s %s\\n' "$?" "$UBB_STOP_REQUESTED"
+ubb_record_search_run customer_id=c idempotency_key=e2 task_id=t searches=1
+printf 'answered_with_none=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
+ubb_record_search_run customer_id=c idempotency_key=e3 task_id=t searches=1
+printf 'second_stop=%s\\n' "$?"
+ubb_record_search_run customer_id=c idempotency_key=e4 task_id=t
+printf 'refused=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
+`,
+      {
+        answers: [
+          stop("task", "task_cogs_ceiling"),
+          { path: "/api/v1/metering/usage", answer: {} },
+          stop("customer", "customer_spend_pool"),
+        ],
+      },
+    );
+    const answers = said(ran);
+
+    expect(answers.first).toMatch(/^20 \{"event_id":"event_1"/);
+    expect(answers.answered_with_none).toBe("0 []");
+    expect(answers.second_stop).toBe("20");
+    expect(answers.refused).toBe(`${SHELL_EXIT.usage.status} []`);
+  });
+
+  it("answers ubb_run_task with the stop its Task met, whatever a later record left behind", () => {
+    // The work swallows a stop and records again, which clears the variable.
+    // The runner's own result is still the stop, with its metadata.
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+work() {
+  ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$1" searches=1
+  ubb_record_search_run customer_id=c idempotency_key=e2 task_id="$1" searches=1
+  printf 'inside=[%s]\\n' "$UBB_STOP_REQUESTED"
+}
+ubb_run_task work customer_id=c idempotency_key=w
+printf 'status=%s\\nafter=%s\\n' "$?" "$UBB_STOP_REQUESTED"
+`,
+      { answers: [stop("task", "task_cogs_ceiling")] },
+    );
+    const answers = said(ran);
+
+    expect(answers.inside).toBe("[]");
+    expect(answers.status).toBe("20");
+    expect(JSON.parse(answers.after!)).toMatchObject({ idempotency_key: "e1", stop_scope: "task" });
+  });
+
+  it("sets its results in the shell and exports none of them to a child process", () => {
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+ubb_start_task customer_id=c idempotency_key=w
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$UBB_TASK_ID" searches=1
+printf 'here=%s\\n' "\${UBB_TASK_ID:+set} \${UBB_RESPONSE:+set} \${UBB_STOP_REQUESTED:+set}"
+sh -c 'printf "child=%s\\n" "\${UBB_TASK_ID-unset} \${UBB_RESPONSE-unset} \${UBB_STOP_REQUESTED-unset}"'
+`,
+      { answers: [stop("task", "task_cogs_ceiling")] },
+    );
+
+    expect(said(ran)).toEqual({ here: "set set set", child: "unset unset unset" });
+  });
+
+  it("overwrites the response with each call's own", () => {
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+ubb_start_task customer_id=c idempotency_key=w
+printf 'start=%s\\n' "$UBB_RESPONSE"
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$UBB_TASK_ID" searches=1
+printf 'record=%s\\n' "$UBB_RESPONSE"
+`,
+    );
+    const answers = said(ran);
+
+    expect(JSON.parse(answers.start!)).toHaveProperty("task_id", "task_1");
+    expect(JSON.parse(answers.record!)).toHaveProperty("event_id");
+    expect(JSON.parse(answers.record!)).not.toHaveProperty("created_at");
+  });
+
+  it("clears an earlier stop before ubb_run_task does anything, a run that is refused among them", () => {
+    // The runner returns a stop's status too, so what it leaves in the
+    // variable is its own: refused with no command, or at its start, it has
+    // met no stop and says none.
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+work() { :; }
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
+printf 'stopped=%s\\n' "$?"
+ubb_run_task
+printf 'no_work=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
+ubb_record_search_run customer_id=c idempotency_key=e2 task_id=t searches=1
+printf 'stopped_again=%s\\n' "$?"
+ubb_run_task work customer_id=c
+printf 'start_refused=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
+`,
+      { answers: [stop("task", "task_cogs_ceiling"), stop("task", "task_cogs_ceiling")] },
+    );
+
+    expect(said(ran)).toEqual({
+      stopped: "20",
+      no_work: `${SHELL_EXIT.usage.status} []`,
+      stopped_again: "20",
+      start_refused: `${SHELL_EXIT.usage.status} []`,
+    });
+  });
 
   it("starts a new piece of work with no stop of an earlier one's", () => {
     const ran = runShell(
@@ -794,40 +908,54 @@ describe("the boundary, where no stop is met", () => {
 work() {
 ${work}
 }
-ubb_unit_of_work work customer_id=c idempotency_key=w
+ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
 `,
       { answers },
     );
 
-  it("declares work that failed without declaring anything failed, and returns its status", () => {
-    const ran = boundary("  return 3");
+  it.each(["1", "3", "128", "130", "143"])(
+    "declares nothing for work that returned %s: the status is passed on and the Task left open, said so",
+    (status) => {
+      // Owner ruling on PR #598. A status is not evidence of how the work
+      // went — a test that came out false leaves one — and a failed Task
+      // cannot be reopened. 130 and 143 are a signal's; the rule is the same.
+      const ran = boundary(`  return ${status}`);
 
-    expect(said(ran)).toEqual({ status: "3" });
-    expect(ran.requests.map((request) => [request.path, request.body])).toEqual([
-      ["/api/v1/tasks", expect.anything()],
-      [
-        "/api/v1/tasks/task_1/close",
-        { outcome: "failed", outcome_reason: "execution_failed", reason_detail: "exit status 3" },
-      ],
+      expect(said(ran)).toEqual({ status });
+      // The start, and nothing after it: no close was sent.
+      expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
+      expect(ran.stderr.trim()).toBe(`ubb_run_task: ${SHELL_MESSAGES.leftOpen}`);
+    },
+  );
+
+  it("does not take a work function's last test coming out false for a failed Task", () => {
+    // The ordinary shell construct the ruling is about: the function's last
+    // command is a test, it is false, and nobody meant a failure by it.
+    const ran = boundary('  ubb_record_search_run customer_id=c idempotency_key=e task_id="$1" searches=1\n  [ -n "" ] && :');
+
+    expect(said(ran)).toEqual({ status: "1" });
+    expect(ran.requests.map((request) => request.path)).toEqual([
+      "/api/v1/tasks", "/api/v1/metering/usage",
     ]);
   });
 
-  it("returns the work's own failure where declaring it failed did not succeed", () => {
-    const ran = boundary("  return 3", [
-      { path: "/api/v1/tasks/task_1/close", answer: { http_status: 500, raw_body: "no" } },
-    ]);
+  it("still sends the failure a tenant declares, as the tenant declared it", () => {
+    const ran = boundary(
+      '  ubb_close_task task_id="$1" outcome=failed outcome_reason=timeout || return $?\n  return 3',
+    );
 
-    // The first failure is the one reported: the second is said, not returned.
     expect(said(ran)).toEqual({ status: "3" });
-    expect(ran.stderr).toContain(`ubb_unit_of_work: ${SHELL_MESSAGES.failureNotDeclared}`);
+    expect(ran.requests[1]!.body).toEqual({ outcome: "failed", outcome_reason: "timeout" });
+    // Declared, so there is nothing left open to say.
+    expect(ran.stderr).toBe("");
   });
 
   it("leaves work that ended cleanly without an outcome open, and says so", () => {
     const ran = boundary("  :");
 
     expect(said(ran)).toEqual({ status: String(SHELL_EXIT.usage.status) });
-    expect(ran.stderr).toContain(`ubb_unit_of_work: ${SHELL_MESSAGES.outcomeRequired}`);
+    expect(ran.stderr).toContain(`ubb_run_task: ${SHELL_MESSAGES.outcomeRequired}`);
     expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
   });
 
@@ -843,27 +971,14 @@ printf 'status=%s\\n' "$?"
     expect(delivered.requests).toHaveLength(2);
   });
 
-  it("declares nothing for work a signal ended, and passes its status on", () => {
-    // 130 and 143 are what a shell reports for work ended by an interrupt
-    // and by a termination: the work said nothing about itself.
-    for (const status of ["130", "143"]) {
-      const ran = boundary(`  return ${status}`);
-
-      expect(said(ran)).toEqual({ status });
-      expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
-    }
-    // The last status that is the work's own is still declared failed.
-    expect(boundary("  return 128").requests).toHaveLength(2);
-  });
-
   it("starts nothing and runs nothing where the start itself is refused", () => {
     const ran = runShell(
       rendered("shell-direct-task-events"),
       `${SOURCE}
 work() { printf 'ran=yes\\n'; }
-ubb_unit_of_work work customer_id=c
+ubb_run_task work customer_id=c
 printf 'status=%s\\n' "$?"
-ubb_unit_of_work
+ubb_run_task
 printf 'no_work=%s\\n' "$?"
 `,
     );
@@ -1041,7 +1156,7 @@ describe("a shell file that is not ready", () => {
 ubb_start_task customer_id=c idempotency_key=w
 printf 'start=%s\\n' "$?"
 work() { :; }
-ubb_unit_of_work work customer_id=c idempotency_key=w
+ubb_run_task work customer_id=c idempotency_key=w
 printf 'work=%s\\n' "$?"
 ubb_record_usage customer_id=c idempotency_key=e task_id=t
 printf 'record=%s\\n' "$?"

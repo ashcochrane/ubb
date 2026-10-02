@@ -5,7 +5,8 @@
 **Decision records:** the consolidated Code Builder specification on #184 (four comments,
 2026-09-25) — §6 the artifact, §7 the classes as shapes, §9 the runtime contract, §10 the Shell /
 raw HTTP target · `docs/plans/2026-08-04-renderer-and-preview-decision.md` (#180 §1 to §3, and
-§12.1, the question this closes) · the owner's rulings on PR #597 (ADR-0016 §9)
+§12.1, the question this closes) · the owner's rulings on PR #597 (ADR-0016 §9) · the owner's
+review of PR #598 (2026-10-02), recorded in §10
 **Companion:** ADR-0016 is the package this target is the second target of, and its §2, §3, §5,
 §6 and §8 hold here unchanged; ADR-0015 is the document it renders; ADR-0008 §5 names the gates
 (G23 to G26) this suite is the renderer's half of
@@ -77,14 +78,27 @@ parameter's name — `searches="$searches"` — since that variable is the tenan
 value in; it assigns none.
 
 **The name is the Blueprint's, and never assumed to be the name of the field it fills.** The
-boundary declares a failure through the close by whatever the close's parameters are called, and
-a Subtask block passes the work's id under whatever the parent's parameter is called.
+boundary knows a Task's outcome was declared by whatever the close's parameter for the Task is
+called, and a Subtask block passes the work's id under whatever the parent's parameter is called.
 
 **What a call leaves behind is in a variable**, because a function returns a status and nothing
-else: `UBB_TASK_ID` after a start, `UBB_RESPONSE` after any call, `UBB_STOP_REQUESTED` after a
-stop. That is why a tenant never calls one of them inside `$( )` or a pipeline — both run it in a
-subshell, where what it set is lost — and why the file never does so either: the only functions
-it runs there are the ones that set nothing (§3).
+else. There are three, and they are results the file sets, not settings a tenant supplies:
+
+- **`UBB_TASK_ID`** is the id of the work the last start created.
+- **`UBB_RESPONSE`** is the response to the most recent call, and the next call overwrites it.
+- **`UBB_STOP_REQUESTED`** is the stop the most recent record met, or the Task `ubb_run_task`
+  ran: the stop's metadata as one line of JSON (§4), not a flag. It is empty where none was met.
+  **Every call that can return a stop — a record, and `ubb_run_task` — clears it before it does
+  anything else**, before a refusal and before preflight, so what it holds is never an earlier
+  call's: a call that was refused met no stop and says none. A start that succeeds clears it too:
+  a new Task has no stop of the last one's.
+
+**None of them is exported.** They are the shell's and not the environment's: a child process
+does not see them, and nothing a tenant runs inherits a stop it did not meet.
+
+That is why a tenant never calls a function of the file inside `$( )` or a pipeline — both run
+it in a subshell, where what it set is lost — and why the file never does so either: the only
+functions it runs there are the ones that set nothing (§3).
 
 **How a value is passed to jq is decided by a declared fact** (ADR-0016 §3, extended by one). A
 shell argument is always text, so: a keyed entry that declares a `value_type` is a number, checked
@@ -93,9 +107,10 @@ as a whole number of at most fifteen digits and carried exactly or refused; one 
 is held to the same: a whole number, or nothing is sent; a field that declares an
 `amount_representation` is a cost (§6); everything else is a JSON string.
 
-The names a call site depends on are `ubb_start_task`, `ubb_unit_of_work`, `ubb_close_task`,
+The names a call site depends on are `ubb_start_task`, `ubb_run_task`, `ubb_close_task`,
 `ubb_start_subtask_<name>` and `ubb_record_<name>`, with `<name>` and the collision rule exactly
-ADR-0016 §2's — one rule for both targets, in `src/names.ts`.
+ADR-0016 §2's — one rule for both targets, in `src/names.ts`. The three fixed ones are named for
+the Task, the domain's own noun for what they start, run and close.
 
 ### 3. A jq program is read by jq from standard input, from a quoted heredoc that is never inside a substitution
 
@@ -162,24 +177,33 @@ The key is the one the event was sent under, which the acknowledgement does not 
 task-scoped and a customer-scoped stop share the status and differ here. The fields #569 will
 publish are added to that object by #585; nothing is derived or filled in.
 
-**`ubb_unit_of_work` is the boundary.** It starts the work, runs the one command it is given with
-the work's id as its argument, and then reads two things: the status that command returned, and
-whether a stop was met while it ran.
+**`ubb_run_task` is the boundary.** It starts the Task, runs the one command it is given with
+the Task's id as its argument, and then reads three things: the status that command returned,
+whether a stop was met while it ran, and whether the Task's outcome was declared.
 
 - **20, or a stop was met**: it logs the stop — one sentence, then `stop_requested` and the
-  metadata — declares nothing, and returns 20. It never turns a stop into success, and that does
-  not rest on the tenant: work that never looked at the status its record returned, went on and
-  returned success is still answered with 20.
-- **a failure, with no outcome declared**: it declares the work `failed`, reason
-  `execution_failed`, and returns the failure's own status. Where that declaration fails as well,
-  it says so and still returns the first failure. A status above 128 is a signal's, not the
-  work's: nothing is declared for it.
-- **success, with no outcome declared**: it leaves the work open and returns `UBB_EXIT_USAGE`,
+  metadata — declares nothing, and returns 20. It never turns a stop into success or into a
+  failure, and that does not rest on the tenant: work that never looked at the status its record
+  returned, went on and returned success is still answered with 20. The metadata it leaves in
+  `UBB_STOP_REQUESTED` is the stop its Task met, whatever a later record inside the work left
+  there.
+- **a failure, with no outcome declared**: it **declares nothing**. The status is returned
+  exactly as the work returned it, the Task is left open, and one line on standard error says
+  both: no outcome was declared for it, and the Task is open. A status above 128, a signal's, is
+  the same case and is passed on the same way.
+- **success, with no outcome declared**: it leaves the Task open and returns `UBB_EXIT_USAGE`,
   saying so. It does not guess an outcome, and it does not stay quiet.
+- **an outcome was declared**: the work's status is returned as it is, and nothing is said.
 
-That is #184 §9's rule for the SDK's wrapper — an outcome is declared only where control flow is
-evidence — given the shape a status has. **It is the one decision here that wants the owner's
-ruling (§10)**: a status is weaker evidence than an exception.
+**The file writes no terminal outcome of its own.** `ubb_close_task outcome=failed …`, called by
+the tenant, is the one way a failure is declared, and the only close a generated file sends is one
+a tenant's script called. The rule behind it is the owner's (§10): UBB writes a terminal business
+outcome only where it has unambiguous evidence for it, and **a shell status is not that**. A
+function whose last command is a test that came out false returns a failure nobody meant; a
+`grep` that found nothing returns 1; and a Task declared `failed` cannot be reopened. So #184
+§9's rule for the SDK's wrapper — an exception leaving the block is evidence, and declares
+`failed` — is **not** carried over to this target. The Python target keeps it: an exception is
+evidence a status is not.
 
 **Nothing on the stop's path is ever run in a subshell.** What the file runs inside `$( )` is a
 program function (§3) or the credential piped to curl, and nothing else; no function is ever in a
@@ -284,8 +308,6 @@ Everything ADR-0016 §7 lists that is not about an SDK, and:
 - no close of the work, or more than one;
 - a route with a place no token fills;
 - a record that names no key its event is sent under;
-- a close whose work, outcome or reason is not a parameter, since the boundary declares a failure
-  through it;
 - one parameter asked for as two kinds of value;
 - a parameter name that is not an identifier.
 
@@ -315,29 +337,41 @@ about that pairing. The image the package builds is Debian stable (dash, bash 5.
 curl 7.88) and the runner is Ubuntu (jq 1.7, curl 8), so between them the suite sees two
 generations of each tool.
 
-### 10. What this ADR does not decide, and what it decides subject to the owner
+### 10. What the owner ruled, and what this ADR does not decide
 
-**Two things here are decided so that the target could be built, and are the owner's to overrule
-before a tenant holds a file.**
+**The owner reviewed PR #598 on 2026-10-02 and ruled on what this ADR had left to them.** As
+built, the boundary declared work that returned a failure `failed`, and the outer function was
+`ubb_unit_of_work`. Both were changed before the merge, so neither ever shipped.
 
-*What the boundary declares for work that failed.* Declaring it `failed` is §9's rule for the SDK
-wrapper, carried over. But a status is weaker evidence than an exception: a work function whose
-last command is a test that came out false returns a failure it did not mean, and its work is then
-closed, irreversibly, as failed. The alternative is to declare nothing for any failure and say so
-loudly, as is done for a clean end with no outcome. It is one line of the boundary either way.
+1. **No outcome is fabricated from a status.** A work function's non-zero status does not make a
+   Task `failed`. The status is passed on unchanged, a Task with no outcome declared is left open
+   and said to be, a signal's status is passed on the same way, and a stop is never turned into a
+   failure. An explicit `ubb_close_task outcome=failed …` is how an integration declares one. The
+   invariant kept is the stronger one: UBB writes a terminal business outcome only on
+   unambiguous evidence (§4).
+2. **The five statuses of §4 and their values are approved**, beside `UBB_EXIT_STOP_REQUESTED`,
+   which stays 20. A caller, and everything this renderer writes, uses the names and not the
+   numbers: the literal 20 is written once, as that constant's value.
+3. **The three result variables are approved, with the lifecycle §2 states**: results the file
+   sets and not settings, `UBB_RESPONSE` overwritten by the next call, `UBB_STOP_REQUESTED` the
+   stop's metadata and not a flag, cleared before a stop-capable call does anything, and none of
+   them exported.
+4. **`ubb_start_task` and `ubb_close_task` are approved, and the outer function is
+   `ubb_run_task`.** "Unit of work" is not a noun a tenant is given anywhere else; a Task is.
+5. **The heredoc decision of §3 is approved, and is not to be simplified later** because a newer
+   shell tolerates another form: programs in functions of their own, no heredoc inside a
+   substitution, and both the losing form's reproduction and the structural test kept.
+6. **Approved as built**: `name=value` arguments and refusal before any side effect, the cost
+   converted on its text, a response as a file, one preview a call, no host, no curl timeout the
+   renderer made up, and catalogue version 2.
 
-*The names.* #184 §15 rules four catalogue symbols. A shell file needs more, and each is public
-from the day it ships: the five statuses of §4, the three variables a call leaves its answer in
-(`UBB_TASK_ID`, `UBB_RESPONSE`, `UBB_STOP_REQUESTED`), and the three fixed function names
-(`ubb_start_task`, `ubb_unit_of_work`, `ubb_close_task`). They are named here by the conventions
-of the four that were ruled, and none has been ruled itself.
-
-**A path for work that has already happened.** The Python target has `backfill_<name>`, which
-passes the SDK's `stop_behavior="return"`. The specification gives the shell target no batch path
-and says nothing of a backfill, and one would need two things nobody has ruled: the parameter
-that says when the work happened, and what a stop does to the status of a call that must not
-interrupt a backlog. It is not rendered. It can be added without breaking a file already
-generated.
+**A path for work that has already happened is not rendered, and that is a stated limitation of
+this target in v1** (ruling 6), not something a shell file is implied to do. The Python target has
+`backfill_<name>`, which passes the SDK's `stop_behavior="return"`. The specification gives the
+shell target no batch path and says nothing of a backfill, and one would need two things nobody
+has ruled: the parameter that says when the work happened, and what a stop does to the status of
+a call that must not interrupt a backlog. **A tenant with a backlog to record uses the Python
+target.** A shell path can be added without breaking a file already generated.
 
 The fields #569 will publish in a stop's metadata (#585). Execution against the real application,
 and images that really lack a tool or carry an old one (#582). A cost read off a supplier's
@@ -358,7 +392,10 @@ and needs no new rule here.
 | §3 — every program in a quoted heredoc no line of which could end it; every value an argument; every key quoted | `apps/codegen/tests/shell.artifact.test.ts` — "holds every jq program in a quoted heredoc, no line of which could end it", "passes every runtime value to jq as an argument, and quotes every key" |
 | §3 — a name cannot end a heredoc, a string or a line, or run anything | `apps/codegen/tests/shell.execution.test.ts` — "cannot end a heredoc, a string or a line, or run anything: %s", "reach the wire exactly as they were declared" |
 | §4 — a stop returns the reserved status with its metadata; two scopes share it | `apps/codegen/tests/shell.execution.test.ts` — "returns the reserved status with its metadata set, the event recorded once (%s)", "shares one status between a task-scoped and a customer-scoped stop, told apart by metadata" |
-| §4 — the boundary logs and returns it, never as success, whether or not the work returned it; and what it does where no stop is met | same module — "is observed by the boundary, logged, and returned — never as success", "is still a stop where the work never looked at the status that carried it", "declares work that failed without declaring anything failed, and returns its status", "declares nothing for work a signal ended, and passes its status on", "leaves work that ended cleanly without an outcome open, and says so" |
+| §4 — the boundary logs and returns it, never as success, whether or not the work returned it | same module — "is observed by the boundary, logged, and returned — never as success", "is still a stop where the work never looked at the status that carried it" |
+| §4, §10 — no outcome is declared from a status: the status is passed on, the Task left open and said to be; a declared failure is still sent | same module — "declares nothing for work that returned %s: the status is passed on and the Task left open, said so", "does not take a work function's last test coming out false for a failed Task", "still sends the failure a tenant declares, as the tenant declared it", "leaves work that ended cleanly without an outcome open, and says so", "declares nothing more for work that declared its own outcome"; `apps/codegen/tests/shell.artifact.test.ts` — "declares no outcome of its own: the only close is the one a tenant calls"; `apps/codegen/tests/catalogue.test.ts` — "names every outcome a close may declare as the registry does, and holds none to declare itself" |
+| §2, §10 — the result variables: a stop is never a stale one, the runner's is its Task's, the response is the last call's, none is exported | `apps/codegen/tests/shell.execution.test.ts` — "clears an earlier call's stop before a record does anything, so a stop is never a stale one", "clears an earlier stop before ubb_run_task does anything, a run that is refused among them", "answers ubb_run_task with the stop its Task met, whatever a later record left behind", "starts a new piece of work with no stop of an earlier one's", "overwrites the response with each call's own", "sets its results in the shell and exports none of them to a child process"; `apps/codegen/tests/shell.artifact.test.ts` — "exports none of what it sets: the result variables are the shell's, not the environment's" |
+| §2, §10 — the three fixed functions are named for the Task | `apps/codegen/tests/catalogue.test.ts` — "name the three fixed functions for the Task, the domain's own noun, and no other" |
 | §1, §4 — the block that acts on a stop is reached under `set -e` | same module — "is acted on by the stop block as rendered, under set -eu, and the script goes on (%s)" |
 | §2 — a call is written by the Blueprint's parameter names, not its fields' | `apps/codegen/tests/shell.artifact.test.ts` — "writes a call by the names the Blueprint gives its parameters, not by its fields' names" |
 | §5 — a value cannot move the route it is written into | `apps/codegen/tests/shell.execution.test.ts` — "refuses a value that would change the route it is written into" |
@@ -381,6 +418,10 @@ and needs no new rule here.
   script. Each is a new renderer contract and is announced as one.
 - **A tenant's script checks statuses by hand inside the work.** That is the price of a stop that
   cannot be swallowed by a subshell or lost to `set -e`, and the call-site block says it.
+- **A Task whose work fails without declaring an outcome stays open**, where the Python target
+  would have declared it `failed`. That is deliberate (§4): an open Task can still be closed
+  correctly, and a wrongly failed one cannot be reopened. The file says so on standard error
+  every time it happens.
 - **A response is a file, and a cost is text.** Both are what a shell script already has after it
   called its supplier with curl.
 - **The catalogue is one for both targets, and it is version 2.** A Python file's header says so

@@ -83,7 +83,7 @@ describe("the catalogue's symbols", () => {
       expect(name).toMatch(/^UBB_[A-Z_]+$/);
     }
     for (const name of [
-      SHELL_FILE.startTask, SHELL_FILE.unitOfWork, SHELL_FILE.closeTask,
+      SHELL_FILE.startTask, SHELL_FILE.runTask, SHELL_FILE.closeTask,
       SHELL_FILE.startSubtaskPrefix, SHELL_FILE.recordPrefix,
     ]) {
       expect(name).toMatch(/^ubb_[a-z_]+$/);
@@ -91,6 +91,17 @@ describe("the catalogue's symbols", () => {
     // The stop's metadata is held under the name ruled for it.
     expect(SHELL_FILE.stopRequested).toBe(`UBB_${SHELL.stopMetadata.toUpperCase()}`);
     expect(SHELL_FILE.heredoc).toMatch(/^[A-Z_]+$/);
+  });
+
+  it("name the three fixed functions for the Task, the domain's own noun, and no other", () => {
+    // Owner ruling on PR #598: the outer runner is `ubb_run_task`. The phrase
+    // the Python target's wrapper is named for is explanation, and is not a
+    // second public noun in the shell file's API.
+    expect([SHELL_FILE.startTask, SHELL_FILE.runTask, SHELL_FILE.closeTask]).toEqual([
+      "ubb_start_task", "ubb_run_task", "ubb_close_task",
+    ]);
+    const shell = JSON.stringify([SHELL_FILE, SHELL_COMMENTS, SHELL_MESSAGES]);
+    expect(shell).not.toMatch(/unit_of_work/);
   });
 
   it("hold the largest amount a money column takes, to the digit", () => {
@@ -130,13 +141,17 @@ describe("the catalogue's symbols", () => {
     );
   });
 
-  it("spell the outcome a shell boundary declares, and every one a close may, as the registry does", () => {
+  it("names every outcome a close may declare as the registry does, and holds none to declare itself", () => {
     expect(REGISTRY.values.task_outcome!.length).toBeGreaterThan(2);
-    expect(REGISTRY.values.task_outcome).toContain(SHELL_FILE.outcomeFailed);
-    expect(REGISTRY.values.outcome_reason).toContain(SHELL_FILE.outcomeReasonExecutionFailed);
     // The sentence above a close names every outcome there is.
     const sentence = SHELL_COMMENTS.close.join(" ");
     for (const outcome of REGISTRY.values.task_outcome!) expect(sentence).toContain(outcome);
+    // Owner ruling on PR #598: a shell file never writes an outcome of its
+    // own, so the catalogue holds no outcome and no reason as a value.
+    const values = Object.values(SHELL_FILE).map(String);
+    for (const word of [...REGISTRY.values.task_outcome!, ...REGISTRY.values.outcome_reason!]) {
+      expect(values, word).not.toContain(word);
+    }
   });
 });
 

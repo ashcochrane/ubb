@@ -72,11 +72,11 @@ function work(): string[] {
 }
 
 function blocks(plan: Plan): Block[] {
-  const run = `${SHELL_FILE.unitOfWork} ${WORK}`;
+  const run = `${SHELL_FILE.runTask} ${WORK}`;
   return [
     {
-      file: "unit_of_work",
-      comments: SHELL_COMMENTS.callSiteUnitOfWork,
+      file: "run_task",
+      comments: SHELL_COMMENTS.callSiteRunTask,
       body: [...work(), ...invoke(run, plan.start)],
     },
     ...plan.subtasks.map((subtask) => ({

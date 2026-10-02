@@ -58,14 +58,26 @@ ADR-0017 has the reasons. In short:
   sent. Inside the file a parameter is `_ubb_p_<name>` in shell and `$p_<name>` in jq, so a parameter
   named `PATH`, `IFS` or `then` is none of the things those words already mean.
 - **What a call leaves behind is in a variable**, because a shell function returns only a status:
-  `UBB_TASK_ID` after a start, `UBB_RESPONSE` after any call, `UBB_STOP_REQUESTED` after a stop.
-  So a function of the file is never called inside `$( )` or a pipeline.
+  `UBB_TASK_ID` after a start, `UBB_RESPONSE` after any call (the next call overwrites it),
+  `UBB_STOP_REQUESTED` after a stop. They are results the file sets, not settings, and none is
+  exported. A call that can meet a stop clears `UBB_STOP_REQUESTED` before it does anything else,
+  so a stop is never an earlier call's. A function of the file is never called inside `$( )` or a
+  pipeline.
 - **A stop is the status `UBB_EXIT_STOP_REQUESTED` (20)**, returned by the record that was answered
-  with one, with the stop's metadata in `UBB_STOP_REQUESTED` as one line of JSON. `ubb_unit_of_work`
+  with one, with the stop's metadata in `UBB_STOP_REQUESTED` as one line of JSON. `ubb_run_task`
   is the boundary: it logs the stop and returns 20, never 0 — whether or not the work it ran
   returned the stop's status. Every other failure has another status: a named `sysexits.h` value
   for the file's own refusals (`UBB_EXIT_USAGE`, `UBB_EXIT_VALUE_REFUSED`, …), or curl's own for a
   request that failed.
+- **The file declares no outcome of its own.** Work that returns a failure is not declared
+  `failed`: a shell status is not evidence of how the work went, and a failed Task cannot be
+  reopened. Its status is passed on as it is, and a Task with no outcome declared is left open and
+  said to be on standard error. `ubb_close_task outcome=failed …` is how a failure is declared.
+  (The Python target does declare `failed` where an exception leaves the block; an exception is
+  evidence a status is not.)
+- **There is no path for work that has already happened.** The Python target renders
+  `backfill_<name>`; this one renders nothing for a backlog in v1. A tenant with one uses the
+  Python target.
 - **A response a path is read off is a file**: `response=` is the path of a file holding the
   supplier's JSON.
 - **A supplier's cost is text**, converted to whole micros on its digits with no arithmetic on the

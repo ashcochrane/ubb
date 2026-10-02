@@ -297,6 +297,7 @@ function constants(): string[] {
     "",
     "_ubb_ready=",
     "_ubb_closed=",
+    "_ubb_stop_met=",
   ];
 }
 
@@ -440,6 +441,8 @@ function acknowledgement(): string[] {
     ...capture("_ubb_stop", "stop", ['"$1"'], unreadable()),
     `${I1}[ "$_ubb_stop" != null ] || return 0`,
     `${I1}${SHELL_FILE.stopRequested}=$_ubb_stop`,
+    // Kept for the boundary too, which a later call's result cannot clear.
+    `${I1}_ubb_stop_met=$_ubb_stop`,
     `${I1}return ${STOP}`,
     "}",
   ];
@@ -776,8 +779,12 @@ function path(call: CallPlan): string {
 function ending(call: CallPlan): string[] {
   switch (call.kind) {
     case "start":
-      // A new piece of work: whatever stop the last one met is not its own.
-      return [`${I1}_ubb_started || return $?`, `${I1}${SHELL_FILE.stopRequested}=`];
+      // A new Task: whatever stop the last one met is not its own.
+      return [
+        `${I1}_ubb_started || return $?`,
+        `${I1}${SHELL_FILE.stopRequested}=`,
+        `${I1}_ubb_stop_met=`,
+      ];
     case "subtask":
       return [`${I1}_ubb_started`];
     case "record":
@@ -785,7 +792,7 @@ function ending(call: CallPlan): string[] {
       // stop's, where there is one — is the status of the record itself.
       return [`${I1}_ubb_acknowledge "$${shVariable(call.sentUnder!.name)}"`];
     case "close":
-      return [`${I1}_ubb_closed="$_ubb_closed $${shVariable(call.closing!.work.name)}"`];
+      return [`${I1}_ubb_closed="$_ubb_closed $${shVariable(call.closes!.name)}"`];
   }
 }
 
@@ -810,6 +817,9 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
     "",
     ...asComments(comments),
     `${call.name}() {`,
+    // What a call that can meet a stop leaves in the variable is its own
+    // result: an earlier call's stop is cleared before anything else is done.
+    ...(call.kind === "record" ? [`${I1}${SHELL_FILE.stopRequested}=`] : []),
     ...guard(uses, call),
     `${I1}_ubb_preflight || return $?`,
     `${I1}_ubb_environment || return $?`,
@@ -836,18 +846,21 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
   ];
 }
 
-function unitOfWork(plan: Plan): string[] {
+function runTask(): string[] {
   const usage = status(SHELL_EXIT.usage);
-  const name = SHELL_FILE.unitOfWork;
-  const close = plan.close.closing!;
+  const name = SHELL_FILE.runTask;
   const closed = (then: string) => [
     `${I1}case " $_ubb_closed " in`,
     `${I2}*" $2 "*) ${then} ;;`,
     `${I1}esac`,
   ];
   return [
-    ...asComments(SHELL_COMMENTS.unitOfWork),
+    ...asComments(SHELL_COMMENTS.runTask),
     `${name}() {`,
+    // It returns a stop's status too, so the stop it leaves is its own: an
+    // earlier one is cleared before anything that could refuse the run.
+    `${I1}${SHELL_FILE.stopRequested}=`,
+    `${I1}_ubb_stop_met=`,
     `${I1}[ "$#" -ge 1 ] || {`,
     `${I2}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.work)} >&2`,
     `${I2}return ${usage}`,
@@ -862,7 +875,10 @@ function unitOfWork(plan: Plan): string[] {
     `${I1}"$1" "$2" && set -- "$1" "$2" 0 || set -- "$1" "$2" "$?"`,
     // A stop the work met is acted on here whatever the work then returned:
     // one whose status was never checked is still a stop, and is not success.
-    `${I1}if [ "$3" -eq ${STOP} ] || [ -n "$${SHELL_FILE.stopRequested}" ]; then`,
+    `${I1}if [ "$3" -eq ${STOP} ] || [ -n "$_ubb_stop_met" ]; then`,
+    // This call's own result: the stop its Task met, whatever a later call
+    // inside the work left in the variable.
+    `${I2}${SHELL_FILE.stopRequested}=$_ubb_stop_met`,
     `${I2}${say(SHELL_MESSAGES.stop)}`,
     `${I2}printf '%s %s\\n' ${SHELL.stopMetadata} "\${${SHELL_FILE.stopRequested}:-null}" >&2`,
     `${I2}return ${STOP}`,
@@ -872,13 +888,9 @@ function unitOfWork(plan: Plan): string[] {
     `${I2}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.outcomeRequired)} >&2`,
     `${I2}return ${usage}`,
     `${I1}fi`,
-    // Work ended by a signal has said nothing about itself, and nothing is
-    // declared for it: the status is passed on as it is.
-    `${I1}[ "$3" -le ${SHELL_FILE.lastOrdinaryStatus} ] || return "$3"`,
-    `${I1}${plan.close.name} ${close.work.name}="$2" ${close.outcome.name}=${SHELL_FILE.outcomeFailed} \\`,
-    `${I2}${close.outcomeReason.name}=${SHELL_FILE.outcomeReasonExecutionFailed} \\`,
-    `${I2}${close.reasonDetail.name}=${shWord(`${SHELL_MESSAGES.exitStatus} `)}"$3" ||`,
-    `${I2}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.failureNotDeclared)} >&2`,
+    // A status is not evidence of how the work went: a failure, a signal's
+    // among them, is passed on as it is and no outcome is declared for it.
+    `${I1}printf '%s: %s\\n' ${name} ${shWord(SHELL_MESSAGES.leftOpen)} >&2`,
     `${I1}return "$3"`,
     "}",
   ];
@@ -927,7 +939,7 @@ export function renderModule(plan: Plan): string {
       uses.notReady ? notReadyHelper() : [],
       uses.reportedCost ? reportedCostHelpers() : [],
       start,
-      unitOfWork(plan),
+      runTask(),
       ...subtasks,
       ...records,
       close,

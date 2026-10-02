@@ -5,7 +5,7 @@ work() {
   task_id=$1
   :
 }
-ubb_unit_of_work work \
+ubb_run_task work \
   customer_id="$customer_id" \
   idempotency_key="$idempotency_key" \
   environment="$environment"

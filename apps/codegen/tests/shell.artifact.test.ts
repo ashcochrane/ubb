@@ -702,7 +702,9 @@ describe("the shapes a value takes in a shell file", () => {
       (defined) => defined.name === "ubb_record_chat_completion",
     )!;
 
-    expect(record.lines.slice(1, 4)).toEqual([
+    // After clearing any earlier call's stop, which a record does first.
+    expect(record.lines.slice(1, 5)).toEqual([
+      `  ${SHELL_FILE.stopRequested}=`,
       `  # ${COMMENTS.notReadyCall[0]}`,
       "  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'complete'" +
         " 'measurements.input_tokens' 'measurements.output_tokens'",
@@ -735,12 +737,38 @@ describe("the shapes a value takes in a shell file", () => {
     );
     // A Subtask's parent is still the work it sits inside, under its new name.
     expect(block("call_sites/ubb_start_subtask_summarise.sh")).toContain('  inside="$task_id" \\\n');
-    // And the boundary declares a failure through the close by those names.
-    expect(module).toContain('  ubb_close_task the_work="$2" how_it_ended=failed \\\n');
-    expect(module).not.toMatch(/ubb_close_task task_id=/);
+    // The Task a close ends is known by that name where the close records it.
+    expect(module).toContain('  _ubb_closed="$_ubb_closed $_ubb_p_the_work"\n');
     expect(block("request_previews/ubb_close_task.http")).toContain(
       "POST $UBB_BASE_URL/api/v1/tasks/$the_work/close\n",
     );
+  });
+
+  it("declares no outcome of its own: the only close is the one a tenant calls", () => {
+    // Owner ruling on PR #598. No function of the file calls the close, and
+    // no outcome or reason is written anywhere in it as a value.
+    for (const branch of SHELL_BRANCH_NAMES) {
+      const defined = functionsOf(moduleOf(branch).contents);
+      const callers = defined.filter(
+        (each) =>
+          each.name !== "ubb_close_task" &&
+          each.lines.slice(1).some((line) => /(^|[\s;&|])ubb_close_task(\s|$)/.test(line)),
+      );
+
+      expect(callers.map((each) => each.name), branch).toEqual([]);
+      expect(shellCode(moduleOf(branch).contents).join("\n"), branch).not.toMatch(
+        /outcome=[a-z]|execution_failed|=failed\b|=cancelled\b|=delivered\b/,
+      );
+    }
+  });
+
+  it("exports none of what it sets: the result variables are the shell's, not the environment's", () => {
+    for (const branch of SHELL_BRANCH_NAMES) {
+      const code = shellCode(moduleOf(branch).contents);
+
+      expect(code.filter((line) => /(^|[\s;&|({])(export|declare|typeset|readonly)\s/.test(line))).toEqual([]);
+      expect(code.join("\n")).not.toMatch(/\bset -a\b/);
+    }
   });
 
   it("emits the reserved status through its one constant, and the literal once", () => {
@@ -847,19 +875,6 @@ describe("what the shell renderer refuses", () => {
       /name different credentials, and a generated file has one/,
       (b) => {
         b.calls[0]!.arguments[0]!.environment_variable = "SOMETHING_ELSE";
-      },
-    ],
-    [
-      "a close whose outcome is not the caller's to say",
-      /the close takes no parameter for outcome, and a failure is declared through it/,
-      (b) => {
-        for (const argument of b.calls.at(-1)!.arguments) {
-          if (argument.name === "outcome") {
-            argument.binding_class = "platform_known";
-            argument.value = "delivered";
-            argument.parameter_name = null;
-          }
-        }
       },
     ],
   ];
