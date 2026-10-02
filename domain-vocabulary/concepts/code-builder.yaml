@@ -15,8 +15,9 @@
 #
 # EVERY NAME BELOW WAS RULED ON 2026-09-25 (#184 §15) EXCEPT THE MEMBERS OF
 # `diagnostic_code`, which that ruling handed to the ticket that builds the
-# contract. They are named there and are final from the commit that ships them
-# (ADR-0007 §3).
+# contract. The owner approved them on 2026-10-02 as the CURRENT closed set:
+# none is provisional (ADR-0007 §3), and the set is expected to change — by a
+# deliberate act, in the commit that changes the capability behind a member.
 
 code_target:
   kind: closed
@@ -137,23 +138,33 @@ configuration_object_kind:
 
 diagnostic_code:
   kind: closed
-  # THE MEMBERS ARE NAMED HERE AND ARE FINAL (#576, ADR-0007 §3). Each one is a
-  # condition the resolver actually reports; none is reserved for later.
+  # A VERSIONED CLOSED SET, NOT A FOREVER-FINAL ONE (owner ruling of
+  # 2026-10-02 on #576). These seventeen are the set as it stands: each is a
+  # condition the resolver actually reports, none is provisional (ADR-0007 §3)
+  # and none is reserved for later. The set is CLOSED — a consumer may switch
+  # over it exhaustively — and it CHANGES, deliberately:
+  #
+  #   a member is added or removed in the SAME COMMIT as the capability change
+  #   that makes its condition reportable or unreportable.
+  #
+  # So the set never names a state nothing produces, and never fails to name
+  # one something does. The Blueprint's own tests hold both directions: the
+  # codes resolutions report are exactly the set the contract publishes.
+  #
+  # What is already expected to change it. The ticket that carries a cost read
+  # off a supplier's response REMOVES
+  # `reported_cost_provider_response_unsupported`, which exists only because
+  # that cost has no truthful request field today. The ticket that makes a
+  # kind sold at one agreed price ready or not ADDS the member that says its
+  # price is missing. `constant_value_not_declared` stays when a constant's
+  # value becomes declarable — it remains true of one with no value — and
+  # `derived_measurement_unsupported` is a stated limitation with nothing
+  # designed to lift it.
   #
   # Named for the STATE of a declaration, `<object>_<what is true of it>`,
   # never for the ticket that will change it. A diagnostic carries no prose —
   # the console words each code from its label key — so the code is the whole
   # of what a consumer branches on.
-  #
-  # THE RULE FOR A CODE WHOSE CONDITION STOPS BEING REPORTED. While the
-  # pre-live lane is open (ADR-0007 §5) the ticket that lifts the condition
-  # REMOVES the member in the same commit, so the set never names a state
-  # nothing produces. `reported_cost_provider_response_unsupported` is the one
-  # member with a scheduled lift: reading a supplier's cost off its response
-  # has no truthful request field today. `constant_value_not_declared` and
-  # `derived_measurement_unsupported` are not on that footing — the first
-  # stays true of any constant with no declared value, and the second is a
-  # stated limitation with nothing designed to lift it.
   summary: >-
     What a Blueprint diagnostic reports, as one closed code per condition. Four
     are structural and leave a call a scaffold: no kind of work or no Event

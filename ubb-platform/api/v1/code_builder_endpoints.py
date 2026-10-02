@@ -54,9 +54,9 @@ code_builder_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
 
 def _with_fingerprint(document, fingerprint):
-    """The Blueprint as published: the document, carrying the identity of the
-    content it is part of. Assembled in one place so the resolution and the
-    read cannot serve two shapes."""
+    """The Blueprint as published: the document, carrying the fingerprint of
+    the snapshot kept for it. Assembled in one place so the resolution and
+    the read cannot serve two shapes."""
     return {**document, "configuration_fingerprint": fingerprint}
 
 
@@ -72,10 +72,14 @@ def resolve_blueprint(request, payload: IntegrationBlueprintSelectionIn):
     is, and what stands in the way.
 
     Resolved from PUBLISHED configuration: an Event Type revised since it was
-    published resolves from what it last published. The resolved content is
-    stored, and `configuration_fingerprint` identifies it — the same selection
-    answers the same fingerprint for as long as the configuration in force is
-    the same. Nothing else is written, and no configuration is changed.
+    published resolves from what it last published. The resolution is stored,
+    and `configuration_fingerprint` identifies it: the selection, what it
+    resolved to, and the configuration it was resolved from, including which
+    publication of each Event Type. The same selection answers the same
+    fingerprint for as long as the configuration in force is the same; the
+    order things are listed in, and the `remediation_request` a diagnostic
+    offers, are not part of it. Nothing else is written, and no configuration
+    is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers
@@ -90,13 +94,15 @@ def resolve_blueprint(request, payload: IntegrationBlueprintSelectionIn):
     if payload.draft_preview:
         require_role(request, ADMIN)
     tenant = request.auth.tenant
-    document, content = integration_blueprint.resolve(
+    resolved = integration_blueprint.resolve(
         tenant, target=payload.target, task_type=payload.task_type,
         event_types=payload.event_types, subtask_types=payload.subtask_types,
         draft_preview=payload.draft_preview)
-    fingerprint = (None if content is None
-                   else snapshots.store(tenant=tenant, content=content))
-    return 200, _with_fingerprint(document, fingerprint)
+    fingerprint = (None if resolved.identity is None
+                   else snapshots.store(tenant=tenant,
+                                        identity=resolved.identity,
+                                        presentation=resolved.presentation))
+    return 200, _with_fingerprint(resolved.document, fingerprint)
 
 
 @code_builder_router.get("/blueprints/{configuration_fingerprint}",
@@ -118,5 +124,5 @@ def get_blueprint(request, configuration_fingerprint: str):
         raise Problem(
             "not_found",
             f"no blueprint is stored under '{configuration_fingerprint}'")
-    return 200, _with_fingerprint(content[integration_blueprint.BLUEPRINT],
+    return 200, _with_fingerprint(integration_blueprint.as_answered(content),
                                   configuration_fingerprint)

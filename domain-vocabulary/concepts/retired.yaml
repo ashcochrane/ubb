@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 1,942 of 2,379 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 1,944 of 2,381 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2630,16 +2630,18 @@ measurement_key:
     # generated sets, so `historical-migrations` goes 266 -> 268 and the
     # exclusions 434 -> 436. No hand-written file was added.
     #
-    # 2026-10-01, #576 (the Integration Blueprint contract): 1,909 of 2,345 ->
-    # 1,942 of 2,379 tracked files (`units` 44 files / 122 occurrences,
-    # UNMOVED). 34 files arrived and none left. 33 are swept. 19 of those are
+    # 2026-10-02, #576 (the Integration Blueprint contract): 1,909 of 2,345 ->
+    # 1,944 of 2,381 tracked files (`units` 44 files / 122 occurrences,
+    # UNMOVED). 36 files arrived and none left. 35 are swept. 19 of those are
     # GENERATED into the SDK's core: the two operations' modules, eight model
     # modules and nine enum modules, one per schema node the six new concepts
-    # are marked on. 14 are hand-written: the resolver, the routes and their
-    # test module; the kernel app that keeps the snapshot (nine files, its
+    # are marked on. 16 are hand-written: the resolver, the routes and their
+    # test module; the kernel app that keeps the snapshot (eleven files, its
     # migration among them); the ADR; and one contract test. 1 is EXCLUDED: the
     # registry's own new domain file, so `the-vocabulary-registry` goes 10 ->
-    # 11 and the exclusions 436 -> 437.
+    # 11 and the exclusions 436 -> 437. (Taken twice on that ticket: 1,942 of
+    # 2,379 after its review pass, and these after the owner's review added
+    # the token-name module and its tests.)
     #
     # ⚠ `historical-migrations` DID NOT MOVE, and that is the first time a
     # ticket adding a migration has left it alone. That rule writes out

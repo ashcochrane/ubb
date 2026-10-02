@@ -78,15 +78,27 @@ two classes, so:
   for its registry concept: `event_type.response_shape_representation`.
 
 **A key is one segment whatever it contains.** A declared key is the tenant's own word and may
-hold a dot; a dot or a percent sign inside one is percent-encoded in a name. So a name always
-splits on its dots, and a key that ends like an element cannot be read as one. The key's own token
-carries it unencoded.
+hold a dot; a dot or a percent sign inside one is percent-encoded in a name (`.` → `%2E`, `%` →
+`%25`). So a name always splits on its dots, and a key that ends like an element cannot be read as
+one. The key's own token carries it unencoded.
+
+**The encoding has one implementation**, with its inverse beside it:
+`apps/platform/code_builder/token_names.py`. Its round trip and the absence of collisions are
+pinned for the separator, for the sign, for the two mixed, for keys that already look encoded and
+for keys outside ASCII.
+
+**A renderer consumes the name it is given and never re-implements the encoding.** The tokens named
+under a key follow that key's own token directly, sharing one `<field>.<segment>` prefix, so a
+consumer pairs them by position and reads the prefix off the name.
 
 **The declared facts are in the document because nothing else serves them.** A Blueprint resolves
 an Event Type from what it last published, and the catalogue's routes serve the draft once an edit
 lands — so the costing method, each quantity's value type, unit and required flag, and the response
 shape would otherwise be readable nowhere. Each carries the declaration it came from, which is what
 keeps the document a reading of the registries and not a second holder of their facts.
+
+**They are `platform_known` facts, not runtime inputs.** A renderer may respell one or use it to
+choose a branch. It never asks the developer for one again.
 
 The table gains no field for any of this, which is what lets the tickets that lift a blocked case
 leave it unchanged.
@@ -96,23 +108,58 @@ method, a quantity's value type, an amount representation, a response shape's re
 contract cannot mark it there. Each is a declared value, marked on the route that declares it where
 one does.
 
-### 4. The fingerprint is the hash of all the stored content, the publication included
+### 4. The fingerprint is the hash of the resolved contract, and of nothing presentational
 
-`configuration_fingerprint` is `sha256:` and the SHA-256 of the canonical JSON of the stored
-content: the selection, the Blueprint, and the configuration a sandbox would need. Nothing is left
-out of the hash and nothing outside the content is put in — not the tenant, not the moment.
+`configuration_fingerprint` means **stable resolved-contract identity**. It is not a hash of every
+byte that happened to be serialised (owner ruling, 2026-10-02).
 
-The content says which publication each Event Type was resolved from, because a generated file's
-header states it. So **republishing an unchanged declaration moves the fingerprint**: the revision
-moved, and a fingerprint that stayed put would be naming a header that no longer says what the
-catalogue does. A kind of work has no publish record and carries no date (ADR-0012); the content
-holds what it declares, so a change to one moves the fingerprint the same way.
+A stored snapshot has two halves, and the fingerprint is `sha256:` and the SHA-256 of the canonical
+JSON of the first:
 
-A selection is a set: it is resolved in key order whatever order it was sent in, so one
-integration has one fingerprint.
+- **`identity`**, hashed:
+  - the selection;
+  - the Blueprint's machine-readable resolution: `schema_version` and `renderer_contract_version`
+    (what is needed to read it), the target, every call and token, each readiness verdict, and each
+    diagnostic's `severity`, `code`, `object_kind`, `key` and `field`;
+  - the configuration it was resolved from, with the publication each Event Type's facts came from.
+- **`presentation`**, kept and **not** hashed: the `remediation_request` each diagnostic offers. It
+  is built from the API's own routes and request shapes, so it can change with no change to what
+  the tenant configured or to what the code must mean. A registry route gaining a field must not
+  make every blocked integration look like a different one.
 
-The content holds the rules **in force now**, so a rule scheduled to open or close moves the
-fingerprint when its moment passes, with no write to configuration.
+Canonical JSON is sorted keys, no insignificant whitespace, UTF-8. A list is ordered and its order
+is hashed, so every list whose order means nothing is put in a canonical order first.
+
+**What moves it, and is meant to:**
+
+- a changed selection or target;
+- a changed declaration, of a kind of work, an Event Type, a Grouping Field, a rule or the markup;
+- **a republication, even of an unchanged declaration.** The identity says which publication each
+  Event Type was resolved from, because a generated file's header states it. Revise → revert →
+  publish moves the revision, and a fingerprint that stayed put would name a header that no longer
+  says what the catalogue does;
+- a rule scheduled to open or close passing its moment. The identity holds the rules in force now;
+- a new `schema_version` or `renderer_contract_version`.
+
+**What does not, and must not:**
+
+- wording. There is none: a diagnostic is a code, and the console words it;
+- the `remediation_request` a diagnostic offers;
+- order that has no meaning: the order a selection names things in, the order a kind lists its
+  required Grouping Fields in, the order a tenant's products are stored in, the order rules sit in
+  their table;
+- the moment of resolution, and any row's `created_at` or `updated_at`;
+- any row's id, and the tenant's. Two tenants with the same configuration hold the same
+  fingerprint, each under their own row.
+
+The only instants in the identity are configuration: when an Event Type was published, and when a
+rule opens and closes. The order of `calls` is the lifecycle's and is meant.
+
+A kind of work has no publish record and carries no date (ADR-0012); the identity holds what it
+declares, so a change to one moves the fingerprint.
+
+Storing is **first-wins on presentation**: an identity already kept is found, and the Blueprint
+read back by its fingerprint is the one first answered.
 
 ### 5. The fifth question is asked by the Blueprint, not answered to it
 
@@ -122,11 +169,31 @@ published contract, and a builder that accepted one would be a second place to d
 route that changes no configuration. Where nothing resolves, the Blueprint answers with a blocking
 diagnostic carrying the request that declares it at the surface that owns it.
 
-### 6. What this ADR does not decide
+### 6. The diagnostic codes are a versioned closed set
+
+`diagnostic_code` is closed: a consumer may switch over it exhaustively. It is **not** final
+forever. A member is added or removed **in the same commit as the capability change** that makes
+its condition reportable or unreportable, so the set never names a state nothing produces and never
+fails to name one something does. A test reads the set off the committed contract and holds it
+equal to what resolutions actually report; that test is the ratchet.
+
+Seventeen members stand at this commit. Two changes are already expected: the ticket that carries a
+cost read off a supplier's response removes `reported_cost_provider_response_unsupported`, and the
+ticket that makes a fixed-price kind ready or not adds the member for a missing agreed price.
+
+### 7. What this ADR does not decide
 
 How long a snapshot is kept (the Verify ticket sets retention). How a renderer spells anything.
 Whether an unpublished request key should be refused: this route drops one, on the posture every
 other route here holds.
+
+### 8. The owner's rulings on this record
+
+The owner reviewed these decisions on PR #594 on 2026-10-02 and approved §1 to §3 and §5 as built.
+§4 was approved in what moves the fingerprint (a republication, a rule's moment passing) and
+tightened in what must not: the hash boundary above was drawn in answer, taking the
+`remediation_request` out of the hash and removing three orders that meant nothing. §6 is the
+owner's wording for the codes.
 
 ## What proves it
 
@@ -142,7 +209,12 @@ other route here holds.
 | §3 — a key is one segment whatever it contains | same module — `test_a_key_is_one_segment_of_a_name_whatever_it_contains` |
 | §3 — the declared facts travel with the declaration they came from, and are the published ones | same module — `TestTheSelectionIsTheOnlyInput`: `test_a_kind_of_work_says_how_it_is_sold_and_what_it_may_spend`, `test_an_event_type_says_what_it_published_about_itself`, `test_a_revised_event_types_facts_are_the_published_ones`, `test_the_response_shape_and_what_it_is_travel_with_the_paths` |
 | §3 — every bare name is a field its operation publishes | same module — `TestEveryCallNamesARealOperation`: `test_every_bare_argument_is_a_field_its_operation_publishes` |
-| §4 — the fingerprint is the hash of the stored content; a republication and a changed kind each move it; order does not | same module — `test_the_fingerprint_is_the_hash_of_the_stored_content`, `test_a_republication_is_a_new_fingerprint_though_the_declaration_is_the_same`, `test_a_changed_kind_of_work_is_a_new_fingerprint`, `test_the_same_selection_in_another_order_is_the_same_blueprint` |
+| §3 — one encoding, with its round trip and no collisions | `ubb-platform/apps/platform/code_builder/tests/test_token_names.py` — `test_a_key_comes_back_from_its_segment_exactly`, `test_a_segment_never_contains_the_separator`, `test_no_two_keys_share_a_segment`, `test_a_name_splits_into_the_segments_it_was_built_from` |
+| §3 — the tokens under a key follow its own token, so no consumer needs the encoding | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `test_the_tokens_under_a_key_follow_its_own_token_directly` |
+| §4 — what moves the fingerprint: a republication, a changed kind | same module — `test_a_republication_is_a_new_fingerprint_though_the_declaration_is_the_same`, `test_a_changed_kind_of_work_is_a_new_fingerprint` |
+| §4 — what it is the hash of, and what must not move it | same module — `TestTheFingerprintIsOfTheResolvedContractAndNothingElse`: `test_it_is_the_hash_of_the_identity_half_of_the_stored_row`, `test_the_request_a_diagnostic_offers_is_kept_and_is_not_hashed`, `test_a_request_spelled_another_way_is_the_same_fingerprint`, `test_the_order_a_kind_lists_its_requirements_in_is_not_part_of_it`, `test_the_order_a_tenant_lists_its_products_in_is_not_part_of_it`, `test_the_rules_are_in_the_order_of_what_they_say`, `test_nothing_volatile_is_in_it`, `test_resolving_again_later_is_the_same_fingerprint`; and `test_the_same_selection_in_another_order_is_the_same_blueprint` |
+| §4 — the store hashes the identity half and only that; first wins on presentation | `ubb-platform/apps/platform/code_builder/tests/test_snapshots.py` — `test_the_fingerprint_is_of_the_identity_and_not_of_the_presentation`, `test_an_identity_already_kept_keeps_the_presentation_it_came_with`, `test_it_can_be_reproduced_by_anything_that_can_write_json` |
+| §6 — the published set is exactly what resolutions report | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `test_every_published_code_is_one_a_resolution_reports` |
 | §5 — the request takes no path, and the question is put as a diagnostic | same module — `TestTheSelectionIsTheOnlyInput`: `test_the_request_publishes_the_selection_and_nothing_else`, `test_where_no_mapping_resolves_the_blueprint_asks_and_takes_no_path` |
 
 ## Consequences
@@ -152,8 +224,11 @@ other route here holds.
 - **A fingerprint moves more often than a declaration does.** Republishing unchanged content makes
   a held file stale. That is the price of the header and the fingerprint never disagreeing, and it
   costs a regeneration.
-- **The token names are public.** A renderer and a console build them; changing the convention is a
+- **The token names are public.** A renderer and a console read them; changing the convention is a
   contract change to both, which is why it is recorded here rather than left in a docstring.
+- **A Blueprint read back by its fingerprint offers the requests it was first stored with.** If the
+  API later spells a fix differently, a new resolution of the same identity answers the new
+  spelling and finds the old row. The two differ only in the half that is not the contract.
 - **A closed value can cross inside a literal unmarked.** Five kinds do today (§3 names them).
   Typing them would mean a field per declared element, which the field table deliberately does not
   have.

@@ -25,11 +25,38 @@ routes stop serving the moment a draft edit lands — so for those facts this
 document is the only place a consumer can read them.
 
 **It reads and it stores one thing.** For a resolution from PUBLISHED
-configuration the caller keeps the content this returns, as an immutable
-snapshot addressed by its own hash (`apps.platform.code_builder`). Nothing in
-this module writes a row, and no path through it declares, edits or publishes
+configuration the caller keeps what this returns, as an immutable snapshot
+addressed by a hash (`apps.platform.code_builder`). Nothing in this module
+writes a row, and no path through it declares, edits or publishes
 configuration or performs the request a diagnostic offers — for an admin
 exactly as for anybody else.
+
+WHAT THE FINGERPRINT IS THE HASH OF
+-----------------------------------
+The NORMATIVE resolved contract, and nothing presentational (owner ruling of
+2026-10-02). `resolve` returns it as `identity`, and the store hashes exactly
+that:
+
+* the selection;
+* the Blueprint's machine-readable resolution — the versions needed to read
+  it, the target, every call and token, each verdict, and each diagnostic's
+  code and the declaration it is about;
+* the configuration it was resolved from, with the publication each Event
+  Type's facts came from. A republication is therefore a new fingerprint,
+  deliberately: the generated file's header says which publication it read.
+
+What is kept beside it and NOT hashed is `presentation`: the ready-to-copy
+request a diagnostic offers. It is built from the API's own routes and request
+shapes, so it can change with no change to what the tenant configured or to
+what the code must mean — a registry route gaining a field must not make every
+blocked integration look like a different one.
+
+Nothing volatile is in the identity: no row id, no row timestamp, no moment of
+resolution, no wording. And no ORDER that means nothing: the selection, a
+kind's required Grouping Fields, a tenant's products and the rules in force
+are each put in a canonical order before they are hashed, so declaring the
+same things in another order is the same fingerprint. The order of `calls` is
+the lifecycle's, and is meant.
 
 HOW A TOKEN IS ADDRESSED
 ------------------------
@@ -52,9 +79,19 @@ name is one, two or three segments joined by dots:
   registry concept: `event_type.response_shape_representation`.
 
 A key is ONE segment whatever it contains: a dot or a percent sign inside a
-declared key is percent-encoded in the name (`segment`), so a name always
-splits on its dots, and a key that happens to end like an element cannot be
-taken for one. The key's own token carries it unencoded, as its literal.
+declared key is percent-encoded in the name, so a name always splits on its
+dots, and a key that happens to end like an element cannot be taken for one.
+The encoding has one implementation, with its inverse beside it:
+`apps.platform.code_builder.token_names`. Nothing here spells it.
+
+A consumer never needs the encoding. A key's own token carries the key
+unencoded, as its literal, and the tokens named under that key FOLLOW IT
+DIRECTLY, sharing one `<field>.<segment>` prefix — so a renderer pairs them by
+position and reads the prefix off the name it was handed.
+
+The declared facts are `platform_known` like any literal: resolved, with the
+declaration they came from. A renderer may respell one or branch on it, and
+never asks the developer for it again.
 
 ⚠ A literal is untyped JSON, so a closed concept's value travelling as one —
 a pricing mode, a costing method, a quantity's value type, an amount
@@ -75,6 +112,7 @@ from api.v1.schemas import (
 from apps.metering.pricing.models import (
     CostBook, PricingBook, TenantDefaultMarkup)
 from apps.metering.pricing.services.book_service import rules_in_force_at
+from apps.platform.code_builder import snapshots, token_names
 from apps.platform.code_builder.withheld import (
     API_KEY, environment_variable, is_withheld)
 from apps.platform.event_types.models import (
@@ -167,9 +205,8 @@ READABLE_REPRESENTATIONS = {
     CODE_TARGET_SHELL_HTTP: frozenset({RESPONSE_SHAPE_REPRESENTATION_JSON}),
 }
 
-#: Where, in the content kept under a fingerprint, the Blueprint itself is —
-#: beside the selection it answers and the configuration it was resolved
-#: from. Named because the route that reads one back reads it by this.
+#: Where, in a snapshot's identity, the Blueprint's normative half is — beside
+#: the selection it answers and the configuration it was resolved from.
 BLUEPRINT = "blueprint"
 
 #: How many distinct Event Types, and how many distinct Subtask kinds, one
@@ -357,18 +394,6 @@ def _remediation_request(remediation, *, key, code=None):
 # ---------------------------------------------------------------------------
 # Tokens
 # ---------------------------------------------------------------------------
-
-def segment(key):
-    """A declared key as ONE segment of a token's name.
-
-    A key is the tenant's own word and may contain a dot, which is what joins
-    a name's segments. Encoding it — and the percent sign the encoding uses —
-    is what keeps a name splitting on its dots into the field, the key and the
-    declared element, whatever the key is. A key with neither character is
-    its own segment, which is nearly all of them.
-    """
-    return key.replace("%", "%25").replace(".", "%2E")
-
 
 def binding_class_of(token, *, resolvable):
     """The class of one token, by the three ordered questions (#184 §4).
@@ -564,16 +589,43 @@ def _the_selection(target, event_types, subtask_types):
     return selected["event_types"], selected["subtask_types"]
 
 
+class Resolved(NamedTuple):
+    """One resolution: the Blueprint, and the two halves to keep for it."""
+    #: The Blueprint as it is answered, without its fingerprint — the
+    #: fingerprint is the hash of `identity`, which holds the Blueprint's
+    #: normative half, so it cannot also be inside it.
+    document: dict
+    #: What the fingerprint is the hash of. `None` for a draft preview: a
+    #: preview is not resolved from published configuration, so there is
+    #: nothing it may be stored or verified as.
+    identity: dict | None
+    #: What is kept beside the identity and not hashed. `None` with it.
+    presentation: dict | None
+
+
+#: Where, in the presentation half, the request each diagnostic offers is
+#: kept — one per diagnostic, in the diagnostics' own order.
+REMEDIATION_REQUESTS = "remediation_requests"
+
+#: The one field of a diagnostic that is presentation rather than identity.
+_REMEDIATION_REQUEST = "remediation_request"
+
+
+def as_answered(content):
+    """The Blueprint a stored snapshot was answered as, without its
+    fingerprint: the normative half, with each diagnostic given back the
+    request it offered."""
+    blueprint = content[snapshots.IDENTITY][BLUEPRINT]
+    requests = content[snapshots.PRESENTATION][REMEDIATION_REQUESTS]
+    return {**blueprint, "diagnostics": [
+        {**diagnostic, _REMEDIATION_REQUEST: request}
+        for diagnostic, request in zip(blueprint["diagnostics"], requests,
+                                       strict=True)]}
+
+
 def resolve(tenant, *, target, task_type=None, event_types=(),
             subtask_types=(), draft_preview=False):
-    """The Blueprint for one selection, and the content to keep for it.
-
-    Returns `(document, content)`. `document` is the Blueprint without its
-    fingerprint — the fingerprint is the hash of `content`, which contains the
-    document, so it cannot also be inside it. `content` is `None` for a draft
-    preview: a preview is not resolved from published configuration, so there
-    is nothing it may be stored or verified as.
-    """
+    """The Blueprint for one selection, and what to keep for it."""
     event_types, subtask_types = _the_selection(target, event_types,
                                                 subtask_types)
     resolution = _Resolution(tenant, target, draft_preview)
@@ -603,20 +655,29 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
         "diagnostics": resolution.diagnostics,
     }
     if draft_preview:
-        return document, None
+        return Resolved(document, None, None)
 
-    content = {
+    identity = {
         "selection": {"target": target, "task_type": task_type,
                       "event_types": event_types,
                       "subtask_types": subtask_types},
-        BLUEPRINT: document,
+        # The Blueprint without what its diagnostics OFFER. A diagnostic's
+        # code and the declaration it is about are part of what was resolved;
+        # the request that would fix it is how the API spells the fix.
+        BLUEPRINT: {**document, "diagnostics": [
+            {name: value for name, value in diagnostic.items()
+             if name != _REMEDIATION_REQUEST}
+            for diagnostic in resolution.diagnostics]},
         "configuration": _configuration(
             tenant, kinds,
             [resolved for resolved in resolved_event_types
              if resolved is not None],
             declared_fields),
     }
-    return document, content
+    presentation = {REMEDIATION_REQUESTS: [
+        diagnostic[_REMEDIATION_REQUEST]
+        for diagnostic in resolution.diagnostics]}
+    return Resolved(document, identity, presentation)
 
 
 # ---------------------------------------------------------------------------
@@ -666,7 +727,10 @@ def _start(resolution, altitude, key, declared_fields):
         resolution.report(call, DIAGNOSTIC_CODE_TASK_TYPE_RETIRED,
                           object_kind, key, field="retired")
 
-    for required in policy["required_grouping_fields"]:
+    # In key order, and each once. The order a kind lists its requirements in
+    # means nothing, so it must not reach the tokens or the fingerprint.
+    requires = sorted(set(policy["required_grouping_fields"]))
+    for required in requires:
         field = declared_fields.get(required)
         if field is None:
             resolution.report(
@@ -693,10 +757,10 @@ def _start(resolution, altitude, key, declared_fields):
                 CONFIGURATION_OBJECT_KIND_GROUPING_FIELD, required)),
             # Required because this kind of work declares it — which is the
             # declaration the value's presence comes from.
-            _runtime(f"{_GROUPING_FIELDS}.{segment(required)}",
+            _runtime(token_names.name(_GROUPING_FIELDS, required),
                      call.parameters.named_for(required),
                      declared_by_the_kind))
-    return {"kind": altitude, **policy}
+    return {"kind": altitude, **policy, "required_grouping_fields": requires}
 
 
 # ---------------------------------------------------------------------------
@@ -794,24 +858,31 @@ def _quantities(resolution, call, declaration, declared_by):
     key = declaration.key
     reads_the_response = False
     for quantity in declaration.measurements:
-        member = f"measurements.{segment(quantity.code)}"
+        member = token_names.name("measurements", quantity.code)
+
+        def fact(element, code=quantity.code):
+            return token_names.name("measurements", code, element)
+
         address = f"{key}:{quantity.code}"
         declare = _remediation_request(_DECLARE_MEASUREMENT, key=key,
                                        code=quantity.code)
+        # The key's own token first, then everything named under it, with
+        # nothing of another key between: that adjacency is what lets a
+        # consumer pair them without the encoding.
         call.add(
             _known("measurements", quantity.code, declared_by),
             # What kind of number it is, what it counts and whether a cost
             # needs it — as published, which a revised Event Type's own route
             # no longer shows.
-            _known(f"{member}.value_type", quantity.value_type, declared_by),
-            _known(f"{member}.unit", quantity.unit, declared_by),
-            _known(f"{member}.required_for_costing",
+            _known(fact("value_type"), quantity.value_type, declared_by),
+            _known(fact("unit"), quantity.unit, declared_by),
+            _known(fact("required_for_costing"),
                    quantity.required_for_costing, declared_by))
         if quantity.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
             reads_the_response = True
             path = list(quantity.source_path)
             call.add(_runtime(member, RESPONSE_PARAMETER, declared_by),
-                     _known(f"{member}.source_path", path, declared_by))
+                     _known(fact("source_path"), path, declared_by))
             if advisories(declaration.source_shape_id, path):
                 resolution.report(
                     call, DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH,
@@ -915,9 +986,11 @@ def _configuration(tenant, kinds, event_types, declared_fields):
     """Everything a sandbox must hold to run the Blueprint's lifecycle as this
     tenant's configuration would (#184 §13 step 2).
 
-    Kept beside the Blueprint and hashed with it, so a fact no call spells —
-    a window a kind declares, the rule that costs a quantity — still moves
-    the fingerprint when it changes.
+    Part of the identity and hashed with the Blueprint, so a fact no call
+    spells — a window a kind declares, the rule that costs a quantity — still
+    moves the fingerprint when it changes. Plain declared values only: no row
+    id and no row timestamp, and every list whose order means nothing in a
+    canonical order.
 
     ⚠ WHAT IS NOT HERE: the agreed price of a kind of work sold whole. Nothing
     declares one yet; the ticket that consumes that declaration adds it.
@@ -930,6 +1003,7 @@ def _configuration(tenant, kinds, event_types, declared_fields):
     codes = sorted({quantity.code for resolved in event_types
                     for quantity in resolved["declaration"].measurements})
     keys = sorted(resolved["declaration"].key for resolved in event_types)
+    provisioned = copied_to_a_sandbox(tenant)
     return {
         "task_type": task,
         "subtask_types": [kind for kind in subtasks if kind is not None],
@@ -952,8 +1026,9 @@ def _configuration(tenant, kinds, event_types, declared_fields):
             .values_list("markup_micro_percent", flat=True).first()),
         # What a sandbox is provisioned from, by the provisioning's own list:
         # an allowlist, so a column added to the tenant is not kept here by
-        # default — and none of the three is a secret.
-        "tenant": copied_to_a_sandbox(tenant),
+        # default — and none of the three is a secret. The products are a set
+        # the row happens to hold as a list, so they are put in order.
+        "tenant": {**provisioned, "products": sorted(provisioned["products"])},
     }
 
 
@@ -994,15 +1069,17 @@ def _rules(books, codes, event_type_keys, book_content):
     """
     now = timezone.now()
     content = []
-    for book in books.order_by("key", "id"):
+    for book in books:
         described = book_content(book)
         rules = (rules_in_force_at(book, now)
                  .filter(customer__isnull=True, measurement__code__in=codes)
                  .filter(Q(event_type="") | Q(event_type__in=event_type_keys))
-                 .select_related("measurement")
-                 .order_by("measurement__code", "provider", "event_type",
-                           "task_type", "subtask_type", "valid_from", "id"))
+                 .select_related("measurement"))
         content += [_rule_content(rule, described) for rule in rules]
+    # Ordered by what each rule SAYS, never by the row it sits in: a set of
+    # rules has no order of its own, and any column short of the whole rule
+    # would leave two rules tied and their order to the row ids.
+    content.sort(key=snapshots.canonical)
     return content
 
 

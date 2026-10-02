@@ -952,19 +952,23 @@ _Avoid_: "incomplete" for the middle state — that word is a measure's status a
 partly known.
 
 **Blueprint snapshot** (and its **configuration fingerprint**):
-The immutable, content-addressed record of exactly what one Blueprint resolved: the selection, the
-Blueprint, and the configuration a sandbox would need to run it — the kinds with what they may
-spend and how they are sold, each Event Type as published, the required Grouping Fields, the rules
-that cost and price the selected quantities, the default markup, and the tenant fields a sandbox is
-provisioned from. Its `configuration_fingerprint` is `sha256:` and the hash of that content, all of
-it, so the same content is one fingerprint and one row. That includes which publication each Event
-Type was resolved from: republishing an unchanged declaration moves the revision and therefore the
-fingerprint. A **derived test fixture** — never tenant configuration, read by nothing that costs,
+The immutable, content-addressed record of exactly what one Blueprint resolved. Its **identity** is
+the selection, the Blueprint's machine-readable resolution, and the configuration a sandbox would
+need to run it — the kinds with what they may spend and how they are sold, each Event Type as
+published, the required Grouping Fields, the rules that cost and price the selected quantities, the
+default markup, and the tenant fields a sandbox is provisioned from. Its `configuration_fingerprint`
+is `sha256:` and the hash of that identity: a **stable identity of the resolved contract**, not a
+hash of everything serialised. It includes which publication each Event Type was resolved from, so
+republishing an unchanged declaration moves it. It excludes what is only presentation — the
+ready-to-copy request a diagnostic offers, which is kept beside the identity and not hashed — and
+anything volatile or meaningless: a row id, a row timestamp, the moment of resolution, the order
+things happen to be listed in. A **derived test fixture** — never tenant configuration, read by nothing that costs,
 prices or enforces, and prunable: a sandbox reset removes it, and a fingerprint whose snapshot is
 gone answers not-found. A draft preview stores none.
 (`apps/platform/code_builder/models.py:BlueprintSnapshot`; `apps/platform/code_builder/snapshots.py`)
 _Avoid_: reading the fingerprint as a catalogue-wide configuration revision — it names one
-resolution of one selection.
+resolution of one selection; and "the hash of the Blueprint" — the request a diagnostic offers is
+on the Blueprint and outside the hash.
 
 **Response-shape representation**:
 What a supplier's response *is* when a declared path is read from it — the JSON a web API returns,

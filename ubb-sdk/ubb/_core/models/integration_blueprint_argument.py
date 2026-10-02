@@ -35,8 +35,13 @@ class IntegrationBlueprintArgument:
     `<field>.<element>` and `<field>.<key>.<element>` are declared facts
     about that value — `task_type.pricing_mode`,
     `measurements.<key>.source_path`. A dot or a percent sign inside a
-    declared key is percent-encoded in a name, so a name always splits on its
-    dots.
+    declared key is percent-encoded in a name (`.` as `%2E`, `%` as `%25`),
+    so a name always splits on its dots.
+
+    You do not need the encoding to pair tokens: a key's own token carries the
+    key unencoded in `value`, and every token named under that key follows it
+    directly in `arguments`. A declared fact is `platform_known` like any
+    literal — resolved for you, never something to ask the developer for.
 
     Exactly one of `value`, `parameter_name` and `environment_variable` is
     set, by `binding_class` — except a `platform_known` token with

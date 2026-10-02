@@ -36,7 +36,11 @@ class ResolvedIntegrationBlueprint:
 
     `configuration_fingerprint` identifies the stored snapshot of exactly this
     resolution — `sha256:` and 64 hexadecimal characters — and is null for a
-    draft preview. `readiness` is the least ready of `calls`.
+    draft preview. It is the identity of the resolved contract: the selection,
+    this document's calls, verdicts and diagnostic codes, and the
+    configuration they were resolved from. A diagnostic's
+    `remediation_request` is not part of it. `readiness` is the least ready of
+    `calls`.
 
         Attributes:
             calls (list[IntegrationBlueprintCall]):

@@ -25,6 +25,7 @@ rules and markup a metering-only tenant has no route to declare.
 """
 import json
 import re
+import uuid
 from pathlib import Path
 from urllib.parse import quote
 
@@ -35,6 +36,7 @@ from django.test import Client
 from django.utils import timezone
 
 from api.v1.api import api
+from apps.platform.code_builder import token_names
 from apps.platform.code_builder.models import BlueprintSnapshot
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.membership.roles import READ
@@ -762,16 +764,21 @@ class TestEachTokenHasItsOwnClass(_Routes):
         A dot inside a key is encoded, so each token has a name of its own
         and every name splits on its dots into at most three segments."""
         dotted, already_encoded = "tokens.source_path", "tokens%2Esource_path"
+        outside_ascii = "入力.トークン 100%"
         self._a_kind()
         self._event_type(measurements={
             "tokens": INPUT_TOKENS, dotted: SEARCHES,
-            already_encoded: SEARCHES})
+            already_encoded: SEARCHES, outside_ascii: SEARCHES})
 
         record = _the_record(self._complete())
 
         # The keys travel as declared.
         assert sorted(a["value"] for a in _named(record, "measurements")) == [
-            "tokens", already_encoded, dotted]
+            "tokens", already_encoded, dotted, outside_ascii]
+        # A key outside ASCII is itself in its segment, but for the two
+        # characters the encoding is about.
+        assert _one(record, "measurements.入力%2Eトークン 100%25")[
+            "binding_class"] == "runtime_bound"
         path = _one(record, "measurements.tokens.source_path")
         assert (path["binding_class"], path["value"]) == (
             "platform_known", ["usage", "input_tokens"])
@@ -790,6 +797,50 @@ class TestEachTokenHasItsOwnClass(_Routes):
         classed = [(a["name"], a["binding_class"], str(a["value"]))
                    for a in record["arguments"] if a["name"] != "measurements"]
         assert len(classed) == len(set(classed))
+
+    def test_the_tokens_under_a_key_follow_its_own_token_directly(self):
+        """So a consumer pairs them by position and never needs the encoding:
+        after a key's own token comes everything named under that key, under
+        one prefix, and nothing of another key. The prefix decodes to the key
+        — by the one decoder — which is what makes the pairing the right one
+        and not merely a consistent one."""
+        self._grouping_fields(("environment", "task"), ("region", "task"))
+        self._a_kind(required_grouping_fields=["region", "environment"])
+        self._event_type(measurements={
+            "tokens": INPUT_TOKENS, "tokens.source_path": SEARCHES,
+            "入力.トークン 100%": SEARCHES, "calls": {
+                **SEARCHES, "source_kind": "derived"}})
+
+        blueprint = self._complete()
+
+        paired = 0
+        for call in blueprint["calls"]:
+            arguments = call["arguments"]
+            keyed = {a["name"] for a in arguments
+                     if a["name"] in ("grouping_fields", "measurements")}
+            claimed = set()
+            for position, argument in enumerate(arguments):
+                if argument["name"] not in keyed:
+                    continue
+                field, key = argument["name"], argument["value"]
+                under = []
+                for following in arguments[position + 1:]:
+                    if (following["name"] == field
+                            or not following["name"].startswith(field + ".")):
+                        break
+                    under.append(following["name"])
+                assert under, (field, key)
+                prefixes = {".".join(name.split(".")[:2]) for name in under}
+                assert len(prefixes) == 1, (key, under)
+                (prefix,) = prefixes
+                assert token_names.key_of(prefix.split(".")[1]) == key
+                claimed.update(under)
+                paired += 1
+            # And no token of a keyed field is left belonging to no key.
+            assert {a["name"] for a in arguments
+                    if a["name"].split(".")[0] in keyed
+                    and "." in a["name"]} == claimed
+        assert paired == 6
 
     def test_a_declared_name_never_takes_a_parameter_the_call_already_has(
             self):
@@ -1433,23 +1484,6 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
             "code_builder.BlueprintSnapshot"]
         assert len(after["code_builder.BlueprintSnapshot"]) == 3
 
-    def test_the_fingerprint_is_the_hash_of_the_stored_content(self):
-        """Checked by somebody holding only the row: canonical JSON of the
-        content, hashed. It is an identity of content and of nothing else —
-        the tenant, the moment and the row are not in it."""
-        import hashlib
-        self._complete_configuration()
-
-        fingerprint = self._complete()["configuration_fingerprint"]
-
-        content = BlueprintSnapshot.objects.get().content
-        canonical = json.dumps(content, sort_keys=True,
-                               separators=(",", ":"), ensure_ascii=False)
-        assert fingerprint == "sha256:" + hashlib.sha256(
-            canonical.encode("utf-8")).hexdigest()
-        for outside in (str(self.tenant.id), "created_at", "resolved_at"):
-            assert outside not in canonical, outside
-
     def test_another_tenant_with_the_same_configuration_has_the_same_fingerprint_and_its_own_row(
             self):
         self._complete_configuration()
@@ -1535,7 +1569,7 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
 
         self._complete(subtask_types=[SUBTASK_KIND])
 
-        configuration = BlueprintSnapshot.objects.get().content[
+        configuration = BlueprintSnapshot.objects.get().content["identity"][
             "configuration"]
         assert configuration["task_type"]["task_cogs_ceiling_micros"] == (
             5_000_000)
@@ -1560,6 +1594,235 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
         assert configuration["tenant"] == {
             "products": ["metering"], "billing_mode": self.tenant.billing_mode,
             "default_currency": "usd"}
+
+
+@pytest.mark.django_db
+class TestTheFingerprintIsOfTheResolvedContractAndNothingElse(_Routes):
+    """The hash boundary (owner ruling of 2026-10-02): the fingerprint is a
+    stable identity of the normative resolved contract, and not a hash of
+    every byte that happened to be serialised.
+
+    Read off the stored row and off repeated resolutions. What IS meant to
+    move it — a republication, a changed kind — is held by the class above;
+    this is everything that must NOT."""
+
+    def _a_blocked_configuration(self):
+        """A Blueprint whose diagnostics offer requests, so the half that is
+        not hashed has something in it."""
+        self._complete_configuration()
+        self._event_type("draft.only", publish=False)
+        self._event_type("unshaped", shape="")
+        return {"event_types": [EVENT, "draft.only", "unshaped", "missing"],
+                "subtask_types": [SUBTASK_KIND]}
+
+    def _identity(self):
+        return BlueprintSnapshot.objects.get().content["identity"]
+
+    def test_it_is_the_hash_of_the_identity_half_of_the_stored_row(self):
+        """Checked by somebody holding only the row: canonical JSON of the
+        identity, hashed — and not of the row's whole content."""
+        import hashlib
+        fingerprint = self._complete(**self._a_blocked_configuration())[
+            "configuration_fingerprint"]
+
+        content = BlueprintSnapshot.objects.get().content
+
+        def hashed(value):
+            return "sha256:" + hashlib.sha256(json.dumps(
+                value, sort_keys=True, separators=(",", ":"),
+                ensure_ascii=False).encode("utf-8")).hexdigest()
+
+        assert set(content) == {"identity", "presentation"}
+        assert fingerprint == hashed(content["identity"])
+        assert fingerprint != hashed(content)
+        assert set(content["identity"]) == {"selection", "blueprint",
+                                            "configuration"}
+
+    def test_the_request_a_diagnostic_offers_is_kept_and_is_not_hashed(self):
+        """It is how the API spells a fix, built from the API's own routes and
+        request shapes. It is returned as it was answered and is no part of
+        what the integration means."""
+        resolved = self._complete(**self._a_blocked_configuration())
+        offered = [d["remediation_request"] for d in resolved["diagnostics"]]
+        assert len([request for request in offered if request]) >= 3
+
+        content = BlueprintSnapshot.objects.get().content
+
+        assert content["presentation"] == {"remediation_requests": offered}
+        identity = json.dumps(content["identity"])
+        assert "remediation_request" not in identity
+        for request in filter(None, offered):
+            assert request["route"] not in identity, request
+            assert request["operation_id"] not in identity, request
+        # What a diagnostic SAYS is identity: its code and what it is about.
+        assert [(d["code"], d["object_kind"], d["key"], d["field"])
+                for d in content["identity"]["blueprint"]["diagnostics"]] == [
+            (d["code"], d["object_kind"], d["key"], d["field"])
+            for d in resolved["diagnostics"]]
+
+    def test_a_request_spelled_another_way_is_the_same_fingerprint(
+            self, monkeypatch):
+        """⚠ THE ONE TEST HERE THAT REACHES PAST THE API, and it has to: what
+        it varies is how the API itself spells a fix, which no request can
+        change. The spelling is replaced, the same selection is resolved
+        again, and the fingerprint and the stored row are what they were."""
+        from api.v1 import integration_blueprint
+        selection = self._a_blocked_configuration()
+        before = self._complete(**selection)
+
+        monkeypatch.setattr(
+            integration_blueprint, "_remediation_request",
+            lambda remediation, **keys: {
+                "method": "POST", "route": "/somewhere/else",
+                "operation_id": "another_operation", "body": {"new": None}})
+        after = self._complete(**selection)
+
+        # The control: the spelling really did change in what was answered.
+        assert "/somewhere/else" in json.dumps(after["diagnostics"])
+        assert "/somewhere/else" not in json.dumps(before["diagnostics"])
+        assert (after["configuration_fingerprint"]
+                == before["configuration_fingerprint"])
+        assert BlueprintSnapshot.objects.count() == 1
+        # First wins: what is read back is the Blueprint as first answered.
+        assert self._call(
+            "get", f"{BLUEPRINTS}/{before['configuration_fingerprint']}"
+        ) == before
+
+    def test_the_order_a_kind_lists_its_requirements_in_is_not_part_of_it(
+            self):
+        self._grouping_fields(("environment", "task"), ("region", "task"))
+        self._a_kind(required_grouping_fields=["region", "environment"])
+        self._event_type()
+        one = self._complete()
+
+        self._a_kind(required_grouping_fields=["environment", "region"])
+        other = self._complete()
+
+        assert other == one
+        assert BlueprintSnapshot.objects.count() == 1
+        assert [a["value"] for a in
+                _named(_the_start(one), "grouping_fields")] == [
+            "environment", "region"]
+
+    def test_the_order_a_tenant_lists_its_products_in_is_not_part_of_it(self):
+        """Written to the row, both times: the list is validated as a set and
+        stored as written, and no route in this module's reach reorders it."""
+        self._complete_configuration()
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            products=["referrals", "metering"])
+        one = self._complete()["configuration_fingerprint"]
+
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            products=["metering", "referrals"])
+        other = self._complete()["configuration_fingerprint"]
+
+        assert other == one
+        assert self._identity()["configuration"]["tenant"]["products"] == [
+            "metering", "referrals"]
+
+    def test_the_rules_are_in_the_order_of_what_they_say(self):
+        """A set of rules has no order of its own. Written to their rows in
+        the reverse of the order they sort in, they are hashed in the order
+        of their content — so two tenants holding the same rules, entered in
+        a different order, hold the same fingerprint."""
+        from apps.metering.pricing.models import CostBook, Rate
+        from apps.platform.event_types.models import Measurement
+        self._complete_configuration()
+        quantity = Measurement.objects.get(
+            event_type__tenant=self.tenant, code="input_tokens")
+        for key, amount in (("zeta", 9), ("alpha", 7), ("mid", 8)):
+            book = CostBook.objects.create(
+                tenant=self.tenant, key=key, provider_key="openai",
+                currency="usd")
+            for rate in (amount * 2, amount):
+                Rate.objects.create(
+                    tenant=self.tenant, cost_book=book, provider="openai",
+                    measurement=quantity, task_type=f"kind_{rate}",
+                    rate_per_unit_micros=rate)
+
+        self._complete()
+
+        rules = self._identity()["configuration"]["cost_rates"]
+
+        def canonical(rule):
+            return json.dumps(rule, sort_keys=True, separators=(",", ":"),
+                              ensure_ascii=False)
+
+        assert len(rules) == 6
+        assert rules == sorted(rules, key=canonical)
+        assert [rule["book"]["key"] for rule in rules] == [
+            "alpha", "alpha", "mid", "mid", "zeta", "zeta"]
+
+    def test_nothing_volatile_is_in_it(self):
+        """No row's id, no row's timestamp, no moment of resolution, and no
+        tenant. The only instants are the ones that ARE configuration: when
+        an Event Type was published, and when a rule opens and closes."""
+        from apps.metering.pricing.models import CostBook, Rate
+        from apps.platform.event_types.models import Measurement
+        selection = self._a_blocked_configuration()
+        book = CostBook.objects.create(
+            tenant=self.tenant, key="openai", provider_key="openai",
+            currency="usd", is_default=True)
+        Rate.objects.create(
+            tenant=self.tenant, cost_book=book, provider="openai",
+            measurement=Measurement.objects.get(
+                event_type__tenant=self.tenant, event_type__key=EVENT,
+                code="input_tokens"),
+            rate_per_unit_micros=3_000_000)
+        self._complete(**selection)
+        identity = self._identity()
+        text = json.dumps(identity)
+
+        # Every UUID any row is keyed by. (Django's own tables are keyed by
+        # small integers, which a search of the text would find in any
+        # amount.)
+        every_row_id = {
+            str(key)
+            for model in django_apps.get_models()
+            if model._meta.managed and not model._meta.proxy
+            for key in model._base_manager.values_list("pk", flat=True)
+            if isinstance(key, uuid.UUID)}
+        assert len(every_row_id) >= 15
+        assert not re.search(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            text)
+        assert [row_id for row_id in every_row_id if row_id in text] == []
+
+        an_instant = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}")
+        instants, keys = [], set()
+
+        def walk(node, under=None):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    keys.add(key)
+                    walk(value, key)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value, under)
+            elif isinstance(node, str) and an_instant.match(node):
+                instants.append(under)
+
+        walk(identity)
+        assert not keys & {"id", "created_at", "updated_at", "tenant_id",
+                           "resolved_at", "lineage_id"}
+        assert set(instants) == {"published_at", "valid_from"}
+        assert len(instants) >= 3
+
+    def test_resolving_again_later_is_the_same_fingerprint(self):
+        """The moment of resolution is not in it: nothing changed, time
+        passed, and the answer is the same answer."""
+        from datetime import timedelta
+        from unittest import mock
+        self._complete_configuration()
+        now = timezone.now()
+        one = self._complete()
+
+        with mock.patch("django.utils.timezone.now",
+                        return_value=now + timedelta(days=30)):
+            other = self._complete()
+
+        assert other == one
+        assert BlueprintSnapshot.objects.count() == 1
 
 
 @pytest.mark.django_db

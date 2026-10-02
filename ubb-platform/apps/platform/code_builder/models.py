@@ -4,9 +4,10 @@
 verifies it must have seen exactly the same configuration, and a hash
 recomputed at verification time from whatever configuration exists by then
 cannot promise that. So resolving a Blueprint from published configuration
-keeps the resolved content, and the content's own hash — its
+keeps what was resolved, and the hash of its normative half — its
 ``configuration_fingerprint`` — is what the generated code is stamped with
-(#184 §13, the owner's watch-point of 2026-09-25).
+(#184 §13, the owner's watch-point of 2026-09-25, and the ruling of 2026-10-02
+on what that hash covers; ``snapshots.py`` states the boundary).
 
 **Why the kernel, when resolution is composition-layer work.** Resolution reads
 the kernel's registries and metering's rules together, so it lives in
@@ -26,10 +27,10 @@ be done with one.
   or with its tenant, and a fingerprint whose snapshot is gone answers
   not-found, after which the developer resolves again.
 
-**The fingerprint is not a catalogue-wide revision id.** It names the content
-of one resolution of one selection. Two selections over the same configuration
-are two snapshots, and nothing may read it as "the tenant's configuration at
-revision N".
+**The fingerprint is not a catalogue-wide revision id.** It names the resolved
+contract of one selection. Two selections over the same configuration are two
+snapshots, and nothing may read it as "the tenant's configuration at revision
+N".
 """
 from django.db import models
 
@@ -50,22 +51,24 @@ FINGERPRINT_LENGTH = len(FINGERPRINT_PREFIX) + 64
 
 
 class BlueprintSnapshot(BaseModel):
-    """The resolved content of one Blueprint, addressed by its own hash.
+    """What one Blueprint resolved, addressed by the hash of its identity.
 
-    Content-addressed and idempotent: storing the same content for the same
+    Content-addressed and idempotent: storing the same identity for the same
     tenant twice is one row, which the uniqueness key below is what makes true
     rather than a lookup that could race.
 
     **Per tenant.** Two tenants whose configuration happens to resolve to the
-    same content hold a row each under the same fingerprint, and neither can
-    read the other's: the fingerprint identifies content, and the tenant is
-    who it belongs to.
+    same identity hold a row each under the same fingerprint, and neither can
+    read the other's: the fingerprint identifies a resolved contract, and the
+    tenant is who it belongs to.
     """
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="blueprint_snapshots")
     configuration_fingerprint = models.CharField(max_length=FINGERPRINT_LENGTH)
-    #: The canonical content the fingerprint is the hash of, exactly as
-    #: `snapshots.fingerprint_of` read it.
+    #: Two halves. `identity` is what the fingerprint is the hash of, exactly
+    #: as `snapshots.fingerprint_of` read it; `presentation` is what is kept
+    #: beside it so the Blueprint can be returned as it was answered, and is
+    #: not hashed. `snapshots.py` states the boundary.
     content = models.JSONField()
 
     #: WHAT MAY HAPPEN TO EACH COLUMN (ADR-0007 §2): nothing, after insert.

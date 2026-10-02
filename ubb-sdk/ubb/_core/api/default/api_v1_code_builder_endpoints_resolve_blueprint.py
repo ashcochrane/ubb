@@ -93,10 +93,14 @@ def sync_detailed(
     is, and what stands in the way.
 
     Resolved from PUBLISHED configuration: an Event Type revised since it was
-    published resolves from what it last published. The resolved content is
-    stored, and `configuration_fingerprint` identifies it — the same selection
-    answers the same fingerprint for as long as the configuration in force is
-    the same. Nothing else is written, and no configuration is changed.
+    published resolves from what it last published. The resolution is stored,
+    and `configuration_fingerprint` identifies it: the selection, what it
+    resolved to, and the configuration it was resolved from, including which
+    publication of each Event Type. The same selection answers the same
+    fingerprint for as long as the configuration in force is the same; the
+    order things are listed in, and the `remediation_request` a diagnostic
+    offers, are not part of it. Nothing else is written, and no configuration
+    is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers
@@ -158,10 +162,14 @@ def sync(
     is, and what stands in the way.
 
     Resolved from PUBLISHED configuration: an Event Type revised since it was
-    published resolves from what it last published. The resolved content is
-    stored, and `configuration_fingerprint` identifies it — the same selection
-    answers the same fingerprint for as long as the configuration in force is
-    the same. Nothing else is written, and no configuration is changed.
+    published resolves from what it last published. The resolution is stored,
+    and `configuration_fingerprint` identifies it: the selection, what it
+    resolved to, and the configuration it was resolved from, including which
+    publication of each Event Type. The same selection answers the same
+    fingerprint for as long as the configuration in force is the same; the
+    order things are listed in, and the `remediation_request` a diagnostic
+    offers, are not part of it. Nothing else is written, and no configuration
+    is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers
@@ -218,10 +226,14 @@ async def asyncio_detailed(
     is, and what stands in the way.
 
     Resolved from PUBLISHED configuration: an Event Type revised since it was
-    published resolves from what it last published. The resolved content is
-    stored, and `configuration_fingerprint` identifies it — the same selection
-    answers the same fingerprint for as long as the configuration in force is
-    the same. Nothing else is written, and no configuration is changed.
+    published resolves from what it last published. The resolution is stored,
+    and `configuration_fingerprint` identifies it: the selection, what it
+    resolved to, and the configuration it was resolved from, including which
+    publication of each Event Type. The same selection answers the same
+    fingerprint for as long as the configuration in force is the same; the
+    order things are listed in, and the `remediation_request` a diagnostic
+    offers, are not part of it. Nothing else is written, and no configuration
+    is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers
@@ -283,10 +295,14 @@ async def asyncio(
     is, and what stands in the way.
 
     Resolved from PUBLISHED configuration: an Event Type revised since it was
-    published resolves from what it last published. The resolved content is
-    stored, and `configuration_fingerprint` identifies it — the same selection
-    answers the same fingerprint for as long as the configuration in force is
-    the same. Nothing else is written, and no configuration is changed.
+    published resolves from what it last published. The resolution is stored,
+    and `configuration_fingerprint` identifies it: the selection, what it
+    resolved to, and the configuration it was resolved from, including which
+    publication of each Event Type. The same selection answers the same
+    fingerprint for as long as the configuration in force is the same; the
+    order things are listed in, and the `remediation_request` a diagnostic
+    offers, are not part of it. Nothing else is written, and no configuration
+    is changed.
 
     With `draft_preview: true` the Blueprint resolves from draft declarations
     instead. That requires the admin role, stores nothing and answers

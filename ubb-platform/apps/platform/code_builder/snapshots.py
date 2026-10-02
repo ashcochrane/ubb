@@ -5,16 +5,38 @@ it, and this module is all of it. Plain data in and out, for the reason every
 read in the kernel gives — a caller needs what the snapshot says and has no
 business holding a record it could save.
 
-**The fingerprint is the hash of the canonical stored content, all of it.**
-Nothing is left out of the hash and nothing outside the content is put in: not
-the tenant, not the moment of resolution, not a row id. So the same content is
-the same fingerprint wherever and whenever it is resolved, and a fingerprint
-can be checked by anybody holding the content.
+THE HASH BOUNDARY
+-----------------
+A snapshot's content has two halves, and **the fingerprint is the hash of one
+of them** (owner ruling of 2026-10-02, on PR #594).
+
+* **`identity`** — the normative resolved contract: what was selected, the
+  machine-readable resolution of it, the configuration it was resolved from
+  with the publication each part came from, and the versions needed to read
+  it. A generated file is stamped with the hash of this, so this is what the
+  file claims it was generated from.
+* **`presentation`** — what is kept so the Blueprint can be returned as it was
+  answered, and is NOT part of what it means: today, the ready-to-copy request
+  a diagnostic offers. It is derived from the API's own routes and request
+  shapes rather than from the tenant's configuration, so a route gaining a
+  field must not make every blocked integration look like a different one.
+
+So the fingerprint is a stable identity of the resolved contract, never "a
+hash of every byte that happened to be serialised". What goes in which half is
+the resolver's to decide and to defend (`api/v1/integration_blueprint.py`);
+what this module guarantees is that only the first half is hashed, all of it,
+and nothing from outside it — not the tenant, not the moment, not a row id.
 
 **Canonical means one byte string per value.** Keys sorted, no insignificant
 whitespace, text as UTF-8 rather than escaped — so two resolutions that built
-the same content in a different key order hash alike, and a declared name
-outside ASCII hashes as itself.
+the same identity in a different key order hash alike, and a declared name
+outside ASCII hashes as itself. A LIST is ordered and its order is hashed, so
+a list whose order means nothing must reach here already in a canonical
+order; that too is the resolver's.
+
+**Storing is first-wins on presentation.** A snapshot is found by its
+fingerprint, so an identity already kept is not kept again — and the
+presentation beside it is the one it was first stored with.
 """
 import hashlib
 import json
@@ -26,16 +48,20 @@ from .models import FINGERPRINT_PATTERN, FINGERPRINT_PREFIX, BlueprintSnapshot
 
 _FINGERPRINT = re.compile(FINGERPRINT_PATTERN)
 
+#: The two halves of a snapshot's content, by the keys they are kept under.
+IDENTITY = "identity"
+PRESENTATION = "presentation"
 
-def canonical(content):
-    """`content` as the one byte string its fingerprint is taken over."""
-    return json.dumps(content, sort_keys=True, separators=(",", ":"),
+
+def canonical(identity):
+    """`identity` as the one byte string its fingerprint is taken over."""
+    return json.dumps(identity, sort_keys=True, separators=(",", ":"),
                       ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
-def fingerprint_of(content):
-    """The `configuration_fingerprint` of `content`: `sha256:` and 64 hex."""
-    return FINGERPRINT_PREFIX + hashlib.sha256(canonical(content)).hexdigest()
+def fingerprint_of(identity):
+    """The `configuration_fingerprint` of `identity`: `sha256:` and 64 hex."""
+    return FINGERPRINT_PREFIX + hashlib.sha256(canonical(identity)).hexdigest()
 
 
 def is_a_fingerprint(value):
@@ -47,15 +73,16 @@ def is_a_fingerprint(value):
     return isinstance(value, str) and _FINGERPRINT.match(value) is not None
 
 
-def store(*, tenant, content):
-    """Keep `content` for `tenant`, and answer with its fingerprint.
+def store(*, tenant, identity, presentation):
+    """Keep a resolution for `tenant`, and answer with its fingerprint.
 
-    Idempotent: content already kept is found rather than kept twice, and the
-    fingerprint is the same either way. The uniqueness key decides a race — the
-    loser of two concurrent first resolutions meets it, in a savepoint of its
-    own so the caller's transaction survives, and both answer alike.
+    The fingerprint is of `identity` alone. Idempotent: an identity already
+    kept is found rather than kept twice, and the fingerprint is the same
+    either way. The uniqueness key decides a race — the loser of two
+    concurrent first resolutions meets it, in a savepoint of its own so the
+    caller's transaction survives, and both answer alike.
     """
-    fingerprint = fingerprint_of(content)
+    fingerprint = fingerprint_of(identity)
     held = BlueprintSnapshot.objects.filter(
         tenant=tenant, configuration_fingerprint=fingerprint)
     if held.exists():
@@ -64,7 +91,7 @@ def store(*, tenant, content):
         with transaction.atomic():
             BlueprintSnapshot.objects.create(
                 tenant=tenant, configuration_fingerprint=fingerprint,
-                content=content)
+                content={IDENTITY: identity, PRESENTATION: presentation})
     except IntegrityError:
         if not held.exists():
             raise
@@ -72,7 +99,8 @@ def store(*, tenant, content):
 
 
 def stored(*, tenant, configuration_fingerprint):
-    """The content kept for `tenant` under this fingerprint, or `None`.
+    """The content kept for `tenant` under this fingerprint — both halves, by
+    :data:`IDENTITY` and :data:`PRESENTATION` — or `None`.
 
     `None` covers a fingerprint nobody resolved, one that was pruned, and one
     that is another tenant's — a caller is told the same thing for all three,
