@@ -59,10 +59,13 @@ Django (`pip install -r tests/contracts/requirements.txt` — two pinned package
 - `python -m tools.gates` — is every claim in `gates/manifest.yaml` true? And
   `python -m tools.gates ratchet` — does the migration ledger owe more than the base branch's did?
 
-- Code Builder renderer (`apps/codegen`, ADR-0016; from the git root):
-  `pnpm --dir apps/codegen typecheck` · `lint` · `test`. Its tests run the Python they render, so
-  they need an interpreter with the SDK's dependencies (`UBB_CODEGEN_PYTHON`, default `python`);
-  its fixtures are written by the platform suite — see `apps/codegen/README.md`
+- Code Builder renderer (`apps/codegen`, ADR-0016 and ADR-0017; from the git root):
+  `pnpm --dir apps/codegen typecheck` · `lint` · `test`. Its tests run what they render, with no
+  skip: the Python needs an interpreter with the SDK's dependencies (`UBB_CODEGEN_PYTHON`, default
+  `python`), and the shell needs `sh`, `bash`, `curl` and `jq` — on a machine without them
+  (Windows), `UBB_CODEGEN_SHELL_IMAGE=<image>` runs those tests in a container built from
+  `apps/codegen/tests/harness/Dockerfile`. Its fixtures are written by the platform suite — see
+  `apps/codegen/README.md`
 
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 

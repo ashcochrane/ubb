@@ -3,6 +3,8 @@
  *
  * Every one is what the platform's own route answered, held equal to it by
  * `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py`.
+ * A Blueprint is resolved for a target: `<branch>` is the Python one and
+ * `shell-<branch>` the shell one.
  * Nothing here is a Blueprint somebody wrote down: a test that needs one the
  * routes cannot produce derives it from one of these, in the test, and says
  * what it changed.

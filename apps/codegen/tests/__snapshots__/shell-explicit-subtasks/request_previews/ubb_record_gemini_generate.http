@@ -1,0 +1,20 @@
+# A preview of one request, for reading: the method, the URL, the headers
+# and the body. It is not the runnable file, and it says nothing about
+# whether the integration is ready.
+# operation_id = "api_v1_metering_endpoints_record_usage"
+
+POST $UBB_BASE_URL/api/v1/metering/usage
+Authorization: Bearer $UBB_API_KEY
+Content-Type: application/json
+
+{
+  "customer_id": $customer_id,
+  "idempotency_key": $idempotency_key,
+  "task_id": $task_id,
+  "event_type": "gemini.generate",
+  "provider": "google",
+  "measurements": {
+    "candidate_tokens": $response["usage_metadata"]["candidates_token_count"],
+    "prompt_tokens": $response["usageMetadata"]["promptTokenCount"]
+  }
+}

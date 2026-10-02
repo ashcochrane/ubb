@@ -13,55 +13,29 @@
  * outcome.
  *
  * NAMES. A generated function is named for the declared key it is about, by
- * `nameTail`. That is this renderer's naming and never a second spelling of
- * the key, which is only ever written as a literal. Two keys that would share
- * a name BOTH take a suffix that is a function of the key — so adding an
- * Event Type can make an existing function's name disappear, which a call
- * site notices, and can never hand that name to another Event Type, which it
- * would not.
+ * the rule every target shares (`../names.ts`).
  */
 import { refuse, type ResolvedIntegrationBlueprint } from "../blueprint.ts";
-import { ENVIRONMENT, PYTHON } from "../catalogue.ts";
+import { PYTHON } from "../catalogue.ts";
 import {
-  literalOf,
-  parameters,
-  readCall,
-  type Call,
-  type SecretReference,
-  type Token,
-} from "../tokens.ts";
-import { nameTail, parameterName, shortHash, unshadowed } from "./syntax.ts";
+  FIELD,
+  keyOf,
+  OPERATION_IDS,
+  readLifecycle,
+  type Header,
+} from "../lifecycle.ts";
+import { nameTails, type Wanted } from "../names.ts";
+import { parameters, type Call, type SecretReference, type Token } from "../tokens.ts";
+import { parameterName, unshadowed } from "./syntax.ts";
+
+export { FACT, FIELD, type Header } from "../lifecycle.ts";
 
 /** The operations this target has a call for, and the SDK method of each. */
 export const OPERATIONS = {
-  start: { operationId: "api_v1_task_endpoints_start_task", method: "start_task" },
-  record: { operationId: "api_v1_metering_endpoints_record_usage", method: "record_usage" },
-  close: { operationId: "api_v1_task_endpoints_close_task", method: null },
+  start: { operationId: OPERATION_IDS.start, method: "start_task" },
+  record: { operationId: OPERATION_IDS.record, method: "record_usage" },
+  close: { operationId: OPERATION_IDS.close, method: null },
 } as const;
-
-/**
- * The request fields this target knows by name, because the SDK's surface is
- * built around them: the one that says work is contained in other work, the
- * two whose literal a generated function is named for, and the one a cost is
- * denominated in.
- */
-export const FIELD = {
-  parent: "parent_task_id",
-  kindOfWork: "task_type",
-  eventType: "event_type",
-  currency: "currency",
-} as const;
-
-/** The declared facts this target acts on, by the last segment of their name. */
-export const FACT = {
-  sourcePath: "source_path",
-  responseRepresentation: "response_shape_representation",
-  amountRepresentation: "amount_representation",
-  pricingMode: "pricing_mode",
-} as const;
-
-/** The document without its calls: what a file's header states. */
-export type Header = Omit<ResolvedIntegrationBlueprint, "calls">;
 
 export interface StartPlan {
   readonly call: Call;
@@ -106,59 +80,6 @@ export interface Plan {
   readonly internal: Internal;
 }
 
-function keyOf(call: Call, field: string): string | null {
-  const literal = literalOf(call, field);
-  return typeof literal === "string" && literal !== "" ? literal : null;
-}
-
-interface Wanted {
-  readonly prefixes: readonly string[];
-  readonly key: string | null;
-}
-
-/**
- * The tail of each wanted function's name — the part after its prefix — so
- * that no two functions share a name.
- */
-function nameTails(wanted: readonly Wanted[], fixed: readonly string[]): string[] {
-  const plain = wanted.map((entry) => (entry.key === null ? null : nameTail(entry.key)));
-  const names = (index: number, tail: string) =>
-    wanted[index]!.prefixes.map((prefix) => `${prefix}_${tail}`);
-
-  const count = new Map<string, number>();
-  for (const name of fixed) count.set(name, 1);
-  plain.forEach((tail, index) => {
-    if (tail === null) return;
-    for (const name of names(index, tail)) count.set(name, (count.get(name) ?? 0) + 1);
-  });
-
-  const taken = new Set<string>(fixed);
-  const settled = plain.map((tail, index) => {
-    if (tail === null) return null;
-    const shared = names(index, tail).some((name) => (count.get(name) ?? 0) > 1);
-    const own = shared ? `${tail}_${shortHash(wanted[index]!.key!)}` : tail;
-    names(index, own).forEach((name) => taken.add(name));
-    return own;
-  });
-
-  // A call with no declared key to be named for is named for its place. It
-  // cannot run — it has no key because nothing is selected or declared — so
-  // its name is not one a working call site depends on.
-  return settled.map((tail, index) => {
-    if (tail !== null) return tail;
-    let own: string = PYTHON.unkeyed;
-    for (let suffix = 2; names(index, own).some((name) => taken.has(name)); suffix += 1) {
-      own = `${PYTHON.unkeyed}_${suffix}`;
-    }
-    names(index, own).forEach((name) => taken.add(name));
-    return own;
-  });
-}
-
-function carries(call: Call, field: string): boolean {
-  return call.fields.some((candidate) => candidate.name === field);
-}
-
 /** The plan for one Blueprint, or a refusal of a document it cannot render. */
 export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
   if (blueprint.sdk_major_version !== PYTHON.sdkMajorVersion) {
@@ -168,40 +89,10 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     );
   }
 
-  const calls = blueprint.calls.map(readCall);
-  const known: string[] = Object.values(OPERATIONS).map((operation) => operation.operationId);
-  for (const call of calls) {
-    if (!known.includes(call.operationId)) {
-      refuse(`this target has no call for the operation ${call.operationId}`);
-    }
-    parameters(call).forEach(parameterName);
-  }
-
-  const credentials = calls.flatMap((call) => call.credentials);
-  const credential = credentials[0];
-  if (credential === undefined) return refuse("no call of the Blueprint carries a credential");
-  for (const other of credentials) {
-    if (other.binding.environmentVariable !== credential.binding.environmentVariable) {
-      refuse("the calls of the Blueprint name different credentials, and a module has one client");
-    }
-  }
-  if (credential.binding.environmentVariable !== ENVIRONMENT.apiKey) {
-    // Every secret a file reads comes with instructions for setting it, and
-    // the catalogue holds those for the variables it knows.
-    refuse(
-      `the catalogue has no setup instructions for the environment variable ` +
-        `${credential.binding.environmentVariable}`,
-    );
-  }
-
-  const starts = calls.filter((call) => call.operationId === OPERATIONS.start.operationId);
-  const tasks = starts.filter((call) => !carries(call, FIELD.parent));
-  const contained = starts.filter((call) => carries(call, FIELD.parent));
-  const recording = calls.filter((call) => call.operationId === OPERATIONS.record.operationId);
-  const start = tasks[0];
-  if (start === undefined || tasks.length > 1) {
-    return refuse(`a Blueprint has one start of the work itself, and this one has ${tasks.length}`);
-  }
+  const { header, calls, credential, start, contained, recording } = readLifecycle(
+    blueprint,
+    parameterName,
+  );
 
   const fixed = [PYTHON.startTask, PYTHON.unitOfWork];
   const wanted: Wanted[] = [
@@ -214,7 +105,7 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
       key: keyOf(call, FIELD.eventType),
     })),
   ];
-  const named = nameTails(wanted, fixed);
+  const named = nameTails(wanted, fixed, PYTHON.unkeyed);
 
   const subtasks: StartPlan[] = contained.map((call, index) => ({
     call,
@@ -267,7 +158,6 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     send: (record) => sends.get(record)!,
   };
 
-  const { calls: _read, ...header } = blueprint;
   return {
     header,
     calls,

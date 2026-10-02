@@ -52,3 +52,10 @@ ubb-sdk/operation-coverage.yaml text eol=lf
 # on every platform. Pinned so a checkout with core.autocrlf set does not hand
 # the suite a snapshot that differs from the rendering only in its line endings.
 apps/codegen/tests/__snapshots__/** text eol=lf
+
+# What the renderer's tests RUN (#578): a shell script, and the harness and the
+# image definition that run it — inside a Linux container on a machine with no
+# POSIX shell of its own, where the working copy is mounted as it stands. A
+# shell reads a carriage return at the end of a line as part of the line, so a
+# checkout with core.autocrlf set would hand it a script that does not parse.
+apps/codegen/tests/harness/** text eol=lf

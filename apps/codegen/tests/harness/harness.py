@@ -221,6 +221,12 @@ def reported_cost(directory, cases_path):
 # run
 # ---------------------------------------------------------------------------
 
+#: Two things a queued answer may say about the RESPONSE rather than its body:
+#: the status it is sent with, and text to send in place of any JSON at all.
+HTTP_STATUS = "http_status"
+RAW_BODY = "raw_body"
+
+
 class Server:
     """A local HTTP server standing where UBB would: it keeps every request
     it is sent and answers each with the next body queued for its route, or
@@ -235,12 +241,26 @@ class Server:
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 length = int(self.headers.get("Content-Length") or 0)
-                body = json.loads(self.rfile.read(length) or b"null")
+                raw = self.rfile.read(length)
+                try:
+                    body = json.loads(raw or b"null")
+                except ValueError:
+                    body = None
                 outer.requests.append({
                     "method": "POST", "path": self.path, "body": body,
+                    # As it arrived, for what a parsed body cannot show: a
+                    # whole number past what a reader's own numbers hold.
+                    "raw": raw.decode("utf-8", "replace"),
+                    "content_type": self.headers.get("Content-Type"),
                     "authorization": self.headers.get("Authorization")})
-                answer = json.dumps(outer._answer(self.path, body)).encode()
-                self.send_response(200)
+                queued = outer.queued.get(self.path) or []
+                overrides = dict(queued.pop(0)) if queued else {}
+                status = overrides.pop(HTTP_STATUS, 200)
+                raw_answer = overrides.pop(RAW_BODY, None)
+                answer = (raw_answer.encode() if raw_answer is not None else
+                          json.dumps(outer._answer(self.path, body or {},
+                                                   overrides)).encode())
+                self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(answer)))
                 self.end_headers()
@@ -257,9 +277,7 @@ class Server:
         """The next answer `path` gives carries `overrides`."""
         self.queued.setdefault(path, []).append(overrides)
 
-    def _answer(self, path, body):
-        queued = self.queued.get(path) or []
-        overrides = queued.pop(0) if queued else {}
+    def _answer(self, path, body, overrides):
         if path == "/api/v1/tasks":
             self._tasks += 1
             answer = {

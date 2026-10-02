@@ -20,9 +20,19 @@ import {
   type ResolvedIntegrationBlueprint,
 } from "./blueprint.ts";
 import { renderPython } from "./python/index.ts";
+import { renderShell } from "./shell/index.ts";
 
-/** Which part of an artifact a file is. */
-export type FileKind = "module" | "call_site" | "environment_example" | "verify_script";
+/**
+ * Which part of an artifact a file is. A `request_preview` is documentation
+ * of one request a shell artifact sends: it is not run, carries no verdict,
+ * and never stands in for the `module`.
+ */
+export type FileKind =
+  | "module"
+  | "call_site"
+  | "environment_example"
+  | "verify_script"
+  | "request_preview";
 
 export interface RenderedFile {
   readonly kind: FileKind;
@@ -42,6 +52,7 @@ const TARGETS: Partial<
   Record<CodeTarget, (blueprint: ResolvedIntegrationBlueprint) => RenderedFile[]>
 > = {
   python_sdk: renderPython,
+  shell_http: renderShell,
 };
 
 export function render(blueprint: ResolvedIntegrationBlueprint): RenderedFile[] {

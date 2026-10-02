@@ -39,6 +39,7 @@ import {
   only,
   PLANTED,
   provenanceOf,
+  PYTHON_BRANCH_NAMES,
   rendered,
 } from "./support/rendered.ts";
 
@@ -55,7 +56,7 @@ function comments(branch: string): string[] {
   return [...found, ...hashComments(environment.contents)].map(commentText);
 }
 
-describe.each(BRANCH_NAMES)("the %s artifact", (branch) => {
+describe.each(PYTHON_BRANCH_NAMES)("the %s artifact", (branch) => {
   it("is one module, its call-site blocks, an environment example and a verify script", () => {
     const files = rendered(branch);
     const kinds = files.map((file) => file.kind);
@@ -499,11 +500,15 @@ describe("the shapes a value takes", () => {
   });
 
   it("writes no host into any file: where the API is, is read from the environment", () => {
+    // Every branch of every target: no file of any artifact holds an address.
+    expect(BRANCH_NAMES.length).toBeGreaterThan(PYTHON_BRANCH_NAMES.length);
     for (const branch of BRANCH_NAMES) {
       for (const file of rendered(branch)) {
         expect(file.contents, `${branch}/${file.path}`).not.toMatch(/https?:\/\//);
         expect(file.contents, `${branch}/${file.path}`).not.toMatch(/localhost|\bubb\.dev\b/);
       }
+    }
+    for (const branch of PYTHON_BRANCH_NAMES) {
       expect(moduleOf(branch).contents).toContain(`os.environ.get("${ENVIRONMENT.baseUrl}")`);
     }
   });
@@ -523,10 +528,11 @@ describe("what the renderer refuses", () => {
   const REFUSED: [string, RegExp, (blueprint: ResolvedIntegrationBlueprint) => void][] = [
     [
       "a target it has no renderer for",
-      /no renderer for the target shell_http/,
+      /no renderer for the target a_target_nothing_renders/,
       (b) => {
-        b.target = "shell_http";
-        b.sdk_major_version = null;
+        // Not a value the contract admits: what a renderer older than the
+        // contract would be handed.
+        b.target = "a_target_nothing_renders" as ResolvedIntegrationBlueprint["target"];
       },
     ],
     [

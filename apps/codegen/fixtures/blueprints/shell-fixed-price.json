@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "renderer_contract_version": 1,
+  "target": "shell_http",
+  "sdk_major_version": null,
+  "configuration_fingerprint": "sha256:9ccbfc9246955b17f325c33d0b87b1cd02294cc53c19e2899e90b37035d866f0",
+  "readiness": "complete",
+  "calls": [
+    {
+      "operation_id": "api_v1_task_endpoints_start_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_type",
+          "binding_class": "platform_known",
+          "value": "report",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.pricing_mode",
+          "binding_class": "platform_known",
+          "value": "fixed",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.uncapped",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report",
+            "published_revision": null,
+            "published_at": null
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "event_type",
+          "binding_class": "platform_known",
+          "value": "reply.sent",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.costing_method",
+          "binding_class": "platform_known",
+          "value": "calculated",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "replies",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.replies.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.replies.unit",
+          "binding_class": "platform_known",
+          "value": "reply",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.replies.required_for_costing",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.replies",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "replies",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "reply.sent",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_task_endpoints_close_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "outcome",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "outcome",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        }
+      ]
+    }
+  ],
+  "diagnostics": []
+}

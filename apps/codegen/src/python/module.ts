@@ -45,10 +45,10 @@ import {
   PRICING_MODE_COMMENTS,
   PYTHON,
   READINESS_COMMENTS,
-  REMEDIATION,
   RESPONSE_REPRESENTATION,
 } from "../catalogue.ts";
-import { asComments, publication, statement, tokenStatement } from "../comments.ts";
+import { asComments, tokenStatement } from "../comments.ts";
+import { headerText } from "../header.ts";
 import {
   factNamed,
   factOfField,
@@ -79,85 +79,9 @@ interface Uses {
 // ---------------------------------------------------------------------------
 
 function header(plan: Plan): string[] {
-  const blueprint = plan.header;
-  const fingerprint = blueprint.configuration_fingerprint ?? null;
-  const lines: string[] = [
-    ...COMMENTS.generated,
-    "",
-    statement("schema_version", blueprint.schema_version),
-    statement("renderer_contract_version", blueprint.renderer_contract_version),
-    statement("sdk_major_version", blueprint.sdk_major_version ?? null),
-    statement("target", blueprint.target),
-    statement("configuration_fingerprint", fingerprint),
-    ...(fingerprint === null ? COMMENTS.draftPreview : COMMENTS.fingerprint),
-    "",
-    statement("readiness", blueprint.readiness),
-    ...READINESS_COMMENTS[blueprint.readiness],
-    "",
-  ];
-
-  if (blueprint.diagnostics.length === 0) {
-    lines.push(...COMMENTS.noDiagnostics);
-  } else {
-    lines.push(...COMMENTS.diagnostics);
-    for (const diagnostic of blueprint.diagnostics) {
-      const remediation = REMEDIATION[diagnostic.code];
-      if (remediation === undefined) {
-        refuse(`the catalogue has no remediation for the diagnostic ${diagnostic.code}`);
-      }
-      lines.push(
-        "",
-        statement("diagnostic", diagnostic.code, [
-          ["severity", diagnostic.severity],
-          [diagnostic.object_kind, diagnostic.key ?? null],
-          ["field", diagnostic.field ?? null],
-        ]),
-        ...remediation,
-      );
-      if (diagnostic.remediation_request != null) {
-        lines.push(
-          ...COMMENTS.remediationRequest,
-          statement("remediation_request", diagnostic.remediation_request as unknown as Json),
-        );
-      }
-    }
-  }
-
-  // Every declaration anything in this file was read from, each once, with
-  // the publication it was read from where there was one.
-  const declarations: string[] = [];
-  for (const call of plan.calls) {
-    for (const token of everyToken(call)) {
-      if (token.provenance === null) continue;
-      const line = statement(
-        token.provenance.object_kind,
-        token.provenance.key,
-        publication(token.provenance),
-      );
-      if (!declarations.includes(line)) declarations.push(line);
-    }
-  }
-  if (declarations.length > 0) {
-    lines.push("", ...COMMENTS.resolvedFrom, ...declarations);
-  }
-
-  lines.push("", ...COMMENTS.legend);
-  return lines.map((line) => (line === "" ? "" : `# ${line}`));
-}
-
-function everyToken(call: Call): Token[] {
-  const tokens: Token[] = [...call.credentials];
-  for (const field of call.fields) {
-    if (field.shape === "scalar") {
-      tokens.push(field.token, ...field.facts.map((fact) => fact.token));
-      continue;
-    }
-    for (const entry of field.entries) {
-      tokens.push(entry.key, ...entry.facts.map((fact) => fact.token));
-      if (entry.value !== null) tokens.push(entry.value);
-    }
-  }
-  return tokens;
+  return headerText(plan.header, plan.calls, READINESS_COMMENTS, COMMENTS.legend).map((line) =>
+    line === "" ? "" : `# ${line}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

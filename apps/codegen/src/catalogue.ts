@@ -31,7 +31,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 1;
+export const CATALOGUE_VERSION = 2;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -54,8 +54,9 @@ export const ENVIRONMENT = {
 } as const;
 
 /**
- * What a shell file calls the stop, declared here so both targets take it
- * from one place. Nothing in the Python target emits them.
+ * What a shell file calls the stop: the three symbols ruled for it (#184 §10,
+ * §15). The status is public contract — a supervisor tests for it — and it is
+ * written into a generated file once, as the value of the named constant.
  */
 export const SHELL = {
   /** The name of the stop's metadata. */
@@ -63,6 +64,61 @@ export const SHELL = {
   /** The one symbolic constant the reserved exit status is emitted through. */
   stopExitStatusName: "UBB_EXIT_STOP_REQUESTED",
   stopExitStatus: 20,
+} as const;
+
+/**
+ * The statuses a shell file returns for everything that is NOT a stop, each
+ * through a named constant of its own. They are the `sysexits.h` values for
+ * what each one is, used for nothing else: 20 was chosen to stand clear of
+ * that block, and no status here may come to mean a stop.
+ */
+export const SHELL_EXIT = {
+  /** A parameter left out, passed empty, or not one the call has. */
+  usage: { name: "UBB_EXIT_USAGE", status: 64 },
+  /** A supplier's cost that cannot be held, or its currency. */
+  reportedCostRefused: { name: "UBB_EXIT_REPORTED_COST_REFUSED", status: 65 },
+  /** jq or curl is missing, or cannot do what the file asks of it. */
+  toolUnavailable: { name: "UBB_EXIT_TOOL_UNAVAILABLE", status: 69 },
+  /** A response that is not the acknowledgement the contract publishes. */
+  responseUnreadable: { name: "UBB_EXIT_RESPONSE_UNREADABLE", status: 76 },
+  /** A call that is not ready, or a variable the environment must hold. */
+  notConfigured: { name: "UBB_EXIT_NOT_CONFIGURED", status: 78 },
+} as const;
+
+/** The names a shell artifact is made of. */
+export const SHELL_FILE = {
+  moduleFile: "ubb_integration.sh",
+  verifyFile: "verify_integration.sh",
+  environmentFile: ".env.example",
+  callSiteDirectory: "call_sites",
+  previewDirectory: "request_previews",
+  startTask: "ubb_start_task",
+  unitOfWork: "ubb_unit_of_work",
+  closeTask: "ubb_close_task",
+  startSubtaskPrefix: "ubb_start_subtask",
+  recordPrefix: "ubb_record",
+  /** What an unkeyed call is named after, where no declared key names it. */
+  unkeyed: "usage",
+  /** Where a start leaves the id of the work it started. */
+  taskId: "UBB_TASK_ID",
+  /** Where every call leaves the response it was answered with. */
+  response: "UBB_RESPONSE",
+  /** Where a record leaves the stop's metadata, as one line of JSON. */
+  stopRequested: "UBB_STOP_REQUESTED",
+  /** The delimiter of every heredoc that holds a jq program. */
+  heredoc: "UBB_JQ",
+  /** The largest whole number of micros a cost may be: 2**63 - 1. */
+  microsLimit: "9223372036854775807",
+  /** How far a reported cost's exponent may run, either way. */
+  exponentLimit: 40,
+  /** The most digits a whole number is carried through jq with. */
+  exactDigits: 15,
+  /** The outcome the boundary declares for work that ended in a failure. */
+  outcomeFailed: "failed",
+  outcomeReasonExecutionFailed: "execution_failed",
+  /** The two fields a close may carry beside the outcome. */
+  outcomeReason: "outcome_reason",
+  reasonDetail: "reason_detail",
 } as const;
 
 /** The names a Python artifact is made of. */
@@ -140,6 +196,25 @@ export const READINESS_COMMENTS: Readonly<Record<IntegrationReadiness, readonly 
     "BLOCKED, NOT READY TO RUN. The structure is known, and at least one",
     "call lacks something it cannot run without. Those calls raise",
     "UBBIntegrationNotReady; the others run.",
+  ],
+  complete: [
+    "COMPLETE. Every call has what it needs to run.",
+  ],
+};
+
+/** The same verdicts, in the words a shell file's header states them in. */
+export const SHELL_READINESS_COMMENTS: Readonly<
+  Record<IntegrationReadiness, readonly string[]>
+> = {
+  scaffold: [
+    "SCAFFOLD, NOT READY TO RUN. A kind of work or an Event Type is not",
+    "selected or not declared. This file shows the shape of the lifecycle;",
+    "the calls that are not ready return UBB_EXIT_NOT_CONFIGURED.",
+  ],
+  blocked: [
+    "BLOCKED, NOT READY TO RUN. The structure is known, and at least one",
+    "call lacks something it cannot run without. Those calls return",
+    "UBB_EXIT_NOT_CONFIGURED; the others run.",
   ],
   complete: [
     "COMPLETE. Every call has what it needs to run.",
@@ -348,6 +423,155 @@ export const COMMENTS = {
   ],
 } as const satisfies Record<string, readonly string[]>;
 
+/**
+ * Every fixed comment only a shell file carries, by where it is said. A shell
+ * file also carries the members of `COMMENTS` that are true of any target:
+ * what generated it, the fingerprint, the diagnostics, the two variables, and
+ * what a start, a Subtask and a path are.
+ */
+export const SHELL_COMMENTS = {
+  legend: [
+    "Three kinds of value appear below, and each has its own shape.",
+    "  A literal is a value UBB resolved from what you declared.",
+    "  A parameter is a value only your code holds, passed as name=value.",
+    "  Every one is required: leave one out, or pass it empty, and the call",
+    "  returns UBB_EXIT_USAGE before anything is sent, naming it.",
+    "  $UBB_API_KEY is a credential. UBB withholds it from this file.",
+    "A literal with no configured value is a state of a literal, not a",
+    "fourth kind: it is written as a call that raises, naming what is",
+    "missing.",
+  ],
+  usage: [
+    "Source this file from the script that does the work:",
+    "  . ./ubb_integration.sh",
+    "It requires curl and jq, and checks both before the first request. It",
+    "sets no shell option and never exits the shell that sourced it: every",
+    "function returns a status, and you check it. set -e is not relied on.",
+  ],
+  statuses: [
+    "The statuses a function returns. A stop has a status of its own, and no",
+    "other failure is ever returned as it. A request that fails returns the",
+    "status curl gave it.",
+  ],
+  outputs: [
+    "What a call leaves behind for the code that called it. They are set in",
+    "your shell, so never call a function of this file inside $( ) or a",
+    "pipeline: both run it in a subshell, and what it set is lost.",
+  ],
+  preflight: [
+    "Checks, once, that jq and curl can do what this file asks of them. It",
+    "contacts nothing and creates nothing.",
+  ],
+  preflightProgram: [
+    "A generated jq program is read from standard input and holds comments.",
+  ],
+  environment: [
+    "Both variables are required, and are read each time a request is made.",
+  ],
+  request: [
+    "Sends one request. The credential goes to curl on standard input, so it",
+    "is never an argument another process can list. The response is left in",
+    "UBB_RESPONSE. A response that is not a success is printed, and the",
+    "status curl gave it is returned.",
+  ],
+  startedTask: [
+    "The id of the work a start created is read off the response and left in",
+    "UBB_TASK_ID.",
+  ],
+  acknowledgement: [
+    "A stop arrives on a successful response, so it is read off the",
+    "acknowledgement and never off the HTTP status. The event that carried",
+    "it was recorded and charged: never send it again. Its metadata is left",
+    "in UBB_STOP_REQUESTED and the reserved status is returned.",
+  ],
+  notReady: [
+    "What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, until the",
+    "declarations it needs are made. The header of this file lists them.",
+  ],
+  parameters: [
+    "What a call prints, before returning UBB_EXIT_USAGE, for a parameter it",
+    "was not given, was given empty, or does not have.",
+  ],
+  wholeNumber: [
+    "A quantity is a whole number, carried exactly or not at all.",
+  ],
+  urlValue: [
+    "A value written into a URL is one that needs no encoding there.",
+  ],
+  reportedCost: [
+    "A cost a supplier reports is converted to whole micros once, here, on",
+    "its digits as text: no arithmetic is done on the amount, so nothing can",
+    "round it. An amount finer than a micro is refused, never rounded. A",
+    "currency other than the declared one fails, never converts.",
+    "Pass the amount as the text your supplier wrote. A number another tool",
+    "has parsed, jq included, may already have been rounded.",
+  ],
+  unitOfWork: [
+    "The whole piece of work, as one command you name. It is run with the",
+    "work's task_id as its one argument. Declare how the work ended inside",
+    "it, with ubb_close_task.",
+    "This is the one place a stop is acted on. The event that carried it was",
+    "recorded and charged: never send it again. The stop is logged and the",
+    "reserved status returned, so whatever runs this work can honour its",
+    "scope. Nothing is declared about work a stop interrupted.",
+    "Work that returns a failure having declared no outcome is declared",
+    "failed. Work that returns success having declared none is left open,",
+    "and that is returned as UBB_EXIT_USAGE.",
+  ],
+  record: [
+    "A stop is returned as UBB_EXIT_STOP_REQUESTED, with the event recorded.",
+    "Return it from your own code unchanged, up to whatever runs the work.",
+  ],
+  response: [
+    "This file never calls your supplier. Pass the path of a file holding",
+    "the response it returned, as JSON.",
+  ],
+  close: [
+    "outcome is delivered, failed or cancelled, and UBB never guesses it. A",
+    "failure also says why: pass outcome_reason, and reason_detail if you",
+    "have a sentence to go with it.",
+  ],
+  environmentFile: [
+    "Load the copy before sourcing ubb_integration.sh:",
+    "  set -a; . ./.env; set +a",
+  ],
+  verify: [
+    "Checks the paths you declared against a response your supplier really",
+    "returned. UBB never sees that response, so only you can run this.",
+    "It calls nothing: no supplier and no UBB. Save one real response as",
+    "JSON and pass it:",
+    "  sh verify_integration.sh EVENT_TYPE captured-response.json",
+  ],
+  verifyPreflight: [
+    "Checks that jq can do what this script asks of it. It contacts nothing",
+    "and creates nothing.",
+  ],
+  callSiteUnitOfWork: [
+    "Where the piece of work begins. Everything it does goes inside the",
+    "function, which is handed the work's task_id. Check the status of each",
+    "call yourself: set -e does not apply inside a function run this way.",
+  ],
+  callSiteClose: [
+    "Inside the work, before it ends: exactly once. Work that returns",
+    "success having declared nothing is left open, and that is reported.",
+  ],
+  callSiteRecord: [
+    "After each call to your supplier. idempotency_key identifies this one",
+    "call, and is the same if you retry it. task_id is the task_id of the",
+    "work the event belongs to: the work's own, or a Subtask's.",
+  ],
+  callSiteStop: [
+    "Directly after whatever runs the work, where you can act on a stop's",
+    "scope. This is not error handling: the event was recorded and charged.",
+    "UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON.",
+  ],
+  preview: [
+    "A preview of one request, for reading: the method, the URL, the headers",
+    "and the body. It is not the runnable file, and it says nothing about",
+    "whether the integration is ready.",
+  ],
+} as const satisfies Record<string, readonly string[]>;
+
 /** What generated code says when it raises or reports. */
 export const MESSAGES = {
   notReady: "is not ready to run. The generated file's header lists what to declare.",
@@ -377,4 +601,32 @@ export const MESSAGES = {
   verifyFailed: "check(s) failed.",
   verifyOk: "ok  ",
   verifyFail: "FAIL",
+} as const;
+
+/**
+ * What only a shell file says. It also says the members of `MESSAGES` that
+ * are true of any target: the conversion's refusals and the verify script's
+ * verdicts.
+ */
+export const SHELL_MESSAGES = {
+  jqMissing: "This file requires jq, and none is installed.",
+  jqUnusable: "The installed jq cannot run a program read from standard input.",
+  curlMissing: "This file requires curl, and none is installed.",
+  curlUnusable: "The installed curl has no --fail-with-body. curl 7.76 or later has it.",
+  missing: "is required, and was left out or passed empty.",
+  unknown: "is not a parameter of this call. Pass each one as name=value.",
+  wholeNumber: "is not a whole number of at most 15 digits, which is what is carried exactly.",
+  urlValue: "cannot be written into a URL as it stands.",
+  work: "the first argument is the command that does the work.",
+  outcomeRequired:
+    "the work ended without declaring an outcome, and is left open. Declare one with ubb_close_task.",
+  failureNotDeclared: "the work failed, and declaring it failed did not succeed. It is left open.",
+  stop: "UBB requested a stop. The event that carried it was recorded and must not be sent again.",
+  responseUnreadable: "the response is not the acknowledgement this call expects.",
+  exitStatus: "exit status",
+  noTaskId: "the response carries no task_id",
+  noEventId: "the acknowledgement carries no event_id",
+  noValue: "the response holds no value at",
+  inexact: "the response holds a number too large to be carried exactly at",
+  verifyUsage: "usage: sh verify_integration.sh EVENT_TYPE captured-response.json",
 } as const;

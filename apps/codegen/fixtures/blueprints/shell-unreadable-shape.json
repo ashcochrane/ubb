@@ -1,0 +1,537 @@
+{
+  "schema_version": 1,
+  "renderer_contract_version": 1,
+  "target": "shell_http",
+  "sdk_major_version": null,
+  "configuration_fingerprint": "sha256:2c8467e18879f944a4ec852f7f7a863217e79c88659294a7c745518a98c12e50",
+  "readiness": "blocked",
+  "calls": [
+    {
+      "operation_id": "api_v1_task_endpoints_start_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_type",
+          "binding_class": "platform_known",
+          "value": "report_generation",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.pricing_mode",
+          "binding_class": "platform_known",
+          "value": "event_priced",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.uncapped",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "task_type.task_cogs_ceiling_micros",
+          "binding_class": "platform_known",
+          "value": 5000000,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields",
+          "binding_class": "platform_known",
+          "value": "environment",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "grouping_field",
+            "key": "environment",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "grouping_fields.environment",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "environment",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "task_type",
+            "key": "report_generation",
+            "published_revision": null,
+            "published_at": null
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "readiness": "blocked",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "customer_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "customer_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "idempotency_key",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "idempotency_key",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "event_type",
+          "binding_class": "platform_known",
+          "value": "chat.completion",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.costing_method",
+          "binding_class": "platform_known",
+          "value": "calculated",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "provider",
+          "binding_class": "platform_known",
+          "value": "openai",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "provider",
+            "key": "openai",
+            "published_revision": null,
+            "published_at": null
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "input_tokens",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.input_tokens.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.input_tokens.unit",
+          "binding_class": "platform_known",
+          "value": "token",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.input_tokens.required_for_costing",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.input_tokens",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "response",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.input_tokens.source_path",
+          "binding_class": "platform_known",
+          "value": [
+            "usage",
+            "input_tokens"
+          ],
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "output_tokens",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.output_tokens.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.output_tokens.unit",
+          "binding_class": "platform_known",
+          "value": "token",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.output_tokens.required_for_costing",
+          "binding_class": "platform_known",
+          "value": true,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.output_tokens",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "response",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.output_tokens.source_path",
+          "binding_class": "platform_known",
+          "value": [
+            "usage",
+            "output_tokens"
+          ],
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "searches",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.searches.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.searches.unit",
+          "binding_class": "platform_known",
+          "value": "search",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.searches.required_for_costing",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.searches",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "searches",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.source_shape_id",
+          "binding_class": "platform_known",
+          "value": "openai.responses.python.v1",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "event_type.response_shape_representation",
+          "binding_class": "platform_known",
+          "value": "python_object",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "chat.completion",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        }
+      ]
+    },
+    {
+      "operation_id": "api_v1_task_endpoints_close_task",
+      "readiness": "complete",
+      "arguments": [
+        {
+          "name": "api_key",
+          "binding_class": "secret_reference",
+          "value": null,
+          "parameter_name": null,
+          "environment_variable": "UBB_API_KEY",
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "task_id",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "task_id",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        },
+        {
+          "name": "outcome",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "outcome",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": null
+        }
+      ]
+    }
+  ],
+  "diagnostics": [
+    {
+      "severity": "blocking",
+      "code": "response_shape_not_readable_by_target",
+      "object_kind": "event_type",
+      "key": "chat.completion",
+      "field": "source_shape_id",
+      "remediation_request": {
+        "method": "PATCH",
+        "route": "/api/v1/event-types/chat.completion",
+        "operation_id": "api_v1_event_type_endpoints_revise_event_type",
+        "body": {
+          "costing_method": null,
+          "provider_key": null,
+          "category_key": null,
+          "source_shape_id": null,
+          "source_shape_label": null
+        }
+      }
+    }
+  ]
+}

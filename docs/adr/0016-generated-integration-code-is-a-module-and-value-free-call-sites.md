@@ -205,7 +205,7 @@ five rulings:
 
 ### 10. What this ADR does not decide
 
-The shell target (#578). The page that calls `render` (#579). Execution against the real
+The shell target (#578), which is ADR-0017's. The page that calls `render` (#579). Execution against the real
 application (#582). How a cost read off a supplier's response, a constant's value or a missing
 agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 and needs no new rule.
 

@@ -413,10 +413,11 @@ jobs:
       - name: UI tests
         run: pnpm --dir apps/ui test
 
-  # `ubb-codegen` (#577): the renderer that turns an Integration Blueprint into
-  # the files a tenant is handed. Its tests render committed Blueprints, then
-  # COMPILE and RUN the Python they wrote against the SDK in this checkout, so
-  # the job needs Node and Python both.
+  # `ubb-codegen` (#577, #578): the renderer that turns an Integration
+  # Blueprint into the files a tenant is handed. Its tests render committed
+  # Blueprints, then RUN what they wrote: the Python against the SDK in this
+  # checkout, the shell under the runner's sh and bash with its curl and jq.
+  # So the job needs Node, Python and those four.
   #
   # A job of its own rather than more steps at the end of `contract`: a step
   # runs only if every step before it passed, and nothing about the spec's
@@ -454,6 +455,18 @@ jobs:
 
       - name: Install workspace dependencies (locked)
         run: pnpm install --frozen-lockfile
+
+      # The shell target's files are RUN as well as rendered (#578), by the
+      # runner's own sh, bash, curl and jq: there is no skip in the suite, so
+      # a runner image that stopped carrying one would fail the tests. This
+      # step fails first and says which, and puts in every run's log the
+      # versions the generated shell was run with.
+      - name: Shell tools — what the generated shell file is run with
+        run: |
+          sh -c 'echo "sh runs"'
+          bash --version
+          curl --version
+          jq --version
 
       - name: Codegen typecheck — the renderer compiles against the committed contract
         run: pnpm --dir apps/codegen typecheck

@@ -20,7 +20,7 @@ import { render, type RenderedFile } from "../src/index.ts";
 import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
 import { everyArgument, fixture, FIXTURES, REPO_ROOT } from "./support/fixtures.ts";
 import { compiled, reportedCost, run } from "./support/python.ts";
-import { BRANCH_NAMES, factsOf, rendered } from "./support/rendered.ts";
+import { factsOf, PYTHON_BRANCH_NAMES, rendered } from "./support/rendered.ts";
 
 interface Sent {
   method: string;
@@ -220,8 +220,8 @@ result = refused + [len(server.requests)]
 
 describe("the stop", () => {
   it("is caught in exactly one place, by name, and raised again", () => {
-    expect(BRANCH_NAMES.length).toBeGreaterThanOrEqual(10);
-    for (const branch of BRANCH_NAMES) {
+    expect(PYTHON_BRANCH_NAMES.length).toBeGreaterThanOrEqual(10);
+    for (const branch of PYTHON_BRANCH_NAMES) {
       const module = factsOf(branch)["ubb_integration.py"]!;
 
       expect(module.handlers.filter((handler) => handler.catches === "UBBStopRequested")).toEqual([
@@ -242,7 +242,7 @@ describe("the stop", () => {
     // The only other handlers anywhere are the conversion's, which catch a
     // number that will not parse and a currency that is not a string.
     const narrow = ["(InvalidOperation, TypeError, ValueError)", "(AttributeError, KeyError)"];
-    for (const branch of BRANCH_NAMES) {
+    for (const branch of PYTHON_BRANCH_NAMES) {
       const module = factsOf(branch)["ubb_integration.py"]!;
       const elsewhere = module.handlers.filter((handler) => handler.function !== "unit_of_work");
 
