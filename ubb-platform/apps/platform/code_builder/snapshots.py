@@ -37,14 +37,35 @@ order; that too is the resolver's.
 **Storing is first-wins on presentation.** A snapshot is found by its
 fingerprint, so an identity already kept is not kept again — and the
 presentation beside it is the one it was first stored with.
+
+HOW LONG ONE IS KEPT
+--------------------
+:data:`RETENTION` after it was last RESOLVED (#580). Storing an identity that
+is already kept restarts the period, so a developer who generates again from
+unchanged configuration — and is handed the same fingerprint — is not handed
+one that is about to go. Reading a snapshot and verifying one do not restart
+it: both are reads of something the developer already holds.
+
+Thirty days because the snapshot exists for one job — proving that the code a
+developer just generated records and costs — and that happens while they are
+writing it. A longer period buys little, because a pruned fingerprint is
+recovered by resolving again: the same content is stored under the same
+fingerprint. And it is bounded at all because resolving is a READ-floor act,
+so anybody holding any key can add a snapshot. The period is the owner's to
+change.
 """
 import hashlib
 import json
 import re
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from .models import FINGERPRINT_PATTERN, FINGERPRINT_PREFIX, BlueprintSnapshot
+
+#: How long a snapshot is kept after it was last resolved.
+RETENTION = timedelta(days=30)
 
 _FINGERPRINT = re.compile(FINGERPRINT_PATTERN)
 
@@ -81,11 +102,15 @@ def store(*, tenant, identity, presentation):
     either way. The uniqueness key decides a race — the loser of two
     concurrent first resolutions meets it, in a savepoint of its own so the
     caller's transaction survives, and both answer alike.
+
+    Finding it kept restarts its retention period, and writes nothing else:
+    the content is frozen, and the moment it was last resolved is not part
+    of it.
     """
     fingerprint = fingerprint_of(identity)
     held = BlueprintSnapshot.objects.filter(
         tenant=tenant, configuration_fingerprint=fingerprint)
-    if held.exists():
+    if held.update(updated_at=timezone.now()):
         return fingerprint
     try:
         with transaction.atomic():
@@ -112,3 +137,11 @@ def stored(*, tenant, configuration_fingerprint):
             .filter(tenant=tenant,
                     configuration_fingerprint=configuration_fingerprint)
             .values_list("content", flat=True).first())
+
+
+def prune(*, now=None):
+    """Delete every snapshot, of every tenant, not resolved within
+    :data:`RETENTION`. Returns how many went."""
+    cutoff = (now or timezone.now()) - RETENTION
+    pruned, _ = BlueprintSnapshot.objects.filter(updated_at__lt=cutoff).delete()
+    return pruned

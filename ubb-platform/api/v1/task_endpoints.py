@@ -168,7 +168,18 @@ def start_task(request, payload: StartTaskRequest):
     task_pricing_mode_conflicts_with_parent` answers contained work whose kind
     of work is sold differently from the unit of work containing it.
     """
-    tenant = request.auth.tenant
+    return 200, start(request.auth.tenant, payload)
+
+
+def start(tenant, payload):
+    """One start, for `tenant`: the body of the route above, as the published
+    start answers it — or the refusal it raises.
+
+    A function of its own so that the Code Builder's verification runs the
+    start a tenant's own code reaches rather than a second copy of it
+    (`api/v1/verification.py`). Everything it decides is decided here, so the
+    route and the verification cannot come to disagree about a start.
+    """
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
 
     # ⚠ ONE TRANSACTION AROUND THE WHOLE START, AND EVERY REFUSAL IS RAISED
@@ -213,7 +224,7 @@ def start_task(request, payload: StartTaskRequest):
                     f"this idempotency_key already started a unit of work with "
                     f"a different {field}",
                     extensions={"field": field, "task_id": str(claimed.id)})
-            return 200, start_task_out(claimed, replayed=True)
+            return start_task_out(claimed, replayed=True)
 
         has_a_wallet = _TENANT_HAS_A_WALLET in tenant.products
 
@@ -380,7 +391,7 @@ def start_task(request, payload: StartTaskRequest):
                 customer, task, parent_task_id=payload.parent_task_id)
             if not verdict["allowed"]:
                 raise _refused_by(verdict)
-    return 200, start_task_out(task, replayed=False)
+    return start_task_out(task, replayed=False)
 
 
 def _refused_by(verdict):
@@ -551,6 +562,13 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
     including usage that arrives after termination. A late report on a closed
     unit still lands, costs and rolls up.
     """
+    return 200, close(request.auth.tenant, task_id, payload)
+
+
+def close(tenant, task_id, payload):
+    """One close, for `tenant`: the body of the route above, as the published
+    close answers it — or the refusal it raises. A function of its own for the
+    reason `start` is one."""
     # THE RULE IS THE PRODUCT'S AND THE DIALECT IS THIS LAYER'S. Which reason a
     # given outcome requires, permits or refuses is a fact about the concept,
     # so it is decided in `apps.platform.work`; rendering that refusal as
@@ -562,7 +580,7 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
         raise Problem("validation_error", str(refused),
                       extensions={"field": refused.field})
 
-    task = get_object_or_404(Task, id=task_id, tenant=request.auth.tenant)
+    task = get_object_or_404(Task, id=task_id, tenant=tenant)
     with transaction.atomic():
         closed, transitioned = TaskService.close_task(task.id, declaration)
         # THE CHARGE RIDES THE WINNING TRANSITION, IN THE SAME TRANSACTION
@@ -612,7 +630,7 @@ def close_task(request, task_id: UUID, payload: CloseTaskRequest):
             f"{payload.outcome}",
             extensions={"task_status": closed.status, "charge_created": False})
 
-    return 200, {
+    return {
         "task_id": str(closed.id),
         "parent_task_id": str(closed.parent_id) if closed.parent_id else None,
         "status": closed.status,

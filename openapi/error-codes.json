@@ -40,6 +40,10 @@
       "status": 422,
       "title": "effective_at is outside the backfill window"
     },
+    "event_type_not_available": {
+      "status": 422,
+      "title": "The configuration being verified does not publish this Event Type"
+    },
     "feature_not_enabled": {
       "status": 403,
       "title": "Feature not enabled"

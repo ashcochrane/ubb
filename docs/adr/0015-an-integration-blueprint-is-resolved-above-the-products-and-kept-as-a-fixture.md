@@ -183,7 +183,8 @@ ticket that makes a fixed-price kind ready or not adds the member for a missing 
 
 ### 7. What this ADR does not decide
 
-How long a snapshot is kept (the Verify ticket sets retention). How a renderer spells anything.
+How long a snapshot is kept: the Verify ticket set it (#580, ADR-0018 §5 — thirty days after it
+was last resolved). How a renderer spells anything.
 Whether an unpublished request key should be refused: this route drops one, on the posture every
 other route here holds.
 
@@ -201,7 +202,7 @@ owner's wording for the codes.
 |---|---|
 | §1 — the resolver crosses no boundary | `ubb-platform/apps/platform/tests/test_product_boundaries.py` |
 | §2 — nothing but the snapshot is written, over every table; the same content is one row | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `TestResolvingStoresTheSnapshotAndNothingElse`: `test_no_table_but_the_snapshots_changes`, `test_the_same_content_is_the_same_fingerprint_and_one_row` |
-| §2 — two operations and no configuration write, even for an admin | same module — `TestTheBuilderChangesNoConfiguration`: `test_the_builder_has_two_operations_and_neither_is_a_configuration_write`, `test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them` |
+| §2 — no operation that writes configuration, even for an admin (three operations since #580 added verification, ADR-0018) | same module — `TestTheBuilderChangesNoConfiguration`: `test_the_builder_has_three_operations_and_none_is_a_configuration_write`, `test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them` |
 | §2 — the floors, and what a preview leaves behind | same module — `TestADraftPreviewIsForAnAdminAndLeavesNothingBehind`: `test_a_read_key_resolves_and_reads_but_may_not_preview_a_draft`, `test_it_resolves_the_draft_stores_nothing_and_has_no_fingerprint`; `ubb-platform/api/v1/tests/test_role_floors.py` — `test_every_tenant_route_floor_matches_the_carve` |
 | §2 — the database refuses a change through every door and admits a delete | `ubb-platform/apps/platform/code_builder/tests/test_snapshots.py` — `ASnapshotNeverChangesTest`: `test_save_is_refused`, `test_a_queryset_update_is_refused`, `test_raw_sql_is_refused`, `test_a_snapshot_may_be_deleted` |
 | §2 — a sandbox reset takes it | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `TestASandboxResetWipesTheSnapshots`: `test_a_reset_removes_them_whether_or_not_it_keeps_configuration` |

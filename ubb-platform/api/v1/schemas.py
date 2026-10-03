@@ -13,6 +13,7 @@ from apps.platform.work import services as work_services
 from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
+from core.problems import ProblemOut
 from core.vocabulary import (
     GROUPING_FIELD_SCOPE_EVENT, PRICING_MODE_EVENT_PRICED,
     RATE_STRUCTURE_PER_UNIT,
@@ -4410,3 +4411,110 @@ class ResolvedIntegrationBlueprint(Schema):
     readiness: IntegrationReadiness
     calls: List[IntegrationBlueprintCall]
     diagnostics: List[IntegrationBlueprintDiagnostic]
+
+
+class IntegrationBlueprintVerificationRecordIn(Schema):
+    """One recording the verification makes: the Event Type it claims, and
+    the sample values a tenant's code would send for it.
+
+    `measurements` and `provider_cost_micros` are the same fields, with the
+    same rules, as on a recording. `subtask_type` records this event under a
+    Subtask of that kind, which must be one the Blueprint selected; left out,
+    the event is recorded under the Task itself.
+    """
+    event_type: str = Field(max_length=100)
+    measurements: dict[str, int] = Field(default_factory=dict)
+    provider_cost_micros: Optional[int] = Field(
+        default=None, ge=0, le=999_999_999_999)
+    subtask_type: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("measurements")
+    @classmethod
+    def measurement_values_nonnegative(cls, v):
+        """Refused here as a recording refuses it, so a sample a recording
+        would refuse never reaches the run."""
+        negative = [k for k, val in v.items() if val < 0]
+        if negative:
+            raise ValueError(
+                f"measurements values must be >= 0; negative quantities: "
+                f"{negative}")
+        return v
+
+
+class IntegrationBlueprintVerificationIn(Schema):
+    """What one verification records, in order: between 1 and 50 events."""
+    records: List[IntegrationBlueprintVerificationRecordIn] = Field(
+        min_length=1, max_length=50)
+
+
+class IntegrationBlueprintVerificationEnvironment(Schema):
+    """Where the verification ran, and what it supplied that the stored
+    configuration does not hold.
+
+    It ran in a tenant made for it from the stored configuration, inside one
+    transaction that is rolled back when the run ends: `discarded` is always
+    true, and every id in the acknowledgements names a record that no longer
+    exists. Nothing it did was delivered — no webhook, no Stripe call — and a
+    stop it reached was not acted on.
+
+    `customer_external_id` is the customer it recorded for, and
+    `grouping_fields` the value it supplied for each Grouping Field the kinds
+    of work require. `rules_effective_at` is the moment every stored Cost Rate
+    and pricing rule took effect: each is in force for the run whatever window
+    it was declared with.
+    """
+    discarded: bool
+    customer_external_id: str
+    grouping_fields: dict[str, str]
+    rules_effective_at: datetime
+
+
+class IntegrationBlueprintVerificationUnit(Schema):
+    """One unit of work the verification started, as its start and its close
+    answered. Either is null where the run stopped before it."""
+    task_type: str
+    start: Optional[StartTaskResponse] = None
+    close: Optional[CloseTaskResponse] = None
+
+
+class IntegrationBlueprintVerificationRecord(Schema):
+    """One recording, as it was acknowledged, and what the verification read
+    off the acknowledgement.
+
+    `replay` is the same recording sent a second time with the same
+    idempotency key; it must name the same event. Its running totals are
+    null by design, as on any replay.
+
+    `missing_required_measurement_keys` names each Measurement the Event Type
+    declares required for a complete cost and the recording did not carry.
+    `complete` is true when the recording carried every one of them, its cost
+    is not `unresolved`, and the replay named the same event.
+    """
+    event_type: str
+    subtask_type: Optional[str] = None
+    acknowledgement: Optional[RecordUsageResponse] = None
+    replay: Optional[RecordUsageResponse] = None
+    missing_required_measurement_keys: List[str]
+    complete: bool
+
+
+class IntegrationBlueprintVerificationRefusal(Schema):
+    """A call of the run that was refused, which is where the run stopped."""
+    operation_id: str
+    problem: ProblemOut
+
+
+class IntegrationBlueprintVerification(Schema):
+    """What verifying a stored Blueprint found.
+
+    `verified` is true when no call of the run was refused and every
+    recording is `complete`. A gap fails it without failing the request: the
+    acknowledgement that shows the gap is in `records`.
+    """
+    configuration_fingerprint: str
+    verified: bool
+    environment: IntegrationBlueprintVerificationEnvironment
+    task: IntegrationBlueprintVerificationUnit
+    subtasks: List[IntegrationBlueprintVerificationUnit]
+    records: List[IntegrationBlueprintVerificationRecord]
+    refusal: Optional[IntegrationBlueprintVerificationRefusal] = None

@@ -3715,6 +3715,268 @@
         "title": "IntegrationBlueprintSelectionIn",
         "type": "object"
       },
+      "IntegrationBlueprintVerification": {
+        "description": "What verifying a stored Blueprint found.\n\n`verified` is true when no call of the run was refused and every\nrecording is `complete`. A gap fails it without failing the request: the\nacknowledgement that shows the gap is in `records`.",
+        "properties": {
+          "configuration_fingerprint": {
+            "title": "Configuration Fingerprint",
+            "type": "string"
+          },
+          "environment": {
+            "$ref": "#/components/schemas/IntegrationBlueprintVerificationEnvironment"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintVerificationRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationBlueprintVerificationRefusal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtasks": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintVerificationUnit"
+            },
+            "title": "Subtasks",
+            "type": "array"
+          },
+          "task": {
+            "$ref": "#/components/schemas/IntegrationBlueprintVerificationUnit"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configuration_fingerprint",
+          "verified",
+          "environment",
+          "task",
+          "subtasks",
+          "records"
+        ],
+        "title": "IntegrationBlueprintVerification",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationEnvironment": {
+        "description": "Where the verification ran, and what it supplied that the stored\nconfiguration does not hold.\n\nIt ran in a tenant made for it from the stored configuration, inside one\ntransaction that is rolled back when the run ends: `discarded` is always\ntrue, and every id in the acknowledgements names a record that no longer\nexists. Nothing it did was delivered \u2014 no webhook, no Stripe call \u2014 and a\nstop it reached was not acted on.\n\n`customer_external_id` is the customer it recorded for, and\n`grouping_fields` the value it supplied for each Grouping Field the kinds\nof work require. `rules_effective_at` is the moment every stored Cost Rate\nand pricing rule took effect: each is in force for the run whatever window\nit was declared with.",
+        "properties": {
+          "customer_external_id": {
+            "title": "Customer External Id",
+            "type": "string"
+          },
+          "discarded": {
+            "title": "Discarded",
+            "type": "boolean"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Grouping Fields",
+            "type": "object"
+          },
+          "rules_effective_at": {
+            "format": "date-time",
+            "title": "Rules Effective At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "discarded",
+          "customer_external_id",
+          "grouping_fields",
+          "rules_effective_at"
+        ],
+        "title": "IntegrationBlueprintVerificationEnvironment",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationIn": {
+        "description": "What one verification records, in order: between 1 and 50 events.",
+        "properties": {
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationBlueprintVerificationRecordIn"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "records"
+        ],
+        "title": "IntegrationBlueprintVerificationIn",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationRecord": {
+        "description": "One recording, as it was acknowledged, and what the verification read\noff the acknowledgement.\n\n`replay` is the same recording sent a second time with the same\nidempotency key; it must name the same event. Its running totals are\nnull by design, as on any replay.\n\n`missing_required_measurement_keys` names each Measurement the Event Type\ndeclares required for a complete cost and the recording did not carry.\n`complete` is true when the recording carried every one of them, its cost\nis not `unresolved`, and the replay named the same event.",
+        "properties": {
+          "acknowledgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordUsageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "missing_required_measurement_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Required Measurement Keys",
+            "type": "array"
+          },
+          "replay": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordUsageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subtask_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtask Type"
+          }
+        },
+        "required": [
+          "event_type",
+          "missing_required_measurement_keys",
+          "complete"
+        ],
+        "title": "IntegrationBlueprintVerificationRecord",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationRecordIn": {
+        "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements` and `provider_cost_micros` are the same fields, with the\nsame rules, as on a recording. `subtask_type` records this event under a\nSubtask of that kind, which must be one the Blueprint selected; left out,\nthe event is recorded under the Task itself.",
+        "properties": {
+          "event_type": {
+            "maxLength": 100,
+            "title": "Event Type",
+            "type": "string"
+          },
+          "measurements": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Measurements",
+            "type": "object"
+          },
+          "provider_cost_micros": {
+            "anyOf": [
+              {
+                "maximum": 999999999999,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Micros"
+          },
+          "subtask_type": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtask Type"
+          }
+        },
+        "required": [
+          "event_type"
+        ],
+        "title": "IntegrationBlueprintVerificationRecordIn",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationRefusal": {
+        "description": "A call of the run that was refused, which is where the run stopped.",
+        "properties": {
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "problem": {
+            "$ref": "#/components/schemas/ProblemOut"
+          }
+        },
+        "required": [
+          "operation_id",
+          "problem"
+        ],
+        "title": "IntegrationBlueprintVerificationRefusal",
+        "type": "object"
+      },
+      "IntegrationBlueprintVerificationUnit": {
+        "description": "One unit of work the verification started, as its start and its close\nanswered. Either is null where the run stopped before it.",
+        "properties": {
+          "close": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CloseTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StartTaskResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_type"
+        ],
+        "title": "IntegrationBlueprintVerificationUnit",
+        "type": "object"
+      },
       "InvitationCreateIn": {
         "properties": {
           "email": {
@@ -12092,6 +12354,81 @@
           }
         ],
         "summary": "Get Blueprint"
+      }
+    },
+    "/api/v1/code-builder/blueprints/{configuration_fingerprint}/verify": {
+      "post": {
+        "description": "Verify that the stored Blueprint a generated file was stamped with\nrecords and costs.\n\nThe run builds the configuration stored under the fingerprint \u2014 never\nthe configuration in force now \u2014 in a temporary tenant, starts the unit\nof work, starts each Subtask a recording names, makes each recording with\nthe sample values you send and sends it a second time with the same\nidempotency key, then closes the work. Everything the run wrote is then\ndiscarded: nothing it records is kept, delivered or charged, and every id\nin the answer names a record that no longer exists. No API key is created\nand none is returned.\n\n`verified` is false where a recording has a gap or a call of the run was\nrefused, and the answer names it: `missing_required_measurement_keys`, or\nthe acknowledgement's `costing_status`, `unresolved_reason` and\n`uncosted_measurement_keys`, or `refusal`. A gap is a 200.\n\n`404 not_found` answers a fingerprint with no stored Blueprint \u2014 never\nresolved, or removed 30 days after it was last resolved: resolve the\nselection again. `422 event_type_not_available` answers a recording of an\nEvent Type the stored Blueprint does not publish \u2014 one it did not select,\nor one that was undeclared or still a draft when it was resolved \u2014 and\nnames each in `event_types`; nothing is run. `409 conflict` answers a\nstored Blueprint that is not `complete`. `422 validation_error` answers a\n`subtask_type` the Blueprint did not select.",
+        "operationId": "api_v1_code_builder_endpoints_verify_blueprint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "configuration_fingerprint",
+            "required": true,
+            "schema": {
+              "title": "Configuration Fingerprint",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationBlueprintVerificationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationBlueprintVerification"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Verify Blueprint"
       }
     },
     "/api/v1/connect/start": {

@@ -124,6 +124,10 @@ API_V1_CODE_BUILDER_ENDPOINTS_RESOLVE_BLUEPRINT = Operation(
     'api_v1_code_builder_endpoints_resolve_blueprint',
     'post',
     '/api/v1/code-builder/blueprints')
+API_V1_CODE_BUILDER_ENDPOINTS_VERIFY_BLUEPRINT = Operation(
+    'api_v1_code_builder_endpoints_verify_blueprint',
+    'post',
+    '/api/v1/code-builder/blueprints/{configuration_fingerprint}/verify')
 API_V1_CONNECT_ENDPOINTS_CONNECT_START = Operation(
     'api_v1_connect_endpoints_connect_start', 'post', '/api/v1/connect/start')
 API_V1_CONNECT_ENDPOINTS_CONNECT_STATUS = Operation(

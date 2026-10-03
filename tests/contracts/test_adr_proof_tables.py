@@ -103,6 +103,7 @@ OPTED_IN = (
     "0015-an-integration-blueprint-is-resolved-above-the-products-and-kept-as-a-fixture.md",
     "0016-generated-integration-code-is-a-module-and-value-free-call-sites.md",
     "0017-a-generated-shell-file-is-sourced-and-a-stop-is-a-status.md",
+    "0018-a-blueprint-is-verified-in-a-tenant-that-is-never-committed.md",
 )
 
 

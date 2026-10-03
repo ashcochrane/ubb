@@ -963,12 +963,26 @@ republishing an unchanged declaration moves it. It excludes what is only present
 ready-to-copy request a diagnostic offers, which is kept beside the identity and not hashed — and
 anything volatile or meaningless: a row id, a row timestamp, the moment of resolution, the order
 things happen to be listed in. A **derived test fixture** — never tenant configuration, read by nothing that costs,
-prices or enforces, and prunable: a sandbox reset removes it, and a fingerprint whose snapshot is
-gone answers not-found. A draft preview stores none.
+prices or enforces, and prunable: a sandbox reset removes it, retention removes it thirty days after
+it was last resolved, and a fingerprint whose snapshot is gone answers not-found. A draft preview
+stores none.
 (`apps/platform/code_builder/models.py:BlueprintSnapshot`; `apps/platform/code_builder/snapshots.py`)
 _Avoid_: reading the fingerprint as a catalogue-wide configuration revision — it names one
 resolution of one selection; and "the hash of the Blueprint" — the request a diagnostic offers is
 on the Blueprint and outside the hash.
+
+**Verification** (of a Blueprint):
+Running a stored snapshot to prove it records and costs: its configuration is built in a tenant made
+for the run, the unit of work is started, each claimed Event Type is recorded with the request's
+sample values and sent again with the same key, and the work is closed — all inside one transaction
+that is rolled back, so nothing it wrote survives, nothing waits to be delivered and no key is
+minted. It refuses, before anything is written, an Event Type the snapshot does not publish
+(`event_type_not_available`) and a Blueprint that is not complete. Its **verdict** is read off the
+acknowledgements: a required Measurement the recording did not carry, or a cost UBB could not work
+out, fails it with a 200 and names the gap; the unit of work's outcome never carries pass or fail.
+(`api/v1/verification.py`; ADR-0018)
+_Avoid_: "test event" — the form this replaces; and "sandbox" for where it runs — a tenant's sandbox
+is its own and holds the developer's configuration, and the run is neither.
 
 **Response-shape representation**:
 What a supplier's response *is* when a declared path is read from it — the JSON a web API returns,

@@ -514,3 +514,16 @@ authorisations:
       who wants them typed. If a command-line builder or a coding-agent
       surface ever consumes a Blueprint from Python, that consumer decides the
       handle's shape; nothing here pre-empts it.
+  - id: code-builder-580-verifying-a-blueprint
+    issue: 580
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION, `generated_only`: verifying a stored Integration
+      Blueprint by running it
+      (`POST /code-builder/blueprints/{configuration_fingerprint}/verify`).
+
+      NOT WRAPPED FOR THE REASON ITS TWO NEIGHBOURS ARE NOT. The hand-written
+      client is what a tenant's integration calls while it runs; verifying is
+      what a developer asks once that code exists, from the console's builder
+      page, and no running integration asks it. The generated core carries the
+      request and the answer typed for a caller who wants them.

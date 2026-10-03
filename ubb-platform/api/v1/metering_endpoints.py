@@ -315,10 +315,21 @@ def record_usage(request, payload: RecordUsageRequest):
     recorded, and `costing_status` plus `uncosted_measurement_keys` on this
     body say so at the moment the gap is created."""
     _product_check(request)
+    return record(request.auth.tenant, payload)
 
-    customer = get_object_or_404(Customer, id=payload.customer_id, tenant=request.auth.tenant)
+
+def record(tenant, payload):
+    """One recording, for `tenant`: the body of the route above, as its 200
+    answers it — or the refusal it raises.
+
+    A function of its own so that the Code Builder's verification records
+    exactly as a tenant's own code does (`api/v1/verification.py`): the
+    supplier-cost admission, the grouping-field admission and the recording
+    core, in this order, from one place.
+    """
+    customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
     if payload.task_id is not None:
-        get_object_or_404(Task, id=payload.task_id, tenant=request.auth.tenant, customer=customer)
+        get_object_or_404(Task, id=payload.task_id, tenant=tenant, customer=customer)
     # #324: the supplier's own figure is admissible only where the Event Type
     # declares it arrives on the call. Refused rather than dropped — a 200 here
     # would tell an integrator UBB is using a number it discards.
@@ -329,7 +340,7 @@ def record_usage(request, payload: RecordUsageRequest):
     # request that was never recorded. This one is a single read and can go
     # first at no cost.
     try:
-        admit_supplier_cost(request.auth.tenant, payload)
+        admit_supplier_cost(tenant, payload)
     except SupplierCostNotAdmissible as exc:
         raise Problem("validation_error", str(exc))
     # Task 9: admission is a WRITE (records GroupingFieldValue rows), so it runs
@@ -338,13 +349,13 @@ def record_usage(request, payload: RecordUsageRequest):
     # record.
     try:
         dimension_slots = DimensionService.admit(
-            request.auth.tenant, payload.grouping_fields,
+            tenant, payload.grouping_fields,
             scope=GROUPING_FIELD_SCOPE_EVENT)
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
     try:
         result = UsageService.record_usage(
-            tenant=request.auth.tenant, customer=customer,
+            tenant=tenant, customer=customer,
             dimension_slots=dimension_slots,
             **usage_kwargs(payload))
     except ValueError as e:
