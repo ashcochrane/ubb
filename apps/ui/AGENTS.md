@@ -11,7 +11,9 @@ Supplement to `CLAUDE.md` (which is current truth — read it first).
 
 ## After writing code
 
-1. `pnpm test` · `npx tsc -b` · `pnpm lint` · `pnpm build` — all four green.
+1. `pnpm test` · `pnpm typecheck` · `pnpm lint` · `pnpm build` — all four green. (`typecheck`
+   generates `ubb-codegen`'s gitignored contract types before `tsc -b`, which a clean checkout
+   needs since the Code Builder imports the renderer.)
 2. Verify no cross-feature imports and no raw client calls from components.
 3. Mock (`api/mock.ts`) stays signature-identical with `api/api.ts` and contract-typed.
 4. Update `PROGRESS.md` only for genuine milestone changes.

@@ -151,7 +151,7 @@ imports; no client calls from components (go through the feature's queries.ts); 
 ```
 Overview /  ·  Events /events  ·  Tasks /tasks (+ /kinds/$key · /runs · /runs/$taskId)  ·  Customers /customers
 REVENUE: Pricing /pricing · Billing /billing [billing] · Plans /plans [billing] · Referrals /referrals [referrals]
-PLATFORM: Spend controls /spend-controls · Webhooks /webhooks · Developers /developers · Settings /settings (+ /team /products /billing /audit)
+PLATFORM: Spend controls /spend-controls · Webhooks /webhooks · Developers /developers (+ /code-builder) · Settings /settings (+ /team /products /billing /audit)
 ```
 Bracketed = product-gated (hidden from nav; direct URL renders `ProductGate` explanation).
 
@@ -167,7 +167,7 @@ plain language over backend jargon; monochrome palette with red reserved for des
 
 ```bash
 pnpm test          # vitest (includes the route-tree smoke suite)
-npx tsc -b         # strict typecheck
+pnpm typecheck     # strict typecheck: ubb-codegen's contract types, then tsc -b
 pnpm lint          # eslint
 pnpm build         # tsc + vite production build
 ```

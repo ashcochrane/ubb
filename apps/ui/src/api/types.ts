@@ -5,7 +5,17 @@
 // All aliases point at the same generated schema map; the per-namespace names
 // exist to keep feature imports self-documenting.
 
-import type { components as ApiComponents } from "./generated/api";
+import type {
+  components as ApiComponents,
+  operations as ApiOperations,
+  webhooks as ApiWebhooks,
+} from "./generated/api";
+
+/** Every operation the contract publishes, by its `operationId`. */
+export type OperationId = keyof ApiOperations;
+
+/** Every event the contract's `webhooks` section publishes, by name. */
+export type WebhookEventName = keyof ApiWebhooks;
 
 type ApiSchemas = ApiComponents["schemas"];
 

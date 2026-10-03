@@ -407,8 +407,13 @@ jobs:
       # without anything going red — and how .gitignore's unanchored `lib/`
       # silently dropped 22 imported modules for weeks. A clean checkout could
       # not build at all. These two steps are what make that impossible.
+      #
+      # `typecheck` generates `ubb-codegen`'s contract types before `tsc -b`
+      # (#579): the console's Code Builder imports the renderer as TypeScript
+      # source, and that source reads `apps/codegen/src/generated/v1.d.ts`,
+      # which is gitignored and exists in a clean checkout only once made.
       - name: UI typecheck — the console compiles against the committed contract
-        run: pnpm --dir apps/ui exec tsc -b
+        run: pnpm --dir apps/ui typecheck
 
       - name: UI tests
         run: pnpm --dir apps/ui test
