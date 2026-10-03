@@ -50,17 +50,17 @@ describe("the Code Builder's URL", () => {
     });
   });
 
-  it("declares exactly the keys it parses", () => {
-    const parsed = codeBuilderSearchSchema.parse({
-      target: "python_sdk",
-      task_type: "k",
-      event_types: ["e"],
-      subtask_types: ["s"],
-      draft_preview: false,
-      held: FINGERPRINT,
-    });
-
-    expect(Object.keys(parsed).sort()).toEqual([...CODE_BUILDER_SEARCH_KEYS].sort());
+  // The URL's keys as shipped, written out: a key added to the schema is a
+  // change to what the page puts in an address, and should read as one here.
+  it("declares exactly these keys", () => {
+    expect([...CODE_BUILDER_SEARCH_KEYS].sort()).toEqual([
+      "draft_preview",
+      "event_types",
+      "held",
+      "subtask_types",
+      "target",
+      "task_type",
+    ]);
   });
 
   it("drops a key it does not declare rather than forwarding it", () => {

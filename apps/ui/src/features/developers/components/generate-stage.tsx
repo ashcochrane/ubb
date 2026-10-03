@@ -24,9 +24,10 @@ import {
   previewsByCall,
   type RenderedFile,
 } from "../lib/artifact";
-import { copyActionLabel, roleOf, stalenessOf, subjectOf } from "../lib/blueprint";
-import { CALL_TITLES, readinessLabel } from "../lib/code-builder-words";
+import { copyActionLabel, stalenessOf } from "../lib/blueprint";
+import { callHeading, readinessLabel } from "../lib/code-builder-words";
 import { FilePanel } from "./file-panel";
+import { Fingerprint } from "./fingerprint";
 
 /** The kinds a developer takes as the integration; previews are shown by call. */
 const TAKEN_KINDS = FILE_KINDS.filter((kind) => kind !== "request_preview");
@@ -77,9 +78,10 @@ export function GenerateStage({
   const previewed = paired.some(({ preview }) => preview !== null) || unpaired.length > 0;
 
   return (
-    // Keyed on the resolution: regenerated files are new files, so nothing a
-    // panel showed about the last ones — a "Copied" — carries over to them.
-    <div key={fingerprint ?? "draft"} className="space-y-5" aria-busy={query.isPlaceholderData}>
+    // Keyed on each resolution, a draft preview's included: regenerated files
+    // are new files, so nothing a panel showed about the last ones — a
+    // "Copied" — carries over to them.
+    <div key={query.dataUpdatedAt} className="space-y-5" aria-busy={query.isPlaceholderData}>
       <Held held={held} blueprint={blueprint} />
       <p className="text-[12px] text-text-secondary">
         {`${readinessLabel(blueprint.readiness)}. `}
@@ -107,13 +109,9 @@ export function GenerateStage({
           </p>
           {paired.map(({ call, preview }, index) => {
             if (preview === null) return null;
-            const subject = subjectOf(call);
-            const title = CALL_TITLES[roleOf(call)];
             return (
               <div key={`${call.operation_id}:${index}`} className="space-y-1">
-                <h4 className="text-[12px] text-text-secondary">
-                  {subject === null ? title : `${title} · ${subject}`}
-                </h4>
+                <h4 className="text-[12px] text-text-secondary">{callHeading(call)}</h4>
                 <FilePanel file={preview} copyLabel="Copy request preview" />
               </div>
             );
@@ -161,19 +159,23 @@ function Held({ held, blueprint }: { held: string | undefined; blueprint: Bluepr
         </p>
       );
     case "stale":
-      return (
+      // A draft preview has no fingerprint and shows none — not even the one
+      // the files taken carry, which belongs to another Blueprint.
+      return staleness.current === null ? (
         <div role="status" className="space-y-1 rounded-md border border-border p-3" data-stale>
           <p className="text-[13px] font-medium text-text-primary">The files you took are stale.</p>
           <p className="text-[12px] text-text-secondary">
-            They were generated from <code className="font-mono">{staleness.held}</code>.{" "}
-            {staleness.current === null
-              ? "This is a draft preview, which no file is ever current against."
-              : "The configuration or the selection has changed since, and the files below are regenerated from "}
-            {staleness.current !== null && (
-              <>
-                <code className="font-mono">{staleness.current}</code>: take them again.
-              </>
-            )}
+            This is a draft preview, which no file is ever current against: the files
+            you took were generated from a published Blueprint.
+          </p>
+        </div>
+      ) : (
+        <div role="status" className="space-y-1 rounded-md border border-border p-3" data-stale>
+          <p className="text-[13px] font-medium text-text-primary">The files you took are stale.</p>
+          <p className="text-[12px] text-text-secondary">
+            They were generated from <Fingerprint value={staleness.held} />. The configuration
+            or the selection has changed since, and the files below are regenerated from{" "}
+            <Fingerprint value={staleness.current} />: take them again.
           </p>
         </div>
       );

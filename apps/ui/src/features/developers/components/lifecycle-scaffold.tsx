@@ -6,9 +6,11 @@
 // taught survives here, as the onboarding state of the builder itself: shown
 // while the Blueprint is a scaffold, labelled with the Blueprint's own verdict,
 // teaching the lifecycle in the order of the Blueprint's own calls, and naming
-// what must be configured from its own diagnostics. Nothing in it is a second
-// example: every name it shows is read off the Blueprint or the renderer's
-// catalogue.
+// what must be configured from its own diagnostics. It is not a second
+// example: the lifecycle it teaches — its order, its verdict, the credential's
+// variable and what is missing — is read off the Blueprint or the renderer's
+// catalogue. The notes on lists and errors under it are the API's general
+// conventions, kept from the card in its words; they describe no call.
 
 import { Link } from "@tanstack/react-router";
 import { ENVIRONMENT } from "ubb-codegen";

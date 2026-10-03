@@ -41,7 +41,9 @@ export function FilePanel({
     anchor.href = url;
     anchor.download = downloadName(file.path);
     anchor.click();
-    URL.revokeObjectURL(url);
+    // Revoked after the click has been handled, not during it: a browser may
+    // still be reading the object when the click returns.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
     onTaken?.();
   };
 

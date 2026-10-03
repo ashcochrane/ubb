@@ -10,7 +10,6 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 
 import { isForbidden } from "@/api/problem";
-import { CopyButton } from "@/components/shared/copy-button";
 import { ErrorCard } from "@/components/shared/error-card";
 import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
@@ -21,23 +20,16 @@ import { formatDate, formatMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 
 import type { Blueprint, BlueprintArgument, BlueprintCall } from "../api/types";
-import {
-  placesOf,
-  roleOf,
-  screenFor,
-  shownValue,
-  subjectOf,
-  type Shown,
-  type TokenPlace,
-} from "../lib/blueprint";
+import { placesOf, screenFor, shownValue, type Shown, type TokenPlace } from "../lib/blueprint";
 import {
   bindingClassLabel,
-  CALL_TITLES,
+  callHeading,
   codeTargetLabel,
   objectKindLabel,
   readinessLabel,
 } from "../lib/code-builder-words";
 import { DiagnosticsList } from "./diagnostics-list";
+import { Fingerprint } from "./fingerprint";
 import { KindWebhooks } from "./kind-webhooks";
 import { ScreenLink } from "./screen-link";
 
@@ -111,14 +103,11 @@ function Verdict({ blueprint }: { blueprint: Blueprint }) {
           {blueprint.sdk_major_version != null && ` · SDK version ${blueprint.sdk_major_version}`}
         </dd>
         <dt className="text-text-secondary">Configuration fingerprint</dt>
-        <dd className="flex min-w-0 items-center gap-2">
+        <dd className="min-w-0">
           {fingerprint === null ? (
             <span className="text-text-secondary">None — a draft preview is stored nowhere</span>
           ) : (
-            <>
-              <code className="truncate font-mono text-[12px]">{fingerprint}</code>
-              <CopyButton value={fingerprint} label="Copy the fingerprint" />
-            </>
+            <Fingerprint value={fingerprint} />
           )}
         </dd>
       </dl>
@@ -133,9 +122,7 @@ function Verdict({ blueprint }: { blueprint: Blueprint }) {
 }
 
 function CallFacts({ call }: { call: BlueprintCall }) {
-  const role = roleOf(call);
-  const subject = subjectOf(call);
-  const title = subject === null ? CALL_TITLES[role] : `${CALL_TITLES[role]} · ${subject}`;
+  const title = callHeading(call);
   const places = placesOf(call);
   return (
     <article aria-label={title} className="rounded-md border border-border">
@@ -217,6 +204,8 @@ function ShownValue({ shown }: { shown: Shown }) {
       return <span className="text-text-secondary">Not declared yet</span>;
     case "concept":
       return <OpenSetValue labelKeys={shown.labelKeys} value={shown.value} />;
+    case "words":
+      return <span>{shown.text}</span>;
     case "money":
       return <span>{formatMicros(shown.micros, currency)}</span>;
     case "no_ceiling_declared":

@@ -5,7 +5,7 @@
 // value list. The rest is the console's own copy about this page's objects —
 // what a call does, where a link goes — which is prose, not catalogue content.
 
-import { labelMap } from "@/lib/localisation";
+import { labelMap, tenantDefinedLabel } from "@/lib/localisation";
 import {
   BINDING_CLASS_LABEL_KEYS,
   CODE_TARGET_LABEL_KEYS,
@@ -18,7 +18,8 @@ import {
   WEBHOOK_EVENT_TYPE_LABEL_KEYS,
 } from "@/lib/vocabulary";
 
-import type { CallRole, ConsoleScreen } from "./blueprint";
+import type { BlueprintCall } from "../api/types";
+import { roleOf, subjectOf, type CallRole } from "./blueprint";
 
 export const codeTargetLabel = labelMap(CODE_TARGET_LABEL_KEYS);
 export const readinessLabel = labelMap(INTEGRATION_READINESS_LABEL_KEYS);
@@ -39,16 +40,12 @@ export const CALL_TITLES: Readonly<Record<CallRole, string>> = {
   other: "Another call",
 };
 
-/** What a link to each owning screen says it opens. */
-export function screenLinkText(screen: ConsoleScreen): string {
-  switch (screen.to) {
-    case "/tasks/kinds/$key":
-      return `Open the kind of work ${screen.params.key}`;
-    case "/tasks":
-      return "Kinds of work and workspace defaults";
-    case "/pricing":
-      return "Cost Rates";
-    case "/webhooks":
-      return "Webhooks";
-  }
+/**
+ * A call's heading: what it does, and the declared object it is about where
+ * it names one — in the tenant's own spelling, never re-worded.
+ */
+export function callHeading(call: BlueprintCall): string {
+  const title = CALL_TITLES[roleOf(call)];
+  const subject = subjectOf(call);
+  return subject === null ? title : `${title} · ${tenantDefinedLabel(subject)}`;
 }

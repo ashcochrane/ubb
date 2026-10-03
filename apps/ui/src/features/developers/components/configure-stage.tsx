@@ -1,13 +1,13 @@
 // Configure: what an integration does, as far as it has to be said (#579).
 //
-// FOUR QUESTIONS, AND ONLY THE FOUR THE REQUEST PUBLISHES
-// (`IntegrationBlueprintSelectionIn`): the target, the kind of work, the Event
-// Types, and — only where the tenant declares any — the Subtask kinds the code
-// starts itself. It never asks which Measurements to send, and it never asks
-// how to read a supplier's response: an Event Type that reads one and declares
-// no shape is answered by the Blueprint, with a diagnostic carrying the
-// request that declares it (#576). The draft preview is the admin's, and is
-// offered to nobody else.
+// FOUR QUESTIONS AND, FOR AN ADMIN, ONE SWITCH — exactly the fields the
+// request publishes (`IntegrationBlueprintSelectionIn`): the target, the kind
+// of work, the Event Types, the Subtask kinds the code starts itself (asked
+// only where the tenant declares any), and `draft_preview`, offered to nobody
+// but a member known to be an admin. It never asks which Measurements to
+// send, and it never asks how to read a supplier's response: an Event Type
+// that reads one and declares no shape is answered by the Blueprint, with a
+// diagnostic carrying the request that declares it (#576).
 
 import { ErrorCard } from "@/components/shared/error-card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { CODE_TARGET_VALUES } from "@/lib/vocabulary";
 
-import { useEventTypes, useKindsOfWork } from "../api/queries";
+import { useEventTypeChoices, useKindChoices } from "../api/queries";
 import type { EventTypeChoice, KindChoice } from "../api/types";
 import {
   DEFAULT_TARGET,
@@ -23,6 +23,7 @@ import {
   type CodeBuilderSearch,
 } from "../lib/code-builder-search";
 import { altitudeLabel, codeTargetLabel, declarationStatusLabel } from "../lib/code-builder-words";
+import { ScreenLink } from "./screen-link";
 
 const LEGEND = "text-[12px] font-medium text-text-primary";
 const HINT = "text-[12px] text-text-secondary";
@@ -35,12 +36,6 @@ function toggled(keys: readonly string[] | undefined, key: string, on: boolean):
   return next.size > 0 ? [...next].sort() : undefined;
 }
 
-/** Why a selected key is not among the choices offered, if it is not. */
-function notOffered(key: string, all: readonly { key: string; retired?: boolean }[]): string {
-  const found = all.find((choice) => choice.key === key);
-  return found?.retired ? "retired" : "not declared";
-}
-
 export function ConfigureStage({
   search,
   onSearchChange,
@@ -51,8 +46,8 @@ export function ConfigureStage({
   /** True only for a member KNOWN to be an admin (`roleIsKnownToMeet`). */
   offersDraftPreview: boolean;
 }) {
-  const kinds = useKindsOfWork();
-  const eventTypes = useEventTypes();
+  const kinds = useKindChoices();
+  const eventTypes = useEventTypeChoices();
   const target = search.target ?? DEFAULT_TARGET;
 
   return (
@@ -132,6 +127,11 @@ export function ConfigureStage({
   );
 }
 
+/** Why a selected kind is not among the choices offered. */
+function kindNotOffered(key: string, kinds: readonly KindChoice[]): string {
+  return kinds.find((kind) => kind.key === key)?.retired ? "retired" : "not declared";
+}
+
 function KindQuestion({
   kinds,
   search,
@@ -163,15 +163,65 @@ function KindQuestion({
           ))}
           {stray && (
             <option value={selected}>
-              {`${selected} (${notOffered(selected, kinds)})`}
+              {`${tenantDefinedLabel(selected)} (${kindNotOffered(selected, kinds)})`}
             </option>
           )}
         </select>
       </label>
       {offered.length === 0 && (
-        <p className={HINT}>No kinds of work are declared yet. They are declared on Tasks.</p>
+        <p className={HINT}>
+          No kinds of work are declared yet. <ScreenLink screen={{ to: "/tasks" }} />
+        </p>
       )}
     </div>
+  );
+}
+
+/** One choosable key: the tenant's own, with what the page knows about it. */
+interface KeyChoice {
+  readonly key: string;
+  /** Said beside the key: why it is not offered, or that it is only a draft. */
+  readonly note: { readonly kind: "aside" | "badge"; readonly text: string } | null;
+}
+
+/**
+ * A set of declared keys to tick, and the ones the URL names that are not
+ * offered, kept and marked rather than silently dropped. At most fifty, which
+ * is all the request takes.
+ */
+function KeyChoices({
+  legend,
+  hint,
+  choices,
+  selected,
+  onChange,
+}: {
+  legend: string;
+  hint: string;
+  choices: readonly KeyChoice[];
+  selected: readonly string[];
+  onChange: (key: string, on: boolean) => void;
+}) {
+  return (
+    <fieldset className="space-y-1.5">
+      <legend className={LEGEND}>{legend}</legend>
+      <p className={HINT}>{hint}</p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {choices.map(({ key, note }) => (
+          <label key={key} className="flex items-center gap-2 text-[13px] text-text-primary">
+            <input
+              type="checkbox"
+              checked={selected.includes(key)}
+              disabled={!selected.includes(key) && selected.length >= MAX_SELECTED}
+              onChange={(event) => onChange(key, event.target.checked)}
+            />
+            <span className="font-mono text-[12px]">{tenantDefinedLabel(key)}</span>
+            {note?.kind === "aside" && <span className={HINT}>{`(${note.text})`}</span>}
+            {note?.kind === "badge" && <Badge variant="outline">{note.text}</Badge>}
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 
@@ -191,31 +241,21 @@ function SubtaskQuestion({
   // to choose, unless the URL already names one.
   if (offered.length === 0 && strays.length === 0) return null;
   return (
-    <fieldset className="space-y-1.5">
-      <legend className={LEGEND}>{`${altitudeLabel("subtask")} kinds it starts itself`}</legend>
-      <p className={HINT}>Only those your code starts explicitly. Leave this empty otherwise.</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-        {[...offered.map((kind) => kind.key), ...strays].map((key) => (
-          <label key={key} className="flex items-center gap-2 text-[13px] text-text-primary">
-            <input
-              type="checkbox"
-              checked={selected.includes(key)}
-              disabled={!selected.includes(key) && selected.length >= MAX_SELECTED}
-              onChange={(event) =>
-                onSearchChange({
-                  ...search,
-                  subtask_types: toggled(search.subtask_types, key, event.target.checked),
-                })
-              }
-            />
-            <span className="font-mono text-[12px]">{tenantDefinedLabel(key)}</span>
-            {strays.includes(key) && (
-              <span className={HINT}>{`(${notOffered(key, kinds)})`}</span>
-            )}
-          </label>
-        ))}
-      </div>
-    </fieldset>
+    <KeyChoices
+      legend={`${altitudeLabel("subtask")} kinds it starts itself`}
+      hint="Only those your code starts explicitly. Leave this empty otherwise."
+      choices={[
+        ...offered.map((kind) => ({ key: kind.key, note: null })),
+        ...strays.map((key) => ({
+          key,
+          note: { kind: "aside" as const, text: kindNotOffered(key, kinds) },
+        })),
+      ]}
+      selected={selected}
+      onChange={(key, on) =>
+        onSearchChange({ ...search, subtask_types: toggled(search.subtask_types, key, on) })
+      }
+    />
   );
 }
 
@@ -230,46 +270,28 @@ function EventTypeQuestion({
 }) {
   const selected = search.event_types ?? [];
   const strays = selected.filter((key) => !eventTypes.some((row) => row.key === key));
-  const keys = [...eventTypes.map((row) => row.key), ...strays];
+  const choices: KeyChoice[] = [
+    ...eventTypes.map((row) => ({
+      key: row.key,
+      note:
+        row.declaration_status === "published"
+          ? null
+          : { kind: "badge" as const, text: declarationStatusLabel(row.declaration_status) },
+    })),
+    ...strays.map((key) => ({ key, note: { kind: "aside" as const, text: "not declared" } })),
+  ];
   return (
-    <fieldset className="space-y-1.5">
-      <legend className={LEGEND}>Event Types</legend>
-      <p className={HINT}>
-        What happens inside the work. The Measurements each one sends, and how
-        it is costed, are read from its declaration.
-      </p>
-      {keys.length === 0 ? (
-        <p className={HINT}>No Event Types are declared yet.</p>
-      ) : (
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {keys.map((key) => {
-            const row = eventTypes.find((choice) => choice.key === key);
-            return (
-              <label key={key} className="flex items-center gap-2 text-[13px] text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(key)}
-                  disabled={!selected.includes(key) && selected.length >= MAX_SELECTED}
-                  onChange={(event) =>
-                    onSearchChange({
-                      ...search,
-                      event_types: toggled(search.event_types, key, event.target.checked),
-                    })
-                  }
-                />
-                <span className="font-mono text-[12px]">{tenantDefinedLabel(key)}</span>
-                {row === undefined ? (
-                  <span className={HINT}>(not declared)</span>
-                ) : (
-                  row.declaration_status !== "published" && (
-                    <Badge variant="outline">{declarationStatusLabel(row.declaration_status)}</Badge>
-                  )
-                )}
-              </label>
-            );
-          })}
-        </div>
-      )}
-    </fieldset>
+    <>
+      <KeyChoices
+        legend="Event Types"
+        hint="What happens inside the work. The Measurements each one sends, and how it is costed, are read from its declaration."
+        choices={choices}
+        selected={selected}
+        onChange={(key, on) =>
+          onSearchChange({ ...search, event_types: toggled(search.event_types, key, on) })
+        }
+      />
+      {choices.length === 0 && <p className={HINT}>No Event Types are declared yet.</p>}
+    </>
   );
 }

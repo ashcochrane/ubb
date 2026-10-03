@@ -47,15 +47,28 @@ describe("the Developers feature", () => {
     expect(Object.keys(CREDENTIAL_SHAPES)).toHaveLength(3);
   });
 
-  // ⚠ THE BUILDER NEVER SENDS A REMEDIATION REQUEST (§11). The page offers
-  // the request to copy; only the API module can reach the network, and it
-  // has no business with one.
-  it("reads a remediation request only where nothing can send it", () => {
-    const reaching = Object.entries(SOURCES).filter(([, source]) =>
+  // ⚠ THE BUILDER NEVER SENDS A REMEDIATION REQUEST (§11), and no request it
+  // is handed. Three facts about the feature's source make that structural:
+  // the API module is the only one holding a client; every request it makes
+  // goes to a route written in it, never one passed in; and nothing in the
+  // feature sends anything round the clients. (The shared hooks it uses make
+  // their own fixed reads, and are not this feature's to send through.)
+  it("can send nothing but the requests it writes out", () => {
+    const holding = Object.entries(SOURCES).filter(([, source]) =>
       /from "@\/api\/client"/.test(source),
     );
+    expect(holding.map(([path]) => path)).toEqual(["/src/features/developers/api/api.ts"]);
 
-    expect(reaching.map(([path]) => path)).toEqual(["/src/features/developers/api/api.ts"]);
-    for (const [, source] of reaching) expect(source).not.toMatch(/remediation/i);
+    const [, api] = holding[0] ?? ["", ""];
+    const calls = [...api.matchAll(/Api\.(GET|POST|PUT|PATCH|DELETE)\(\s*([^,)]*)/g)];
+    expect(calls.length).toBeGreaterThan(5);
+    for (const [call, , route] of calls) {
+      expect(route, call).toMatch(/^"\/[^"]*"$/);
+    }
+
+    for (const [path, source] of Object.entries(SOURCES)) {
+      if (path.includes(".test.")) continue;
+      expect(source, path).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|new WebSocket/);
+    }
   });
 });

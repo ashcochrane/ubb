@@ -6,6 +6,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setMockMemberRole } from "@/hooks/use-current-role";
+import { formatDate } from "@/lib/format";
 
 import {
   loadBlueprintFixture,
@@ -75,22 +76,36 @@ describe("the Code Builder page", () => {
 });
 
 describe("Configure", () => {
-  it("asks the four questions the request publishes, and no other", async () => {
+  it("asks the four questions the request publishes, an admin's switch, and nothing else", async () => {
     renderCodeBuilder();
     const configure = await screen.findByRole("region", { name: "Configure" });
     await waitFor(() => within(configure).getByRole("combobox", { name: "Kind of work" }));
     await waitFor(() => within(configure).getByRole("group", { name: "Event Types" }));
+    // Mock mode's member is an admin, so the fifth field is on screen too.
+    await within(configure).findByRole("checkbox", { name: "Draft preview — not production-ready" });
 
     expect(within(configure).getByRole("radio", { name: "Python SDK" })).toBeChecked();
     expect(within(configure).getByRole("radio", { name: "Shell / raw HTTP · requires curl, jq" })).not.toBeChecked();
-    // The questions, as Configure asks them: the Subtask one because this
-    // tenant declares a Subtask kind. Never which Measurements to send, and
-    // never how to read a supplier's response — there is nowhere to type one.
+    // Everything Configure asks, however it asks it: each group by its legend,
+    // each control outside a group by its label. The Subtask question is here
+    // because this tenant declares a Subtask kind. Never which Measurements to
+    // send, and never how to read a supplier's response.
     const questions = [
       ...[...configure.querySelectorAll("legend")].map((legend) => legend.textContent),
-      ...within(configure).getAllByRole("combobox").map((box) => box.closest("label")?.querySelector("span")?.textContent),
+      ...[...configure.querySelectorAll("select, input")]
+        .filter((control) => control.closest("fieldset") === null)
+        .map((control) => {
+          const label = control.closest("label");
+          return label?.querySelector("span")?.textContent ?? label?.textContent;
+        }),
     ];
-    expect(questions).toEqual(["Target", "Subtask kinds it starts itself", "Event Types", "Kind of work"]);
+    expect(questions).toEqual([
+      "Target",
+      "Subtask kinds it starts itself",
+      "Event Types",
+      "Kind of work",
+      "Draft preview — not production-ready",
+    ]);
     expect(within(configure).queryAllByRole("textbox")).toEqual([]);
     expect(within(configure).queryAllByRole("spinbutton")).toEqual([]);
   });
@@ -154,6 +169,9 @@ describe("the Blueprint stage", () => {
         if (provenance.published_revision != null) {
           expect(declaredBy).toContain(`published revision ${provenance.published_revision}`);
         }
+        if (provenance.published_at != null) {
+          expect(declaredBy).toContain(formatDate(provenance.published_at));
+        }
       });
     });
   });
@@ -201,8 +219,9 @@ describe("the Blueprint stage", () => {
     expect(within(blueprint).getAllByRole("link", { name: "Cost Rates" })[0]).toHaveAttribute("href", "/pricing");
   });
 
-  it("offers each blocking diagnostic's request to copy, and never sends it", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+  // That the page CANNOT send one is the feature-wide source check in
+  // `developers-feature.test.ts`; this is what the page offers instead.
+  it("offers each blocking diagnostic's request to copy, with its reference, and nothing that sends", async () => {
     renderCodeBuilder(BLOCKED);
     await resolved(/^Blocked$/);
     const blocked = await loadBlueprintFixture("blocked");
@@ -224,17 +243,18 @@ describe("the Blueprint stage", () => {
         expect.stringContaining(`/api/v1/docs#/default/${request.operation_id}`),
       );
       expect(within(diagnostics).getAllByText(diagnosticCodeLabel(diagnostic.code)).length).toBeGreaterThan(0);
+      // A copy and a link to read: no control here does anything else.
+      expect(within(block).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+        "Copy request",
+      ]);
+      expect(within(block).getAllByRole("link")).toHaveLength(1);
     }
 
     const [copy] = within(diagnostics).getAllByRole("button", { name: "Copy request" });
     if (!copy) throw new Error("a request to copy");
     fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0]?.[0]).toMatch(/^(PUT|POST|PATCH) \/api\/v1\//);
-    // Copying is all it does: the mock provider calls no network, so ANY fetch
-    // here would be the page sending something.
-    expect(fetchSpy).not.toHaveBeenCalled();
-    fetchSpy.mockRestore();
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^# operation_id = "api_v1_[a-z_]+"\n(PUT|POST|PATCH) \/api\/v1\//);
   });
 
   it("names what each kind's limits can announce, and where to subscribe", async () => {
@@ -312,6 +332,49 @@ describe("Generate", () => {
     expect(await within(generate).findByText(/These are the files you took/)).toBeInTheDocument();
   });
 
+  it("downloads a file under its own name, as the files taken", async () => {
+    // jsdom has neither; both are put back exactly as they were.
+    const createObjectURL = vi.fn(() => "blob:mock");
+    const revokeObjectURL = vi.fn();
+    const saved = {
+      create: Object.getOwnPropertyDescriptor(URL, "createObjectURL"),
+      revoke: Object.getOwnPropertyDescriptor(URL, "revokeObjectURL"),
+    };
+    Object.defineProperty(URL, "createObjectURL", { value: createObjectURL, configurable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: revokeObjectURL, configurable: true });
+    const clicked: string[] = [];
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push(this.download);
+      });
+    try {
+      const page = renderCodeBuilder(COMPLETE);
+      await resolved(/^Complete$/);
+      const blueprint = await loadBlueprintFixture("calculated-cost");
+      const callSite = within(stage("Generate"))
+        .getAllByRole("article")
+        .find((article) => article.getAttribute("aria-label")?.startsWith("call_sites/"));
+      if (!callSite) throw new Error("a call-site block");
+
+      fireEvent.click(within(callSite).getByRole("button", { name: "Download" }));
+
+      expect(clicked).toEqual([callSite.getAttribute("aria-label")?.replace("call_sites/", "")]);
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(page.current().held).toBe(blueprint.configuration_fingerprint));
+      await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock"));
+    } finally {
+      click.mockRestore();
+      for (const [name, descriptor] of [
+        ["createObjectURL", saved.create],
+        ["revokeObjectURL", saved.revoke],
+      ] as const) {
+        if (descriptor) Object.defineProperty(URL, name, descriptor);
+        else Reflect.deleteProperty(URL, name);
+      }
+    }
+  });
+
   // ⚠ THE ROUND TRIP'S OTHER HALF. The configuration changes somewhere else;
   // coming back to the page resolves again, and the files already taken say
   // they are stale because their fingerprint is not the one resolved now.
@@ -352,8 +415,10 @@ function previews(generate: HTMLElement): HTMLElement {
 }
 
 describe("the draft preview", () => {
-  it("is offered to an admin, labelled, and shows no fingerprint", async () => {
-    const page = renderCodeBuilder(COMPLETE);
+  it("is offered to an admin, labelled, and shows no fingerprint anywhere", async () => {
+    // Files taken earlier, so the page has a fingerprint it could show.
+    const published = await loadBlueprintFixture("calculated-cost");
+    const page = renderCodeBuilder({ ...COMPLETE, held: published.configuration_fingerprint ?? undefined });
     await resolved(/^Complete$/);
     const toggle = await within(stage("Configure")).findByRole("checkbox", {
       name: "Draft preview — not production-ready",
@@ -363,25 +428,27 @@ describe("the draft preview", () => {
 
     expect(page.current().draft_preview).toBe(true);
     expect(await within(stage("Blueprint")).findByText("None — a draft preview is stored nowhere")).toBeInTheDocument();
-    expect(within(stage("Blueprint")).queryByText(/sha256:/)).toBeNull();
+    expect(await within(stage("Generate")).findByText(/This is a draft preview/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/sha256:/);
     expect(screen.queryByRole("button", { name: /verif/i })).toBeNull();
   });
 
+  // ⚠ ABSENT BECAUSE OF THE ROLE, NOT BECAUSE IT HAS NOT ARRIVED YET: each
+  // case waits for the role to resolve before it looks.
   it("is offered to nobody below admin", async () => {
     setMockMemberRole("write");
-    renderCodeBuilder(COMPLETE);
+    const page = renderCodeBuilder(COMPLETE);
     await resolved(/^Complete$/);
-    // The role has resolved by now: the Blueprint waited longer than the roster.
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor(() => expect(page.roleResolved()).toBe(true));
 
     expect(within(stage("Configure")).queryByRole("checkbox", { name: /Draft preview/ })).toBeNull();
   });
 
   it("is offered to nobody whose role could not be resolved", async () => {
     setMockMemberRole(null);
-    renderCodeBuilder(COMPLETE);
+    const page = renderCodeBuilder(COMPLETE);
     await resolved(/^Complete$/);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await waitFor(() => expect(page.roleResolved()).toBe(true));
 
     expect(within(stage("Configure")).queryByRole("checkbox", { name: /Draft preview/ })).toBeNull();
   });

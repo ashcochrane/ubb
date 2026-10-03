@@ -133,10 +133,11 @@ export function useBlueprint(selection: BlueprintSelection) {
 /**
  * The tenant's kinds of work, for Configure to choose from. Under the `tasks`
  * prefix so that declaring a kind on Tasks — which invalidates `["tasks"]` —
- * refreshes these choices too; its own tail, because the developers feature's
- * mock answers a different tenant from the tasks feature's.
+ * refreshes these choices too; under a tail of its own because what it caches
+ * is a projection (`KindChoice[]`), not the kinds the tasks feature caches
+ * under `["tasks", "kinds"]` — same key, same cached shape.
  */
-export function useKindsOfWork() {
+export function useKindChoices() {
   return useQuery({
     queryKey: ["tasks", "kinds", "code-builder"] as const,
     queryFn: () => developersApi.listKindChoices(),
@@ -144,8 +145,8 @@ export function useKindsOfWork() {
   });
 }
 
-/** The tenant's Event Types, for Configure to choose from. */
-export function useEventTypes() {
+/** The tenant's Event Types, as Configure offers them (a projection). */
+export function useEventTypeChoices() {
   return useQuery({
     queryKey: ["event-types", "code-builder"] as const,
     queryFn: () => developersApi.listEventTypeChoices(),

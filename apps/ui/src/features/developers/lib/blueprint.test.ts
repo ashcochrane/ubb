@@ -187,7 +187,7 @@ describe("how a token's value is shown", () => {
   it("states a flag in words", () => {
     const call = aCall(known("task_type", "k", "task_type", "k"), known("task_type.uncapped", true, "task_type", "k"));
 
-    expect(call.arguments[1] && show(call.arguments[1], call)).toEqual({ kind: "text", text: "Uncapped" });
+    expect(call.arguments[1] && show(call.arguments[1], call)).toEqual({ kind: "words", text: "Uncapped" });
   });
 
   it("shows a path into a response a segment at a time", () => {
@@ -306,7 +306,7 @@ describe("what answers a diagnostic", () => {
     ).toEqual({ kind: "none" });
   });
 
-  it("writes a request as its method, route and body, with no host", () => {
+  it("writes a request as its operation, method, route and body, with no host", () => {
     expect(
       remediationText({
         method: "PATCH",
@@ -314,7 +314,10 @@ describe("what answers a diagnostic", () => {
         operation_id: "api_v1_event_type_endpoints_revise_event_type",
         body: { source_shape_id: "" },
       }),
-    ).toBe('PATCH /api/v1/event-types/chat.completion\n\n{\n  "source_shape_id": ""\n}\n');
+    ).toBe(
+      '# operation_id = "api_v1_event_type_endpoints_revise_event_type"\n' +
+        'PATCH /api/v1/event-types/chat.completion\n\n{\n  "source_shape_id": ""\n}\n',
+    );
     expect(
       remediationText({
         method: "POST",
@@ -322,7 +325,10 @@ describe("what answers a diagnostic", () => {
         operation_id: "api_v1_event_type_endpoints_publish_event_type",
         body: null,
       }),
-    ).toBe("POST /api/v1/event-types/draft.only/publish\n");
+    ).toBe(
+      '# operation_id = "api_v1_event_type_endpoints_publish_event_type"\n' +
+        "POST /api/v1/event-types/draft.only/publish\n",
+    );
   });
 
   it("links an operation to its entry in the API reference", () => {
@@ -333,12 +339,28 @@ describe("what answers a diagnostic", () => {
 });
 
 describe("what a kind's limits can announce", () => {
-  it("names the terminal events of each kind the Blueprint starts", async () => {
+  it("names the terminal events of each kind the Blueprint starts, with why each ends the work", async () => {
     const blueprint = await loadBlueprintFixture("explicit-subtasks");
 
     expect(announcementsOf(blueprint)).toEqual([
-      { altitude: "task", kind: "report_generation", uncapped: false, events: { killed: "task.killed", expired: "task.expired" } },
-      { altitude: "subtask", kind: "summarise", uncapped: true, events: { killed: "subtask.killed", expired: "subtask.expired" } },
+      {
+        altitude: "task",
+        kind: "report_generation",
+        uncapped: false,
+        announcements: [
+          { event: "task.killed", cause: "spend_stop" },
+          { event: "task.expired", cause: "went_quiet" },
+        ],
+      },
+      {
+        altitude: "subtask",
+        kind: "summarise",
+        uncapped: true,
+        announcements: [
+          { event: "subtask.killed", cause: "spend_stop" },
+          { event: "subtask.expired", cause: "went_quiet" },
+        ],
+      },
     ]);
   });
 
@@ -346,18 +368,20 @@ describe("what a kind's limits can announce", () => {
     expect(announcementsOf(await loadBlueprintFixture("scaffold"))).toEqual([]);
   });
 
-  // The names are typed against the contract; this holds them to the
-  // committed document too, so the two cannot be satisfied apart.
-  it("names only events the contract's webhooks section publishes", () => {
+  // The set is typed off the contract (`tsc` refuses one missing or extra);
+  // this holds it to the committed document too, both ways, so an event the
+  // contract publishes at either altitude is one the page names.
+  it("is every event the contract's webhooks section publishes at either altitude", () => {
     const [document] = Object.values(
       import.meta.glob("/src/api/schema.json", { eager: true, import: "default" }),
     );
-    const section: unknown = typeof document === "object" && document !== null ? Reflect.get(document, "webhooks") : null;
+    const section: unknown =
+      typeof document === "object" && document !== null ? Reflect.get(document, "webhooks") : null;
     const published = typeof section === "object" && section !== null ? Object.keys(section) : [];
-    const named = Object.values(TERMINAL_STOP_EVENTS).flatMap((pair) => Object.values(pair));
+    const atAnAltitude = published.filter((event) => /^(task|subtask)\./.test(event));
 
-    expect(named).toHaveLength(4);
-    for (const event of named) expect(published).toContain(event);
+    expect(atAnAltitude.length).toBeGreaterThan(0);
+    expect([...TERMINAL_STOP_EVENTS].sort()).toEqual(atAnAltitude.sort());
   });
 });
 

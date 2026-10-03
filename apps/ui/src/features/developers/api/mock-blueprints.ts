@@ -15,11 +15,18 @@
 // from differently configured tenants. It never stitches calls from several
 // fixtures into one document — that would be resolving, which is the server's.
 //
-// Loaded lazily: the files are ~340 KB, and only mock mode ever reads them.
+// Loaded lazily: the files are ~290 KB, and only mock mode ever reads them.
 
-import { CODE_TARGET_VALUES, INTEGRATION_READINESS_VALUES } from "@/lib/vocabulary";
+import {
+  BINDING_CLASS_VALUES,
+  CODE_TARGET_VALUES,
+  CONFIGURATION_OBJECT_KIND_VALUES,
+  DIAGNOSTIC_CODE_VALUES,
+  DIAGNOSTIC_SEVERITY_VALUES,
+  INTEGRATION_READINESS_VALUES,
+} from "@/lib/vocabulary";
 
-import { roleOf, subjectOf, type CallRole } from "../lib/blueprint";
+import { altitudeOf, roleOf, subjectOf, type CallRole } from "../lib/blueprint";
 import type {
   Blueprint,
   BlueprintSelection,
@@ -47,31 +54,73 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
   return values.some((member) => member === value);
 }
 
-/**
- * The document's shape, checked at the one place a file becomes a Blueprint.
- * A JSON import is typed by its contents (`"python_sdk"` reads as `string`),
- * so this is what lets the mock hand the page a typed document without a
- * cast — and what says so if a fixture ever stops being one.
- */
-export function isBlueprint(value: unknown): value is Blueprint {
-  if (typeof value !== "object" || value === null) return false;
-  const calls: unknown = Reflect.get(value, "calls");
-  const diagnostics: unknown = Reflect.get(value, "diagnostics");
+function isRecord(value: unknown): value is object {
+  return typeof value === "object" && value !== null;
+}
+
+const field = (value: object, name: string): unknown => Reflect.get(value, name);
+const isStringOrNull = (value: unknown) => value === null || typeof value === "string";
+
+/** One argument: a name, a binding class, a configured flag, and nullable rest. */
+function isArgument(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const provenance = field(value, "provenance");
   return (
-    typeof Reflect.get(value, "schema_version") === "number" &&
-    typeof Reflect.get(value, "renderer_contract_version") === "number" &&
-    isOneOf(CODE_TARGET_VALUES, Reflect.get(value, "target")) &&
-    isOneOf(INTEGRATION_READINESS_VALUES, Reflect.get(value, "readiness")) &&
+    typeof field(value, "name") === "string" &&
+    isOneOf(BINDING_CLASS_VALUES, field(value, "binding_class")) &&
+    typeof field(value, "configured") === "boolean" &&
+    isStringOrNull(field(value, "parameter_name") ?? null) &&
+    isStringOrNull(field(value, "environment_variable") ?? null) &&
+    (provenance === null ||
+      provenance === undefined ||
+      (isRecord(provenance) &&
+        isOneOf(CONFIGURATION_OBJECT_KIND_VALUES, field(provenance, "object_kind")) &&
+        typeof field(provenance, "key") === "string"))
+  );
+}
+
+/** One diagnostic: a severity, a code and an object kind of their closed sets. */
+function isDiagnostic(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isOneOf(DIAGNOSTIC_SEVERITY_VALUES, field(value, "severity")) &&
+    isOneOf(DIAGNOSTIC_CODE_VALUES, field(value, "code")) &&
+    isOneOf(CONFIGURATION_OBJECT_KIND_VALUES, field(value, "object_kind"))
+  );
+}
+
+/**
+ * The document's shape, checked at the one place a file becomes a Blueprint
+ * — down to each argument and each diagnostic, against the closed sets the
+ * contract types them by. A JSON import is typed by its contents
+ * (`"python_sdk"` reads as `string`), so this is what lets the mock hand the
+ * page a typed document without a cast, and what says so if a fixture ever
+ * stops being one. An argument's `value` is untyped JSON in the contract too,
+ * and is not checked.
+ */
+function isBlueprint(value: unknown): value is Blueprint {
+  if (!isRecord(value)) return false;
+  const calls = field(value, "calls");
+  const diagnostics = field(value, "diagnostics");
+  return (
+    typeof field(value, "schema_version") === "number" &&
+    typeof field(value, "renderer_contract_version") === "number" &&
+    isOneOf(CODE_TARGET_VALUES, field(value, "target")) &&
+    isOneOf(INTEGRATION_READINESS_VALUES, field(value, "readiness")) &&
+    isStringOrNull(field(value, "configuration_fingerprint") ?? null) &&
     Array.isArray(calls) &&
-    calls.every(
-      (call: unknown) =>
-        typeof call === "object" &&
-        call !== null &&
-        typeof Reflect.get(call, "operation_id") === "string" &&
-        isOneOf(INTEGRATION_READINESS_VALUES, Reflect.get(call, "readiness")) &&
-        Array.isArray(Reflect.get(call, "arguments")),
-    ) &&
-    Array.isArray(diagnostics)
+    calls.every((call: unknown) => {
+      if (!isRecord(call)) return false;
+      const arguments_ = field(call, "arguments");
+      return (
+        typeof field(call, "operation_id") === "string" &&
+        isOneOf(INTEGRATION_READINESS_VALUES, field(call, "readiness")) &&
+        Array.isArray(arguments_) &&
+        arguments_.every(isArgument)
+      );
+    }) &&
+    Array.isArray(diagnostics) &&
+    diagnostics.every(isDiagnostic)
   );
 }
 
@@ -200,8 +249,9 @@ export async function mockRegistry(): Promise<{
       const key = subjectOf(call);
       if (key === null) continue;
       const role = roleOf(call);
-      if ((role === "start_task" || role === "start_subtask") && !kinds.has(key)) {
-        kinds.set(key, { key, kind: role === "start_subtask" ? "subtask" : "task", retired: false });
+      const altitude = altitudeOf(role);
+      if (altitude !== null && !kinds.has(key)) {
+        kinds.set(key, { key, kind: altitude, retired: false });
       }
       if (role === "record_usage" && !eventTypes.has(key)) {
         const token = call.arguments.find((argument) => argument.name === "event_type");

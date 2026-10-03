@@ -99,6 +99,26 @@ describe("router smoke", () => {
     expect(document.querySelector('[data-shape="ceiling"]')).toBeNull();
   });
 
+  // ⚠ WHAT REACHES THE ADDRESS BAR, not what the page reads back. Parsing a
+  // URL drops a credential-shaped value, but the URL is written before it is
+  // parsed: a navigation handed one would put it in the history, the address
+  // bar and every link copied from them. Through the real route, so the
+  // route's own write path is what is held.
+  it("lets no credential-shaped value into the Code Builder's address", async () => {
+    const aKey = ["ubb", "live", "Qm3xk9TzLp0aRw2s8Vn4Yh6Jd1Fc5Gb7"].join("_");
+    const router = await renderRoute("/developers");
+
+    await router.navigate({
+      to: "/developers/code-builder",
+      search: { task_type: aKey, event_types: [aKey, "chat.completion"] },
+    });
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/developers/code-builder"));
+    expect(router.state.location.href).not.toContain(aKey);
+    expect(window.location.href).not.toContain(aKey);
+    expect(router.state.location.search).toEqual({ event_types: ["chat.completion"] });
+  });
+
   // ⚠ THE CODE BUILDER'S ROUND TRIP (#579, §11), through the real routes: its
   // selections live in the URL, so leaving for the screen that owns a fact and
   // coming Back returns to the same builder — which resolves again, because

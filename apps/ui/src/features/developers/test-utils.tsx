@@ -37,6 +37,8 @@ export interface MountedBuilder {
   readonly searches: CodeBuilderSearch[];
   /** The search the page is showing now. */
   current(): CodeBuilderSearch;
+  /** True once the signed-in member's role has been resolved, whatever it is. */
+  roleResolved(): boolean;
 }
 
 function routerAround(Index: () => ReactNode) {
@@ -87,13 +89,18 @@ export function renderCodeBuilder(initial: CodeBuilderSearch = {}): MountedBuild
     );
   }
 
+  const queryClient = aQueryClient();
   render(
-    <QueryClientProvider client={aQueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={routerAround(Builder)} />
     </QueryClientProvider>,
   );
   return {
     searches,
     current: () => searches[searches.length - 1] ?? {},
+    roleResolved: () => {
+      const roles = queryClient.getQueryCache().findAll({ queryKey: ["tenant", "current-role"] });
+      return roles.length > 0 && roles.every((query) => query.state.status === "success");
+    },
   };
 }

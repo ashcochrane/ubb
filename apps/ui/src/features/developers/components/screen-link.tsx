@@ -5,36 +5,36 @@
 
 import { Link } from "@tanstack/react-router";
 
+import { tenantDefinedLabel } from "@/lib/localisation";
+
 import type { ConsoleScreen } from "../lib/blueprint";
-import { screenLinkText } from "../lib/code-builder-words";
 
 const LINK = "text-[12px] underline underline-offset-2 hover:text-text-primary";
 
 export function ScreenLink({ screen }: { screen: ConsoleScreen }) {
-  const text = screenLinkText(screen);
   switch (screen.to) {
     case "/tasks/kinds/$key":
       return (
         <Link to="/tasks/kinds/$key" params={{ key: screen.params.key }} className={LINK}>
-          {text}
+          {`Open the kind of work ${tenantDefinedLabel(screen.params.key)}`}
         </Link>
       );
     case "/tasks":
       return (
         <Link to="/tasks" className={LINK}>
-          {text}
+          Kinds of work and workspace defaults
         </Link>
       );
     case "/pricing":
       return (
         <Link to="/pricing" className={LINK}>
-          {text}
+          Cost Rates
         </Link>
       );
     case "/webhooks":
       return (
         <Link to="/webhooks" className={LINK}>
-          {text}
+          Webhooks
         </Link>
       );
   }
