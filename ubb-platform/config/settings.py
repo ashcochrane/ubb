@@ -208,6 +208,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.platform.events.tasks.cleanup_outbox",
         "schedule": crontab(minute=0, hour=4),
     },
+    "prune-blueprint-snapshots": {
+        "task": "apps.platform.code_builder.tasks.prune_blueprint_snapshots",
+        "schedule": crontab(minute=30, hour=4),  # Daily at 4:30 AM UTC (#580)
+    },
     "calculate-all-economics": {
         "task": "apps.subscriptions.tasks.calculate_all_economics_task",
         "schedule": crontab(minute=0, hour=2),  # Daily at 2 AM UTC

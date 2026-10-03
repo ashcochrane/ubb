@@ -132,6 +132,15 @@ from .integration_blueprint_remediation_request import IntegrationBlueprintRemed
 from .integration_blueprint_remediation_request_body_type_0 import IntegrationBlueprintRemediationRequestBodyType0
 from .integration_blueprint_selection_in import IntegrationBlueprintSelectionIn
 from .integration_blueprint_selection_in_target import IntegrationBlueprintSelectionInTarget
+from .integration_blueprint_verification import IntegrationBlueprintVerification
+from .integration_blueprint_verification_environment import IntegrationBlueprintVerificationEnvironment
+from .integration_blueprint_verification_in import IntegrationBlueprintVerificationIn
+from .integration_blueprint_verification_in_grouping_fields import IntegrationBlueprintVerificationInGroupingFields
+from .integration_blueprint_verification_record import IntegrationBlueprintVerificationRecord
+from .integration_blueprint_verification_record_in import IntegrationBlueprintVerificationRecordIn
+from .integration_blueprint_verification_record_in_measurements import IntegrationBlueprintVerificationRecordInMeasurements
+from .integration_blueprint_verification_refusal import IntegrationBlueprintVerificationRefusal
+from .integration_blueprint_verification_unit import IntegrationBlueprintVerificationUnit
 from .invitation_create_in import InvitationCreateIn
 from .invitation_list_response import InvitationListResponse
 from .invitation_out import InvitationOut
@@ -486,6 +495,15 @@ __all__ = (
     "IntegrationBlueprintRemediationRequestBodyType0",
     "IntegrationBlueprintSelectionIn",
     "IntegrationBlueprintSelectionInTarget",
+    "IntegrationBlueprintVerification",
+    "IntegrationBlueprintVerificationEnvironment",
+    "IntegrationBlueprintVerificationIn",
+    "IntegrationBlueprintVerificationInGroupingFields",
+    "IntegrationBlueprintVerificationRecord",
+    "IntegrationBlueprintVerificationRecordIn",
+    "IntegrationBlueprintVerificationRecordInMeasurements",
+    "IntegrationBlueprintVerificationRefusal",
+    "IntegrationBlueprintVerificationUnit",
     "InvitationCreateIn",
     "InvitationListResponse",
     "InvitationOut",

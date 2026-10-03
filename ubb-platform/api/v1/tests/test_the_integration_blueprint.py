@@ -1809,10 +1809,13 @@ class TestADraftPreviewIsForAnAdminAndLeavesNothingBehind(_Routes):
 
 @pytest.mark.django_db
 class TestTheBuilderChangesNoConfiguration(_Routes):
-    def test_the_builder_has_two_operations_and_neither_is_a_configuration_write(
+    def test_the_builder_has_three_operations_and_none_is_a_configuration_write(
             self):
-        """The whole surface, off the live API: one resolution and one read.
-        There is no third operation for a write to be."""
+        """The whole surface, off the live API: one resolution, one read and
+        one verification. There is no fourth operation for a write to be —
+        and the verification's writes are to a tenant made for it and rolled
+        back with it, which `test_verifying_a_blueprint.py` holds as a count
+        of every table."""
         builder = sorted(
             (method, path)
             for prefix, router in api._routers
@@ -1822,7 +1825,9 @@ class TestTheBuilderChangesNoConfiguration(_Routes):
             for method in operation.methods)
 
         assert builder == [("GET", "/blueprints/{configuration_fingerprint}"),
-                           ("POST", "/blueprints")]
+                           ("POST", "/blueprints"),
+                           ("POST",
+                            "/blueprints/{configuration_fingerprint}/verify")]
 
     def test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them(
             self):

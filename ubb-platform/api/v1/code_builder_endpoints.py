@@ -1,9 +1,10 @@
 """The Code Builder on the tenant contract: an Integration Blueprint, resolved
 and read back (#576, #184 §3).
 
-Two routes. One resolves a selection into a Blueprint and keeps the resolved
-content; the other returns a kept Blueprint by the fingerprint a generated
-file was stamped with.
+Three routes. One resolves a selection into a Blueprint and keeps the resolved
+content; one returns a kept Blueprint by the fingerprint a generated file was
+stamped with; and one verifies a kept Blueprint by running it (#580,
+`api/v1/verification.py`).
 
 **Where these routes sit.** At a prefix of their own. A Blueprint is resolved
 from the kernel's registries and metering's rules together and belongs to
@@ -34,19 +35,26 @@ same route asked a different question. A draft is configuration nobody has
 published, and showing how it would render is for the people who may publish
 it.
 
+**VERIFYING IS A `POST` AT THE WRITE FLOOR**, the floor recording usage
+carries, because it records usage: in a tenant made for the run and thrown
+away with it, but through the same start, recording and close a tenant's own
+code reaches. It is exempt from the audit ledger for the reason recording is
+— and more so, since nothing it writes survives the call to be audited.
+
 **WHAT THIS MODULE DOES NOT DO.** It declares nothing, edits nothing and
-publishes nothing, for an admin exactly as for anybody else, and it never
-sends the request a diagnostic offers. It renders no code. It verifies
-nothing.
+publishes nothing in the tenant's own configuration, for an admin exactly as
+for anybody else, and it never sends the request a diagnostic offers. It
+renders no code.
 """
 from ninja import Router
 
-from api.v1 import integration_blueprint
+from api.v1 import integration_blueprint, verification
 from api.v1.schemas import (
-    IntegrationBlueprintSelectionIn, ResolvedIntegrationBlueprint)
+    IntegrationBlueprintSelectionIn, IntegrationBlueprintVerification,
+    IntegrationBlueprintVerificationIn, ResolvedIntegrationBlueprint)
 from apps.platform.code_builder import snapshots
 from core.auth import (
-    ADMIN, ApiKeyAuth, ProductAccess, READ, require_role, role_floor)
+    ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, require_role, role_floor)
 from core.problems import Problem, ProblemOut
 
 code_builder_router = Router(auth=ApiKeyAuth())
@@ -126,3 +134,56 @@ def get_blueprint(request, configuration_fingerprint: str):
             f"no blueprint is stored under '{configuration_fingerprint}'")
     return 200, _with_fingerprint(integration_blueprint.as_answered(content),
                                   configuration_fingerprint)
+
+
+@code_builder_router.post(
+    "/blueprints/{configuration_fingerprint}/verify",
+    response={200: IntegrationBlueprintVerification, 404: ProblemOut,
+              409: ProblemOut, 422: ProblemOut})
+@role_floor(WRITE)
+def verify_blueprint(request, configuration_fingerprint: str,
+                     payload: IntegrationBlueprintVerificationIn):
+    """Verify that the stored Blueprint a generated file was stamped with
+    records and costs.
+
+    The run builds the configuration stored under the fingerprint — never
+    the configuration in force now — in a temporary tenant, starts the unit
+    of work, starts each Subtask a recording names, makes each recording with
+    the sample values you send and sends it a second time with the same
+    idempotency key, then closes the work. Everything the run wrote is then
+    discarded: nothing it records is kept, delivered or charged, and every id
+    in the answer names a record that no longer exists. No API key is created
+    and none is returned.
+
+    `verified` speaks for the whole Blueprint, and for recording and costing
+    only: it is true when every Event Type and Subtask kind the Blueprint
+    selected was exercised, no call was refused and every recording is
+    complete. It is false otherwise, and the answer names why:
+    `unexercised_event_types` and `unexercised_subtask_types`, a record's
+    `missing_required_measurement_keys`, the acknowledgement's
+    `costing_status`, `unresolved_reason` and `uncosted_measurement_keys`, or
+    `refusal`. A gap is a 200. It does not say a customer price resolved —
+    read each acknowledgement's `pricing_status` for that.
+
+    `grouping_fields` must carry a sample value for every Grouping Field a
+    kind of work the run starts requires: a value your code passes at run
+    time is never made up.
+
+    `404 not_found` answers a fingerprint with no stored Blueprint — never
+    resolved, or removed by the daily prune once 30 days have passed since it
+    was last resolved. Resolving the selection again recreates the same
+    fingerprint only if your configuration still resolves to exactly the same
+    snapshot; if it has changed since, the new fingerprint is a different one,
+    and a file stamped with the old one can no longer be verified.
+    `422 event_type_not_available` answers a recording of an
+    Event Type the stored Blueprint does not publish — one it did not select,
+    or one that was undeclared or still a draft when it was resolved — and
+    names each in `event_types`; nothing is run. `409 conflict` answers a
+    stored Blueprint that is not `complete`. `422 validation_error` answers a
+    `subtask_type` the Blueprint did not select, a `grouping_fields` key no
+    kind of work it selected requires, or a required Grouping Field with no
+    sample value.
+    """
+    _product_check(request)
+    return 200, verification.verify(
+        request.auth.tenant, configuration_fingerprint, payload)

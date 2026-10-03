@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,222 of 2,659 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,236 of 2,673 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2669,6 +2669,17 @@ measurement_key:
     # platform writes, and 118 snapshots of rendered shell. The other 1 is the
     # ADR. The catalogue's pin was renamed for its new version and is one file
     # as before. (Taken after the review pass, which added no file.)
+    #
+    # 2026-10-03, #580 (verifying a Blueprint): 2,222 of 2,659 -> 2,236 of
+    # 2,673 tracked files (`units` 44 files / 122 occurrences, UNMOVED). 14
+    # files arrived, none left, and ALL 14 are swept: the exclusions stand at
+    # 437. 4 are written by hand — the verification module, its test module,
+    # the snapshot-pruning task and the ADR — and 10 are generated into the
+    # SDK's core: the new operation's module and nine models. The ticket adds
+    # no migration, so `historical-migrations` is unmoved. (Taken three times:
+    # the review pass's request field minted a model, and the owner's review
+    # removed the run's own Grouping Field values from the answer, which took
+    # one away again.)
     #
     # ⚠ THE 88 SNAPSHOTS ARE GENERATED TEXT, AND THEY ARE SWEPT ON PURPOSE.
     # They are the files a tenant is handed, so a retired word in one is a

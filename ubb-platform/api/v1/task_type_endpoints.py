@@ -136,12 +136,19 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
     or a declaration that neither states a ceiling nor declares itself uncapped
     — or does both.
     """
+    _product_check(request)
+    return 200, declare_kinds(request.auth.tenant, payload)
+
+
+def declare_kinds(tenant, payload):
+    """The body of the route above, for `tenant`: the registry as it now
+    stands, or the refusal it raises. A function of its own so that the Code
+    Builder's verification declares the kinds of work it materialises through
+    this registry rather than beside it (`api/v1/verification.py`)."""
     # THE WHOLE BODY IS ONE TRANSACTION, so a request whose fourth declaration
     # is refused leaves none of the first three behind. That was true before
     # this route moved and the refusal added below is raised, never returned,
     # for the same reason.
-    _product_check(request)
-    tenant = request.auth.tenant
     grouping_keys = set(slot_map(tenant.id))
     with transaction.atomic():
         held = _standing(tenant, payload.task_types)
@@ -252,7 +259,7 @@ def declare_task_types(request, payload: TaskTypeRegistryIn):
             resource_id=tenant.id,
             metadata={"task_types": recorded},
         )
-    return 200, {"task_types": declared_task_types(tenant.id)}
+    return {"task_types": declared_task_types(tenant.id)}
 
 
 @task_type_router.get("/task-types", response=TaskTypeRegistryOut)

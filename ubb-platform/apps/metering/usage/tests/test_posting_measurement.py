@@ -490,10 +490,22 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
 
         schedule = settings.CELERY_BEAT_SCHEDULE
         self.assertGreater(len(schedule), 5)
+        # Scheduled prunes of something that is NOT a measurement, each named
+        # so that a new one is a decision taken here rather than a word that
+        # slipped past. The Code Builder's snapshots are derived fixtures with
+        # a retention period of their own (#580, ADR-0018 §5), and hold no
+        # posting's quantities.
+        not_a_measurement = {
+            "apps.platform.code_builder.tasks.prune_blueprint_snapshots"}
+        self.assertLessEqual(
+            not_a_measurement,
+            {entry["task"] for entry in schedule.values()},
+            "an exemption names a task the schedule no longer runs")
         offenders = [name for name, entry in schedule.items()
-                     if "prune" in name.lower()
-                     or "prune" in entry["task"].lower()
-                     or "measurement" in entry["task"].lower()]
+                     if entry["task"] not in not_a_measurement
+                     and ("prune" in name.lower()
+                          or "prune" in entry["task"].lower()
+                          or "measurement" in entry["task"].lower())]
         self.assertEqual(offenders, [])
 
 

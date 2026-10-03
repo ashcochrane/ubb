@@ -66,6 +66,10 @@ _WRITE_ROUTES = {
     # is its tail — the same footing as the two routes above (#410).
     ("POST", "/tasks"),
     ("POST", "/tasks/{task_id}/close"),
+    # Verifying a stored Integration Blueprint (#580) starts, records and
+    # closes — the same three acts as the three routes above, on their
+    # footing — in a tenant made for the run and thrown away with it.
+    ("POST", "/code-builder/blueprints/{configuration_fingerprint}/verify"),
     # money IN (driver's amendment: paying into your own wallet is day-to-day)
     ("POST", "/billing/customers/{customer_id}/top-up"),
     # customers, accounts & subscription lifecycle
@@ -335,7 +339,10 @@ _WRITE_ROUTES = {
 # `/code-builder/`, both floored at Read — the read by fingerprint on the
 # carve's default for a GET, and the resolution by the one exception stated at
 # `_READ_FLOORED_WRITES`.
-_EXPECTED_FLOORED = 148
+#
+# 148 + 1 = 149 (#580): verifying a stored Blueprint, at Write — see its row
+# in `_WRITE_ROUTES`.
+_EXPECTED_FLOORED = 149
 _EXPECTED_EXEMPT = 9
 
 

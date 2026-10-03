@@ -42,6 +42,13 @@ _EXEMPT = {
     # whose contract is that it writes one, which
     # `test_the_integration_blueprint.py` holds as a whole-database comparison.
     ("POST", "/code-builder/blueprints"),
+    # Verifying a stored Integration Blueprint (#580). It records usage, as
+    # the four ingestion routes above do, and on a stronger footing than
+    # theirs: everything it writes is rolled back before it answers, so there
+    # is no act left for a governance reader to find and no row an entry
+    # could point at. `test_verifying_a_blueprint.py` holds "nothing is left"
+    # as a count of every table.
+    ("POST", "/code-builder/blueprints/{configuration_fingerprint}/verify"),
 }
 
 _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -206,8 +213,11 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 # 5 -> 6. Resolving an Integration Blueprint is a POST, so this walker counts
 # it, and it takes the exemption list on that list's own stated ground. See the
 # row above. Recording stays at 72.
-_EXPECTED_MUTATING = 78
-_EXPECTED_EXEMPT = 6
+#
+# 78 -> 79 in #580, exempt 6 -> 7: verifying a stored Blueprint, exempt on
+# the ingestion routes' ground (its row above). Recording stays at 72.
+_EXPECTED_MUTATING = 79
+_EXPECTED_EXEMPT = 7
 
 
 def mutating_operations():

@@ -115,6 +115,11 @@ class EffectiveAtTooOldError(UnprocessableEntityError):
     CODE = 'effective_at_too_old'
 
 
+class EventTypeNotAvailableError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'event_type_not_available'
+
+
 class FeatureNotEnabledError(ForbiddenError):
     STATUS = 403
     CODE = 'feature_not_enabled'
@@ -244,6 +249,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'effective_at_naive': EffectiveAtNaiveError,
     'effective_at_too_far_ahead': EffectiveAtTooFarAheadError,
     'effective_at_too_old': EffectiveAtTooOldError,
+    'event_type_not_available': EventTypeNotAvailableError,
     'feature_not_enabled': FeatureNotEnabledError,
     'fixed_task_price_on_contained_work': FixedTaskPriceOnContainedWorkError,
     'fixed_task_price_unresolved': FixedTaskPriceUnresolvedError,
@@ -305,6 +311,7 @@ __all__ = [
     'EffectiveAtNaiveError',
     'EffectiveAtTooFarAheadError',
     'EffectiveAtTooOldError',
+    'EventTypeNotAvailableError',
     'FeatureNotEnabledError',
     'FixedTaskPriceOnContainedWorkError',
     'FixedTaskPriceUnresolvedError',
