@@ -84,3 +84,18 @@ describe("the Spend controls tab", () => {
     expect(titles(undefined)).toContain("Spend controls");
   });
 });
+
+/**
+ * The Code Builder is a route UNDER Developers, not a thirteenth entry
+ * (#579, #184 §12): navigation keeps its twelve, and the builder is reached
+ * from the Developers page.
+ */
+describe("the Code Builder", () => {
+  it("adds no navigation entry: there are still twelve, and none of them is the builder", () => {
+    const entries = navSections.flatMap((section) => section.items);
+
+    expect(entries).toHaveLength(12);
+    expect(entries.map((item) => item.url)).not.toContain("/developers/code-builder");
+    expect(entries.map((item) => item.url)).toContain("/developers");
+  });
+});

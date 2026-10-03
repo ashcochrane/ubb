@@ -24,7 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
 
 import { useCreateSandbox, useSandbox } from "../api/queries";
-import { apiOrigin, sandboxResetCurl } from "../lib/test-event";
+import { apiOrigin } from "../lib/api-origin";
+import { sandboxResetCurl } from "../lib/test-event";
 import { RawKeyDialog, type MintedKey } from "./raw-key-dialog";
 
 export function SandboxSection() {

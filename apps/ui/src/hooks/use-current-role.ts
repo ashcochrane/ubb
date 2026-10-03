@@ -15,10 +15,29 @@ import { roleRank } from "@/lib/labels";
 
 import { useAuthUser } from "./use-auth";
 
+/**
+ * The signed-in member's role when there is no server — the one source mock
+ * mode has for it, read both by this hook and by any feature mock that
+ * enforces a floor the way the server does (the Code Builder's draft preview,
+ * #579), so a page and its mock server cannot disagree about who is calling.
+ * An admin unless a test or a developer says otherwise.
+ */
+let mockMemberRole: string | null = "admin";
+
+/** Mock mode only: who the signed-in developer is. `null` is a role nobody resolved. */
+export function setMockMemberRole(role: string | null): void {
+  mockMemberRole = role;
+}
+
+/** Mock mode only: the role `setMockMemberRole` last set. */
+export function currentMockMemberRole(): string | null {
+  return mockMemberRole;
+}
+
 async function fetchRoleByEmail(email: string): Promise<string | null> {
   if (API_PROVIDER === "mock") {
     await mockDelay(100);
-    return "admin";
+    return mockMemberRole;
   }
   let cursor: string | undefined;
   // The roster is small; walk at most a handful of pages defensively.
@@ -63,4 +82,19 @@ export function useHasRole(floor: "read" | "write" | "admin"): boolean {
   const { role } = useCurrentRole();
   if (role === null) return true;
   return roleRank(role) >= roleRank(floor);
+}
+
+/**
+ * True only when the role is RESOLVED and meets the floor — the opposite
+ * default to `useHasRole`, for an affordance a member does not need and the
+ * server refuses below its floor. Offering it to someone it would refuse buys
+ * a guaranteed `403`; hiding it from an admin whose role could not be resolved
+ * costs them an option, not their work. Pure, so a page can hand it the role
+ * `useCurrentRole` returned.
+ */
+export function roleIsKnownToMeet(
+  role: string | null,
+  floor: "read" | "write" | "admin",
+): boolean {
+  return role !== null && roleRank(role) >= roleRank(floor);
 }

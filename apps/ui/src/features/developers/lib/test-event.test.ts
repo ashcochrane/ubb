@@ -122,7 +122,8 @@ describe("copy helpers", () => {
   it("builds a sandbox-key reset curl with keep_config", () => {
     const curl = sandboxResetCurl("https://api.example.com");
     expect(curl).toContain("https://api.example.com/api/v1/sandbox/reset");
-    expect(curl).toContain("ubb_test_YOUR_SANDBOX_KEY");
+    // The key's variable, never a key or a key-shaped placeholder (#579).
+    expect(curl).toContain('-H "Authorization: Bearer $UBB_API_KEY"');
     expect(curl).toContain('"keep_config": true');
   });
 
