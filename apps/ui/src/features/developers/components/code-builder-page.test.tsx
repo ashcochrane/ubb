@@ -399,9 +399,13 @@ describe("Generate", () => {
     });
 
     await resolved(/^Complete$/);
-    const stale = await within(stage("Generate")).findByText("The files you took are stale.");
+    const stale = await within(stage("Generate")).findByText("The files you took are stale for the current Blueprint.");
     expect(stale.parentElement).toHaveTextContent(before.configuration_fingerprint ?? "");
     expect(stale.parentElement).toHaveTextContent(after.configuration_fingerprint ?? "");
+    // ⚠ CAUSE-NEUTRAL (owner ruling on #600): here the configuration did
+    // change, but a mismatch can as well be the developer's own new selection,
+    // and the page knows only that two fingerprints differ.
+    expect(stale.parentElement).not.toHaveTextContent(/configuration|selection|changed/i);
     const module = within(stage("Generate")).getByRole("article", { name: "ubb_integration.sh" });
     expect(module.querySelector("pre")?.textContent).not.toBe(moduleBefore);
     expect(within(module).getByRole("button", { name: "Copy integration" })).toBeInTheDocument();

@@ -25,7 +25,7 @@ import {
   type RenderedFile,
 } from "../lib/artifact";
 import { copyActionLabel, stalenessOf } from "../lib/blueprint";
-import { callHeading, readinessLabel } from "../lib/code-builder-words";
+import { callHeading, readinessLabel, STALE_FILES_WARNING } from "../lib/code-builder-words";
 import { FilePanel } from "./file-panel";
 import { Fingerprint } from "./fingerprint";
 
@@ -159,24 +159,28 @@ function Held({ held, blueprint }: { held: string | undefined; blueprint: Bluepr
         </p>
       );
     case "stale":
+      // ⚠ CAUSE-NEUTRAL (owner ruling on #600). Two fingerprints differ: the
+      // configuration may have changed, or the selection may have. The page
+      // knows only that the files in hand do not describe this Blueprint, and
+      // says no more than that.
+      //
       // A draft preview has no fingerprint and shows none — not even the one
       // the files taken carry, which belongs to another Blueprint.
-      return staleness.current === null ? (
+      return (
         <div role="status" className="space-y-1 rounded-md border border-border p-3" data-stale>
-          <p className="text-[13px] font-medium text-text-primary">The files you took are stale.</p>
-          <p className="text-[12px] text-text-secondary">
-            This is a draft preview, which no file is ever current against: the files
-            you took were generated from a published Blueprint.
-          </p>
-        </div>
-      ) : (
-        <div role="status" className="space-y-1 rounded-md border border-border p-3" data-stale>
-          <p className="text-[13px] font-medium text-text-primary">The files you took are stale.</p>
-          <p className="text-[12px] text-text-secondary">
-            They were generated from <Fingerprint value={staleness.held} />. The configuration
-            or the selection has changed since, and the files below are regenerated from{" "}
-            <Fingerprint value={staleness.current} />: take them again.
-          </p>
+          <p className="text-[13px] font-medium text-text-primary">{STALE_FILES_WARNING}</p>
+          {staleness.current === null ? (
+            <p className="text-[12px] text-text-secondary">
+              This is a draft preview, which no file is ever current against: the files
+              you took were generated from a published Blueprint.
+            </p>
+          ) : (
+            <p className="text-[12px] text-text-secondary">
+              They were generated from <Fingerprint value={staleness.held} />; the current
+              Blueprint is <Fingerprint value={staleness.current} />. The files below are
+              generated from the current one.
+            </p>
+          )}
         </div>
       );
   }

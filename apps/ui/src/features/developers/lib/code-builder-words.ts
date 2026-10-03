@@ -41,6 +41,14 @@ export const CALL_TITLES: Readonly<Record<CallRole, string>> = {
 };
 
 /**
+ * What the page says when the files last taken do not match the Blueprint now
+ * resolved. Cause-neutral on purpose (owner ruling on #600): the selection may
+ * have changed as easily as the configuration, and the page knows only that
+ * the two fingerprints differ.
+ */
+export const STALE_FILES_WARNING = "The files you took are stale for the current Blueprint.";
+
+/**
  * A call's heading: what it does, and the declared object it is about where
  * it names one — in the tenant's own spelling, never re-worded.
  */

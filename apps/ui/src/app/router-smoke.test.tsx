@@ -165,7 +165,7 @@ describe("router smoke", () => {
       await waitFor(() => expect(within(returned).getAllByText("Complete").length).toBeGreaterThan(0), {
         timeout: 8000,
       });
-      expect(await screen.findByText("The files you took are stale.")).toBeInTheDocument();
+      expect(await screen.findByText("The files you took are stale for the current Blueprint.")).toBeInTheDocument();
       const configure = screen.getByRole("region", { name: "Configure" });
       expect(within(configure).getByRole("radio", { name: /Shell/ })).toBeChecked();
       expect(within(configure).getByRole("combobox", { name: "Kind of work" })).toHaveValue("report_generation");
