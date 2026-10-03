@@ -3769,7 +3769,7 @@
         "type": "object"
       },
       "IntegrationBlueprintVerificationEnvironment": {
-        "description": "Where the verification ran, and what it supplied that the stored\nconfiguration does not hold.\n\nIt ran in a tenant made for it from the stored configuration, inside one\ntransaction that is rolled back when the run ends: `discarded` is always\ntrue, and every id in the acknowledgements names a record that no longer\nexists. Nothing it did was delivered \u2014 no webhook, no Stripe call \u2014 and a\nstop it reached was not acted on.\n\n`customer_external_id` is the customer it recorded for, and\n`grouping_fields` the value it supplied for each Grouping Field the kinds\nof work require. `rules_effective_at` is the moment every stored Cost Rate\nand pricing rule took effect: each is in force for the run whatever window\nit was declared with.",
+        "description": "Where the verification ran, and what it supplied that the stored\nconfiguration does not hold.\n\nIt ran in a tenant made for it from the stored configuration, inside one\ntransaction that is rolled back when the run ends: `discarded` is always\ntrue, and every id in the acknowledgements names a record that no longer\nexists. Nothing it did was delivered \u2014 no webhook, no Stripe call \u2014 and a\nstop it reached was not acted on.\n\n`customer_external_id` is the customer it recorded for, and\n`grouping_fields` the value each Grouping Field the kinds of work require\nwas started with: the request's, or `ubb-verification` where the request\ngave none. `rules_effective_at` is the moment every stored Cost Rate and\npricing rule took effect: each is in force for the run whatever window it\nwas declared with.",
         "properties": {
           "customer_external_id": {
             "title": "Customer External Id",
@@ -3802,8 +3802,15 @@
         "type": "object"
       },
       "IntegrationBlueprintVerificationIn": {
-        "description": "What one verification records, in order: between 1 and 50 events.",
+        "description": "What one verification records, in order: between 1 and 50 events.\n\n`grouping_fields` is the sample value for each Grouping Field the\nBlueprint's kinds of work require, keyed as declared \u2014 the values a\ntenant's code passes when it starts the work. A required field left out\nis started with `ubb-verification`; a key no selected kind requires is\nrefused.",
         "properties": {
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Grouping Fields",
+            "type": "object"
+          },
           "records": {
             "items": {
               "$ref": "#/components/schemas/IntegrationBlueprintVerificationRecordIn"
@@ -12358,7 +12365,7 @@
     },
     "/api/v1/code-builder/blueprints/{configuration_fingerprint}/verify": {
       "post": {
-        "description": "Verify that the stored Blueprint a generated file was stamped with\nrecords and costs.\n\nThe run builds the configuration stored under the fingerprint \u2014 never\nthe configuration in force now \u2014 in a temporary tenant, starts the unit\nof work, starts each Subtask a recording names, makes each recording with\nthe sample values you send and sends it a second time with the same\nidempotency key, then closes the work. Everything the run wrote is then\ndiscarded: nothing it records is kept, delivered or charged, and every id\nin the answer names a record that no longer exists. No API key is created\nand none is returned.\n\n`verified` is false where a recording has a gap or a call of the run was\nrefused, and the answer names it: `missing_required_measurement_keys`, or\nthe acknowledgement's `costing_status`, `unresolved_reason` and\n`uncosted_measurement_keys`, or `refusal`. A gap is a 200.\n\n`404 not_found` answers a fingerprint with no stored Blueprint \u2014 never\nresolved, or removed 30 days after it was last resolved: resolve the\nselection again. `422 event_type_not_available` answers a recording of an\nEvent Type the stored Blueprint does not publish \u2014 one it did not select,\nor one that was undeclared or still a draft when it was resolved \u2014 and\nnames each in `event_types`; nothing is run. `409 conflict` answers a\nstored Blueprint that is not `complete`. `422 validation_error` answers a\n`subtask_type` the Blueprint did not select.",
+        "description": "Verify that the stored Blueprint a generated file was stamped with\nrecords and costs.\n\nThe run builds the configuration stored under the fingerprint \u2014 never\nthe configuration in force now \u2014 in a temporary tenant, starts the unit\nof work, starts each Subtask a recording names, makes each recording with\nthe sample values you send and sends it a second time with the same\nidempotency key, then closes the work. Everything the run wrote is then\ndiscarded: nothing it records is kept, delivered or charged, and every id\nin the answer names a record that no longer exists. No API key is created\nand none is returned.\n\n`verified` is false where a recording has a gap or a call of the run was\nrefused, and the answer names it: `missing_required_measurement_keys`, or\nthe acknowledgement's `costing_status`, `unresolved_reason` and\n`uncosted_measurement_keys`, or `refusal`. A gap is a 200.\n\n`grouping_fields` carries a sample value for each Grouping Field the\nBlueprint's kinds of work require; one left out is started with\n`ubb-verification`, which matches no rule pinned to a value.\n\n`404 not_found` answers a fingerprint with no stored Blueprint \u2014 never\nresolved, or removed by the daily prune once 30 days have passed since it\nwas last resolved: resolve the selection again. `422 event_type_not_available` answers a recording of an\nEvent Type the stored Blueprint does not publish \u2014 one it did not select,\nor one that was undeclared or still a draft when it was resolved \u2014 and\nnames each in `event_types`; nothing is run. `409 conflict` answers a\nstored Blueprint that is not `complete`. `422 validation_error` answers a\n`subtask_type` the Blueprint did not select, or a `grouping_fields` key no\nkind of work it selected requires.",
         "operationId": "api_v1_code_builder_endpoints_verify_blueprint",
         "parameters": [
           {

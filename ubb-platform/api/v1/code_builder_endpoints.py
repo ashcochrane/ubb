@@ -160,14 +160,19 @@ def verify_blueprint(request, configuration_fingerprint: str,
     the acknowledgement's `costing_status`, `unresolved_reason` and
     `uncosted_measurement_keys`, or `refusal`. A gap is a 200.
 
+    `grouping_fields` carries a sample value for each Grouping Field the
+    Blueprint's kinds of work require; one left out is started with
+    `ubb-verification`, which matches no rule pinned to a value.
+
     `404 not_found` answers a fingerprint with no stored Blueprint — never
-    resolved, or removed 30 days after it was last resolved: resolve the
-    selection again. `422 event_type_not_available` answers a recording of an
+    resolved, or removed by the daily prune once 30 days have passed since it
+    was last resolved: resolve the selection again. `422 event_type_not_available` answers a recording of an
     Event Type the stored Blueprint does not publish — one it did not select,
     or one that was undeclared or still a draft when it was resolved — and
     names each in `event_types`; nothing is run. `409 conflict` answers a
     stored Blueprint that is not `complete`. `422 validation_error` answers a
-    `subtask_type` the Blueprint did not select.
+    `subtask_type` the Blueprint did not select, or a `grouping_fields` key no
+    kind of work it selected requires.
     """
     _product_check(request)
     return 200, verification.verify(

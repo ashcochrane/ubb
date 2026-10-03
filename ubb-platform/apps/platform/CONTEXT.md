@@ -963,8 +963,9 @@ republishing an unchanged declaration moves it. It excludes what is only present
 ready-to-copy request a diagnostic offers, which is kept beside the identity and not hashed — and
 anything volatile or meaningless: a row id, a row timestamp, the moment of resolution, the order
 things happen to be listed in. A **derived test fixture** — never tenant configuration, read by nothing that costs,
-prices or enforces, and prunable: a sandbox reset removes it, retention removes it thirty days after
-it was last resolved, and a fingerprint whose snapshot is gone answers not-found. A draft preview
+prices or enforces, and prunable: a sandbox reset removes it, a daily prune removes it once thirty
+days have passed since it was last resolved, and a fingerprint whose snapshot is gone answers
+not-found. A draft preview
 stores none.
 (`apps/platform/code_builder/models.py:BlueprintSnapshot`; `apps/platform/code_builder/snapshots.py`)
 _Avoid_: reading the fingerprint as a catalogue-wide configuration revision — it names one

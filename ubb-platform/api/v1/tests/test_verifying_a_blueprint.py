@@ -24,6 +24,7 @@ of: the tenant table and the outbox are in it like any other.
 import json
 from datetime import timedelta
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from django.db import connection
@@ -80,9 +81,9 @@ class VerifyRoutes(BlueprintRoutes):
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
 
-    def _cost_rules(self, *rules, provider=PROVIDER):
-        """Publish `(measurement, rate per unit)` rules into the supplier's
-        default cost book, declaring the book on first use."""
+    def _cost_rules(self, *rules, provider=PROVIDER, grouping_fields=None):
+        """Publish `(kind, measurement, rate per unit)` changes into the
+        supplier's default cost book, declaring the book on first use."""
         books = self._call("get", "/api/v1/metering/pricing/cost-books")
         held = [book for book in books["data"]
                 if book["provider_key"] == provider]
@@ -92,6 +93,7 @@ class VerifyRoutes(BlueprintRoutes):
         publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
         draft = self._call("post", publishes, {"changes": [
             {"kind": kind, "measurement_key": code, "provider": provider,
+             "grouping_fields": grouping_fields or {},
              "rate_per_unit_micros": rate, "unit_quantity": 1}
             for kind, code, rate in rules]})
         self._call("post", f"{publishes}/{draft['id']}/publish")
@@ -110,12 +112,12 @@ class VerifyRoutes(BlueprintRoutes):
     def _fingerprint(self, **selection):
         return self._complete(**selection)["configuration_fingerprint"]
 
-    def _verify(self, fingerprint, *records, key=None):
+    def _verify(self, fingerprint, *records, key=None, **body):
         return self._send("post", verify_path(fingerprint),
-                          {"records": list(records)}, key)
+                          {"records": list(records), **body}, key)
 
-    def _verified(self, fingerprint, *records):
-        response = self._verify(fingerprint, *records)
+    def _verified(self, fingerprint, *records, **body):
+        response = self._verify(fingerprint, *records, **body)
         assert response.status_code == 200, response.content
         return response.json()
 
@@ -202,7 +204,7 @@ class TestAnEventTypeTheSnapshotDoesNotPublishIsRefused(VerifyRoutes):
 
 
 @pytest.mark.django_db
-class TestOnlyACompleteBlueprintIsRun(VerifyRoutes):
+class TestTheRequestIsCheckedBeforeTheRun(VerifyRoutes):
 
     def test_a_blocked_blueprint_is_refused_and_creates_nothing(self):
         self._priced_configuration()
@@ -227,6 +229,22 @@ class TestOnlyACompleteBlueprintIsRun(VerifyRoutes):
         body = response.json()
         assert body["code"] == "validation_error", body
         assert SUBTASK_KIND in body["detail"], body
+        assert what_moved(before, every_table()) == {}
+
+    def test_a_grouping_value_no_selected_kind_requires_is_refused(self):
+        """`phase` is required by the Subtask kind, which this Blueprint did
+        not select: a value for it would be sent nowhere."""
+        self._priced_configuration()
+        fingerprint = self._fingerprint()
+        before = every_table()
+        response = self._verify(fingerprint, a_record(measurements=THE_SAMPLE),
+                                grouping_fields={"environment": "prod",
+                                                 "phase": "draft"})
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "'phase'" in body["detail"], body
+        assert "'environment'" not in body["detail"], body
         assert what_moved(before, every_table()) == {}
 
 
@@ -285,10 +303,44 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         environment = body["environment"]
         assert environment["discarded"] is True
         assert list(environment["grouping_fields"]) == ["environment"]
-        assert environment["grouping_fields"]["environment"]
+        # What the start was given is what every event under it inherits.
+        (record,) = body["records"]
+        assert record["acknowledgement"]["grouping_fields"] == \
+            environment["grouping_fields"]
         assert environment["customer_external_id"]
         assert environment["rules_effective_at"]
         assert body["subtasks"] == []
+
+    def test_the_requests_grouping_value_is_the_one_the_work_is_started_with(self):
+        self._priced_configuration()
+        body = self._verified(self._fingerprint(),
+                              a_record(measurements=THE_SAMPLE),
+                              grouping_fields={"environment": "prod"})
+        assert body["environment"]["grouping_fields"] == {
+            "environment": "prod"}
+        (record,) = body["records"]
+        assert record["acknowledgement"]["grouping_fields"] == {
+            "environment": "prod"}
+
+    def test_a_rule_pinned_to_a_grouping_value_costs_when_the_request_gives_it(self):
+        """A stored rule priced only for `environment=prod`: the sample value
+        is what lets it match, and a supplied one would not."""
+        self._complete_configuration()
+        self._cost_rules(("add", "input_tokens", 3), ("add", "searches", 7),
+                         grouping_fields={"environment": "prod"})
+        fingerprint = self._fingerprint()
+
+        given = self._verified(fingerprint, a_record(measurements=THE_SAMPLE),
+                               grouping_fields={"environment": "prod"})
+        assert given["verified"] is True, given
+        assert given["records"][0]["acknowledgement"][
+            "provider_cost_micros"] == 314
+
+        left_out = self._verified(fingerprint,
+                                  a_record(measurements=THE_SAMPLE))
+        assert left_out["verified"] is False
+        assert left_out["records"][0]["acknowledgement"][
+            "unresolved_reason"] == "cost_rate_missing"
 
     def test_a_subtask_is_started_recorded_under_and_closed(self):
         self._priced_configuration()
@@ -374,12 +426,52 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         assert "ubb_live_" not in text and "ubb_test_" not in text
         assert self.tenant.widget_secret not in text
 
-    def test_it_mints_no_key(self):
+    def test_it_mints_no_key(self, monkeypatch):
+        """Watched at the one place a key is made: a key minted inside the
+        run would be rolled back with it, so a count afterwards could not
+        tell."""
         self._priced_configuration()
         fingerprint = self._fingerprint()
-        keys = TenantApiKey.objects.count()
+        minted = []
+        monkeypatch.setattr(TenantApiKey, "create_key",
+                            lambda *a, **k: minted.append(a))
         self._verified(fingerprint, a_record(measurements=THE_SAMPLE))
-        assert TenantApiKey.objects.count() == keys
+        assert minted == []
+
+    def test_it_touches_neither_the_live_counter_nor_the_admission_window(
+            self, monkeypatch):
+        """Both live outside the database, where a rollback cannot reach.
+        The run's tenant has spend enforcement off and no admission bound, so
+        neither is asked — watched at each one's store."""
+        from apps.billing.gating.services import live_counter
+        from apps.platform.work import admission
+        self._priced_configuration()
+        fingerprint = self._fingerprint()
+        live = []
+        monkeypatch.setattr(live_counter, "_client",
+                            lambda: live.append("asked"))
+        window = MagicMock()
+        monkeypatch.setattr(admission, "cache", window)
+        assert self._verified(fingerprint, a_record(
+            measurements=THE_SAMPLE))["verified"] is True
+        assert live == []
+        assert window.mock_calls == []
+
+
+@pytest.mark.django_db(transaction=True)
+class TestOutsideAnyTransactionTheRunIsStillDiscarded(VerifyRoutes):
+    """Every other case here runs inside the test's own transaction, so the
+    run's rollback is to a savepoint. In production nothing wraps a request,
+    and the rollback is the transaction's own: this is that case."""
+
+    def test_nothing_it_did_is_committed(self):
+        self._priced_configuration()
+        fingerprint = self._fingerprint(subtask_types=[SUBTASK_KIND])
+        before = every_table()
+        assert self._verified(fingerprint, a_record(
+            measurements=THE_SAMPLE,
+            subtask_type=SUBTASK_KIND))["verified"] is True
+        assert what_moved(before, every_table()) == {}
 
 
 @pytest.mark.django_db
@@ -480,15 +572,20 @@ class TestItRunsTheSnapshotAndNotLiveConfiguration(VerifyRoutes):
 @pytest.mark.django_db
 class TestASnapshotIsKeptForThirtyDaysAfterItWasLastResolved(VerifyRoutes):
 
-    def _age(self, fingerprint, days):
+    #: Just past the period, and just inside it: an hour either side of
+    #: thirty days, so a period of twenty-nine or thirty-one goes red.
+    PAST = timedelta(days=30, hours=1)
+    INSIDE = timedelta(days=29, hours=23)
+
+    def _age(self, fingerprint, by):
         BlueprintSnapshot.objects.filter(
             configuration_fingerprint=fingerprint).update(
-            updated_at=timezone.now() - timedelta(days=days))
+            updated_at=timezone.now() - by)
 
     def test_a_pruned_fingerprint_is_not_found_by_the_read_or_by_verify(self):
         self._priced_configuration()
         fingerprint = self._fingerprint()
-        self._age(fingerprint, 31)
+        self._age(fingerprint, self.PAST)
         assert prune_blueprint_snapshots() == 1
         read = self._send("get", f"/api/v1/code-builder/blueprints/"
                                  f"{fingerprint}")
@@ -499,7 +596,7 @@ class TestASnapshotIsKeptForThirtyDaysAfterItWasLastResolved(VerifyRoutes):
     def test_one_inside_the_period_is_kept(self):
         self._priced_configuration()
         fingerprint = self._fingerprint()
-        self._age(fingerprint, 29)
+        self._age(fingerprint, self.INSIDE)
         assert prune_blueprint_snapshots() == 0
         assert self._verify(
             fingerprint, a_record(measurements=THE_SAMPLE)).status_code == 200
@@ -507,7 +604,7 @@ class TestASnapshotIsKeptForThirtyDaysAfterItWasLastResolved(VerifyRoutes):
     def test_resolving_the_same_selection_again_restarts_the_period(self):
         self._priced_configuration()
         fingerprint = self._fingerprint()
-        self._age(fingerprint, 31)
+        self._age(fingerprint, self.PAST)
         assert self._fingerprint() == fingerprint
         assert prune_blueprint_snapshots() == 0
         assert BlueprintSnapshot.objects.filter(

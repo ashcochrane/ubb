@@ -4442,9 +4442,17 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
 
 
 class IntegrationBlueprintVerificationIn(Schema):
-    """What one verification records, in order: between 1 and 50 events."""
+    """What one verification records, in order: between 1 and 50 events.
+
+    `grouping_fields` is the sample value for each Grouping Field the
+    Blueprint's kinds of work require, keyed as declared — the values a
+    tenant's code passes when it starts the work. A required field left out
+    is started with `ubb-verification`; a key no selected kind requires is
+    refused.
+    """
     records: List[IntegrationBlueprintVerificationRecordIn] = Field(
         min_length=1, max_length=50)
+    grouping_fields: dict[str, str] = Field(default_factory=dict)
 
 
 class IntegrationBlueprintVerificationEnvironment(Schema):
@@ -4458,10 +4466,11 @@ class IntegrationBlueprintVerificationEnvironment(Schema):
     stop it reached was not acted on.
 
     `customer_external_id` is the customer it recorded for, and
-    `grouping_fields` the value it supplied for each Grouping Field the kinds
-    of work require. `rules_effective_at` is the moment every stored Cost Rate
-    and pricing rule took effect: each is in force for the run whatever window
-    it was declared with.
+    `grouping_fields` the value each Grouping Field the kinds of work require
+    was started with: the request's, or `ubb-verification` where the request
+    gave none. `rules_effective_at` is the moment every stored Cost Rate and
+    pricing rule took effect: each is in force for the run whatever window it
+    was declared with.
     """
     discarded: bool
     customer_external_id: str

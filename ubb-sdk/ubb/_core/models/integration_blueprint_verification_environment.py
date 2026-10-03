@@ -34,10 +34,11 @@ class IntegrationBlueprintVerificationEnvironment:
     stop it reached was not acted on.
 
     `customer_external_id` is the customer it recorded for, and
-    `grouping_fields` the value it supplied for each Grouping Field the kinds
-    of work require. `rules_effective_at` is the moment every stored Cost Rate
-    and pricing rule took effect: each is in force for the run whatever window
-    it was declared with.
+    `grouping_fields` the value each Grouping Field the kinds of work require
+    was started with: the request's, or `ubb-verification` where the request
+    gave none. `rules_effective_at` is the moment every stored Cost Rate and
+    pricing rule took effect: each is in force for the run whatever window it
+    was declared with.
 
         Attributes:
             customer_external_id (str):

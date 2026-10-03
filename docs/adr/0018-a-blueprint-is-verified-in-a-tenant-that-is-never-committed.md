@@ -62,9 +62,17 @@ every product (ADR-001), and the boundary test is the judge.
 
 The snapshot was shaped to be hashed, and adding to it would move every fingerprint. So the run
 supplies, and `environment` states: a customer to record for (`customer_external_id`), a value for
-each Grouping Field the kinds of work require (`grouping_fields`), and the moment every stored rule
-takes effect (`rules_effective_at`, the run's start — each rule is in force for the run whatever
-window it was declared with). A display name, an analytics heading and an event category are not
+each Grouping Field the kinds of work require that the request gave none for (`grouping_fields`
+reports the value each was started with), and the moment every stored rule takes effect
+(`rules_effective_at`, the run's start — each rule is in force for the run whatever window it was
+declared with).
+
+A required Grouping Field's value is a runtime value like a Measurement's — a tenant's code passes
+it at the start — so the request carries samples for both. Where the request gives no value the
+run starts with `ubb-verification`, which no stored rule pinned to a value can match: a run over
+such rules needs the value given. (Found in review: the first build supplied the word for every
+field, and a snapshot whose only rule was pinned to `environment=prod` reported a missing rate it
+did not have.) A display name, an analytics heading and an event category are not
 held and not needed: none decides a cost or a price.
 
 ### 4. Two refusals before anything is written, and the rest is a verdict
@@ -76,6 +84,8 @@ held and not needed: none decides a cost or a price.
 - **`409 conflict`** for a stored Blueprint that is not `complete`. A scaffold or a blocked
   Blueprint generates a file that fails fast rather than records, so there is nothing to verify;
   this is #567's point 4 — the artifact's readiness catches it before execution.
+- **`422 validation_error`** for a `subtask_type` the Blueprint did not select, or a
+  `grouping_fields` key no kind of work it selected requires: either would be sent nowhere.
 
 Everything after that is a **200**. A recording's verdict is read off its acknowledgement: a
 Measurement the Event Type requires for a complete cost that the recording did not carry
@@ -100,8 +110,9 @@ resolving is a Read-floor act. The period is the owner's to change.
 
 The server ran the work, so it holds the evidence a declaration needs. A run that reaches its close
 declares `delivered` — an uncosted recording is still delivered work. A run stopped by a refusal
-declares `cancelled` on the Task it started: the run withdrew the rest. Pass and fail are the
-verdict's.
+after its Task started declares `cancelled` on it — the run withdrew the rest, and closing the Task
+withdraws any Subtask inside it; a refused start leaves no Task to declare anything on. `refusal`
+names the call that stopped the run, never a later one. Pass and fail are the verdict's.
 
 ### 7. The floor is Write and the audit ledger is not written
 
@@ -121,7 +132,9 @@ and says so.
 | Rule | Test |
 |---|---|
 | §1 — nothing is left behind, over every table, and the snapshot stays | `ubb-platform/api/v1/tests/test_verifying_a_blueprint.py` — `TestAMatchingSnapshotIsRun`: `test_nothing_it_did_is_left_behind_and_the_snapshot_stays`, `test_a_tenant_with_its_own_sandbox_verifies_and_its_sandbox_is_untouched` |
-| §1 — nothing waits to be delivered, against an ordinary recording that does; no key, no credential | same module — `test_nothing_it_did_waits_to_be_delivered`, `test_an_ordinary_recording_does_wait_to_be_delivered`, `test_it_mints_no_key`, `test_no_response_carries_a_credential` |
+| §1 — and with no transaction around the request, the rollback is the transaction's own | same module — `TestOutsideAnyTransactionTheRunIsStillDiscarded`: `test_nothing_it_did_is_committed` |
+| §1 — nothing waits to be delivered, against an ordinary recording that does; no Redis store is asked; no key, no credential | same module — `test_nothing_it_did_waits_to_be_delivered`, `test_an_ordinary_recording_does_wait_to_be_delivered`, `test_it_touches_neither_the_live_counter_nor_the_admission_window`, `test_it_mints_no_key`, `test_no_response_carries_a_credential` |
+| §3 — a Grouping Field's sample value is the one the work starts with, and is what a pinned rule needs | same module — `test_the_requests_grouping_value_is_the_one_the_work_is_started_with`, `test_a_rule_pinned_to_a_grouping_value_costs_when_the_request_gives_it`, `test_a_grouping_value_no_selected_kind_requires_is_refused` |
 | §2 — the real acknowledgement, the unit of work and a Subtask | same module — `test_it_records_and_answers_the_real_acknowledgement`, `test_the_unit_of_work_is_started_with_the_required_values_and_delivered`, `test_a_subtask_is_started_recorded_under_and_closed` |
 | §2 — the boundary | `ubb-platform/apps/platform/tests/test_product_boundaries.py` |
 | §3 — the snapshot, not live configuration | same module — `TestItRunsTheSnapshotAndNotLiveConfiguration`: `test_configuration_edited_and_republished_after_resolving` |
@@ -135,7 +148,7 @@ and says so.
 
 ## Consequences
 
-The console's Verify stage (#581) posts `records` and renders the answer as given: an
+The console's Verify stage (#581) posts `records` (and `grouping_fields`) and renders the answer as given: an
 acknowledgement's null amount is no figure, and every id in it names a record that no longer
 exists. A future need to verify against something the snapshot does not hold — an agreed price,
 a constant's value — is met by the ticket that adds it to the snapshot's configuration, in a

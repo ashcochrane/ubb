@@ -40,19 +40,25 @@ book), its
 outbox rows would be committed and delivered, and a process that died in the
 middle would leave it behind. The rollback has none of those.
 
-What can leave the database at all is decided by the tenant made for the run,
-which is created with only the three fields a sandbox copies: spend
-enforcement is off and no admission bound is declared, so neither the live
-counter nor the admission window is touched, and no API key is minted for it.
+What can leave the database at all is decided by the tenant made for the run.
+Beside a name, it is given only the three fields a sandbox copies, so its
+spend enforcement is off and it declares no admission bound: neither the live
+counter nor the admission window is touched, and
+`test_verifying_a_blueprint.py` holds both by watching them. No API key is
+minted for it. (Saving a tenant also deletes its cached product list, a key
+nothing has written for a tenant that did not exist a moment before.)
 
 WHAT IS SUPPLIED THAT THE SNAPSHOT DOES NOT HOLD
 ------------------------------------------------
 The snapshot was shaped to be hashed, not replayed, and nothing is added to it
 here: adding to it would move every fingerprint. So the run supplies, and its
 answer states, three things — a customer to record for, a value for each
-Grouping Field the kinds of work require, and the moment the stored rules take
-effect (the run's own start, so each is in force for the run whatever window
-it was declared with). A display name, an analytics heading and an event
+Grouping Field the kinds of work require that the request gave none for, and
+the moment the stored rules take effect (the run's own start, so each is in
+force for the run whatever window it was declared with). A Grouping Field's
+value is a sample like a Measurement's — a tenant's code passes it at the
+start — so the request may give it, and must where a stored rule is pinned to
+one: a supplied value matches no such rule. A display name, an analytics heading and an event
 category are not held and not needed: none decides a cost or a price.
 
 THE UNIT OF WORK'S OUTCOME
@@ -60,9 +66,12 @@ THE UNIT OF WORK'S OUTCOME
 The server ran the work itself, so it holds the evidence a declaration needs.
 A run that reaches its close declares `delivered` — every recording was made,
 including one whose cost UBB could not work out, because an uncosted
-recording is still delivered work. A run stopped by a refused call declares
-`cancelled`: the run withdrew the rest of the work. Pass and fail is the
-verdict's, never the outcome's.
+recording is still delivered work. A run stopped by a refused call after the
+Task started declares `cancelled` on it: the run withdrew the rest of the work,
+and closing the Task withdraws any Subtask inside it. A refused start leaves no
+Task to declare anything on. If that cancelling close is itself refused, the
+Task is left as it is and `refusal` still names the call that stopped the run.
+Pass and fail is the verdict's, never the outcome's.
 """
 import json
 
@@ -86,7 +95,8 @@ from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant
 from core.problems import PROBLEM_TYPE_BASE, Problem
 from core.vocabulary import (
-    COSTING_STATUS_UNRESOLVED, INTEGRATION_READINESS_COMPLETE,
+    COSTING_METHOD_REPORTED, COSTING_STATUS_UNRESOLVED,
+    INTEGRATION_READINESS_COMPLETE,
     TASK_OUTCOME_CANCELLED, TASK_OUTCOME_DELIVERED)
 
 #: The customer the run records for, and the value it supplies for each
@@ -95,11 +105,11 @@ from core.vocabulary import (
 SUPPLIED = "ubb-verification"
 
 #: The fields of a declared kind of work that the registry takes back, by the
-#: names its own request publishes. The snapshot keeps the kind as the
-#: registry's read answers it, which carries one more (`retired`, a flag the
-#: request also takes) and nothing the request does not.
+#: names its own request publishes. The snapshot keeps each kind as the
+#: registry's read answers it, which holds every one of them.
 _KIND_FIELDS = tuple(TaskTypeIn.model_fields)
 
+#: The operation each call of the run is, as the Blueprint names it.
 START = integration_blueprint.START_TASK
 RECORD = integration_blueprint.RECORD_USAGE
 CLOSE = integration_blueprint.CLOSE_TASK
@@ -126,6 +136,7 @@ def verify(tenant, configuration_fingerprint, payload):
             f"generates code that records: resolve it again once its "
             f"diagnostics are fixed")
     _refuse_a_subtask_kind_not_selected(configuration, payload)
+    _refuse_a_grouping_field_not_required(configuration, payload)
 
     with transaction.atomic():
         answer = _Run(configuration, payload).run()
@@ -164,6 +175,21 @@ def _refuse_a_subtask_kind_not_selected(configuration, payload):
             "validation_error",
             f"subtask_type {', '.join(repr(key) for key in named)} is not a "
             f"Subtask kind the Blueprint selected")
+
+
+def _refuse_a_grouping_field_not_required(configuration, payload):
+    """A sample value is for a field a start of the selected kinds takes. One
+    for any other key would be sent nowhere, so a caller is told rather than
+    left believing it was used."""
+    required = {key for kind in (configuration["task_type"],
+                                 *configuration["subtask_types"])
+                for key in kind["required_grouping_fields"]}
+    named = sorted(set(payload.grouping_fields) - required)
+    if named:
+        raise Problem(
+            "validation_error",
+            f"grouping_fields {', '.join(repr(key) for key in named)}: no "
+            f"kind of work the Blueprint selected requires it")
 
 
 class _Refused(Exception):
@@ -230,14 +256,18 @@ class _Run:
             with transaction.atomic():
                 return function(*arguments)
         except Problem as refused:
-            self.refusal = {"operation_id": operation_id, "problem": {
-                "type": PROBLEM_TYPE_BASE + refused.code,
-                "title": refused.title, "status": refused.status,
-                "code": refused.code, "detail": refused.detail}}
+            # The FIRST refusal is the one that stopped the run; a refusal of
+            # the close that withdraws the work afterwards does not replace it.
+            if self.refusal is None:
+                self.refusal = {"operation_id": operation_id, "problem": {
+                    "type": PROBLEM_TYPE_BASE + refused.code,
+                    "title": refused.title, "status": refused.status,
+                    "code": refused.code, "detail": refused.detail}}
             raise _Refused from refused
 
     def _values_for(self, kind):
-        values = {key: SUPPLIED for key in kind["required_grouping_fields"]}
+        values = {key: self.payload.grouping_fields.get(key, SUPPLIED)
+                  for key in kind["required_grouping_fields"]}
         self.supplied_values.update(values)
         return values
 
@@ -385,7 +415,12 @@ def _recording(customer, declared, claim, task_id, position):
     """The recording a generated file makes for this Event Type: the
     supplier and the currency the Blueprint fills in, and the claim's sample
     values where the Blueprint asks the tenant's code for them."""
-    mapping = declared["reported_cost_mapping"]
+    # The currency a reported cost is declared in, where the Blueprint binds
+    # one: on an Event Type costed from the supplier's own figure. A complete
+    # Blueprint's reported cost always arrives on the call.
+    mapping = (declared["reported_cost_mapping"]
+               if declared["costing_method"] == COSTING_METHOD_REPORTED
+               else None)
     return RecordUsageRequest(
         customer_id=customer.id,
         idempotency_key=f"ubb-verification-record-{position}",

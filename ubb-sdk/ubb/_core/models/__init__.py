@@ -136,6 +136,7 @@ from .integration_blueprint_verification import IntegrationBlueprintVerification
 from .integration_blueprint_verification_environment import IntegrationBlueprintVerificationEnvironment
 from .integration_blueprint_verification_environment_grouping_fields import IntegrationBlueprintVerificationEnvironmentGroupingFields
 from .integration_blueprint_verification_in import IntegrationBlueprintVerificationIn
+from .integration_blueprint_verification_in_grouping_fields import IntegrationBlueprintVerificationInGroupingFields
 from .integration_blueprint_verification_record import IntegrationBlueprintVerificationRecord
 from .integration_blueprint_verification_record_in import IntegrationBlueprintVerificationRecordIn
 from .integration_blueprint_verification_record_in_measurements import IntegrationBlueprintVerificationRecordInMeasurements
@@ -499,6 +500,7 @@ __all__ = (
     "IntegrationBlueprintVerificationEnvironment",
     "IntegrationBlueprintVerificationEnvironmentGroupingFields",
     "IntegrationBlueprintVerificationIn",
+    "IntegrationBlueprintVerificationInGroupingFields",
     "IntegrationBlueprintVerificationRecord",
     "IntegrationBlueprintVerificationRecordIn",
     "IntegrationBlueprintVerificationRecordInMeasurements",
