@@ -4446,9 +4446,9 @@ class IntegrationBlueprintVerificationIn(Schema):
 
     `grouping_fields` is the sample value for each Grouping Field the
     Blueprint's kinds of work require, keyed as declared — the values a
-    tenant's code passes when it starts the work. A required field left out
-    is started with `ubb-verification`; a key no selected kind requires is
-    refused.
+    tenant's code passes when it starts the work. Every field a kind the run
+    starts requires must be given: a runtime value is never made up. A key no
+    selected kind requires is refused.
     """
     records: List[IntegrationBlueprintVerificationRecordIn] = Field(
         min_length=1, max_length=50)
@@ -4465,16 +4465,17 @@ class IntegrationBlueprintVerificationEnvironment(Schema):
     exists. Nothing it did was delivered — no webhook, no Stripe call — and a
     stop it reached was not acted on.
 
-    `customer_external_id` is the customer it recorded for, and
-    `grouping_fields` the value each Grouping Field the kinds of work require
-    was started with: the request's, or `ubb-verification` where the request
-    gave none. `rules_effective_at` is the moment every stored Cost Rate and
-    pricing rule took effect: each is in force for the run whatever window it
-    was declared with.
+    `customer_external_id` is the customer it recorded for, made for the run:
+    on no plan and with no deal of its own. Who the customer is decides no
+    cost — no cost rule names a customer, and the stored configuration holds
+    only rules for every customer — so it cannot move what `verified` proves;
+    the customer price it is charged is that of a customer with neither.
+    `rules_effective_at` is the moment every stored Cost Rate and pricing rule
+    took effect: each is in force for the run whatever window it was declared
+    with.
     """
     discarded: bool
     customer_external_id: str
-    grouping_fields: dict[str, str]
     rules_effective_at: datetime
 
 
@@ -4516,12 +4517,22 @@ class IntegrationBlueprintVerificationRefusal(Schema):
 class IntegrationBlueprintVerification(Schema):
     """What verifying a stored Blueprint found.
 
-    `verified` is true when no call of the run was refused and every
-    recording is `complete`. A gap fails it without failing the request: the
+    `verified` is a statement about the WHOLE Blueprint, and about recording
+    and costing. It is true only when every Event Type and every Subtask kind
+    the Blueprint selected was exercised, no call of the run was refused, and
+    every recording is `complete`. It does not say a customer price resolved:
+    each acknowledgement's `pricing_status` says that, and `verified` does not
+    read it.
+
+    A run may exercise less than the Blueprint selected. It then lists what it
+    left out in `unexercised_event_types` and `unexercised_subtask_types`, and
+    `verified` is false. A gap fails it without failing the request: the
     acknowledgement that shows the gap is in `records`.
     """
     configuration_fingerprint: str
     verified: bool
+    unexercised_event_types: List[str]
+    unexercised_subtask_types: List[str]
     environment: IntegrationBlueprintVerificationEnvironment
     task: IntegrationBlueprintVerificationUnit
     subtasks: List[IntegrationBlueprintVerificationUnit]

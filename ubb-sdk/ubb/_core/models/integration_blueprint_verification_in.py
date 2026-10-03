@@ -29,9 +29,9 @@ class IntegrationBlueprintVerificationIn:
 
     `grouping_fields` is the sample value for each Grouping Field the
     Blueprint's kinds of work require, keyed as declared — the values a
-    tenant's code passes when it starts the work. A required field left out
-    is started with `ubb-verification`; a key no selected kind requires is
-    refused.
+    tenant's code passes when it starts the work. Every field a kind the run
+    starts requires must be given: a runtime value is never made up. A key no
+    selected kind requires is refused.
 
         Attributes:
             records (list[IntegrationBlueprintVerificationRecordIn]):

@@ -109,10 +109,26 @@ class VerifyRoutes(BlueprintRoutes):
         self._cost_rules(("add", "input_tokens", 3), ("add", "searches", 7))
         self._markup(50_000_000)
 
+    def _a_second_event_type_on_the_same_supplier(self):
+        """`OTHER_EVENT`, published, naming the supplier the configuration
+        already declared — through the routes, attached by a revision because
+        the fixture helper declares its supplier afresh."""
+        self._event_type(OTHER_EVENT, provider=None, publish=False)
+        self._call("patch", f"/api/v1/event-types/{OTHER_EVENT}",
+                   {"provider_key": PROVIDER})
+        self._publish(OTHER_EVENT)
+
     def _fingerprint(self, **selection):
         return self._complete(**selection)["configuration_fingerprint"]
 
     def _verify(self, fingerprint, *records, key=None, **body):
+        """Verify, sending the fixture's samples for its required Grouping
+        Fields unless the case says otherwise: `environment` for the Task
+        kind, and `phase` once a recording names the Subtask kind."""
+        if "grouping_fields" not in body:
+            body["grouping_fields"] = {"environment": "prod"}
+            if any(record.get("subtask_type") for record in records):
+                body["grouping_fields"]["phase"] = "draft"
         return self._send("post", verify_path(fingerprint),
                           {"records": list(records), **body}, key)
 
@@ -259,6 +275,8 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         assert body["configuration_fingerprint"] == fingerprint
         assert body["verified"] is True, body
         assert body["refusal"] is None
+        assert body["unexercised_event_types"] == []
+        assert body["unexercised_subtask_types"] == []
         (record,) = body["records"]
         ack = record["acknowledgement"]
         # 100 tokens at 3 and 2 searches at 7, and half again on top.
@@ -301,13 +319,10 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         assert task["close"]["status"] == "completed"
         assert task["close"]["total_provider_cost_micros"] == 314
         environment = body["environment"]
-        assert environment["discarded"] is True
-        assert list(environment["grouping_fields"]) == ["environment"]
-        # What the start was given is what every event under it inherits.
-        (record,) = body["records"]
-        assert record["acknowledgement"]["grouping_fields"] == \
-            environment["grouping_fields"]
-        assert environment["customer_external_id"]
+        assert environment == {"discarded": True,
+                               "customer_external_id": "ubb-verification",
+                               "rules_effective_at":
+                                   environment["rules_effective_at"]}
         assert environment["rules_effective_at"]
         assert body["subtasks"] == []
 
@@ -315,16 +330,47 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         self._priced_configuration()
         body = self._verified(self._fingerprint(),
                               a_record(measurements=THE_SAMPLE),
-                              grouping_fields={"environment": "prod"})
-        assert body["environment"]["grouping_fields"] == {
-            "environment": "prod"}
+                              grouping_fields={"environment": "staging"})
+        # What the start was given is what every event under it inherits.
         (record,) = body["records"]
         assert record["acknowledgement"]["grouping_fields"] == {
-            "environment": "prod"}
+            "environment": "staging"}
 
-    def test_a_rule_pinned_to_a_grouping_value_costs_when_the_request_gives_it(self):
-        """A stored rule priced only for `environment=prod`: the sample value
-        is what lets it match, and a supplied one would not."""
+    def test_a_missing_required_grouping_value_is_refused_and_never_made_up(self):
+        """The key is the kind's declaration; the value is the tenant's code's
+        to pass. Without it nothing is run."""
+        self._priced_configuration()
+        fingerprint = self._fingerprint(subtask_types=[SUBTASK_KIND])
+        before = every_table()
+        response = self._verify(
+            fingerprint, a_record(measurements=THE_SAMPLE,
+                                  subtask_type=SUBTASK_KIND),
+            grouping_fields={"environment": "prod"})
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "'phase'" in body["detail"], body
+        assert "'environment'" not in body["detail"], body
+        assert what_moved(before, every_table()) == {}
+
+    def test_a_subtask_kind_the_run_does_not_start_needs_no_value(self):
+        """Required only by what is started: a Subtask kind no recording
+        names is not started, so its field needs no sample."""
+        self._priced_configuration()
+        fingerprint = self._fingerprint(subtask_types=[SUBTASK_KIND])
+        body = self._verified(fingerprint, a_record(measurements=THE_SAMPLE),
+                              grouping_fields={"environment": "prod"})
+        assert body["subtasks"] == []
+        # And because it was selected and not exercised, the Blueprint is
+        # not verified, however well the recording went.
+        assert body["unexercised_subtask_types"] == [SUBTASK_KIND]
+        assert body["records"][0]["complete"] is True
+        assert body["refusal"] is None
+        assert body["verified"] is False
+
+    def test_a_rule_pinned_to_a_grouping_value_costs_only_for_that_value(self):
+        """A stored rule priced only for `environment=prod`: the sample is
+        what it matches, and another value is a real gap."""
         self._complete_configuration()
         self._cost_rules(("add", "input_tokens", 3), ("add", "searches", 7),
                          grouping_fields={"environment": "prod"})
@@ -336,10 +382,10 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         assert given["records"][0]["acknowledgement"][
             "provider_cost_micros"] == 314
 
-        left_out = self._verified(fingerprint,
-                                  a_record(measurements=THE_SAMPLE))
-        assert left_out["verified"] is False
-        assert left_out["records"][0]["acknowledgement"][
+        other = self._verified(fingerprint, a_record(measurements=THE_SAMPLE),
+                               grouping_fields={"environment": "staging"})
+        assert other["verified"] is False
+        assert other["records"][0]["acknowledgement"][
             "unresolved_reason"] == "cost_rate_missing"
 
     def test_a_subtask_is_started_recorded_under_and_closed(self):
@@ -361,8 +407,8 @@ class TestAMatchingSnapshotIsRun(VerifyRoutes):
         assert under_subtask["acknowledgement"]["parent_task_id"] == parent
         assert under_task["subtask_type"] is None
         assert under_task["acknowledgement"]["task_id"] == parent
-        assert set(body["environment"]["grouping_fields"]) == {
-            "environment", "phase"}
+        assert under_subtask["acknowledgement"]["grouping_fields"] == {
+            "environment": "prod", "phase": "draft"}
 
     def test_nothing_it_did_is_left_behind_and_the_snapshot_stays(self):
         self._priced_configuration()
@@ -475,6 +521,46 @@ class TestOutsideAnyTransactionTheRunIsStillDiscarded(VerifyRoutes):
 
 
 @pytest.mark.django_db
+class TestVerifiedSpeaksForTheWholeBlueprint(VerifyRoutes):
+    """`verified` certifies the Blueprint, so a run that exercised part of
+    it says so and is not verified (owner's review of #599)."""
+
+    def test_a_selected_event_type_left_out_keeps_it_false(self):
+        self._priced_configuration()
+        self._a_second_event_type_on_the_same_supplier()
+        fingerprint = self._fingerprint(event_types=[EVENT, OTHER_EVENT])
+        body = self._verified(fingerprint, a_record(measurements=THE_SAMPLE))
+        (record,) = body["records"]
+        assert record["complete"] is True
+        assert body["refusal"] is None
+        assert body["unexercised_event_types"] == [OTHER_EVENT]
+        assert body["verified"] is False
+
+    def test_exercising_every_selected_event_type_makes_it_true(self):
+        self._priced_configuration()
+        self._a_second_event_type_on_the_same_supplier()
+        fingerprint = self._fingerprint(event_types=[EVENT, OTHER_EVENT])
+        body = self._verified(
+            fingerprint, a_record(measurements=THE_SAMPLE),
+            a_record(OTHER_EVENT, measurements={"input_tokens": 10}))
+        assert body["unexercised_event_types"] == []
+        assert body["verified"] is True, body
+
+    def test_an_unpriced_recording_still_verifies_because_the_verdict_is_about_cost(self):
+        """No markup and no price rule: the cost is known and the price is
+        not. `verified` proves recording and costing, and says nothing about
+        the price, which the acknowledgement reports as it is."""
+        self._complete_configuration()
+        self._cost_rules(("add", "input_tokens", 3), ("add", "searches", 7))
+        body = self._verified(self._fingerprint(),
+                              a_record(measurements=THE_SAMPLE))
+        ack = body["records"][0]["acknowledgement"]
+        assert ack["costing_status"] == "known"
+        assert ack["pricing_status"] != "known", ack
+        assert body["verified"] is True, body
+
+
+@pytest.mark.django_db
 class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
 
     def test_a_missing_required_measurement_is_named(self):
@@ -532,7 +618,8 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
         self._event_type(provider=PROVIDER)
         self._cost_rules(("add", "input_tokens", 3))
         fingerprint = self._fingerprint(task_type="whole")
-        body = self._verified(fingerprint, a_record(measurements=THE_SAMPLE))
+        body = self._verified(fingerprint, a_record(measurements=THE_SAMPLE),
+                              grouping_fields={})
         assert body["verified"] is False
         assert body["refusal"]["operation_id"] == \
             "api_v1_task_endpoints_start_task"
@@ -567,6 +654,44 @@ class TestItRunsTheSnapshotAndNotLiveConfiguration(VerifyRoutes):
         assert record["acknowledgement"]["billed_cost_micros"] == 471
         assert record["missing_required_measurement_keys"] == []
         assert body["verified"] is True, body
+
+
+@pytest.mark.django_db
+class TestTheCustomerItMakesUpDecidesNoCost(VerifyRoutes):
+    """The run's customer is the one value it makes up. That is safe only
+    because who the customer is cannot move a cost — and the snapshot holds
+    no customer's own rule to move a price either."""
+
+    def test_a_customers_own_price_is_not_in_the_snapshot(self):
+        self._priced_configuration()
+        customer = self._call("post", "/api/v1/platform/customers",
+                              {"external_id": "ubb-verification"})
+        override = self._call(
+            "post",
+            f"/api/v1/metering/pricing/customers/{customer['id']}/overrides",
+            {"measurement_key": "input_tokens", "provider": PROVIDER,
+             "rate_per_unit_micros": 1000, "unit_quantity": 1})
+        self._call("post", f"/api/v1/metering/pricing/books/"
+                           f"{override['book_id']}/publishes/"
+                           f"{override['id']}/publish")
+        body = self._verified(self._fingerprint(),
+                              a_record(measurements=THE_SAMPLE))
+        ack = body["records"][0]["acknowledgement"]
+        # Named like the run's own customer, and still not its price: the
+        # run's customer is a new one, and the snapshot holds only the rules
+        # every customer gets.
+        assert body["environment"]["customer_external_id"] == \
+            "ubb-verification"
+        assert ack["provider_cost_micros"] == 314
+        assert ack["billed_cost_micros"] == 471
+
+    def test_no_cost_rule_can_name_a_customer(self):
+        """The structural half: nothing a cost resolves through has a
+        customer in it to be moved by."""
+        from apps.metering.pricing.models import CostBook, Rate
+        assert "customer" not in Rate.SELECTORS
+        assert "customer" not in {field.name
+                                  for field in CostBook._meta.get_fields()}
 
 
 @pytest.mark.django_db

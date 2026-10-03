@@ -3716,7 +3716,7 @@
         "type": "object"
       },
       "IntegrationBlueprintVerification": {
-        "description": "What verifying a stored Blueprint found.\n\n`verified` is true when no call of the run was refused and every\nrecording is `complete`. A gap fails it without failing the request: the\nacknowledgement that shows the gap is in `records`.",
+        "description": "What verifying a stored Blueprint found.\n\n`verified` is a statement about the WHOLE Blueprint, and about recording\nand costing. It is true only when every Event Type and every Subtask kind\nthe Blueprint selected was exercised, no call of the run was refused, and\nevery recording is `complete`. It does not say a customer price resolved:\neach acknowledgement's `pricing_status` says that, and `verified` does not\nread it.\n\nA run may exercise less than the Blueprint selected. It then lists what it\nleft out in `unexercised_event_types` and `unexercised_subtask_types`, and\n`verified` is false. A gap fails it without failing the request: the\nacknowledgement that shows the gap is in `records`.",
         "properties": {
           "configuration_fingerprint": {
             "title": "Configuration Fingerprint",
@@ -3752,6 +3752,20 @@
           "task": {
             "$ref": "#/components/schemas/IntegrationBlueprintVerificationUnit"
           },
+          "unexercised_event_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unexercised Event Types",
+            "type": "array"
+          },
+          "unexercised_subtask_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unexercised Subtask Types",
+            "type": "array"
+          },
           "verified": {
             "title": "Verified",
             "type": "boolean"
@@ -3760,6 +3774,8 @@
         "required": [
           "configuration_fingerprint",
           "verified",
+          "unexercised_event_types",
+          "unexercised_subtask_types",
           "environment",
           "task",
           "subtasks",
@@ -3769,7 +3785,7 @@
         "type": "object"
       },
       "IntegrationBlueprintVerificationEnvironment": {
-        "description": "Where the verification ran, and what it supplied that the stored\nconfiguration does not hold.\n\nIt ran in a tenant made for it from the stored configuration, inside one\ntransaction that is rolled back when the run ends: `discarded` is always\ntrue, and every id in the acknowledgements names a record that no longer\nexists. Nothing it did was delivered \u2014 no webhook, no Stripe call \u2014 and a\nstop it reached was not acted on.\n\n`customer_external_id` is the customer it recorded for, and\n`grouping_fields` the value each Grouping Field the kinds of work require\nwas started with: the request's, or `ubb-verification` where the request\ngave none. `rules_effective_at` is the moment every stored Cost Rate and\npricing rule took effect: each is in force for the run whatever window it\nwas declared with.",
+        "description": "Where the verification ran, and what it supplied that the stored\nconfiguration does not hold.\n\nIt ran in a tenant made for it from the stored configuration, inside one\ntransaction that is rolled back when the run ends: `discarded` is always\ntrue, and every id in the acknowledgements names a record that no longer\nexists. Nothing it did was delivered \u2014 no webhook, no Stripe call \u2014 and a\nstop it reached was not acted on.\n\n`customer_external_id` is the customer it recorded for, made for the run:\non no plan and with no deal of its own. Who the customer is decides no\ncost \u2014 no cost rule names a customer, and the stored configuration holds\nonly rules for every customer \u2014 so it cannot move what `verified` proves;\nthe customer price it is charged is that of a customer with neither.\n`rules_effective_at` is the moment every stored Cost Rate and pricing rule\ntook effect: each is in force for the run whatever window it was declared\nwith.",
         "properties": {
           "customer_external_id": {
             "title": "Customer External Id",
@@ -3778,13 +3794,6 @@
           "discarded": {
             "title": "Discarded",
             "type": "boolean"
-          },
-          "grouping_fields": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Grouping Fields",
-            "type": "object"
           },
           "rules_effective_at": {
             "format": "date-time",
@@ -3795,14 +3804,13 @@
         "required": [
           "discarded",
           "customer_external_id",
-          "grouping_fields",
           "rules_effective_at"
         ],
         "title": "IntegrationBlueprintVerificationEnvironment",
         "type": "object"
       },
       "IntegrationBlueprintVerificationIn": {
-        "description": "What one verification records, in order: between 1 and 50 events.\n\n`grouping_fields` is the sample value for each Grouping Field the\nBlueprint's kinds of work require, keyed as declared \u2014 the values a\ntenant's code passes when it starts the work. A required field left out\nis started with `ubb-verification`; a key no selected kind requires is\nrefused.",
+        "description": "What one verification records, in order: between 1 and 50 events.\n\n`grouping_fields` is the sample value for each Grouping Field the\nBlueprint's kinds of work require, keyed as declared \u2014 the values a\ntenant's code passes when it starts the work. Every field a kind the run\nstarts requires must be given: a runtime value is never made up. A key no\nselected kind requires is refused.",
         "properties": {
           "grouping_fields": {
             "additionalProperties": {
@@ -12365,7 +12373,7 @@
     },
     "/api/v1/code-builder/blueprints/{configuration_fingerprint}/verify": {
       "post": {
-        "description": "Verify that the stored Blueprint a generated file was stamped with\nrecords and costs.\n\nThe run builds the configuration stored under the fingerprint \u2014 never\nthe configuration in force now \u2014 in a temporary tenant, starts the unit\nof work, starts each Subtask a recording names, makes each recording with\nthe sample values you send and sends it a second time with the same\nidempotency key, then closes the work. Everything the run wrote is then\ndiscarded: nothing it records is kept, delivered or charged, and every id\nin the answer names a record that no longer exists. No API key is created\nand none is returned.\n\n`verified` is false where a recording has a gap or a call of the run was\nrefused, and the answer names it: `missing_required_measurement_keys`, or\nthe acknowledgement's `costing_status`, `unresolved_reason` and\n`uncosted_measurement_keys`, or `refusal`. A gap is a 200.\n\n`grouping_fields` carries a sample value for each Grouping Field the\nBlueprint's kinds of work require; one left out is started with\n`ubb-verification`, which matches no rule pinned to a value.\n\n`404 not_found` answers a fingerprint with no stored Blueprint \u2014 never\nresolved, or removed by the daily prune once 30 days have passed since it\nwas last resolved: resolve the selection again. `422 event_type_not_available` answers a recording of an\nEvent Type the stored Blueprint does not publish \u2014 one it did not select,\nor one that was undeclared or still a draft when it was resolved \u2014 and\nnames each in `event_types`; nothing is run. `409 conflict` answers a\nstored Blueprint that is not `complete`. `422 validation_error` answers a\n`subtask_type` the Blueprint did not select, or a `grouping_fields` key no\nkind of work it selected requires.",
+        "description": "Verify that the stored Blueprint a generated file was stamped with\nrecords and costs.\n\nThe run builds the configuration stored under the fingerprint \u2014 never\nthe configuration in force now \u2014 in a temporary tenant, starts the unit\nof work, starts each Subtask a recording names, makes each recording with\nthe sample values you send and sends it a second time with the same\nidempotency key, then closes the work. Everything the run wrote is then\ndiscarded: nothing it records is kept, delivered or charged, and every id\nin the answer names a record that no longer exists. No API key is created\nand none is returned.\n\n`verified` speaks for the whole Blueprint, and for recording and costing\nonly: it is true when every Event Type and Subtask kind the Blueprint\nselected was exercised, no call was refused and every recording is\ncomplete. It is false otherwise, and the answer names why:\n`unexercised_event_types` and `unexercised_subtask_types`, a record's\n`missing_required_measurement_keys`, the acknowledgement's\n`costing_status`, `unresolved_reason` and `uncosted_measurement_keys`, or\n`refusal`. A gap is a 200. It does not say a customer price resolved \u2014\nread each acknowledgement's `pricing_status` for that.\n\n`grouping_fields` must carry a sample value for every Grouping Field a\nkind of work the run starts requires: a value your code passes at run\ntime is never made up.\n\n`404 not_found` answers a fingerprint with no stored Blueprint \u2014 never\nresolved, or removed by the daily prune once 30 days have passed since it\nwas last resolved. Resolving the selection again recreates the same\nfingerprint only if your configuration still resolves to exactly the same\nsnapshot; if it has changed since, the new fingerprint is a different one,\nand a file stamped with the old one can no longer be verified.\n`422 event_type_not_available` answers a recording of an\nEvent Type the stored Blueprint does not publish \u2014 one it did not select,\nor one that was undeclared or still a draft when it was resolved \u2014 and\nnames each in `event_types`; nothing is run. `409 conflict` answers a\nstored Blueprint that is not `complete`. `422 validation_error` answers a\n`subtask_type` the Blueprint did not select, a `grouping_fields` key no\nkind of work it selected requires, or a required Grouping Field with no\nsample value.",
         "operationId": "api_v1_code_builder_endpoints_verify_blueprint",
         "parameters": [
           {

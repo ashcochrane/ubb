@@ -18,7 +18,13 @@ this order:
     run, then start the unit of work, start each Subtask a recording asks
     for, record each claimed Event Type with the request's sample values and
     send each recording a second time with the same key, then close.
-(d) **Answer** every acknowledgement, and a verdict read off them.
+(d) **Answer** every acknowledgement, and a verdict read off them. The
+    verdict is about the WHOLE Blueprint and about recording and costing: it
+    is true only when every Event Type and Subtask kind the Blueprint selected
+    was exercised, no call was refused, and every recording carried what its
+    cost needs and was costed. It does not judge a customer price, which each
+    acknowledgement's `pricing_status` reports. A run that exercises less is
+    allowed, and says what it left out.
 (e) **Discard** everything (c) wrote.
 
 WHERE IT RUNS, AND HOW IT IS DISCARDED
@@ -52,14 +58,29 @@ WHAT IS SUPPLIED THAT THE SNAPSHOT DOES NOT HOLD
 ------------------------------------------------
 The snapshot was shaped to be hashed, not replayed, and nothing is added to it
 here: adding to it would move every fingerprint. So the run supplies, and its
-answer states, three things — a customer to record for, a value for each
-Grouping Field the kinds of work require that the request gave none for, and
-the moment the stored rules take effect (the run's own start, so each is in
-force for the run whatever window it was declared with). A Grouping Field's
-value is a sample like a Measurement's — a tenant's code passes it at the
-start — so the request may give it, and must where a stored rule is pinned to
-one: a supplied value matches no such rule. A display name, an analytics heading and an event
-category are not held and not needed: none decides a cost or a price.
+answer states, two things — a customer to record for, and the moment the
+stored rules take effect (the run's own start, so each is in force for the run
+whatever window it was declared with). A display name, an analytics heading
+and an event category are not held and not needed: none decides a cost or a
+price.
+
+**IT NEVER MAKES UP A RUNTIME VALUE** (owner's review of #599). A value a
+tenant's code passes at run time — a Measurement's, a required Grouping
+Field's — is a SAMPLE the request carries, exactly as the Blueprint calls it
+`runtime_bound`. A required Grouping Field the request gives no value for is
+refused before anything is written, never filled in: an invented value can
+match no rule pinned to a real one, and the verdict would then report a gap
+the configuration does not have.
+
+**THE CUSTOMER IS SYNTHESISED BECAUSE WHO IT IS CANNOT MOVE A COST.** The
+run's customer is a new one, on no plan, with no override. That is safe for
+what the verdict proves: no cost rule names a customer (a cost book has no
+customer column, and no rule selector is a customer), and the snapshot holds
+only tenant-wide rules — a customer's own pricing book is left out of it by
+the resolver (`integration_blueprint._configuration`). What a customer's
+identity CAN move is a customer price, through a plan's book or an override,
+and the verdict does not judge price: the acknowledgements' `pricing_status`
+reports it, and it is the price of a customer on no plan and no deal.
 
 THE UNIT OF WORK'S OUTCOME
 --------------------------
@@ -99,10 +120,9 @@ from core.vocabulary import (
     INTEGRATION_READINESS_COMPLETE,
     TASK_OUTCOME_CANCELLED, TASK_OUTCOME_DELIVERED)
 
-#: The customer the run records for, and the value it supplies for each
-#: required Grouping Field. One word for both, because both say the same
-#: thing to anybody reading an acknowledgement: this was a verification.
-SUPPLIED = "ubb-verification"
+#: The external id of the customer the run records for — the one value the run
+#: makes up, and one that decides no cost (see the module docstring).
+VERIFICATION_CUSTOMER = "ubb-verification"
 
 #: The fields of a declared kind of work that the registry takes back, by the
 #: names its own request publishes. The snapshot keeps each kind as the
@@ -136,7 +156,7 @@ def verify(tenant, configuration_fingerprint, payload):
             f"generates code that records: resolve it again once its "
             f"diagnostics are fixed")
     _refuse_a_subtask_kind_not_selected(configuration, payload)
-    _refuse_a_grouping_field_not_required(configuration, payload)
+    _refuse_grouping_values_that_do_not_match(configuration, payload)
 
     with transaction.atomic():
         answer = _Run(configuration, payload).run()
@@ -177,19 +197,39 @@ def _refuse_a_subtask_kind_not_selected(configuration, payload):
             f"Subtask kind the Blueprint selected")
 
 
-def _refuse_a_grouping_field_not_required(configuration, payload):
-    """A sample value is for a field a start of the selected kinds takes. One
-    for any other key would be sent nowhere, so a caller is told rather than
-    left believing it was used."""
-    required = {key for kind in (configuration["task_type"],
-                                 *configuration["subtask_types"])
-                for key in kind["required_grouping_fields"]}
-    named = sorted(set(payload.grouping_fields) - required)
-    if named:
+def _refuse_grouping_values_that_do_not_match(configuration, payload):
+    """Every Grouping Field a started kind requires has a sample value, and
+    no value is given for a field no selected kind requires.
+
+    A missing value is refused rather than made up: it is runtime-bound, so
+    only the tenant's code holds it. A value nobody requires would be sent
+    nowhere, so a caller is told rather than left believing it was used.
+    """
+    selected = (configuration["task_type"], *configuration["subtask_types"])
+    required_anywhere = {key for kind in selected
+                         for key in kind["required_grouping_fields"]}
+    unwanted = sorted(set(payload.grouping_fields) - required_anywhere)
+    if unwanted:
         raise Problem(
             "validation_error",
-            f"grouping_fields {', '.join(repr(key) for key in named)}: no "
+            f"grouping_fields {', '.join(repr(key) for key in unwanted)}: no "
             f"kind of work the Blueprint selected requires it")
+    # A kind is its altitude and its key together: a Task kind and a Subtask
+    # kind may share a key.
+    task = configuration["task_type"]
+    started = [task, *(kind for kind in configuration["subtask_types"]
+                       if kind["key"] in {claim.subtask_type
+                                          for claim in payload.records})]
+    missing = sorted({key for kind in started
+                      for key in kind["required_grouping_fields"]}
+                     - set(payload.grouping_fields))
+    if missing:
+        raise Problem(
+            "validation_error",
+            f"grouping_fields must give a sample value for "
+            f"{', '.join(repr(key) for key in missing)}: the kind of work "
+            f"this run starts requires it, and a value a tenant's code "
+            f"passes at run time is never made up")
 
 
 class _Refused(Exception):
@@ -204,7 +244,6 @@ class _Run:
         self.payload = payload
         self.at = timezone.now()
         self.refusal = None
-        self.supplied_values = {}
 
     # -- (c) materialise ---------------------------------------------------
 
@@ -222,15 +261,22 @@ class _Run:
             task_types=[TaskTypeIn(**{name: kind[name]
                                       for name in _KIND_FIELDS})
                         for kind in kinds]))
+        # Each supplier once, however many Event Types name it.
+        suppliers = {key: _saved(Provider(tenant=tenant, key=key))
+                     for key in sorted({declared["provider_key"]
+                                        for declared in held["event_types"]
+                                        if declared["provider_key"]})}
         for declared in held["event_types"]:
-            _declare_and_publish(tenant, declared)
+            _declare_and_publish(tenant, declared,
+                                 suppliers.get(declared["provider_key"]))
         self._books(tenant, held["cost_rates"], _a_cost_book)
         self._books(tenant, held["pricing_rules"], _a_pricing_book)
         if held["default_markup_micro_percent"] is not None:
             TenantDefaultMarkup.objects.create(
                 tenant=tenant,
                 markup_micro_percent=held["default_markup_micro_percent"])
-        customer = Customer.objects.create(tenant=tenant, external_id=SUPPLIED)
+        customer = Customer.objects.create(tenant=tenant,
+                                           external_id=VERIFICATION_CUSTOMER)
         return tenant, customer
 
     def _books(self, tenant, rules, a_book):
@@ -266,10 +312,10 @@ class _Run:
             raise _Refused from refused
 
     def _values_for(self, kind):
-        values = {key: self.payload.grouping_fields.get(key, SUPPLIED)
-                  for key in kind["required_grouping_fields"]}
-        self.supplied_values.update(values)
-        return values
+        """The request's sample for each Grouping Field `kind` requires.
+        Every one is there: `verify` refused the request otherwise."""
+        return {key: self.payload.grouping_fields[key]
+                for key in kind["required_grouping_fields"]}
 
     def _start(self, tenant, customer, kind, idempotency_key, parent=None):
         return self._call(START, task_endpoints.start, tenant,
@@ -334,13 +380,24 @@ class _Run:
 
         for record in records:
             _read(record, event_types[record["event_type"]])
+        # WHAT THE RUN DID NOT EXERCISE. `verified` is a statement about the
+        # whole Blueprint, so a selected Event Type or Subtask kind no
+        # recording reached keeps it false, however well the rest went
+        # (owner's review of #599).
+        unexercised_event_types = sorted(
+            set(event_types) - {claim.event_type
+                                for claim in self.payload.records})
+        unexercised_subtask_types = sorted(set(subtask_kinds) - set(subtasks))
         return {
             "verified": (self.refusal is None
+                         and not unexercised_event_types
+                         and not unexercised_subtask_types
                          and all(record["complete"] for record in records)),
+            "unexercised_event_types": unexercised_event_types,
+            "unexercised_subtask_types": unexercised_subtask_types,
             "environment": {
                 "discarded": True,
-                "customer_external_id": SUPPLIED,
-                "grouping_fields": self.supplied_values,
+                "customer_external_id": VERIFICATION_CUSTOMER,
                 "rules_effective_at": self.at,
             },
             "task": {"task_type": task_kind["key"], **task},
@@ -362,10 +419,9 @@ def _saved(record):
     return record
 
 
-def _declare_and_publish(tenant, declared):
-    """One Event Type, from its stored publication, published again."""
-    provider = (_saved(Provider(tenant=tenant, key=declared["provider_key"]))
-                if declared["provider_key"] else None)
+def _declare_and_publish(tenant, declared, provider):
+    """One Event Type, from its stored publication, published again, naming
+    `provider` — the supplier already declared for the run, or none."""
     event_type = _saved(EventType(
         tenant=tenant, key=declared["key"],
         costing_method=declared["costing_method"], provider=provider,

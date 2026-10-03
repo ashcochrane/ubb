@@ -977,10 +977,14 @@ Running a stored snapshot to prove it records and costs: its configuration is bu
 for the run, the unit of work is started, each claimed Event Type is recorded with the request's
 sample values and sent again with the same key, and the work is closed — all inside one transaction
 that is rolled back, so nothing it wrote survives, nothing waits to be delivered and no key is
-minted. It refuses, before anything is written, an Event Type the snapshot does not publish
-(`event_type_not_available`) and a Blueprint that is not complete. Its **verdict** is read off the
-acknowledgements: a required Measurement the recording did not carry, or a cost UBB could not work
-out, fails it with a 200 and names the gap; the unit of work's outcome never carries pass or fail.
+minted. It never makes up a runtime value: a required Grouping Field's value is a sample the
+request must carry, like a Measurement's (only the customer is made up, because who it is decides no
+cost). It refuses, before anything is written, an Event Type the snapshot does not publish
+(`event_type_not_available`), a Blueprint that is not complete, and a missing sample. Its
+**verdict** (`verified`) speaks for the whole Blueprint and for recording and costing — never for
+price: it is true only when every selected Event Type and Subtask kind was exercised and every
+recording carried what its cost needs and was costed. A gap fails it with a 200 and names the gap;
+the unit of work's outcome never carries pass or fail.
 (`api/v1/verification.py`; ADR-0018)
 _Avoid_: "test event" — the form this replaces; and "sandbox" for where it runs — a tenant's sandbox
 is its own and holds the developer's configuration, and the run is neither.

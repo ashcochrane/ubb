@@ -29,8 +29,16 @@ T = TypeVar("T", bound="IntegrationBlueprintVerification")
 class IntegrationBlueprintVerification:
     """ What verifying a stored Blueprint found.
 
-    `verified` is true when no call of the run was refused and every
-    recording is `complete`. A gap fails it without failing the request: the
+    `verified` is a statement about the WHOLE Blueprint, and about recording
+    and costing. It is true only when every Event Type and every Subtask kind
+    the Blueprint selected was exercised, no call of the run was refused, and
+    every recording is `complete`. It does not say a customer price resolved:
+    each acknowledgement's `pricing_status` says that, and `verified` does not
+    read it.
+
+    A run may exercise less than the Blueprint selected. It then lists what it
+    left out in `unexercised_event_types` and `unexercised_subtask_types`, and
+    `verified` is false. A gap fails it without failing the request: the
     acknowledgement that shows the gap is in `records`.
 
         Attributes:
@@ -45,17 +53,21 @@ class IntegrationBlueprintVerification:
                 exists. Nothing it did was delivered — no webhook, no Stripe call — and a
                 stop it reached was not acted on.
 
-                `customer_external_id` is the customer it recorded for, and
-                `grouping_fields` the value each Grouping Field the kinds of work require
-                was started with: the request's, or `ubb-verification` where the request
-                gave none. `rules_effective_at` is the moment every stored Cost Rate and
-                pricing rule took effect: each is in force for the run whatever window it
-                was declared with.
+                `customer_external_id` is the customer it recorded for, made for the run:
+                on no plan and with no deal of its own. Who the customer is decides no
+                cost — no cost rule names a customer, and the stored configuration holds
+                only rules for every customer — so it cannot move what `verified` proves;
+                the customer price it is charged is that of a customer with neither.
+                `rules_effective_at` is the moment every stored Cost Rate and pricing rule
+                took effect: each is in force for the run whatever window it was declared
+                with.
             records (list[IntegrationBlueprintVerificationRecord]):
             subtasks (list[IntegrationBlueprintVerificationUnit]):
             task (IntegrationBlueprintVerificationUnit): One unit of work the verification started, as its start and its
                 close
                 answered. Either is null where the run stopped before it.
+            unexercised_event_types (list[str]):
+            unexercised_subtask_types (list[str]):
             verified (bool):
             refusal (IntegrationBlueprintVerificationRefusal | None | Unset):
      """
@@ -65,6 +77,8 @@ class IntegrationBlueprintVerification:
     records: list[IntegrationBlueprintVerificationRecord]
     subtasks: list[IntegrationBlueprintVerificationUnit]
     task: IntegrationBlueprintVerificationUnit
+    unexercised_event_types: list[str]
+    unexercised_subtask_types: list[str]
     verified: bool
     refusal: IntegrationBlueprintVerificationRefusal | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -98,6 +112,14 @@ class IntegrationBlueprintVerification:
 
         task = self.task.to_dict()
 
+        unexercised_event_types = self.unexercised_event_types
+
+
+
+        unexercised_subtask_types = self.unexercised_subtask_types
+
+
+
         verified = self.verified
 
         refusal: dict[str, Any] | None | Unset
@@ -117,6 +139,8 @@ class IntegrationBlueprintVerification:
             "records": records,
             "subtasks": subtasks,
             "task": task,
+            "unexercised_event_types": unexercised_event_types,
+            "unexercised_subtask_types": unexercised_subtask_types,
             "verified": verified,
         })
         if refusal is not UNSET:
@@ -165,6 +189,12 @@ class IntegrationBlueprintVerification:
 
 
 
+        unexercised_event_types = cast(list[str], d.pop("unexercised_event_types"))
+
+
+        unexercised_subtask_types = cast(list[str], d.pop("unexercised_subtask_types"))
+
+
         verified = d.pop("verified")
 
         def _parse_refusal(data: object) -> IntegrationBlueprintVerificationRefusal | None | Unset:
@@ -193,6 +223,8 @@ class IntegrationBlueprintVerification:
             records=records,
             subtasks=subtasks,
             task=task,
+            unexercised_event_types=unexercised_event_types,
+            unexercised_subtask_types=unexercised_subtask_types,
             verified=verified,
             refusal=refusal,
         )

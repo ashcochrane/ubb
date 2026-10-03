@@ -48,11 +48,18 @@ it: both are reads of something the developer already holds.
 
 Thirty days because the snapshot exists for one job — proving that the code a
 developer just generated records and costs — and that happens while they are
-writing it. A longer period buys little, because a pruned fingerprint is
-recovered by resolving again: the same content is stored under the same
-fingerprint. And it is bounded at all because resolving is a READ-floor act,
-so anybody holding any key can add a snapshot. The period is the owner's to
-change.
+writing it. It is bounded at all because resolving is a READ-floor act, so
+anybody holding any key can add a snapshot. The period is the owner's
+(approved on the review of #599).
+
+⚠ **WHAT A PRUNE COSTS, SAID PLAINLY.** A fingerprint is readable and
+verifiable for thirty days after its most recent resolution. After it is
+pruned, resolving the selection again recreates THAT fingerprint only if the
+configuration still resolves to exactly the same normative content —
+including which publication each Event Type came from. If anything it covers
+has changed, resolving again correctly gives a different fingerprint, and a
+file stamped with the pruned one can no longer be verified: it must be
+generated again.
 """
 import hashlib
 import json

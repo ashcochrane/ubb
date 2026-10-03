@@ -155,24 +155,34 @@ def verify_blueprint(request, configuration_fingerprint: str,
     in the answer names a record that no longer exists. No API key is created
     and none is returned.
 
-    `verified` is false where a recording has a gap or a call of the run was
-    refused, and the answer names it: `missing_required_measurement_keys`, or
-    the acknowledgement's `costing_status`, `unresolved_reason` and
-    `uncosted_measurement_keys`, or `refusal`. A gap is a 200.
+    `verified` speaks for the whole Blueprint, and for recording and costing
+    only: it is true when every Event Type and Subtask kind the Blueprint
+    selected was exercised, no call was refused and every recording is
+    complete. It is false otherwise, and the answer names why:
+    `unexercised_event_types` and `unexercised_subtask_types`, a record's
+    `missing_required_measurement_keys`, the acknowledgement's
+    `costing_status`, `unresolved_reason` and `uncosted_measurement_keys`, or
+    `refusal`. A gap is a 200. It does not say a customer price resolved —
+    read each acknowledgement's `pricing_status` for that.
 
-    `grouping_fields` carries a sample value for each Grouping Field the
-    Blueprint's kinds of work require; one left out is started with
-    `ubb-verification`, which matches no rule pinned to a value.
+    `grouping_fields` must carry a sample value for every Grouping Field a
+    kind of work the run starts requires: a value your code passes at run
+    time is never made up.
 
     `404 not_found` answers a fingerprint with no stored Blueprint — never
     resolved, or removed by the daily prune once 30 days have passed since it
-    was last resolved: resolve the selection again. `422 event_type_not_available` answers a recording of an
+    was last resolved. Resolving the selection again recreates the same
+    fingerprint only if your configuration still resolves to exactly the same
+    snapshot; if it has changed since, the new fingerprint is a different one,
+    and a file stamped with the old one can no longer be verified.
+    `422 event_type_not_available` answers a recording of an
     Event Type the stored Blueprint does not publish — one it did not select,
     or one that was undeclared or still a draft when it was resolved — and
     names each in `event_types`; nothing is run. `409 conflict` answers a
     stored Blueprint that is not `complete`. `422 validation_error` answers a
-    `subtask_type` the Blueprint did not select, or a `grouping_fields` key no
-    kind of work it selected requires.
+    `subtask_type` the Blueprint did not select, a `grouping_fields` key no
+    kind of work it selected requires, or a required Grouping Field with no
+    sample value.
     """
     _product_check(request)
     return 200, verification.verify(

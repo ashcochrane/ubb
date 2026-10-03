@@ -11,8 +11,6 @@ from ..types import UNSET, Unset
 from typing import cast
 import datetime
 
-if TYPE_CHECKING:
-  from ..models.integration_blueprint_verification_environment_grouping_fields import IntegrationBlueprintVerificationEnvironmentGroupingFields
 
 
 
@@ -33,23 +31,23 @@ class IntegrationBlueprintVerificationEnvironment:
     exists. Nothing it did was delivered — no webhook, no Stripe call — and a
     stop it reached was not acted on.
 
-    `customer_external_id` is the customer it recorded for, and
-    `grouping_fields` the value each Grouping Field the kinds of work require
-    was started with: the request's, or `ubb-verification` where the request
-    gave none. `rules_effective_at` is the moment every stored Cost Rate and
-    pricing rule took effect: each is in force for the run whatever window it
-    was declared with.
+    `customer_external_id` is the customer it recorded for, made for the run:
+    on no plan and with no deal of its own. Who the customer is decides no
+    cost — no cost rule names a customer, and the stored configuration holds
+    only rules for every customer — so it cannot move what `verified` proves;
+    the customer price it is charged is that of a customer with neither.
+    `rules_effective_at` is the moment every stored Cost Rate and pricing rule
+    took effect: each is in force for the run whatever window it was declared
+    with.
 
         Attributes:
             customer_external_id (str):
             discarded (bool):
-            grouping_fields (IntegrationBlueprintVerificationEnvironmentGroupingFields):
             rules_effective_at (datetime.datetime):
      """
 
     customer_external_id: str
     discarded: bool
-    grouping_fields: IntegrationBlueprintVerificationEnvironmentGroupingFields
     rules_effective_at: datetime.datetime
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -58,12 +56,9 @@ class IntegrationBlueprintVerificationEnvironment:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.integration_blueprint_verification_environment_grouping_fields import IntegrationBlueprintVerificationEnvironmentGroupingFields
         customer_external_id = self.customer_external_id
 
         discarded = self.discarded
-
-        grouping_fields = self.grouping_fields.to_dict()
 
         rules_effective_at = self.rules_effective_at.isoformat()
 
@@ -73,7 +68,6 @@ class IntegrationBlueprintVerificationEnvironment:
         field_dict.update({
             "customer_external_id": customer_external_id,
             "discarded": discarded,
-            "grouping_fields": grouping_fields,
             "rules_effective_at": rules_effective_at,
         })
 
@@ -83,16 +77,10 @@ class IntegrationBlueprintVerificationEnvironment:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.integration_blueprint_verification_environment_grouping_fields import IntegrationBlueprintVerificationEnvironmentGroupingFields
         d = dict(src_dict)
         customer_external_id = d.pop("customer_external_id")
 
         discarded = d.pop("discarded")
-
-        grouping_fields = IntegrationBlueprintVerificationEnvironmentGroupingFields.from_dict(d.pop("grouping_fields"))
-
-
-
 
         rules_effective_at = datetime.datetime.fromisoformat(d.pop("rules_effective_at"))
 
@@ -102,7 +90,6 @@ class IntegrationBlueprintVerificationEnvironment:
         integration_blueprint_verification_environment = cls(
             customer_external_id=customer_external_id,
             discarded=discarded,
-            grouping_fields=grouping_fields,
             rules_effective_at=rules_effective_at,
         )
 

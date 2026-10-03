@@ -1,10 +1,11 @@
 """Removing the snapshots nobody has resolved for a while (#580).
 
 A snapshot is a derived fixture, and the period it is kept is
-`snapshots.RETENTION`. Pruning one costs a developer little: resolving the
-same selection over the same configuration stores the same content under the
-same fingerprint, so a pruned fingerprint answers not-found until somebody
-resolves again, and then answers as it did.
+`snapshots.RETENTION`. A pruned fingerprint answers not-found. Resolving the
+selection again brings the same fingerprint back only if the configuration
+still resolves to exactly the same content; otherwise the generated file that
+carries it can no longer be verified and is generated again
+(`snapshots.py`, "What a prune costs").
 """
 import logging
 
