@@ -13,7 +13,12 @@ in CI, so its enforcement is checked here, the way the renderer suite's is:
    own (`code-builder-execution`), so no unrelated step failing ahead of it
    can stop it running. A filter could never name every input that changes
    what is generated and run: the renderer, the contract, the SDK, the
-   platform and the registry all do (#158 §7.3).
+   platform and the registry all do (#158 §7.3). The job's check keeps its
+   name, `code-builder-execution`, because main's required checks name it:
+   a rename, or a display name, would leave the requirement naming a check
+   nothing reports (owner's review of #602). Making it required is a
+   repository setting this suite cannot hold; renaming the job is a
+   deliberate change to that setting too.
 2. **The step runs what its name says**, found by the command and not only
    by the name.
 3. **The job can run it**: the application's Postgres and Redis, DEBUG True
@@ -82,6 +87,11 @@ def execution_faults(workflow):
     faults += step_faults(workflow, JOB, STEP)
     job = (workflow.get("jobs") or {}).get(JOB) or {}
     steps = job.get("steps") or []
+    # The check GitHub reports is named for the job, and main's required
+    # checks name it: a display name would report the job under another.
+    if "name" in job and job["name"] != JOB:
+        faults.append(f"job `{JOB}` reports its check as `{job['name']}`, "
+                      f"and main's required checks name `{JOB}`")
 
     suite = _index(steps, lambda step: step.get("name") == STEP)
     if suite is not None and str(steps[suite].get("run", "")).strip() != COMMAND:
@@ -211,6 +221,12 @@ def test_negative_control_a_missing_job_is_flagged():
     workflow = _synthetic()
     workflow["jobs"] = {"another": workflow["jobs"][JOB]}
     assert any("no job named" in fault for fault in execution_faults(workflow))
+
+
+def test_negative_control_a_check_reported_under_another_name_is_flagged():
+    faults = execution_faults(_synthetic(job_extra={"name": "Seam C"}))
+    assert faults == [f"job `{JOB}` reports its check as `Seam C`, and "
+                      f"main's required checks name `{JOB}`"]
 
 
 def test_negative_control_a_continue_on_error_step_is_flagged():

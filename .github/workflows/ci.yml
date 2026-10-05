@@ -500,6 +500,11 @@ jobs:
   # `tests/contracts/test_the_execution_suite_is_enforced.py` holds this job
   # to being unconditional and able to fail the run: no `if:`, no
   # `continue-on-error`, and no path filter on the workflow.
+  #
+  # Its id is the name of its check, which is what main's required checks
+  # list (a repository setting, made outside this file): do not rename it or
+  # give it a `name:` without changing that setting in the same breath, or
+  # the requirement names a check nothing reports.
   code-builder-execution:
     runs-on: ubuntu-latest
 

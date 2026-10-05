@@ -22,7 +22,7 @@ import { asComments, statement } from "../comments.ts";
 import { FIELD } from "../lifecycle.ts";
 import { literalOf } from "../tokens.ts";
 import type { CallPlan, Member, Plan, Value } from "./plan.ts";
-import { jqProbe } from "./probe.ts";
+import { jqNeedsOf, jqProbe } from "./probe.ts";
 import { INDENT, jqLiteral, jqString, shWord } from "./syntax.ts";
 
 const I1 = INDENT;
@@ -106,24 +106,11 @@ export function renderVerifyScript(plan: Plan): string {
     `${I1}printf '%s\\n' ${shWord(message)} >&2`,
     `${I1}exit ${unavailable}`,
   ];
-  const lines = [
-    ...asComments(SHELL_COMMENTS.verify),
-    ...asComments([statement("configuration_fingerprint", plan.header.configuration_fingerprint ?? null)]),
-    "",
-    ...asComments(SHELL_COMMENTS.verifyPreflight),
-    "command -v jq >/dev/null 2>&1 || {",
-    ...refusal(SHELL_MESSAGES.jqMissing),
-    "}",
-    "ubb_probe=0",
-    ...jqProbe("", "ubb_probe"),
-    `[ "$ubb_probe" -eq 0 ] || {`,
-    ...refusal(SHELL_MESSAGES.jqUnusable),
-    "}",
-    "",
-    // The program answers with the status to exit with, then with every line
-    // to print. Each line is one line whatever a declared name holds: a name
-    // is printed as JSON. It is a function of its own, so that the heredoc is
-    // never inside the substitution that captures what it prints.
+  // The program answers with the status to exit with, then with every line
+  // to print. Each line is one line whatever a declared name holds: a name
+  // is printed as JSON. It is a function of its own, so that the heredoc is
+  // never inside the substitution that captures what it prints.
+  const checked = [
     "ubb_checked() {",
     `${I1}jq --raw-output --null-input \\`,
     `${I2}--arg event_type "\${1-}" \\`,
@@ -133,6 +120,23 @@ export function renderVerifyScript(plan: Plan): string {
     ...program.map((line) => `${I1}${line}`),
     SHELL_FILE.heredoc,
     "}",
+  ];
+  const lines = [
+    ...asComments(SHELL_COMMENTS.verify),
+    ...asComments([statement("configuration_fingerprint", plan.header.configuration_fingerprint ?? null)]),
+    "",
+    ...asComments(SHELL_COMMENTS.verifyPreflight),
+    "command -v jq >/dev/null 2>&1 || {",
+    ...refusal(SHELL_MESSAGES.jqMissing),
+    "}",
+    "ubb_probe=0",
+    // For exactly what the one program below asks of jq.
+    ...jqProbe("", "ubb_probe", jqNeedsOf(checked.join("\n"))),
+    `[ "$ubb_probe" -eq 0 ] || {`,
+    ...refusal(SHELL_MESSAGES.jqUnusable),
+    "}",
+    "",
+    ...checked,
     "",
     'ubb_report=$(ubb_checked "$@") || exit $?',
     "",

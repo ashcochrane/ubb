@@ -76,11 +76,21 @@ _ubb_preflight() {
     return "$UBB_EXIT_TOOL_UNAVAILABLE"
   }
   _ubb_probe=0
-  jq --null-input --arg text 1 --argjson json 1 \
+  jq --null-input --arg probe_text 1 --argjson probe_json 1 --slurpfile probe_file /dev/null --raw-output --compact-output \
     --from-file /dev/stdin >/dev/null 2>&1 <<'UBB_JQ' || _ubb_probe=$?
-  # A generated jq program is read from standard input, holds comments, and
-  # is handed values as text and as JSON.
-  {"preflight": (($text | fromjson) + $json)} | tojson
+  # A program of this file's own form: read from standard input, holding
+  # comments, passing each option and using each form its programs use, and
+  # naming each function they call in a branch that is never taken.
+  def probe_definition($first; $second): $first + $second;
+  [
+    $probe_text,
+    $probe_json,
+    $probe_file,
+    probe_definition(1; 2),
+    (1 as $probe_value | $probe_value),
+    (if false then 1 elif false then 2 else 3 end),
+    (if false then [error("probe"), floor, fromjson, getpath([]), tojson, type] else 1 end)
+  ]
 UBB_JQ
   [ "$_ubb_probe" -eq 0 ] || {
     printf '%s\n' 'The installed jq cannot run the programs this file hands it. jq 1.5 or later can.' >&2

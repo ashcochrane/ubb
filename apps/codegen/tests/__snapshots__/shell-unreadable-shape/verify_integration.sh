@@ -12,11 +12,21 @@ command -v jq >/dev/null 2>&1 || {
   exit 69
 }
 ubb_probe=0
-jq --null-input --arg text 1 --argjson json 1 \
+jq --null-input --arg probe_text 1 --slurpfile probe_file /dev/null --raw-output \
   --from-file /dev/stdin >/dev/null 2>&1 <<'UBB_JQ' || ubb_probe=$?
-  # A generated jq program is read from standard input, holds comments, and
-  # is handed values as text and as JSON.
-  {"preflight": (($text | fromjson) + $json)} | tojson
+  # A program of this file's own form: read from standard input, holding
+  # comments, passing each option and using each form its programs use, and
+  # naming each function they call in a branch that is never taken.
+  def probe_definition($first; $second): $first + $second;
+  [
+    $probe_text,
+    $probe_file,
+    probe_definition(1; 2),
+    (1 as $probe_value | $probe_value),
+    (if false then 1 elif false then 2 else 3 end),
+    (reduce (1, 2) as $probe_item (0; . + $probe_item)),
+    (if false then [has("probe"), keys_unsorted, length, not, select(true), startswith("probe"), to_entries, tojson, tostring, type] else 1 end)
+  ]
 UBB_JQ
 [ "$ubb_probe" -eq 0 ] || {
   printf '%s\n' 'The installed jq cannot run the programs this file hands it. jq 1.5 or later can.' >&2

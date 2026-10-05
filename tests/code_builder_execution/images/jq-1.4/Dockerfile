@@ -4,9 +4,9 @@
 # It reads a program from standard input and accepts `#` comments, so a
 # probe of only those two passes on it. It has no `--argjson` and no
 # `--slurpfile` (jq 1.5 brought both), which the file's programs pass values
-# with, so without a probe that passes a value with `--argjson` it would start
-# a unit of work and then fail at its first record (this image is how that
-# was found).
+# with, so without a probe that asks for what those programs use it would
+# start a unit of work and then fail at its first record (this image is how
+# that was found).
 #
 # The `shell` image with jq 1.4 in place of 1.7.1. jq 1.4 is published as a
 # static binary and not as an image, so it is fetched from its release and

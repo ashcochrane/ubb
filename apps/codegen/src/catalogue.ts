@@ -476,8 +476,9 @@ export const SHELL_COMMENTS = {
     "contacts nothing and creates nothing.",
   ],
   preflightProgram: [
-    "A generated jq program is read from standard input, holds comments, and",
-    "is handed values as text and as JSON.",
+    "A program of this file's own form: read from standard input, holding",
+    "comments, passing each option and using each form its programs use, and",
+    "naming each function they call in a branch that is never taken.",
   ],
   environment: [
     "Both variables are required, and are read each time a request is made.",

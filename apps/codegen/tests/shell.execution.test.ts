@@ -27,6 +27,7 @@ import {
   type RenderedFile,
 } from "../src/index.ts";
 import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
+import { jqNeedsOf } from "../src/shell/probe.ts";
 import { everyArgument, fixture, FIXTURES, PACKAGE_ROOT, REPO_ROOT } from "./support/fixtures.ts";
 import { BRANCHES, only, rendered, SHELL_BRANCH_NAMES } from "./support/rendered.ts";
 import { parsed, reportedCostInShell, runShell, type Ran, type RunOptions, type Sent } from "./support/shell.ts";
@@ -510,14 +511,114 @@ printf 'status=%s\\n' "$?"
       const preflight = functionsOf(only(rendered(branch), "module").contents).find(
         (defined) => defined.name === "_ubb_preflight",
       )!;
-      // The same text whatever was declared: no tenant content reaches it.
-      expect(preflight.lines).toEqual(
-        functionsOf(only(rendered("shell-scaffold"), "module").contents).find(
-          (defined) => defined.name === "_ubb_preflight",
-        )!.lines,
-      );
+      // No declared name reaches it: the one string its program holds is
+      // its own, and the same probe is rendered for files whose programs
+      // ask the same of jq.
+      const strings = preflight.lines.join("\n").match(/"(?:[^"\\]|\\.)*"/g) ?? [];
+      expect(strings.filter((text) => !/^"(\$[A-Za-z_]+|probe)"$/.test(text))).toEqual([]);
       expect(preflight.lines.join("\n")).not.toMatch(/mktemp|>\s*[^&/]|UBB_BASE_URL|UBB_API_KEY/);
     }
+  });
+
+  // What a jq program asks of jq, read off rendered text by this test's own
+  // reading — not the renderer's — so the two must agree for the test to
+  // pass. The probe is the one program whose output is discarded.
+  const asked = (text: string) => {
+    const lines = text.split("\n");
+    const programs: { probe: boolean; options: Set<string>; code: string }[] = [];
+    for (let at = 0; at < lines.length; at += 1) {
+      if (!/^\s*jq /.test(lines[at]!)) continue;
+      const command: string[] = [];
+      while (!lines[at]!.includes("<<'UBB_JQ'")) command.push(lines[at++]!);
+      command.push(lines[at]!);
+      const body: string[] = [];
+      for (at += 1; lines[at] !== "UBB_JQ"; at += 1) body.push(lines[at]!);
+      programs.push({
+        probe: command.join(" ").includes(">/dev/null 2>&1"),
+        options: new Set(
+          command.join(" ").match(/--[a-z-]+/g)!.filter((o) => o !== "--null-input" && o !== "--from-file"),
+        ),
+        code: body
+          .filter((line) => !line.trim().startsWith("#"))
+          .join("\n")
+          .replace(/"(?:[^"\\]|\\.)*"/g, '""'),
+      });
+    }
+    const KEYWORDS = new Set(
+      "if then elif else end as def reduce foreach try catch label and or true false null".split(" "),
+    );
+    const of = (chosen: typeof programs) => {
+      const code = chosen.map((program) => program.code).join("\n");
+      const defined = new Set([...code.matchAll(/\bdef\s+(\w+)/g)].map((match) => match[1]!));
+      return {
+        options: [...new Set(chosen.flatMap((program) => [...program.options]))].sort(),
+        forms: {
+          definition: /\bdef\s+\w+\(\s*\$/.test(code),
+          variable: /\bas\s+\$/.test(code),
+          elif: /\belif\b/.test(code),
+          reduce: /\breduce\b/.test(code),
+        },
+        functions: [
+          ...new Set(
+            [...code.matchAll(/(?<![$.\w])[A-Za-z_]\w*/g)]
+              .map((match) => match[0])
+              .filter((word) => !KEYWORDS.has(word) && !defined.has(word)),
+          ),
+        ].sort(),
+      };
+    };
+    return {
+      probes: programs.filter((program) => program.probe).length,
+      probe: of(programs.filter((program) => program.probe)),
+      programs: of(programs.filter((program) => !program.probe)),
+    };
+  };
+
+  it("probes for exactly what the file's own programs ask of jq, and no more", () => {
+    const seen = new Set<string>();
+    for (const branch of SHELL_BRANCH_NAMES) {
+      for (const file of rendered(branch).filter((each) => each.path.endsWith(".sh"))) {
+        if (file.kind === "call_site") continue;
+        const { probes, probe, programs } = asked(file.contents);
+
+        expect(probes, `${branch}/${file.path}`).toBe(1);
+        expect(probe, `${branch}/${file.path}`).toEqual(programs);
+        programs.options.forEach((option) => seen.add(option));
+        programs.functions.forEach((name) => seen.add(name));
+      }
+    }
+    // Not vacuous: between them the files ask for options and functions
+    // that only some do, which is what a probe of its own per file is for.
+    expect([...seen]).toEqual(
+      expect.arrayContaining(["--argjson", "--slurpfile", "fromjson", "keys_unsorted", "getpath"]),
+    );
+    expect(asked(only(rendered("shell-scaffold"), "module").contents).probe.options).not.toContain(
+      "--argjson",
+    );
+    expect(asked(only(rendered("shell-scaffold"), "verify_script").contents).probe.functions).not.toContain(
+      "fromjson",
+    );
+  });
+
+  it("refuses to render a program that asks jq for what no probe knows", () => {
+    const command = (options: string, program: string) =>
+      `  jq --null-input ${options} \\\n    --from-file /dev/stdin <<'UBB_JQ'\n  ${program}\nUBB_JQ`;
+
+    expect(() => jqNeedsOf(command("--arg a 1", "$a | ltrimstr(\"x\")"))).toThrow(
+      "no probe names the jq function ltrimstr",
+    );
+    expect(() => jqNeedsOf(command("--rawfile a /dev/null", "$a"))).toThrow(
+      "no probe passes the jq option --rawfile",
+    );
+    expect(() => jqNeedsOf(command("--arg a 1", "try $a catch 1"))).toThrow(
+      "no probe uses the jq keyword try",
+    );
+    // A declared name inside a string is a string, not a function.
+    expect(jqNeedsOf(command("--arg a 1", '{"ltrimstr": $a} | tojson'))).toEqual({
+      options: ["--arg"],
+      forms: [],
+      functions: ["tojson"],
+    });
   });
 
   it("does nothing when the file is sourced, and never ends the shell that sourced it", () => {
