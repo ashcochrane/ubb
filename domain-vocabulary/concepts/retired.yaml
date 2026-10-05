@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,279 of 2,716 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,303 of 2,740 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2711,6 +2711,17 @@ measurement_key:
     # which survives in the money module and every other console money input.
     # It left because the code saying it was deleted, and is exactly as alive
     # as it was.
+    #
+    # 2026-10-05, #582 (the Code Builder's execution suite, Seam C): 2,279 of
+    # 2,716 -> 2,303 of 2,740 tracked files (`units` 42 files / 119
+    # occurrences, UNMOVED). 25 files arrived and 1 left, and ALL 25 are
+    # swept: the exclusions stand at 437. 20 are the new suite at the git
+    # root (`tests/code_builder_execution/`: its configuration, conftest and
+    # README, four helper modules, four test modules, seven image definitions
+    # and two supplier responses); one is its contract test; the renderer
+    # gained its render script, its shared jq probe, the script's test and the
+    # catalogue's version-3 pin. The one that left is the version-2 pin.
+    # (Taken once, after the review pass, which added and removed no file.)
     #
     # ⚠ THE 88 SNAPSHOTS ARE GENERATED TEXT, AND THEY ARE SWEPT ON PURPOSE.
     # They are the files a tenant is handed, so a retired word in one is a

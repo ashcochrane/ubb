@@ -375,6 +375,7 @@ def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
     The metadata is the four fields the acknowledgement and the request
     publish today. #585 adds #569's here and in `_customer.STOP_METADATA`."""
     tipping = outcome.postings()[key]
+    assert "stop_requested" in ran.said, ran
     stop = json.loads(ran.said["stop_requested"])
     assert stop == {"event_id": str(tipping.id), "idempotency_key": key,
                     "stop_scope": scope, "stop_reason": reason}, ran
