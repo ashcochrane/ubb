@@ -17,7 +17,11 @@
 import { z } from "zod";
 
 import { ApiProblem } from "@/api/problem";
-import type { IntegrationReadiness } from "@/lib/vocabulary";
+import {
+  MEASUREMENT_VALUE_TYPE_VALUES,
+  type IntegrationReadiness,
+  type MeasurementValueType,
+} from "@/lib/vocabulary";
 
 import type {
   Blueprint,
@@ -52,6 +56,8 @@ export interface MeasurementSample {
   readonly code: string;
   /** Its value type, unit and whether it is required for a complete cost. */
   readonly facts: readonly MeasurementFact[];
+  /** The value type it is declared with, where the Blueprint states one the registry knows. */
+  readonly valueType: MeasurementValueType | null;
 }
 
 /** One record call: the Event Type it records and what a sample of it needs. */
@@ -120,16 +126,22 @@ function recordSample(call: BlueprintCall): RecordSample | null {
   const facts = tokens(call);
   return {
     eventType,
-    measurements: keysUnder(call, "measurements").map((code) => ({
-      code,
-      facts: facts.filter(
+    measurements: keysUnder(call, "measurements").map((code) => {
+      const declared = facts.filter(
         ({ place }) =>
           place.kind === "fact" &&
           place.field === "measurements" &&
           place.key === code &&
           MEASUREMENT_FACTS.includes(place.element),
-      ),
-    })),
+      );
+      const valueType = declared.find(({ place }) => place.kind === "fact" && place.element === "value_type")
+        ?.argument.value;
+      return {
+        code,
+        facts: declared,
+        valueType: MEASUREMENT_VALUE_TYPE_VALUES.find((known) => known === valueType) ?? null,
+      };
+    }),
     reportsCost: facts.some(
       ({ argument, place }) =>
         place.kind === "field" &&
@@ -244,6 +256,23 @@ export function groupingFieldsAsked(plan: SamplePlan, values: SampleValues): num
 }
 
 const WHOLE_NUMBER = /^\d+$/;
+
+/**
+ * ⚠ EVERY MEASUREMENT SAMPLE IS A WHOLE NUMBER, WHATEVER ITS DECLARED VALUE
+ * TYPE — because the call accepts nothing else, not because this form decided
+ * it (owner review of #601). The registry's `measurement_value_type` has two
+ * values, and a `decimal` Measurement may hold a fraction in the platform's
+ * model; but the published recording request (`RecordUsageRequest`) and
+ * Verify's record (`IntegrationBlueprintVerificationRecordIn`) both type every
+ * Measurement value as an integer, and the generated Shell file refuses a
+ * quantity that is not whole. What the wire may carry for a `decimal`
+ * Measurement is the platform's to widen, and `verification.test.ts` holds
+ * this rule to the committed contract and to the registry's value set: a
+ * contract that widens the value, or a value type the registry adds, is a red
+ * test there rather than a form that drifted from either.
+ */
+export const DECIMAL_SENT_WHOLE =
+  "Declared decimal, but the recording request carries whole numbers only; leave it blank to send none.";
 
 /** A whole number the request can carry: digits only, and exactly representable. */
 export function isWholeNumber(text: string): boolean {
@@ -366,20 +395,69 @@ export function presentedAsVerified(result: BlueprintVerification): boolean {
   );
 }
 
+/** One Verify as sent: the fingerprint it ran against, and the exact request. */
+export interface SentVerification {
+  readonly fingerprint: string;
+  readonly body: BlueprintVerificationRequest;
+}
+
+/** An object's entries in one order, so equal maps spell the same key. */
+function sortedEntries(value: unknown): Array<[string, unknown]> {
+  return typeof value === "object" && value !== null
+    ? Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    : [];
+}
+
+/**
+ * One canonical spelling of a request for a fingerprint, so requests the
+ * server reads alike are one key: a map's order is not part of it, a blank
+ * map is no map, and an absent optional field is null — the order of the
+ * records is, because the run takes them in order. What a Verify answer is
+ * evidence about, and what the mock looks an answer up by.
+ */
+export function verificationKey(fingerprint: string, request: BlueprintVerificationRequest): string {
+  return JSON.stringify([
+    fingerprint,
+    request.records.map((record) => [
+      record.event_type,
+      sortedEntries(record.measurements),
+      record.provider_cost_micros ?? null,
+      record.subtask_type ?? null,
+    ]),
+    sortedEntries(request.grouping_fields),
+  ]);
+}
+
 export type ResultStanding =
   | { readonly kind: "current" }
   /** The answer, or the refusal, is about a Blueprint not on screen now. */
-  | { readonly kind: "another_blueprint"; readonly ranAgainst: string; readonly current: string | null };
+  | { readonly kind: "another_blueprint"; readonly ranAgainst: string; readonly current: string | null }
+  /** Same Blueprint, but the samples on screen are no longer the ones it ran with. */
+  | { readonly kind: "another_request" };
 
 /**
- * Whether a Verify answer speaks for the Blueprint now on screen. It belongs
- * to the fingerprint it ran against; the page re-resolves on focus and on
- * return, and a Blueprint that now resolves to another fingerprint is not the
- * one that was verified — whatever changed, which the page does not know.
+ * Whether a Verify answer — or a refusal — speaks for what is on screen now.
+ * It is evidence about ONE fingerprint AND ONE exact request (owner review of
+ * #601): a Grouping Field sample can select another Cost Rate, a Measurement
+ * sample changes what is recorded and costed, and leaving an Event Type out
+ * makes the run partial, so an answer survives neither a new fingerprint nor
+ * an edited sample. A new fingerprint is the stronger case and is said
+ * cause-neutrally; the page re-resolves on focus and on return and does not
+ * know what changed. `request` is the request the samples on screen would
+ * send, or null where the Blueprint on screen offers no Verify.
  */
-export function standingOf(ranAgainst: string, blueprint: Blueprint): ResultStanding {
+export function standingOf(
+  sent: SentVerification,
+  blueprint: Blueprint,
+  request: BlueprintVerificationRequest | null,
+): ResultStanding {
   const current = blueprint.configuration_fingerprint ?? null;
-  return current === ranAgainst ? { kind: "current" } : { kind: "another_blueprint", ranAgainst, current };
+  if (current !== sent.fingerprint) {
+    return { kind: "another_blueprint", ranAgainst: sent.fingerprint, current };
+  }
+  return request !== null && verificationKey(current, request) === verificationKey(sent.fingerprint, sent.body)
+    ? { kind: "current" }
+    : { kind: "another_request" };
 }
 
 /** Why Verify was refused before anything ran. */

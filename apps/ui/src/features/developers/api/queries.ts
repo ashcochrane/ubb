@@ -13,7 +13,8 @@ import { ApiProblem } from "@/api/problem";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
 import { developersApi } from "./provider";
-import type { BlueprintSelection, BlueprintVerificationRequest } from "./types";
+import type { SentVerification } from "../lib/verification";
+import type { BlueprintSelection } from "./types";
 
 export function useApiKeys() {
   return useCursorList(["tenant", "api-keys"], (cursor) =>
@@ -141,11 +142,8 @@ export function useEventTypeChoices() {
   });
 }
 
-/** What one Verify sends: the fingerprint it runs against, and the samples. */
-export interface VerifyInput {
-  readonly fingerprint: string;
-  readonly body: BlueprintVerificationRequest;
-}
+/** What one Verify sends: the fingerprint it runs against, and the exact request. */
+export type VerifyInput = SentVerification;
 
 /**
  * Verify the Blueprint on screen (#581). It invalidates nothing, because it

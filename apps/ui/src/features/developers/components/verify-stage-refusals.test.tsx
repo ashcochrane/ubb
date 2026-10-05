@@ -1,5 +1,6 @@
 // The Verify stage's refusals, rendered from what the platform refused with
-// (#581; amendment §3).
+// (#581; amendment §3) — and the two states no committed answer or Blueprint
+// reaches, each assembled from the platform's and saying so.
 //
 // A page never provokes these: it offers Verify only for a stored, complete
 // Blueprint, asks for every required sample, and claims only the Event Types
@@ -18,8 +19,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toApiProblem } from "@/api/problem";
 
 import { loadBlueprintFixture } from "../api/mock-blueprints";
+import type { Blueprint } from "../api/types";
 import { loadVerificationFixture } from "../api/mock-verifications";
 import { taskOutcomeLabel } from "../lib/code-builder-words";
+import { DECIMAL_SENT_WHOLE } from "../lib/verification";
 import { renderInRouter } from "../test-utils";
 import { VerifyStage } from "./verify-stage";
 
@@ -32,13 +35,13 @@ vi.mock("../api/provider", () => ({
 
 const resolutions = vi.fn();
 
-/** The page's one Blueprint query, answered with the platform's `calculated-cost`. */
-function Harness() {
+/** The page's one Blueprint query, answered with the platform's `calculated-cost` unless told otherwise. */
+function Harness({ load = () => loadBlueprintFixture("calculated-cost") }: { load?: () => Promise<Blueprint> }) {
   const query = useQuery({
     queryKey: ["code-builder", "blueprints", "harness"],
     queryFn: () => {
       resolutions();
-      return loadBlueprintFixture("calculated-cost");
+      return load();
     },
   });
   return <VerifyStage query={query} held={undefined} />;
@@ -122,6 +125,34 @@ describe("a refusal before anything ran", () => {
       expect(screen.queryByRole("region", { name: "Verify result" })).toBeNull();
     },
   );
+});
+
+describe("a Measurement declared decimal", () => {
+  // ⚠ ASSEMBLED, AND SAYS SO: no committed complete Blueprint declares one, so
+  // the platform's calculated-cost Blueprint has input_tokens' declared type
+  // changed. The recording request carries whole numbers only whatever the
+  // type, and the form says so beside it rather than looking like it ignored
+  // the declaration it shows.
+  it("says it is still sent as a whole number, and only beside that Measurement", async () => {
+    const load = async (): Promise<Blueprint> => {
+      const blueprint = await loadBlueprintFixture("calculated-cost");
+      return {
+        ...blueprint,
+        calls: blueprint.calls.map((call) => ({
+          ...call,
+          arguments: call.arguments.map((argument) =>
+            argument.name === "measurements.input_tokens.value_type" ? { ...argument, value: "decimal" } : argument,
+          ),
+        })),
+      };
+    };
+    renderInRouter(<Harness load={load} />);
+    const record = await screen.findByRole("group", { name: "Record usage · chat.completion" });
+
+    expect(within(record).getAllByText(DECIMAL_SENT_WHOLE)).toHaveLength(1);
+    const field = within(record).getByLabelText("input_tokens").closest("div");
+    expect(field).toHaveTextContent(DECIMAL_SENT_WHOLE);
+  });
 });
 
 describe("a verdict the answer contradicts", () => {

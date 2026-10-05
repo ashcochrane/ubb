@@ -4,12 +4,12 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiProblem, toApiProblem } from "@/api/problem";
+import { MEASUREMENT_VALUE_TYPE_VALUES } from "@/lib/vocabulary";
 
 import { BLUEPRINT_FIXTURE_NAMES, loadBlueprintFixture } from "../api/mock-blueprints";
 import {
   loadVerificationFixture,
   VERIFICATION_FIXTURE_NAMES,
-  verificationKey,
   type CommittedVerification,
 } from "../api/mock-verifications";
 import type { BlueprintVerification, BlueprintVerificationRequest } from "../api/types";
@@ -24,6 +24,7 @@ import {
   sampleProblems,
   standingOf,
   unavailableEventTypesOf,
+  verificationKey,
   verificationRequestOf,
   verifyOfferOf,
   WHOLE_NUMBER_REQUIRED,
@@ -327,6 +328,70 @@ describe("what the form refuses to send", () => {
   });
 });
 
+// ⚠ THE WHOLE-NUMBER RULE IS THE PUBLISHED CONTRACT'S (owner review of #601).
+// The form shows each Measurement's declared value type, and asks every sample
+// as a whole number; this is what makes that the contract's rule rather than
+// the form's. A contract that widens a Measurement value, or a value type the
+// registry adds, turns these red — and is the day the form starts validating
+// by the declared type.
+describe("the whole-number rule follows the published contract, for every declared value type", () => {
+  /** The type the committed contract gives one Measurement value on a request schema. */
+  function measurementValueType(schemaName: string): unknown {
+    const [document] = Object.values(
+      import.meta.glob("/src/api/schema.json", { eager: true, import: "default" }),
+    );
+    const at = (node: unknown, key: string): unknown =>
+      typeof node === "object" && node !== null ? Reflect.get(node, key) : undefined;
+    let node: unknown = document;
+    for (const key of ["components", "schemas", schemaName, "properties", "measurements"]) node = at(node, key);
+    // The recording request publishes the map nullable: the map is the member that is an object.
+    const members = at(node, "anyOf");
+    const map = Array.isArray(members) ? members.find((member) => at(member, "type") === "object") : node;
+    return at(at(map, "additionalProperties"), "type");
+  }
+
+  it("is what both requests publish: every Measurement value is an integer", () => {
+    expect(measurementValueType("RecordUsageRequest")).toBe("integer");
+    expect(measurementValueType("IntegrationBlueprintVerificationRecordIn")).toBe("integer");
+  });
+
+  it("has been decided for every value type the registry declares", () => {
+    expect([...MEASUREMENT_VALUE_TYPE_VALUES]).toEqual(["integer", "decimal"]);
+  });
+
+  // ⚠ ASSEMBLED, AND SAYS SO: no committed complete Blueprint declares a
+  // decimal Measurement, so the platform's calculated-cost Blueprint has one
+  // Measurement's declared type changed. Everything else is the platform's.
+  it("asks a Measurement declared decimal for a whole number too", async () => {
+    const blueprint = await loadBlueprintFixture("calculated-cost");
+    const offer = verifyOfferOf({
+      ...blueprint,
+      calls: blueprint.calls.map((call) => ({
+        ...call,
+        arguments: call.arguments.map((argument) =>
+          argument.name === "measurements.input_tokens.value_type" ? { ...argument, value: "decimal" } : argument,
+        ),
+      })),
+    });
+    if (offer.kind !== "offered") throw new Error("still complete");
+    const plan = offer.plan;
+    expect(plan.records[0]?.measurements.map((measurement) => [measurement.code, measurement.valueType])).toEqual([
+      ["input_tokens", "decimal"],
+      ["output_tokens", "integer"],
+      ["searches", "integer"],
+    ]);
+
+    const samples = blankSamples(plan);
+    samples.groupingFields = ["staging"];
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["1.5", "", ""] }));
+    expect(sampleProblems(plan, samples)).toEqual([
+      { path: ["records", 0, "measurements", 0], message: WHOLE_NUMBER_REQUIRED },
+    ]);
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["2", "", ""] }));
+    expect(sampleProblems(plan, samples)).toEqual([]);
+  });
+});
+
 describe("what the answer may be presented as", () => {
   it("presents the platform's verified answer as verified", async () => {
     const answer = await answered("reported-cost");
@@ -364,20 +429,70 @@ describe("what the answer may be presented as", () => {
   });
 });
 
-describe("which Blueprint an answer belongs to", () => {
+// ⚠ AN ANSWER IS EVIDENCE ABOUT ONE FINGERPRINT AND ONE EXACT REQUEST (owner
+// review of #601). The fingerprint names the configuration; it does not name
+// the samples, and the samples change what Verify observes.
+describe("which Blueprint and which request an answer belongs to", () => {
+  async function sentFor(name: string) {
+    const fixture = await loadVerificationFixture(name);
+    return { fingerprint: fixture.fingerprint, body: fixture.request };
+  }
+
   it("is the current one only while the Blueprint on screen has the fingerprint it ran against", async () => {
-    const blueprint = await loadBlueprintFixture("reported-cost");
+    const sent = await sentFor("reported-cost");
     const other = await loadBlueprintFixture("shell-reported-cost");
     const draft = await loadBlueprintFixture("draft-preview");
-    const ran = blueprint.configuration_fingerprint ?? "";
 
-    expect(standingOf(ran, blueprint)).toEqual({ kind: "current" });
-    expect(standingOf(ran, other)).toEqual({
+    expect(standingOf(sent, await loadBlueprintFixture("reported-cost"), sent.body)).toEqual({ kind: "current" });
+    expect(standingOf(sent, other, sent.body)).toEqual({
       kind: "another_blueprint",
-      ranAgainst: ran,
+      ranAgainst: sent.fingerprint,
       current: other.configuration_fingerprint,
     });
-    expect(standingOf(ran, draft)).toEqual({ kind: "another_blueprint", ranAgainst: ran, current: null });
+    expect(standingOf(sent, draft, null)).toEqual({
+      kind: "another_blueprint",
+      ranAgainst: sent.fingerprint,
+      current: null,
+    });
+  });
+
+  // The owner's case: verified with one environment, then the sample edited.
+  it.each<[string, (request: BlueprintVerificationRequest) => BlueprintVerificationRequest]>([
+    ["a Grouping Field sample", (request) => ({ ...request, grouping_fields: { environment: "production" } })],
+    [
+      "a Measurement sample",
+      (request) => ({
+        ...request,
+        records: request.records.map((record) => ({ ...record, measurements: { ...record.measurements, input_tokens: 1201 } })),
+      }),
+    ],
+    ["an Event Type left out", (request) => ({ ...request, records: request.records.slice(0, 0) })],
+  ])("is not the current one once %s on screen differs from what was sent", async (_edit, change) => {
+    const sent = await sentFor("calculated-cost");
+    const blueprint = await loadBlueprintFixture("calculated-cost");
+
+    expect(standingOf(sent, blueprint, change(sent.body))).toEqual({ kind: "another_request" });
+  });
+
+  it("is not the current one where the Blueprint on screen offers no request at all", async () => {
+    const sent = await sentFor("calculated-cost");
+
+    expect(standingOf(sent, await loadBlueprintFixture("calculated-cost"), null)).toEqual({ kind: "another_request" });
+  });
+
+  it("is the current one for the same request spelled in another order", async () => {
+    const sent = await sentFor("explicit-subtasks");
+    const reordered = {
+      grouping_fields: { phase: "draft", environment: "staging" },
+      records: sent.body.records.map((record) => ({
+        subtask_type: record.subtask_type,
+        measurements: { candidate_tokens: 250, prompt_tokens: 900 },
+        event_type: record.event_type,
+      })),
+    };
+
+    expect(verificationKey(sent.fingerprint, reordered)).toBe(verificationKey(sent.fingerprint, sent.body));
+    expect(standingOf(sent, await loadBlueprintFixture("explicit-subtasks"), reordered)).toEqual({ kind: "current" });
   });
 });
 

@@ -19,7 +19,8 @@ import {
   mockRawKey,
 } from "./mock-data";
 import { mockAnswers, mockRegistry, selectionKey } from "./mock-blueprints";
-import { mockVerifications, verificationKey } from "./mock-verifications";
+import { verificationKey } from "../lib/verification";
+import { mockVerifications } from "./mock-verifications";
 import type {
   ApiKey,
   ApiKeyCreated,

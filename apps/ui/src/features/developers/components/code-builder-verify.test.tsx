@@ -301,6 +301,10 @@ describe("a result and the Blueprint it ran against", () => {
 
     fireEvent.click(within(stage("Configure")).getByRole("radio", { name: "Python SDK" }));
     expect(await within(verify()).findByRole("region", { name: "Verify result" })).toHaveTextContent(/Verified:/);
+    // It is current again because the samples it ran with came back with it.
+    const record = await recordFields("web.search");
+    expect(within(record).getByLabelText("searches")).toHaveValue("3");
+    expect(within(record).getByLabelText("Supplier cost, in micros")).toHaveValue("1250000");
   });
 
   it("says Verify proves the Blueprint on screen, not files taken from another", async () => {
@@ -311,5 +315,95 @@ describe("a result and the Blueprint it ran against", () => {
     const note = verify().querySelector("[data-held-differs]");
     expect(note).toHaveTextContent("so a result here says nothing about them");
     expect(note).toHaveTextContent(other.configuration_fingerprint ?? "");
+  });
+});
+
+// ⚠ A RESULT IS EVIDENCE ABOUT THE EXACT REQUEST THAT PRODUCED IT (owner review
+// of #601). The fingerprint names the configuration, not the samples, and the
+// samples change what Verify observes: so an edit that changes the request
+// clears the result, and it does not come back.
+describe("a result and the samples it ran with", () => {
+  const isGone = () =>
+    waitFor(() => expect(within(verify()).queryByRole("region", { name: "Verify result" })).toBeNull());
+
+  // The owner's case, on the Blueprint whose run needs a Grouping Field.
+  it("clears the result once a Grouping Field sample is edited", async () => {
+    const page = renderCodeBuilder(CALCULATED);
+    const record = await recordFields("chat.completion");
+    const samples = await within(verify()).findByRole("group", { name: "Grouping Field samples" });
+    type(samples, "environment", "staging");
+    type(record, "input_tokens", "1200");
+    type(record, "output_tokens", "300");
+    type(record, "searches", "2");
+    send();
+    await result();
+
+    type(samples, "environment", "production");
+
+    await isGone();
+    expect(page.current()).toEqual(CALCULATED);
+  });
+
+  it.each<[string, (record: HTMLElement) => void]>([
+    ["a Measurement sample", (record) => type(record, "searches", "4")],
+    ["the supplier cost", (record) => type(record, "Supplier cost, in micros", "1250001")],
+    ["the Event Type left out", (record) => fireEvent.click(within(record).getByLabelText("Include in this run"))],
+  ])("clears a Verified result once %s changes", async (_edit, edit) => {
+    renderCodeBuilder(REPORTED);
+    await verifyReportedCost();
+
+    edit(await recordFields("web.search"));
+
+    await isGone();
+    expect(verify()).not.toHaveTextContent(/Verified:/);
+  });
+
+  // Clearing, not hiding: putting the old value back is a new request, which
+  // has not been verified, whatever an earlier one said.
+  it("does not bring a cleared result back when the edit is undone", async () => {
+    renderCodeBuilder(REPORTED);
+    await verifyReportedCost();
+    const record = await recordFields("web.search");
+
+    type(record, "searches", "4");
+    await isGone();
+    type(record, "searches", "3");
+
+    expect(within(verify()).queryByRole("region", { name: "Verify result" })).toBeNull();
+  });
+
+  it("clears a refusal the same way", async () => {
+    renderCodeBuilder(REPORTED);
+    const record = await recordFields("web.search");
+    type(record, "searches", "4");
+    send();
+    expect(await within(verify()).findByText("Couldn't verify the Blueprint")).toBeInTheDocument();
+
+    type(record, "searches", "5");
+
+    await waitFor(() => expect(within(verify()).queryByText("Couldn't verify the Blueprint")).toBeNull());
+  });
+
+  // The request is the canonical one: a sample is sent trimmed, so space
+  // around it changes nothing that was sent.
+  it("keeps the result for an edit that leaves the request as it was", async () => {
+    renderCodeBuilder(REPORTED);
+    await verifyReportedCost();
+
+    type(await recordFields("web.search"), "searches", " 3 ");
+
+    expect(within(verify()).getByRole("region", { name: "Verify result" })).toHaveTextContent(/Verified:/);
+  });
+
+  it("locks the samples while a run is in flight, so its answer is about what is on screen", async () => {
+    renderCodeBuilder(REPORTED);
+    const record = await recordFields("web.search");
+    type(record, "searches", "3");
+    type(record, "Supplier cost, in micros", "1250000");
+    send();
+
+    await waitFor(() => expect(within(record).getByLabelText("searches")).toBeDisabled());
+    await result();
+    expect(within(record).getByLabelText("searches")).toBeEnabled();
   });
 });

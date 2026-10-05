@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ApiProblem } from "@/api/problem";
 import { setMockMemberRole } from "@/hooks/use-current-role";
 
+import { verificationKey } from "../lib/verification";
 import { verifyBlueprint } from "./mock";
 import { BLUEPRINT_FIXTURE_NAMES, loadBlueprintFixture } from "./mock-blueprints";
 import {
@@ -13,7 +14,6 @@ import {
   loadVerificationFixture,
   mockVerifications,
   VERIFICATION_FIXTURE_NAMES,
-  verificationKey,
 } from "./mock-verifications";
 import type { BlueprintVerificationRequest } from "./types";
 

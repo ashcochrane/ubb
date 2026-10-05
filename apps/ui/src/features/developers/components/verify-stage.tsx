@@ -10,19 +10,23 @@
 // is ever written to the address, so neither reaches the history or a copied
 // link.
 //
-// ⚠ A RESULT BELONGS TO THE FINGERPRINT IT RAN AGAINST. The Blueprint
-// re-resolves on focus and on return; when it resolves to another
-// fingerprint, the last result — answer or refusal — is said to be about a
-// different Blueprint, cause-neutrally, and is never shown as the current
-// one's. Verify proves the Blueprint on screen, not the files a developer took
-// from an earlier one.
+// ⚠ A RESULT BELONGS TO THE FINGERPRINT AND THE EXACT REQUEST IT RAN WITH
+// (owner review of #601). The Blueprint re-resolves on focus and on return;
+// when it resolves to another fingerprint, the last result — answer or
+// refusal — is said to be about a different Blueprint, cause-neutrally, and is
+// never shown as the current one's. An edit to the samples that changes the
+// request clears it: a Grouping Field sample can select another Cost Rate, a
+// Measurement sample changes what is recorded, and an Event Type left out makes
+// the run partial, so an answer is evidence about the request that produced it
+// and no other. Verify proves the Blueprint on screen, not the files a
+// developer took from an earlier one.
 //
 // Verify is never fused into the renderer, and it changes no configuration
 // and no code.
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useForm, useWatch } from "react-hook-form";
 
 import { ErrorCard } from "@/components/shared/error-card";
@@ -44,14 +48,18 @@ import {
 } from "../lib/code-builder-words";
 import {
   blankSamples,
+  DECIMAL_SENT_WHOLE,
   groupingFieldsAsked,
   refusalOf,
   sampleFormSchema,
   standingOf,
+  verificationKey,
   verificationRequestOf,
   verifyOfferOf,
+  type ResultStanding,
   type SamplePlan,
   type SampleValues,
+  type VerifyOffer,
   type VerifyRefusal,
 } from "../lib/verification";
 import { ShownValue } from "./blueprint-stage";
@@ -74,16 +82,43 @@ export function VerifyStage({
   const verify = useVerifyBlueprint();
   const canWrite = useHasRole("write");
   const currency = useTenantCurrency();
+  // What was typed, per fingerprint: component state, never the address. It
+  // outlives the form, so returning to a Blueprint brings its samples back —
+  // and with them the answer they were sent with.
+  const [samples, setSamples] = useState<ReadonlyMap<string, SampleValues>>(() => new Map());
 
   if (query.isPending) return <Skeleton className="h-24 w-full" />;
   const blueprint = query.data;
   if (blueprint === undefined) {
     return <p className={HINT}>Nothing to verify until the Blueprint resolves.</p>;
   }
+  const offer = verifyOfferOf(blueprint);
+  const plan = offer.kind === "offered" ? offer.plan : null;
+  const typed = plan === null ? null : (samples.get(plan.fingerprint) ?? blankSamples(plan));
   const sent: VerifyInput | undefined = verify.variables;
+
+  /**
+   * Keep what was typed; and where the edit changes the request an answer on
+   * screen was sent with, clear that answer (owner review of #601). An edit to
+   * another Blueprint's samples leaves it alone: that answer is already shown
+   * as about a different Blueprint.
+   */
+  const onSamplesChange = (edited: SamplePlan, values: SampleValues) => {
+    setSamples((previous) => new Map(previous).set(edited.fingerprint, values));
+    if (
+      sent !== undefined &&
+      sent.fingerprint === edited.fingerprint &&
+      verificationKey(edited.fingerprint, verificationRequestOf(edited, values)) !==
+        verificationKey(sent.fingerprint, sent.body)
+    ) {
+      verify.reset();
+    }
+  };
+
   return (
     <div className="space-y-5" aria-busy={query.isPlaceholderData}>
       <Offer
+        offer={offer}
         blueprint={blueprint}
         held={held}
         canWrite={canWrite}
@@ -91,12 +126,17 @@ export function VerifyStage({
         // one's: nothing is sent for it.
         resolving={query.isPlaceholderData}
         pending={verify.isPending}
+        typed={typed}
+        onSamplesChange={onSamplesChange}
         onVerify={(fingerprint, body) => verify.mutate({ fingerprint, body })}
       />
       {sent !== undefined && !verify.isPending && (
         <Outcome
-          ranAgainst={verify.data?.configuration_fingerprint ?? sent.fingerprint}
-          blueprint={blueprint}
+          standing={standingOf(
+            { fingerprint: verify.data?.configuration_fingerprint ?? sent.fingerprint, body: sent.body },
+            blueprint,
+            plan === null || typed === null ? null : verificationRequestOf(plan, typed),
+          )}
         >
           {verify.isError ? (
             <Refused refusal={refusalOf(verify.error)} onResolveAgain={() => void query.refetch()} />
@@ -110,21 +150,27 @@ export function VerifyStage({
 }
 
 function Offer({
+  offer,
   blueprint,
   held,
   canWrite,
   resolving,
   pending,
+  typed,
+  onSamplesChange,
   onVerify,
 }: {
+  offer: VerifyOffer;
   blueprint: Blueprint;
   held: string | undefined;
   canWrite: boolean;
   resolving: boolean;
   pending: boolean;
+  /** What was typed for the Blueprint on screen, or blank samples. */
+  typed: SampleValues | null;
+  onSamplesChange: (plan: SamplePlan, values: SampleValues) => void;
   onVerify: (fingerprint: string, body: BlueprintVerificationRequest) => void;
 }) {
-  const offer = verifyOfferOf(blueprint);
   switch (offer.kind) {
     case "draft_preview":
       return (
@@ -167,11 +213,14 @@ function Offer({
           <HeldNote held={held} fingerprint={offer.plan.fingerprint} />
           {canWrite ? (
             <SampleForm
-              // A new fingerprint is a new Blueprint: its samples start afresh.
+              // A new fingerprint is a new Blueprint: its form starts from what
+              // was typed for it, or blank.
               key={offer.plan.fingerprint}
               plan={offer.plan}
+              initial={typed ?? blankSamples(offer.plan)}
               disabled={resolving}
               pending={pending}
+              onChange={(values) => onSamplesChange(offer.plan, values)}
               onVerify={(body) => onVerify(offer.plan.fingerprint, body)}
             />
           ) : (
@@ -206,19 +255,28 @@ function HeldNote({ held, fingerprint }: { held: string | undefined; fingerprint
 
 function SampleForm({
   plan,
+  initial,
   disabled,
   pending,
+  onChange,
   onVerify,
 }: {
   plan: SamplePlan;
+  initial: SampleValues;
   disabled: boolean;
   pending: boolean;
+  /** Every edit, as the whole of what is typed now. */
+  onChange: (values: SampleValues) => void;
   onVerify: (body: BlueprintVerificationRequest) => void;
 }) {
   const form = useForm<SampleValues>({
     resolver: zodResolver(sampleFormSchema(plan)),
-    defaultValues: blankSamples(plan),
+    defaultValues: initial,
   });
+  useEffect(
+    () => form.subscribe({ formState: { values: true }, callback: () => onChange(form.getValues()) }),
+    [form, onChange],
+  );
   const records = useWatch({ control: form.control, name: "records" });
   const asked = new Set(groupingFieldsAsked(plan, { groupingFields: [], records }));
   const errors = form.formState.errors;
@@ -226,6 +284,8 @@ function SampleForm({
 
   return (
     <form onSubmit={(event) => void submit(event)} className="space-y-4" aria-label="Samples">
+      {/* Locked while a run is in flight: its answer is about these samples. */}
+      <fieldset disabled={pending} className="min-w-0 space-y-4">
       <p className={HINT}>
         Samples go out with this one request and are kept nowhere else — not in the address,
         and not in the page&apos;s history.
@@ -294,7 +354,11 @@ function SampleForm({
                       <ShownValue shown={shownValue(argument, place)} />
                     </span>
                   ))}
-                  <span>A whole number; leave it blank to send none.</span>
+                  <span>
+                    {measurement.valueType === "decimal"
+                      ? DECIMAL_SENT_WHOLE
+                      : "A whole number; leave it blank to send none."}
+                  </span>
                 </>
               }
               error={errors.records?.[index]?.measurements?.[position]?.message}
@@ -337,6 +401,7 @@ function SampleForm({
       <Button type="submit" size="sm" disabled={disabled || pending}>
         {pending ? "Verifying…" : "Verify this Blueprint"}
       </Button>
+      </fieldset>
     </form>
   );
 }
@@ -372,18 +437,14 @@ function Field({
   );
 }
 
-/** The last outcome, under the fingerprint it ran against. */
-function Outcome({
-  ranAgainst,
-  blueprint,
-  children,
-}: {
-  ranAgainst: string;
-  blueprint: Blueprint;
-  children: ReactNode;
-}) {
-  const standing = standingOf(ranAgainst, blueprint);
+/**
+ * The last outcome, shown only while it is about what is on screen: the same
+ * fingerprint and the same request. Edited samples clear it; another
+ * fingerprint is said, cause-neutrally, and shows nothing of it.
+ */
+function Outcome({ standing, children }: { standing: ResultStanding; children: ReactNode }) {
   if (standing.kind === "current") return <>{children}</>;
+  if (standing.kind === "another_request") return null;
   return (
     <div role="status" className="space-y-1 rounded-md border border-border p-3" data-stale-result>
       <p className="text-[13px] font-medium text-text-primary">{STALE_RESULT_WARNING}</p>

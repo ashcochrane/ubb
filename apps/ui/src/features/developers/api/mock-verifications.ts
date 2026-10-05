@@ -18,6 +18,7 @@
 
 import { COSTING_STATUS_VALUES, PRICING_STATUS_VALUES } from "@/lib/vocabulary";
 
+import { verificationKey } from "../lib/verification";
 import { field, isOneOf, isRecord, loadersByName } from "./fixture-files";
 import type { BlueprintVerification, BlueprintVerificationRequest } from "./types";
 
@@ -156,30 +157,6 @@ export async function loadVerificationFixture(name: string): Promise<CommittedVe
     return { name, blueprint, fingerprint, request, kind: "refused", problem: answer };
   }
   throw new Error(`${name} is not a Verify answer`);
-}
-
-/** An object's entries in one order, so equal maps spell the same key. */
-function sortedEntries(value: unknown): Array<[string, unknown]> {
-  return isRecord(value) ? Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)) : [];
-}
-
-/**
- * One canonical spelling of a request for a fingerprint, so requests the
- * server reads alike are one key: a map's order is not part of it, a blank
- * map is no map, and an absent optional field is null — the order of the
- * records is, because the run takes them in order.
- */
-export function verificationKey(fingerprint: string, request: BlueprintVerificationRequest): string {
-  return JSON.stringify([
-    fingerprint,
-    request.records.map((record) => [
-      record.event_type,
-      sortedEntries(record.measurements),
-      record.provider_cost_micros ?? null,
-      record.subtask_type ?? null,
-    ]),
-    sortedEntries(request.grouping_fields),
-  ]);
 }
 
 /** Every platform-written answer, by the request it answers. */
