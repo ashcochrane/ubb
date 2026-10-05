@@ -2,7 +2,7 @@
 
 **This table is the extension point.** A capability ticket adds the scenario
 its runtime path needs by adding a `Scenario` to `SCENARIOS`, and changes
-nothing else here or in the harness:
+nothing in the harness:
 
 * `configure` declares the tenant's configuration through its routes —
   registries, books, customers, pools — and returns the selection the
@@ -12,14 +12,15 @@ nothing else here or in the harness:
 * `expect` asserts what the runs did and what the application recorded;
 * `readiness` is what the resolved Blueprint must be before anything runs:
   `complete` runs as a lifecycle, anything else only to prove it fails fast;
-* `shells` is where a shell artifact runs: Debian's `sh` unless the scenario
-  names the standing matrix (`MATRIX`).
+* `shells` is where a shell artifact runs: dash and bash unless the scenario
+  names the whole standing matrix (`MATRIX`).
 
 #583 adds a supplier cost read off the response (`provider_response`)
 against a fixture in `provider_responses/`; #584 a constant Measurement;
-#585 adds #569's fields to `_the_stop`, which both stop scenarios assert
-through; #586 a fixed-price kind against a price declared through #553's
-publish act.
+#585 extends two declarations rather than adding a scenario: #569's names in
+`_customer.STOP_METADATA` (what a Python process reports of a stop) and
+their values in `_the_stop`, which both stop scenarios assert through; #586
+a fixed-price kind against a price declared through #553's publish act.
 
 **Costs are known on purpose.** An unresolved cost adds nothing to a unit of
 work's total (`work/services.py`), so a configuration without Cost Rates can
@@ -44,7 +45,7 @@ from core.vocabulary import (
     TASK_STATUS_KILLED)
 
 from _customer import CustomerId, Record, Response, Subtask, Work
-from _harness import COMPLETE, RESPONSES, Artifact, Ran
+from _harness import COMPLETE, PROVIDER_RESPONSES, Artifact, Ran, catalogue
 from _tenant import ScenarioTenant
 
 PYTHON = CODE_TARGET_PYTHON_SDK
@@ -70,10 +71,14 @@ class Shell:
 
 #: Debian's `sh`, which is dash: the POSIX shell the file is written for.
 DASH = Shell("shell", "sh")
+#: The shell most people type into.
+BASH = Shell("shell", "bash")
+#: Where every shell scenario runs.
+EVERY_SHELL_SCENARIO = (DASH, BASH)
 #: The standing matrix (ADR-0017): dash, bash 5.2, bash 3.2 — what macOS
-#: ships — and the oldest jq the file says it runs with.
-MATRIX = (DASH, Shell("shell", "bash"), Shell("bash-3.2", "bash"),
-          Shell("oldest-jq", "sh"))
+#: ships — and the oldest jq the file says it runs with. The lifecycle and
+#: both stops run in all of it.
+MATRIX = (DASH, BASH, Shell("bash-3.2", "bash"), Shell("oldest-jq", "sh"))
 
 
 # ---------------------------------------------------------------------------
@@ -110,9 +115,9 @@ INPUT_TOKENS = 1200
 OUTPUT_TOKENS = 340
 
 
-def _held_in(supplier: Supplier) -> tuple[int, int]:
+def held_in(supplier: Supplier) -> tuple[int, int]:
     document = json.loads(
-        (RESPONSES / f"{supplier.shape}.json").read_text(encoding="utf-8"))
+        (PROVIDER_RESPONSES / f"{supplier.shape}.json").read_text(encoding="utf-8"))
 
     def at(path):
         value = document
@@ -221,7 +226,7 @@ class Scenario:
     targets: tuple[str, ...] = BOTH
     posture: Mapping[str, object] = field(default_factory=dict)
     readiness: str = COMPLETE
-    shells: tuple[Shell, ...] = (DASH,)
+    shells: tuple[Shell, ...] = EVERY_SHELL_SCENARIO
 
 
 # ---------------------------------------------------------------------------
@@ -309,13 +314,13 @@ def _a_delivered_lifecycle(outcome: Outcome) -> None:
     task = outcome.tenant.task(said["task_id"])
     (subtask,) = task["subtasks"]
     assert subtask["task_id"] == said["subtask_id"]
-    for unit in (task, subtask):
+    for answered in (task, subtask):
         # A delivered close is `completed`, with no reason: one is accepted
         # only where the work did not deliver.
-        assert unit["status"] == TASK_STATUS_COMPLETED, unit
-        assert unit["outcome_reason"] is None, unit
-        assert unit["unresolved_event_count"] == 0, unit
-        assert unit["unpriced_event_count"] == 0, unit
+        assert answered["status"] == TASK_STATUS_COMPLETED, answered
+        assert answered["outcome_reason"] is None, answered
+        assert answered["unresolved_event_count"] == 0, answered
+        assert answered["unpriced_event_count"] == 0, answered
     assert (subtask["event_count"], subtask["total_provider_cost_micros"],
             subtask["total_billed_cost_micros"]) == (
         1, REPORTED_MICROS, _marked_up(REPORTED_MICROS))
@@ -325,7 +330,7 @@ def _a_delivered_lifecycle(outcome: Outcome) -> None:
         _marked_up(chat_cost) + _marked_up(REPORTED_MICROS))
 
 
-LIFECYCLE = Scenario(
+REPRESENTATIVE_LIFECYCLE = Scenario(
     name="lifecycle",
     posture={"products": ["metering", "billing"],
              "billing_mode": "postpaid"},
@@ -340,8 +345,8 @@ LIFECYCLE = Scenario(
 # What every stop and every refusal is checked against
 # ---------------------------------------------------------------------------
 
-TASKS = ("POST", "/api/v1/tasks")
-USAGE = ("POST", "/api/v1/metering/usage")
+TASK_START = ("POST", "/api/v1/tasks")
+RECORD_USAGE = ("POST", "/api/v1/metering/usage")
 
 #: The status a shell call returns for a stop, reserved for nothing else
 #: (#180 §12; ADR-0017 §4).
@@ -352,7 +357,7 @@ UNCAUGHT = 1
 CURL_REFUSED = 22
 
 
-def _declared_status(artifact: Artifact, name: str) -> int:
+def declared_status(artifact: Artifact, name: str) -> int:
     """A status the rendered shell file declares, read off the file."""
     (status,) = re.findall(rf"^{name}=(\d+)$",
                            artifact.files["ubb_integration.sh"], re.M)
@@ -367,14 +372,14 @@ def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
     on, never 0; `UBBStopRequested` from Python, logged by the generated
     module and raised to the process's own boundary.
 
-    The metadata is the four fields the acknowledgement publishes today.
-    #585 adds #569's here."""
+    The metadata is the four fields the acknowledgement and the request
+    publish today. #585 adds #569's here and in `_customer.STOP_METADATA`."""
     tipping = outcome.postings()[key]
     stop = json.loads(ran.said["stop_requested"])
     assert stop == {"event_id": str(tipping.id), "idempotency_key": key,
                     "stop_scope": scope, "stop_reason": reason}, ran
     if outcome.target == SHELL:
-        assert _declared_status(outcome.artifact,
+        assert declared_status(outcome.artifact,
                                 "UBB_EXIT_STOP_REQUESTED") == STOP_STATUS
         assert ran.status == STOP_STATUS, ran
         assert ran.said["status"] == str(STOP_STATUS), ran
@@ -385,26 +390,28 @@ def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
     assert ran.status == UNCAUGHT, ran
     assert "UBBStopRequested" in ran.stderr, ran
     # The module's one handler logs the key the event was sent under, in
-    # the words the rendered file holds.
-    (said,) = re.findall(r'_LOGGER\.warning\(\s*"([^"]*)"',
-                         outcome.artifact.files["ubb_integration.py"])
-    assert said.split("%r")[0] + repr(key) + said.split("%r")[1] in (
+    # the catalogue's words, which the rendered file holds.
+    logged = catalogue()["MESSAGES"]["stop"]
+    assert logged in outcome.artifact.files["ubb_integration.py"]
+    assert logged.split("%r")[0] + repr(key) + logged.split("%r")[1] in (
         ran.stderr), ran
 
 
 def _refused(outcome: Outcome, ran: Ran, *, status: int, code: str,
-             **extensions) -> None:
+             **body_extensions) -> None:
     """An answer of `status` was surfaced with its body, and the failure
     kept its own status: curl's from shell, never 20 and never 0, with the
-    whole problem body printed; the SDK's error, carrying the status and the
-    code, from Python."""
+    whole problem body printed — `body_extensions` are checked in it; the
+    SDK's error from Python, which carries the status, the code and the
+    detail and no extension of the body, so there they are not."""
     if outcome.target == SHELL:
         assert ran.status == CURL_REFUSED, ran
         assert ran.said["status"] == str(CURL_REFUSED), ran
         (body,) = [json.loads(line) for line in ran.stderr.splitlines()
                    if line.startswith("{")]
         assert (body["status"], body["code"]) == (status, code), ran
-        assert {name: body.get(name) for name in extensions} == extensions
+        assert {name: body.get(name) for name in body_extensions} == (
+            body_extensions), ran
         return
     assert ran.status == UNCAUGHT, ran
     assert f"API error {status} [{code}]" in ran.stderr, ran
@@ -449,7 +456,7 @@ def _stopped_by_its_ceiling(outcome: Outcome) -> None:
               reason=reasons.TASK_COGS_CEILING)
     # Nothing was declared after the stop: the platform stopped the work,
     # and neither target turns a stop into an outcome.
-    assert ran.requests == [TASKS, USAGE, USAGE], ran
+    assert ran.requests == [TASK_START, RECORD_USAGE, RECORD_USAGE], ran
     task = outcome.tenant.task(ran.said["task_id"])
     assert task["status"] == TASK_STATUS_KILLED, task
     assert task["outcome_reason"] is None, task
@@ -495,14 +502,14 @@ def _stopped_by_the_customer_pool(outcome: Outcome) -> None:
     assert sorted(outcome.postings()) == ["chat-1"], stopped
     _the_stop(outcome, stopped, key="chat-1", scope="customer",
               reason=reasons.CUSTOMER_SPEND_POOL)
-    assert stopped.requests == [TASKS, USAGE], stopped
+    assert stopped.requests == [TASK_START, RECORD_USAGE], stopped
     task = outcome.tenant.task(stopped.said["task_id"])
     assert task["status"] == TASK_STATUS_KILLED, task
     assert task["outcome_reason"] is None, task
     # The customer is stopped, so the next unit of work is refused at its
     # start (`task_endpoints.start`: 409, the reason named): nothing is
     # recorded and no work exists to close.
-    assert refused.requests == [TASKS], refused
+    assert refused.requests == [TASK_START], refused
     _refused(outcome, refused, status=409, code="task_start_refused",
              reason=AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
 
@@ -514,6 +521,7 @@ CUSTOMER_POOL_REACHED = Scenario(
     works=lambda target: (_three_records("acme", "reply-1"),
                           _three_records("acme", "reply-2", first=4)),
     expect=_stopped_by_the_customer_pool,
+    shells=MATRIX,
 )
 
 
@@ -528,7 +536,7 @@ CUSTOMER_POOL_REACHED = Scenario(
 # SDK's work block declares an ordinary exception `failed`; the shell
 # boundary declares nothing and leaves the work open.
 
-def _refusal_configuration(tenant: ScenarioTenant, target: str) -> dict:
+def refusal_configuration(tenant: ScenarioTenant, target: str) -> dict:
     tenant._a_kind("support_reply")
     tenant._event_type("search.run", measurements={"searches": _searches()})
     tenant._cost_rules(("add", "searches", 7), provider="openai")
@@ -537,7 +545,7 @@ def _refusal_configuration(tenant: ScenarioTenant, target: str) -> dict:
     return {"task_type": "support_reply", "event_types": ["search.run"]}
 
 
-def _refusal_work(target: str) -> tuple[Work, ...]:
+def refusal_work(target: str) -> tuple[Work, ...]:
     return (Work(customer="acme", values={"idempotency_key": "reply-1"},
                  does=(
                      Record("search.run", {"idempotency_key": "search-1",
@@ -557,12 +565,12 @@ def _a_refused_record(outcome: Outcome) -> None:
     _refused(outcome, ran, status=404, code="not_found")
     task = outcome.tenant.task(ran.said["task_id"])
     if outcome.target == SHELL:
-        assert ran.requests == [TASKS, USAGE, USAGE], ran
+        assert ran.requests == [TASK_START, RECORD_USAGE, RECORD_USAGE], ran
         assert task["status"] == TASK_STATUS_ACTIVE, task
         assert any(line.startswith("ubb_run_task: ")
                    for line in ran.stderr.splitlines()), ran
         return
-    assert ran.requests[:3] == [TASKS, USAGE, USAGE], ran
+    assert ran.requests[:3] == [TASK_START, RECORD_USAGE, RECORD_USAGE], ran
     assert ran.requests[3][1] == f"/api/v1/tasks/{task['task_id']}/close", ran
     assert (task["status"], task["outcome_reason"]) == (
         TASK_STATUS_FAILED, OUTCOME_REASON_EXECUTION_FAILED), task
@@ -570,8 +578,8 @@ def _a_refused_record(outcome: Outcome) -> None:
 
 REFUSED = Scenario(
     name="refused",
-    configure=_refusal_configuration,
-    works=_refusal_work,
+    configure=refusal_configuration,
+    works=refusal_work,
     expect=_a_refused_record,
 )
 
@@ -584,19 +592,24 @@ REFUSED = Scenario(
 # names what that call is missing, and — the harness checks this for every
 # fail-fast run — no call that is not ready reaches the application.
 
-def _says_what_is_missing(outcome: Outcome, ran: Ran, operation: str):
-    """The run named the call that is not ready and every value it has
-    none for, and sent the reader to the header, which names every
-    blocking diagnostic."""
+def _says_what_is_missing(outcome: Outcome, ran: Ran,
+                          operation: str) -> list[str]:
+    """The run named the call that is not ready, in the file's own words,
+    and every value that call has none for, and sent the reader to the
+    header — which names every blocking diagnostic. Returns the values it
+    named, for the scenario to hold to what its configuration lacks."""
+    said = catalogue()["MESSAGES"]
     (call,) = [call for call in outcome.artifact.blueprint["calls"]
                if call["operation_id"] == operation
                and call["readiness"] != COMPLETE][:1]
-    assert (f"{operation} ({call['readiness']}) is not ready to run."
+    # "<operation> (<readiness>) is not ready to run. The generated file's
+    # header lists what to declare."
+    assert (f"{operation} ({call['readiness']}) {said['notReady']}"
             in ran.stderr), ran
-    for argument in call["arguments"]:
-        if argument["configured"] is False:
-            assert f"{argument['name']} has no configured value." in (
-                ran.stderr), ran
+    missing = [argument["name"] for argument in call["arguments"]
+               if argument["configured"] is False]
+    for name in missing:
+        assert f"{name} {said['notConfigured']}." in ran.stderr, ran
     module = next(contents for path, contents
                   in outcome.artifact.files.items()
                   if path.startswith("ubb_integration."))
@@ -607,15 +620,16 @@ def _says_what_is_missing(outcome: Outcome, ran: Ran, operation: str):
     for code in blocking:
         assert f'# diagnostic = "{code}"' in module, code
     if outcome.target == SHELL:
-        assert ran.status == _declared_status(
+        assert ran.status == declared_status(
             outcome.artifact, "UBB_EXIT_NOT_CONFIGURED"), ran
     else:
         assert ran.status == UNCAUGHT, ran
-        assert "UBBIntegrationNotReady" in ran.stderr, ran
+        assert catalogue()["PYTHON"]["notReadyError"] in ran.stderr, ran
+    return missing
 
 
-START = "api_v1_task_endpoints_start_task"
-RECORD = "api_v1_metering_endpoints_record_usage"
+START_OPERATION = "api_v1_task_endpoints_start_task"
+RECORD_OPERATION = "api_v1_metering_endpoints_record_usage"
 
 
 def _a_lone_record(customer: str, event_type=None, **values) -> Work:
@@ -624,12 +638,16 @@ def _a_lone_record(customer: str, event_type=None, **values) -> Work:
                                            **values}),))
 
 
-def _nothing_ran(outcome: Outcome) -> None:
-    """The start was the call that failed: nothing at all was sent."""
-    (ran,) = outcome.runs
-    _says_what_is_missing(outcome, ran, START)
-    assert ran.requests == [], ran
-    assert outcome.postings() == {}, ran
+def _nothing_ran(*lacking: str) -> Callable[[Outcome], None]:
+    """The start was the call that failed, naming the values in `lacking`:
+    nothing at all was sent."""
+    def expect(outcome: Outcome) -> None:
+        (ran,) = outcome.runs
+        assert _says_what_is_missing(
+            outcome, ran, START_OPERATION) == list(lacking), ran
+        assert ran.requests == [], ran
+        assert outcome.postings() == {}, ran
+    return expect
 
 
 def _scaffold_configuration(tenant: ScenarioTenant, target: str) -> dict:
@@ -642,7 +660,8 @@ SCAFFOLD = Scenario(
     name="scaffold",
     configure=_scaffold_configuration,
     works=lambda target: (_a_lone_record("acme"),),
-    expect=_nothing_ran,
+    # Nothing selected: the start has no kind of work to name.
+    expect=_nothing_ran("task_type"),
     readiness="scaffold",
 )
 
@@ -666,7 +685,9 @@ BLOCKED = Scenario(
         values={"idempotency_key": "work-1", "phase": "draft"},
         does=(Record("search.run", {"idempotency_key": "event-1",
                                      "searches": 1}),)),),
-    expect=_nothing_ran,
+    # Every value the start sends is configured; what blocks it is the
+    # declaration the header names (`required_grouping_field_wrong_scope`).
+    expect=_nothing_ran(),
     readiness="blocked",
 )
 
@@ -701,10 +722,12 @@ def _the_record_is_blocked(outcome: Outcome) -> None:
             if diagnostic["severity"] == "blocking"] == [
         ("response_shape_not_readable_by_target", "chat.completion",
          "source_shape_id")], blueprint["diagnostics"]
-    _says_what_is_missing(outcome, ran, RECORD)
+    # Every value the record sends is configured, its path among them: what
+    # blocks it is the shape no target can read, which the header names.
+    assert _says_what_is_missing(outcome, ran, RECORD_OPERATION) == [], ran
     assert outcome.postings() == {}, ran
     # The start is complete and was sent; the record never was.
-    assert ran.requests[0] == TASKS, ran
+    assert ran.requests[0] == TASK_START, ran
 
 
 CUSTOM_SHAPE = Scenario(
@@ -718,7 +741,7 @@ CUSTOM_SHAPE = Scenario(
 
 
 SCENARIOS: tuple[Scenario, ...] = (
-    LIFECYCLE,
+    REPRESENTATIVE_LIFECYCLE,
     CEILING_CROSSED,
     CUSTOMER_POOL_REACHED,
     REFUSED,

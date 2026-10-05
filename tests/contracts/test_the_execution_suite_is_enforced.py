@@ -151,9 +151,12 @@ def test_no_execution_test_is_skipped_or_expected_to_fail():
 
 def image_faults(dockerfile):
     """Every way `dockerfile` builds something other than the same image
-    every time."""
+    every time. An instruction continued over several lines is read whole:
+    a URL or a package manager on a continuation line is still there."""
     faults = []
-    for line in dockerfile.splitlines():
+    instructions = re.sub(r"\\\r?\n", " ", dockerfile)
+    for line in instructions.splitlines():
+        line = " ".join(line.split())
         words = line.split()
         if not words:
             continue
@@ -309,11 +312,25 @@ def test_positive_control_an_ordinary_case_is_not_flagged():
 def test_negative_control_an_unpinned_image_is_flagged():
     assert image_faults("FROM debian:bookworm-slim") == [
         "`FROM debian:bookworm-slim` is not pinned by digest"]
+    # In the form the real files use: the URL on a continuation line.
     assert image_faults(
-        "ADD https://example.org/jq /usr/local/bin/jq") == [
-        "`ADD https://example.org/jq /usr/local/bin/jq` fetches a file with "
-        "no checksum"]
-    assert image_faults("RUN apt-get install -y jq") == [
-        "`RUN apt-get install -y jq` installs from a package manager"]
+        "ADD --chmod=755 \\\n    https://example.org/jq /usr/local/bin/jq") == [
+        "`ADD --chmod=755 https://example.org/jq /usr/local/bin/jq` fetches a "
+        "file with no checksum"]
+    assert image_faults("RUN set -e \\\n  && apt-get install -y jq") == [
+        "`RUN set -e && apt-get install -y jq` installs from a package manager"]
     assert image_faults(
         "FROM debian@sha256:" + "0" * 64) == []
+
+
+def test_negative_control_each_real_image_unpinned_is_flagged():
+    """The real files, each made unpinned: what the check reads is the form
+    they are written in."""
+    for path in sorted((SUITE / "images").glob("*/Dockerfile")):
+        text = path.read_text(encoding="utf-8")
+        unpinned = re.sub(r"@sha256:[0-9a-f]{64}", "", text)
+        unpinned = unpinned.replace("--checksum=sha256:", "--checksum-was=")
+        assert image_faults(unpinned), path.parent.name
+        if "ADD " in text:
+            assert any("no checksum" in fault
+                       for fault in image_faults(unpinned)), path.parent.name

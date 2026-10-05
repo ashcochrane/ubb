@@ -17,12 +17,20 @@ artifact cannot (ADR-0008 §5, #158 §5.4):
 * the code that goes where a block leaves room for it: the body of the work,
   inside a `with`/`work()` whose body is the block's placeholder (`...` in
   Python, `:` in shell), and what to do when a stop arrives;
-* the one choice a block offers: the close block lists the three ways work
-  can end, and the work declares one of them;
+* the choices the blocks offer: the close block lists the three ways work
+  can end, and the work declares one of them — on a Subtask, whose handle
+  the Python block does not name, the same declaration on the Subtask's own
+  handle; and two shell blocks run the work — `run_task.sh` and `stop.sh`,
+  for a customer who acts on a stop's scope — so the script defines `work()`
+  as the first one does and runs it with the second, whose status it passes
+  on as its own;
 * lines that print what it saw, as `name=value`, for the test to read.
 
-It never edits, rewrites or wraps a rendered line, and nothing here reads or
-writes a file under `artifact/`.
+It never changes the text of a rendered line. It places blocks whole, at the
+indentation of where they are pasted, inside its own code (a Python
+`def main()`, and a `try` that reports a stop at the process's boundary);
+the one line it chooses from a block is taken as written; and nothing here
+reads or writes a file under `artifact/`.
 
 A unit of work is declared as data (`Work`), so a scenario says what the
 customer's code does and not how either target spells it.
@@ -32,10 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Union
 
-from _harness import ARTIFACT, CUSTOMER, Artifact
-
-#: Where a supplier's response sits beside the customer's script.
-RESPONSES = "responses"
+from _harness import ARTIFACT, CUSTOMER, CUSTOMER_RESPONSES, Artifact
 
 #: How a Python library's response is read (attribute by attribute), as the
 #: Blueprint names it.
@@ -163,7 +168,7 @@ from ubb import UBBStopRequested
 # Where the generated module's warnings go.
 logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 
-RESPONSES = Path(__file__).resolve().parent / "responses"
+RESPONSES = Path(__file__).resolve().parent / @RESPONSES@
 
 
 def _as_object(value):
@@ -180,21 +185,29 @@ def _response(fixture, representation):
     """The supplier's response this code already holds."""
     document = json.loads(
         (RESPONSES / f"{fixture}.json").read_text(encoding="utf-8"))
-    return _as_object(document) if representation == "python_object" else document
+    return _as_object(document) if representation == @PYTHON_OBJECT@ else document
 
 
 def main():
 '''
 
-_PYTHON_TAIL = '''
+#: What the customer's process reports of a stop, read by name off the
+#: acknowledgement `UBBStopRequested` carries, beside the key the event was
+#: sent under. The fields the acknowledgement publishes today: #585 adds
+#: #569's names here, and their values to `_scenarios._the_stop`. A shell
+#: file's metadata is the variable it sets, whole, so it needs no list.
+STOP_METADATA = ("event_id", "stop_scope", "stop_reason")
+
+_PYTHON_TAIL = f'''
 
 try:
     main()
 except UBBStopRequested as stop:
-    # The process's own boundary: say what stopped it, and stop.
+    # The process's own boundary: say what stopped it, and stop. Each field
+    # by name, never through to_dict() (#596).
     print("stop_requested=" + json.dumps(
-        {"event_id": stop.event_id, "idempotency_key": stop.idempotency_key,
-         "stop_scope": stop.stop_scope, "stop_reason": stop.stop_reason},
+        {{"idempotency_key": stop.idempotency_key,
+          **{{name: getattr(stop.result, name) for name in {STOP_METADATA!r}}}}},
         sort_keys=True), flush=True)
     raise
 '''
@@ -228,7 +241,7 @@ def _python_close(artifact: Artifact) -> str:
         raise AssertionError(
             f"the close block offers no task.complete():\n"
             f"{artifact.block('close.py')}")
-    return chosen[0].strip()
+    return chosen[0]
 
 
 def python_script(artifact: Artifact, work: Work,
@@ -255,7 +268,9 @@ def python_script(artifact: Artifact, work: Work,
                 _fill(artifact.block("unit_of_work.py"), "...", body))
     start = _python_assign(artifact, None, _resolved(
         {"customer_id": CustomerId(work.customer), **work.values}, customers))
-    return (_PYTHON_HEAD
+    head = (_PYTHON_HEAD.replace("@RESPONSES@", repr(CUSTOMER_RESPONSES))
+            .replace("@PYTHON_OBJECT@", repr(PYTHON_OBJECT)))
+    return (head
             + "\n".join(f"    {line}" if line else ""
                         for line in [*start, *run])
             + "\n" + _PYTHON_TAIL)
@@ -279,7 +294,7 @@ def _shell_word(value: str) -> str:
 
 def _shell_value(value: Value) -> str:
     if isinstance(value, Response):
-        return _shell_word(f"{CUSTOMER}/{RESPONSES}/{value.fixture}.json")
+        return _shell_word(f"{CUSTOMER}/{CUSTOMER_RESPONSES}/{value.fixture}.json")
     return _shell_word(str(value))
 
 

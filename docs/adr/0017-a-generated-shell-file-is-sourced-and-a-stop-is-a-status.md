@@ -371,7 +371,8 @@ built, the boundary declared work that returned a failure `failed`, and the oute
    substitution, and both the losing form's reproduction and the structural test kept.
 6. **Approved as built**: `name=value` arguments and refusal before any side effect, the cost
    converted on its text, a response as a file, one preview a call, no host, no curl timeout the
-   renderer made up, and catalogue version 2.
+   renderer made up, and catalogue version 2 (version 3 since #582, which reworded the refusal of
+   an old jq — see the amendment to §1).
 
 **A path for work that has already happened is not rendered, and that is a stated limitation of
 this target in v1** (ruling 6), not something a shell file is implied to do. The Python target has

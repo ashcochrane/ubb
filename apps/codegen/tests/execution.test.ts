@@ -347,18 +347,20 @@ result = {"stop": acknowledgement.stop, "scope": acknowledgement.stop_scope,
 
 describe("an answer that is not an acknowledgement", () => {
   // Three answers to a record, each run inside the work block a tenant
-  // writes. The real application answers an error with its body, and that
-  // case is run against it too (#582's suite); it never answers text that is
-  // not JSON, or an acknowledgement without a field the contract requires, so
-  // those two are proved here against the stand-in. None of the three may
-  // read as a recorded event or as a stop: each is an ordinary exception,
-  // raised out of the block, which then declares the work failed.
+  // writes. An error with its body is one the real application gives, and
+  // that case is run against it too (#582's suite). A success whose body is
+  // not JSON, and an acknowledgement without a field the contract requires,
+  // are not answers its record route gives, so those two are proved here
+  // against the stand-in. None of the three may read as a recorded event or
+  // as a stop: each is an ordinary exception, raised out of the block, which
+  // then declares the work failed.
   const RECORD = "/api/v1/metering/usage";
   const answered = (queue: string) =>
     run<Record<string, unknown>>(
       rendered("direct-task-events"),
       `
 from ubb import UBBStopRequested
+from ubb.exceptions import UBBAPIError
 integration = load()
 server.queue(${JSON.stringify(RECORD)}, ${queue})
 raised = None
@@ -372,8 +374,9 @@ except UBBStopRequested:
 except Exception as error:
     raised = error
 result = {
-    "raised": type(raised).__name__, "is_ubb_error": isinstance(raised, Exception)
-        and type(raised).__module__.startswith("ubb"),
+    "raised": type(raised).__name__,
+    "is_ubb_error": isinstance(raised, UBBAPIError),
+    "said": str(raised),
     "status": getattr(raised, "status_code", None),
     "code": getattr(raised, "code", None),
     "detail": getattr(raised, "detail", None),
@@ -414,6 +417,7 @@ result = {
     const answer = answered(`raw_body="<html>Bad gateway</html>"`);
 
     expect(answer.raised).toBe("JSONDecodeError");
+    expect(answer.is_ubb_error).toBe(false);
     expect(answer.paths).toEqual(["/api/v1/tasks", RECORD, "/api/v1/tasks/task_1/close"]);
     expect(answer.close).toEqual(CLOSED_FAILED("JSONDecodeError"));
   });
@@ -430,6 +434,7 @@ result = {
 
     // The one field left out is the event's id.
     expect(answer.raised).toBe("KeyError");
+    expect(answer.said).toBe("'event_id'");
     expect(answer.paths).toEqual(["/api/v1/tasks", RECORD, "/api/v1/tasks/task_1/close"]);
     expect(answer.close).toEqual(CLOSED_FAILED("KeyError"));
   });

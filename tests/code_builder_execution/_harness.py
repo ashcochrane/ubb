@@ -9,17 +9,20 @@ record in the database (#582; ADR-0008 §5, #158 §5.3–§5.5).
 **Writing** puts the files under `artifact/` in a directory of their own and
 takes a sha256 of each as it is written. Before every run and after it, the
 directory is held to that set: every file there, unchanged, and nothing else.
-Nothing in this suite edits a rendered file; this is what would notice if
-something did (ADR-0008 §5: CI may supply the code's runtime inputs, it may
-not repair the code).
+No run edits a rendered file — only the harness's own controls do, on
+purpose, to show this check catches it (ADR-0008 §5: CI may supply the
+code's runtime inputs, it may not repair the code).
 
 **Running** is a customer's script beside the files, under `customer/`. The
 script is the glue a customer writes — it imports or sources the rendered
 module and pastes the rendered call-site blocks into its own code
 (`_customer.py`) — and it supplies only runtime values. The process is given
-the two documented variables, `UBB_BASE_URL` and `UBB_API_KEY`, and no other
-`UBB_` variable. Python runs on this machine against the SDK in this tree;
-shell runs in a pinned image (`images/`), on a machine of its own.
+the two documented variables, `UBB_BASE_URL` and `UBB_API_KEY`, and nothing
+of this suite's own: a shell runs in a pinned image (`images/`), on a machine
+of its own, with those two set and no other; Python runs on this machine
+against the SDK in this tree, with those two, the few variables any process
+needs to start (`MACHINE`), and the four that tell Python where the module
+and the SDK are and how to write its output.
 
 **Only complete artifacts run as a lifecycle.** A scaffold or a blocked
 artifact is run for one reason, to prove it fails fast: none of its calls
@@ -32,10 +35,12 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
 from django.core.signals import request_started
@@ -50,13 +55,15 @@ SDK = REPO_ROOT / "ubb-sdk"
 #: The pinned images a generated shell file is run in (`images/<name>`).
 IMAGES = SUITE / "images"
 #: The deterministic supplier responses a customer's code hands over.
-RESPONSES = SUITE / "provider_responses"
+PROVIDER_RESPONSES = SUITE / "provider_responses"
 #: The committed contract: where each operation a Blueprint names is served.
 CONTRACT = REPO_ROOT / "openapi" / "v1.json"
 
-#: Where the rendered files are written, and where the customer's own are.
+#: Where the rendered files are written, where the customer's own are, and
+#: where among those the supplier responses its code already holds sit.
 ARTIFACT = "artifact"
 CUSTOMER = "customer"
+CUSTOMER_RESPONSES = "responses"
 
 #: The one readiness that runs as a lifecycle (ADR-0008 §5, #158 §5.6).
 COMPLETE = "complete"
@@ -65,7 +72,8 @@ COMPLETE = "complete"
 #: the container cannot share that machine's network (Docker Desktop).
 CONTAINER_HOST = "host.docker.internal"
 
-#: The two variables a generated file reads, and the only ones a run is given.
+#: The two variables a generated file reads: the only ones of UBB's a run is
+#: given.
 BASE_URL = "UBB_BASE_URL"
 API_KEY = "UBB_API_KEY"
 
@@ -160,7 +168,9 @@ class Artifact:
 
 def write(blueprint: dict, root: Path) -> Artifact:
     """Render `blueprint` and write the files under `root/artifact`, as
-    bytes, exactly as returned: no newline is translated on any machine."""
+    bytes, exactly as returned: no newline is translated on any machine.
+    Beside them, under `root/customer/responses`, the supplier responses the
+    customer's code already holds."""
     files = {file["path"]: file["contents"] for file in render(blueprint)}
     if not files:
         raise AssertionError("ubb-codegen rendered no files")
@@ -171,7 +181,7 @@ def write(blueprint: dict, root: Path) -> Artifact:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         digests[path] = sha256(data)
-    (root / CUSTOMER).mkdir(parents=True, exist_ok=True)
+    shutil.copytree(PROVIDER_RESPONSES, root / CUSTOMER / CUSTOMER_RESPONSES)
     artifact = Artifact(blueprint=blueprint, root=root, files=files,
                         digests=digests)
     artifact.unchanged()
@@ -253,36 +263,45 @@ class Ran:
                 f"\n--- stderr\n{self.stderr}\n--- requests\n{self.requests}")
 
 
-#: Why a run is made: a lifecycle, which only a complete artifact may be;
-#: or a proof that a not-ready artifact fails fast, which must reach nothing.
-LIFECYCLE = "lifecycle"
-FAIL_FAST = "fail_fast"
+class Purpose(Enum):
+    """Why a run is made: a lifecycle, which only a complete artifact may
+    be; or a proof that a not-ready artifact fails fast, none of whose
+    not-ready calls may reach the application."""
+
+    LIFECYCLE = "lifecycle"
+    FAIL_FAST = "fail fast"
 
 
-def _permitted(artifact: Artifact, purpose: str) -> None:
-    if purpose == LIFECYCLE and artifact.readiness != COMPLETE:
+def _permitted(artifact: Artifact, purpose: Purpose) -> None:
+    if purpose is Purpose.LIFECYCLE and artifact.readiness != COMPLETE:
         raise NotRunnable(
             f"only a complete artifact runs as a lifecycle; this one is "
             f"{artifact.readiness}")
-    if purpose == FAIL_FAST and artifact.readiness == COMPLETE:
+    if purpose is Purpose.FAIL_FAST and artifact.readiness == COMPLETE:
         raise NotRunnable(
             "a complete artifact has nothing to fail fast on")
-    if purpose not in (LIFECYCLE, FAIL_FAST):
-        raise NotRunnable(f"no run is made for {purpose!r}")
+
+
+#: What a process needs from the machine to start at all, on Linux and on
+#: Windows (Python's sockets need `SYSTEMROOT` there). Nothing of this
+#: suite's own — not its database, its secrets or its settings — reaches a
+#: customer's process.
+MACHINE = ("PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP",
+           "TMP", "TMPDIR", "HOME", "USERPROFILE", "LANG", "LC_ALL")
 
 
 def _environment(base_url: str, api_key: str) -> dict[str, str]:
-    """This machine's environment with every `UBB_` variable removed, and
-    the two documented ones set."""
-    environment = {name: value for name, value in os.environ.items()
-                   if not name.startswith("UBB_")}
+    """The machine's own variables in `MACHINE`, and the two documented
+    ones: nothing else."""
+    environment = {name: os.environ[name] for name in MACHINE
+                   if name in os.environ}
     environment[BASE_URL] = base_url
     environment[API_KEY] = api_key
     return environment
 
 
 def run_python(artifact: Artifact, script: str, *, server: Server,
-               api_key: str, purpose: str = LIFECYCLE) -> Ran:
+               api_key: str, purpose: Purpose = Purpose.LIFECYCLE) -> Ran:
     """Run `script` — the customer's Python — with the rendered module
     importable and the SDK in this tree beside it."""
     _permitted(artifact, purpose)
@@ -320,33 +339,45 @@ def image(name: str) -> str:
     return _BUILT[name]
 
 
+def in_image(image_name: str, *command: str, work: Path,
+             volumes: dict[Path, str] | None = None,
+             environment: dict[str, str] | None = None,
+             network: list[str] | None = None) -> list[str]:
+    """The `docker run` that runs `command` in the pinned image
+    `image_name`, in `work` mounted as `/work`, with `volumes` mounted where
+    each says, `environment` set and nothing else of this machine's. Where
+    users are numbered the container runs as this one, so what it writes
+    into a mounted directory can be read, checked and removed."""
+    argv = ["docker", "run", "--rm", *(network or []),
+            "--volume", f"{work}:/work", "--workdir", "/work"]
+    for source, target in (volumes or {}).items():
+        argv += ["--volume", f"{source}:{target}"]
+    for name, value in (environment or {}).items():
+        argv += ["--env", f"{name}={value}"]
+    if hasattr(os, "getuid"):
+        argv += ["--user", f"{os.getuid()}:{os.getgid()}"]
+    return [*argv, image(image_name), *command]
+
+
 def run_shell(artifact: Artifact, script: str, *, server: Server,
               api_key: str, image_name: str = "shell", shell: str = "sh",
-              purpose: str = LIFECYCLE, temporary: Path | None = None) -> Ran:
+              purpose: Purpose = Purpose.LIFECYCLE,
+              temporary: Path | None = None) -> Ran:
     """Run `script` — the customer's shell — under `shell` in the image
-    `image_name`, with the work directory mounted as `/work`.
+    `image_name`, with the work directory mounted as `/work` and the two
+    documented variables set.
 
     `temporary`, when given, is mounted as the container's `/tmp`, so a test
     can see whether anything was left there."""
     _permitted(artifact, purpose)
-    tag = image(image_name)
     (artifact.root / CUSTOMER / "main.sh").write_bytes(script.encode("utf-8"))
-    argv = ["docker", "run", "--rm", *server.network,
-            "--volume", f"{artifact.root}:/work", "--workdir", "/work",
-            "--env", f"{BASE_URL}={server.url_from_a_container}",
-            "--env", f"{API_KEY}={api_key}"]
-    if temporary is not None:
-        argv += ["--volume", f"{temporary}:/tmp"]
-    argv += [*as_this_user(), tag, shell, f"{CUSTOMER}/main.sh"]
+    argv = in_image(
+        image_name, shell, f"{CUSTOMER}/main.sh", work=artifact.root,
+        volumes={temporary: "/tmp"} if temporary is not None else None,
+        environment={BASE_URL: server.url_from_a_container,
+                     API_KEY: api_key},
+        network=server.network)
     return _run(artifact, argv, None, server=server, purpose=purpose)
-
-
-def as_this_user() -> list[str]:
-    """Where users are numbered, a container runs as this one, so what it
-    writes into a mounted directory can be read, checked and removed."""
-    if hasattr(os, "getuid"):
-        return ["--user", f"{os.getuid()}:{os.getgid()}"]
-    return []
 
 
 def not_ready_routes(blueprint: dict) -> list[tuple[str, re.Pattern]]:
@@ -375,7 +406,7 @@ def _run(artifact, argv, environment, *, server, purpose) -> Ran:
                  stdout=ran.stdout.decode("utf-8", "replace"),
                  stderr=ran.stderr.decode("utf-8", "replace"),
                  requests=list(requests))
-    if purpose == FAIL_FAST:
+    if purpose is Purpose.FAIL_FAST:
         # A call that is not ready fails before it is sent: none of those
         # calls' operations may have been asked for, whatever else was.
         not_ready = not_ready_routes(artifact.blueprint)

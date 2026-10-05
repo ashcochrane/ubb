@@ -461,7 +461,8 @@ done
 
 describe("preflight", () => {
   // The renderer's own checks, with stand-ins on PATH. Images that really
-  // lack a tool, or really carry an old one, are #582's.
+  // lack a tool, or really carry an old one, are #582's
+  // (`tests/code_builder_execution/`).
   const START = `${SOURCE}
 ubb_start_task customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
@@ -475,6 +476,15 @@ printf 'status=%s\\n' "$?"
     [
       "jq cannot run a program of the form the file uses",
       `${real("curl")}; ${stub("jq", "exit 3")}`,
+      SHELL_MESSAGES.jqUnusable,
+    ],
+    [
+      // What jq 1.3 and 1.4 lack: everything else is the real jq's.
+      "jq runs a program from standard input but has no --argjson",
+      `${real("curl")}; ln -s "$(command -v jq)" bin/real-jq; ${stub(
+        "jq",
+        'case " $* " in *" --argjson "*) exit 2 ;; esac; exec "${0%/*}/real-jq" "$@"',
+      )}`,
       SHELL_MESSAGES.jqUnusable,
     ],
     [

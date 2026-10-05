@@ -12,13 +12,15 @@ Blueprints that need no tenant are the renderer's committed fixtures, which
 the platform's own suite holds equal to what its route answers.
 """
 import json
+import os
 
 import pytest
 
 from _harness import (
-    ARTIFACT, CUSTOMER, FAIL_FAST, LIFECYCLE, RESPONSES, ArtifactEdited,
-    NotRunnable, REPO_ROOT, Server, render, run_python, write)
-from _scenarios import GEMINI, INPUT_TOKENS, OPENAI, OUTPUT_TOKENS, _held_in
+    API_KEY, ARTIFACT, BASE_URL, CUSTOMER, MACHINE, Purpose,
+    PROVIDER_RESPONSES, ArtifactEdited, NotRunnable, REPO_ROOT, Server, render,
+    run_python, run_shell, write)
+from _scenarios import GEMINI, INPUT_TOKENS, OPENAI, OUTPUT_TOKENS, held_in
 
 FIXTURES = REPO_ROOT / "apps" / "codegen" / "fixtures" / "blueprints"
 
@@ -93,7 +95,7 @@ def test_only_a_complete_artifact_runs_as_a_lifecycle(tmp_path):
 
     with pytest.raises(NotRunnable) as refused:
         run_python(artifact, _a_script(artifact), server=NOWHERE,
-                   api_key="x", purpose=LIFECYCLE)
+                   api_key="x", purpose=Purpose.LIFECYCLE)
 
     assert "only a complete artifact runs as a lifecycle" in str(
         refused.value)
@@ -106,7 +108,7 @@ def test_a_complete_artifact_is_not_run_to_fail_fast(tmp_path):
 
     with pytest.raises(NotRunnable) as refused:
         run_python(artifact, _a_script(artifact), server=NOWHERE,
-                   api_key="x", purpose=FAIL_FAST)
+                   api_key="x", purpose=Purpose.FAIL_FAST)
 
     assert "a complete artifact has nothing to fail fast on" in str(
         refused.value)
@@ -129,15 +131,55 @@ def test_a_fail_fast_run_that_reaches_a_call_not_ready_fails(server,
 
     with pytest.raises(AssertionError) as caught:
         run_python(artifact, script, server=server, api_key="x",
-                   purpose=FAIL_FAST)
+                   purpose=Purpose.FAIL_FAST)
 
     assert "a call that is not ready reached the application" in str(
         caught.value)
     assert "/api/v1/metering/usage" in str(caught.value)
 
 
+#: What this suite's own process holds that is nobody else's business: the
+#: application's database, cache, secret and settings.
+SUITES_OWN = ("DATABASE_URL", "REDIS_URL", "SECRET_KEY", "DEBUG",
+              "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET",
+              "DJANGO_SETTINGS_MODULE", "UBB_TEST_REDIS_DB")
+
+
+def test_a_python_run_is_given_nothing_of_this_suites_own(tmp_path):
+    """Of UBB's, only the two documented variables; of the suite's own,
+    nothing. (An interpreter may set variables of its own in its own
+    process, so what is held to the machine's few is the harness's list,
+    `MACHINE`, not everything the child can see.)"""
+    held = [name for name in SUITES_OWN if name in os.environ]
+    assert "DATABASE_URL" in held  # the premise: there is one to leak
+    artifact = write(_fixture("calculated-cost"), tmp_path)
+    script = "import json, os\nprint('environment=' + json.dumps(sorted(os.environ)))\n"
+
+    ran = run_python(artifact, script, server=NOWHERE, api_key="not-a-real-key")
+
+    given = set(json.loads(ran.said["environment"]))
+    assert {name for name in given if name.startswith("UBB_")} == {
+        BASE_URL, API_KEY}
+    assert set(held) & given == set(), given
+    assert not set(held) & set(MACHINE)
+
+
+def test_the_temporary_directory_a_shell_run_is_given_is_where_it_writes(
+        tmp_path):
+    """What makes "nothing was left in /tmp" an observation: a run that does
+    write there leaves it in the directory the test reads."""
+    artifact = write(_fixture("shell-direct-task-events"), tmp_path / "work")
+    temporary = tmp_path / "tmp"
+    temporary.mkdir()
+
+    run_shell(artifact, "printf x >/tmp/made-by-the-run\n", server=NOWHERE,
+              api_key="x", temporary=temporary)
+
+    assert [path.name for path in temporary.iterdir()] == ["made-by-the-run"]
+
+
 def test_the_provider_responses_carry_what_the_scenarios_expect():
     for supplier in (OPENAI, GEMINI):
-        assert _held_in(supplier) == (INPUT_TOKENS, OUTPUT_TOKENS), supplier
-    assert sorted(path.name for path in RESPONSES.glob("*.json")) == sorted(
+        assert held_in(supplier) == (INPUT_TOKENS, OUTPUT_TOKENS), supplier
+    assert sorted(path.name for path in PROVIDER_RESPONSES.glob("*.json")) == sorted(
         f"{supplier.shape}.json" for supplier in (OPENAI, GEMINI))

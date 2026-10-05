@@ -1,7 +1,7 @@
 # Preflight fixture (#582): a curl without `--fail-with-body`, which curl
 # added in 7.76.0. This is curl 7.75.0, the last release before it, in the
-# curl project's own image; jq 1.7.1 is copied in so the curl is the only
-# thing missing.
+# curl project's own image — Alpine, so its `sh` is busybox's — with jq 1.7.1
+# copied in, so that the curl is the defect this machine has and jq is not.
 #
 # Every layer is pinned by digest and nothing is installed by a package
 # manager.

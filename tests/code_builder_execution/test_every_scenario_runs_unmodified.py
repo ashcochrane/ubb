@@ -9,8 +9,8 @@ For each one, the seven steps, in order:
    scenario says it is before anything else happens;
 3. `ubb-codegen` renders it;
 4. the files are written to disk unpatched, each checksummed as written;
-5. the run is given `UBB_BASE_URL` and `UBB_API_KEY` and nothing else of
-   UBB's;
+5. the run is given `UBB_BASE_URL` and `UBB_API_KEY` and nothing of this
+   suite's own;
 6. the customer's own script runs it — Python on this machine, shell in a
    pinned image — and the checksums are held before and after;
 7. the scenario asserts what the runs did and what the application holds.
@@ -19,14 +19,10 @@ A scenario whose Blueprint is not complete is run only to prove it fails
 fast; the harness itself refuses a lifecycle over it, and fails the run if
 any of its not-ready calls reached the application.
 """
-import shutil
-
 import pytest
 
 from _customer import python_script, shell_script
-from _harness import (
-    COMPLETE, CUSTOMER, FAIL_FAST, LIFECYCLE, RESPONSES, run_python,
-    run_shell, write)
+from _harness import COMPLETE, Purpose, run_python, run_shell, write
 from _scenarios import PYTHON, SCENARIOS, Outcome
 from _tenant import ScenarioTenant
 
@@ -56,8 +52,8 @@ def test_a_scenario_runs_unmodified(scenario, target, shell, server,
         blueprint["diagnostics"])
 
     artifact = write(blueprint, tmp_path)
-    shutil.copytree(RESPONSES, tmp_path / CUSTOMER / "responses")
-    purpose = LIFECYCLE if scenario.readiness == COMPLETE else FAIL_FAST
+    purpose = (Purpose.LIFECYCLE if scenario.readiness == COMPLETE
+               else Purpose.FAIL_FAST)
 
     runs = []
     for work in scenario.works(target):

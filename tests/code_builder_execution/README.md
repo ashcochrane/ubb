@@ -12,8 +12,8 @@ target it names:
 3. `ubb-codegen` renders it (`apps/codegen/scripts/render.ts`);
 4. the files are written to disk unpatched, and a sha256 of each is taken as
    it is written (`_harness.py`);
-5. the run is given `UBB_BASE_URL` and `UBB_API_KEY` and no other `UBB_`
-   variable;
+5. the run is given `UBB_BASE_URL` and `UBB_API_KEY` and nothing of this
+   suite's own (no database, secret or setting reaches it);
 6. a customer's own script runs it — the glue a customer writes, which pastes
    the rendered call-site blocks into its own code as rendered and supplies
    only runtime values (`_customer.py`) — Python on this machine against the
@@ -29,12 +29,14 @@ the declared path through them.
 ## Adding a scenario
 
 A capability ticket adds its scenario to `SCENARIOS` in `_scenarios.py` and
-changes nothing else: a `configure` that declares its configuration through
-the routes, the `works` its customer's code runs (data, not code), an
+changes nothing in the harness: a `configure` that declares its configuration
+through the routes, the `works` its customer's code runs (data, not code), an
 `expect` over the runs and the records, the `readiness` its Blueprint must
 have, and where a shell artifact runs. #583 adds a supplier cost read off the
-response, #584 a constant Measurement, #585 #569's stop fields in the two stop
-scenarios, #586 a fixed-price kind.
+response, #584 a constant Measurement, #586 a fixed-price kind. #585 adds no
+scenario: it extends two declarations, #569's names in
+`_customer.STOP_METADATA` and their values in `_scenarios._the_stop`, which
+both stop scenarios assert through.
 
 ## What runs where
 
@@ -51,7 +53,8 @@ scenarios, #586 a fixed-price kind.
 
 ## Running
 
-From the git root, with Postgres, Redis, Node 22 or later and Docker:
+From the git root, with Postgres, Redis, Node 22.6 or later (it runs the
+renderer's TypeScript directly) and Docker:
 
 ```
 python -m pytest tests/code_builder_execution

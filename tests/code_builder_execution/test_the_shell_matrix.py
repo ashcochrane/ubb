@@ -3,8 +3,9 @@
 
 The generated shell file runs under every shell in `_scenarios.MATRIX` — dash,
 bash 5.2, bash 3.2 (what macOS ships as `bash` and as `sh`) and dash with the
-oldest jq the file runs with — and the lifecycle and the ceiling scenarios run
-in each, against the real application (`test_every_scenario_runs_unmodified`).
+oldest jq the file runs with — and the lifecycle and both stop scenarios run
+in each, against the real application (`test_every_scenario_runs_unmodified`);
+every other shell scenario runs under dash and bash.
 
 What decided how the file hands jq its programs is kept as two scripts in the
 renderer's harness: the form it writes (a heredoc on jq's standard input) and
@@ -18,7 +19,7 @@ import subprocess
 
 import pytest
 
-from _harness import REPO_ROOT, as_this_user, image
+from _harness import REPO_ROOT, Ran, in_image
 from _scenarios import MATRIX
 
 EVIDENCE = REPO_ROOT / "apps" / "codegen" / "tests" / "harness"
@@ -43,32 +44,30 @@ CARRIED = {
 }
 
 
-def _run(form, shell, directory):
+def _run(form, shell, directory) -> Ran:
     ran = subprocess.run(
-        ["docker", "run", "--rm",
-         "--volume", f"{EVIDENCE}:/evidence:ro",
-         "--volume", f"{directory}:/work", "--workdir", "/work",
-         *as_this_user(), image(shell.image), shell.command,
-         f"/evidence/{form}.sh"],
+        in_image(shell.image, shell.command, f"/evidence/{form}.sh",
+                 work=directory, volumes={EVIDENCE: "/evidence:ro"}),
         capture_output=True)
-    said = dict(line.split("=", 1) for line
-                in ran.stdout.decode("utf-8").splitlines() if "=" in line)
-    return ran.returncode, said, ran.stderr.decode("utf-8", "replace")
+    return Ran(status=ran.returncode,
+               stdout=ran.stdout.decode("utf-8"),
+               stderr=ran.stderr.decode("utf-8", "replace"))
 
 
 @pytest.mark.parametrize("shell", MATRIX, ids=[shell.name for shell in MATRIX])
 @pytest.mark.parametrize("form", [CHOSEN, DECIDED_AGAINST])
 def test_only_bash_3_2_fails_and_only_the_form_decided_against(
         form, shell, tmp_path):
-    status, said, stderr = _run(form, shell, tmp_path)
+    ran = _run(form, shell, tmp_path)
 
     if (form, shell.name) == (DECIDED_AGAINST, BASH_3_2):
-        assert status != 0, said
-        assert "bad substitution" in stderr, stderr
-        assert "carried" not in said
+        assert ran.status != 0, ran
+        assert "bad substitution" in ran.stderr, ran
+        assert "carried" not in ran.said, ran
     else:
-        assert (status, stderr) == (0, ""), stderr
-        assert json.loads(said["carried"]) == CARRIED
+        assert (ran.status, ran.stderr) == (0, ""), ran
+        assert json.loads(ran.said["carried"]) == CARRIED
+        assert ran.said["ran_anything"] == "no", ran
     # Whichever way it went, no declared name ran as a command.
     assert not (tmp_path / "made-by-a-name").exists()
 
