@@ -229,6 +229,10 @@ SEARCHES = {"display_name": "Searches", "value_type": "integer",
 A_PYTHON_SHAPE = "openai.responses.python.v1"
 A_JSON_SHAPE = "google.gemini.rest.v1"
 
+#: The supplier the complete configuration's Event Type names, and the one
+#: whose default cost book `_cost_rules` writes to unless told another.
+PROVIDER = "openai"
+
 
 class BlueprintRoutes:
     """The tenant's own routes, and the fixtures built out of them."""
@@ -335,10 +339,37 @@ class BlueprintRoutes:
             {"key": SUBTASK_KIND, "kind": "subtask", "uncapped": True,
              "required_grouping_fields": ["phase"]})
         return self._event_type(
-            provider="openai",
+            provider=PROVIDER,
             measurements={"input_tokens": INPUT_TOKENS, "searches": SEARCHES})
 
     def _complete(self, **selection):
         selection.setdefault("task_type", KIND)
         selection.setdefault("event_types", [EVENT])
         return self._resolve(**selection)
+
+    # -- the books ---------------------------------------------------------
+    #
+    # SHARED SINCE #582, which is when a second module needed a configuration
+    # whose costs are known: Verify's suite built these, and the execution
+    # suite at the git root declares priced configurations the same way.
+
+    def _cost_rules(self, *rules, provider=PROVIDER, grouping_fields=None):
+        """Publish `(kind, measurement, rate per unit)` changes into the
+        supplier's default cost book, declaring the book on first use."""
+        books = self._call("get", "/api/v1/metering/pricing/cost-books")
+        held = [book for book in books["data"]
+                if book["provider_key"] == provider]
+        book = held[0] if held else self._call(
+            "post", "/api/v1/metering/pricing/cost-books",
+            {"provider_key": provider, "key": provider, "is_default": True})
+        publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
+        draft = self._call("post", publishes, {"changes": [
+            {"kind": kind, "measurement_key": code, "provider": provider,
+             "grouping_fields": grouping_fields or {},
+             "rate_per_unit_micros": rate, "unit_quantity": 1}
+            for kind, code, rate in rules]})
+        self._call("post", f"{publishes}/{draft['id']}/publish")
+
+    def _markup(self, micro_percent):
+        self._call("put", "/api/v1/metering/pricing/default-markup",
+                   {"markup_micro_percent": micro_percent})

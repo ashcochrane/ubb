@@ -42,11 +42,19 @@ tested where it is produced and every variable is assigned before it is read. Th
 blocks hold to the same: none of them has a line a shell option decides whether is reached.
 
 **Preflight is lazy, and probes capability.** The first thing a call does is check, once, that jq
-is present and can run a program read from standard input that holds comments, and that curl is
+is present and can run a program of the file's own form — read from standard input, holding
+comments, handed a value as text (`--arg`) and one as JSON (`--argjson`) — and that curl is
 present and has `--fail-with-body`. A probe runs the construct the file is about to use and reads
 no version string. It contacts nothing, creates nothing, and is the same text whatever a tenant
 declared. A call that is NOT READY refuses before preflight, so a scaffold says what is missing on
 a machine with neither tool.
+
+*Amended by #582.* The probe first asked only for a program from standard input that holds
+comments. jq 1.3 and 1.4 do both, and have no `--argjson` or `--slurpfile` (both arrived in 1.5),
+so on them the file passed preflight, started a unit of work, and failed at its first program
+with a status that blamed the value. A pinned image of jq 1.4, run against the real application
+(`tests/code_builder_execution/`), found it. The probe now passes a value as JSON too, so jq 1.5
+is the oldest the file runs with, its refusal says so, and a lifecycle is run on jq 1.5.
 
 The verify script is the one file that is run and not sourced, so it ends with `exit`. It needs
 jq and not curl.
@@ -374,7 +382,8 @@ a call that must not interrupt a backlog. **A tenant with a backlog to record us
 target.** A shell path can be added without breaking a file already generated.
 
 The fields #569 will publish in a stop's metadata (#585). Execution against the real application,
-and images that really lack a tool or carry an old one (#582). A cost read off a supplier's
+and images that really lack a tool or carry an old one, are #582's and are in
+`tests/code_builder_execution/`, with the standing matrix of shells. A cost read off a supplier's
 response, a constant's value and a missing agreed price (#583, #584, #586): each arrives as tokens
 and needs no new rule here.
 
@@ -385,6 +394,7 @@ and needs no new rule here.
 | §1 — never exits, sets no option, holds no variable of another spelling | `apps/codegen/tests/shell.artifact.test.ts` — "never exits the shell that sources it, and sets none of its options", "holds no variable of its own that is not spelled UBB_ or _ubb_" |
 | §1 — the same under `sh` and `bash`, with `set -eu` or without | `apps/codegen/tests/shell.execution.test.ts` — "runs the same under %s, with set -eu or without" |
 | §1 — preflight refuses before any request, is the same text for every tenant, and sourcing does nothing | same module — "refuses before any request where %s", "probes with nothing of the tenant's, and creates nothing", "does nothing when the file is sourced, and never ends the shell that sourced it" |
+| §1 — on machines that really lack jq or curl, or carry a jq or a curl too old, the file is refused before any request, unit of work or temporary file, against the real application | `tests/code_builder_execution/test_preflight_refuses_before_any_request.py::test_a_machine_without_a_tool_it_needs_is_refused_before_any_request` |
 | §2 — every runtime value a `name=value` parameter at its own call; left out, empty or not the call's is refused | `apps/codegen/tests/shell.artifact.test.ts` — "asks for every runtime value as a name=value parameter, at the call it is declared for"; `apps/codegen/tests/shell.execution.test.ts` — "refuses, naming it, a runtime value left out, passed empty, or not the call's" |
 | §2 — no declared name is a name the shell, jq or the file already has | `apps/codegen/tests/shell.artifact.test.ts` — "gives a parameter no name the shell or jq could already have a meaning for"; `apps/codegen/tests/shell.execution.test.ts` — "can never stand in front of a name the shell, jq or the file already has: %s" |
 | §2 — a quantity is a whole number carried exactly, or refused, passed in or read off a response | `apps/codegen/tests/shell.execution.test.ts` — "refuses a quantity that is not a whole number it can carry exactly", "refuses to record from a response that does not hold what a declared path reads" |

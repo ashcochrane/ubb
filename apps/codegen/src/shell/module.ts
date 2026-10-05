@@ -67,6 +67,7 @@ import {
   type Plan,
   type Value,
 } from "./plan.ts";
+import { jqProbe } from "./probe.ts";
 import {
   INDENT,
   jqLiteral,
@@ -312,10 +313,7 @@ function preflight(): string[] {
     `${I2}return ${unavailable}`,
     `${I1}}`,
     `${I1}_ubb_probe=0`,
-    `${I1}jq --null-input --from-file /dev/stdin >/dev/null 2>&1 <<'${SHELL_FILE.heredoc}' || _ubb_probe=$?`,
-    ...SHELL_COMMENTS.preflightProgram.map((line) => `${I1}# ${line}`),
-    `${I1}{"preflight": true}`,
-    SHELL_FILE.heredoc,
+    ...jqProbe(I1, "_ubb_probe"),
     `${I1}[ "$_ubb_probe" -eq 0 ] || {`,
     `${I2}${say(SHELL_MESSAGES.jqUnusable)}`,
     `${I2}return ${unavailable}`,

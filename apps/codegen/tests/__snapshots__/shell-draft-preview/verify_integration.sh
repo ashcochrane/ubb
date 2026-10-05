@@ -12,12 +12,14 @@ command -v jq >/dev/null 2>&1 || {
   exit 69
 }
 ubb_probe=0
-jq --null-input --from-file /dev/stdin >/dev/null 2>&1 <<'UBB_JQ' || ubb_probe=$?
-  # A generated jq program is read from standard input and holds comments.
-  {"preflight": true}
+jq --null-input --arg text 1 --argjson json 1 \
+  --from-file /dev/stdin >/dev/null 2>&1 <<'UBB_JQ' || ubb_probe=$?
+  # A generated jq program is read from standard input, holds comments, and
+  # is handed values as text and as JSON.
+  {"preflight": (($text | fromjson) + $json)} | tojson
 UBB_JQ
 [ "$ubb_probe" -eq 0 ] || {
-  printf '%s\n' 'The installed jq cannot run a program read from standard input.' >&2
+  printf '%s\n' 'The installed jq cannot run the programs this file hands it. jq 1.5 or later can.' >&2
   exit 69
 }
 

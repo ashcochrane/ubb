@@ -345,6 +345,96 @@ result = {"stop": acknowledgement.stop, "scope": acknowledgement.stop_scope,
   });
 });
 
+describe("an answer that is not an acknowledgement", () => {
+  // Three answers to a record, each run inside the work block a tenant
+  // writes. The real application answers an error with its body, and that
+  // case is run against it too (#582's suite); it never answers text that is
+  // not JSON, or an acknowledgement without a field the contract requires, so
+  // those two are proved here against the stand-in. None of the three may
+  // read as a recorded event or as a stop: each is an ordinary exception,
+  // raised out of the block, which then declares the work failed.
+  const RECORD = "/api/v1/metering/usage";
+  const answered = (queue: string) =>
+    run<Record<string, unknown>>(
+      rendered("direct-task-events"),
+      `
+from ubb import UBBStopRequested
+integration = load()
+server.queue(${JSON.stringify(RECORD)}, ${queue})
+raised = None
+try:
+    with integration.unit_of_work(customer_id="c", idempotency_key="w") as task:
+        integration.record_search_run(customer_id="c", idempotency_key="e",
+                                      task_id=task.task_id, searches=1)
+        task.complete()
+except UBBStopRequested:
+    raised = "a stop"
+except Exception as error:
+    raised = error
+result = {
+    "raised": type(raised).__name__, "is_ubb_error": isinstance(raised, Exception)
+        and type(raised).__module__.startswith("ubb"),
+    "status": getattr(raised, "status_code", None),
+    "code": getattr(raised, "code", None),
+    "detail": getattr(raised, "detail", None),
+    "paths": [request["path"] for request in server.requests],
+    "close": server.requests[-1]["body"],
+}
+`,
+    );
+  const CLOSED_FAILED = (raised: string) => ({
+    outcome: "failed",
+    outcome_reason: "execution_failed",
+    reason_detail: raised,
+  });
+
+  it("surfaces an answer that is not a success, with its status, code and detail", () => {
+    const problem = {
+      type: "https://ubb.dev/errors/validation_error",
+      title: "Validation error",
+      status: 422,
+      code: "validation_error",
+      detail: "searches: a quantity is a whole number",
+    };
+    const answer = answered(
+      `http_status=422, raw_body=${JSON.stringify(JSON.stringify(problem))}`,
+    );
+
+    expect(answer.is_ubb_error).toBe(true);
+    expect([answer.status, answer.code, answer.detail]).toEqual([
+      422,
+      "validation_error",
+      problem.detail,
+    ]);
+    expect(answer.paths).toEqual(["/api/v1/tasks", RECORD, "/api/v1/tasks/task_1/close"]);
+    expect(answer.close).toEqual(CLOSED_FAILED(answer.raised as string));
+  });
+
+  it("does not take text that is not JSON for an acknowledgement", () => {
+    const answer = answered(`raw_body="<html>Bad gateway</html>"`);
+
+    expect(answer.raised).toBe("JSONDecodeError");
+    expect(answer.paths).toEqual(["/api/v1/tasks", RECORD, "/api/v1/tasks/task_1/close"]);
+    expect(answer.close).toEqual(CLOSED_FAILED("JSONDecodeError"));
+  });
+
+  it("does not take an acknowledgement without a field the contract requires", () => {
+    const acknowledgement = {
+      suspended: false,
+      costing_status: "known",
+      pricing_status: "known",
+      stop: false,
+      task_id: "task_1",
+    };
+    const answer = answered(`raw_body=${JSON.stringify(JSON.stringify(acknowledgement))}`);
+
+    // The one field left out is the event's id.
+    expect(answer.raised).toBe("KeyError");
+    expect(answer.paths).toEqual(["/api/v1/tasks", RECORD, "/api/v1/tasks/task_1/close"]);
+    expect(answer.close).toEqual(CLOSED_FAILED("KeyError"));
+  });
+});
+
 describe("a cost the supplier reports", () => {
   const CASES = join(FIXTURES, "reported-cost-cases.json");
 

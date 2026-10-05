@@ -22,6 +22,7 @@ import { asComments, statement } from "../comments.ts";
 import { FIELD } from "../lifecycle.ts";
 import { literalOf } from "../tokens.ts";
 import type { CallPlan, Member, Plan, Value } from "./plan.ts";
+import { jqProbe } from "./probe.ts";
 import { INDENT, jqLiteral, jqString, shWord } from "./syntax.ts";
 
 const I1 = INDENT;
@@ -114,10 +115,7 @@ export function renderVerifyScript(plan: Plan): string {
     ...refusal(SHELL_MESSAGES.jqMissing),
     "}",
     "ubb_probe=0",
-    `jq --null-input --from-file /dev/stdin >/dev/null 2>&1 <<'${SHELL_FILE.heredoc}' || ubb_probe=$?`,
-    ...SHELL_COMMENTS.preflightProgram.map((line) => `${I1}# ${line}`),
-    `${I1}{"preflight": true}`,
-    SHELL_FILE.heredoc,
+    ...jqProbe("", "ubb_probe"),
     `[ "$ubb_probe" -eq 0 ] || {`,
     ...refusal(SHELL_MESSAGES.jqUnusable),
     "}",

@@ -63,6 +63,17 @@ suites:
     root: ubb-sdk
     # No pytest configuration file: collection follows pytest's defaults.
 
+  code_builder_execution:
+    summary: >-
+      The Code Builder's execution suite at the git root — complete
+      artifacts written to disk unpatched and run as a customer runs them
+      against the real application (#582, ADR-0008 §5). Declared before any
+      gate names it, so the flip that installs G25 changes only that row.
+    job: code-builder-execution
+    step: Code Builder execution — complete artifacts run unmodified against the real application
+    root: tests/code_builder_execution
+    config: tests/code_builder_execution/pytest.ini
+
 # --- The twenty-seven standing gates ----------------------------------------
 
 gates:
@@ -1048,13 +1059,18 @@ gates:
     source: ADR-0008 §5, #158 §5.3
     status: owned_by_slice_builder
     blocked_on: >-
-      An execution harness that runs a complete artifact against the real
-      application. An artifact is generated for each target (#577 Python,
-      #578 shell) and the renderer's own suite runs each against a local
-      stand-in, which is not this gate. #184 lands the harness, with the
-      minimal-image fixtures for a missing or an incompatible shell tool;
-      ADR-0008 §5 forbids CI repairing the code it runs, so the harness is
-      part of the gate rather than scaffolding around it.
+      The flip, and nothing else of this row's own. The execution harness
+      has landed (#582): `tests/code_builder_execution/` seeds a tenant,
+      resolves a Blueprint through its route, renders it with `ubb-codegen`,
+      writes it to disk with a checksum of every file, runs it unmodified as
+      a customer runs it against the real application served by
+      `live_server`, and asserts its records — for both targets, across the
+      standing matrix of shells, with the four minimal-image preflight
+      fixtures. It is the declared suite `code_builder_execution`, run by
+      CI's `code-builder-execution` job and held armed by
+      `tests/contracts/test_the_execution_suite_is_enforced.py`. #583, #584,
+      #585 and #586 each add their scenario to it; #184's flip installs this
+      row over it.
 
   G26:
     statement: >-

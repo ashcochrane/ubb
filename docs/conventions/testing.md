@@ -39,6 +39,19 @@ the workflow file so disarming it means deleting the test that says it is armed.
 when its subject spans two surfaces; keep model-structure gates in `apps/platform/tests/` beside the
 existing architecture walkers, which need the app registry loaded.
 
+## The third suite: `tests/code_builder_execution/` at the git root
+
+Generated integration code is proved by running it, unmodified, against the real application
+(ADR-0008 §5, #582): a Blueprint resolved through its route, rendered by `ubb-codegen`, written to
+disk with a checksum of every file, run as a customer runs it — Python against this tree's SDK,
+shell in pinned images — against the platform served by `live_server`, and its records asserted.
+It loads Django, so it has its own `pytest.ini` (`DJANGO_SETTINGS_MODULE`, `pythonpath` at
+`ubb-platform`) and reuses the platform conftest's two guards below; it needs Node and Docker, so
+it is not under `ubb-platform/` and has its own CI job, `code-builder-execution`, held armed by
+`tests/contracts/test_the_execution_suite_is_enforced.py`. Run it from the git root with
+`python -m pytest tests/code_builder_execution`. A new runtime path is a new entry in
+`_scenarios.SCENARIOS`; see that directory's README.
+
 ## Two non-obvious guards (in the root `conftest.py`)
 
 1. **Redis DB 15.** The suite is moved onto Redis DB index 15 (override with `UBB_TEST_REDIS_DB`

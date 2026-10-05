@@ -1,0 +1,23 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "The quarterly report is attached."
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1200,
+    "candidatesTokenCount": 340,
+    "totalTokenCount": 1540
+  },
+  "modelVersion": "gemini-2.0-flash",
+  "responseId": "Z2VtaW5pLXJlc3BvbnNlLTE"
+}

@@ -37,9 +37,8 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 
 from ._helpers import (
-    EVENT, INPUT_TOKENS, KIND, SEARCHES, SUBTASK_KIND, BlueprintRoutes)
-
-PROVIDER = "openai"
+    EVENT, INPUT_TOKENS, KIND, PROVIDER, SEARCHES, SUBTASK_KIND,
+    BlueprintRoutes)
 
 #: A second published Event Type, declared and never selected.
 OTHER_EVENT = "image.render"
@@ -72,7 +71,8 @@ def what_moved(before, after):
 
 class VerifyRoutes(BlueprintRoutes):
     """A tenant that bills, so a recording has a customer price as well as a
-    supplier cost; and the books, the markup and the Verify call."""
+    supplier cost; and the Verify call. The books and the markup are the
+    shared fixture's."""
 
     def setup_method(self):
         self.tenant = Tenant.objects.create(
@@ -80,27 +80,6 @@ class VerifyRoutes(BlueprintRoutes):
             billing_mode="postpaid")
         _, self.raw_key = TenantApiKey.create_key(self.tenant)
         self.client = Client()
-
-    def _cost_rules(self, *rules, provider=PROVIDER, grouping_fields=None):
-        """Publish `(kind, measurement, rate per unit)` changes into the
-        supplier's default cost book, declaring the book on first use."""
-        books = self._call("get", "/api/v1/metering/pricing/cost-books")
-        held = [book for book in books["data"]
-                if book["provider_key"] == provider]
-        book = held[0] if held else self._call(
-            "post", "/api/v1/metering/pricing/cost-books",
-            {"provider_key": provider, "key": provider, "is_default": True})
-        publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
-        draft = self._call("post", publishes, {"changes": [
-            {"kind": kind, "measurement_key": code, "provider": provider,
-             "grouping_fields": grouping_fields or {},
-             "rate_per_unit_micros": rate, "unit_quantity": 1}
-            for kind, code, rate in rules]})
-        self._call("post", f"{publishes}/{draft['id']}/publish")
-
-    def _markup(self, micro_percent):
-        self._call("put", "/api/v1/metering/pricing/default-markup",
-                   {"markup_micro_percent": micro_percent})
 
     def _priced_configuration(self):
         """The complete configuration, with both quantities costed and a
