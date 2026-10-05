@@ -108,17 +108,26 @@ ADAPTER_IMPORTERS = (
     # catalogue — and the two sets the adapter keeps for this concept are held
     # for the census alone, imported from here by nothing, because this ratchet
     # is exactly what a migrated concept must not push back up.
-    "apps/ui/src/features/developers/components/test-event-response.tsx",
+    #
+    # ⚠ RE-PINNED IN #581 UNDER A NEW PATH, AN EXPLICIT AND REVIEWED ACT. The
+    # developers' `test-event-response.tsx` was MOVED, not converted: #581
+    # deleted the test-event console and lifted its response card, renamed
+    # `acknowledgement-card.tsx`, to render every Verify acknowledgement. It
+    # still takes the stop SCOPE from `stopScopeLabel` — the registry has no
+    # stop-scope concept, so there is nothing to convert it to — which makes it
+    # the same one importer on the same one export under another name, not a
+    # second. The count is unchanged, and stays what it says.
+    "apps/ui/src/features/developers/components/acknowledgement-card.tsx",
     "apps/ui/src/features/events/components/event-filters.tsx",
     # `ledger-table.tsx` LEFT IN #466 as a conversion: its one word — why an
     # event was stopped — came from `stopReasonLabel`, deleted with its ledger
     # entry; the stopped indicator now renders the word through the open-set
     # helper over `REASON_CODE_LABEL_KEYS`. `past-limit-panel.tsx` LEFT by
     # ceasing to exist: the events page no longer hosts a report of its own.
-    # `stop-context-timeline.tsx` and the developers' `test-event-response.tsx`
-    # stay: each took its stop word off the same map and now renders it the
-    # same way, but each still takes the stop SCOPE from `stopScopeLabel`,
-    # which is slice 8's.
+    # `stop-context-timeline.tsx` and the developers' response card (since #581
+    # `acknowledgement-card.tsx`) stay: each took its stop word off the same map
+    # and now renders it the same way, but each still takes the stop SCOPE from
+    # `stopScopeLabel`, which is slice 8's.
     "apps/ui/src/features/events/components/stop-context-timeline.tsx",
     # `task-section.tsx` LEFT IN #424: its one word — a unit of work's
     # lifecycle state — came from `taskStatusLabel`, deleted with its ledger
@@ -514,8 +523,14 @@ def test_the_map_constructor_name_appears_nowhere_else():
 #: when the record died there was no value left to word. #283's rule decides
 #: it: an entry cannot outlive its debt, whatever killed the debt.
 PAID_HUMANISING_DEBTS = {
+    # ⚠ THE PATH MOVED IN #581, ON #497'S PRECEDENT BELOW. The test-event
+    # console was deleted and its response card lifted, renamed, to render each
+    # Verify acknowledgement — so the file named here would have ceased to
+    # exist while the debt really was paid. The path names the file that
+    # renders what it rendered; the id is unchanged, so the debt is still
+    # refused under it everywhere.
     "g6-humanises-test-event-response":
-        "apps/ui/src/features/developers/components/test-event-response.tsx::humanize",
+        "apps/ui/src/features/developers/components/acknowledgement-card.tsx::humanize",
     "g6-humanises-metadata-tree":
         "apps/ui/src/features/settings/components/metadata-tree.tsx::humanize",
     # #464: the subscription picker's groups derive from the registry's

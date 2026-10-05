@@ -25,6 +25,15 @@ describe("a total beside the count of what it left out", () => {
     expect(describeTotal(unknown, "usd")).not.toMatch(/\$/);
   });
 
+  // One unit of work's running total is a few hundred micros in a Verify run
+  // (#581); the default would write a known amount of that size as `$0.00`.
+  it("writes the amount with the formatter it is handed, and an unknown with none", () => {
+    const tenths = (micros: number) => `${micros / 100_000} tenths`;
+    expect(describeTotal(readTotal(314, 0), "usd", tenths)).toBe("0.00314 tenths");
+    expect(describeTotal(readTotal(300_000, 1), "usd", tenths)).toBe("at least 3 tenths");
+    expect(describeTotal(readTotal(0, 1), "usd", tenths)).toBe(UNKNOWN_TOTAL);
+  });
+
   it("puts the count in the subject of the sentence, singular and plural", () => {
     expect(eventsHave(1)).toBe("1 event has");
     expect(eventsHave(2)).toBe("2 events have");

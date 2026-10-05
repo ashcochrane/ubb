@@ -24,8 +24,9 @@
 //
 // Measured on this commit: 5 of 451 fail. Two are unit tests, which call the
 // narrowed function directly. The three RENDERING failures are the first two
-// below and one in `features/developers/components/test-event-response.test.tsx`
-// — and that file assembles its own response for the same reason this one does.
+// below and one in the developers' response-card test (since #581,
+// `features/developers/components/acknowledgement-card.test.tsx`) — and that
+// file assembles its own response for the same reason this one does.
 // NOT ONE MOCK-AUTHORED COMPONENT TEST MOVES. That is the shape spec §25
 // describes, and it is a narrowing rather than a rename: the CAUSE stops
 // reaching the renderer, and no token moves.

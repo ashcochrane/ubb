@@ -31,9 +31,21 @@ it, and the renderer's snapshots are re-taken from the result.
 **Where a fixture writes a row directly it says so, at the write.** One thing
 is written: the instant of each publication, which no route sets to a value a
 committed file can hold.
+
+**The console's Verify answers are this platform's too (#581).** The Code
+Builder page shows what Verify answered, and its mock answers with what this
+module wrote under `apps/ui/src/features/developers/api/verifications/`: each
+committed Blueprint's configuration declared again, its fingerprint asked to
+verify a pinned request through the route, and the answer held equal to the
+committed file. Two things in an answer are new on every run — the ids of the
+records the run made and then discarded, and the instants it made them at — so
+the file holds each id renumbered in the order it first appears and every
+instant as one held instant, which is what a stopped clock would have answered.
+Nothing else is touched.
 """
 import json
 import os
+import re
 from datetime import datetime, timezone as datetime_timezone
 from decimal import Decimal
 from pathlib import Path
@@ -451,6 +463,173 @@ def test_the_fixtures_cover_what_they_are_named_for():
         "event_type_not_published",
         "reported_cost_provider_response_unsupported",
         "response_shape_not_readable_by_target"]
+
+
+# ---------------------------------------------------------------------------
+# What Verify answers for the committed Blueprints (#581)
+# ---------------------------------------------------------------------------
+
+#: Where the console's mock reads them. The console owns the files; this
+#: module is what writes them, so nothing there is an answer the platform did
+#: not give.
+VERIFICATIONS = (Path(__file__).resolve().parents[4] / "apps" / "ui" / "src"
+                 / "features" / "developers" / "api" / "verifications")
+
+#: A fingerprint no Blueprint was ever stored under.
+_NEVER_STORED = "sha256:" + "0" * 64
+
+
+def _record(event_type, **fields):
+    return {"event_type": event_type, **fields}
+
+
+#: Each committed answer: the Blueprint whose fingerprint is verified (or one
+#: never stored), the request, and the status it must be answered with. The
+#: requests are what the page can send — a sample for every Measurement it
+#: shows, a supplier cost only where the call reports one, and a sample for
+#: every Grouping Field a kind the run starts requires — except the four that
+#: exist for the refusals a page cannot provoke and must still render.
+VERIFIED = {
+    # Every selected Event Type exercised, and its cost the supplier's own:
+    # recorded and costed completely, so verified. The tenant does not bill,
+    # so the price is not applicable — which `verified` does not read.
+    "reported-cost": ("reported-cost", {
+        "records": [_record("web.search", measurements={"searches": 3},
+                            provider_cost_micros=1_250_000)],
+        "grouping_fields": {}}, 200),
+    # Costed from Cost Rates the tenant never declared: recorded, its cost
+    # unresolved, so not verified, and the acknowledgement names the gap.
+    "calculated-cost": ("calculated-cost", {
+        "records": [_record("chat.completion", measurements={
+            "input_tokens": 1200, "output_tokens": 300, "searches": 2})],
+        "grouping_fields": {"environment": "staging"}}, 200),
+    # The two required quantities left blank: the record names them missing.
+    "calculated-cost-without-required-measurements": ("calculated-cost", {
+        "records": [_record("chat.completion", measurements={"searches": 2})],
+        "grouping_fields": {"environment": "staging"}}, 200),
+    # One of two selected Event Types left out: a partial run, never verified.
+    "direct-task-events-partial": ("direct-task-events", {
+        "records": [_record("reply.sent", measurements={"replies": 1})],
+        "grouping_fields": {}}, 200),
+    # Recorded under the Subtask kind the Blueprint starts, with a sample for
+    # both kinds' required Grouping Fields.
+    "explicit-subtasks": ("explicit-subtasks", {
+        "records": [_record("gemini.generate", subtask_type="summarise",
+                            measurements={"prompt_tokens": 900,
+                                          "candidate_tokens": 250})],
+        "grouping_fields": {"environment": "staging", "phase": "draft"}}, 200),
+    # A supplier cost on an Event Type costed from rates: refused inside the
+    # run, which stops there and says where.
+    "calculated-cost-refused-recording": ("calculated-cost", {
+        "records": [_record("chat.completion", provider_cost_micros=5,
+                            measurements={"input_tokens": 1200,
+                                          "output_tokens": 300})],
+        "grouping_fields": {"environment": "staging"}}, 200),
+    # The refusals before anything runs, one of each.
+    "not-found": (None, {
+        "records": [_record("chat.completion",
+                            measurements={"input_tokens": 1200})],
+        "grouping_fields": {"environment": "staging"}}, 404),
+    "event-type-not-available": ("blocked", {
+        "records": [_record("draft.only", measurements={"searches": 1})],
+        "grouping_fields": {}}, 422),
+    "blocked": ("blocked", {
+        "records": [_record("web.search", measurements={"searches": 1})],
+        "grouping_fields": {}}, 409),
+    "missing-grouping-field-sample": ("calculated-cost", {
+        "records": [_record("chat.completion", measurements={
+            "input_tokens": 1200, "output_tokens": 300})],
+        "grouping_fields": {}}, 422),
+}
+
+_AN_ID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+_AN_INSTANT = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?")
+
+#: The one instant every instant of a run reads as.
+VERIFIED_AT = "2026-09-01T12:30:00Z"
+
+
+def _held_still(answer):
+    """The answer with what is new on every run held still: each id renumbered
+    in the order it first appears — so two places naming one record still name
+    one — and every instant read as `VERIFIED_AT`."""
+    ids = {}
+
+    def still(node):
+        if isinstance(node, dict):
+            return {key: still(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [still(value) for value in node]
+        if isinstance(node, str) and _AN_ID.fullmatch(node):
+            return ids.setdefault(
+                node, f"00000000-0000-4000-8000-{len(ids) + 1:012d}")
+        if isinstance(node, str) and _AN_INSTANT.fullmatch(node):
+            return VERIFIED_AT
+        return node
+
+    return still(answer)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("name", sorted(VERIFIED))
+def test_a_committed_verification_is_what_the_route_answers(name):
+    blueprint_name, request, status = VERIFIED[name]
+    routes = _Configured()
+    routes.setup_method()
+    if blueprint_name is None:
+        fingerprint = _NEVER_STORED
+    else:
+        blueprint = BLUEPRINT_FIXTURES[blueprint_name](routes)
+        committed = json.loads(
+            (BLUEPRINTS / f"{blueprint_name}.json").read_text(encoding="utf-8"))
+        # The fingerprint the console holds for this Blueprint is the one
+        # verified: the mock finds the answer by it.
+        fingerprint = blueprint["configuration_fingerprint"]
+        assert fingerprint == committed["configuration_fingerprint"]
+
+    response = routes._send(
+        "post", f"/api/v1/code-builder/blueprints/{fingerprint}/verify",
+        request)
+
+    assert response.status_code == status, response.content
+    _held(VERIFICATIONS / f"{name}.json", {
+        "blueprint": blueprint_name,
+        "configuration_fingerprint": fingerprint,
+        "request": request,
+        "status": status,
+        "answer": _held_still(response.json()),
+    })
+
+
+def test_every_committed_verification_is_one_this_module_produces():
+    """An answer added by hand beside these would be one the platform never
+    gave."""
+    committed = sorted(path.stem for path in VERIFICATIONS.glob("*.json"))
+
+    assert committed == sorted(VERIFIED)
+
+
+def test_the_verifications_reach_every_state_the_page_renders():
+    """The vacuity guard: each state the Verify stage renders is committed at
+    least once — verified, a partial run, a gap, a refusal inside the run, and
+    each refusal before it."""
+    answers = {name: json.loads(
+        (VERIFICATIONS / f"{name}.json").read_text(encoding="utf-8"))
+        for name in VERIFIED}
+    ran = [held["answer"] for held in answers.values() if held["status"] == 200]
+
+    assert {answer["verified"] for answer in ran} == {True, False}
+    assert any(answer["unexercised_event_types"] for answer in ran)
+    assert any(answer["subtasks"] for answer in ran)
+    assert any(answer["refusal"] for answer in ran)
+    assert any(record["missing_required_measurement_keys"]
+               for answer in ran for record in answer["records"])
+    assert sorted({held["answer"]["code"] for held in answers.values()
+                   if held["status"] != 200}) == [
+        "conflict", "event_type_not_available", "not_found",
+        "validation_error"]
 
 
 # ---------------------------------------------------------------------------

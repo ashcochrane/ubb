@@ -1,6 +1,6 @@
 // TanStack Query hooks for the developers feature. ALL query keys and
 // invalidation live here. First key segment = backend namespace:
-//   ["tenant", "api-keys"]  ["tenant", "sandbox"]  ["margin", "customers"]
+//   ["tenant", "api-keys"]  ["tenant", "sandbox"]
 //   ["code-builder", "blueprints", <selection>]
 //   ["tasks", "kinds", "code-builder"]  ["event-types", "code-builder"]
 // Mutations over-invalidate rather than miss.
@@ -13,7 +13,7 @@ import { ApiProblem } from "@/api/problem";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
 import { developersApi } from "./provider";
-import type { BlueprintSelection, RecordUsageRequest } from "./types";
+import type { BlueprintSelection, BlueprintVerificationRequest } from "./types";
 
 export function useApiKeys() {
   return useCursorList(["tenant", "api-keys"], (cursor) =>
@@ -96,19 +96,6 @@ export function useCreateSandbox() {
   });
 }
 
-export function useMarginCustomers() {
-  return useQuery({
-    // Projection tail: this entry caches the EXTRACTED customer choices, not
-    // the response they were read out of — a bare ["margin","customers"] key
-    // would collide with other features caching a raw response shape. The key
-    // keeps its historical words; what it names is no longer a margin list
-    // (#501 deleted that route), which is exactly why the tail matters.
-    queryKey: ["margin", "customers", "picker"] as const,
-    queryFn: () => developersApi.listCustomerChoices(),
-    staleTime: 60_000,
-  });
-}
-
 /**
  * The Blueprint for a selection, resolved afresh whenever the page is shown.
  *
@@ -154,17 +141,21 @@ export function useEventTypeChoices() {
   });
 }
 
-export function useSendTestEvent() {
-  const queryClient = useQueryClient();
+/** What one Verify sends: the fingerprint it runs against, and the samples. */
+export interface VerifyInput {
+  readonly fingerprint: string;
+  readonly body: BlueprintVerificationRequest;
+}
+
+/**
+ * Verify the Blueprint on screen (#581). It invalidates nothing, because it
+ * changes nothing: the run is built and rolled back inside the request, and
+ * verifying does not even refresh how long the fingerprint is kept (#580).
+ * Refusals render inline in the Verify stage, as the preconditions they are.
+ */
+export function useVerifyBlueprint() {
   return useMutation({
-    mutationFn: (body: RecordUsageRequest) => developersApi.sendTestEvent(body),
-    onSuccess: () => {
-      // A recorded event touches usage lists/analytics, wallet balances,
-      // and margin rollups — over-invalidate all three namespaces.
-      void queryClient.invalidateQueries({ queryKey: ["metering"] });
-      void queryClient.invalidateQueries({ queryKey: ["billing"] });
-      void queryClient.invalidateQueries({ queryKey: ["margin"] });
-    },
-    // Errors render inline in the console's response column.
+    mutationFn: ({ fingerprint, body }: VerifyInput) =>
+      developersApi.verifyBlueprint(fingerprint, body),
   });
 }

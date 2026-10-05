@@ -25,7 +25,7 @@ import { useHasRole } from "@/hooks/use-current-role";
 
 import { useCreateSandbox, useSandbox } from "../api/queries";
 import { apiOrigin } from "../lib/api-origin";
-import { sandboxResetCurl } from "../lib/test-event";
+import { sandboxResetCurl } from "../lib/sandbox-reset";
 import { RawKeyDialog, type MintedKey } from "./raw-key-dialog";
 
 export function SandboxSection() {

@@ -14,6 +14,7 @@ import {
   DIAGNOSTIC_CODE_LABEL_KEYS,
   DIAGNOSTIC_SEVERITY_LABEL_KEYS,
   INTEGRATION_READINESS_LABEL_KEYS,
+  TASK_OUTCOME_LABEL_KEYS,
   TASK_TYPE_KIND_LABEL_KEYS,
   WEBHOOK_EVENT_TYPE_LABEL_KEYS,
 } from "@/lib/vocabulary";
@@ -30,6 +31,7 @@ export const diagnosticCodeLabel = labelMap(DIAGNOSTIC_CODE_LABEL_KEYS);
 export const declarationStatusLabel = labelMap(DECLARATION_STATUS_LABEL_KEYS);
 export const altitudeLabel = labelMap(TASK_TYPE_KIND_LABEL_KEYS);
 export const webhookEventLabel = labelMap(WEBHOOK_EVENT_TYPE_LABEL_KEYS);
+export const taskOutcomeLabel = labelMap(TASK_OUTCOME_LABEL_KEYS);
 
 /** What each call does, as a heading. */
 export const CALL_TITLES: Readonly<Record<CallRole, string>> = {
@@ -47,6 +49,21 @@ export const CALL_TITLES: Readonly<Record<CallRole, string>> = {
  * the two fingerprints differ.
  */
 export const STALE_FILES_WARNING = "The files you took are stale for the current Blueprint.";
+
+/**
+ * What the page says when the last Verify ran against a fingerprint other
+ * than the Blueprint now on screen (#581). Cause-neutral on the same ruling as
+ * the files': the page knows only that the two fingerprints differ.
+ */
+export const STALE_RESULT_WARNING = "The last Verify ran against a different Blueprint, not the current one.";
+
+/**
+ * What `verified` speaks for (owner ruling on #599): the whole Blueprint, and
+ * recording and costing only. Said beside every verdict, because a price is
+ * the first thing a reader would take it to prove.
+ */
+export const VERIFIED_SCOPE =
+  "Verify speaks for recording and costing only, and proves no price: each recording's price status says what was priced.";
 
 /**
  * A call's heading: what it does, and the declared object it is about where

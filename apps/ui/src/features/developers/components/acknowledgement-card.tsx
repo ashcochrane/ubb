@@ -1,60 +1,66 @@
-// One priced response from the test console — the teaching moment. Shows the
-// event id, both cost denominations, the balance after debit, warnings for the
-// measurements nothing priced, and the STOP VERDICT block when stop=true (HTTP
-// was still 200 — the one-rule contract).
+// One recording's acknowledgement, as UBB returned it (#581; story 70).
 //
-// The Event Type key in the heading is the TENANT'S, and #279 renders it
-// exactly as they declared it. This card used to title-case it, which is the
-// worst place in the console to do so: an integrator reads it to learn what UBB
-// recorded, and a key UBB reworded is one they cannot find again on any other
-// surface.
+// Lifted from the test-event console's response card, which #581 deleted with
+// the console: Verify renders each acknowledgement and each replay through it.
+// What it already applied it still applies — #537 and story 70:
+//
+//   - a null amount is NO FIGURE, never `0`: the cell names the status that
+//     left it empty (#330 for the supplier cost, #371 for the customer price);
+//   - statuses are shown as given, beside the amounts — so #473's confident
+//     price over an unresolved cost is shown as the response states it, not
+//     reconciled here;
+//   - the Pricing Receipt, `uncosted_measurement_keys` and the shipped stop
+//     fields (`event_id`, `stop_scope`, `stop_reason`) render as returned.
+//
+// On a replay of the same request the task totals are null BY DESIGN — a
+// replay adds nothing to the work — and the card says so rather than reading
+// the absence as a failure.
 
 import type { ReactNode } from "react";
 import { AlertTriangle, OctagonAlert } from "lucide-react";
 
+import { CodeBlock } from "@/components/shared/code-block";
 import { CopyButton } from "@/components/shared/copy-button";
 import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
 import {
   notApplicableReasonLabel,
+  pricingMethodLabel,
   pricingStatusLabel,
   settledPriceMicros,
 } from "@/lib/customer-price";
-import { formatDate, formatEventMicros, formatMicros } from "@/lib/format";
+import { formatEventMicros, formatMicros } from "@/lib/format";
 import { stopScopeLabel } from "@/lib/labels";
-import { tenantDefinedLabel } from "@/lib/localisation";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
+import { describeTotal, readTotal } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type { RecordUsageResponse } from "../api/types";
 
-export interface TestEventEntry {
-  /** Local entry id (event_id can repeat on idempotent replays). */
-  id: string;
-  at: string;
-  eventType: string;
-  response: RecordUsageResponse;
-}
+/** What a replay's empty task totals mean, said where they would be. */
+export const REPLAY_TASK_TOTALS = "Not reported on a replay — expected: a replay adds nothing to the work.";
 
-export function TestEventResponseCard({
-  entry,
+export function AcknowledgementCard({
+  title,
+  response,
   currency,
+  replay = false,
 }: {
-  entry: TestEventEntry;
+  title: string;
+  response: RecordUsageResponse;
   currency: string;
+  /** The same request sent again: its task totals are null by design. */
+  replay?: boolean;
 }) {
-  const { response } = entry;
   const settledPrice = settledPriceMicros(response);
   return (
-    <div className="space-y-3 rounded-lg border border-border bg-bg-surface p-3">
+    <div
+      role="group"
+      aria-label={title}
+      className="space-y-3 rounded-lg border border-border bg-bg-surface p-3"
+    >
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[13px] font-medium text-text-primary">
-            {entry.eventType ? tenantDefinedLabel(entry.eventType) : "Usage event"}{" "}
-            recorded
-          </p>
-          <p className="text-[11px] text-text-muted">{formatDate(entry.at)}</p>
-        </div>
+        <p className="text-[13px] font-medium text-text-primary">{title}</p>
         <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-text-secondary">
           <span className="max-w-[140px] truncate" title={response.event_id}>
             {response.event_id}
@@ -64,12 +70,13 @@ export function TestEventResponseCard({
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px] sm:grid-cols-3">
+        {/* Both statuses as the response gives them, beside the amounts. */}
+        <ResponseStat label="Costing status" value={costingStatusLabel(response.costing_status)} />
+        <ResponseStat label="Price status" value={pricingStatusLabel(response.pricing_status)} />
         {/* An absent customer price is NAMED here too, on the same argument as
-            the supplier cost below and one slice later (#351, #371). It used to
-            fall back to a bare dash, which is the asymmetry #330 fixed on the
-            cost half and left standing on this one: three of the four statuses
-            null this column, they mean different things, and an integrator
-            reading this card cannot tell them apart from the absence.
+            the supplier cost below and one slice later (#351, #371): three of
+            the four statuses null this column, they mean different things, and
+            a bare dash cannot tell them apart.
 
             ⚠ IT ASKS `settledPriceMicros`, NOT THE COLUMN. A zero beside
             `waived` would render as money under a null test and as the decided
@@ -89,6 +96,9 @@ export function TestEventResponseCard({
               value={notApplicableReasonLabel(response.not_applicable_reason)}
             />
           )}
+        {response.pricing_method != null && (
+          <ResponseStat label="Pricing method" value={pricingMethodLabel(response.pricing_method)} />
+        )}
         {/* An absent supplier cost is NAMED here, never zeroed (#320, #330).
             This card is what an integrator reads to learn what UBB recorded, so
             a dash that could mean "could not learn it" or "never had one" is
@@ -113,6 +123,7 @@ export function TestEventResponseCard({
             value={formatMicros(response.new_balance_micros, currency)}
           />
         )}
+        <TaskTotals response={response} currency={currency} replay={replay} />
       </dl>
 
       {response.suspended && (
@@ -125,7 +136,7 @@ export function TestEventResponseCard({
         <div className="space-y-1.5 rounded-md border border-dashed border-border p-2.5">
           <p className="inline-flex items-center gap-1.5 text-[12px] font-medium text-text-primary">
             <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.5} />
-            Measurements without a cost card
+            Measurements without a Cost Rate
           </p>
           <div className="flex flex-wrap gap-1">
             {(response.uncosted_measurement_keys ?? []).map((key) => (
@@ -134,13 +145,11 @@ export function TestEventResponseCard({
               </Badge>
             ))}
           </div>
-          {/* The old copy said these "contributed nothing to cost", which was
-              true when an uncosted measurement silently added zero. It does not
-              add zero any more: the whole event's supplier cost is unresolved
-              until a rate exists (#320). */}
+          {/* An uncosted measurement does not add zero: the whole event's
+              supplier cost is unresolved until a rate exists (#320). */}
           <p className="text-[11px] text-text-secondary">
             The event was recorded, and its supplier cost is unknown rather than
-            zero. Add a rate for these to a cost card to resolve it.
+            zero. A Cost Rate for each of these resolves it.
           </p>
         </div>
       )}
@@ -164,17 +173,68 @@ export function TestEventResponseCard({
             <ResponseStat label="Scope" value={stopScopeLabel(response.stop_scope)} />
           </dl>
           <p className="text-[11px] leading-relaxed text-text-secondary">
-            The HTTP status was still 200 — by design. Every event that reaches
-            UBB is priced, recorded, and billed; the stop instruction rides the
-            response body instead of the status code. Your integration should
-            read <span className="font-mono">stop</span>,{" "}
+            The HTTP status was still 200 — by design. The stop instruction
+            rides the response body instead of the status code. Your
+            integration should read <span className="font-mono">stop</span>,{" "}
             <span className="font-mono">stop_reason</span>, and{" "}
             <span className="font-mono">stop_scope</span> and halt the named
             scope.
           </p>
         </div>
       )}
+
+      {response.pricing_receipt != null && (
+        <details className="text-[12px]">
+          <summary className="cursor-pointer text-text-secondary">Pricing Receipt</summary>
+          <CodeBlock value={JSON.stringify(response.pricing_receipt, null, 2)} className="mt-2" />
+        </details>
+      )}
     </div>
+  );
+}
+
+/**
+ * The work's running totals as of this recording. Each is a total beside the
+ * count of what it left out, read once (`@/lib/total-reading`): a figure, a
+ * floor, or unknown — never `$0.00` for an amount nobody knows.
+ */
+function TaskTotals({
+  response,
+  currency,
+  replay,
+}: {
+  response: RecordUsageResponse;
+  currency: string;
+  replay: boolean;
+}) {
+  const cost = response.task_total_provider_cost_micros ?? null;
+  const price = response.task_total_billed_cost_micros ?? null;
+  if (cost === null && price === null) {
+    return replay ? <ResponseStat label="Task totals" value={REPLAY_TASK_TOTALS} /> : null;
+  }
+  return (
+    <>
+      {cost !== null && (
+        <ResponseStat
+          label="Task provider cost so far"
+          value={describeTotal(
+            readTotal(cost, response.task_total_unresolved_event_count ?? 0),
+            currency,
+            formatEventMicros,
+          )}
+        />
+      )}
+      {price !== null && (
+        <ResponseStat
+          label="Task billed so far"
+          value={describeTotal(
+            readTotal(price, response.task_total_unpriced_event_count ?? 0),
+            currency,
+            formatEventMicros,
+          )}
+        />
+      )}
+    </>
   );
 }
 

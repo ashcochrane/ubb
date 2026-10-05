@@ -1,0 +1,23 @@
+{
+  "blueprint": "blocked",
+  "configuration_fingerprint": "sha256:f36b9edbfe6646d031e736801c64c289853eeb2effdf63eb74e2a269e34aba88",
+  "request": {
+    "records": [
+      {
+        "event_type": "web.search",
+        "measurements": {
+          "searches": 1
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 409,
+  "answer": {
+    "type": "https://ubb.dev/errors/conflict",
+    "title": "Conflict",
+    "status": 409,
+    "code": "conflict",
+    "detail": "the Blueprint stored under 'sha256:f36b9edbfe6646d031e736801c64c289853eeb2effdf63eb74e2a269e34aba88' is blocked, and only a complete one generates code that records: resolve it again once its diagnostics are fixed"
+  }
+}

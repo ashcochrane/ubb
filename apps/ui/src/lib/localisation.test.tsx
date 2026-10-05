@@ -148,8 +148,8 @@ describe("a value whose vocabulary the tenant owns", () => {
 
   it("renders the tenant's own key verbatim, never title-cased", () => {
     // The exact inputs the two converted sites used to hand the humaniser: an
-    // Event Type key from `test-event-response.tsx` and a metadata key from
-    // `metadata-tree.tsx`. It turned these into "Chat completion" and
+    // Event Type key from the test console's response card (since #581,
+    // `acknowledgement-card.tsx`) and a metadata key from `metadata-tree.tsx`. It turned these into "Chat completion" and
     // "Enforcement mode" — English UBB wrote for a token its tenant chose.
     expect(tenantDefinedLabel("chat_completion")).toBe("chat_completion");
     expect(tenantDefinedLabel("enforcement_mode")).toBe("enforcement_mode");

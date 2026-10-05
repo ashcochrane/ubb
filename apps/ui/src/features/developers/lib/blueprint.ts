@@ -33,10 +33,11 @@ import type {
 
 // ---------------------------------------------------------------------------
 // The stages, in order. The page renders one section per stage, keyed on this
-// list, so #581 adds its Verify stage by appending one id here — and `tsc`
-// then asks for that stage's title and component wherever the page keys on it.
+// list, so a stage is added by appending one id here — and `tsc` then asks for
+// its title and component wherever the page keys on it. Verify was added that
+// way (#581).
 
-export const CODE_BUILDER_STAGES = ["configure", "blueprint", "generate"] as const;
+export const CODE_BUILDER_STAGES = ["configure", "blueprint", "generate", "verify"] as const;
 export type CodeBuilderStage = (typeof CODE_BUILDER_STAGES)[number];
 
 // ---------------------------------------------------------------------------

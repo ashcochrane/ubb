@@ -1,11 +1,13 @@
-// /developers — API keys, the sandbox, the way into the Code Builder, and the
-// send-test-event console. Thin composition; each section owns its own data
-// and states.
+// /developers — API keys, the sandbox, and the way into the Code Builder.
+// Thin composition; each section owns its own data and states.
 //
 // The API-basics card that sat beside the sandbox is gone (#579): what it
 // taught is the Code Builder's onboarding state now, generated from the same
 // Blueprint as the code, so the console no longer keeps a second, hand-written
-// integration example that could drift from it.
+// integration example that could drift from it. The form that sent one usage
+// event by hand is gone too (#581, #559): the Code Builder's Verify stage runs
+// the whole lifecycle the generated code makes, with only the fields the
+// contract publishes.
 
 import { Link } from "@tanstack/react-router";
 
@@ -20,21 +22,19 @@ import {
 
 import { ApiKeysSection } from "./api-keys-section";
 import { SandboxSection } from "./sandbox-section";
-import { TestEventConsole } from "./test-event-console";
 
 export function DevelopersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
         title="Developers"
-        description="API keys, the sandbox, integration code, and a console for trying the metering API."
+        description="API keys, the sandbox, and integration code you can verify before it runs."
       />
       <ApiKeysSection />
       <div className="grid gap-6 lg:grid-cols-2">
         <SandboxSection />
         <CodeBuilderCard />
       </div>
-      <TestEventConsole />
     </div>
   );
 }
@@ -46,7 +46,8 @@ function CodeBuilderCard() {
         <CardTitle>Code Builder</CardTitle>
         <CardDescription>
           Integration code for your kinds of work and Event Types, generated
-          from what you have declared — the start, every record, and the close.
+          from what you have declared — the start, every record, and the close
+          — and a Verify run of it before it ships.
         </CardDescription>
       </CardHeader>
       <CardContent>

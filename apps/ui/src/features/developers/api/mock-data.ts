@@ -2,7 +2,7 @@
 // two live backend keys, one never-used key minted last week, and one revoked
 // CI key; the sandbox exists with a single test key. Dates ~July 2026.
 
-import type { ApiKey, CustomerChoice, SandboxStatus } from "./types";
+import type { ApiKey, SandboxStatus } from "./types";
 
 export const MOCK_SANDBOX_TENANT_ID = "6b7c8d90-1234-4a5b-9c0d-e1f2a3b4c5d6";
 export const MOCK_LIVE_TENANT_ID = "0a1b2c3d-9876-4e5f-8a9b-c0d1e2f3a4b5";
@@ -46,30 +46,6 @@ export const MOCK_SANDBOX: SandboxStatus = {
   exists: true,
   sandbox_tenant_id: MOCK_SANDBOX_TENANT_ID,
   key_prefixes: ["ubb_test_4dKe"],
-};
-
-/** The picker's choices. u{26A0} THEY WERE MARGIN ROWS UNTIL #501 and are
- *  identities now — the per-customer margin list is gone, and grouping the one
- *  economic query by the customer axis answers exactly what this needed. */
-export const MOCK_CUSTOMER_CHOICES: CustomerChoice[] = [
-  { customer_id: "c1a2b3d4-0001-4abc-9def-000000000001" },
-  { customer_id: "c1a2b3d4-0002-4abc-9def-000000000002" },
-  { customer_id: "c1a2b3d4-0003-4abc-9def-000000000003" },
-];
-export const MOCK_STARTING_BALANCE_MICROS = 12_500_000;
-
-/** Measurement keys the mock "cost cards" cover; anything else is uncosted. */
-export const MOCK_COSTED_MEASUREMENTS = new Set([
-  "tokens_in",
-  "tokens_out",
-  "requests",
-]);
-
-/** Per-measurement mock prices (micros per unit). */
-export const MOCK_MEASUREMENT_RATE_MICROS: Record<string, number> = {
-  tokens_in: 2,
-  tokens_out: 6,
-  requests: 50_000,
 };
 
 const KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";

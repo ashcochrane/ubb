@@ -15,7 +15,8 @@ describe("the Developers feature", () => {
     // A glob that matched nothing would let both sweeps below pass over an
     // empty feature.
     expect(Object.keys(SOURCES).length).toBeGreaterThan(25);
-    expect(Object.keys(SOURCES)).toContain("/src/features/developers/lib/test-event.ts");
+    expect(Object.keys(SOURCES)).toContain("/src/features/developers/lib/sandbox-reset.ts");
+    expect(Object.keys(SOURCES)).toContain("/src/features/developers/components/verify-stage.tsx");
   });
 
   // ⚠ NO KEY-SHAPED LITERAL, ANYWHERE IN THE FEATURE (#156 §7, §12.1). A
