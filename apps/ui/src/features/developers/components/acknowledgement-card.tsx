@@ -32,7 +32,7 @@ import {
 import { formatEventMicros, formatMicros } from "@/lib/format";
 import { stopScopeLabel } from "@/lib/labels";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
-import { describeTotal, readTotal } from "@/lib/total-reading";
+import { describeTotal, readTotal, type TotalReading } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type { RecordUsageResponse } from "../api/types";
@@ -197,6 +197,11 @@ export function AcknowledgementCard({
  * The work's running totals as of this recording. Each is a total beside the
  * count of what it left out, read once (`@/lib/total-reading`): a figure, a
  * floor, or unknown — never `$0.00` for an amount nobody knows.
+ *
+ * ⚠ A TOTAL IS READ ONLY WITH ITS OWN COUNT. The contract makes each nullable
+ * on its own, and a count defaulted to zero would turn a total of unknown
+ * completeness into a whole one. Where either half is missing, that total is
+ * not shown at all.
  */
 function TaskTotals({
   response,
@@ -207,35 +212,26 @@ function TaskTotals({
   currency: string;
   replay: boolean;
 }) {
-  const cost = response.task_total_provider_cost_micros ?? null;
-  const price = response.task_total_billed_cost_micros ?? null;
+  const cost = readPair(response.task_total_provider_cost_micros, response.task_total_unresolved_event_count);
+  const price = readPair(response.task_total_billed_cost_micros, response.task_total_unpriced_event_count);
   if (cost === null && price === null) {
     return replay ? <ResponseStat label="Task totals" value={REPLAY_TASK_TOTALS} /> : null;
   }
   return (
     <>
       {cost !== null && (
-        <ResponseStat
-          label="Task provider cost so far"
-          value={describeTotal(
-            readTotal(cost, response.task_total_unresolved_event_count ?? 0),
-            currency,
-            formatEventMicros,
-          )}
-        />
+        <ResponseStat label="Task provider cost so far" value={describeTotal(cost, currency, formatEventMicros)} />
       )}
       {price !== null && (
-        <ResponseStat
-          label="Task billed so far"
-          value={describeTotal(
-            readTotal(price, response.task_total_unpriced_event_count ?? 0),
-            currency,
-            formatEventMicros,
-          )}
-        />
+        <ResponseStat label="Task billed so far" value={describeTotal(price, currency, formatEventMicros)} />
       )}
     </>
   );
+}
+
+/** A total and the count of what it left out, read together or not at all. */
+function readPair(micros: number | null | undefined, leftOut: number | null | undefined): TotalReading | null {
+  return micros == null || leftOut == null ? null : readTotal(micros, leftOut);
 }
 
 function ResponseStat({ label, value }: { label: string; value: ReactNode }) {

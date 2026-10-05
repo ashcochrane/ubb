@@ -28,7 +28,7 @@ export function DevelopersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Developers"
-        description="API keys, the sandbox, and integration code you can verify before it runs."
+        description="API keys, the sandbox, and integration code generated from what you have declared."
       />
       <ApiKeysSection />
       <div className="grid gap-6 lg:grid-cols-2">
@@ -47,7 +47,7 @@ function CodeBuilderCard() {
         <CardDescription>
           Integration code for your kinds of work and Event Types, generated
           from what you have declared — the start, every record, and the close
-          — and a Verify run of it before it ships.
+          — and a Verify run of the Blueprint it is generated from.
         </CardDescription>
       </CardHeader>
       <CardContent>

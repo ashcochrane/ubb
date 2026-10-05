@@ -36,9 +36,10 @@ describe("the Developers page", () => {
   it("no longer offers a form that sends a usage event", async () => {
     renderPage();
     await screen.findByRole("link", { name: "Open the Code Builder" });
-    // The sections that load their own data have answered, so an absence
-    // below is not a form still on its way.
+    // Both sections that load their own data have answered — the keys and the
+    // sandbox's — so an absence below is not a form still on its way.
     await screen.findAllByText(/ubb_live_/);
+    await screen.findAllByText(/ubb_test_/);
 
     expect(screen.queryByText(/test event/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /send/i })).toBeNull();

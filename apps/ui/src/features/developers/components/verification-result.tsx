@@ -25,7 +25,7 @@ import type {
   VerificationRecord,
   VerificationUnit,
 } from "../api/types";
-import { altitudeLabel, taskOutcomeLabel, VERIFIED_SCOPE } from "../lib/code-builder-words";
+import { altitudeLabel, CALL_TITLES, taskOutcomeLabel, VERIFIED_SCOPE } from "../lib/code-builder-words";
 import { presentedAsVerified } from "../lib/verification";
 import { AcknowledgementCard } from "./acknowledgement-card";
 import { Fingerprint } from "./fingerprint";
@@ -220,7 +220,7 @@ function Closed({ close, currency }: { close: CloseTaskResponse; currency: strin
 
 function RecordAnswer({ record, currency }: { record: VerificationRecord; currency: string }) {
   const under = record.subtask_type ?? null;
-  const title = `Record usage · ${tenantDefinedLabel(record.event_type)}${
+  const title = `${CALL_TITLES.record_usage} · ${tenantDefinedLabel(record.event_type)}${
     under === null ? "" : ` · under ${tenantDefinedLabel(under)}`
   }`;
   const acknowledgement = record.acknowledgement ?? null;

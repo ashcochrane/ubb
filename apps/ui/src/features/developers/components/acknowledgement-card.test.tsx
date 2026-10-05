@@ -25,6 +25,7 @@ import {
   pricingStatusLabel,
 } from "@/lib/customer-price";
 import {
+  completeTotal,
   incompletePriceTotal,
   incompleteTotal,
   knownCost,
@@ -174,13 +175,27 @@ describe("AcknowledgementCard — the task totals", () => {
   // At an event's precision: the cent-rounded total every other surface uses
   // would write this known amount as `$0.00`.
   it("renders a whole total as its figure, at an event's precision", () => {
+    const cost = completeTotal(314);
     renderCard({
       ...responseWith(knownPrice(471)),
-      task_total_provider_cost_micros: 314,
-      task_total_unresolved_event_count: 0,
+      task_total_provider_cost_micros: cost.micros,
+      task_total_unresolved_event_count: cost.unresolved_event_count,
     });
 
     expect(stat("Task provider cost so far")).toMatch(/\$0\.0003$/);
+  });
+
+  // A total without the count of what it left out cannot say whether it is
+  // whole, so it is not shown — never read as whole by defaulting the count.
+  it("shows no total whose count is missing", () => {
+    renderCard({
+      ...responseWith(knownPrice(471)),
+      task_total_provider_cost_micros: 314,
+      task_total_unresolved_event_count: null,
+    });
+
+    expect(screen.queryByText("Task provider cost so far")).toBeNull();
+    expect(screen.queryByText("Task totals")).toBeNull();
   });
 });
 

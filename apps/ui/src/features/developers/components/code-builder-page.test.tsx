@@ -72,7 +72,8 @@ describe("the Code Builder page", () => {
     // Verify is a stage of its own, and nothing else on the page verifies:
     // the one button is in it, and no link anywhere leads to a verifier.
     const verifying = screen.getAllByRole("button", { name: /verif/i });
-    expect(verifying.every((button) => stage("Verify").contains(button))).toBe(true);
+    expect(verifying).toHaveLength(1);
+    expect(stage("Verify")).toContainElement(verifying[0] ?? null);
     expect(screen.queryByRole("link", { name: /verif/i })).toBeNull();
   });
 });

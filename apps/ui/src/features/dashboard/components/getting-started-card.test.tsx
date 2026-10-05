@@ -53,8 +53,8 @@ describe("GettingStartedCard", () => {
       .closest("li");
     expect(recordStep).toHaveAttribute("data-state", "todo");
     expect(
-      screen.getByRole("link", { name: /Send a test event/ }),
-    ).toHaveAttribute("href", "/developers");
+      screen.getByRole("link", { name: /Open the Code Builder/ }),
+    ).toHaveAttribute("href", "/developers/code-builder");
   });
 
   it("omits the Stripe step for tenants without the billing product", async () => {

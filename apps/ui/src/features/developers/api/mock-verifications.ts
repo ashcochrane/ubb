@@ -18,28 +18,18 @@
 
 import { COSTING_STATUS_VALUES, PRICING_STATUS_VALUES } from "@/lib/vocabulary";
 
+import { field, isOneOf, isRecord, loadersByName } from "./fixture-files";
 import type { BlueprintVerification, BlueprintVerificationRequest } from "./types";
 
-const LOADERS = import.meta.glob<unknown>("./verifications/*.json", { import: "default" });
-
-function nameOf(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1).replace(/\.json$/, "");
-}
-
-const LOADER_BY_NAME = new Map(Object.entries(LOADERS).map(([path, load]) => [nameOf(path), load]));
+const LOADER_BY_NAME = loadersByName(
+  import.meta.glob<unknown>("./verifications/*.json", { import: "default" }),
+);
 
 /** Every platform-written Verify answer, by its file's name. */
 export const VERIFICATION_FIXTURE_NAMES: readonly string[] = [...LOADER_BY_NAME.keys()].sort();
 
-function isRecord(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
-
-const field = (value: object, name: string): unknown => Reflect.get(value, name);
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringList = (value: unknown) => Array.isArray(value) && value.every(isString);
-const isOneOf = <T extends string>(values: readonly T[], value: unknown): value is T =>
-  values.some((member) => member === value);
 
 /** A recording's acknowledgement: an event id and the two statuses of their closed sets. */
 function isAcknowledgement(value: unknown): boolean {
@@ -107,11 +97,9 @@ export function isVerification(value: unknown): value is BlueprintVerification {
 }
 
 /** A problem body as the platform sends one: a status, a code and a title at least. */
-export function isProblemBody(value: unknown): value is Record<string, unknown> & {
-  status: number;
-  code: string;
-  title: string;
-} {
+export type ProblemBody = Record<string, unknown> & { status: number; code: string; title: string };
+
+export function isProblemBody(value: unknown): value is ProblemBody {
   return (
     isRecord(value) &&
     typeof field(value, "status") === "number" &&
@@ -131,26 +119,21 @@ function isRequest(value: unknown): value is BlueprintVerificationRequest {
   );
 }
 
+/** What the platform was asked: by which file, for which Blueprint, with what. */
+interface CommittedRequest {
+  readonly name: string;
+  /** The committed Blueprint whose fingerprint was verified; null for one never stored. */
+  readonly blueprint: string | null;
+  readonly fingerprint: string;
+  readonly request: BlueprintVerificationRequest;
+}
+
 /** One platform-written answer: what was asked, and what the platform said. */
-export type CommittedVerification =
-  | {
-      readonly name: string;
-      /** The committed Blueprint whose fingerprint was verified; null for one never stored. */
-      readonly blueprint: string | null;
-      readonly fingerprint: string;
-      readonly request: BlueprintVerificationRequest;
-      readonly kind: "answered";
-      readonly answer: BlueprintVerification;
-    }
-  | {
-      readonly name: string;
-      /** The committed Blueprint whose fingerprint was verified; null for one never stored. */
-      readonly blueprint: string | null;
-      readonly fingerprint: string;
-      readonly request: BlueprintVerificationRequest;
-      readonly kind: "refused";
-      readonly problem: Record<string, unknown> & { status: number; code: string; title: string };
-    };
+export type CommittedVerification = CommittedRequest &
+  (
+    | { readonly kind: "answered"; readonly answer: BlueprintVerification }
+    | { readonly kind: "refused"; readonly problem: ProblemBody }
+  );
 
 /** One platform-written answer, by name. */
 export async function loadVerificationFixture(name: string): Promise<CommittedVerification> {

@@ -190,8 +190,8 @@ function HeldNote({ held, fingerprint }: { held: string | undefined; fingerprint
   if (held === fingerprint) {
     return (
       <p role="note" className={HINT}>
-        The files you took were generated from this Blueprint, so this verifies what they
-        record.
+        The files you took were generated from this Blueprint. Verify runs the Blueprint, not
+        the files.
       </p>
     );
   }
@@ -242,7 +242,9 @@ function SampleForm({
                 key={field.key}
                 label={tenantDefinedLabel(field.key)}
                 mono
-                hint={`Required by the ${altitudeLabel(field.requiredBy.altitude)} kind ${tenantDefinedLabel(field.requiredBy.kind)}`}
+                hint={`Required by ${field.requiredBy
+                  .map((kind) => `the ${altitudeLabel(kind.altitude)} kind ${tenantDefinedLabel(kind.kind)}`)
+                  .join(" and ")}`}
                 error={errors.groupingFields?.[index]?.message}
               >
                 {(id) => (
@@ -443,12 +445,6 @@ function Refused({ refusal, onResolveAgain }: { refusal: VerifyRefusal; onResolv
       );
     case "forbidden":
       return <RefusalBox title="Verifying needs the write role, so nothing ran." />;
-    case "not_in_the_mock":
-      return (
-        <RefusalBox title="Not in the mock">
-          {refusal.detail !== null && <p className={HINT}>{refusal.detail}</p>}
-        </RefusalBox>
-      );
     case "other":
       return <ErrorCard error={refusal.error} title="Couldn't verify the Blueprint" />;
   }

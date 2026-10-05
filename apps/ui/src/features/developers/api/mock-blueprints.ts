@@ -27,6 +27,7 @@ import {
 } from "@/lib/vocabulary";
 
 import { altitudeOf, roleOf, subjectOf, type CallRole } from "../lib/blueprint";
+import { field, isOneOf, isRecord, loadersByName } from "./fixture-files";
 import type {
   Blueprint,
   BlueprintSelection,
@@ -34,31 +35,13 @@ import type {
   KindChoice,
 } from "./types";
 
-const LOADERS = import.meta.glob<unknown>(
-  "../../../../../codegen/fixtures/blueprints/*.json",
-  { import: "default" },
-);
-
-function nameOf(path: string): string {
-  return path.slice(path.lastIndexOf("/") + 1).replace(/\.json$/, "");
-}
-
-const LOADER_BY_NAME = new Map(
-  Object.entries(LOADERS).map(([path, load]) => [nameOf(path), load]),
+const LOADER_BY_NAME = loadersByName(
+  import.meta.glob<unknown>("../../../../../codegen/fixtures/blueprints/*.json", { import: "default" }),
 );
 
 /** Every platform-written Blueprint, by its file's name. */
 export const BLUEPRINT_FIXTURE_NAMES: readonly string[] = [...LOADER_BY_NAME.keys()].sort();
 
-function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
-  return values.some((member) => member === value);
-}
-
-function isRecord(value: unknown): value is object {
-  return typeof value === "object" && value !== null;
-}
-
-const field = (value: object, name: string): unknown => Reflect.get(value, name);
 const isStringOrNull = (value: unknown) => value === null || typeof value === "string";
 
 /** One argument: a name, a binding class, a configured flag, and nullable rest. */

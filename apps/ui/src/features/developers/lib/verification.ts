@@ -62,10 +62,11 @@ export interface RecordSample {
   readonly reportsCost: boolean;
 }
 
-/** A Grouping Field a sample may be asked for, and the kind requiring it. */
+/** A Grouping Field a sample may be asked for, and every kind requiring it. */
 export interface GroupingFieldSample {
   readonly key: string;
-  readonly requiredBy: StartedKind;
+  /** Each kind that requires it — one key can be required by several. */
+  readonly requiredBy: readonly StartedKind[];
 }
 
 /** Everything Verify asks for, read off one stored, complete Blueprint. */
@@ -74,7 +75,7 @@ export interface SamplePlan {
   readonly task: StartedKind | null;
   readonly subtasks: readonly StartedKind[];
   readonly records: readonly RecordSample[];
-  /** The Task's fields first, then each Subtask kind's, each key once. */
+  /** The Task's fields first, then each Subtask kind's: each key once, with every kind requiring it. */
   readonly groupingFields: readonly GroupingFieldSample[];
 }
 
@@ -157,14 +158,13 @@ export function samplePlanOf(blueprint: Blueprint, fingerprint: string): SampleP
       if (record !== null) records.push(record);
     }
   }
-  const groupingFields: GroupingFieldSample[] = [];
+  const requiredBy = new Map<string, StartedKind[]>();
   for (const kind of [...(task === null ? [] : [task]), ...subtasks]) {
     for (const key of kind.groupingFields) {
-      if (!groupingFields.some((field) => field.key === key)) {
-        groupingFields.push({ key, requiredBy: kind });
-      }
+      requiredBy.set(key, [...(requiredBy.get(key) ?? []), kind]);
     }
   }
+  const groupingFields = [...requiredBy].map(([key, kinds]) => ({ key, requiredBy: kinds }));
   return { fingerprint, task, subtasks, records, groupingFields };
 }
 
@@ -227,7 +227,8 @@ function placedUnder(plan: SamplePlan, values: RecordSampleValues): string | nul
 /**
  * The Grouping Fields this run needs a sample for, by position: the Task
  * kind's, and those of each Subtask kind an included record is placed under.
- * A Subtask kind no record is placed under is never started, and needs none.
+ * A Subtask kind no record is placed under is never started, and needs none;
+ * a field two kinds require is asked as soon as either is started.
  */
 export function groupingFieldsAsked(plan: SamplePlan, values: SampleValues): number[] {
   const started = new Set(
@@ -238,7 +239,7 @@ export function groupingFieldsAsked(plan: SamplePlan, values: SampleValues): num
     }),
   );
   return plan.groupingFields.flatMap((field, index) =>
-    field.requiredBy.altitude === "task" || started.has(field.requiredBy.kind) ? [index] : [],
+    field.requiredBy.some((kind) => kind.altitude === "task" || started.has(kind.kind)) ? [index] : [],
   );
 }
 
@@ -391,8 +392,7 @@ export type VerifyRefusal =
   | { readonly kind: "not_complete"; readonly detail: string | null }
   | { readonly kind: "invalid"; readonly detail: string | null }
   | { readonly kind: "forbidden" }
-  /** Mock mode only: the platform answered no such request. */
-  | { readonly kind: "not_in_the_mock"; readonly detail: string | null }
+  /** Anything else — including mock mode's own "Not in the mock" — is a failure, not a precondition. */
   | { readonly kind: "other"; readonly error: unknown };
 
 /**
@@ -405,9 +405,6 @@ export function unavailableEventTypesOf(problem: ApiProblem): string[] {
   const listed: unknown = problem.extensions["event_types"];
   return Array.isArray(listed) ? listed.filter((key): key is string => typeof key === "string") : [];
 }
-
-/** The mock's own code for a request the platform never answered. */
-export const MOCK_HAS_NO_VERIFICATION = "mock_has_no_verification";
 
 /** A refusal is a precondition the request did not meet — never a mapping failure. */
 export function refusalOf(error: unknown): VerifyRefusal {
@@ -423,8 +420,6 @@ export function refusalOf(error: unknown): VerifyRefusal {
       return { kind: "invalid", detail: error.detail };
     case "forbidden":
       return { kind: "forbidden" };
-    case MOCK_HAS_NO_VERIFICATION:
-      return { kind: "not_in_the_mock", detail: error.detail };
     default:
       return { kind: "other", error };
   }

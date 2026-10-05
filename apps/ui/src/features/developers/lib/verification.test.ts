@@ -18,7 +18,6 @@ import {
   GROUPING_FIELD_REQUIRED,
   groupingFieldsAsked,
   isWholeNumber,
-  MOCK_HAS_NO_VERIFICATION,
   NOTHING_TO_RUN,
   presentedAsVerified,
   refusalOf,
@@ -112,9 +111,9 @@ describe("what Verify asks for, read off the Blueprint's tokens", () => {
 
     expect(plan.task).toEqual({ altitude: "task", kind: "report_generation", groupingFields: ["environment"] });
     expect(plan.subtasks).toEqual([{ altitude: "subtask", kind: "summarise", groupingFields: ["phase"] }]);
-    expect(plan.groupingFields.map((field) => [field.key, field.requiredBy.kind])).toEqual([
-      ["environment", "report_generation"],
-      ["phase", "summarise"],
+    expect(plan.groupingFields.map((field) => [field.key, field.requiredBy.map((kind) => kind.kind)])).toEqual([
+      ["environment", ["report_generation"]],
+      ["phase", ["summarise"]],
     ]);
     expect(plan.records.map((record) => record.eventType)).toEqual(["gemini.generate"]);
     const [record] = plan.records;
@@ -236,6 +235,38 @@ describe("the request the samples make", () => {
 
     samples.records = samples.records.map((record) => ({ ...record, included: false }));
     expect(groupingFieldsAsked(plan, samples)).toEqual([0]);
+  });
+
+  // ⚠ ASSEMBLED, AND SAYS SO: no committed Blueprint starts two Subtask kinds
+  // requiring one field, so the platform's explicit-subtasks Blueprint has its
+  // Subtask start repeated under a second kind. A field either kind requires
+  // is asked whichever of them a record is placed under.
+  it("asks a field two Subtask kinds require whichever of them a record is placed under", async () => {
+    const blueprint = await loadBlueprintFixture("explicit-subtasks");
+    const subtaskStart = blueprint.calls[1];
+    if (subtaskStart === undefined) throw new Error("explicit-subtasks starts a Subtask second");
+    const second = {
+      ...subtaskStart,
+      arguments: subtaskStart.arguments.map((argument) =>
+        argument.name === "task_type" ? { ...argument, value: "review" } : argument,
+      ),
+    };
+    const offer = verifyOfferOf({
+      ...blueprint,
+      calls: [...blueprint.calls.slice(0, 2), second, ...blueprint.calls.slice(2)],
+    });
+    if (offer.kind !== "offered") throw new Error("still complete");
+    const plan = offer.plan;
+    expect(plan.groupingFields.map((field) => [field.key, field.requiredBy.map((kind) => kind.kind)])).toEqual([
+      ["environment", ["report_generation"]],
+      ["phase", ["summarise", "review"]],
+    ]);
+
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, subtaskType: "review" }));
+    expect(groupingFieldsAsked(plan, samples)).toEqual([0, 1]);
+    samples.groupingFields = ["staging", "draft"];
+    expect(verificationRequestOf(plan, samples).grouping_fields).toEqual({ environment: "staging", phase: "draft" });
   });
 });
 
@@ -366,13 +397,13 @@ describe("a refusal is a precondition, read off the platform's own problem", () 
     expect(refusalOf(invalid)).toEqual({ kind: "invalid", detail: invalid.detail });
   });
 
-  it("reads the floor, the mock's own answer, and anything else", () => {
+  it("reads the floor, and leaves anything else a failure — the mock's own answer included", () => {
     const forbidden = new ApiProblem({ status: 403, code: "forbidden", title: "Forbidden" });
-    const mock = new ApiProblem({ status: 404, code: MOCK_HAS_NO_VERIFICATION, title: "Not in the mock", detail: "d" });
+    const mock = new ApiProblem({ status: 404, code: "mock_has_no_verification", title: "Not in the mock" });
     const network = new Error("offline");
 
     expect(refusalOf(forbidden)).toEqual({ kind: "forbidden" });
-    expect(refusalOf(mock)).toEqual({ kind: "not_in_the_mock", detail: "d" });
+    expect(refusalOf(mock)).toEqual({ kind: "other", error: mock });
     expect(refusalOf(network)).toEqual({ kind: "other", error: network });
   });
 });

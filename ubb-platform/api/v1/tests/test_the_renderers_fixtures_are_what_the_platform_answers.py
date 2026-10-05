@@ -39,9 +39,12 @@ committed Blueprint's configuration declared again, its fingerprint asked to
 verify a pinned request through the route, and the answer held equal to the
 committed file. Two things in an answer are new on every run — the ids of the
 records the run made and then discarded, and the instants it made them at — so
-the file holds each id renumbered in the order it first appears and every
-instant as one held instant, which is what a stopped clock would have answered.
-Nothing else is touched.
+the file holds every id-shaped string renumbered in the order it first
+appears and every instant-shaped string as one held instant, which is what a
+stopped clock would have answered. That is safe only because every such string
+in an answer is one the run made, and the test checks it on each run: each
+instant is no earlier than the request, and no id appears in the request or in
+the committed Blueprint. Nothing else is touched.
 """
 import json
 import os
@@ -487,12 +490,13 @@ def _record(event_type, **fields):
 #: never stored), the request, and the status it must be answered with. The
 #: requests are what the page can send — a sample for every Measurement it
 #: shows, a supplier cost only where the call reports one, and a sample for
-#: every Grouping Field a kind the run starts requires — except the four that
-#: exist for the refusals a page cannot provoke and must still render.
+#: every Grouping Field a kind the run starts requires — except the five a page
+#: cannot make and must still render: the four refusals before a run, and a
+#: supplier cost sent on a call that reports none, refused inside it.
 VERIFIED = {
     # Every selected Event Type exercised, and its cost the supplier's own:
-    # recorded and costed completely, so verified. The tenant does not bill,
-    # so the price is not applicable — which `verified` does not read.
+    # recorded and costed completely, so verified. The tenant declares no
+    # price, so the price is unknown — which `verified` does not read.
     "reported-cost": ("reported-cost", {
         "records": [_record("web.search", measurements={"searches": 3},
                             provider_cost_micros=1_250_000)],
@@ -551,6 +555,36 @@ _AN_INSTANT = re.compile(
 VERIFIED_AT = "2026-09-01T12:30:00Z"
 
 
+def _strings(node):
+    """Every string an answer holds, at any depth."""
+    if isinstance(node, dict):
+        for value in node.values():
+            yield from _strings(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _strings(value)
+    elif isinstance(node, str):
+        yield node
+
+
+def _made_by_the_run(answer, sent_at, *committed):
+    """What `_held_still` rewrites is only what the run made: each instant
+    no earlier than the request, and each id one that no committed content
+    names. Otherwise holding it still could hide a value that is the same on
+    every run, and a change to it would be flattened away. Answers how many
+    of each it checked, so a caller can tell a check from an absence."""
+    known = "".join(json.dumps(content) for content in committed)
+    instants = ids = 0
+    for text in _strings(answer):
+        if _AN_INSTANT.fullmatch(text):
+            assert datetime.fromisoformat(text) >= sent_at, text
+            instants += 1
+        if _AN_ID.fullmatch(text):
+            assert text not in known, text
+            ids += 1
+    return instants, ids
+
+
 def _held_still(answer):
     """The answer with what is new on every run held still: each id renumbered
     in the order it first appears — so two places naming one record still name
@@ -578,6 +612,7 @@ def test_a_committed_verification_is_what_the_route_answers(name):
     blueprint_name, request, status = VERIFIED[name]
     routes = _Configured()
     routes.setup_method()
+    committed = {}
     if blueprint_name is None:
         fingerprint = _NEVER_STORED
     else:
@@ -589,11 +624,16 @@ def test_a_committed_verification_is_what_the_route_answers(name):
         fingerprint = blueprint["configuration_fingerprint"]
         assert fingerprint == committed["configuration_fingerprint"]
 
+    sent_at = datetime.now(datetime_timezone.utc)
     response = routes._send(
         "post", f"/api/v1/code-builder/blueprints/{fingerprint}/verify",
         request)
 
     assert response.status_code == status, response.content
+    checked = _made_by_the_run(response.json(), sent_at, request, committed)
+    if status == 200:
+        # A run starts work and records, so its answer holds both.
+        assert all(checked), checked
     _held(VERIFICATIONS / f"{name}.json", {
         "blueprint": blueprint_name,
         "configuration_fingerprint": fingerprint,

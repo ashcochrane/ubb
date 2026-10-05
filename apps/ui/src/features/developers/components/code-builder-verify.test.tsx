@@ -269,7 +269,11 @@ describe("Verify, run", () => {
     type(record, "searches", "4");
     send();
 
-    expect(await within(verify()).findByRole("alert")).toHaveTextContent("Not in the mock");
+    // Mock mode's own answer, shown as the failure it is (as the Blueprint
+    // stage shows its "Not in the mock") rather than as a platform refusal.
+    expect(await within(verify()).findByText("Couldn't verify the Blueprint")).toBeInTheDocument();
+    expect(verify()).toHaveTextContent("the platform verified no request like this one");
+    expect(within(verify()).queryByRole("alert")).toBeNull();
   });
 });
 

@@ -113,7 +113,7 @@ function BreakdownBody({
       <SectionEmpty
         title="No usage in this window"
         description="Record events with provider, event type, or product attributes to see cost split here."
-        cta={{ label: "Send a test event", to: "/developers" }}
+        cta={{ label: "Open the Code Builder", to: "/developers/code-builder" }}
       />
     );
   }

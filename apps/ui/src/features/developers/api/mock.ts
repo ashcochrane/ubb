@@ -10,7 +10,6 @@ import { ApiProblem, toApiProblem } from "@/api/problem";
 import { currentMockMemberRole, roleIsKnownToMeet } from "@/hooks/use-current-role";
 import { mockDelay } from "@/lib/api-provider";
 
-import { MOCK_HAS_NO_VERIFICATION } from "../lib/verification";
 import {
   MOCK_API_KEYS,
   MOCK_SANDBOX,
@@ -213,9 +212,11 @@ export async function verifyBlueprint(
   }
   const committed = (await mockVerifications()).get(verificationKey(fingerprint, body));
   if (committed === undefined) {
+    // Not a refusal the platform makes: the mock answers only requests the
+    // platform verified, and says so rather than inventing an answer.
     throw new ApiProblem({
       status: 404,
-      code: MOCK_HAS_NO_VERIFICATION,
+      code: "mock_has_no_verification",
       title: "Not in the mock",
       detail:
         "The mock answers Verify only with what the platform answered, and the platform verified no request like this one for this Blueprint.",

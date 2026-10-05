@@ -80,7 +80,7 @@ export function RevenueCostSection({
           <SectionEmpty
             title="No usage in this window"
             description="Once events are recorded, daily revenue and provider cost land here."
-            cta={{ label: "Send a test event", to: "/developers" }}
+            cta={{ label: "Open the Code Builder", to: "/developers/code-builder" }}
           />
         )
       ) : (

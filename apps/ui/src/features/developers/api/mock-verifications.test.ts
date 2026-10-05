@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ApiProblem } from "@/api/problem";
 import { setMockMemberRole } from "@/hooks/use-current-role";
 
-import { MOCK_HAS_NO_VERIFICATION } from "../lib/verification";
 import { verifyBlueprint } from "./mock";
 import { BLUEPRINT_FIXTURE_NAMES, loadBlueprintFixture } from "./mock-blueprints";
 import {
@@ -122,7 +121,7 @@ describe("the mock's Verify", () => {
     const other = { ...fixture.request, records: [{ ...record, event_type: "web.search", measurements: { searches: 4 } }] };
 
     const refused = await rejection(verifyBlueprint(fixture.fingerprint, other));
-    expect(refused.code).toBe(MOCK_HAS_NO_VERIFICATION);
+    expect(refused.code).toBe("mock_has_no_verification");
     expect(refused.title).toBe("Not in the mock");
   });
 

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,278 of 2,715 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,279 of 2,716 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2693,14 +2693,17 @@ measurement_key:
     # component.)
     #
     # 2026-10-05, #581 (the Verify stage, and the test-event console deleted):
-    # 2,262 of 2,699 -> 2,278 of 2,715 tracked files (`units` 44 files / 122
-    # occurrences -> 42 / 119). 21 files arrived and 5 left, and ALL 21 are
+    # 2,262 of 2,699 -> 2,279 of 2,716 tracked files (`units` 44 files / 122
+    # occurrences -> 42 / 119). 22 files arrived and 5 left, and ALL 22 are
     # swept: the exclusions stand at 437. Every one is the console's: under
     # `features/developers` the Verify stage, its result and its library
     # module, the sandbox-reset module moved out of the deleted helpers, the
-    # mock's Verify module, 6 test modules, and 10 Verify answers the platform
+    # mock's Verify module and the fixture-reading helpers it shares with the
+    # Blueprint mock, 6 test modules, and 10 Verify answers the platform
     # wrote. The 5 that left are the test-event form, its helpers and the three
     # test modules beside them; the response card was MOVED, not removed.
+    # (Taken twice: 2,278 of 2,715 before the review pass, which added the
+    # shared helpers.)
     #
     # ⚠ THE FALL IS NO SENSE PAID. The two files and three occurrences that
     # left are both halves of the deleted form's helpers — its module and its
