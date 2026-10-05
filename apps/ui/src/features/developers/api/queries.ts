@@ -1,9 +1,11 @@
 // TanStack Query hooks for the developers feature. ALL query keys and
 // invalidation live here. First key segment = backend namespace:
 //   ["tenant", "api-keys"]  ["tenant", "sandbox"]  ["margin", "customers"]
+//   ["code-builder", "blueprints", <selection>]
+//   ["tasks", "kinds", "code-builder"]  ["event-types", "code-builder"]
 // Mutations over-invalidate rather than miss.
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useCursorList } from "@/api/pagination";
@@ -11,7 +13,7 @@ import { ApiProblem } from "@/api/problem";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
 import { developersApi } from "./provider";
-import type { RecordUsageRequest } from "./types";
+import type { BlueprintSelection, RecordUsageRequest } from "./types";
 
 export function useApiKeys() {
   return useCursorList(["tenant", "api-keys"], (cursor) =>
@@ -104,6 +106,51 @@ export function useMarginCustomers() {
     queryKey: ["margin", "customers", "picker"] as const,
     queryFn: () => developersApi.listCustomerChoices(),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * The Blueprint for a selection, resolved afresh whenever the page is shown.
+ *
+ * ⚠ NEVER SERVED STALE FROM CACHE (`staleTime: 0`). A Blueprint is a
+ * resolution of configuration that changes on other screens — the round trip
+ * goes there to fix it and comes back — so returning to this page, or to its
+ * browser tab, must resolve again; the console's 30-second default would show
+ * the Blueprint from before the fix. While a new selection resolves, the last
+ * one stays on screen (`isPlaceholderData` says so) rather than the page
+ * emptying on every click.
+ */
+export function useBlueprint(selection: BlueprintSelection) {
+  return useQuery({
+    queryKey: ["code-builder", "blueprints", selection] as const,
+    queryFn: () => developersApi.resolveBlueprint(selection),
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/**
+ * The tenant's kinds of work, for Configure to choose from. Under the `tasks`
+ * prefix so that declaring a kind on Tasks — which invalidates `["tasks"]` —
+ * refreshes these choices too; under a tail of its own because what it caches
+ * is a projection (`KindChoice[]`), not the kinds the tasks feature caches
+ * under `["tasks", "kinds"]` — same key, same cached shape.
+ */
+export function useKindChoices() {
+  return useQuery({
+    queryKey: ["tasks", "kinds", "code-builder"] as const,
+    queryFn: () => developersApi.listKindChoices(),
+    staleTime: 0,
+  });
+}
+
+/** The tenant's Event Types, as Configure offers them (a projection). */
+export function useEventTypeChoices() {
+  return useQuery({
+    queryKey: ["event-types", "code-builder"] as const,
+    queryFn: () => developersApi.listEventTypeChoices(),
+    staleTime: 0,
   });
 }
 

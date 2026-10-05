@@ -10,10 +10,16 @@ import {
   createMemoryHistory,
   createRouter,
 } from "@tanstack/react-router";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, waitFor, cleanup, fireEvent, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CUS_LUNA } from "@/features/customers/api/mock-data";
+import {
+  loadBlueprintFixture,
+  resetMockConfiguration,
+  reviseMockConfiguration,
+  THE_REVISION,
+} from "@/features/developers/api/mock-blueprints";
 import { RUN_ACTIVE_ID } from "@/features/tasks/api/mock-data";
 
 import { routeTree } from "./routeTree.gen";
@@ -37,6 +43,7 @@ const ROUTES: Array<{ path: string; expectText: RegExp }> = [
   { path: "/referrals", expectText: /referral/i },
   { path: "/webhooks", expectText: /webhook/i },
   { path: "/developers", expectText: /api key|developers/i },
+  { path: "/developers/code-builder", expectText: /code builder/i },
   { path: "/settings", expectText: /workspace|settings/i },
   { path: "/settings/team", expectText: /members|team/i },
   { path: "/settings/products", expectText: /product/i },
@@ -90,5 +97,81 @@ describe("router smoke", () => {
     const shapes = screen.getAllByRole("article").map((article) => article.dataset.shape);
     expect(shapes.every((shape) => shape === "wallet_policy")).toBe(true);
     expect(document.querySelector('[data-shape="ceiling"]')).toBeNull();
+  });
+
+  // ⚠ WHAT REACHES THE ADDRESS BAR, not what the page reads back. Parsing a
+  // URL drops a credential-shaped value, but the URL is written before it is
+  // parsed: a navigation handed one would put it in the history, the address
+  // bar and every link copied from them. Through the real route, so the
+  // route's own write path is what is held.
+  it("lets no credential-shaped value into the Code Builder's address", async () => {
+    const aKey = ["ubb", "live", "Qm3xk9TzLp0aRw2s8Vn4Yh6Jd1Fc5Gb7"].join("_");
+    const router = await renderRoute("/developers");
+
+    await router.navigate({
+      to: "/developers/code-builder",
+      search: { task_type: aKey, event_types: [aKey, "chat.completion"] },
+    });
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/developers/code-builder"));
+    expect(router.state.location.href).not.toContain(aKey);
+    expect(window.location.href).not.toContain(aKey);
+    expect(router.state.location.search).toEqual({ event_types: ["chat.completion"] });
+  });
+
+  // ⚠ THE CODE BUILDER'S ROUND TRIP (#579, §11), through the real routes: its
+  // selections live in the URL, so leaving for the screen that owns a fact and
+  // coming Back returns to the same builder — which resolves again, because
+  // the configuration may have changed while it was away, and says the files
+  // already taken are stale when it has.
+  it("returns from a configuration screen to the same builder, resolved afresh", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const before = await loadBlueprintFixture(THE_REVISION.before);
+    const selection = {
+      target: "shell_http" as const,
+      task_type: "report_generation",
+      event_types: [THE_REVISION.eventType],
+    };
+    try {
+      const router = await renderRoute("/developers");
+      await router.navigate({ to: "/developers/code-builder", search: selection });
+      const blueprint = await screen.findByRole("region", { name: "Blueprint" }, { timeout: 8000 });
+      await waitFor(() => expect(within(blueprint).getAllByText("Blocked").length).toBeGreaterThan(0), {
+        timeout: 8000,
+      });
+
+      // Take the files, then go where the kind of work is configured.
+      const module = within(screen.getByRole("region", { name: "Generate" })).getByRole("article", {
+        name: "ubb_integration.sh",
+      });
+      fireEvent.click(within(module).getByRole("button", { name: "Copy scaffold" }));
+      await waitFor(() =>
+        expect(router.state.location.search).toMatchObject({ held: before.configuration_fingerprint }),
+      );
+      fireEvent.click(screen.getByRole("link", { name: "Open the kind of work report_generation" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/tasks/kinds/report_generation"));
+
+      // The configuration is fixed while the builder is not on screen.
+      reviseMockConfiguration();
+      router.history.back();
+
+      await waitFor(() => expect(router.state.location.pathname).toBe("/developers/code-builder"));
+      expect(router.state.location.search).toEqual({
+        ...selection,
+        held: before.configuration_fingerprint,
+      });
+      const returned = await screen.findByRole("region", { name: "Blueprint" }, { timeout: 8000 });
+      await waitFor(() => expect(within(returned).getAllByText("Complete").length).toBeGreaterThan(0), {
+        timeout: 8000,
+      });
+      expect(await screen.findByText("The files you took are stale for the current Blueprint.")).toBeInTheDocument();
+      const configure = screen.getByRole("region", { name: "Configure" });
+      expect(within(configure).getByRole("radio", { name: /Shell/ })).toBeChecked();
+      expect(within(configure).getByRole("combobox", { name: "Kind of work" })).toHaveValue("report_generation");
+      expect(within(configure).getByRole("checkbox", { name: /chat\.completion/ })).toBeChecked();
+    } finally {
+      resetMockConfiguration();
+    }
   });
 });

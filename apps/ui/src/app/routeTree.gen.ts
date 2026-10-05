@@ -32,6 +32,7 @@ import { Route as AppSettingsAuditRouteImport } from './routes/_app/settings/aud
 import { Route as AppReferralsCustomerIdRouteImport } from './routes/_app/referrals/$customerId'
 import { Route as AppPricingBookIdRouteImport } from './routes/_app/pricing/$bookId'
 import { Route as AppEventsEventIdRouteImport } from './routes/_app/events/$eventId'
+import { Route as AppDevelopersCodeBuilderRouteImport } from './routes/_app/developers/code-builder'
 import { Route as AppCustomersCustomerIdRouteImport } from './routes/_app/customers/$customerId'
 import { Route as AppTasksRunsIndexRouteImport } from './routes/_app/tasks/runs/index'
 import { Route as AppTasksRunsTaskIdRouteImport } from './routes/_app/tasks/runs/$taskId'
@@ -151,6 +152,12 @@ const AppEventsEventIdRoute = AppEventsEventIdRouteImport.update({
   path: '/events/$eventId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDevelopersCodeBuilderRoute =
+  AppDevelopersCodeBuilderRouteImport.update({
+    id: '/developers/code-builder',
+    path: '/developers/code-builder',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppCustomersCustomerIdRoute = AppCustomersCustomerIdRouteImport.update({
   id: '/customers/$customerId',
   path: '/customers/$customerId',
@@ -177,6 +184,7 @@ export interface FileRoutesByFullPath {
   '/sign-in': typeof SignInRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/developers/code-builder': typeof AppDevelopersCodeBuilderRoute
   '/events/$eventId': typeof AppEventsEventIdRoute
   '/pricing/$bookId': typeof AppPricingBookIdRoute
   '/referrals/$customerId': typeof AppReferralsCustomerIdRoute
@@ -204,6 +212,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRoute
   '/': typeof AppIndexRoute
   '/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/developers/code-builder': typeof AppDevelopersCodeBuilderRoute
   '/events/$eventId': typeof AppEventsEventIdRoute
   '/pricing/$bookId': typeof AppPricingBookIdRoute
   '/referrals/$customerId': typeof AppReferralsCustomerIdRoute
@@ -234,6 +243,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/customers/$customerId': typeof AppCustomersCustomerIdRoute
+  '/_app/developers/code-builder': typeof AppDevelopersCodeBuilderRoute
   '/_app/events/$eventId': typeof AppEventsEventIdRoute
   '/_app/pricing/$bookId': typeof AppPricingBookIdRoute
   '/_app/referrals/$customerId': typeof AppReferralsCustomerIdRoute
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/settings'
     | '/customers/$customerId'
+    | '/developers/code-builder'
     | '/events/$eventId'
     | '/pricing/$bookId'
     | '/referrals/$customerId'
@@ -291,6 +302,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/'
     | '/customers/$customerId'
+    | '/developers/code-builder'
     | '/events/$eventId'
     | '/pricing/$bookId'
     | '/referrals/$customerId'
@@ -320,6 +332,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/'
     | '/_app/customers/$customerId'
+    | '/_app/developers/code-builder'
     | '/_app/events/$eventId'
     | '/_app/pricing/$bookId'
     | '/_app/referrals/$customerId'
@@ -512,6 +525,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEventsEventIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/developers/code-builder': {
+      id: '/_app/developers/code-builder'
+      path: '/developers/code-builder'
+      fullPath: '/developers/code-builder'
+      preLoaderRoute: typeof AppDevelopersCodeBuilderRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/customers/$customerId': {
       id: '/_app/customers/$customerId'
       path: '/customers/$customerId'
@@ -567,6 +587,7 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppCustomersCustomerIdRoute: typeof AppCustomersCustomerIdRoute
+  AppDevelopersCodeBuilderRoute: typeof AppDevelopersCodeBuilderRoute
   AppEventsEventIdRoute: typeof AppEventsEventIdRoute
   AppPricingBookIdRoute: typeof AppPricingBookIdRoute
   AppReferralsCustomerIdRoute: typeof AppReferralsCustomerIdRoute
@@ -590,6 +611,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppCustomersCustomerIdRoute: AppCustomersCustomerIdRoute,
+  AppDevelopersCodeBuilderRoute: AppDevelopersCodeBuilderRoute,
   AppEventsEventIdRoute: AppEventsEventIdRoute,
   AppPricingBookIdRoute: AppPricingBookIdRoute,
   AppReferralsCustomerIdRoute: AppReferralsCustomerIdRoute,

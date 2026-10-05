@@ -4,7 +4,9 @@
 //
 // This is a UX affordance only — the server enforces role floors regardless.
 // When the role can't be resolved (roster fetch fails, email not found) we
-// return null and the UI should show controls and surface any 403 cleanly.
+// return null, and the UI should show controls and surface any 403 cleanly
+// (`useHasRole`) — except for an affordance a member does not need, which is
+// offered only to a role KNOWN to meet its floor (`roleIsKnownToMeet`).
 
 import { useQuery } from "@tanstack/react-query";
 
@@ -15,10 +17,34 @@ import { roleRank } from "@/lib/labels";
 
 import { useAuthUser } from "./use-auth";
 
+/** The three role floors, lowest first. */
+export type RoleFloor = "read" | "write" | "admin";
+
+/**
+ * The signed-in member's role when there is no server — the one source mock
+ * mode has for it, read both by this hook and by any feature mock that
+ * enforces a floor the way the server does (the Code Builder's draft preview,
+ * #579), so the two answer from the same value. The hook's answer is cached
+ * like a real one, so a change here reaches the page only when it asks again —
+ * which is how a page can come to believe a role the server no longer grants.
+ * An admin unless a test or a developer says otherwise.
+ */
+let mockMemberRole: string | null = "admin";
+
+/** Mock mode only: who the signed-in developer is. `null` is a role nobody resolved. */
+export function setMockMemberRole(role: string | null): void {
+  mockMemberRole = role;
+}
+
+/** Mock mode only: the role `setMockMemberRole` last set. */
+export function currentMockMemberRole(): string | null {
+  return mockMemberRole;
+}
+
 async function fetchRoleByEmail(email: string): Promise<string | null> {
   if (API_PROVIDER === "mock") {
     await mockDelay(100);
-    return "admin";
+    return mockMemberRole;
   }
   let cursor: string | undefined;
   // The roster is small; walk at most a handful of pages defensively.
@@ -59,8 +85,23 @@ export function useCurrentRole(): {
  * True when the member's role meets the floor — or when the role is unknown
  * (fail open in the UI; the server still enforces).
  */
-export function useHasRole(floor: "read" | "write" | "admin"): boolean {
+export function useHasRole(floor: RoleFloor): boolean {
   const { role } = useCurrentRole();
   if (role === null) return true;
   return roleRank(role) >= roleRank(floor);
+}
+
+/**
+ * True only when the role is RESOLVED and meets the floor — the opposite
+ * default to `useHasRole`, for an affordance a member does not need and the
+ * server refuses below its floor. Offering it to someone it would refuse buys
+ * a guaranteed `403`; hiding it from an admin whose role could not be resolved
+ * costs them an option, not their work. Pure, so a page can hand it the role
+ * `useCurrentRole` returned.
+ */
+export function roleIsKnownToMeet(
+  role: string | null,
+  floor: RoleFloor,
+): boolean {
+  return role !== null && roleRank(role) >= roleRank(floor);
 }

@@ -1,7 +1,8 @@
 // Pure helpers for the developers feature: the send-test-event form schema,
 // the form-values → RecordUsageRequest builder (currency units → micros), and
-// the copy snippets for the API basics / sandbox reset panels.
+// the copy snippet for the sandbox reset panel.
 
+import { ENVIRONMENT } from "ubb-codegen";
 import { z } from "zod";
 
 import type { RecordUsageRequest } from "../api/types";
@@ -120,25 +121,23 @@ export function shortenUuid(id: string): string {
   return `${id.slice(0, 8)}…`;
 }
 
-/** The API origin this console talks to (env override or same origin). */
-export function apiOrigin(): string {
-  return import.meta.env.VITE_API_URL || window.location.origin;
-}
-
 /**
  * Copyable sandbox-reset command. The endpoint only accepts a sandbox
  * (ubb_test_) key — the console's live credentials get 403 — so this runs
  * from the user's terminal, never from a console button.
+ *
+ * ⚠ IT NAMES THE KEY'S VARIABLE, NEVER A KEY (#579). This used to carry a
+ * key-shaped placeholder, a second convention beside the API-basics card's
+ * own; a developer pastes a real key into a placeholder's shape and the
+ * command lands in a shell history. The variable is the one every generated
+ * file reads (`ubb-codegen`'s catalogue), so the shell that runs the
+ * integration runs this unchanged.
  */
 export function sandboxResetCurl(origin: string): string {
   return [
     `curl -X POST ${origin}/api/v1/sandbox/reset \\`,
-    `  -H "Authorization: Bearer ubb_test_YOUR_SANDBOX_KEY" \\`,
+    `  -H "Authorization: Bearer $${ENVIRONMENT.apiKey}" \\`,
     `  -H "Content-Type: application/json" \\`,
     `  -d '{"keep_config": true}'`,
   ].join("\n");
 }
-
-/** Placeholder auth header for the basics card — never a real key. */
-export const AUTH_HEADER_EXAMPLE =
-  "Authorization: Bearer ubb_live_xxxxxxxxxxxxxxxxxxxxxxxx";

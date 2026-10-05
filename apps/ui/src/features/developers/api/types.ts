@@ -8,9 +8,29 @@
 // narrowed types. The narrowers read fields with typeof checks (no casts), so
 // a drifted backend degrades to empty strings instead of crashing the UI.
 
-import type { MeteringSchemas, TenantSchemas } from "@/api/types";
+import type { MeteringSchemas, RootSchemas, TenantSchemas } from "@/api/types";
 
 export type ApiKey = TenantSchemas["ApiKeyOut"];
+
+// The Code Builder (#579). The Blueprint is typed whole by the contract, so it
+// needs no narrowing: what the page reads is what the schema publishes. Its
+// one untyped part is an argument's `value` (JSON as declared), which the page
+// reads in `lib/blueprint.ts` and nowhere else.
+export type BlueprintSelection = RootSchemas["IntegrationBlueprintSelectionIn"];
+export type Blueprint = RootSchemas["ResolvedIntegrationBlueprint"];
+export type BlueprintCall = RootSchemas["IntegrationBlueprintCall"];
+export type BlueprintArgument = RootSchemas["IntegrationBlueprintArgument"];
+export type BlueprintProvenance = RootSchemas["IntegrationBlueprintProvenance"];
+export type BlueprintDiagnostic = RootSchemas["IntegrationBlueprintDiagnostic"];
+export type RemediationRequest = RootSchemas["IntegrationBlueprintRemediationRequest"];
+/**
+ * A kind of work as Configure offers it: its key, its altitude and whether it
+ * is retired. Everything else the registry says about a kind reaches the page
+ * through the Blueprint, with its provenance, and never from this list.
+ */
+export type KindChoice = Pick<RootSchemas["TaskTypeOut"], "key" | "kind" | "retired">;
+/** An Event Type as Configure offers it: its key and whether it is published. */
+export type EventTypeChoice = Pick<RootSchemas["EventTypeOut"], "key" | "declaration_status">;
 export type RecordUsageRequest = MeteringSchemas["RecordUsageRequest"];
 export type RecordUsageResponse = MeteringSchemas["RecordUsageResponse"];
 /**

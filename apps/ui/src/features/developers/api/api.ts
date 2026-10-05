@@ -2,7 +2,7 @@
 // reject with a typed ApiProblem. Untyped bodies are narrowed via the
 // functions in ./types (the only place their shapes are assumed).
 
-import { meteringApi, tenantApi } from "@/api/client";
+import { meteringApi, rootApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
 import {
@@ -22,7 +22,11 @@ import {
   type ApiKeyCreated,
   type ApiKeyRevoked,
   type ApiKeyRotated,
+  type Blueprint,
+  type BlueprintSelection,
   type CustomerChoice,
+  type EventTypeChoice,
+  type KindChoice,
   type RecordUsageRequest,
   type RecordUsageResponse,
   type SandboxKeyMinted,
@@ -107,4 +111,49 @@ export async function sendTestEvent(
   body: RecordUsageRequest,
 ): Promise<RecordUsageResponse> {
   return unwrap(await meteringApi.POST("/usage", { body }));
+}
+
+// ---------------------------------------------------------------------------
+// The Code Builder (#579)
+
+/**
+ * Resolve a selection into an Integration Blueprint. A read at the Read floor
+ * that stores one content-addressed snapshot and changes no configuration; a
+ * draft preview needs the admin role (`403` below it) and stores nothing.
+ */
+export async function resolveBlueprint(selection: BlueprintSelection): Promise<Blueprint> {
+  return unwrap(await rootApi.POST("/code-builder/blueprints", { body: selection }));
+}
+
+/** Every declared kind of work, retired ones included — the choices Configure offers. */
+export async function listKindChoices(): Promise<KindChoice[]> {
+  return unwrap(await rootApi.GET("/task-types")).task_types.map(({ key, kind, retired }) => ({
+    key,
+    kind,
+    retired,
+  }));
+}
+
+/** The most pages of Event Types Configure walks before it stops asking. */
+const EVENT_TYPE_PAGES = 10;
+
+/**
+ * Every declared Event Type, walked page by page. Configure lists them all to
+ * choose from, and a registry is small; the walk still stops after a bounded
+ * number of pages rather than trusting `has_more` forever.
+ */
+export async function listEventTypeChoices(): Promise<EventTypeChoice[]> {
+  const declared: EventTypeChoice[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < EVENT_TYPE_PAGES; page++) {
+    const answer = unwrap(
+      await rootApi.GET("/event-types", { params: { query: { cursor, limit: 100 } } }),
+    );
+    declared.push(
+      ...answer.data.map(({ key, declaration_status }) => ({ key, declaration_status })),
+    );
+    if (!answer.has_more || !answer.next_cursor) break;
+    cursor = answer.next_cursor;
+  }
+  return declared;
 }

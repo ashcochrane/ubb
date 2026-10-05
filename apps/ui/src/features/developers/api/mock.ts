@@ -6,6 +6,7 @@
 
 import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
+import { currentMockMemberRole, roleIsKnownToMeet } from "@/hooks/use-current-role";
 import { mockDelay } from "@/lib/api-provider";
 import { knownCost, knownPrice, unknownCost } from "@/lib/economic-scenarios";
 import type { ReasonCodeKnown } from "@/lib/vocabulary";
@@ -22,12 +23,17 @@ import {
   mockKeyPrefix,
   mockRawKey,
 } from "./mock-data";
+import { mockAnswers, mockRegistry, selectionKey } from "./mock-blueprints";
 import type {
   ApiKey,
   ApiKeyCreated,
   ApiKeyRevoked,
   ApiKeyRotated,
+  Blueprint,
+  BlueprintSelection,
   CustomerChoice,
+  EventTypeChoice,
+  KindChoice,
   RecordUsageRequest,
   RecordUsageResponse,
   SandboxKeyMinted,
@@ -315,4 +321,48 @@ export async function sendTestEvent(
     task_id: body.task_id ?? null,
     parent_task_id: null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// The Code Builder (#579): the platform's own Blueprints (`./mock-blueprints`)
+
+/**
+ * The server's floor, enforced against the one role mock mode has: a draft
+ * preview below admin is refused exactly as the route refuses it. The page
+ * offers the toggle only to a known admin, so this answers a page whose idea
+ * of the caller has gone stale.
+ */
+export async function resolveBlueprint(selection: BlueprintSelection): Promise<Blueprint> {
+  await mockDelay();
+  if (selection.draft_preview && !roleIsKnownToMeet(currentMockMemberRole(), "admin")) {
+    throw new ApiProblem({
+      status: 403,
+      code: "forbidden",
+      title: "Forbidden",
+      detail: "A draft preview requires the admin role.",
+    });
+  }
+  const answer = (await mockAnswers()).get(selectionKey(selection));
+  if (answer === undefined) {
+    // Not a refusal the platform makes: the mock answers only selections the
+    // platform wrote a Blueprint for, and says so rather than inventing one.
+    throw new ApiProblem({
+      status: 404,
+      code: "mock_has_no_blueprint",
+      title: "Not in the mock",
+      detail:
+        "The mock answers each selection with the Blueprint the platform wrote for it, and the platform wrote none for this one.",
+    });
+  }
+  return structuredClone(answer);
+}
+
+export async function listKindChoices(): Promise<KindChoice[]> {
+  await mockDelay();
+  return (await mockRegistry()).kinds;
+}
+
+export async function listEventTypeChoices(): Promise<EventTypeChoice[]> {
+  await mockDelay();
+  return (await mockRegistry()).eventTypes;
 }
