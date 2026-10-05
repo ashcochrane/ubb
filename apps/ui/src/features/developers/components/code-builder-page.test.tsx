@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("the Code Builder page", () => {
-  it("is Configure, Blueprint and Generate, in that order, and nothing more yet", async () => {
+  it("is Configure, Blueprint, Generate and Verify, in that order", async () => {
     renderCodeBuilder(COMPLETE);
     await resolved(/^Complete$/);
 
@@ -67,10 +67,13 @@ describe("the Code Builder page", () => {
       "Configure",
       "Blueprint",
       "Generate",
+      "Verify",
     ]);
-    // Verify is #581's: no stage, no button, no link, no verdict.
-    expect(screen.queryByRole("region", { name: /verif/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /verif/i })).toBeNull();
+    // Verify is a stage of its own, and nothing else on the page verifies:
+    // the one button is in it, and no link anywhere leads to a verifier.
+    const verifying = screen.getAllByRole("button", { name: /verif/i });
+    expect(verifying).toHaveLength(1);
+    expect(stage("Verify")).toContainElement(verifying[0] ?? null);
     expect(screen.queryByRole("link", { name: /verif/i })).toBeNull();
   });
 });
@@ -434,6 +437,11 @@ describe("the draft preview", () => {
     expect(await within(stage("Blueprint")).findByText("None — a draft preview is stored nowhere")).toBeInTheDocument();
     expect(await within(stage("Generate")).findByText(/This is a draft preview/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/sha256:/);
+    // A draft preview can never be verified (#567 point 3): the stage says so
+    // and offers nothing.
+    expect(within(stage("Verify")).getByRole("note")).toHaveTextContent(
+      "A draft preview cannot be verified",
+    );
     expect(screen.queryByRole("button", { name: /verif/i })).toBeNull();
   });
 

@@ -1,0 +1,25 @@
+{
+  "blueprint": null,
+  "configuration_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "request": {
+    "records": [
+      {
+        "event_type": "chat.completion",
+        "measurements": {
+          "input_tokens": 1200
+        }
+      }
+    ],
+    "grouping_fields": {
+      "environment": "staging"
+    }
+  },
+  "status": 404,
+  "answer": {
+    "type": "https://ubb.dev/errors/not_found",
+    "title": "Not found",
+    "status": 404,
+    "code": "not_found",
+    "detail": "no blueprint is stored under 'sha256:0000000000000000000000000000000000000000000000000000000000000000'"
+  }
+}

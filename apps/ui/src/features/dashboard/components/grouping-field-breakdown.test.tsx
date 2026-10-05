@@ -89,8 +89,8 @@ describe("GroupingFieldBreakdown", () => {
     );
 
     expect(screen.getByText("No usage in this window")).toBeInTheDocument();
-    const cta = screen.getByRole("link", { name: "Send a test event" });
-    expect(cta).toHaveAttribute("href", "/developers");
+    const cta = screen.getByRole("link", { name: "Open the Code Builder" });
+    expect(cta).toHaveAttribute("href", "/developers/code-builder");
   });
 
   // ⚠ THE SAME EMPTY LIST, OVER A WINDOW REACHING BACK PAST THE RECORDS IT

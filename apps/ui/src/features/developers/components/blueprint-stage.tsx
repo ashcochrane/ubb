@@ -185,7 +185,8 @@ function TokenRow({ argument, place }: { argument: BlueprintArgument; place: Tok
   );
 }
 
-function ShownValue({ shown }: { shown: Shown }) {
+/** One token's value as the Blueprint stage shows it; Verify shows a Measurement's facts through it too. */
+export function ShownValue({ shown }: { shown: Shown }) {
   const currency = useTenantCurrency();
   switch (shown.kind) {
     case "secret":

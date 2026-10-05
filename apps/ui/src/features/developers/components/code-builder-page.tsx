@@ -1,14 +1,16 @@
-// /developers/code-builder — Configure → Blueprint → Generate (#579).
+// /developers/code-builder — Configure → Blueprint → Generate (#579) → Verify
+// (#581).
 //
 // A route under Developers, not a thirteenth nav entry (§12). The page holds
 // no state of its own: its selections are the URL's (`lib/code-builder-search`),
 // so a deep link, the browser's history and the configuration round trip all
 // return to the same builder. Strictly read-and-generate: nothing on this page
-// creates, edits or publishes configuration, even for an admin (#156 §9).
+// creates, edits or publishes configuration, even for an admin (#156 §9) —
+// Verify included, which runs the stored Blueprint in a workspace it discards.
 //
 // THE STAGES ARE `CODE_BUILDER_STAGES`, rendered in order from the two records
-// below. #581 adds Verify by appending its id there; `tsc` then asks for its
-// title and its body here, and nothing else on the page moves.
+// below; a stage's id there asks `tsc` for its title and its body here. Every
+// stage reads the one Blueprint query this page holds.
 
 import { Link } from "@tanstack/react-router";
 import { useMemo, type ReactNode } from "react";
@@ -25,6 +27,7 @@ import { BlueprintStage } from "./blueprint-stage";
 import { ConfigureStage } from "./configure-stage";
 import { GenerateStage } from "./generate-stage";
 import { LifecycleScaffold } from "./lifecycle-scaffold";
+import { VerifyStage } from "./verify-stage";
 
 const STAGES: Readonly<Record<CodeBuilderStage, { title: string; description: string }>> = {
   configure: {
@@ -39,6 +42,11 @@ const STAGES: Readonly<Record<CodeBuilderStage, { title: string; description: st
   generate: {
     title: "Generate",
     description: "The files, written in your browser from the Blueprint above.",
+  },
+  verify: {
+    title: "Verify",
+    description:
+      "The Blueprint above, run once with your sample values somewhere that is discarded afterwards — and what each call answered.",
   },
 };
 
@@ -96,6 +104,7 @@ function CodeBuilder({ search, onSearchChange }: CodeBuilderPageProps) {
         }}
       />
     ),
+    verify: <VerifyStage query={blueprint} held={search.held} />,
   };
 
   return (

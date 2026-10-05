@@ -69,12 +69,22 @@ export function readTotal(micros: number, eventsLeftOut: number): TotalReading {
   return { kind: "floor", micros, eventsLeftOut };
 }
 
-export function describeTotal(reading: TotalReading, currency: string): string {
+export function describeTotal(
+  reading: TotalReading,
+  currency: string,
+  /**
+   * How the amount itself is written. Defaulted rather than fixed because a
+   * surface showing ONE unit of work's running total — a Verify run's, a few
+   * hundred micros — needs an event's precision, where the cent-rounded
+   * default would write a known amount as `$0.00`.
+   */
+  format: (micros: number, currency: string) => string = formatMicros,
+): string {
   switch (reading.kind) {
     case "figure":
-      return formatMicros(reading.micros, currency);
+      return format(reading.micros, currency);
     case "floor":
-      return `${AT_LEAST} ${formatMicros(reading.micros, currency)}`;
+      return `${AT_LEAST} ${format(reading.micros, currency)}`;
     case "unknown":
       return UNKNOWN_TOTAL;
   }

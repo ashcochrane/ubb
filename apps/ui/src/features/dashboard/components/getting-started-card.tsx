@@ -20,7 +20,7 @@ import {
 
 type CheckState = "loading" | "done" | "todo" | "unknown";
 
-type StepTo = "/developers" | "/pricing" | "/settings";
+type StepTo = "/developers" | "/developers/code-builder" | "/pricing" | "/settings";
 
 interface Step {
   key: string;
@@ -79,9 +79,10 @@ export function GettingStartedCard({ needsStripe }: { needsStripe: boolean }) {
       // so the recording step is always still to do.
       key: "first-event",
       title: "Record your first usage event",
-      description: "Send a test event from the developers page to see live numbers here.",
-      to: "/developers",
-      linkLabel: "Send a test event",
+      description:
+        "Generate integration code in the Code Builder; once it records usage, live numbers land here.",
+      to: "/developers/code-builder",
+      linkLabel: "Open the Code Builder",
       state: "todo",
     },
     ...(needsStripe

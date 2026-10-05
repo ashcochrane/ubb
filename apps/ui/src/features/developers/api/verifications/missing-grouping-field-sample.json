@@ -1,0 +1,24 @@
+{
+  "blueprint": "calculated-cost",
+  "configuration_fingerprint": "sha256:bdef92897eaa7ac5eed5e349fddfab15571c1b1ffb5995dd03b28b33f9fae72e",
+  "request": {
+    "records": [
+      {
+        "event_type": "chat.completion",
+        "measurements": {
+          "input_tokens": 1200,
+          "output_tokens": 300
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 422,
+  "answer": {
+    "type": "https://ubb.dev/errors/validation_error",
+    "title": "Validation error",
+    "status": 422,
+    "code": "validation_error",
+    "detail": "grouping_fields must give a sample value for 'environment': the kind of work this run starts requires it, and a value a tenant's code passes at run time is never made up"
+  }
+}

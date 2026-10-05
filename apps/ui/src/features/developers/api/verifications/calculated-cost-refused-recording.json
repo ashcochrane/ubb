@@ -1,0 +1,82 @@
+{
+  "blueprint": "calculated-cost",
+  "configuration_fingerprint": "sha256:bdef92897eaa7ac5eed5e349fddfab15571c1b1ffb5995dd03b28b33f9fae72e",
+  "request": {
+    "records": [
+      {
+        "event_type": "chat.completion",
+        "provider_cost_micros": 5,
+        "measurements": {
+          "input_tokens": 1200,
+          "output_tokens": 300
+        }
+      }
+    ],
+    "grouping_fields": {
+      "environment": "staging"
+    }
+  },
+  "status": 200,
+  "answer": {
+    "configuration_fingerprint": "sha256:bdef92897eaa7ac5eed5e349fddfab15571c1b1ffb5995dd03b28b33f9fae72e",
+    "verified": false,
+    "unexercised_event_types": [],
+    "unexercised_subtask_types": [],
+    "environment": {
+      "discarded": true,
+      "customer_external_id": "ubb-verification",
+      "rules_effective_at": "2026-09-01T12:30:00Z"
+    },
+    "task": {
+      "task_type": "report_generation",
+      "start": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "task_type": "report_generation",
+        "status": "active",
+        "task_cogs_ceiling_micros": 5000000,
+        "agreed_price_micros": null,
+        "external_task_id": "",
+        "created_at": "2026-09-01T12:30:00Z",
+        "replayed": false
+      },
+      "close": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "status": "cancelled",
+        "outcome": "cancelled",
+        "replayed": false,
+        "charge_created": false,
+        "total_billed_cost_micros": 0,
+        "total_provider_cost_micros": 0,
+        "unresolved_event_count": 0,
+        "unpriced_event_count": 0,
+        "event_count": 0
+      }
+    },
+    "subtasks": [],
+    "records": [
+      {
+        "event_type": "chat.completion",
+        "subtask_type": null,
+        "acknowledgement": null,
+        "replay": null,
+        "missing_required_measurement_keys": [
+          "input_tokens",
+          "output_tokens"
+        ],
+        "complete": false
+      }
+    ],
+    "refusal": {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "problem": {
+        "type": "https://ubb.dev/errors/validation_error",
+        "title": "Validation error",
+        "status": 422,
+        "code": "validation_error",
+        "detail": "provider_cost_micros is the supplier's own reported cost for this call. Event Type 'chat.completion' does not declare it: it is admissible only where the Event Type declares costing_method 'reported' with a reported-cost mapping whose source_kind is 'caller_supplied'. Declare that pair, or send what you believe this call cost as claimed_provider_cost_micros, which is accepted on any event and is never treated as cost."
+      }
+    }
+  }
+}

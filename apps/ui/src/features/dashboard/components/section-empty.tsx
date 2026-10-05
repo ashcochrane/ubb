@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { buttonVariants } from "@/components/ui/button";
 
 /** Routes the overview's empty states can send the user to. */
-export type SectionEmptyTo = "/developers" | "/pricing" | "/customers";
+export type SectionEmptyTo = "/developers/code-builder" | "/pricing" | "/customers";
 
 /**
  * Empty state with a navigation CTA. The shared <EmptyState> only takes an

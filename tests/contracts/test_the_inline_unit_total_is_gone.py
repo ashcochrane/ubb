@@ -64,16 +64,20 @@ READERS = {
         "the SDK's hand-written recording call",
     "ubb-sdk/ubb/metering.py":
         "the SDK's metering client, which put it on the wire",
+    # ⚠ THREE OF THE DEVELOPERS' FIVE READERS CHANGED IN #581, which deleted
+    # the test-event console. Its form field and its request builder left the
+    # list by ceasing to exist (`components/test-event-console.tsx`,
+    # `lib/test-event.ts`); the response stat's card was MOVED to render each
+    # Verify acknowledgement, so its line follows it; and the mock recorder
+    # and its rates are deleted from the two mock modules, which stay —
+    # guarding that the word does not come back to the modules that carried it.
     "apps/ui/src/features/developers/api/mock.ts":
-        "the console's mock recorder, which priced it",
+        "the console's mock recorder, which priced it — deleted with the "
+        "test-event console in #581",
     "apps/ui/src/features/developers/api/mock-data.ts":
-        "the mock rate the line above multiplied it by",
-    "apps/ui/src/features/developers/components/test-event-console.tsx":
-        "the test-event form field",
-    "apps/ui/src/features/developers/components/test-event-response.tsx":
-        "the response stat beside it",
-    "apps/ui/src/features/developers/lib/test-event.ts":
-        "the form-values to request-body builder",
+        "the mock rate the line above multiplied it by — deleted with it",
+    "apps/ui/src/features/developers/components/acknowledgement-card.tsx":
+        "the response stat beside the form field, in the card #581 moved here",
     "apps/ui/src/features/events/api/mock-data.ts":
         "the console's event fixtures",
     "apps/ui/src/features/events/api/mock.ts":
@@ -106,7 +110,8 @@ _EITHER_NAME = "|".join(sorted((re.escape(name) for name in NAMES),
 #: THE BACKTICK BRANCH IS DELIBERATE AND IT BINDS PROSE. A named reader may not
 #: name this field even in a comment, which is why the note left on the model
 #: describes the retirement without spelling it. That is the intended strictness:
-#: these seventeen files are the ones that must have stopped referring to it, and
+#: these files (seventeen at #272, fifteen since #581 deleted two) are the ones
+#: that must have stopped referring to it, and
 #: a doc comment saying `units` is how the console's mock rate survived a
 #: previous pass. Every other file in the tree is free to say it.
 FIELD = re.compile(
@@ -170,7 +175,7 @@ def test_no_named_reader_still_reads_the_inline_total(relative):
     """THE GATE, one reader at a time.
 
     Parametrized rather than accumulated so a survivor names itself in the test
-    id: this list is long enough that a single failure listing seventeen paths
+    id: this list is long enough that a single failure listing fifteen paths
     would be read as "the gate is broken" rather than "this file is".
     """
     hits = [f"{number}: {line.strip()}"

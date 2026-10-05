@@ -1,29 +1,26 @@
 // Mock implementation — same exported signatures as ./api. Mutations are
 // simulated coherently within a session via module-level state: minted keys
 // appear in the list (sandbox keys land on the sandbox's prefix list, not
-// here — mirroring the real routing), rotation deactivates the old key, and
-// the test console draws down a mock wallet until the stop verdict fires.
+// here — mirroring the real routing) and rotation deactivates the old key.
+// The Code Builder's Blueprints and Verify answers are the platform's own
+// (`./mock-blueprints`, `./mock-verifications`); none is written here.
 
 import type { CursorPage } from "@/api/pagination";
-import { ApiProblem } from "@/api/problem";
+import { ApiProblem, toApiProblem } from "@/api/problem";
 import { currentMockMemberRole, roleIsKnownToMeet } from "@/hooks/use-current-role";
 import { mockDelay } from "@/lib/api-provider";
-import { knownCost, knownPrice, unknownCost } from "@/lib/economic-scenarios";
-import type { ReasonCodeKnown } from "@/lib/vocabulary";
 
 import {
   MOCK_API_KEYS,
-  MOCK_COSTED_MEASUREMENTS,
-  MOCK_CUSTOMER_CHOICES,
-  MOCK_MEASUREMENT_RATE_MICROS,
   MOCK_SANDBOX,
   MOCK_SANDBOX_TENANT_ID,
   MOCK_LIVE_TENANT_ID,
-  MOCK_STARTING_BALANCE_MICROS,
   mockKeyPrefix,
   mockRawKey,
 } from "./mock-data";
 import { mockAnswers, mockRegistry, selectionKey } from "./mock-blueprints";
+import { verificationKey } from "../lib/verification";
+import { mockVerifications } from "./mock-verifications";
 import type {
   ApiKey,
   ApiKeyCreated,
@@ -31,25 +28,19 @@ import type {
   ApiKeyRotated,
   Blueprint,
   BlueprintSelection,
-  CustomerChoice,
+  BlueprintVerification,
+  BlueprintVerificationRequest,
   EventTypeChoice,
   KindChoice,
-  RecordUsageRequest,
-  RecordUsageResponse,
   SandboxKeyMinted,
   SandboxStatus,
 } from "./types";
-
-/** The stop word the sandbox's stop verdict names: the registry's word for the hard floor, typed against the generated union. */
-const FLOOR_STOP: ReasonCodeKnown = "hard_floor";
 
 let keys: ApiKey[] = MOCK_API_KEYS.map((key) => ({ ...key }));
 let sandbox: SandboxStatus = {
   ...MOCK_SANDBOX,
   key_prefixes: [...MOCK_SANDBOX.key_prefixes],
 };
-let balanceMicros = MOCK_STARTING_BALANCE_MICROS;
-let eventCounter = 0;
 
 export async function listApiKeys(_cursor?: string): Promise<CursorPage<ApiKey>> {
   await mockDelay();
@@ -166,163 +157,6 @@ export async function createSandbox(): Promise<SandboxKeyMinted> {
   return { sandbox_tenant_id: tenantId, api_key: mockRawKey(prefix) };
 }
 
-export async function listCustomerChoices(): Promise<CustomerChoice[]> {
-  await mockDelay();
-  return MOCK_CUSTOMER_CHOICES.map((row) => ({ ...row }));
-}
-
-export async function sendTestEvent(
-  body: RecordUsageRequest,
-): Promise<RecordUsageResponse> {
-  await mockDelay();
-  eventCounter += 1;
-
-  const measurements = body.measurements ?? {};
-  const uncosted = Object.keys(measurements).filter(
-    (name) => !MOCK_COSTED_MEASUREMENTS.has(name),
-  );
-  let measuredCost = 0;
-  for (const [name, quantity] of Object.entries(measurements)) {
-    measuredCost += (MOCK_MEASUREMENT_RATE_MICROS[name] ?? 0) * quantity;
-  }
-
-  // WHAT THE CUSTOMER IS CHARGED IS DERIVED HERE AND NOT SENT (#365). The
-  // request used to be able to carry the price and this line used to prefer it;
-  // the API deleted that field, so the only source left is the same one the
-  // real engine uses — the tenant's configured rules over the measurements.
-  const billed = measuredCost;
-  // A measurement no cost card covers leaves the whole supplier cost UNRESOLVED
-  // — not a smaller number (#320). A caller who states the cost outright is
-  // answered `known` whatever the measurements say, which is the backend's own
-  // order: the supplied figure is the answer and no declaration is consulted.
-  const resolved = body.provider_cost_micros != null || uncosted.length === 0;
-  // COMPOSED, NEVER ASSEMBLED FIELD BY FIELD (#330). The amount, the status and
-  // the missing input are one fact in three properties, and the posting's own
-  // check constraint admits only three combinations of them; taking them from
-  // the canonical scenarios is what stops this mock inventing a fourth. The
-  // reason is `cost_rate_missing` because that is precisely what happened above:
-  // a measurement reached the rate lookup and nothing there priced it.
-  const cost = resolved
-    ? knownCost(body.provider_cost_micros ?? Math.round(billed * 0.62))
-    : unknownCost("cost_rate_missing");
-  // The PRICE half, composed on the same rule (#371). The sandbox recorder is
-  // always handed a resolvable price, so this mock always answers `known` — and
-  // it says so through the canonical scenario rather than by writing the status
-  // beside the amount, because the three fields are one fact and the day this
-  // mock grows a branch that cannot price an event, a hand-written `"known"`
-  // beside a null amount is the row the posting's own constraint refuses.
-  const price = knownPrice(billed);
-
-  // The posting's own identity, named once: the response carries it and so
-  // does the receipt's subject, and a receipt explaining a different id from
-  // the one it was returned with would be a record nothing could be joined to.
-  const eventId = crypto.randomUUID();
-  const recordedAt = new Date().toISOString();
-
-  balanceMicros -= billed;
-  const stopped = balanceMicros < 0;
-
-  return {
-    event_id: eventId,
-    suspended: false,
-    // The posting's grouping values under the tenant's own declared keys
-    // (#277). Empty here because this mock declares no grouping fields and
-    // sends none — which is what the real response answers in that case too,
-    // rather than the two arbitrary slot properties this replaces.
-    grouping_fields: {},
-    // All three from the one PRICE scenario object above (#351, #371): the
-    // amount, the status that says what it means, and — null here, because the
-    // status is not `not_applicable` — the cause of an absence there is not.
-    billed_cost_micros: price.billed_cost_micros,
-    pricing_status: price.pricing_status,
-    not_applicable_reason: price.not_applicable_reason,
-    // The status and the amount are ONE fact and travel together: an absent
-    // amount reads `unresolved` and never `known` at zero (#317, #320), and it
-    // names the input that would settle it (#330).
-    provider_cost_micros: cost.provider_cost_micros,
-    costing_status: cost.costing_status,
-    unresolved_reason: cost.unresolved_reason,
-    new_balance_micros: balanceMicros,
-    measurements: body.measurements ?? null,
-    // EMPTY WHENEVER THE COST RESOLVED, because that is what the real response
-    // does: the backend writes this list on the rule-matching branch only, and a
-    // caller who states the cost outright never reaches it. Listing the keys
-    // anyway would make this panel warn about a declaration the API never
-    // complained about.
-    uncosted_measurement_keys: resolved ? [] : uncosted,
-    // THE RECORD, NOT A SKETCH OF ONE (#372). #371 took the ratified word for
-    // the container and left the SHAPE — `engine_version`, a `price_source`, a
-    // sequence number — recorded as this commit's to rebuild. What a receipt
-    // actually is: two versions, a typed subject, a costing and a pricing
-    // section each holding their method, status and detail BY VALUE, the
-    // totals, and a provenance section of cross-reference ids
-    // (`pricing/receipts.py`).
-    //
-    // ⚠ IT IS BUILT FROM THE TWO SCENARIOS ABOVE RATHER THAN BESIDE THEM, for
-    // the reason every other pairing in this file follows: the record's own
-    // rule is that a section's method is present exactly when its status is
-    // settled, and its amount on the same condition. A hand-written literal can
-    // break all three silently — the console has no validator — so it is
-    // derived from the pair this mock already composed.
-    pricing_receipt: {
-      receipt_schema_version: 1,
-      pricing_engine_version: "2.1.0",
-      subject_type: "usage_event",
-      subject_id: eventId,
-      effective_at: recordedAt,
-      currency: "usd",
-      costing: {
-        // A caller who states the cost outright was REPORTED it; one this mock
-        // priced from its own rates CALCULATED it. Null where nothing settled.
-        method: resolved
-          ? body.provider_cost_micros != null
-            ? "reported"
-            : "calculated"
-          : null,
-        status: cost.costing_status,
-        detail: {
-          uncosted_measurement_keys: resolved ? [] : uncosted,
-          unresolved_reason: cost.unresolved_reason,
-        },
-      },
-      pricing: {
-        // ONE METHOD, because there is only one path left: a caller cannot
-        // state a price, so this mock always prices the event's own quantities
-        // by its own terms — which is what `direct_event_price` means (#365).
-        method: "direct_event_price",
-        status: price.pricing_status,
-        detail: { pricing_mode: "event_priced" },
-      },
-      totals: {
-        provider_cost_micros: cost.provider_cost_micros,
-        billed_cost_micros: price.billed_cost_micros,
-      },
-      // Ids and nothing a reader could take a figure from. The sequence is this
-      // sandbox's own, and it is the one thing here that is not a real
-      // cross-reference — it names which call in the session this was.
-      provenance: { sandbox_sequence: eventCounter },
-    },
-    stop: stopped,
-    stop_reason: stopped ? FLOOR_STOP : null,
-    stop_scope: stopped ? "customer" : null,
-    stop_context: stopped
-      ? [
-          {
-            limit: FLOOR_STOP,
-            stop_scope: "customer",
-            tripped_at: new Date().toISOString(),
-            episode_seq: 1,
-            task_id: null,
-            subtask_id: null,
-            arrived_after: false,
-          },
-        ]
-      : null,
-    task_id: body.task_id ?? null,
-    parent_task_id: null,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // The Code Builder (#579): the platform's own Blueprints (`./mock-blueprints`)
 
@@ -355,6 +189,42 @@ export async function resolveBlueprint(selection: BlueprintSelection): Promise<B
     });
   }
   return structuredClone(answer);
+}
+
+/**
+ * Verify answered with what the platform answered (`./mock-verifications`):
+ * the exact request the platform verified, for the fingerprint it verified it
+ * against, gets that answer or that refusal; any other request is one the
+ * platform never answered, and the mock says so. The route's Write floor is
+ * enforced against the one role mock mode has, as the draft floor is.
+ */
+export async function verifyBlueprint(
+  fingerprint: string,
+  body: BlueprintVerificationRequest,
+): Promise<BlueprintVerification> {
+  await mockDelay();
+  if (!roleIsKnownToMeet(currentMockMemberRole(), "write")) {
+    throw new ApiProblem({
+      status: 403,
+      code: "forbidden",
+      title: "Forbidden",
+      detail: "Verifying a Blueprint requires the write role.",
+    });
+  }
+  const committed = (await mockVerifications()).get(verificationKey(fingerprint, body));
+  if (committed === undefined) {
+    // Not a refusal the platform makes: the mock answers only requests the
+    // platform verified, and says so rather than inventing an answer.
+    throw new ApiProblem({
+      status: 404,
+      code: "mock_has_no_verification",
+      title: "Not in the mock",
+      detail:
+        "The mock answers Verify only with what the platform answered, and the platform verified no request like this one for this Blueprint.",
+    });
+  }
+  if (committed.kind === "refused") throw toApiProblem(structuredClone(committed.problem));
+  return structuredClone(committed.answer);
 }
 
 export async function listKindChoices(): Promise<KindChoice[]> {

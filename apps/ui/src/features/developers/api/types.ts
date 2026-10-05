@@ -33,18 +33,18 @@ export type KindChoice = Pick<RootSchemas["TaskTypeOut"], "key" | "kind" | "reti
 export type EventTypeChoice = Pick<RootSchemas["EventTypeOut"], "key" | "declaration_status">;
 export type RecordUsageRequest = MeteringSchemas["RecordUsageRequest"];
 export type RecordUsageResponse = MeteringSchemas["RecordUsageResponse"];
-/**
- * One choice in a customer picker.
- *
- * ⚠ **IT WAS A MARGIN ROW AND IS AN IDENTITY (#501).** This feature read the
- * per-customer margin list for the ids alone — every money field on it was
- * ignored here — and that route is gone with the other eight the one economic
- * query replaced. Grouping that query by the customer axis answers the same
- * question and nothing more, which is the shape this always wanted.
- */
-export interface CustomerChoice {
-  customer_id: string;
-}
+
+// Verifying a stored Blueprint (#581). Typed whole by the contract, like the
+// Blueprint itself; the one untyped part of an answer is a refusal's
+// extension members, which `lib/verification.ts` narrows.
+export type BlueprintVerificationRequest = RootSchemas["IntegrationBlueprintVerificationIn"];
+export type BlueprintVerificationRecordRequest =
+  RootSchemas["IntegrationBlueprintVerificationRecordIn"];
+export type BlueprintVerification = RootSchemas["IntegrationBlueprintVerification"];
+export type VerificationUnit = RootSchemas["IntegrationBlueprintVerificationUnit"];
+export type VerificationRecord = RootSchemas["IntegrationBlueprintVerificationRecord"];
+export type StartTaskResponse = RootSchemas["StartTaskResponse"];
+export type CloseTaskResponse = RootSchemas["CloseTaskResponse"];
 
 // ---------------------------------------------------------------------------
 // [backend-verified shape — see discovery spec] POST /tenant/api-keys → 201.

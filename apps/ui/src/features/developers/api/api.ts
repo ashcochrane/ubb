@@ -2,15 +2,9 @@
 // reject with a typed ApiProblem. Untyped bodies are narrowed via the
 // functions in ./types (the only place their shapes are assumed).
 
-import { meteringApi, rootApi, tenantApi } from "@/api/client";
+import { rootApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
-import {
-  customerIdsIn,
-  FIELD_AXIS,
-  SUPPLIER_COGS,
-} from "@/lib/economic-query";
-
 
 import {
   toApiKeyCreated,
@@ -24,11 +18,10 @@ import {
   type ApiKeyRotated,
   type Blueprint,
   type BlueprintSelection,
-  type CustomerChoice,
+  type BlueprintVerification,
+  type BlueprintVerificationRequest,
   type EventTypeChoice,
   type KindChoice,
-  type RecordUsageRequest,
-  type RecordUsageResponse,
   type SandboxKeyMinted,
   type SandboxStatus,
 } from "./types";
@@ -88,31 +81,6 @@ export async function createSandbox(): Promise<SandboxKeyMinted> {
   return toSandboxKeyMinted(unwrap(await tenantApi.POST("/sandbox")));
 }
 
-/** Customer choices for the test-console picker (current period, no filters).
- *
- *  The window is left to the server, which defaults it to the current month to
- *  date — the same default the margin list had. */
-export async function listCustomerChoices(): Promise<CustomerChoice[]> {
-  const answer = unwrap(
-    await meteringApi.GET("/analytics/economics", {
-      params: {
-        query: { measures: [SUPPLIER_COGS], group_by: [FIELD_AXIS("customer")] },
-      },
-    }),
-  );
-  return customerIdsIn(answer).map((customer_id) => ({ customer_id }));
-}
-
-/**
- * Record one usage event. One-rule contract: HTTP 200 even for the tipping
- * event past a limit — the stop instruction rides the response body.
- */
-export async function sendTestEvent(
-  body: RecordUsageRequest,
-): Promise<RecordUsageResponse> {
-  return unwrap(await meteringApi.POST("/usage", { body }));
-}
-
 // ---------------------------------------------------------------------------
 // The Code Builder (#579)
 
@@ -123,6 +91,25 @@ export async function sendTestEvent(
  */
 export async function resolveBlueprint(selection: BlueprintSelection): Promise<Blueprint> {
   return unwrap(await rootApi.POST("/code-builder/blueprints", { body: selection }));
+}
+
+/**
+ * Verify the Blueprint stored under a fingerprint (#580), with the
+ * developer's samples. At the Write floor. The run builds the stored
+ * configuration in a workspace that is rolled back, so nothing it records
+ * outlives the answer; a precondition it does not meet is a refusal before
+ * anything runs.
+ */
+export async function verifyBlueprint(
+  fingerprint: string,
+  body: BlueprintVerificationRequest,
+): Promise<BlueprintVerification> {
+  return unwrap(
+    await rootApi.POST("/code-builder/blueprints/{configuration_fingerprint}/verify", {
+      params: { path: { configuration_fingerprint: fingerprint } },
+      body,
+    }),
+  );
 }
 
 /** Every declared kind of work, retired ones included — the choices Configure offers. */

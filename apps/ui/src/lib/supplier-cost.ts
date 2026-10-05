@@ -212,7 +212,9 @@ export function partialTotalNote(unresolvedEventCount: number): string | null {
 // registry's (`@/lib/vocabulary`), expression the catalogue's (`@/locales`) —
 // the split `@/lib/products` and `events/lib/measurements` both make. This one
 // sits in `lib/` because two features read it: the event receipt and the
-// developer test console's recorded response.
+// Code Builder's Verify acknowledgements (`developers/components/
+// acknowledgement-card.tsx`, which was the test console's response card until
+// #581 deleted the console).
 
 /** The catalogue's name for a supplier cost's costing status. */
 export const costingStatusLabel = labelMap(COSTING_STATUS_LABEL_KEYS);

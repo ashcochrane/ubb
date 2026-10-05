@@ -1,0 +1,26 @@
+{
+  "blueprint": "blocked",
+  "configuration_fingerprint": "sha256:f36b9edbfe6646d031e736801c64c289853eeb2effdf63eb74e2a269e34aba88",
+  "request": {
+    "records": [
+      {
+        "event_type": "draft.only",
+        "measurements": {
+          "searches": 1
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 422,
+  "answer": {
+    "type": "https://ubb.dev/errors/event_type_not_available",
+    "title": "The configuration being verified does not publish this Event Type",
+    "status": 422,
+    "code": "event_type_not_available",
+    "detail": "the configuration being verified does not publish 'draft.only': an Event Type is available to a verification only if the Blueprint selected it and resolved it from a publication",
+    "event_types": [
+      "draft.only"
+    ]
+  }
+}
