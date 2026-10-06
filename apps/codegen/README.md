@@ -132,9 +132,10 @@ Two classes and no third. **Provenance** is generated from the Blueprint in one 
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
 closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
-`tests/__snapshots__/catalogue.v2.json` — a file named for the version, so a change under an
+`tests/__snapshots__/catalogue.v3.json` — a file named for the version, so a change under an
 unchanged number is a diff a reviewer reads. It is one catalogue for both targets, so both state
-its version: adding the shell target's members made it version 2 for Python's files too.
+its version: adding the shell target's members made it version 2 for Python's files too, and
+rewording the shell file's refusal of an old jq made it version 3 (#582).
 Its symbols (`UBB_API_KEY`, `UBB_BASE_URL`, `stop_requested`, `UBB_EXIT_STOP_REQUESTED` = 20, and
 the other statuses and names a shell file is made of) are the renderer's own and are not registry
 concepts.
@@ -190,6 +191,21 @@ fails that target's tests.
 
 CI runs all three in the `codegen` job on every push and pull request, and
 `tests/contracts/test_the_renderer_suite_is_enforced.py` holds the steps to being unconditional.
+
+## Run against the real application
+
+This package's suite runs what it renders against a local stand-in. The execution suite at the
+git root, `tests/code_builder_execution/` (#582, its own CI job `code-builder-execution`), runs it
+against the real application instead: a Blueprint resolved through the platform's route, rendered
+here, written to disk unpatched, run as a customer runs it, and its records asserted. It renders
+through `scripts/render.ts`, which reads a Blueprint on standard input and prints exactly what
+`render` returns (`tests/render-script.test.ts` holds it to that):
+
+```
+node --experimental-strip-types apps/codegen/scripts/render.ts < blueprint.json
+```
+
+It lives outside `src/` because it reads a stream, which nothing under `src/` may.
 
 Decisions and their reasons:
 `docs/adr/0016-generated-integration-code-is-a-module-and-value-free-call-sites.md` (the package

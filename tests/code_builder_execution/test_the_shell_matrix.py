@@ -1,0 +1,78 @@
+"""The standing matrix of shells, and the one case in it that must fail
+(#582; ADR-0017 §3 left the matrix to this suite).
+
+The generated shell file runs under every shell in `_scenarios.MATRIX` — dash,
+bash 5.2, bash 3.2 (what macOS ships as `bash` and as `sh`) and dash with the
+oldest jq the file runs with — and the lifecycle and both stop scenarios run
+in each, against the real application (`test_every_scenario_runs_unmodified`);
+every other shell scenario runs under dash and bash.
+
+What decided how the file hands jq its programs is kept as two scripts in the
+renderer's harness: the form it writes (a heredoc on jq's standard input) and
+the form it decided against (a heredoc inside a command substitution). Both
+carry every kind of declared name on every shell but one: bash 3.2 reads a
+heredoc inside `$( )` as shell, and one backtick in a name ends it. So across
+the whole matrix exactly one of these runs fails, and it is that one.
+"""
+import json
+import subprocess
+
+import pytest
+
+from _harness import REPO_ROOT, Ran, in_image
+from _scenarios import MATRIX
+
+EVIDENCE = REPO_ROOT / "apps" / "codegen" / "tests" / "harness"
+CHOSEN = "heredoc_from_standard_input"
+DECIDED_AGAINST = "heredoc_as_an_argument"
+
+#: The one shell that reads a heredoc inside a substitution as shell.
+BASH_3_2 = "bash@bash-3.2"
+
+#: Every name the two scripts carry, as each declares it.
+CARRIED = {
+    "it's": "it's",
+    "$HOME": "$HOME",
+    "$(touch made-by-a-name)": "$(touch made-by-a-name)",
+    "back`tick": "back`tick",
+    "back\\slash\\n": "back\\slash\\n",
+    "naïve–日本語": "naïve–日本語",
+    "cache-read": "cache-read",
+    "cache read tokens": "cache read tokens",
+    "unbalanced)": "unbalanced)",
+    "UBB_JQ": "UBB_JQ",
+}
+
+
+def _run(form, shell, directory) -> Ran:
+    ran = subprocess.run(
+        in_image(shell.image, shell.command, f"/evidence/{form}.sh",
+                 work=directory, volumes={EVIDENCE: "/evidence:ro"}),
+        capture_output=True)
+    return Ran(status=ran.returncode,
+               stdout=ran.stdout.decode("utf-8"),
+               stderr=ran.stderr.decode("utf-8", "replace"))
+
+
+@pytest.mark.parametrize("shell", MATRIX, ids=[shell.name for shell in MATRIX])
+@pytest.mark.parametrize("form", [CHOSEN, DECIDED_AGAINST])
+def test_only_bash_3_2_fails_and_only_the_form_decided_against(
+        form, shell, tmp_path):
+    ran = _run(form, shell, tmp_path)
+
+    if (form, shell.name) == (DECIDED_AGAINST, BASH_3_2):
+        assert ran.status != 0, ran
+        assert "bad substitution" in ran.stderr, ran
+        assert "carried" not in ran.said, ran
+    else:
+        assert (ran.status, ran.stderr) == (0, ""), ran
+        assert json.loads(ran.said["carried"]) == CARRIED
+        assert ran.said["ran_anything"] == "no", ran
+    # Whichever way it went, no declared name ran as a command.
+    assert not (tmp_path / "made-by-a-name").exists()
+
+
+def test_the_matrix_holds_the_shell_that_decided_it():
+    """Vacuity guard: without bash 3.2 in the matrix the case above that
+    must fail is never run."""
+    assert BASH_3_2 in [shell.name for shell in MATRIX]

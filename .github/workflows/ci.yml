@@ -481,3 +481,96 @@ jobs:
 
       - name: Codegen tests — every renderer branch, compiled and run
         run: pnpm --dir apps/codegen test
+
+  # The Code Builder's execution suite (#582; ADR-0008 §5, G25): a complete
+  # Blueprint, resolved through the platform's route, rendered by
+  # `ubb-codegen`, written to disk unpatched and run as a customer runs it
+  # against the REAL application — the platform itself, served by
+  # pytest-django's `live_server` over Postgres and Redis — and its records
+  # asserted. Python runs on the runner against the SDK in this checkout;
+  # shell runs in pinned images (`tests/code_builder_execution/images/`), so
+  # the job needs Docker, and Node to render.
+  #
+  # A job of its own, and never steps on another: a step runs only if every
+  # step before it passed, and nothing else's failure may stop this suite
+  # running. DEBUG is True for the reason the `test` job's is: with it False
+  # every plain-http request is redirected, and neither curl nor the SDK
+  # follows a redirect.
+  #
+  # `tests/contracts/test_the_execution_suite_is_enforced.py` holds this job
+  # to being unconditional and able to fail the run: no `if:`, no
+  # `continue-on-error`, and no path filter on the workflow.
+  #
+  # Its id is the name of its check, which is what main's required checks
+  # list (a repository setting, made outside this file): do not rename it or
+  # give it a `name:` without changing that setting in the same breath, or
+  # the requirement names a check nothing reports.
+  code-builder-execution:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ubb
+          POSTGRES_PASSWORD: ubb
+          POSTGRES_DB: ubb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ubb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://ubb:ubb@localhost:5432/ubb
+      REDIS_URL: redis://localhost:6379/1
+      SECRET_KEY: ci-only-dummy-secret-key
+      DEBUG: "True"
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: ubb-platform/requirements.lock.txt
+
+      # The platform, which is the application the files are run against,
+      # and the SDK the generated Python is run against.
+      - name: Install the platform and the SDK (locked)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ubb-platform/requirements.lock.txt
+          pip install -e ./ubb-sdk
+
+      # Node runs the renderer straight from its TypeScript, which imports
+      # nothing but its own modules: no workspace install is needed.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # There is no skip in the suite, so a runner that stopped carrying one
+      # of these would fail the tests. This step fails first and says which,
+      # and puts in every run's log the versions that rendered and ran.
+      - name: Execution tools — what renders the files and runs them
+        run: |
+          node --version
+          docker version
+          docker buildx version
+
+      - name: Code Builder execution — complete artifacts run unmodified against the real application
+        run: python -m pytest tests/code_builder_execution

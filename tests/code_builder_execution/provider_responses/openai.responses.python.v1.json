@@ -1,0 +1,33 @@
+{
+  "id": "resp_67f0c3a2b1d84e9f",
+  "object": "response",
+  "created_at": 1759651200,
+  "status": "completed",
+  "model": "gpt-4.1-2025-04-14",
+  "output": [
+    {
+      "type": "message",
+      "id": "msg_67f0c3a2b1d84ea0",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "The quarterly report is attached.",
+          "annotations": []
+        }
+      ]
+    }
+  ],
+  "usage": {
+    "input_tokens": 1200,
+    "input_tokens_details": {
+      "cached_tokens": 0
+    },
+    "output_tokens": 340,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 1540
+  }
+}

@@ -67,6 +67,7 @@ import {
   type Plan,
   type Value,
 } from "./plan.ts";
+import { jqNeedsOf, jqProbe, type JqNeeds } from "./probe.ts";
 import {
   INDENT,
   jqLiteral,
@@ -301,7 +302,9 @@ function constants(): string[] {
   ];
 }
 
-function preflight(): string[] {
+/** Preflight, probing for exactly what `needs` says this file's programs
+ * ask of jq. */
+function preflight(needs: JqNeeds): string[] {
   const unavailable = status(SHELL_EXIT.toolUnavailable);
   return [
     ...asComments(SHELL_COMMENTS.preflight),
@@ -312,10 +315,7 @@ function preflight(): string[] {
     `${I2}return ${unavailable}`,
     `${I1}}`,
     `${I1}_ubb_probe=0`,
-    `${I1}jq --null-input --from-file /dev/stdin >/dev/null 2>&1 <<'${SHELL_FILE.heredoc}' || _ubb_probe=$?`,
-    ...SHELL_COMMENTS.preflightProgram.map((line) => `${I1}# ${line}`),
-    `${I1}{"preflight": true}`,
-    SHELL_FILE.heredoc,
+    ...jqProbe(I1, "_ubb_probe", needs),
     `${I1}[ "$_ubb_probe" -eq 0 ] || {`,
     `${I2}${say(SHELL_MESSAGES.jqUnusable)}`,
     `${I2}return ${unavailable}`,
@@ -922,28 +922,29 @@ export function renderModule(plan: Plan): string {
   );
   const close = callFunction(uses, plan.close, SHELL_COMMENTS.close);
 
+  // Everything after preflight, first: what preflight probes for is read off
+  // the programs these hold.
+  const after = [
+    environment(plan),
+    request(plan),
+    started(),
+    acknowledgement(),
+    parameterHelpers(uses),
+    uses.notReady ? notReadyHelper() : [],
+    uses.reportedCost ? reportedCostHelpers() : [],
+    start,
+    runTask(),
+    ...subtasks,
+    ...records,
+    close,
+  ];
   const lines = [
     ...headerText(plan.header, plan.calls, SHELL_READINESS_COMMENTS, [
       ...SHELL_COMMENTS.legend,
       "",
       ...SHELL_COMMENTS.usage,
     ]).map((line) => (line === "" ? "" : `# ${line}`)),
-    ...section(
-      constants(),
-      preflight(),
-      environment(plan),
-      request(plan),
-      started(),
-      acknowledgement(),
-      parameterHelpers(uses),
-      uses.notReady ? notReadyHelper() : [],
-      uses.reportedCost ? reportedCostHelpers() : [],
-      start,
-      runTask(),
-      ...subtasks,
-      ...records,
-      close,
-    ),
+    ...section(constants(), preflight(jqNeedsOf(after.flat().join("\n"))), ...after),
   ];
   return `${lines.join("\n")}\n`;
 }

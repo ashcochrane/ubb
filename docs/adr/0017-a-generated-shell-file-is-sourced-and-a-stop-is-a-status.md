@@ -42,11 +42,28 @@ tested where it is produced and every variable is assigned before it is read. Th
 blocks hold to the same: none of them has a line a shell option decides whether is reached.
 
 **Preflight is lazy, and probes capability.** The first thing a call does is check, once, that jq
-is present and can run a program read from standard input that holds comments, and that curl is
-present and has `--fail-with-body`. A probe runs the construct the file is about to use and reads
-no version string. It contacts nothing, creates nothing, and is the same text whatever a tenant
-declared. A call that is NOT READY refuses before preflight, so a scaffold says what is missing on
-a machine with neither tool.
+is present and can run this file's own programs, and that curl is present and has
+`--fail-with-body`. A probe runs the construct the file is about to use and reads no version
+string. **Preflight succeeds if and only if this jq can run this file's programs** (owner's review
+of #602): the jq probe is derived from the file's programs as rendered — it passes each option they
+pass, uses each keyword form they use, and names each function they call inside a branch that is
+never taken, so jq must resolve every one to compile the probe and runs none — and asks for nothing
+else. The options, forms and functions it knows are one closed table (`src/shell/probe.ts`): a
+program asking jq for anything outside it refuses to render. The probe contacts nothing, creates
+nothing, and no declared name reaches it; what differs between two files' probes is only which
+entries of that table their programs use. A call that is NOT READY refuses before preflight, so a
+scaffold says what is missing on a machine with neither tool.
+
+*Amended by #582.* The probe first asked only for a program from standard input that holds
+comments, and was the same for every file. jq 1.3 and 1.4 do both and have no `--argjson` or
+`--slurpfile` (both arrived in 1.5), so on them the file passed preflight, started a unit of work,
+and failed at its first program with a status that blamed the value. A pinned image of jq 1.4, run
+against the real application (`tests/code_builder_execution/`), found it. The probe is now derived
+as above. Run against jq 1.3, 1.4, 1.5 and 1.7.1, gojq and jaq for all twenty committed shell
+files, its verdict matched whether that jq could compile the file's programs every time — gojq, for
+one, runs every runnable file but has no `keys_unsorted`, which only the verify script uses, and is
+refused there alone. The refusal names jq 1.5 or later as the version that runs every file the
+renderer writes, and a lifecycle is run on jq 1.5.
 
 The verify script is the one file that is run and not sourced, so it ends with `exit`. It needs
 jq and not curl.
@@ -363,7 +380,8 @@ built, the boundary declared work that returned a failure `failed`, and the oute
    substitution, and both the losing form's reproduction and the structural test kept.
 6. **Approved as built**: `name=value` arguments and refusal before any side effect, the cost
    converted on its text, a response as a file, one preview a call, no host, no curl timeout the
-   renderer made up, and catalogue version 2.
+   renderer made up, and catalogue version 2 (version 3 since #582, which reworded the refusal of
+   an old jq — see the amendment to §1).
 
 **A path for work that has already happened is not rendered, and that is a stated limitation of
 this target in v1** (ruling 6), not something a shell file is implied to do. The Python target has
@@ -374,7 +392,8 @@ a call that must not interrupt a backlog. **A tenant with a backlog to record us
 target.** A shell path can be added without breaking a file already generated.
 
 The fields #569 will publish in a stop's metadata (#585). Execution against the real application,
-and images that really lack a tool or carry an old one (#582). A cost read off a supplier's
+and images that really lack a tool or carry an old one, are #582's and are in
+`tests/code_builder_execution/`, with the standing matrix of shells. A cost read off a supplier's
 response, a constant's value and a missing agreed price (#583, #584, #586): each arrives as tokens
 and needs no new rule here.
 
@@ -384,7 +403,9 @@ and needs no new rule here.
 |---|---|
 | §1 — never exits, sets no option, holds no variable of another spelling | `apps/codegen/tests/shell.artifact.test.ts` — "never exits the shell that sources it, and sets none of its options", "holds no variable of its own that is not spelled UBB_ or _ubb_" |
 | §1 — the same under `sh` and `bash`, with `set -eu` or without | `apps/codegen/tests/shell.execution.test.ts` — "runs the same under %s, with set -eu or without" |
-| §1 — preflight refuses before any request, is the same text for every tenant, and sourcing does nothing | same module — "refuses before any request where %s", "probes with nothing of the tenant's, and creates nothing", "does nothing when the file is sourced, and never ends the shell that sourced it" |
+| §1 — preflight refuses before any request, holds nothing of the tenant's, and sourcing does nothing | same module — "refuses before any request where %s", "probes with nothing of the tenant's, and creates nothing", "does nothing when the file is sourced, and never ends the shell that sourced it" |
+| §1 — the jq probe asks for exactly what the file's own programs ask of jq, and a program asking for what no probe knows refuses to render | same module — "probes for exactly what the file's own programs ask of jq, and no more", "refuses to render a program that asks jq for what no probe knows" |
+| §1 — on machines that really lack jq or curl, or carry a jq or a curl too old, the file is refused before any request, unit of work or temporary file, against the real application | `tests/code_builder_execution/test_preflight_refuses_before_any_request.py::test_a_machine_without_a_tool_it_needs_is_refused_before_any_request` |
 | §2 — every runtime value a `name=value` parameter at its own call; left out, empty or not the call's is refused | `apps/codegen/tests/shell.artifact.test.ts` — "asks for every runtime value as a name=value parameter, at the call it is declared for"; `apps/codegen/tests/shell.execution.test.ts` — "refuses, naming it, a runtime value left out, passed empty, or not the call's" |
 | §2 — no declared name is a name the shell, jq or the file already has | `apps/codegen/tests/shell.artifact.test.ts` — "gives a parameter no name the shell or jq could already have a meaning for"; `apps/codegen/tests/shell.execution.test.ts` — "can never stand in front of a name the shell, jq or the file already has: %s" |
 | §2 — a quantity is a whole number carried exactly, or refused, passed in or read off a response | `apps/codegen/tests/shell.execution.test.ts` — "refuses a quantity that is not a whole number it can carry exactly", "refuses to record from a response that does not hold what a declared path reads" |

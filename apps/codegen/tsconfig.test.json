@@ -4,7 +4,9 @@
     "target": "ES2022",
     "lib": ["ES2022"],
     /* The tests are where the filesystem and a Python interpreter are reached:
-       they read committed fixtures and execute what the renderer returned. */
+       they read committed fixtures and execute what the renderer returned.
+       `scripts/` is the one other place: it hands `render` a Blueprint read
+       from standard input, for a process that cannot import TypeScript. */
     "types": ["node"],
     "module": "ESNext",
     "skipLibCheck": true,
@@ -24,5 +26,5 @@
     "noUncheckedIndexedAccess": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "tests", "vitest.config.ts"]
+  "include": ["src", "tests", "scripts", "vitest.config.ts"]
 }

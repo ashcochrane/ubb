@@ -66,6 +66,12 @@ Django (`pip install -r tests/contracts/requirements.txt` — two pinned package
   (Windows), `UBB_CODEGEN_SHELL_IMAGE=<image>` runs those tests in a container built from
   `apps/codegen/tests/harness/Dockerfile`. Its fixtures are written by the platform suite — see
   `apps/codegen/README.md`
+- Code Builder execution (Seam C, #582; from the git root):
+  `python -m pytest tests/code_builder_execution` — complete artifacts rendered, written unpatched
+  and run as a customer runs them against the real application (`live_server`). Needs Postgres,
+  Redis, Node 22.6+ and Docker; it uses the platform's test database, so never beside another
+  platform `pytest` on the same one. Its own CI job, `code-builder-execution`. See
+  `tests/code_builder_execution/README.md`.
 
 Celery + the outbox drive async work; entry point is `config/settings.py`.
 

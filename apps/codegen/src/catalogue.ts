@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 2;
+export const CATALOGUE_VERSION = 3;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -476,7 +476,9 @@ export const SHELL_COMMENTS = {
     "contacts nothing and creates nothing.",
   ],
   preflightProgram: [
-    "A generated jq program is read from standard input and holds comments.",
+    "A program of this file's own form: read from standard input, holding",
+    "comments, passing each option and using each form its programs use, and",
+    "naming each function they call in a branch that is never taken.",
   ],
   environment: [
     "Both variables are required, and are read each time a request is made.",
@@ -631,7 +633,7 @@ export const MESSAGES = {
  */
 export const SHELL_MESSAGES = {
   jqMissing: "This file requires jq, and none is installed.",
-  jqUnusable: "The installed jq cannot run a program read from standard input.",
+  jqUnusable: "The installed jq cannot run the programs this file hands it. jq 1.5 or later can.",
   curlMissing: "This file requires curl, and none is installed.",
   curlUnusable: "The installed curl has no --fail-with-body. curl 7.76 or later has it.",
   missing: "is required, and was left out or passed empty.",

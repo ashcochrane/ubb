@@ -59,3 +59,10 @@ apps/codegen/tests/__snapshots__/** text eol=lf
 # shell reads a carriage return at the end of a line as part of the line, so a
 # checkout with core.autocrlf set would hand it a script that does not parse.
 apps/codegen/tests/harness/** text eol=lf
+
+# What the execution suite (#582) hands a container: the image definitions it
+# builds and the supplier responses a generated shell file reads. Pinned so a
+# checkout with core.autocrlf set hands Docker and the shell the same bytes a
+# Linux checkout does, and the images it proves the file on are the same ones.
+tests/code_builder_execution/images/** text eol=lf
+tests/code_builder_execution/provider_responses/** text eol=lf
