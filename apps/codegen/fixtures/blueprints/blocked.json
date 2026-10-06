@@ -3,7 +3,7 @@
   "renderer_contract_version": 1,
   "target": "python_sdk",
   "sdk_major_version": 3,
-  "configuration_fingerprint": "sha256:f36b9edbfe6646d031e736801c64c289853eeb2effdf63eb74e2a269e34aba88",
+  "configuration_fingerprint": "sha256:d0445a6196eb6c8f8ec7fd9706d0d241d78013000d7c3cb2afedb04c5a463108",
   "readiness": "blocked",
   "calls": [
     {
@@ -648,23 +648,11 @@
   "diagnostics": [
     {
       "severity": "blocking",
-      "code": "constant_value_not_declared",
+      "code": "constant_measurement_not_renderable",
       "object_kind": "measurement",
       "key": "chat.completion:flat_fee",
       "field": "source_kind",
-      "remediation_request": {
-        "method": "PUT",
-        "route": "/api/v1/event-types/chat.completion/measurements/flat_fee",
-        "operation_id": "api_v1_event_type_endpoints_declare_measurement",
-        "body": {
-          "display_name": null,
-          "value_type": null,
-          "unit": null,
-          "required_for_costing": null,
-          "source_kind": null,
-          "source_path": null
-        }
-      }
+      "remediation_request": null
     },
     {
       "severity": "blocking",
@@ -682,7 +670,8 @@
           "unit": null,
           "required_for_costing": null,
           "source_kind": null,
-          "source_path": null
+          "source_path": null,
+          "constant_value": null
         }
       }
     },

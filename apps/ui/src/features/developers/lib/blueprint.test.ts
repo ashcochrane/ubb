@@ -22,6 +22,7 @@ import {
   subjectOf,
   TERMINAL_STOP_EVENTS,
 } from "./blueprint";
+import { diagnosticCodeLabel } from "./code-builder-words";
 
 // ---------------------------------------------------------------------------
 // Hand-built tokens, for the cases no platform-written fixture holds. A
@@ -278,11 +279,26 @@ describe("what answers a diagnostic", () => {
 
   it("offers the server's request for an object with no console screen", async () => {
     const blocked = await loadBlueprintFixture("blocked");
+    // The one code naming what this Code Builder cannot yet generate rather
+    // than anything to change: the server sends no request for it (#571).
+    const withAFix = blocked.diagnostics.filter((d) => d.code !== "constant_measurement_not_renderable");
 
-    expect(blocked.diagnostics.length).toBeGreaterThan(0);
-    for (const diagnostic of blocked.diagnostics) {
+    expect(withAFix.length).toBeGreaterThan(0);
+    expect(withAFix.length).toBe(blocked.diagnostics.length - 1);
+    for (const diagnostic of withAFix) {
       expect(fixFor(diagnostic)).toEqual({ kind: "request", request: diagnostic.remediation_request });
     }
+  });
+
+  it("offers nothing to change for a valid constant, and says only this version cannot use it", async () => {
+    const constant = await loadBlueprintFixture("constant");
+
+    expect(constant.diagnostics.map((d) => d.code)).toEqual(["constant_measurement_not_renderable"]);
+    expect(constant.diagnostics.map(fixFor)).toEqual([{ kind: "none" }]);
+    const label = diagnosticCodeLabel("constant_measurement_not_renderable");
+    expect(label).toContain("valid configuration");
+    expect(label).toContain("this Code Builder version cannot yet generate");
+    expect(label).not.toMatch(/missing|not declared|no declared value|unsupported/i);
   });
 
   it("points a kind of work at its page, or at Tasks where it is not declared", () => {

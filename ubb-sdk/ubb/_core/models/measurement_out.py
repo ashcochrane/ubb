@@ -27,6 +27,11 @@ class MeasurementOut:
         Attributes:
             advisories (list[str]):
             code (str):
+            constant_value (None | str): A constant quantity's declared value: an exact decimal written as a string, for
+                both value types. `value_type` gives its meaning: an `integer` constant is a whole number, and a `decimal` one
+                may carry a fraction. It is text so that no binary float carries it, and it is not evidence that the value is a
+                string. Present exactly when `source_kind` is `constant`. Null for every other kind. Always in its canonical
+                form: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.
             display_name (str):
             required_for_costing (bool):
             source_kind (MeasurementOutSourceKind):
@@ -37,6 +42,7 @@ class MeasurementOut:
 
     advisories: list[str]
     code: str
+    constant_value: None | str
     display_name: str
     required_for_costing: bool
     source_kind: MeasurementOutSourceKind
@@ -55,6 +61,9 @@ class MeasurementOut:
 
 
         code = self.code
+
+        constant_value: None | str
+        constant_value = self.constant_value
 
         display_name = self.display_name
 
@@ -76,6 +85,7 @@ class MeasurementOut:
         field_dict.update({
             "advisories": advisories,
             "code": code,
+            "constant_value": constant_value,
             "display_name": display_name,
             "required_for_costing": required_for_costing,
             "source_kind": source_kind,
@@ -95,6 +105,14 @@ class MeasurementOut:
 
 
         code = d.pop("code")
+
+        def _parse_constant_value(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        constant_value = _parse_constant_value(d.pop("constant_value"))
+
 
         display_name = d.pop("display_name")
 
@@ -118,6 +136,7 @@ class MeasurementOut:
         measurement_out = cls(
             advisories=advisories,
             code=code,
+            constant_value=constant_value,
             display_name=display_name,
             required_for_costing=required_for_costing,
             source_kind=source_kind,

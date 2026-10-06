@@ -343,10 +343,16 @@ describe("the header", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      expect(lines).toContain(
-        `remediation_request = ${JSON.stringify(diagnostic.remediation_request)}`,
-      );
+      // A diagnostic with nothing to change carries no request (#571), and
+      // the header then states none rather than a null.
+      const request = diagnostic.remediation_request ?? null;
+      const stated = `remediation_request = ${JSON.stringify(request)}`;
+      if (request === null) expect(lines).not.toContain(stated);
+      else expect(lines).toContain(stated);
     }
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
   });
 
   it("lists a diagnostic that names no declaration, and offers no request for it", () => {
@@ -398,7 +404,8 @@ describe("the header", () => {
 
   it("is the same whatever a diagnostic's request is, but for the line that states it", () => {
     const blueprint = fixture("blocked");
-    blueprint.diagnostics[0]!.remediation_request!.route = "/api/v1/somewhere-else";
+    blueprint.diagnostics.find((d) => d.remediation_request != null)!.remediation_request!.route =
+      "/api/v1/somewhere-else";
 
     const changed = only(render(blueprint), "module").contents.split("\n");
     const original = moduleOf("blocked").contents.split("\n");

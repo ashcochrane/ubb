@@ -132,10 +132,11 @@ Two classes and no third. **Provenance** is generated from the Blueprint in one 
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
 closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
-`tests/__snapshots__/catalogue.v3.json` — a file named for the version, so a change under an
+`tests/__snapshots__/catalogue.v4.json` — a file named for the version, so a change under an
 unchanged number is a diff a reviewer reads. It is one catalogue for both targets, so both state
-its version: adding the shell target's members made it version 2 for Python's files too, and
-rewording the shell file's refusal of an old jq made it version 3 (#582).
+its version: adding the shell target's members made it version 2 for Python's files too,
+rewording the shell file's refusal of an old jq made it version 3 (#582), and replacing one
+diagnostic code's remediation with another's made it version 4 (#571).
 Its symbols (`UBB_API_KEY`, `UBB_BASE_URL`, `stop_requested`, `UBB_EXIT_STOP_REQUESTED` = 20, and
 the other statuses and names a shell file is made of) are the renderer's own and are not registry
 concepts.

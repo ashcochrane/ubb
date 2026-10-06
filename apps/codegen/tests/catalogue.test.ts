@@ -161,6 +161,18 @@ describe("what the catalogue says about a registry concept", () => {
     expect(Object.keys(REMEDIATION).sort()).toEqual(REGISTRY.values.diagnostic_code);
   });
 
+  it("says a valid constant waits only on this version, never that its value is missing", () => {
+    // #571: a constant is declared with its value, so the declaration is
+    // complete and only the Code Builder lacks something. Nothing may read as
+    // a fault in the declaration, or as constants not being supported.
+    const words = REMEDIATION.constant_measurement_not_renderable.join(" ");
+
+    expect(words).toContain("valid platform configuration");
+    expect(words).toContain("This Code Builder version cannot yet generate code that uses");
+    expect(words).toContain("Nothing in the declaration needs to change.");
+    expect(words).not.toMatch(/missing|not declared|unsupported|request below/i);
+  });
+
   it("agrees with the committed contract about which codes there are", () => {
     const known = JSON.parse(
       readFileSync(join(REPO_ROOT, "openapi", "known-values.json"), "utf-8"),

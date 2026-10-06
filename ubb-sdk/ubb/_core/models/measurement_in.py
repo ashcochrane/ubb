@@ -35,6 +35,12 @@ class MeasurementIn:
             source_kind (MeasurementInSourceKind):
             unit (str):
             value_type (MeasurementInValueType):
+            constant_value (None | str | Unset): A constant quantity's declared value: an exact decimal written as a string,
+                for both value types. `value_type` gives its meaning: an `integer` constant is a whole number, and a `decimal`
+                one may carry a fraction. It is text so that no binary float carries it, and it is not evidence that the value
+                is a string. Present exactly when `source_kind` is `constant`. Accepted as base-10 digits with an optional
+                leading `-` and an optional fractional part, with a digit on each side of the point: no exponent, no `+`, and no
+                spaces, separators or locale formatting. Stored and answered in its canonical form.
             display_name (str | Unset):  Default: ''.
             required_for_costing (bool | Unset):  Default: False.
             source_path (list[str] | Unset):
@@ -43,6 +49,7 @@ class MeasurementIn:
     source_kind: MeasurementInSourceKind
     unit: str
     value_type: MeasurementInValueType
+    constant_value: None | str | Unset = UNSET
     display_name: str | Unset = ''
     required_for_costing: bool | Unset = False
     source_path: list[str] | Unset = UNSET
@@ -58,6 +65,12 @@ class MeasurementIn:
         unit = self.unit
 
         value_type = self.value_type.value
+
+        constant_value: None | str | Unset
+        if isinstance(self.constant_value, Unset):
+            constant_value = UNSET
+        else:
+            constant_value = self.constant_value
 
         display_name = self.display_name
 
@@ -77,6 +90,8 @@ class MeasurementIn:
             "unit": unit,
             "value_type": value_type,
         })
+        if constant_value is not UNSET:
+            field_dict["constant_value"] = constant_value
         if display_name is not UNSET:
             field_dict["display_name"] = display_name
         if required_for_costing is not UNSET:
@@ -103,6 +118,16 @@ class MeasurementIn:
 
 
 
+        def _parse_constant_value(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        constant_value = _parse_constant_value(d.pop("constant_value", UNSET))
+
+
         display_name = d.pop("display_name", UNSET)
 
         required_for_costing = d.pop("required_for_costing", UNSET)
@@ -114,6 +139,7 @@ class MeasurementIn:
             source_kind=source_kind,
             unit=unit,
             value_type=value_type,
+            constant_value=constant_value,
             display_name=display_name,
             required_for_costing=required_for_costing,
             source_path=source_path,

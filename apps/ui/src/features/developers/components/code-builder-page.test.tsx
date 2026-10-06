@@ -231,10 +231,17 @@ describe("the Blueprint stage", () => {
     const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
     const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
 
-    expect(blocks).toHaveLength(blocked.diagnostics.length);
-    for (const diagnostic of blocked.diagnostics) {
+    // The one diagnostic naming what this Code Builder cannot yet generate
+    // offers nothing to change, so it renders its words and no request (#571).
+    const withARequest = blocked.diagnostics.filter((d) => d.remediation_request != null);
+    expect(blocked.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
+    expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
+    expect(blocks).toHaveLength(withARequest.length);
+    for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;
-      if (!request) throw new Error("every diagnostic in this fixture carries a request");
+      if (!request) throw new Error("filtered to the diagnostics carrying a request");
       // Two diagnostics can share an operation; the route names the object.
       const block = blocks.find((candidate) =>
         candidate.textContent?.includes(`${request.method} ${request.route}`),

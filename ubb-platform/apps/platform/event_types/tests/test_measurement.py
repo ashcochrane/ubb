@@ -391,7 +391,10 @@ class TestTheSourceDeclaration:
         vocabulary has no design and no owner (#193 §D4). One path cannot
         express one, so a path here would be a claim this slice cannot honour.
         """
-        declared = _measurement(_event_type(_tenant()), source_kind=kind)
+        # A constant is declared with its value (#571); the others carry none.
+        value = "1" if kind == SOURCE_KIND_CONSTANT else None
+        declared = _measurement(_event_type(_tenant()), source_kind=kind,
+                                constant_value=value)
         declared.full_clean()
 
         declared.source_path = ["usage", "prompt_tokens"]

@@ -401,7 +401,12 @@ exclusions:
     # Grouping Field's scope. Both are state-only and neither names a retired
     # word, so the number moved for the files existing, and the sites and
     # terms held at 1 in 5.
-    files: 268
+    # 268 → 269 in #571: one migration, adding the column a constant
+    # Measurement declares its value in, its three rules, and a guard that
+    # refuses (and never invents a value for) any constant already declared
+    # without one. It names no retired word, so the number moved for the file
+    # existing, and the sites and terms held at 1 in 5.
+    files: 269
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

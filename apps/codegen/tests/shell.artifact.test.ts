@@ -513,10 +513,16 @@ describe("the header of a shell file", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      expect(lines).toContain(
-        `remediation_request = ${JSON.stringify(diagnostic.remediation_request)}`,
-      );
+      // A diagnostic with nothing to change carries no request (#571), and
+      // the header then states none rather than a null.
+      const request = diagnostic.remediation_request ?? null;
+      const stated = `remediation_request = ${JSON.stringify(request)}`;
+      if (request === null) expect(lines).not.toContain(stated);
+      else expect(lines).toContain(stated);
     }
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
   });
 
   it("says a response shape this target cannot read is why the file is blocked", () => {

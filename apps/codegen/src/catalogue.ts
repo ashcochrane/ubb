@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 3;
+export const CATALOGUE_VERSION = 4;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -277,9 +277,11 @@ export const REMEDIATION: Readonly<Record<DiagnosticCode, readonly string[]>> = 
     "generated call can carry a cost read that way. Declare it as supplied",
     "by the caller with the request below.",
   ],
-  constant_value_not_declared: [
-    "A constant quantity has no declared value, and none is made up for it.",
-    "Declare the quantity another way with the request below.",
+  constant_measurement_not_renderable: [
+    "The constant quantity is valid platform configuration, with its value",
+    "declared. This Code Builder version cannot yet generate code that uses",
+    "it, so the call is blocked until a version that can. Nothing in the",
+    "declaration needs to change.",
   ],
   derived_measurement_unsupported: [
     "A derived quantity cannot be computed by generated code. Declare the",

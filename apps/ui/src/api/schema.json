@@ -3503,7 +3503,7 @@
               "event_type_revised_since_publication",
               "reported_cost_mapping_missing",
               "reported_cost_provider_response_unsupported",
-              "constant_value_not_declared",
+              "constant_measurement_not_renderable",
               "derived_measurement_unsupported",
               "response_shape_not_declared",
               "response_shape_not_readable_by_target",
@@ -4533,6 +4533,19 @@
       "MeasurementIn": {
         "description": "One measurable quantity an Event Type produces.\n\nThe code is the path segment rather than a body field: it is this\ndeclaration's identity beneath its Event Type, and a body that could\ndisagree with the URL would make \"which declaration is this\" a question\nwith two answers.",
         "properties": {
+          "constant_value": {
+            "anyOf": [
+              {
+                "pattern": "^(-?[0-9]+(\\.[0-9]+)?)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A constant quantity's declared value: an exact decimal written as a string, for both value types. `value_type` gives its meaning: an `integer` constant is a whole number, and a `decimal` one may carry a fraction. It is text so that no binary float carries it, and it is not evidence that the value is a string. Present exactly when `source_kind` is `constant`. Accepted as base-10 digits with an optional leading `-` and an optional fractional part, with a digit on each side of the point: no exponent, no `+`, and no spaces, separators or locale formatting. Stored and answered in its canonical form.",
+            "title": "Constant Value"
+          },
           "display_name": {
             "default": "",
             "maxLength": 200,
@@ -4607,6 +4620,19 @@
             "title": "Code",
             "type": "string"
           },
+          "constant_value": {
+            "anyOf": [
+              {
+                "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A constant quantity's declared value: an exact decimal written as a string, for both value types. `value_type` gives its meaning: an `integer` constant is a whole number, and a `decimal` one may carry a fraction. It is text so that no binary float carries it, and it is not evidence that the value is a string. Present exactly when `source_kind` is `constant`. Null for every other kind. Always in its canonical form: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.",
+            "title": "Constant Value"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -4663,6 +4689,7 @@
           "required_for_costing",
           "source_kind",
           "source_path",
+          "constant_value",
           "advisories"
         ],
         "title": "MeasurementOut",

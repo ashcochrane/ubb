@@ -156,10 +156,18 @@ diagnostic_code:
   # `reported_cost_provider_response_unsupported`, which exists only because
   # that cost has no truthful request field today. The ticket that makes a
   # kind sold at one agreed price ready or not ADDS the member that says its
-  # price is missing. `constant_value_not_declared` stays when a constant's
-  # value becomes declarable — it remains true of one with no value — and
-  # `derived_measurement_unsupported` is a stated limitation with nothing
-  # designed to lift it.
+  # price is missing. `derived_measurement_unsupported` is a stated
+  # limitation with nothing designed to lift it.
+  #
+  # Changed by this rule once already (#571, owner confirmation of 2026-10-06
+  # on #571). A constant quantity is now declared WITH its value and refused
+  # without one, so "a constant with no value" is a state nothing produces and
+  # `constant_value_not_declared` was REMOVED. A constant with a value is
+  # valid configuration that this Code Builder version cannot yet generate
+  # code for, so `constant_measurement_not_renderable` was ADDED — named, like
+  # `response_shape_not_readable_by_target`, for a capability the Code Builder
+  # lacks rather than a fault in the declaration. The ticket that renders a
+  # constant's value (#584) REMOVES it.
   #
   # Named for the STATE of a declaration, `<object>_<what is true of it>`,
   # never for the ticket that will change it. A diagnostic carries no prose —
@@ -170,10 +178,10 @@ diagnostic_code:
     are structural and leave a call a scaffold: no kind of work or no Event
     Type selected, or one selected that is not declared. The rest either block
     a call — a retired kind, a required Grouping Field that cannot be supplied,
-    an Event Type with nothing published, a cost or a quantity UBB cannot yet
-    carry, a response shape the target cannot read — or advise without
-    blocking: a declaration revised since it was published, or a path that
-    looks inconsistent with its declared shape.
+    an Event Type with nothing published, a cost or a quantity generated code
+    cannot yet carry, a response shape the target cannot read — or advise
+    without blocking: a declaration revised since it was published, or a path
+    that looks inconsistent with its declared shape.
   values:
     - task_type_not_selected
     - task_type_not_declared
@@ -187,7 +195,7 @@ diagnostic_code:
     - event_type_revised_since_publication
     - reported_cost_mapping_missing
     - reported_cost_provider_response_unsupported
-    - constant_value_not_declared
+    - constant_measurement_not_renderable
     - derived_measurement_unsupported
     - response_shape_not_declared
     - response_shape_not_readable_by_target

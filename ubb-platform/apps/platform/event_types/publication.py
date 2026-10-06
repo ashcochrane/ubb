@@ -49,6 +49,10 @@ class PublishedMeasurement(NamedTuple):
     source_kind: str
     #: Canonical segments, as declared — never rendered here.
     source_path: tuple[str, ...]
+    #: A constant's value, in its one canonical exact-decimal form (#571);
+    #: `None` for every other kind. Text, and not evidence that the value is
+    #: a string: `value_type` says what kind of number it is.
+    constant_value: str | None
 
 
 class PublishedReportedCostMapping(NamedTuple):
@@ -146,8 +150,14 @@ def _in_the_reads_shape(pinned, *, published_revision, published_at):
         published_revision=published_revision,
         published_at=published_at,
         measurements=tuple(
-            PublishedMeasurement(**{**measurement, "source_path": tuple(
-                measurement["source_path"])})
+            PublishedMeasurement(**{
+                **measurement,
+                "source_path": tuple(measurement["source_path"]),
+                # A copy kept before #571 has no value at all. The migration
+                # that added it refused to run over any copy pinning a
+                # constant, so every quantity such a copy holds is one with no
+                # value: `None`, and nothing made up.
+                "constant_value": measurement.get("constant_value")})
             for measurement in measurements),
         reported_cost_mapping=(None if mapping is None else
                                PublishedReportedCostMapping(**{

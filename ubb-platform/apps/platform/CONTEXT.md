@@ -144,7 +144,8 @@ string is quarantined for later resolution, not silently declared.
 
 **Last-published declaration**:
 What an Event Type said at its current publication — the pinned elements of the Event Type and of
-every part beneath it (each Measurement with its structured path, and the reported-cost mapping),
+every part beneath it (each Measurement with its structured path or constant value, and the
+reported-cost mapping),
 with the revision and its date. A revision returns the Event Type to draft **in place**, so the
 catalogue's rows are the draft; this is the copy `publish` keeps beside the revision, in the same
 write, and returning to draft does not rewrite it (#573). It exists so that whatever must keep faith with an
@@ -176,7 +177,8 @@ historical money attribution, and nothing here is. An Event Type with no categor
 One declared quantity beneath an Event Type — a code and display name, a value type (`integer` or
 `decimal`, the registry's `measurement_value_type`), a unit, whether
 its absence blocks a complete cost (`required_for_costing`), and where the number comes from (a
-source kind plus a structured `source_path`). Before it, measured quantities travelled in a bare
+source kind plus a structured `source_path`, or, for a `constant`, its **constant value**). Before
+it, measured quantities travelled in a bare
 JSON bag and **a misspelled quantity was silently free**: it hit a `continue`, contributed nothing,
 and told nobody. Only a declared quantity may participate in monetary calculation. Declarations are
 **Event-Type-local** — the same code on two Event Types is two independent records that happen to
@@ -184,6 +186,19 @@ share a spelling, which is the correctness boundary, not a duplication to be cle
 (`apps/platform/event_types/models.py:Measurement`)
 _Avoid_: giving this record an amount or a currency — a reported supplier cost is money with a
 currency and is declared as a *sibling* of these, not as one of them.
+
+**Constant value** (of a constant Measurement):
+The number a `constant` Measurement declares with itself, because a constant's value is part of its
+declaration rather than something an event carries (#571). A constant without one is refused, and
+so is one on any other kind — there is no unfinished constant to come back to. It is one exact
+decimal, written as text in one canonical form for both value types: `value_type` says what kind of
+number it is (a whole count, or one that may carry a fraction), so the text is never evidence that
+the value is a string. It may be negative, nothing rounds it, and no precision limit governs it.
+Publication pins it like the rest of the declaration.
+(`apps/platform/event_types/models.py:Measurement`; `apps/platform/event_types/exact_decimals.py`)
+_Avoid_: reading it as an amount or a cost — it is a quantity in the Measurement's own unit; and
+reading a blocked Code Builder call over it as a fault in the declaration — the declaration is
+complete, and only this Code Builder version cannot yet generate code that uses it.
 
 **Measurement concept (analytics grouping)**:
 Two quantities a tenant has **said** mean the same thing, so one chart may add a supplier's
@@ -955,7 +970,8 @@ partly known.
 The immutable, content-addressed record of exactly what one Blueprint resolved. Its **identity** is
 the selection, the Blueprint's machine-readable resolution, and the configuration a sandbox would
 need to run it — the kinds with what they may spend and how they are sold, each Event Type as
-published, the required Grouping Fields, the rules that cost and price the selected quantities, the
+published (all but a constant's value, which it keeps only once a Code Builder version renders
+one), the required Grouping Fields, the rules that cost and price the selected quantities, the
 default markup, and the tenant fields a sandbox is provisioned from. Its `configuration_fingerprint`
 is `sha256:` and the hash of that identity: a **stable identity of the resolved contract**, not a
 hash of everything serialised. It includes which publication each Event Type was resolved from, so

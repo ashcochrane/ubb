@@ -594,6 +594,9 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
     measurement.required_for_costing = payload.required_for_costing
     measurement.source_kind = payload.source_kind
     measurement.source_path = list(payload.source_path)
+    # As written: the model puts it in its canonical form while validating,
+    # and refuses what is not one (#571).
+    measurement.constant_value = payload.constant_value
 
     _saved(measurement, action="measurement.declared", tenant=tenant,
            resource_type="measurement",

@@ -6,6 +6,8 @@ from ninja import Schema, Field
 from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
+from apps.platform.event_types.exact_decimals import (
+    ACCEPTED, CANONICAL, anchored)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
@@ -3799,6 +3801,27 @@ class PaginatedEventCategories(Paginated[EventCategoryOut]):
     pass
 
 
+#: What a constant's value is, said once and published on both schemas that
+#: carry it (#571; owner ruling on #571, comment 6024142285).
+CONSTANT_VALUE_MEANING = (
+    "A constant quantity's declared value: an exact decimal written as a "
+    "string, for both value types. `value_type` gives its meaning: an "
+    "`integer` constant is a whole number, and a `decimal` one may carry a "
+    "fraction. It is text so that no binary float carries it, and it is not "
+    "evidence that the value is a string. Present exactly when `source_kind` "
+    "is `constant`.")
+
+#: The grammars, stated on the contract rather than left as an unspecified
+#: string. A SCHEMA-ONLY `pattern`, deliberately: pydantic's own `pattern=`
+#: would refuse first with its wording, and the model's refusal states the
+#: rule and its reason (`exact_decimals.py` owns both grammars and the one
+#: function between them).
+DeclaredDecimal = Annotated[str, Field(
+    json_schema_extra={"pattern": anchored(ACCEPTED)})]
+CanonicalDecimal = Annotated[str, Field(
+    json_schema_extra={"pattern": anchored(CANONICAL)})]
+
+
 class MeasurementIn(Schema):
     """One measurable quantity an Event Type produces.
 
@@ -3819,6 +3842,18 @@ class MeasurementIn(Schema):
     #: an expression. The builder emits more than one language, and a stored
     #: expression is portable to none of them.
     source_path: List[str] = Field(default_factory=list)
+    #: Required for a `constant` and refused for every other kind — the
+    #: model's rule, stated there with its reason. Base-10 digits with an
+    #: optional leading `-` and an optional fractional part, a digit on each
+    #: side of the point; it is stored in its canonical form, so `01.500` and
+    #: `1.5` are one declaration.
+    constant_value: Optional[DeclaredDecimal] = Field(
+        default=None, description=(
+            f"{CONSTANT_VALUE_MEANING} Accepted as base-10 digits with an "
+            f"optional leading `-` and an optional fractional part, with a "
+            f"digit on each side of the point: no exponent, no `+`, and no "
+            f"spaces, separators or locale formatting. Stored and answered "
+            f"in its canonical form."))
 
 
 class MeasurementOut(Schema):
@@ -3829,6 +3864,11 @@ class MeasurementOut(Schema):
     required_for_costing: bool
     source_kind: SourceKind
     source_path: List[str]
+    #: Always present, null for every kind but `constant`.
+    constant_value: Optional[CanonicalDecimal] = Field(description=(
+        f"{CONSTANT_VALUE_MEANING} Null for every other kind. Always in its "
+        f"canonical form: no unnecessary leading zero, no trailing fractional "
+        f"zero or point, and `0` for every spelling of zero."))
     #: What UBB advises about this declaration, and will never act on. A near
     #: miss on the unit, and a path that looks inconsistent with the shape its
     #: Event Type declares. Advice is the entire product: UBB renders access
@@ -3853,6 +3893,7 @@ def measurement_out(measurement):
         "required_for_costing": measurement.required_for_costing,
         "source_kind": measurement.source_kind,
         "source_path": list(measurement.source_path),
+        "constant_value": measurement.constant_value,
         "advisories": list(measurement.declaration_advisories()),
     }
 

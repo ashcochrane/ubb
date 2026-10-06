@@ -128,10 +128,10 @@ class _Configured(BlueprintRoutes):
 
 
 def _a_quantity(source_kind, *, unit="token", path=(), required=True,
-                value_type="integer"):
+                value_type="integer", constant_value=None):
     return {"display_name": "", "value_type": value_type, "unit": unit,
             "required_for_costing": required, "source_kind": source_kind,
-            "source_path": list(path)}
+            "source_path": list(path), "constant_value": constant_value}
 
 
 #: Where the same two token counts sit in each kind of response: on a Python
@@ -232,16 +232,17 @@ def _scaffold(routes, target=PYTHON):
 
 def _blocked(routes, target=PYTHON):
     """Every way a known structure can lack something it cannot run without:
-    a constant with no declared value, a derived quantity, a cost read off the
-    supplier's response, and an Event Type never published. Asked for as
-    shell, the first Event Type's shape is one more: a Python library's
+    a constant this Code Builder cannot yet render, a derived quantity, a cost
+    read off the supplier's response, and an Event Type never published. Asked
+    for as shell, the first Event Type's shape is one more: a Python library's
     object, which a shell file cannot read."""
     routes._a_kind()
     routes._event_type(
         "chat.completion", shape=A_PYTHON_SHAPE,
         measurements={
             "input_tokens": INPUT_TOKENS,
-            "flat_fee": _a_quantity("constant", unit="call"),
+            "flat_fee": _a_quantity("constant", unit="call",
+                                    constant_value="1"),
             "ratio": _a_quantity("derived", unit="token",
                                  value_type="decimal")})
     routes._event_type(
@@ -261,6 +262,21 @@ def _blocked(routes, target=PYTHON):
 #: Declared names carrying each character a renderer could trip over. Every
 #: one is admitted by the route that declares it — which is what makes this a
 #: fixture of something a tenant can really hold.
+def _constant(routes, target=PYTHON):
+    """A constant quantity declared WITH its value (#571), beside one the
+    caller supplies. The declaration is complete, and the call is blocked
+    only because this Code Builder version cannot yet generate code that uses
+    a constant's value — the code the ticket that renders it (#584) removes,
+    when this fixture becomes a complete one."""
+    routes._a_kind("flat_rate_call")
+    routes._event_type("flat.call", measurements={
+        "flat_fee": _a_quantity("constant", unit="call", required=False,
+                                value_type="decimal", constant_value="2.5"),
+        "searches": SEARCHES})
+    return routes._resolve(task_type="flat_rate_call",
+                           event_types=["flat.call"], target=target)
+
+
 ODD_EVENT_TYPE = "it's a $5 chat-completion"
 ODD_QUANTITIES = (
     "it's", "$HOME", "$(whoami)", "back`tick", "back\\slash", 'dou"ble',
@@ -316,6 +332,7 @@ BLUEPRINT_FIXTURES = {
     "fixed-price": _fixed_price,
     "scaffold": _scaffold,
     "blocked": _blocked,
+    "constant": _constant,
     "odd-names": _odd_names,
     "draft-preview": _draft_preview,
     "shell-calculated-cost": _as_shell(_calculated_cost, shape=A_JSON_SHAPE),
@@ -325,6 +342,7 @@ BLUEPRINT_FIXTURES = {
     "shell-fixed-price": _as_shell(_fixed_price),
     "shell-scaffold": _as_shell(_scaffold),
     "shell-blocked": _as_shell(_blocked),
+    "shell-constant": _as_shell(_constant),
     "shell-odd-names": _as_shell(_odd_names),
     "shell-draft-preview": _as_shell(_draft_preview, shape=A_JSON_SHAPE),
     # The Python branch's own declarations, asked for as shell: complete for
@@ -343,6 +361,7 @@ READINESS = {
     "fixed-price": "complete",
     "scaffold": "scaffold",
     "blocked": "blocked",
+    "constant": "blocked",
     "odd-names": "complete",
     "draft-preview": "complete",
     "shell-calculated-cost": "complete",
@@ -352,6 +371,7 @@ READINESS = {
     "shell-fixed-price": "complete",
     "shell-scaffold": "scaffold",
     "shell-blocked": "blocked",
+    "shell-constant": "blocked",
     "shell-odd-names": "complete",
     "shell-draft-preview": "complete",
     "shell-unreadable-shape": "blocked",
@@ -429,9 +449,18 @@ def test_the_fixtures_cover_what_they_are_named_for():
     assert [d["code"] for d in resolved("explicit-subtasks")["diagnostics"]
             ] == ["source_path_convention_mismatch"]
     assert sorted({d["code"] for d in resolved("blocked")["diagnostics"]}) == [
-        "constant_value_not_declared", "derived_measurement_unsupported",
-        "event_type_not_published",
+        "constant_measurement_not_renderable",
+        "derived_measurement_unsupported", "event_type_not_published",
         "reported_cost_provider_response_unsupported"]
+    # A constant declared with its value is complete configuration: the one
+    # thing between it and a runnable file is this Code Builder's version.
+    for name in ("constant", "shell-constant"):
+        constant = resolved(name)
+        assert [d["code"] for d in constant["diagnostics"]] == [
+            "constant_measurement_not_renderable"]
+        (token,) = [token for token in tokens(constant)
+                    if token["name"] == "measurements.flat_fee"]
+        assert (token["configured"], token["value"]) == (False, None)
     preview = resolved("draft-preview")
     assert preview["configuration_fingerprint"] is None
     for name in ("odd-names", "shell-odd-names"):
@@ -462,8 +491,8 @@ def test_the_fixtures_cover_what_they_are_named_for():
                        "python_object"]
     assert sorted({d["code"] for d in resolved("shell-blocked")["diagnostics"]
                    }) == [
-        "constant_value_not_declared", "derived_measurement_unsupported",
-        "event_type_not_published",
+        "constant_measurement_not_renderable",
+        "derived_measurement_unsupported", "event_type_not_published",
         "reported_cost_provider_response_unsupported",
         "response_shape_not_readable_by_target"]
 

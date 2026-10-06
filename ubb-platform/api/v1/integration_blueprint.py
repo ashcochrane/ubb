@@ -143,7 +143,7 @@ from core.vocabulary import (
     CONFIGURATION_OBJECT_KIND_TASK_TYPE,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_PUBLISHED,
-    DIAGNOSTIC_CODE_CONSTANT_VALUE_NOT_DECLARED,
+    DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
@@ -258,7 +258,7 @@ EFFECTS = {
     # Lifted by the ticket that consumes a truthful transport for a cost read
     # off a supplier's response; the member leaves the registry with it.
     DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED: _BLOCKING,
-    DIAGNOSTIC_CODE_CONSTANT_VALUE_NOT_DECLARED: _BLOCKING,
+    DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET: _BLOCKING,
@@ -893,13 +893,19 @@ def _quantities(resolution, call, declaration, declared_by):
                               call.parameters.named_for(quantity.code),
                               declared_by))
         elif quantity.source_kind == SOURCE_KIND_CONSTANT:
-            # A constant's value has nowhere to be declared yet, so there is
-            # none to carry — and one is never made up.
+            # A constant is declared with its value (#571), so the declaration
+            # is complete — and this Code Builder version cannot yet generate
+            # code that uses the value. So the value is NOT carried: the token
+            # stays unconfigured, and the call is blocked by a code naming
+            # exactly that, which the ticket that renders constants (#584)
+            # removes. No remediation request, deliberately: the console words
+            # one as the change an admin makes, and nothing in a valid
+            # declaration is the thing to change.
             call.add(_unconfigured(member))
             resolution.report(
-                call, DIAGNOSTIC_CODE_CONSTANT_VALUE_NOT_DECLARED,
+                call, DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE,
                 CONFIGURATION_OBJECT_KIND_MEASUREMENT, address,
-                field="source_kind", remediation_request=declare)
+                field="source_kind")
         elif quantity.source_kind == SOURCE_KIND_DERIVED:
             # Nothing designs how a derived quantity is computed, so no token
             # stands for its value at all.
@@ -1043,14 +1049,30 @@ def _event_type_content(resolved):
         "published_revision": declaration.published_revision,
         "published_at": declaration.published_at.isoformat(),
         "provider_key": resolved["provider_key"],
-        "measurements": [
-            {**quantity._asdict(), "source_path": list(quantity.source_path)}
-            for quantity in declaration.measurements],
+        "measurements": [_quantity_content(quantity)
+                         for quantity in declaration.measurements],
         "reported_cost_mapping": (None if mapping is None else {
             **mapping._asdict(),
             "source_path": list(mapping.source_path),
             "currency_path": list(mapping.currency_path)}),
     }
+
+
+#: What the published declaration holds that the configuration does NOT keep
+#: yet. A constant's value is published with its declaration (#571), and this
+#: Code Builder version does not render it: the call it belongs to is blocked
+#: and its token unconfigured. So no value is kept beside the Blueprint either
+#: — the ticket that renders a constant (#584) adds it to the token and to the
+#: configuration in one commit, and only then does a changed value move a
+#: fingerprint.
+_NOT_KEPT_YET = frozenset({"constant_value"})
+
+
+def _quantity_content(quantity):
+    """One published quantity, as the configuration keeps it."""
+    return {**{name: value for name, value in quantity._asdict().items()
+               if name not in _NOT_KEPT_YET},
+            "source_path": list(quantity.source_path)}
 
 
 def _rules(books, codes, event_type_keys, book_content):

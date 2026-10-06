@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,303 of 2,740 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,326 of 2,764 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2733,6 +2733,17 @@ measurement_key:
     # conversion, the fixtures and the snapshots — and do not count, for the
     # reason #573's entry gives: the matcher requires a non-identifier
     # character on each side of the token, and both have an underscore there.
+    #
+    # 2026-10-07, #571 (a constant Measurement declares its value): 2,303 of
+    # 2,740 -> 2,326 of 2,764 tracked files (`units` 42 files / 119
+    # occurrences, UNMOVED). 25 files arrived and 1 left. 24 of the arrivals
+    # are swept: the platform's exact-decimal module and its two test modules,
+    # the renderer's two new platform-written Blueprints (`constant` and
+    # `shell-constant`, a constant declared with its value and blocked only
+    # until a Code Builder version renders it), their 18 snapshots, and the
+    # catalogue's version-4 pin. The 25th is the migration adding the column,
+    # which `historical-migrations` excludes (268 -> 269), so the exclusions
+    # stand at 438. The one that left is the version-3 pin.
 
     - term: units
       retired_as: >-

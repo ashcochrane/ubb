@@ -572,7 +572,8 @@
           "unit": null,
           "required_for_costing": null,
           "source_kind": null,
-          "source_path": null
+          "source_path": null,
+          "constant_value": null
         }
       }
     }
