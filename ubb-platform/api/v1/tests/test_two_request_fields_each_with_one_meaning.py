@@ -80,25 +80,25 @@ from api.v1.schemas import (
     ItemisedEventsOut, RecordUsageRequest, RecordUsageResponse,
     SpendControlFamilyTotalsRow, UnresolvedQueueRow, UnresolvedQueueTotals,
     UsageEventDetailOut, UsageEventOut, WaivedLossRow)
-from apps.platform.events.schemas import UsageRecorded
-from apps.subscriptions.api.margin_schemas import (
-    BusinessMarginTotals, SeatMarginOut)
 from apps.metering.pricing.receipts import (
     REPORTED_COST_SOURCE_KIND_KEY, RESOLUTION_RUN_KEY)
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
 from apps.metering.usage.models import Posting
-from apps.platform.membership.roles import ADMIN
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import (
     REPORTED_COST_MAPPING, EventType, QuarantinedKey, ReportedCostMapping)
 from apps.platform.event_types.publication import last_published_declaration
-from core.problems import Problem
 from apps.platform.event_types.tests._helpers import (
     declares_a_caller_supplied_cost)
+from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.models import (
     GroupingField, GroupingFieldValue)
+from apps.platform.membership.roles import ADMIN
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.subscriptions.api.margin_schemas import (
+    BusinessMarginTotals, SeatMarginOut)
+from core.problems import Problem
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_MICROS,
     COSTING_METHOD_CALCULATED,
@@ -1980,17 +1980,9 @@ SAYS_A_TOTAL = (
     "whichever valid source supplied it",
     "counted in `unresolved_event_count`",
     "the total is a floor")
+#: The case a total states only where its events can meet it.
+NO_COST_CLAUSE = "one declared to carry no cost adds nothing and is not counted"
 
-#: EVERY PUBLIC NODE CARRYING `provider_cost_micros`, by what it publishes
-#: there — an exact set, so a schema that gains the field is a red test until
-#: somebody decides which meaning it carries. A webhook payload is named by its
-#: event type.
-PER_EVENT_CARRIERS = frozenset({
-    "RecordUsageResponse", "UsageEventOut", "UsageEventDetailOut",
-    "UnresolvedQueueRow", "ItemisedEventRow", "webhook:usage.recorded"})
-TOTAL_CARRIERS = frozenset({
-    "UnresolvedQueueTotals", "WaivedLossRow", "ItemisedEventsOut",
-    "SpendControlFamilyTotalsRow", "SeatMarginOut", "BusinessMarginTotals"})
 SAYS_THE_CLAIM_IS_NEVER_COGS = (
     "never COGS",
     "The supplier cost UBB treats as COGS is the one it resolves")
@@ -2006,10 +1998,24 @@ RECORDING_RESPONSES = ("RecordUsageResponse", "UsageEventOut",
 RECORDING_REQUESTS = ("RecordUsageRequest",
                       "IntegrationBlueprintVerificationRecordIn")
 
+#: EVERY PUBLIC NODE CARRYING `provider_cost_micros`, by what it publishes
+#: there — an exact set, so a schema that gains the field is a red test until
+#: somebody decides which meaning it carries. A webhook payload is named by its
+#: event type. The recording responses are three of the per-event carriers.
+PER_EVENT_CARRIERS = frozenset({
+    *RECORDING_RESPONSES,
+    "UnresolvedQueueRow", "ItemisedEventRow", "webhook:usage.recorded"})
+TOTAL_CARRIERS = frozenset({
+    "UnresolvedQueueTotals", "WaivedLossRow", "ItemisedEventsOut",
+    "SpendControlFamilyTotalsRow", "SeatMarginOut", "BusinessMarginTotals"})
+
 
 class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
-    """The three meanings (#570 ruling 2), each the field's PUBLISHED
-    description, walked off the committed contract."""
+    """What each supplier-cost field means, as its PUBLISHED description:
+    the three meanings of #570's ruling 2 on the recording request and
+    responses, and — since the owner's review of #607 — the per-event and
+    total wordings on every other public `provider_cost_micros`. Walked off
+    the committed contract, and off the classes it is exported from."""
 
     @classmethod
     def setUpClass(cls):
@@ -2081,18 +2087,51 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
                 for phrase in SAYS_THE_CLAIM_IS_NEVER_COGS:
                     self.assertIn(phrase, claim)
                 self.assertNotIn(FALSIFIED, claim)
+        # Every other carrier the walk below finds, off its own class: the
+        # wording lives in `core.amount_status_pairs`, and a change there is
+        # red here before the spec is regenerated.
+        webhook = TypeAdapter(UsageRecorded).json_schema()["properties"][
+            CALLER_FIELD].get("description")
+        for name, said in (
+                ("UnresolvedQueueRow",
+                 UnresolvedQueueRow.model_fields[CALLER_FIELD].description),
+                ("ItemisedEventRow",
+                 ItemisedEventRow.model_fields[CALLER_FIELD].description),
+                ("webhook:usage.recorded", webhook)):
+            with self.subTest(carrier=name):
+                self.assertTrue(said, f"{name} publishes no description")
+                for phrase in SAYS_RESOLVED:
+                    self.assertIn(phrase, said)
+        for model in (UnresolvedQueueTotals, WaivedLossRow, ItemisedEventsOut,
+                      SpendControlFamilyTotalsRow, SeatMarginOut,
+                      BusinessMarginTotals):
+            with self.subTest(carrier=model.__name__):
+                said = model.model_fields[CALLER_FIELD].description
+                self.assertTrue(said, f"{model.__name__} publishes no "
+                                      f"description")
+                for phrase in SAYS_A_TOTAL:
+                    self.assertIn(phrase, said)
+                # A waived posting can never carry a no-cost declaration
+                # (`metering.queries.get_waived_loss`), so its wording leaves
+                # that case out; every other total can meet it and says so.
+                if model is WaivedLossRow:
+                    self.assertNotIn(NO_COST_CLAUSE, said)
+                else:
+                    self.assertIn(NO_COST_CLAUSE, said)
 
     def carriers(self):
-        """Every node of the contract publishing `provider_cost_micros`, and
-        the description it publishes there."""
-        found = {name: schema["properties"]["provider_cost_micros"]
+        """Every node of the contract publishing `provider_cost_micros`: the
+        description it publishes there, and the properties beside it."""
+        found = {name: schema["properties"]
                  for name, schema in self.schemas.items()
                  if "provider_cost_micros" in schema.get("properties", {})}
         for event, operations in self.spec.get("webhooks", {}).items():
-            for node in _nodes_publishing("provider_cost_micros", operations):
-                found[f"webhook:{event}"] = node
-        return {name: node.get("description", "")
-                for name, node in found.items()}
+            for properties in _properties_publishing("provider_cost_micros",
+                                                     operations):
+                found[f"webhook:{event}"] = properties
+        return {name: (properties["provider_cost_micros"].get(
+                           "description", ""), set(properties))
+                for name, properties in found.items()}
 
     def test_every_public_supplier_cost_is_described(self):
         """The owner's review of #607: no public money field left undescribed
@@ -2105,50 +2144,41 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
         self.assertEqual(set(carriers), PER_EVENT_CARRIERS | TOTAL_CARRIERS
                          | set(RECORDING_REQUESTS))
         for name in PER_EVENT_CARRIERS:
+            said, beside = carriers[name]
             with self.subTest(carrier=name):
                 for phrase in SAYS_RESOLVED:
-                    self.assertIn(phrase, carriers[name])
-        self.assertEqual(len({carriers[name] for name in PER_EVENT_CARRIERS}),
-                         1, "one event's cost is worded two ways")
+                    self.assertIn(phrase, said)
+                self.assertIn("costing_status", beside,
+                              "the wording names a status the node lacks")
+        self.assertEqual(
+            len({carriers[name][0] for name in PER_EVENT_CARRIERS}), 1,
+            "one event's cost is worded two ways")
         for name in TOTAL_CARRIERS:
+            said, beside = carriers[name]
             with self.subTest(carrier=name):
                 for phrase in SAYS_A_TOTAL:
-                    self.assertIn(phrase, carriers[name])
-                self.assertIn("unresolved_event_count",
-                              self.schemas[name]["properties"],
+                    self.assertIn(phrase, said)
+                self.assertIn("unresolved_event_count", beside,
                               "the wording names a count the schema lacks")
         for name in RECORDING_REQUESTS:
             with self.subTest(carrier=name):
-                self.assertIn(SAYS_SUPPLIED_BY_THE_CALLER[0], carriers[name])
+                self.assertIn(SAYS_SUPPLIED_BY_THE_CALLER[0],
+                              carriers[name][0])
 
-    def test_the_classes_carry_the_same_wordings_as_the_contract(self):
-        """The same, off the classes the contract is exported from — so a
-        wording changed in `core.amount_status_pairs` is red here before any
-        regeneration."""
-        per_event = {"UnresolvedQueueRow": UnresolvedQueueRow,
-                     "ItemisedEventRow": ItemisedEventRow}
-        totals = {"UnresolvedQueueTotals": UnresolvedQueueTotals,
-                  "WaivedLossRow": WaivedLossRow,
-                  "ItemisedEventsOut": ItemisedEventsOut,
-                  "SpendControlFamilyTotalsRow": SpendControlFamilyTotalsRow,
-                  "SeatMarginOut": SeatMarginOut,
-                  "BusinessMarginTotals": BusinessMarginTotals}
-        webhook = TypeAdapter(UsageRecorded).json_schema()["properties"][
-            "provider_cost_micros"].get("description")
-        for name, said in (
-                *((name, model.model_fields["provider_cost_micros"]
-                   .description) for name, model in per_event.items()),
-                ("webhook:usage.recorded", webhook)):
-            with self.subTest(carrier=name):
-                self.assertTrue(said, f"{name} publishes no description")
-                for phrase in SAYS_RESOLVED:
-                    self.assertIn(phrase, said)
-        for name, model in totals.items():
-            with self.subTest(carrier=name):
-                said = model.model_fields["provider_cost_micros"].description
-                self.assertTrue(said, f"{name} publishes no description")
-                for phrase in SAYS_A_TOTAL:
-                    self.assertIn(phrase, said)
+    def test_the_untyped_containers_say_what_theirs_means(self):
+        """Two published containers can hold a `provider_cost_micros` that no
+        schema node declares, so neither walk above can see it: an accepted
+        batch item, and the Pricing Receipt's totals. Each says on the
+        container what the amount inside means."""
+        results = self.schemas["UsageBatchResponse"]["properties"]["results"]
+        self.assertIn("`RecordUsageResponse`", results.get("description", ""))
+        self.assertIn("`provider_cost_micros` included", results["description"])
+        for schema in ("RecordUsageResponse", "UsageEventDetailOut"):
+            with self.subTest(schema=schema):
+                receipt = self.schemas[schema]["properties"]["pricing_receipt"]
+                self.assertIn("`provider_cost_micros` and `billed_cost_micros`"
+                              ": the amount each section resolved",
+                              receipt["description"])
 
     def test_no_response_carries_the_transport(self):
         """A transport, not a second cost fact: no response model gains it.
@@ -2171,17 +2201,18 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
             set())
 
 
-def _nodes_publishing(field, node):
-    """Every object schema inside `node` whose properties include `field`."""
+def _properties_publishing(field, node):
+    """The properties of every object schema inside `node` that includes
+    `field`."""
     if isinstance(node, dict):
         properties = node.get("properties")
         if isinstance(properties, dict) and field in properties:
-            yield properties[field]
+            yield properties
         for value in node.values():
-            yield from _nodes_publishing(field, value)
+            yield from _properties_publishing(field, value)
     elif isinstance(node, list):
         for value in node:
-            yield from _nodes_publishing(field, value)
+            yield from _properties_publishing(field, value)
 
 
 def _schemas_reached(node, schemas, seen=None):

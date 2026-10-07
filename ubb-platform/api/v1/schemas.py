@@ -42,8 +42,10 @@ RECEIPT_DESCRIPTION = (
     "(receipt_schema_version) and the version of the engine that computed it "
     "(pricing_engine_version), the subject it explains, a costing and a "
     "pricing section holding their method, status and detail BY VALUE, the "
-    "totals, and a provenance section of cross-reference ids that nothing "
-    "reads to reconstruct an amount."
+    "totals (`provider_cost_micros` and `billed_cost_micros`: the amount each "
+    "section resolved, null where it is not settled), and a provenance "
+    "section of cross-reference ids that nothing reads to reconstruct an "
+    "amount."
 )
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
@@ -180,15 +182,15 @@ PROVIDER_RESPONSE_COST_MEANING = (
     "a second cost: the figure is recorded as the event's supplier cost and "
     "read back as `provider_cost_micros`, and is not echoed under its own name."
 )
-#: What a response's `provider_cost_micros` is — `RESOLVED_SUPPLIER_COST_
-#: MEANING` on every schema that publishes one event's, and
-#: `supplier_cost_total_meaning(...)` on every one that publishes a total —
-#: is worded in `core.amount_status_pairs`, beside the pair it describes,
-#: because a product's API module and the kernel's webhook payload publish it
-#: too and may not import this module (ADR-001). The owner's review of #607
-#: asked that no public money field be left undescribed by accident;
-#: `test_two_request_fields_each_with_one_meaning.py` walks the contract for
-#: every schema carrying the field.
+# What a response's `provider_cost_micros` is is worded in
+# `core.amount_status_pairs`, beside the pair it describes:
+# `RESOLVED_SUPPLIER_COST_MEANING` on every schema that publishes one event's,
+# and `supplier_cost_total_meaning(...)` on every one that publishes a total.
+# There, because a product's API module and the kernel's webhook payload
+# publish it too and may not import this module (ADR-001). The owner's review
+# of #607 asked that no public `provider_cost_micros` be left undescribed by
+# accident; `test_two_request_fields_each_with_one_meaning.py` walks the
+# contract for every schema carrying it.
 
 
 #: THE ONE BODY KEY THIS REQUEST REFUSES RATHER THAN DROPS (#365). Spelled once,
@@ -367,7 +369,18 @@ class UsageBatchResponse(Schema):
     # the single-call success body plus {"accepted": true}; rejected items are
     # {"accepted": false, "code", "detail", "stop": false, "stop_reason":
     # null, "stop_scope": null} with `code` from the registry.
-    results: list[dict]
+    #
+    # ⚠ THE ITEMS ARE UNTYPED, SO WHAT THEY HOLD IS SAID ON THE LIST (the
+    # owner's review of #570's PR #607): an accepted item carries money fields
+    # — its `provider_cost_micros` among them — that no schema node here can
+    # describe, and a comment above a field is not part of the contract.
+    results: list[dict] = Field(description=(
+        "One verdict per submitted event, in the order submitted. An accepted "
+        "item (`accepted: true`) carries the single route's acknowledgement "
+        "fields (`RecordUsageResponse`), each with the meaning that schema "
+        "publishes for it — `provider_cost_micros` included. A rejected item "
+        "carries `accepted: false`, a registry `code` and a `detail`, with "
+        "`stop` false and `stop_reason` and `stop_scope` null."))
     accepted: int
     rejected: int
 
@@ -2864,8 +2877,11 @@ class WaivedLossRow(Schema):
     currency: str
     #: THE SUPPLIER COST PAID ON WAIVED CALLS. See `basis` on the envelope for
     #: why this, and not a sum of prices: a waived charge never carried one.
+    #: No waived posting can carry a no-cost declaration
+    #: (`metering.queries.get_waived_loss`), so its wording leaves that out.
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
-        "the postings in this currency whose price was waived"))
+        "the postings in this currency whose price was waived",
+        can_hold_a_no_cost_event=False))
     #: How many waived postings that figure could NOT include, because their
     #: own supplier cost is also one UBB never learned. The figure is a floor
     #: and this says how far short.

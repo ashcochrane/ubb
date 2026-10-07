@@ -355,16 +355,18 @@ class RecordingInput:
     owner_row: object
     effective_at: datetime | None
     caller_provider_cost: int | None
-    #: The source the figure above was admitted under (#570) — the registry's
-    #: `source_kind` of the transport it arrived on — which the receipt keeps
-    #: by value. `None` beside no figure, and beside a figure a service-level
-    #: caller stated without one.
-    reported_cost_source_kind: str | None
     #: What the caller BELIEVES the call cost — recorded as stated and never
     #: rated. It sits beside `caller_provider_cost` and is never read with it:
     #: the pricing spine below is never handed this value at all, which is what
     #: keeps "never COGS" a property of the code rather than a convention.
     claimed_provider_cost: int | None
+    #: The source `caller_provider_cost` was admitted under (#570) — the
+    #: registry's `source_kind` of the transport it arrived on — which the
+    #: receipt keeps by value. `None` beside no figure; beside a figure it
+    #: means it was stated without a source — a service-level caller, or a
+    #: recovery run restating the cost it holds (whose costing section is
+    #: discarded). A recording through either route always states one.
+    reported_cost_source_kind: str | None
     now: datetime
 
     @classmethod

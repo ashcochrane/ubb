@@ -27,7 +27,10 @@ class UsageBatchResponse:
         Attributes:
             accepted (int):
             rejected (int):
-            results (list[UsageBatchResponseResultsItem]):
+            results (list[UsageBatchResponseResultsItem]): One verdict per submitted event, in the order submitted. An
+                accepted item (`accepted: true`) carries the single route's acknowledgement fields (`RecordUsageResponse`), each
+                with the meaning that schema publishes for it — `provider_cost_micros` included. A rejected item carries
+                `accepted: false`, a registry `code` and a `detail`, with `stop` false and `stop_reason` and `stop_scope` null.
      """
 
     accepted: int

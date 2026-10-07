@@ -232,12 +232,15 @@ detail), so the record never relies on what the Event Type publishes today.
 A new way for a supplier cost to arrive gets a field of its own — an existing
 field's published meaning is never widened to carry it.
 
-Each field's meaning is its published description, and **every public
-`provider_cost_micros` carries one**: one event's cost the canonical wording
-(`core.amount_status_pairs.RESOLVED_SUPPLIER_COST_MEANING`), a total the
-aggregate wording naming the `unresolved_event_count` beside it
-(`supplier_cost_total_meaning`), webhook payloads included. A schema that
-gains the field is a red test until its meaning is chosen. Pinned by
+Each field's meaning is its published description, and **every
+`provider_cost_micros` a schema declares carries one**: one event's cost the
+canonical wording (`core.amount_status_pairs.RESOLVED_SUPPLIER_COST_MEANING`),
+a total the aggregate wording naming the `unresolved_event_count` beside it
+(`supplier_cost_total_meaning`), webhook payloads included. The two untyped
+containers that can hold one say what theirs means on the container: the
+batch route's `results` (an accepted item carries `RecordUsageResponse`'s
+fields and meanings) and the Pricing Receipt's `totals`. A schema that gains
+the field is a red test until its meaning is chosen. Pinned by
 `api/v1/tests/test_two_request_fields_each_with_one_meaning.py`.
 
 ## Vocabulary: the values a field may carry (#208)

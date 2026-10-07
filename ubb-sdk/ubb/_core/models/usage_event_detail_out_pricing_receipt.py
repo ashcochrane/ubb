@@ -24,7 +24,8 @@ class UsageEventDetailOutPricingReceipt:
     resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer
     was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape
     version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the
-    subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals,
+    subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals
+    (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled),
     and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.
 
      """

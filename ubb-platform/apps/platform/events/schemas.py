@@ -242,7 +242,7 @@ class UsageRecorded(EventSchema):
     #
     # ITS MEANING IS PUBLISHED, in the one wording every per-event schema uses
     # (`core.amount_status_pairs`; the owner's review of #570's PR #607 asked
-    # that no public money field be left undescribed).
+    # that no public `provider_cost_micros` be left undescribed).
     provider_cost_micros: Annotated[
         int | None,
         Field(description=RESOLVED_SUPPLIER_COST_MEANING)] = None

@@ -533,10 +533,12 @@ RESOLUTION_RUN_KEY = "resolution_run_id"
 #: legitimate writer has no source to state — a Resolution Run re-resolves a
 #: settled cost by stating the figure the record already holds, and discards
 #: that costing section, so the one a completed record keeps is the one
-#: recording wrote. A `None` value therefore means a service-level caller
+#: recording wrote. A stored `None` therefore means a service-level caller
 #: stated a figure without saying where it came from, which no recording
-#: through either route does. An additive `detail` key, so
-#: :data:`RECEIPT_SCHEMA_VERSION` does not move (the module docstring's rule).
+#: through either route does; and a receipt written before #570 carries no
+#: such key at all, read as written and never rewritten. An additive `detail`
+#: key, so :data:`RECEIPT_SCHEMA_VERSION` does not move (the module
+#: docstring's rule).
 REPORTED_COST_SOURCE_KIND_KEY = "reported_cost_source_kind"
 
 

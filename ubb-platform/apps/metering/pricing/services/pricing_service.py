@@ -1435,9 +1435,11 @@ class PricingSubject:
     #: `source_kind` of the transport it arrived on, which admission matched
     #: against the Event Type's publication (#570). It goes on the receipt by
     #: value (`receipts.REPORTED_COST_SOURCE_KIND_KEY`) so the record says
-    #: where its cost came from after the publication has moved on. `None` for
-    #: a figure stated without one — a recovery run restating the cost it
-    #: holds, whose costing section is discarded.
+    #: where its cost came from after the publication has moved on. `None`
+    #: beside a figure means it was stated without a source — a service-level
+    #: caller, or a recovery run restating the cost it holds (whose costing
+    #: section is discarded). A recording through either route always states
+    #: one.
     reported_cost_source_kind: Optional[str] = None
     #: HOW THE WHOLE PIECE OF WORK THIS EVENT BELONGS TO WAS SOLD (#418) —
     #: `work.Task.pricing_mode`, which #415 pinned onto the row at start.

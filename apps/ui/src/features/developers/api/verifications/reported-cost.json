@@ -98,7 +98,8 @@
                 "uncosted_measurement_keys": [],
                 "uncosted_quantities": {},
                 "undeclared_quantities": {},
-                "unresolved_reason": null
+                "unresolved_reason": null,
+                "reported_cost_source_kind": "caller_supplied"
               }
             },
             "pricing": {
@@ -162,6 +163,7 @@
                 "unresolved_reason": null,
                 "uncosted_quantities": {},
                 "undeclared_quantities": {},
+                "reported_cost_source_kind": "caller_supplied",
                 "uncosted_measurement_keys": []
               },
               "method": "reported",
