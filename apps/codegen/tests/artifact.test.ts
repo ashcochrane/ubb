@@ -16,6 +16,7 @@ import {
   BlueprintNotRenderable,
   COMMENTS,
   ENVIRONMENT,
+  MESSAGES,
   PRICING_MODE_COMMENTS,
   READINESS_COMMENTS,
   REMEDIATION,
@@ -422,6 +423,22 @@ describe("the shapes a value takes", () => {
     expect(fixed).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
     expect(perEvent).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.event_priced!]));
     expect(perEvent).not.toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
+  });
+
+  it("writes a valued constant as a value this version cannot generate, in every file of both targets", () => {
+    // #571: the constant is declared with its value, so no file may say it
+    // is missing — not the call that raises in its place, not the helper,
+    // not the preview — while this Code Builder version cannot write it.
+    for (const branch of ["constant", "shell-constant"]) {
+      const files = rendered(branch);
+      for (const file of files) {
+        expect(file.contents, `${branch}/${file.path}`).not.toContain(MESSAGES.notConfigured);
+        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/not_configured\(/);
+      }
+      const module = only(files, "module").contents;
+      expect(module, branch).toMatch(/not_renderable\("measurements\.flat_fee"\)/);
+      expect(module, branch).toContain(MESSAGES.notRenderable);
+    }
   });
 
   it("writes an unconfigured literal as a call that raises, naming the token", () => {

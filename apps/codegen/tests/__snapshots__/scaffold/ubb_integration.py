@@ -28,9 +28,9 @@
 #   A parameter is a value only your code holds. Every one is required:
 #   leave one out and Python raises TypeError at the call.
 #   os.environ[...] is a credential. UBB withholds it from this file.
-# A literal with no configured value is a state of a literal, not a
-# fourth kind: it is written as a call that raises, naming what is
-# missing.
+# A literal with no configured value, or one this Code Builder version
+# cannot yet generate, is a state of a literal, not a fourth kind: it is
+# written as a call that raises, saying which.
 
 from __future__ import annotations
 
@@ -81,16 +81,16 @@ def _client() -> UBBClient:
     return _CLIENT
 
 
-# What a call raises until the declarations it needs are made. The
-# header of this file lists them.
+# What a call raises while it is not ready to run. The header of this
+# file says why.
 class UBBIntegrationNotReady(RuntimeError):
     pass
 
 
-def _not_ready(operation, readiness, *missing) -> NoReturn:
-    detail = "".join(f" {name} has no configured value." for name in missing)
+def _not_ready(operation, readiness, *reasons) -> NoReturn:
+    detail = "".join(f" {reason}" for reason in reasons)
     raise UBBIntegrationNotReady(
-        f"{operation} ({readiness}) is not ready to run. The generated file's header lists what to declare.{detail}"
+        f"{operation} ({readiness}) is not ready to run. The generated file's header says why.{detail}"
     )
 
 
@@ -106,7 +106,7 @@ def start_task(
     idempotency_key,
 ) -> StartedTask:
     # This call is not ready to run. See the header of this file.
-    _not_ready("api_v1_task_endpoints_start_task", "scaffold", "task_type")
+    _not_ready("api_v1_task_endpoints_start_task", "scaffold", "task_type has no configured value.")
     return _client().start_task(
         customer_id=customer_id,
         idempotency_key=idempotency_key,
@@ -152,7 +152,7 @@ def _send_usage(
     stop_behavior,
 ) -> RecordUsageResponse:
     # This call is not ready to run. See the header of this file.
-    _not_ready("api_v1_metering_endpoints_record_usage", "scaffold", "event_type")
+    _not_ready("api_v1_metering_endpoints_record_usage", "scaffold", "event_type has no configured value.")
     return _client().record_usage(
         customer_id=customer_id,
         idempotency_key=idempotency_key,

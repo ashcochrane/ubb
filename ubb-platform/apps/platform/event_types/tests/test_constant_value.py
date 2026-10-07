@@ -286,24 +286,33 @@ def _without_the_rule_that_a_constant_owes_a_value():
 
 @pytest.mark.django_db
 def test_the_guard_refuses_a_constant_row_with_no_value_and_names_it():
-    event_type = _event_type(key="acme.flat")
+    """Named by everything it takes to find it — the tenant's id and name,
+    the Event Type, the quantity and the row — and by how to clear it, with
+    nothing repaired."""
+    tenant = Tenant.objects.create(name="Acme pre-launch")
+    event_type = _event_type(tenant, key="acme.flat")
     _without_the_rule_that_a_constant_owes_a_value()
     # Written through the ORM: no route can declare a constant without its
     # value any more, which is the point of the rule just dropped.
-    _written(event_type, constant_value=None)
+    held = _written(event_type, constant_value=None)
 
     with pytest.raises(THE_MIGRATION.ConstantWithoutAValue) as refused:
         guard(live_apps, None)
 
     said = str(refused.value)
-    assert "declared quantity" in said
-    assert "'acme.flat'" in said and "'flat_fee'" in said
-    assert "never invents one" in said
+    assert (f"declared quantity 'flat_fee' (Measurement {held.pk}) under "
+            f"Event Type 'acme.flat' of tenant {tenant.pk} "
+            f"('Acme pre-launch')") in said
+    assert "never invents one, and repairs nothing" in said
+    assert "DELETE /api/v1/event-types/<key>/measurements/<code>" in said
+    assert "reset that tenant's pre-launch configuration" in said
+    assert Measurement.objects.get(pk=held.pk).constant_value is None
 
 
 @pytest.mark.django_db
 def test_the_guard_refuses_a_kept_publication_pinning_a_valueless_constant():
-    event_type = _event_type(key="acme.flat")
+    tenant = Tenant.objects.create(name="Acme pre-launch")
+    event_type = _event_type(tenant, key="acme.flat")
     _written(event_type, code="searches",
              source_kind=SOURCE_KIND_CALLER_SUPPLIED, constant_value=None)
     EventType.objects.get(pk=event_type.pk).publish()
@@ -322,5 +331,9 @@ def test_the_guard_refuses_a_kept_publication_pinning_a_valueless_constant():
         guard(live_apps, None)
 
     said = str(refused.value)
-    assert "kept publication" in said
-    assert "'acme.flat'" in said and "'flat_fee'" in said
+    assert (f"kept publication of Event Type 'acme.flat' (EventType "
+            f"{event_type.pk}) of tenant {tenant.pk} ('Acme pre-launch'), "
+            f"pinning quantity 'flat_fee'") in said
+    assert "POST /api/v1/event-types/<key>/publish" in said
+    assert EventType.objects.get(pk=event_type.pk).published_declaration \
+        == kept

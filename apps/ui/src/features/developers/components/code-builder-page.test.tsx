@@ -238,6 +238,11 @@ describe("the Blueprint stage", () => {
       "constant_measurement_not_renderable",
     ]);
     expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
+    // And the constant's own token says the same, never "Not declared yet".
+    const constantRow = stage("Blueprint").querySelector<HTMLElement>('[data-token="measurements.flat_fee"]');
+    if (constantRow === null) throw new Error("the constant's token is not shown");
+    expect(within(constantRow).getByText(/Valid platform configuration\. This Code Builder version cannot yet generate its use\./)).toBeInTheDocument();
+    expect(within(constantRow).queryByText("Not declared yet")).toBeNull();
     expect(blocks).toHaveLength(withARequest.length);
     for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;

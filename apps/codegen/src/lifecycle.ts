@@ -7,7 +7,11 @@
  * whatever file is written. What each target DOES with an operation — an SDK
  * method, or a route and a body — is that target's own.
  */
-import { refuse, type ResolvedIntegrationBlueprint } from "./blueprint.ts";
+import {
+  refuse,
+  type DiagnosticCode,
+  type ResolvedIntegrationBlueprint,
+} from "./blueprint.ts";
 import { ENVIRONMENT } from "./catalogue.ts";
 import {
   literalOf,
@@ -64,6 +68,53 @@ export interface Lifecycle {
   readonly closing: readonly Call[];
 }
 
+/**
+ * The diagnostic a constant quantity is reported with while this version of
+ * the renderer cannot write its declared value (#571). Typed by the contract,
+ * so the day the ticket that renders a constant (#584) removes the member,
+ * this stops compiling — and goes with it.
+ */
+const NOT_RENDERABLE: DiagnosticCode = "constant_measurement_not_renderable";
+
+/**
+ * Every value the Blueprint says this renderer cannot yet write, marked as
+ * such rather than left looking unconfigured: the tenant declared it, and a
+ * file that called it missing would be the false explanation the diagnostic
+ * exists to replace. A diagnostic addresses a quantity as
+ * `<event type>:<code>`, so it is matched against the call's own Event Type
+ * and each key exactly as declared — no token name is decoded. Only a value
+ * that already reads as unconfigured is marked: one the Blueprint carries is
+ * never taken away.
+ */
+function withNotRenderable(calls: readonly Call[], blueprint: ResolvedIntegrationBlueprint): Call[] {
+  const addressed = new Set(
+    blueprint.diagnostics
+      .filter((diagnostic) => diagnostic.code === NOT_RENDERABLE)
+      .map((diagnostic) => diagnostic.key),
+  );
+  if (addressed.size === 0) return [...calls];
+  return calls.map((call) => {
+    const eventType = keyOf(call, FIELD.eventType);
+    if (eventType === null) return call;
+    return {
+      ...call,
+      fields: call.fields.map((field) =>
+        field.shape !== "keyed"
+          ? field
+          : {
+              ...field,
+              entries: field.entries.map((entry) =>
+                entry.value?.binding.kind === "unconfigured" &&
+                addressed.has(`${eventType}:${entry.keyText}`)
+                  ? { ...entry, value: { ...entry.value, binding: { kind: "not_renderable" } } }
+                  : entry,
+              ),
+            },
+      ),
+    };
+  });
+}
+
 function carries(call: Call, field: string): boolean {
   return call.fields.some((candidate) => candidate.name === field);
 }
@@ -83,7 +134,7 @@ export function readLifecycle(
   blueprint: ResolvedIntegrationBlueprint,
   parameterName: (name: string) => string,
 ): Lifecycle {
-  const calls = blueprint.calls.map(readCall);
+  const calls = withNotRenderable(blueprint.calls.map(readCall), blueprint);
   const known: string[] = Object.values(OPERATION_IDS);
   for (const call of calls) {
     if (!known.includes(call.operationId)) {

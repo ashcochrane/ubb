@@ -32,9 +32,9 @@
 #   A parameter is a value only your code holds. Every one is required:
 #   leave one out and Python raises TypeError at the call.
 #   os.environ[...] is a credential. UBB withholds it from this file.
-# A literal with no configured value is a state of a literal, not a
-# fourth kind: it is written as a call that raises, naming what is
-# missing.
+# A literal with no configured value, or one this Code Builder version
+# cannot yet generate, is a state of a literal, not a fourth kind: it is
+# written as a call that raises, saying which.
 
 from __future__ import annotations
 
@@ -85,21 +85,21 @@ def _client() -> UBBClient:
     return _CLIENT
 
 
-# What a call raises until the declarations it needs are made. The
-# header of this file lists them.
+# What a call raises while it is not ready to run. The header of this
+# file says why.
 class UBBIntegrationNotReady(RuntimeError):
     pass
 
 
-def _not_ready(operation, readiness, *missing) -> NoReturn:
-    detail = "".join(f" {name} has no configured value." for name in missing)
+def _not_ready(operation, readiness, *reasons) -> NoReturn:
+    detail = "".join(f" {reason}" for reason in reasons)
     raise UBBIntegrationNotReady(
-        f"{operation} ({readiness}) is not ready to run. The generated file's header lists what to declare.{detail}"
+        f"{operation} ({readiness}) is not ready to run. The generated file's header says why.{detail}"
     )
 
 
-def _not_configured(name) -> NoReturn:
-    raise UBBIntegrationNotReady(f"{name} has no configured value.")
+def _not_renderable(name) -> NoReturn:
+    raise UBBIntegrationNotReady(f"{name} is valid platform configuration that this Code Builder version cannot yet generate: see the blocking diagnostic in this file's header.")
 
 
 # idempotency_key is your own identifier for this piece of work, and the
@@ -159,7 +159,7 @@ def _send_flat_call(
     stop_behavior,
 ) -> RecordUsageResponse:
     # This call is not ready to run. See the header of this file.
-    _not_ready("api_v1_metering_endpoints_record_usage", "blocked", "measurements.flat_fee")
+    _not_ready("api_v1_metering_endpoints_record_usage", "blocked", "measurements.flat_fee is valid platform configuration that this Code Builder version cannot yet generate: see the blocking diagnostic in this file's header.")
     return _client().record_usage(
         customer_id=customer_id,
         idempotency_key=idempotency_key,
@@ -172,7 +172,7 @@ def _send_flat_call(
             # measurements.flat_fee.value_type = "decimal" · event_type "flat.call"
             # measurements.flat_fee.unit = "call" · event_type "flat.call"
             # measurements.flat_fee.required_for_costing = false · event_type "flat.call"
-            "flat_fee": _not_configured("measurements.flat_fee"),
+            "flat_fee": _not_renderable("measurements.flat_fee"),
             # measurements = "searches" · event_type "flat.call"
             # measurements.searches.value_type = "integer" · event_type "flat.call"
             # measurements.searches.unit = "search" · event_type "flat.call"

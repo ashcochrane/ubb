@@ -25,9 +25,9 @@
 #   Leave out one a call requires, or pass it empty, and the call returns
 #   UBB_EXIT_USAGE before anything is sent, naming it.
 #   $UBB_API_KEY is a credential. UBB withholds it from this file.
-# A literal with no configured value is a state of a literal, not a
-# fourth kind: it is written as a call that raises, naming what is
-# missing.
+# A literal with no configured value, or one this Code Builder version
+# cannot yet generate, is a state of a literal, not a fourth kind: it is
+# written as a call that raises, saying which.
 
 # Source this file from the script that does the work:
 #   . ./ubb_integration.sh

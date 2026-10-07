@@ -18,6 +18,7 @@ import {
   SOURCE_SHAPE_ID_LABEL_KEYS,
   UNIT_LABEL_KEYS,
   type ConfigurationObjectKind,
+  type DiagnosticCode,
   type IntegrationReadiness,
   type TaskTypeKind,
 } from "@/lib/vocabulary";
@@ -148,6 +149,9 @@ export type Shown =
   | { readonly kind: "parameter"; readonly parameter: string }
   /** Known to UBB once it is declared; not declared yet. */
   | { readonly kind: "unconfigured" }
+  /** Declared, and this Code Builder version cannot yet generate its use
+   * (#571): a constant's value. Never "not declared yet". */
+  | { readonly kind: "not_renderable" }
   /** A value of a registry concept, worded by the catalogue. */
   | {
       readonly kind: "concept";
@@ -203,14 +207,18 @@ function isSegmentList(value: unknown): value is string[] {
  * declares is shown as the document holds it — never coerced into a word or
  * a figure it does not say.
  */
-export function shownValue(argument: BlueprintArgument, place: TokenPlace): Shown {
+export function shownValue(
+  argument: BlueprintArgument,
+  place: TokenPlace,
+  notRenderable = false,
+): Shown {
   if (argument.binding_class === "secret_reference") {
     return { kind: "secret", variable: argument.environment_variable ?? "" };
   }
   if (argument.binding_class === "runtime_bound") {
     return { kind: "parameter", parameter: argument.parameter_name ?? "" };
   }
-  if (!argument.configured) return { kind: "unconfigured" };
+  if (!argument.configured) return notRenderable ? { kind: "not_renderable" } : { kind: "unconfigured" };
   const value: unknown = argument.value;
   if (place.kind === "fact") {
     const concept = CONCEPT_OF_FACT[place.element];
@@ -228,6 +236,38 @@ export function shownValue(argument: BlueprintArgument, place: TokenPlace): Show
     if (isSegmentList(value)) return { kind: "path", segments: value };
   }
   return { kind: "text", text: asText(value) };
+}
+
+/**
+ * The diagnostic a constant is reported with while this Code Builder version
+ * cannot generate its declared value (#571). Typed by the registry's set, so
+ * the day the ticket that renders a constant (#584) removes the member, this
+ * stops compiling — and goes with it.
+ */
+const NOT_RENDERABLE: DiagnosticCode = "constant_measurement_not_renderable";
+
+/** Every value a Blueprint says this Code Builder version cannot yet
+ * generate, as the diagnostic addresses it: `<event type>:<code>`. */
+export function notRenderableAddresses(blueprint: Blueprint): ReadonlySet<string> {
+  return new Set(
+    blueprint.diagnostics
+      .filter((diagnostic) => diagnostic.code === NOT_RENDERABLE)
+      .flatMap((diagnostic) => (diagnostic.key == null ? [] : [diagnostic.key])),
+  );
+}
+
+/** Whether the token at `place` is such a value: matched on the call's own
+ * Event Type and the key as declared, never by decoding a token's name. The
+ * Blueprint still carries it unconfigured, which on its own would read as
+ * "not declared yet" — false of a value the tenant declared. */
+export function isNotRenderable(
+  call: BlueprintCall,
+  place: TokenPlace,
+  addresses: ReadonlySet<string>,
+): boolean {
+  if (place.kind !== "keyed_value" || place.key === null) return false;
+  const eventType = call.arguments.find((argument) => argument.name === "event_type")?.value;
+  return typeof eventType === "string" && addresses.has(`${eventType}:${place.key}`);
 }
 
 // ---------------------------------------------------------------------------

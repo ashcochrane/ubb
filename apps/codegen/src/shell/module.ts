@@ -106,6 +106,7 @@ interface Uses {
 const JQ = {
   read: "read",
   notConfigured: "not_configured",
+  notRenderable: "not_renderable",
 } as const;
 
 function jqDefinitions(needs: ReadonlySet<string>): string[] {
@@ -114,6 +115,12 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
     lines.push(
       `def ${JQ.notConfigured}($name):`,
       `${I1}error($name + ${jqString(` ${MESSAGES.notConfigured}.`)});`,
+    );
+  }
+  if (needs.has(JQ.notRenderable)) {
+    lines.push(
+      `def ${JQ.notRenderable}($name):`,
+      `${I1}error($name + ${jqString(` ${MESSAGES.notRenderable}.`)});`,
     );
   }
   if (needs.has(JQ.read)) {
@@ -147,6 +154,9 @@ function jqValue(value: Value, needs: Set<string>): string | null {
     case "unconfigured":
       needs.add(JQ.notConfigured);
       return `${JQ.notConfigured}(${jqString(value.token)})`;
+    case "not_renderable":
+      needs.add(JQ.notRenderable);
+      return `${JQ.notRenderable}(${jqString(value.token)})`;
     case "cost":
       return null;
   }
@@ -498,8 +508,8 @@ function notReadyHelper(): string[] {
     "_ubb_not_ready() {",
     `${I1}printf '%s (%s) %s' "$1" "$2" ${shWord(MESSAGES.notReady)} >&2`,
     `${I1}shift 2`,
-    `${I1}for _ubb_name in "$@"; do`,
-    `${I2}printf ' %s %s.' "$_ubb_name" ${shWord(MESSAGES.notConfigured)} >&2`,
+    `${I1}for _ubb_reason in "$@"; do`,
+    `${I2}printf ' %s' "$_ubb_reason" >&2`,
     `${I1}done`,
     `${I1}printf '\\n' >&2`,
     "}",
@@ -690,23 +700,31 @@ function reportedCostHelpers(): string[] {
 // ---------------------------------------------------------------------------
 
 /** Every token of a call the plan had no value to write for, by name. */
+/** Each value this file has no way to write, as the sentence that says why:
+ * one nothing configures, or one the tenant declared and this renderer
+ * cannot yet write (#571). The sentence is the catalogue's, made here, so the
+ * helper that prints it carries no claim of its own about why. */
 function unwritten(call: CallPlan): string[] {
-  const named = (value: Value | null) => (value?.kind === "unconfigured" ? [value.token] : []);
+  const said = (value: Value | null): string[] => {
+    if (value?.kind === "unconfigured") return [`${value.token} ${MESSAGES.notConfigured}.`];
+    if (value?.kind === "not_renderable") return [`${value.token} ${MESSAGES.notRenderable}.`];
+    return [];
+  };
   return call.body.flatMap((field) =>
     field.shape === "keyed"
-      ? field.members.flatMap((member) => named(member.value))
-      : named(field.value),
+      ? field.members.flatMap((member) => said(member.value))
+      : said(field.value),
   );
 }
 
 function guard(uses: Uses, call: CallPlan): string[] {
   // By the server's verdict, and by this target's own: a value it has no way
   // to write is a call it does not send, whatever the verdict says.
-  const names = unwritten(call);
-  if (call.call.readiness === "complete" && names.length === 0) return [];
+  const reasons = unwritten(call);
+  if (call.call.readiness === "complete" && reasons.length === 0) return [];
   uses.notReady = true;
-  const missing = names
-    .map((name) => ` ${shWord(name)}`)
+  const missing = reasons
+    .map((reason) => ` ${shWord(reason)}`)
     .join("");
   return [
     ...asComments(COMMENTS.notReadyCall, I1),

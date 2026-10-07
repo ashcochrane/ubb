@@ -124,7 +124,10 @@ The three binding classes are shapes. A `platform_known` token is a literal. A `
 token is a required parameter named exactly as the Blueprint names it: a keyword parameter in
 Python, a `name=value` argument in shell. A `secret_reference` is read from the environment:
 `os.environ[...]` in Python, `$UBB_API_KEY` handed to curl on standard input in shell. A literal
-with no configured value is written as a call that raises, naming the token.
+with no configured value is written as a call that raises, naming the token. One the tenant
+declared that this Code Builder version cannot yet generate — a constant's value, which the
+Blueprint reports as `constant_measurement_not_renderable` until #584 renders it — is written as a
+call that raises saying exactly that, and never as one with no configured value.
 
 ## Comments
 

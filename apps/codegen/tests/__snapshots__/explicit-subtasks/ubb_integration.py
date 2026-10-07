@@ -35,9 +35,9 @@
 #   A parameter is a value only your code holds. Every one is required:
 #   leave one out and Python raises TypeError at the call.
 #   os.environ[...] is a credential. UBB withholds it from this file.
-# A literal with no configured value is a state of a literal, not a
-# fourth kind: it is written as a call that raises, naming what is
-# missing.
+# A literal with no configured value, or one this Code Builder version
+# cannot yet generate, is a state of a literal, not a fourth kind: it is
+# written as a call that raises, saying which.
 
 from __future__ import annotations
 

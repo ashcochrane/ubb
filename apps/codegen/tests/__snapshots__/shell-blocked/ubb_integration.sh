@@ -60,9 +60,9 @@
 #   Leave out one a call requires, or pass it empty, and the call returns
 #   UBB_EXIT_USAGE before anything is sent, naming it.
 #   $UBB_API_KEY is a credential. UBB withholds it from this file.
-# A literal with no configured value is a state of a literal, not a
-# fourth kind: it is written as a call that raises, naming what is
-# missing.
+# A literal with no configured value, or one this Code Builder version
+# cannot yet generate, is a state of a literal, not a fourth kind: it is
+# written as a call that raises, saying which.
 
 # Source this file from the script that does the work:
 #   . ./ubb_integration.sh
@@ -263,13 +263,13 @@ _ubb_url_value() {
   esac
 }
 
-# What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, until the
-# declarations it needs are made. The header of this file lists them.
+# What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, while it
+# is not ready to run. The header of this file says why.
 _ubb_not_ready() {
-  printf '%s (%s) %s' "$1" "$2" 'is not ready to run. The generated file'\''s header lists what to declare.' >&2
+  printf '%s (%s) %s' "$1" "$2" 'is not ready to run. The generated file'\''s header says why.' >&2
   shift 2
-  for _ubb_name in "$@"; do
-    printf ' %s %s.' "$_ubb_name" 'has no configured value' >&2
+  for _ubb_reason in "$@"; do
+    printf ' %s' "$_ubb_reason" >&2
   done
   printf '\n' >&2
 }
@@ -372,6 +372,8 @@ _ubb_jq_body_record_chat_completion() {
     --from-file /dev/stdin <<'UBB_JQ'
   def not_configured($name):
     error($name + " has no configured value.");
+  def not_renderable($name):
+    error($name + " is valid platform configuration that this Code Builder version cannot yet generate: see the blocking diagnostic in this file's header.");
   {
     "customer_id": $p_customer_id,
     "idempotency_key": $p_idempotency_key,
@@ -386,7 +388,7 @@ _ubb_jq_body_record_chat_completion() {
       # measurements.flat_fee.value_type = "integer" · event_type "chat.completion"
       # measurements.flat_fee.unit = "call" · event_type "chat.completion"
       # measurements.flat_fee.required_for_costing = true · event_type "chat.completion"
-      "flat_fee": not_configured("measurements.flat_fee"),
+      "flat_fee": not_renderable("measurements.flat_fee"),
       # measurements = "input_tokens" · event_type "chat.completion"
       # measurements.input_tokens.value_type = "integer" · event_type "chat.completion"
       # measurements.input_tokens.unit = "token" · event_type "chat.completion"
@@ -407,7 +409,7 @@ UBB_JQ
 ubb_record_chat_completion() {
   UBB_STOP_REQUESTED=
   # This call is not ready to run. See the header of this file.
-  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'blocked' 'measurements.flat_fee' 'measurements.input_tokens'
+  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'blocked' 'measurements.flat_fee is valid platform configuration that this Code Builder version cannot yet generate: see the blocking diagnostic in this file'\''s header.' 'measurements.input_tokens has no configured value.'
   return "$UBB_EXIT_NOT_CONFIGURED"
   _ubb_preflight || return $?
   _ubb_environment || return $?

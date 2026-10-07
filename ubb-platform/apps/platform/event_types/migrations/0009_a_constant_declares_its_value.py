@@ -39,37 +39,50 @@ class ConstantWithoutAValue(Exception):
 
 
 def refuse_a_constant_without_a_value(apps, schema_editor):
+    """Name every constant without a value, by everything it takes to find it
+    — the tenant's id and name, the Event Type's key, the quantity's code,
+    and the row itself — and stop. It repairs nothing: the value is the
+    tenant's to declare, and a pre-launch configuration is theirs to change
+    or reset."""
     EventType = apps.get_model("event_types", "EventType")
     Measurement = apps.get_model("event_types", "Measurement")
 
     found = [
-        f"declared quantity '{code}' under Event Type '{key}' (tenant "
-        f"{tenant_id})"
-        for tenant_id, key, code in (
+        f"declared quantity '{code}' (Measurement {pk}) under Event Type "
+        f"'{key}' of tenant {tenant_id} ('{tenant_name}')"
+        for pk, tenant_id, tenant_name, key, code in (
             Measurement.objects
             .filter(source_kind=SOURCE_KIND_CONSTANT,
                     constant_value__isnull=True)
             .order_by("event_type__tenant_id", "event_type__key", "code")
-            .values_list("event_type__tenant_id", "event_type__key", "code"))]
+            .values_list("pk", "event_type__tenant_id",
+                         "event_type__tenant__name", "event_type__key",
+                         "code"))]
     kept = (EventType.objects.filter(published_declaration__isnull=False)
             .order_by("tenant_id", "key")
-            .values_list("tenant_id", "key", "published_declaration"))
-    for tenant_id, key, pinned in kept:
+            .values_list("pk", "tenant_id", "tenant__name", "key",
+                         "published_declaration"))
+    for pk, tenant_id, tenant_name, key, pinned in kept:
         for quantity in pinned.get("measurements") or ():
             if (quantity.get("source_kind") == SOURCE_KIND_CONSTANT
                     and quantity.get("constant_value") is None):
                 found.append(
-                    f"kept publication of Event Type '{key}' (tenant "
-                    f"{tenant_id}) pinning quantity '{quantity.get('code')}'")
+                    f"kept publication of Event Type '{key}' (EventType "
+                    f"{pk}) of tenant {tenant_id} ('{tenant_name}'), pinning "
+                    f"quantity '{quantity.get('code')}'")
     if found:
         raise ConstantWithoutAValue(
             f"event_types 0009 refuses to run: {len(found)} constant "
             f"quantit{'y holds' if len(found) == 1 else 'ies hold'} no value, "
             f"and from this migration on a constant's value is part of its "
-            f"declaration. UBB never invents one. Found: {'; '.join(found)}. "
-            f"Withdraw each quantity or re-declare it as another source kind, "
-            f"and publish its Event Type again so that no kept publication "
-            f"pins it; then migrate, and declare the constant with its value.")
+            f"declaration. UBB never invents one, and repairs nothing. Found: "
+            f"{'; '.join(found)}. For each, before migrating: withdraw the "
+            f"quantity (DELETE /api/v1/event-types/<key>/measurements/<code>) "
+            f"or re-declare it as another source kind, then publish its Event "
+            f"Type again (POST /api/v1/event-types/<key>/publish) so that no "
+            f"kept publication pins it — or reset that tenant's pre-launch "
+            f"configuration. Then migrate, and declare the constant with its "
+            f"value.")
 
 
 class Migration(migrations.Migration):

@@ -16,6 +16,7 @@ import {
   BlueprintNotRenderable,
   COMMENTS,
   ENVIRONMENT,
+  MESSAGES,
   PRICING_MODE_COMMENTS,
   REMEDIATION,
   render,
@@ -700,7 +701,8 @@ describe("the shapes a value takes in a shell file", () => {
   it("refuses a call it has no way to write a value for, whatever verdict it was handed", () => {
     // NOT a Blueprint the routes answered: the shell-unreadable-shape fixture
     // with its verdicts changed to complete. A shell file still cannot read a
-    // Python library's object, so the call still refuses, naming the values.
+    // Python library's object, so the call still refuses, naming the values
+    // and saying of each why it has none.
     const blueprint = fixture("shell-unreadable-shape");
     blueprint.readiness = "complete";
     for (const call of blueprint.calls) call.readiness = "complete";
@@ -713,7 +715,8 @@ describe("the shapes a value takes in a shell file", () => {
       `  ${SHELL_FILE.stopRequested}=`,
       `  # ${COMMENTS.notReadyCall[0]}`,
       "  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'complete'" +
-        " 'measurements.input_tokens' 'measurements.output_tokens'",
+        ` 'measurements.input_tokens ${MESSAGES.notConfigured}.'` +
+        ` 'measurements.output_tokens ${MESSAGES.notConfigured}.'`,
       `  return "$${SHELL_EXIT.notConfigured.name}"`,
     ]);
   });

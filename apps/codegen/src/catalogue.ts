@@ -330,9 +330,9 @@ export const COMMENTS = {
     "  A parameter is a value only your code holds. Every one is required:",
     "  leave one out and Python raises TypeError at the call.",
     "  os.environ[...] is a credential. UBB withholds it from this file.",
-    "A literal with no configured value is a state of a literal, not a",
-    "fourth kind: it is written as a call that raises, naming what is",
-    "missing.",
+    "A literal with no configured value, or one this Code Builder version",
+    "cannot yet generate, is a state of a literal, not a fourth kind: it is",
+    "written as a call that raises, saying which.",
   ],
   client: [
     "The client is built on first use, so importing this file needs no",
@@ -350,8 +350,8 @@ export const COMMENTS = {
     "What building the client raises when a variable it needs is not set.",
   ],
   notReady: [
-    "What a call raises until the declarations it needs are made. The",
-    "header of this file lists them.",
+    "What a call raises while it is not ready to run. The header of this",
+    "file says why.",
   ],
   notReadyCall: [
     "This call is not ready to run. See the header of this file.",
@@ -443,9 +443,9 @@ export const SHELL_COMMENTS = {
     "  Leave out one a call requires, or pass it empty, and the call returns",
     "  UBB_EXIT_USAGE before anything is sent, naming it.",
     "  $UBB_API_KEY is a credential. UBB withholds it from this file.",
-    "A literal with no configured value is a state of a literal, not a",
-    "fourth kind: it is written as a call that raises, naming what is",
-    "missing.",
+    "A literal with no configured value, or one this Code Builder version",
+    "cannot yet generate, is a state of a literal, not a fourth kind: it is",
+    "written as a call that raises, saying which.",
   ],
   usage: [
     "Source this file from the script that does the work:",
@@ -502,8 +502,8 @@ export const SHELL_COMMENTS = {
     "in UBB_STOP_REQUESTED and the reserved status is returned.",
   ],
   notReady: [
-    "What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, until the",
-    "declarations it needs are made. The header of this file lists them.",
+    "What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, while it",
+    "is not ready to run. The header of this file says why.",
   ],
   parameters: [
     "What a call prints, before returning UBB_EXIT_USAGE, for a parameter it",
@@ -599,8 +599,13 @@ export const SHELL_COMMENTS = {
 
 /** What generated code says when it raises or reports. */
 export const MESSAGES = {
-  notReady: "is not ready to run. The generated file's header lists what to declare.",
+  notReady: "is not ready to run. The generated file's header says why.",
   notConfigured: "has no configured value",
+  /** A value the tenant declared that this renderer cannot yet write (#571).
+   * Never "missing": the declaration is complete. */
+  notRenderable:
+    "is valid platform configuration that this Code Builder version cannot yet generate: " +
+    "see the blocking diagnostic in this file's header",
   environmentNotSet: "is not set. Set it in the environment this code runs in.",
   stop: "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
   float: "is a binary float, and a reported cost is money: pass its decimal text or an integer",

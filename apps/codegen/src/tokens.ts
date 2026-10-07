@@ -61,6 +61,17 @@ export interface Unconfigured {
   readonly kind: "unconfigured";
 }
 
+/**
+ * A literal the tenant HAS configured, which this version of the renderer
+ * cannot yet write (#571): a constant quantity's declared value. The
+ * Blueprint carries it unconfigured and reports why, and `readLifecycle`
+ * reads that diagnostic back onto the value, so no file calls a declared
+ * value missing. The ticket that renders a constant (#584) removes it.
+ */
+export interface NotRenderable {
+  readonly kind: "not_renderable";
+}
+
 /** A value only the tenant's code holds: the parameter it must pass. */
 export interface Parameter {
   readonly kind: "parameter";
@@ -74,7 +85,7 @@ export interface SecretReference {
   readonly [secretReferenceBrand]: true;
 }
 
-export type Binding = Literal | Unconfigured | Parameter | SecretReference;
+export type Binding = Literal | Unconfigured | NotRenderable | Parameter | SecretReference;
 
 export interface Token<B extends Binding = Binding> {
   /** The name as the document gives it. Never rebuilt and never decoded. */
@@ -102,8 +113,9 @@ export interface Entry {
   readonly key: Token<Literal>;
   /** The declared key itself, exactly as declared. */
   readonly keyText: string;
-  /** `null` where the document carries no value for this key. */
-  readonly value: Token<Literal | Unconfigured | Parameter> | null;
+  /** `null` where the document carries no value for this key. Only an
+   * entry's value can be one this renderer cannot yet write. */
+  readonly value: Token<Literal | Unconfigured | NotRenderable | Parameter> | null;
   readonly facts: Fact[];
 }
 
@@ -302,19 +314,32 @@ export function readCall(call: BlueprintCall): Call {
   };
 }
 
-/** Every token of a call that has no configured value, by name. */
-export function unconfigured(call: Call): string[] {
-  const names: string[] = [];
+/** A value a call cannot be sent without, and why it has none here. */
+export interface NotWritten {
+  readonly name: string;
+  readonly why: (Unconfigured | NotRenderable)["kind"];
+}
+
+/** Every token of a call this file cannot write a value for, by name and in
+ * the order the call names them: one nothing configures, or one this
+ * renderer cannot yet write. */
+export function notWritten(call: Call): NotWritten[] {
+  const found: NotWritten[] = [];
   for (const field of call.fields) {
     if (field.shape === "scalar") {
-      if (field.token.binding.kind === "unconfigured") names.push(field.name);
+      if (field.token.binding.kind === "unconfigured") {
+        found.push({ name: field.name, why: "unconfigured" });
+      }
       continue;
     }
     for (const entry of field.entries) {
-      if (entry.value?.binding.kind === "unconfigured") names.push(entry.value.name);
+      const kind = entry.value?.binding.kind;
+      if (kind === "unconfigured" || kind === "not_renderable") {
+        found.push({ name: entry.value!.name, why: kind });
+      }
     }
   }
-  return names;
+  return found;
 }
 
 /** The parameters a call asks for, each once, in the order first named. */

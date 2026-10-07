@@ -13,6 +13,8 @@ import {
   apiReferenceUrl,
   copyActionLabel,
   fixFor,
+  isNotRenderable,
+  notRenderableAddresses,
   placesOf,
   remediationText,
   roleOf,
@@ -168,6 +170,33 @@ describe("how a token's value is shown", () => {
     const kind = start?.arguments.find((argument) => argument.name === "task_type");
 
     expect(kind && start && show(kind, start)).toEqual({ kind: "unconfigured" });
+  });
+
+  it("shows a valued constant as declared and not yet generable, never as not declared", async () => {
+    // #571: the Blueprint carries the constant unconfigured, and its
+    // diagnostic says why. Read alone, the token would say "not declared
+    // yet" of a value the tenant declared.
+    const constant = await loadBlueprintFixture("constant");
+    const addresses = notRenderableAddresses(constant);
+    const record = constant.calls.find((call) => call.operation_id === "api_v1_metering_endpoints_record_usage");
+    const places = record ? placesOf(record) : [];
+    const shownAt = (name: string) => {
+      const index = record?.arguments.findIndex((argument) => argument.name === name) ?? -1;
+      const argument = record?.arguments[index];
+      const place = places[index];
+      return argument && place && record
+        ? shownValue(argument, place, isNotRenderable(record, place, addresses))
+        : undefined;
+    };
+
+    expect([...addresses]).toEqual(["flat.call:flat_fee"]);
+    expect(shownAt("measurements.flat_fee")).toEqual({ kind: "not_renderable" });
+    // The quantity beside it is the caller's, and is shown as that.
+    expect(shownAt("measurements.searches")).toEqual({ kind: "parameter", parameter: "searches" });
+    // Without the diagnostic, the same token reads as it did before #571.
+    const unaddressed = record?.arguments.find((argument) => argument.name === "measurements.flat_fee");
+    const place = places[record?.arguments.findIndex((argument) => argument.name === "measurements.flat_fee") ?? -1];
+    expect(record && unaddressed && place && isNotRenderable(record, place, new Set())).toBe(false);
   });
 
   it("words a fact through its registry concept", () => {

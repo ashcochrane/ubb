@@ -13,7 +13,7 @@ Content-Type: application/json
   "task_id": $task_id,
   "event_type": "flat.call",
   "measurements": {
-    "flat_fee": not_configured("measurements.flat_fee"),
+    "flat_fee": not_renderable("measurements.flat_fee"),
     "searches": $searches
   }
 }
