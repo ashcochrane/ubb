@@ -15,6 +15,10 @@ the rule are next door to the model, in
 
 Recording is not here: what a recorded quantity looks like on the wire is
 #603's, and nothing in this module records anything.
+
+It also holds the registry's same-commit rule for the closed diagnostic set,
+because #571 swapped a member of it — and #570 swapped another under the same
+rule, so both swaps are asserted here, surface by surface.
 """
 import json
 from pathlib import Path
@@ -104,11 +108,17 @@ SWAPS = {
 #: #570's removed member's explanation, in its own WORDS (#571's owner
 #: ruling: a new diagnostic that replaces a false explanation replaces it on
 #: every surface — so the search is for what it said, not only for its name).
-#: #571's own is not here: "has no configured value" is still the renderer's
-#: true sentence for a token that has none, and #571's tests pin where.
+#: Each phrase sits on ONE line of a surface that carried it at `555fd1e4` —
+#: the label, the catalogue, and the header of both blocked files — because a
+#: generated file wraps its prose, and a phrase spanning a line break would
+#: match nothing before the swap as well as after it. #571's own is not here:
+#: "has no configured value" is still the renderer's true sentence for a token
+#: that has none, and #571's tests pin where.
 OLD_EXPLANATIONS = {
-    "#570": ("cannot be recorded yet", "no generated call can carry",
-             "Declare it as supplied", "no truthful request field"),
+    "#570": ("cannot be recorded yet",
+             "generated call can carry a cost read that way",
+             "Declare it as supplied",
+             "by the caller with the request below"),
 }
 
 #: Every generated surface the closed set of diagnostic codes reaches.
@@ -173,8 +183,9 @@ def test_the_removed_member_is_on_no_surface_and_its_successor_on_every_one(
 @pytest.mark.parametrize("ticket", sorted(OLD_EXPLANATIONS))
 def test_no_generated_surface_still_gives_the_removed_explanation(ticket):
     """A false explanation goes with its member, in its own words: no file a
-    renderer or the platform wrote, and no generated surface, still tells a
-    developer the valid configuration is missing or unsupported."""
+    renderer or the platform wrote, and no generated surface, still carries a
+    phrase of the explanation the removed member gave — each one a phrase that
+    surface did carry before the swap, so this can go red."""
     root = CONTRACT.parents[1]
     surfaces = [*_platform_written(), *(root / path for path in GENERATED)]
     for words in OLD_EXPLANATIONS[ticket]:

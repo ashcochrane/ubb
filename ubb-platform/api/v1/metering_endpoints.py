@@ -120,8 +120,9 @@ SUPPLIER_COST_TRANSPORTS = {
     SOURCE_KIND_PROVIDER_RESPONSE: "provider_response_cost_micros",
 }
 
-#: What each transport's figure IS, in the words a refusal of it opens with —
-#: the published meanings (`api/v1/schemas.py`), shortened to a clause.
+#: What each transport's figure IS, in a refusal's words: every refusal opens
+#: with the refused field's, and names the admissible field's — the published
+#: meanings (`api/v1/schemas.py`), shortened to a clause.
 _A_FIGURE_ON = {
     "provider_cost_micros":
         "a supplier cost supplied directly by the caller",
@@ -134,6 +135,13 @@ def _transports_carrying_a_figure(item):
     """The supplier-cost fields this request item sets, in a fixed order."""
     return [field for field in SUPPLIER_COST_TRANSPORTS.values()
             if getattr(item, field) is not None]
+
+
+def _the_supplier_cost(item):
+    """The one supplier-cost figure the item carries, whichever transport it
+    arrived on, or `None`. Admission has refused an item carrying two."""
+    carried = _transports_carrying_a_figure(item)
+    return getattr(item, carried[0]) if carried else None
 
 
 def _nothing_admissible(subject):
@@ -200,8 +208,16 @@ def admit_supplier_cost(tenant, item):
     **EACH REFUSAL HAS ITS OWN MESSAGE**, and every one names what the caller
     may do next rather than only what they may not: it opens with what the
     refused field means, then names the field that IS admissible for the
-    declared source — or says neither is, which declarations would admit each,
-    and the field accepted anywhere.
+    declared source and what THAT field means — or says neither is, which
+    declarations would admit each, and the field accepted anywhere.
+
+    **IT NEVER TELLS A CALLER TO MOVE A FIGURE TO THE OTHER FIELD.** The field
+    a figure arrives on is the caller's statement of where it came from, so
+    "send it there instead" would ask a caller holding a cost read off the
+    provider's response to call it one they supplied directly — the relabelling
+    the owner's ruling on #570 forbids. The message says which source the
+    declaration admits and leaves the caller to say which theirs is: if it is
+    the other one, the declaration is what needs to change.
     """
     carried = _transports_carrying_a_figure(item)
     if not carried:
@@ -219,8 +235,9 @@ def admit_supplier_cost(tenant, item):
             "sent. An event carries its supplier cost on one transport at "
             "most — the one its Event Type's last publication admits — and "
             "nothing is summed or chosen between two figures for one call. "
-            + (f"{subject} admits only {admitted}: send the figure there "
-               f"alone." if admitted is not None
+            + (f"{subject} admits only {admitted}, {_A_FIGURE_ON[admitted]}: "
+               f"send one figure, and only on the field that says where it "
+               f"came from." if admitted is not None
                else _nothing_admissible(subject)))
     (field,) = carried
     opening = f"{field} is {_A_FIGURE_ON[field]}."
@@ -229,8 +246,11 @@ def admit_supplier_cost(tenant, item):
             f"{opening} {_nothing_admissible(subject)}")
     raise SupplierCostNotAdmissible(
         f"{opening} The last publication of {subject} declares a reported "
-        f"cost whose source_kind is '{source}', so a figure is admissible only "
-        f"as {admitted}: send it there instead.")
+        f"cost whose source_kind is '{source}', so the only supplier cost it "
+        f"admits on the call is {admitted}, {_A_FIGURE_ON[admitted]}. Where "
+        f"your figure comes from decides the field: if it is not that source, "
+        f"it is the declaration that has to change, and a change takes effect "
+        f"when it is published.")
 
 
 def usage_kwargs(item):
@@ -248,9 +268,7 @@ def usage_kwargs(item):
     first on every path that reaches here."""
     return dict(
         idempotency_key=item.idempotency_key,
-        provider_cost_micros=(
-            item.provider_cost_micros if item.provider_cost_micros is not None
-            else item.provider_response_cost_micros),
+        provider_cost_micros=_the_supplier_cost(item),
         claimed_provider_cost_micros=item.claimed_provider_cost_micros,
         currency=item.currency,
         metadata=item.metadata,

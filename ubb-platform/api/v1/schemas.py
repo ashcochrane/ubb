@@ -154,7 +154,7 @@ CLAIMED_PROVIDER_COST_MEANING = (
 #: Cost Rate) supplied it. The request fields are refused, never dropped, where
 #: the Event Type's last publication does not admit them
 #: (`metering_endpoints.admit_supplier_cost`).
-SUPPLIER_COST_SUPPLIED_BY_THE_CALLER = (
+CALLER_SUPPLIED_COST_MEANING = (
     "The supplier cost of this call (COGS), supplied directly by the caller. "
     "Admissible only where the Event Type's last publication declares "
     "costing_method `reported` with a reported-cost mapping whose "
@@ -166,7 +166,7 @@ SUPPLIER_COST_SUPPLIED_BY_THE_CALLER = (
 #: last two sentences are the ones the ruling insisted on: UBB cannot see how
 #: the caller came by the number, and the field is a transport rather than a
 #: second cost fact.
-SUPPLIER_COST_FROM_THE_PROVIDER_RESPONSE = (
+PROVIDER_RESPONSE_COST_MEANING = (
     "The supplier cost of this call (COGS), as the caller obtained it from the "
     "provider's response. Admissible only where the Event Type's last "
     "publication declares costing_method `reported` with a reported-cost "
@@ -180,12 +180,12 @@ SUPPLIER_COST_FROM_THE_PROVIDER_RESPONSE = (
 )
 #: What a response's `provider_cost_micros` is, on the recording ack and the
 #: two event reads — the responses that publish the caller's claim beside it.
-RESOLVED_SUPPLIER_COST = (
+RESOLVED_SUPPLIER_COST_MEANING = (
     "The supplier cost (COGS) UBB resolved for this event: the one canonical "
     "amount, whichever valid source supplied it — worked out from Cost Rates, "
-    "or a reported figure that arrived on the transport the Event Type's last "
-    "publication admits (`provider_cost_micros` or "
-    "`provider_response_cost_micros` on the recording request). "
+    "or a reported figure that arrived on the transport the Event Type's "
+    "publication admitted when the event was recorded (`provider_cost_micros` "
+    "or `provider_response_cost_micros` on the recording request). "
     "`costing_status` beside it says whether it is settled."
 )
 
@@ -250,10 +250,10 @@ class RecordUsageRequest(Schema):
     # published as each field's description. Same bound as each other.
     provider_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
-        description=SUPPLIER_COST_SUPPLIED_BY_THE_CALLER)
+        description=CALLER_SUPPLIED_COST_MEANING)
     provider_response_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
-        description=SUPPLIER_COST_FROM_THE_PROVIDER_RESPONSE)
+        description=PROVIDER_RESPONSE_COST_MEANING)
     # WHAT THE CALLER BELIEVES THE CALL COST, on its own field so it can be
     # accepted anywhere without ever being read as the number above. The
     # meaning is published rather than kept in this comment: the same sentence
@@ -617,7 +617,7 @@ class RecordUsageResponse(Schema):
     new_balance_micros: Optional[int] = None
     suspended: bool
     provider_cost_micros: Optional[int] = Field(
-        default=None, description=RESOLVED_SUPPLIER_COST)
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # Whether the number above is settled. See `CostingStatus`: without it a
     # supplier cost of zero and one UBB has not learned yet are the same
     # answer on the wire.
@@ -797,7 +797,7 @@ class UsageEventOut(Schema):
     event_type: str = ""
     provider: str = ""
     provider_cost_micros: Optional[int] = Field(
-        default=None, description=RESOLVED_SUPPLIER_COST)
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # On the lean list row too, and that is the point rather than symmetry: a
     # list is where a reader totals a column by eye, so this is exactly where
     # an unknown cost reading as zero would be believed.
@@ -920,7 +920,7 @@ class UsageEventDetailOut(Schema):
     # three rather than trusting a claim spread across two earlier commits.
     # What #323 does add is the two fields below.
     provider_cost_micros: Optional[int] = Field(
-        default=None, description=RESOLVED_SUPPLIER_COST)
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # Whether the number above is settled. Typed required, like the status
     # below it and for the same reason: every posting has an answer.
     costing_status: CostingStatus
@@ -4535,10 +4535,10 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
     measurements: dict[str, int] = Field(default_factory=dict)
     provider_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
-        description=SUPPLIER_COST_SUPPLIED_BY_THE_CALLER)
+        description=CALLER_SUPPLIED_COST_MEANING)
     provider_response_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
-        description=SUPPLIER_COST_FROM_THE_PROVIDER_RESPONSE)
+        description=PROVIDER_RESPONSE_COST_MEANING)
     subtask_type: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("measurements")

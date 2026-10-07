@@ -48,9 +48,9 @@ class UsageEventOut:
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
-                arrived on the transport the Event Type's last publication admits (`provider_cost_micros` or
-                `provider_response_cost_micros` on the recording request). `costing_status` beside it says whether it is
-                settled.
+                arrived on the transport the Event Type's publication admitted when the event was recorded
+                (`provider_cost_micros` or `provider_response_cost_micros` on the recording request). `costing_status` beside it
+                says whether it is settled.
             stop_context (list[Any] | None | Unset):
             unresolved_reason (None | Unset | UsageEventOutUnresolvedReasonType0):
      """

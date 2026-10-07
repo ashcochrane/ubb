@@ -133,14 +133,18 @@ RESPONSE_FIELD = "provider_response_cost_micros"
 ADMITTED_BY = {SOURCE_KIND_CALLER_SUPPLIED: CALLER_FIELD,
                SOURCE_KIND_PROVIDER_RESPONSE: RESPONSE_FIELD}
 
-#: How every refusal of a figure opens: the meaning of the field refused. Held
-#: here rather than imported, so a reworded message is a red test to read.
-OPENS_WITH = {
-    CALLER_FIELD: "provider_cost_micros is a supplier cost supplied directly "
-                  "by the caller",
-    RESPONSE_FIELD: "provider_response_cost_micros is a supplier cost the "
-                    "caller obtained from the provider's response",
+#: What each transport's figure is, in a refusal's words. Held here rather
+#: than imported, so a reworded message is a red test to read. Every refusal
+#: of a figure opens with the refused field's, and names the admissible one's.
+MEANS = {
+    CALLER_FIELD: "a supplier cost supplied directly by the caller",
+    RESPONSE_FIELD: "a supplier cost the caller obtained from the provider's "
+                    "response",
 }
+OPENS_WITH = {field: f"{field} is {meaning}" for field, meaning in MEANS.items()}
+#: What a refusal says instead of telling the caller to move the figure: the
+#: field is the caller's statement of where it came from (#570).
+THE_SOURCE_DECIDES = "Where your figure comes from decides the field"
 #: What a refusal says where no transport is admissible at all.
 NEITHER = ("neither provider_cost_micros nor provider_response_cost_micros "
            "is admissible")
@@ -172,10 +176,13 @@ class _RecordingCase(TestCase):
         recording reads (#605): a draft here would be a declaration production
         has never seen, and a refusal below would pass for the wrong reason.
 
-        The ADMITTING pair has its own door — `declares_a_caller_supplied_cost`
-        — and every test below that wants the figure accepted goes through it,
-        so this repository states that combination in one place and the shapes
-        that merely resemble it are spelled here.
+        The pair that admits a CALLER-SUPPLIED figure has its own door —
+        `declares_a_caller_supplied_cost` — and every test below that wants
+        that figure accepted goes through it, so this repository states that
+        combination in one place and the shapes that merely resemble it are
+        spelled here. A figure read off the provider's response (#570) is
+        admitted under `source_kind=SOURCE_KIND_PROVIDER_RESPONSE`, declared
+        here.
         """
         event_type = EventType.objects.create(
             tenant=self.tenant, key=key, costing_method=costing_method)
@@ -282,8 +289,9 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         response by the generated integration. A number supplied directly by
         the caller did not come from where the tenant declared it comes from,
         and a check that stopped at the costing method would admit it. Since
-        #570 that figure has its own transport, so the refusal says which one
-        to send it on instead of leaving the caller nowhere to go.
+        #570 a figure read off the response has its own transport, so the
+        refusal names it and what it means — and never tells the caller to
+        move this figure there, which would relabel where it came from.
         """
         self.declare("acme.read", source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
 
@@ -292,7 +300,9 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
 
         self.assertTrue(body["detail"].startswith(OPENS_WITH[CALLER_FIELD]),
                         body["detail"])
-        self.assertIn(f"admissible only as {RESPONSE_FIELD}", body["detail"])
+        self.assertIn(f"admits on the call is {RESPONSE_FIELD}",
+                      body["detail"])
+        self.assertIn(THE_SOURCE_DECIDES, body["detail"])
         self.assertEqual(Posting.objects.count(), 0)
 
     def test_the_same_figure_read_off_the_response_is_admitted_on_its_own_field(
@@ -562,13 +572,15 @@ class Outcome(NamedTuple):
 class _PublicationCase(_RecordingCase):
     """The tenant's own Event Type routes, beside the recording ones.
 
-    Every Event Type a case records against is declared, edited and
-    published the way a tenant does it, through these routes, because the
-    claim is about what the lifecycle a tenant drives leaves production
-    reading. Two things are set up below the routes, and each says so: the
-    Cost Rates (`rate`), whose own quantity declarations come from the shared
-    rate fixture under an Event Type no case records against, and a retired
-    Grouping Field (`retire`), which no route can produce.
+    Every Event Type a case declares is declared, edited and published the way
+    a tenant does it, through these routes, because the claim is about what
+    the lifecycle a tenant drives leaves production reading. What is set up
+    below the routes says so where it is done: the Cost Rates (`rate`), whose
+    own quantity declarations come from the shared rate fixture under an Event
+    Type no case records against; a retired Grouping Field (`retire`), which no
+    route can produce; a `reported` declaration published with no mapping
+    (`published_reported_with_no_mapping`), which `publish` refuses; and a
+    tenant's own currency, which the currency cases set on the row.
     """
 
     def admin(self, method, path, data=None):
@@ -666,13 +678,18 @@ class _PublicationCase(_RecordingCase):
 
     def refused_for_its_other_transport(self, outcome, field, *, admissible):
         """The declared source admits a figure — on the OTHER field, which
-        the message names, with the source kind that admits it."""
+        the message names with what it means and the source kind that admits
+        it. It never tells the caller to send this figure there: the field is
+        the caller's statement of where the figure came from, and moving it
+        would relabel its source (#570)."""
         detail = self.refused_the_figure(outcome, field)
-        self.assertIn(f"admissible only as {admissible}: send it there",
-                      detail)
+        self.assertIn(f"the only supplier cost it admits on the call is "
+                      f"{admissible}, {MEANS[admissible]}", detail)
         (kind,) = [kind for kind, transport in ADMITTED_BY.items()
                    if transport == admissible]
         self.assertIn(f"'{kind}'", detail)
+        self.assertIn(THE_SOURCE_DECIDES, detail)
+        self.assertNotIn("send it", detail)
         self.assertNotIn(NEITHER, detail)
 
     def refused_with_nothing_admissible(self, outcome, field):
@@ -699,8 +716,9 @@ class _PublicationCase(_RecordingCase):
         if admissible is None:
             self.assertIn(NEITHER, detail)
         else:
-            self.assertIn(f"admits only {admissible}: send the figure there "
-                          f"alone", detail)
+            self.assertIn(f"admits only {admissible}, {MEANS[admissible]}: "
+                          f"send one figure, and only on the field that says "
+                          f"where it came from", detail)
             self.assertNotIn(NEITHER, detail)
 
     def held(self, key):
@@ -1263,7 +1281,9 @@ class AReplayAnswersWhatWasRecordedOnTheBatchRouteTest(
 class _TheAdmissionMatrix:
     """The owner's matrix (#570, comment `6040966104`), cell by cell, read off
     the PUBLISHED declaration (#605): each row is published through the
-    tenant's routes, and each case sends one transport, the other, then both.
+    tenant's routes — but for the two no route can publish, no declaration at
+    all and `reported` with no mapping (written as publication would keep it)
+    — and each case sends one transport, the other, then both.
 
     An admitted figure is the supplier cost; a refused one says which field IS
     admissible for the declared source, or that none is; both on one event are
@@ -1318,8 +1338,17 @@ class _TheAdmissionMatrix:
         self.row("nobody.declared", admits=None)
 
     def test_reported_with_no_mapping_admits_neither(self):
+        """The refusals here read like an undeclared key's, so the control
+        shows the pinned copy IS what recording reads: a call carrying no
+        figure meets `reported` with nowhere to read a cost from, which an
+        undeclared key never does."""
         self.published_reported_with_no_mapping("acme.half")
         self.row("acme.half", admits=None)
+
+        ack = self.admitted(self.send("control", event_type="acme.half"))
+        self.assertEqual((ack["costing_status"], ack["unresolved_reason"]),
+                         (COSTING_STATUS_UNRESOLVED,
+                          UNRESOLVED_REASON_REPORTED_COST_MISSING))
 
     def test_an_event_naming_no_event_type_admits_neither(self):
         """The recording request's key is optional; with none there is no
@@ -1555,10 +1584,13 @@ class AVerificationRecordTakesTheSameTransportTest(_PublicationCase):
 
     It cannot be driven through Verify's route before #583: a Blueprint
     holding a `provider_response` mapping is blocked, and Verify refuses one
-    that is not complete. So the record is made as the run makes it — from
-    the configuration's own account of the published Event Type
-    (`_event_type_content`), through `_recording`, into the recording route's
-    `record` — and asked the matrix's cells directly.
+    that is not complete. So the record is built by the run's own
+    `_recording`, from the configuration's own account of the published Event
+    Type (`_event_type_content`), and handed to the recording route's
+    `record`, which is what the run records through — without the Task the
+    run starts around it, and without the run's refusal wrapper (`_call`),
+    neither of which decides admission — and asked the matrix's cells
+    directly.
     """
 
     def verify_record(self, key, position, **figures):
@@ -1597,9 +1629,28 @@ class AVerificationRecordTakesTheSameTransportTest(_PublicationCase):
             "acme.read", 3, provider_cost_micros=SUPPLIER,
             provider_response_cost_micros=FROM_THE_RESPONSE),
             admissible=RESPONSE_FIELD)
+        supplied = self.admitted(self.verify_record(
+            "acme.embed", 4, provider_cost_micros=SUPPLIER))
 
         self.assertEqual(read["provider_cost_micros"], FROM_THE_RESPONSE)
         self.assertEqual(read["costing_status"], COSTING_STATUS_KNOWN)
+        self.assertEqual(supplied["provider_cost_micros"], SUPPLIER)
+
+    def test_the_record_admits_neither_transport_on_a_calculated_event_type(
+            self):
+        """The matrix's third row through the same record. (Its "none at all"
+        half cannot reach a record: Verify refuses an Event Type the stored
+        configuration does not publish before anything runs, #580.)"""
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED)
+
+        for position, (field, figure) in enumerate(
+                ((CALLER_FIELD, SUPPLIER),
+                 (RESPONSE_FIELD, FROM_THE_RESPONSE))):
+            with self.subTest(field=field):
+                self.refused_with_nothing_admissible(
+                    self.verify_record("acme.calc", position,
+                                       **{field: figure}), field)
+        self.assertEqual(Posting.objects.count(), 0)
 
     def test_the_input_carries_the_field_with_the_recording_requests_bounds(
             self):
@@ -1619,7 +1670,8 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
     and this repository has already paid for that once: a read route sent two
     query parameters it publishes nowhere and answered `200` on the axis
     default for years, because the framework drops what no schema declares.
-    The set is the assertion; the two new fields are members of it.
+    The set is the assertion; the fields #324 and #570 added are members of
+    it.
     """
 
     @classmethod

@@ -63,9 +63,9 @@ class RecordUsageResponse:
             pricing_receipt_subject_type (None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset):
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
-                arrived on the transport the Event Type's last publication admits (`provider_cost_micros` or
-                `provider_response_cost_micros` on the recording request). `costing_status` beside it says whether it is
-                settled.
+                arrived on the transport the Event Type's publication admitted when the event was recorded
+                (`provider_cost_micros` or `provider_response_cost_micros` on the recording request). `costing_status` beside it
+                says whether it is settled.
             stop (bool | Unset):  Default: False.
             stop_context (list[Any] | None | Unset):
             stop_reason (None | str | Unset):

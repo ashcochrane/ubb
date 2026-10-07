@@ -537,7 +537,7 @@ for row in answer.rows:
 | Field | Meaning |
 |---|---|
 | `event_id` | Unique ID for this event |
-| `provider_cost_micros` | COGS computed from your cost rules — `None` when UBB does not know it |
+| `provider_cost_micros` | The COGS UBB resolved — from your cost rules, or the supplier's reported cost on whichever field your Event Type admits — `None` when UBB does not know it |
 | `costing_status` | Whether that COGS is settled: `known` / `unresolved` / `not_applicable` |
 | `uncosted_measurement_keys` | Measurements with no matching cost rule |
 | `billed_cost_micros` | Amount charged to the customer wallet |
