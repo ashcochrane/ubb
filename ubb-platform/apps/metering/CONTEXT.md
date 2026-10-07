@@ -523,6 +523,12 @@ pricing sections carry their method, status and detail BY VALUE, and the `proven
 carries cross-reference ids that nothing reads to reconstruct an amount. It is **not** a guarantee
 that customer revenue exists and not evidence a customer was charged — a metering-only tenant has a
 receipt for every event it records and bills nobody through UBB.
+**A reported cost names the source it was admitted under** (#179 §3.6, #570). Where the cost is a
+figure that arrived on the call, the costing section's method is `reported` and its detail carries
+`reported_cost_source_kind` — `caller_supplied` or `provider_response`, the source whose transport
+carried it, which the Event Type's publication admitted at the time — so the record says where its
+one canonical cost came from after that publication has moved on, without a second amount or the
+transport's own field. A Resolution Run completing the price side leaves it as recording wrote it.
 **The subject decides what its amounts owe** (#418). A receipt explains one usage row or one
 Charge, and only the first has amounts resolution DERIVED: a Charge's price was AGREED before the
 work ran and pinned to it, and its supplier cost is zero because there is no supplier behind a

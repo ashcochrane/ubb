@@ -71,14 +71,24 @@ from typing import NamedTuple
 
 from django.test import Client, SimpleTestCase, TestCase
 from django.utils import timezone
+from pydantic import TypeAdapter
 
 from api.v1 import metering_endpoints, verification
 from api.v1.integration_blueprint import _event_type_content
 from api.v1.schemas import (
-    IntegrationBlueprintVerificationRecordIn, RecordUsageRequest,
-    RecordUsageResponse, UsageEventDetailOut, UsageEventOut)
-from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
+    IntegrationBlueprintVerificationRecordIn, ItemisedEventRow,
+    ItemisedEventsOut, RecordUsageRequest, RecordUsageResponse,
+    SpendControlFamilyTotalsRow, UnresolvedQueueRow, UnresolvedQueueTotals,
+    UsageEventDetailOut, UsageEventOut, WaivedLossRow)
+from apps.platform.events.schemas import UsageRecorded
+from apps.subscriptions.api.margin_schemas import (
+    BusinessMarginTotals, SeatMarginOut)
+from apps.metering.pricing.receipts import (
+    REPORTED_COST_SOURCE_KIND_KEY, RESOLUTION_RUN_KEY)
+from apps.metering.pricing.tests._helpers import (
+    cost_rate_in_default_book, declares_a_markup)
 from apps.metering.usage.models import Posting
+from apps.platform.membership.roles import ADMIN
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import (
     REPORTED_COST_MAPPING, EventType, QuarantinedKey, ReportedCostMapping)
@@ -98,6 +108,8 @@ from core.vocabulary import (
     COSTING_STATUS_UNRESOLVED,
     GROUPING_FIELD_SCOPE_EVENT,
     MEASUREMENT_VALUE_TYPE_INTEGER,
+    PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_PROVIDER_RESPONSE,
     UNIT_CALL,
@@ -1467,6 +1479,160 @@ class AFigureReadOffTheResponseOnTheBatchRouteTest(
     pass
 
 
+def _the_source_recorded(receipt):
+    """What the receipt says the reported cost was admitted under — absent
+    (`MISSING`) where its costing section names no source at all."""
+    return receipt["costing"]["detail"].get(REPORTED_COST_SOURCE_KIND_KEY,
+                                            MISSING)
+
+
+#: A receipt naming no source, as opposed to one naming a `None` source.
+MISSING = object()
+
+#: The key both recording acknowledgements and the event detail publish the
+#: receipt under — a wire key, spelled as one rather than borrowed from the
+#: column it happens to match (`metering_endpoints.with_receipt_reads`).
+RECEIPT_ON_THE_WIRE = "pricing_receipt"
+
+
+class _TheReceiptRecordsWhichSourceAdmittedTheCost:
+    """The one canonical supplier cost keeps the provenance of its admission
+    (owner's review of #607; #179 §3.6: "the Pricing Receipt records that the
+    cost was reported, along with the applicable source provenance").
+
+    Both transports collapse into one amount and one column, and the response
+    never echoes the transport — so the immutable record has to say which
+    source the figure was admitted under, or the distinction #570 made at the
+    request disappears at the write. It is held BY VALUE in the costing
+    section's `detail`, beside the method that says the cost was reported, so
+    an auditor never infers it from whatever the Event Type publishes today.
+    """
+
+    def stored(self, ack):
+        return getattr(Posting.objects.get(id=ack["event_id"]),
+                       Posting.RECEIPT_COLUMN)
+
+    def test_each_transport_records_the_source_it_was_admitted_under(self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        supplied = self.admitted(self.send(
+            "supplied", event_type="acme.embed", provider_cost_micros=SUPPLIER))
+        read = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+
+        for ack, source, figure in (
+                (supplied, SOURCE_KIND_CALLER_SUPPLIED, SUPPLIER),
+                (read, SOURCE_KIND_PROVIDER_RESPONSE, FROM_THE_RESPONSE)):
+            with self.subTest(source=source):
+                receipt = self.stored(ack)
+                self.assertEqual(receipt["costing"]["method"],
+                                 COSTING_METHOD_REPORTED)
+                self.assertEqual(_the_source_recorded(receipt), source)
+                self.assertEqual(receipt["totals"]["provider_cost_micros"],
+                                 figure)
+
+    def test_the_record_still_says_so_after_the_event_type_is_republished(self):
+        """The owner's case: recorded under `provider_response`, then the
+        Event Type is republished as `caller_supplied`. The stored record, the
+        event's own detail and a replay all still say `provider_response` —
+        nobody has to read today's publication and infer the past from it."""
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        ack = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+
+        self.mapping("acme.read", SOURCE_KIND_CALLER_SUPPLIED)
+        self.publish("acme.read")
+
+        self.assertEqual(_the_source_recorded(self.stored(ack)),
+                         SOURCE_KIND_PROVIDER_RESPONSE)
+        self.assertEqual(_the_source_recorded(
+            self.detail(ack["event_id"])[RECEIPT_ON_THE_WIRE]),
+            SOURCE_KIND_PROVIDER_RESPONSE)
+        replay = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.assertEqual(replay["event_id"], ack["event_id"])
+        self.assertEqual(_the_source_recorded(replay[RECEIPT_ON_THE_WIRE]),
+                         SOURCE_KIND_PROVIDER_RESPONSE)
+        # The new publication governs the NEXT event, and records its own.
+        later = self.admitted(self.send(
+            "later", event_type="acme.read", provider_cost_micros=SUPPLIER))
+        self.assertEqual(_the_source_recorded(self.stored(later)),
+                         SOURCE_KIND_CALLER_SUPPLIED)
+
+    def test_a_cost_no_figure_supplied_names_no_reported_source(self):
+        """The control: provenance of a REPORTED figure, so a cost worked out
+        from Cost Rates carries none — the method already says how it came."""
+        self.rate("calls")
+        ack = self.admitted(self.send("rated", measurements={"calls": 3}))
+
+        receipt = self.stored(ack)
+        self.assertEqual(receipt["costing"]["method"],
+                         COSTING_METHOD_CALCULATED)
+        self.assertIs(_the_source_recorded(receipt), MISSING)
+
+
+class TheReceiptRecordsWhichSourceOnTheSingleRouteTest(
+        _TheReceiptRecordsWhichSourceAdmittedTheCost, _OnTheSingleRoute):
+    pass
+
+
+class TheReceiptRecordsWhichSourceOnTheBatchRouteTest(
+        _TheReceiptRecordsWhichSourceAdmittedTheCost, _OnTheBatchRoute):
+    pass
+
+
+class AResolutionRunKeepsTheSourceTheCostWasAdmittedUnderTest(
+        _OnTheSingleRoute):
+    """A run completes the PRICE of a posting whose reported cost is settled,
+    after the Event Type was republished under the other source. The run
+    re-resolves with the cost the record holds — a figure stated with no
+    source — and discards its own costing section; the costing section the
+    record keeps, source included, is the one written when the event was
+    recorded (`completed_receipt`: nothing else moves)."""
+
+    def setUp(self):
+        super().setUp()
+        # A tenant that bills and has no price rung yet, so the recording
+        # leaves the price `unknown` — the state a run exists to complete.
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            products=["metering", "billing"])
+        TenantApiKey.objects.filter(tenant=self.tenant).update(role=ADMIN)
+
+    def test_the_completed_receipt_still_names_the_original_source(self):
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        ack = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.assertEqual(ack["pricing_status"], PRICING_STATUS_UNKNOWN)
+        self.mapping("acme.read", SOURCE_KIND_CALLER_SUPPLIED)
+        self.publish("acme.read")
+        declares_a_markup(self.tenant, percentage_micros=0)
+
+        ran = self.http.post(
+            "/api/v1/metering/pricing/resolution-runs", data="{}",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+        self.assertEqual(ran.status_code, 200, ran.content)
+        self.assertEqual(ran.json()["prices_resolved"], 1)
+        posting = Posting.objects.get(id=ack["event_id"])
+        self.assertEqual(posting.pricing_status, PRICING_STATUS_KNOWN)
+        receipt = getattr(posting, Posting.RECEIPT_COLUMN)
+        self.assertIn(RESOLUTION_RUN_KEY, receipt["provenance"])
+        self.assertEqual(_the_source_recorded(receipt),
+                         SOURCE_KIND_PROVIDER_RESPONSE)
+        self.assertEqual(receipt["totals"]["provider_cost_micros"],
+                         FROM_THE_RESPONSE)
+
+
 class _TheCurrencyRuleIsTheSharedOne:
     """The new transport takes the event-currency path the caller-supplied
     one takes and no other (#570 ruling 5): the event's `currency` must match
@@ -1804,7 +1970,27 @@ SAYS_OBTAINED_FROM_THE_RESPONSE = (
 SAYS_RESOLVED = (
     "The supplier cost (COGS) UBB resolved for this event",
     "whichever valid source supplied it",
-    "`provider_cost_micros` or `provider_response_cost_micros`")
+    "`provider_cost_micros` or `provider_response_cost_micros`",
+    "zero on the posting that projects a Charge",
+    "null wherever that status is not `known`")
+#: And where a schema publishes a TOTAL of it (the owner's review of #607:
+#: aggregate wording where it is a total, never left undescribed).
+SAYS_A_TOTAL = (
+    "The total supplier cost (COGS) UBB resolved, summed over",
+    "whichever valid source supplied it",
+    "counted in `unresolved_event_count`",
+    "the total is a floor")
+
+#: EVERY PUBLIC NODE CARRYING `provider_cost_micros`, by what it publishes
+#: there — an exact set, so a schema that gains the field is a red test until
+#: somebody decides which meaning it carries. A webhook payload is named by its
+#: event type.
+PER_EVENT_CARRIERS = frozenset({
+    "RecordUsageResponse", "UsageEventOut", "UsageEventDetailOut",
+    "UnresolvedQueueRow", "ItemisedEventRow", "webhook:usage.recorded"})
+TOTAL_CARRIERS = frozenset({
+    "UnresolvedQueueTotals", "WaivedLossRow", "ItemisedEventsOut",
+    "SpendControlFamilyTotalsRow", "SeatMarginOut", "BusinessMarginTotals"})
 SAYS_THE_CLAIM_IS_NEVER_COGS = (
     "never COGS",
     "The supplier cost UBB treats as COGS is the one it resolves")
@@ -1896,6 +2082,74 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
                     self.assertIn(phrase, claim)
                 self.assertNotIn(FALSIFIED, claim)
 
+    def carriers(self):
+        """Every node of the contract publishing `provider_cost_micros`, and
+        the description it publishes there."""
+        found = {name: schema["properties"]["provider_cost_micros"]
+                 for name, schema in self.schemas.items()
+                 if "provider_cost_micros" in schema.get("properties", {})}
+        for event, operations in self.spec.get("webhooks", {}).items():
+            for node in _nodes_publishing("provider_cost_micros", operations):
+                found[f"webhook:{event}"] = node
+        return {name: node.get("description", "")
+                for name, node in found.items()}
+
+    def test_every_public_supplier_cost_is_described(self):
+        """The owner's review of #607: no public money field left undescribed
+        by accident. A schema publishing one event's cost carries the
+        canonical meaning, word for word; one publishing a total carries the
+        aggregate wording, naming the count beside it; a request carries its
+        own transport's meaning."""
+        carriers = self.carriers()
+
+        self.assertEqual(set(carriers), PER_EVENT_CARRIERS | TOTAL_CARRIERS
+                         | set(RECORDING_REQUESTS))
+        for name in PER_EVENT_CARRIERS:
+            with self.subTest(carrier=name):
+                for phrase in SAYS_RESOLVED:
+                    self.assertIn(phrase, carriers[name])
+        self.assertEqual(len({carriers[name] for name in PER_EVENT_CARRIERS}),
+                         1, "one event's cost is worded two ways")
+        for name in TOTAL_CARRIERS:
+            with self.subTest(carrier=name):
+                for phrase in SAYS_A_TOTAL:
+                    self.assertIn(phrase, carriers[name])
+                self.assertIn("unresolved_event_count",
+                              self.schemas[name]["properties"],
+                              "the wording names a count the schema lacks")
+        for name in RECORDING_REQUESTS:
+            with self.subTest(carrier=name):
+                self.assertIn(SAYS_SUPPLIED_BY_THE_CALLER[0], carriers[name])
+
+    def test_the_classes_carry_the_same_wordings_as_the_contract(self):
+        """The same, off the classes the contract is exported from — so a
+        wording changed in `core.amount_status_pairs` is red here before any
+        regeneration."""
+        per_event = {"UnresolvedQueueRow": UnresolvedQueueRow,
+                     "ItemisedEventRow": ItemisedEventRow}
+        totals = {"UnresolvedQueueTotals": UnresolvedQueueTotals,
+                  "WaivedLossRow": WaivedLossRow,
+                  "ItemisedEventsOut": ItemisedEventsOut,
+                  "SpendControlFamilyTotalsRow": SpendControlFamilyTotalsRow,
+                  "SeatMarginOut": SeatMarginOut,
+                  "BusinessMarginTotals": BusinessMarginTotals}
+        webhook = TypeAdapter(UsageRecorded).json_schema()["properties"][
+            "provider_cost_micros"].get("description")
+        for name, said in (
+                *((name, model.model_fields["provider_cost_micros"]
+                   .description) for name, model in per_event.items()),
+                ("webhook:usage.recorded", webhook)):
+            with self.subTest(carrier=name):
+                self.assertTrue(said, f"{name} publishes no description")
+                for phrase in SAYS_RESOLVED:
+                    self.assertIn(phrase, said)
+        for name, model in totals.items():
+            with self.subTest(carrier=name):
+                said = model.model_fields["provider_cost_micros"].description
+                self.assertTrue(said, f"{name} publishes no description")
+                for phrase in SAYS_A_TOTAL:
+                    self.assertIn(phrase, said)
+
     def test_no_response_carries_the_transport(self):
         """A transport, not a second cost fact: no response model gains it.
         Held twice — as the exact set of schemas naming it, and by walking
@@ -1915,6 +2169,19 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
             {name for name in answered
              if RESPONSE_FIELD in self.schemas[name].get("properties", {})},
             set())
+
+
+def _nodes_publishing(field, node):
+    """Every object schema inside `node` whose properties include `field`."""
+    if isinstance(node, dict):
+        properties = node.get("properties")
+        if isinstance(properties, dict) and field in properties:
+            yield properties[field]
+        for value in node.values():
+            yield from _nodes_publishing(field, value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _nodes_publishing(field, value)
 
 
 def _schemas_reached(node, schemas, seen=None):

@@ -70,8 +70,9 @@ class UsageEventDetailOut:
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
                 arrived on the transport the Event Type's publication admitted when the event was recorded
-                (`provider_cost_micros` or `provider_response_cost_micros` on the recording request). `costing_status` beside it
-                says whether it is settled.
+                (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) — and zero on the posting
+                that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled:
+                the amount is null wherever that status is not `known`.
             stop_context (list[Any] | None | Unset):
             task_id (None | str | Unset):
             unresolved_reason (None | Unset | UsageEventDetailOutUnresolvedReasonType0):

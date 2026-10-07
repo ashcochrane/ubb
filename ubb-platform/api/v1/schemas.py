@@ -12,6 +12,8 @@ from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from apps.platform.work import services as work_services
+from core.amount_status_pairs import (
+    RESOLVED_SUPPLIER_COST_MEANING, supplier_cost_total_meaning)
 from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
@@ -178,16 +180,15 @@ PROVIDER_RESPONSE_COST_MEANING = (
     "a second cost: the figure is recorded as the event's supplier cost and "
     "read back as `provider_cost_micros`, and is not echoed under its own name."
 )
-#: What a response's `provider_cost_micros` is, on the recording ack and the
-#: two event reads — the responses that publish the caller's claim beside it.
-RESOLVED_SUPPLIER_COST_MEANING = (
-    "The supplier cost (COGS) UBB resolved for this event: the one canonical "
-    "amount, whichever valid source supplied it — worked out from Cost Rates, "
-    "or a reported figure that arrived on the transport the Event Type's "
-    "publication admitted when the event was recorded (`provider_cost_micros` "
-    "or `provider_response_cost_micros` on the recording request). "
-    "`costing_status` beside it says whether it is settled."
-)
+#: What a response's `provider_cost_micros` is — `RESOLVED_SUPPLIER_COST_
+#: MEANING` on every schema that publishes one event's, and
+#: `supplier_cost_total_meaning(...)` on every one that publishes a total —
+#: is worded in `core.amount_status_pairs`, beside the pair it describes,
+#: because a product's API module and the kernel's webhook payload publish it
+#: too and may not import this module (ADR-001). The owner's review of #607
+#: asked that no public money field be left undescribed by accident;
+#: `test_two_request_fields_each_with_one_meaning.py` walks the contract for
+#: every schema carrying the field.
 
 
 #: THE ONE BODY KEY THIS REQUEST REFUSES RATHER THAN DROPS (#365). Spelled once,
@@ -2760,7 +2761,8 @@ class UnresolvedQueueRow(Schema):
     #: totals are per currency and a reader has to be able to see which row
     #: belongs to which total.
     currency: str
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     #: Whether the supplier cost above is settled — and on this surface it is
     #: the reason the row is in the list at all, half the time.
     costing_status: CostingStatus
@@ -2791,7 +2793,9 @@ class UnresolvedQueueTotals(Schema):
     #: WHAT UBB HAS ALREADY PAID THE SUPPLIER for the calls in this queue —
     #: money out with no settled price against it. Over the whole filter, not
     #: over one page.
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the queued postings in this currency, across the whole filter "
+        "rather than one page"))
     #: How many queued postings that total could NOT include, because their own
     #: supplier cost is one UBB has not learned either. The total is a floor and
     #: this is how far short it may fall.
@@ -2860,7 +2864,8 @@ class WaivedLossRow(Schema):
     currency: str
     #: THE SUPPLIER COST PAID ON WAIVED CALLS. See `basis` on the envelope for
     #: why this, and not a sum of prices: a waived charge never carried one.
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the postings in this currency whose price was waived"))
     #: How many waived postings that figure could NOT include, because their
     #: own supplier cost is also one UBB never learned. The figure is a floor
     #: and this says how far short.
@@ -4157,7 +4162,8 @@ class ItemisedEventRow(Schema):
     effective_at: datetime
     billed_cost_micros: Optional[int] = None
     pricing_status: PricingStatus
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     costing_status: CostingStatus
     #: The Charge this posting projects, where it is a delivered fixed-price
     #: unit's one posting (ADR-0013); null on a metered event.
@@ -4173,7 +4179,8 @@ class ItemisedEventsOut(Schema):
     event_count: int
     billed_cost_micros: int
     unpriced_event_count: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the events this episode itemises"))
     unresolved_event_count: int
 
 
@@ -4269,7 +4276,8 @@ class SpendControlFamilyTotalsRow(Schema):
     event_count: int
     billed_cost_micros: int
     unpriced_event_count: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "this family's itemised events, each counted once"))
     unresolved_event_count: int
 
 

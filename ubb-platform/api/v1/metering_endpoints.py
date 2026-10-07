@@ -137,11 +137,23 @@ def _transports_carrying_a_figure(item):
             if getattr(item, field) is not None]
 
 
+#: Each transport's source kind — :data:`SUPPLIER_COST_TRANSPORTS` read the
+#: other way round.
+_SOURCE_OF = {field: source
+              for source, field in SUPPLIER_COST_TRANSPORTS.items()}
+
+
 def _the_supplier_cost(item):
-    """The one supplier-cost figure the item carries, whichever transport it
-    arrived on, or `None`. Admission has refused an item carrying two."""
+    """The one supplier-cost figure the item carries and the source kind of
+    the transport it arrived on — `(None, None)` where it carries none.
+
+    The source is the transport's, and that IS the source the figure was
+    admitted under: admission has refused any item whose transport is not the
+    one the governing publication admits, and any item carrying two."""
     carried = _transports_carrying_a_figure(item)
-    return getattr(item, carried[0]) if carried else None
+    if not carried:
+        return None, None
+    return getattr(item, carried[0]), _SOURCE_OF[carried[0]]
 
 
 def _nothing_admissible(subject):
@@ -265,10 +277,18 @@ def usage_kwargs(item):
     spine's "a figure that arrived is a reported cost" branch — and land in the
     one column. Never through the caller's claim, which is never COGS. At most
     one of the two is set: `admit_supplier_cost` has refused both, and it runs
-    first on every path that reaches here."""
+    first on every path that reaches here.
+
+    **AND THE SOURCE IT WAS ADMITTED UNDER GOES WITH IT** (#179 §3.6, the
+    owner's review of #570). One amount and no echo means the receipt is the
+    only place left that can say which transport carried the figure, so the
+    recording core is handed the source kind to keep there by value — never
+    a second amount, and never the transport's own field."""
+    figure, source = _the_supplier_cost(item)
     return dict(
         idempotency_key=item.idempotency_key,
-        provider_cost_micros=_the_supplier_cost(item),
+        provider_cost_micros=figure,
+        reported_cost_source_kind=source,
         claimed_provider_cost_micros=item.claimed_provider_cost_micros,
         currency=item.currency,
         metadata=item.metadata,

@@ -158,7 +158,8 @@ it exactly as it did before. The keys that arrived are inside the open
 containers, which no reader may assume a fixed set of. A version bumped for an
 additive detail key would say a record had become unreadable when it had not,
 and would fork the one reader below for no question it could answer differently.
-The costing section's `undeclared_quantities` (#428) arrived the same way.
+The costing section's `undeclared_quantities` (#428) arrived the same way, and
+so did its `reported_cost_source_kind` (#570).
 
 ⚠⚠ **AND A COMPONENT'S ARITHMETIC-SHAPE KEY WAS *RENAMED* WITHOUT MOVING IT
 EITHER (#366), WHICH IS A HARDER CASE AND IS DECIDED RATHER THAN INHERITED.** A
@@ -247,7 +248,7 @@ SECTIONED_SCHEMA_VERSION = 1
 #: INSIDE a section's `detail` is the exception the module docstring argues
 #: (#350, #357): the open containers promise no fixed key set, so an additive
 #: detail key leaves every reader reading, and `undeclared_quantities` (#428)
-#: arrived that way too.
+#: and `reported_cost_source_kind` (#570) arrived that way too.
 RECEIPT_SCHEMA_VERSION = SECTIONED_SCHEMA_VERSION
 
 #: EVERY SHAPE THIS CODE CAN READ, which is deliberately not the one shape it
@@ -508,6 +509,35 @@ SECTIONS = {
 #: completed it*; this is that key, named once so the writer and every reader
 #: spell it the same way.
 RESOLUTION_RUN_KEY = "resolution_run_id"
+
+#: WHICH SOURCE A REPORTED COST WAS ADMITTED UNDER, by value, in the costing
+#: section's `detail` (#179 §3.6, the owner's review of #570's PR #607).
+#:
+#: A supplier cost reaches UBB on the call by one of two transports, each the
+#: caller's statement of where the figure came from — supplied directly, or
+#: obtained from the provider's response — and the recording edge admits each
+#: only where the Event Type's publication declares that source. After
+#: admission both are ONE canonical amount in one column, and no response
+#: echoes the transport, so without this the distinction would end at the
+#: write: a reader would have to look at what the Event Type publishes TODAY
+#: and infer the past from it, which is the failure this record exists to
+#: prevent. #179 §3.6 ruled it in — "the Pricing Receipt records that the cost
+#: was reported, along with the applicable source provenance" — and until #570
+#: it was implied, because only one source could be admitted.
+#:
+#: The value is the registry's `source_kind`, held by reference. It is a value
+#: and not an id, so it lives in `detail` beside the method it qualifies and
+#: never in `provenance`. The spine writes it on exactly the branch that takes
+#: a stated figure as the cost, and nowhere else: a calculated cost's method
+#: already says how it came. It is NOT required at this boundary, because one
+#: legitimate writer has no source to state — a Resolution Run re-resolves a
+#: settled cost by stating the figure the record already holds, and discards
+#: that costing section, so the one a completed record keeps is the one
+#: recording wrote. A `None` value therefore means a service-level caller
+#: stated a figure without saying where it came from, which no recording
+#: through either route does. An additive `detail` key, so
+#: :data:`RECEIPT_SCHEMA_VERSION` does not move (the module docstring's rule).
+REPORTED_COST_SOURCE_KIND_KEY = "reported_cost_source_kind"
 
 
 def build_receipt(*, subject, effective_at, currency, pricing_engine_version,

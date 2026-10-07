@@ -355,6 +355,11 @@ class RecordingInput:
     owner_row: object
     effective_at: datetime | None
     caller_provider_cost: int | None
+    #: The source the figure above was admitted under (#570) — the registry's
+    #: `source_kind` of the transport it arrived on — which the receipt keeps
+    #: by value. `None` beside no figure, and beside a figure a service-level
+    #: caller stated without one.
+    reported_cost_source_kind: str | None
     #: What the caller BELIEVES the call cost — recorded as stated and never
     #: rated. It sits beside `caller_provider_cost` and is never read with it:
     #: the pricing spine below is never handed this value at all, which is what
@@ -367,7 +372,7 @@ class RecordingInput:
                metadata, event_type, provider, measurements,
                task_id, caller_provider_cost, claimed_provider_cost,
                effective_at, billing_owner_id, owner_row,
-               now, dimension_slots=None):
+               now, dimension_slots=None, reported_cost_source_kind=None):
         """The normalization the recording path runs: tenant-currency stamp,
         declared-grouping-field slot fill, and the ``or ""``/``or {}`` defaults
         the posting create relies on. Validation does NOT live here — the
@@ -407,6 +412,7 @@ class RecordingInput:
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
             caller_provider_cost=caller_provider_cost,
+            reported_cost_source_kind=reported_cost_source_kind,
             claimed_provider_cost=claimed_provider_cost, now=now)
 
 
@@ -516,6 +522,7 @@ class UsageService:
                     measurements=inp.measurements,
                     currency=inp.currency,
                     caller_provider_cost=inp.caller_provider_cost,
+                    reported_cost_source_kind=inp.reported_cost_source_kind,
                     # THE THIRD AXIS (#418, #151 §8.4). Under a unit of work
                     # sold at one agreed price the ladder is not consulted at
                     # all: the customer revenue is the whole unit's, so this
@@ -750,6 +757,7 @@ class UsageService:
     @transaction.atomic
     def record_new_usage(tenant, customer, idempotency_key, *,
                          provider_cost_micros=None,
+                         reported_cost_source_kind=None,
                          claimed_provider_cost_micros=None,
                          provider="", event_type="", currency=None,
                          metadata=None, task_id=None, measurements=None,
@@ -795,7 +803,12 @@ class UsageService:
         carried it — `usage_kwargs` hands either on under this keyword.
         Whichever figure arrives here is costed — that separation is what lets
         the batch route refuse one item without disturbing the others, and it
-        is why nothing below re-asks."""
+        is why nothing below re-asks.
+
+        ``reported_cost_source_kind`` is the source that figure was admitted
+        under, which the receipt keeps by value so the record says where its
+        cost came from after the Event Type's publication has moved on (#179
+        §3.6, #570). Both routes state it with every figure."""
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result. The
@@ -824,6 +837,7 @@ class UsageService:
             measurements=measurements,
             task_id=task_id,
             caller_provider_cost=provider_cost_micros,
+            reported_cost_source_kind=reported_cost_source_kind,
             claimed_provider_cost=claimed_provider_cost_micros,
             effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,

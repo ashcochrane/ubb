@@ -9,8 +9,8 @@ from apps.metering.pricing.applicability import (
 )
 from apps.metering.pricing.models import CostBook, PricingBook, Rate, TaskPrice
 from apps.metering.pricing.receipts import (
-    MARKUP_TERMS_KEY, PRICING_REGIME_KEY, ReceiptSubject, Resolution,
-    build_receipt,
+    MARKUP_TERMS_KEY, PRICING_REGIME_KEY, REPORTED_COST_SOURCE_KIND_KEY,
+    ReceiptSubject, Resolution, build_receipt,
 )
 from apps.platform.event_types.costing import cost_declaration
 from apps.platform.plans.queries import get_pricing_book_for_customer
@@ -752,9 +752,10 @@ class PricingService:
 
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
-                 caller_provider_cost, pricing_mode, tenant_bills_through_ubb,
-                 resolve_declaration, resolve_the_cost_rule,
-                 resolve_the_price_rule, resolve_markup):
+                 caller_provider_cost, reported_cost_source_kind, pricing_mode,
+                 tenant_bills_through_ubb, resolve_declaration,
+                 resolve_the_cost_rule, resolve_the_price_rule,
+                 resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
         returning the receipt. ``resolve_price`` is this spine under its four
         parameters — ``resolve_the_cost_rule(measurement_key)``,
@@ -895,6 +896,10 @@ class PricingService:
 
         # ---- COST ----
         unresolved_reason = None
+        # WHERE A STATED FIGURE CAME FROM, kept by value beside the method that
+        # says it was reported (#179 §3.6, #570). Empty on every other branch:
+        # a cost worked out here needs no source beyond its method.
+        reported_source = {}
         if caller_provider_cost is not None:
             # A figure that arrived on the call IS the answer, and no
             # declaration is consulted to confirm it — whichever of the two
@@ -912,6 +917,12 @@ class PricingService:
             # reading `calculated` off one would be recording something this
             # branch never did.
             costing_method = COSTING_METHOD_REPORTED
+            # AND THE SOURCE IT WAS ADMITTED UNDER RIDES WITH IT. Both
+            # transports become this one amount, and the receipt is what says
+            # afterwards which one it was — the Event Type's publication can
+            # have moved on, and the record must not need it.
+            reported_source = {
+                REPORTED_COST_SOURCE_KIND_KEY: reported_cost_source_kind}
         elif (declaration := resolve_declaration()) is not None \
                 and declaration.declares_no_cost:
             # Not an outstanding task. The method is deliberately null through
@@ -1181,6 +1192,7 @@ class PricingService:
                     # and the column cannot come to disagree, because there is
                     # one of them.
                     "unresolved_reason": unresolved_reason,
+                    **reported_source,
                 }),
             pricing=Resolution(
                 method=pricing_method, status=pricing_status,
@@ -1228,8 +1240,8 @@ class PricingService:
 
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,
-              caller_provider_cost, pricing_mode=PRICING_MODE_EVENT_PRICED,
-              as_of=None):
+              caller_provider_cost, reported_cost_source_kind=None,
+              pricing_mode=PRICING_MODE_EVENT_PRICED, as_of=None):
         """The recording path's adapter over :func:`resolve_price`.
 
         It does two things the seam deliberately does not. It assembles the
@@ -1256,6 +1268,11 @@ class PricingService:
         that answer is a fact rather than an assumption — an event under no
         piece of work has no whole-work price for its revenue to sit on, so it
         is priced event by event. See :class:`PricingSubject`'s own field.
+
+        ``reported_cost_source_kind`` is the source a stated
+        ``caller_provider_cost`` was admitted under (#570), and the receipt
+        keeps it. Both recording routes state it for every figure; a caller
+        stating none records `None` beside its figure.
         """
         return costing_of(resolve_price(
             PricingSubject(
@@ -1263,6 +1280,7 @@ class PricingService:
                 selectors=selectors, measurements=measurements or {},
                 currency=currency,
                 caller_provider_cost=caller_provider_cost,
+                reported_cost_source_kind=reported_cost_source_kind,
                 pricing_mode=pricing_mode),
             as_of or timezone.now()))
 
@@ -1409,9 +1427,18 @@ class PricingSubject:
     selectors: dict
     measurements: dict
     currency: str
-    #: THE SUPPLIER'S OWN FIGURE, where the caller stated it. Whether it may be
-    #: stated at all is decided before resolution and has its own refusal.
+    #: THE SUPPLIER'S OWN FIGURE, where the caller stated it — on either of
+    #: the two transports a reported cost may arrive on (#570). Whether it may
+    #: be stated at all is decided before resolution and has its own refusal.
     caller_provider_cost: Optional[int] = None
+    #: WHICH SOURCE THAT FIGURE WAS ADMITTED UNDER — the registry's
+    #: `source_kind` of the transport it arrived on, which admission matched
+    #: against the Event Type's publication (#570). It goes on the receipt by
+    #: value (`receipts.REPORTED_COST_SOURCE_KIND_KEY`) so the record says
+    #: where its cost came from after the publication has moved on. `None` for
+    #: a figure stated without one — a recovery run restating the cost it
+    #: holds, whose costing section is discarded.
+    reported_cost_source_kind: Optional[str] = None
     #: HOW THE WHOLE PIECE OF WORK THIS EVENT BELONGS TO WAS SOLD (#418) —
     #: `work.Task.pricing_mode`, which #415 pinned onto the row at start.
     #:
@@ -1532,6 +1559,7 @@ def resolve_price(subject, as_of):
         effective_at=as_of.isoformat(),
         measurements=subject.measurements,
         caller_provider_cost=subject.caller_provider_cost,
+        reported_cost_source_kind=subject.reported_cost_source_kind,
         pricing_mode=subject.pricing_mode,
         # THE POSTURE IS READ HERE AND NOT INSIDE THE SPINE, because the spine
         # takes facts and this is the one read of a row it would otherwise have

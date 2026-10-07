@@ -222,7 +222,9 @@ refused — never dropped — anywhere else; `calculated`, no publication and `r
 mapping admit neither. `constant` is refused at declaration permanently and `derived` as a v1
 limitation. Either transport is the same economic fact: it lands in the posting's one supplier-cost
 column and every response reads it back as **`provider_cost_micros`, the one canonical supplier cost
-UBB resolved** — the transport is never echoed. (`apps/platform/event_types/models.py:
+UBB resolved** — the transport is never echoed. **Which source admitted it is kept**, by value, on
+the posting's Pricing Receipt (`reported_cost_source_kind` in the costing section's detail, #179
+§3.6), so the record never depends on what the Event Type publishes today. (`apps/platform/event_types/models.py:
 ReportedCostMapping`; `apps/platform/event_types/costing.py:admitted_supplier_cost_source`;
 `api/v1/metering_endpoints.py:admit_supplier_cost`)
 _Avoid_: sending a figure read off the response as `provider_cost_micros` — that field's published
