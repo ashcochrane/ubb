@@ -16,6 +16,7 @@ import {
   BlueprintNotRenderable,
   COMMENTS,
   ENVIRONMENT,
+  MESSAGES,
   PRICING_MODE_COMMENTS,
   REMEDIATION,
   render,
@@ -499,7 +500,7 @@ describe("the header of a shell file", () => {
     },
   );
 
-  it("lists every diagnostic with its remediation and the request that fixes it", () => {
+  it("lists every diagnostic with its remediation, and the request where it offers one", () => {
     const blueprint = fixture("shell-blocked");
     const lines = header("shell-blocked");
 
@@ -513,10 +514,16 @@ describe("the header of a shell file", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      expect(lines).toContain(
-        `remediation_request = ${JSON.stringify(diagnostic.remediation_request)}`,
-      );
+      // A diagnostic with nothing to change carries no request (#571), and
+      // the header then states none rather than a null.
+      const request = diagnostic.remediation_request ?? null;
+      const stated = `remediation_request = ${JSON.stringify(request)}`;
+      if (request === null) expect(lines).not.toContain(stated);
+      else expect(lines).toContain(stated);
     }
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
   });
 
   it("says a response shape this target cannot read is why the file is blocked", () => {
@@ -694,7 +701,8 @@ describe("the shapes a value takes in a shell file", () => {
   it("refuses a call it has no way to write a value for, whatever verdict it was handed", () => {
     // NOT a Blueprint the routes answered: the shell-unreadable-shape fixture
     // with its verdicts changed to complete. A shell file still cannot read a
-    // Python library's object, so the call still refuses, naming the values.
+    // Python library's object, so the call still refuses, naming the values
+    // in the form #578 gave a value this target cannot read: unconfigured.
     const blueprint = fixture("shell-unreadable-shape");
     blueprint.readiness = "complete";
     for (const call of blueprint.calls) call.readiness = "complete";
@@ -707,7 +715,8 @@ describe("the shapes a value takes in a shell file", () => {
       `  ${SHELL_FILE.stopRequested}=`,
       `  # ${COMMENTS.notReadyCall[0]}`,
       "  _ubb_not_ready 'api_v1_metering_endpoints_record_usage' 'complete'" +
-        " 'measurements.input_tokens' 'measurements.output_tokens'",
+        ` 'measurements.input_tokens ${MESSAGES.notConfigured}.'` +
+        ` 'measurements.output_tokens ${MESSAGES.notConfigured}.'`,
       `  return "$${SHELL_EXIT.notConfigured.name}"`,
     ]);
   });

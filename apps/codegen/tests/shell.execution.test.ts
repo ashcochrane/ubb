@@ -1318,15 +1318,42 @@ done
       ubb_record_draft_only: refused,
       ubb_record_web_search: refused,
     });
-    expect(ran.stderr).toContain(`measurements.flat_fee ${MESSAGES.notConfigured}.`);
+    // The constant is declared with its value (#571): what stops the call is
+    // this Code Builder version, and it says so — never that a value is
+    // missing.
+    expect(ran.stderr).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
+    expect(ran.stderr).not.toContain(`measurements.flat_fee ${MESSAGES.notConfigured}`);
     expect(ran.stderr).toContain("api_v1_metering_endpoints_record_usage (blocked)");
+    expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
+  });
+
+  it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
+    const ran = runShell(
+      rendered("shell-constant"),
+      `${SOURCE}
+ubb_start_task customer_id=c idempotency_key=w
+printf 'start=%s\\n' "$?"
+ubb_record_flat_call customer_id=c idempotency_key=e task_id="$UBB_TASK_ID" searches=1
+printf 'record=%s\\n' "$?"
+`,
+    );
+
+    expect(said(ran)).toEqual({ start: "0", record: String(SHELL_EXIT.notConfigured.status) });
+    expect(ran.stderr).toContain(
+      `api_v1_metering_endpoints_record_usage (blocked) ${MESSAGES.notReady} ` +
+        `measurements.flat_fee ${MESSAGES.notRenderable}.`,
+    );
+    expect(ran.stderr).not.toContain(MESSAGES.notConfigured);
     expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
   });
 
   it("prints the name it refuses over whatever the name holds, and runs none of it", () => {
     // NOT a Blueprint the routes answered: the blocked fixture with its
     // constant quantity renamed to text that would end a quoted word and run
-    // a command if a refusal ever wrote it into shell code unescaped.
+    // a command if a refusal ever wrote it into shell code unescaped. Its
+    // diagnostic keeps the old key, so the renamed quantity is read as an
+    // ordinary unconfigured value — and its name is printed, which is what
+    // this case holds.
     const key = "it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\n'; touch made-by-a-quote; '";
     const blueprint = fixture("shell-blocked");
     for (const argument of everyArgument(blueprint)) {
@@ -1352,6 +1379,42 @@ ls
     expect(ran.stderr).toContain(
       "measurements.it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\\u000a'; touch made-by-a-quote; ' " +
         `${MESSAGES.notConfigured}.`,
+    );
+    expect(ran.stdout).not.toMatch(/made-by/);
+    expect(ran.requests).toEqual([]);
+  });
+
+  it("prints a name it cannot yet generate over whatever the name holds, and runs none of it", () => {
+    // The case above, with the diagnostic renamed too: the quantity is then
+    // a valued constant this version cannot generate (#571), and its name
+    // reaches the refusal through that sentence instead.
+    const key = "it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\n'; touch made-by-a-quote; '";
+    const blueprint = fixture("shell-blocked");
+    for (const argument of everyArgument(blueprint)) {
+      if (argument.name === "measurements" && argument.value === "flat_fee") argument.value = key;
+      if (argument.name.startsWith("measurements.flat_fee")) {
+        argument.name = argument.name.replace("measurements.flat_fee", `measurements.${key}`);
+      }
+    }
+    for (const diagnostic of blueprint.diagnostics) {
+      if (diagnostic.key === "chat.completion:flat_fee") diagnostic.key = `chat.completion:${key}`;
+    }
+    const files = render(blueprint);
+
+    expect(Object.values(parsed(files)).filter((refusal) => refusal !== null)).toEqual([]);
+    const ran = runShell(
+      files,
+      `${SOURCE}
+ubb_record_chat_completion customer_id=c idempotency_key=e task_id=t response=r.json
+printf 'status=%s\\n' "$?"
+ls
+`,
+    );
+
+    expect(said(ran)).toEqual({ status: String(SHELL_EXIT.notConfigured.status) });
+    expect(ran.stderr).toContain(
+      "measurements.it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\\u000a'; touch made-by-a-quote; ' " +
+        `${MESSAGES.notRenderable}.`,
     );
     expect(ran.stdout).not.toMatch(/made-by/);
     expect(ran.requests).toEqual([]);

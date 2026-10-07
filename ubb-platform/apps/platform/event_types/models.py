@@ -76,6 +76,7 @@ from core.vocabulary import (
     UNIT_KNOWN_VALUES,
 )
 
+from .exact_decimals import CANONICAL, NotAnExactDecimal, anchored, canonical
 from .source_paths import advisories, path_errors
 
 #: The shapes UBB can actually check a declared path against — every response
@@ -1090,6 +1091,10 @@ class Measurement(DeclarationPart, BaseModel):
       tell a fully costed event from one missing an input.
     * **A source kind**, held by reference, and **a structured source path** —
       where the number comes from, and how the builder is to reach it.
+    * **For a `constant`, its value** (#571), because a constant's value is
+      part of its declaration rather than something an event carries: one
+      exact decimal, held as text in one canonical form, and typed by the
+      value type beside it.
     * **Optionally, one Measurement Concept** — the tenant saying that this
       quantity and another differently-named one mean the same thing, so a
       chart may add them together. Opt-in, analytics-only, and absent by
@@ -1140,15 +1145,16 @@ class Measurement(DeclarationPart, BaseModel):
     #: cost (#193 §B7) — and once a path is pinned so is everything that decides
     #: what the generated integration does with it: which quantity it names,
     #: whether it must supply one, where it reads it and what shape the number
-    #: is. ``display_name`` is deliberately absent: it names the quantity for a
-    #: human and reaches no emitted behaviour, so returning a live integration
-    #: to draft over a corrected caption would be a cost with nothing on the
-    #: other side. ``concept`` is absent for the same reason and one more: an
+    #: is — and, for a constant, the number itself (#571), which is the whole
+    #: of what such a quantity says. ``display_name`` is deliberately absent:
+    #: it names the quantity for a human and reaches no emitted behaviour, so
+    #: returning a live integration to draft over a corrected caption would be
+    #: a cost with nothing on the other side. ``concept`` is absent for the same reason and one more: an
     #: analyst re-filing two quantities under one heading changes nothing about
     #: what UBB will accept or what the integration must send, and a grouping
     #: that could un-publish a live integration would not be analytics-only.
     PINNED = ("code", "value_type", "unit", "required_for_costing",
-              "source_kind", "source_path")
+              "source_kind", "source_path", "constant_value")
 
     event_type = models.ForeignKey(EventType, on_delete=models.CASCADE,
                                    related_name="measurements")
@@ -1176,6 +1182,17 @@ class Measurement(DeclarationPart, BaseModel):
     # more than one language, and a stored expression is portable to none of
     # them. `source_paths.py` owns the whole of what that means.
     source_path = models.JSONField(default=list, blank=True)
+
+    # A `constant` quantity's value, declared with it (#571): text in the one
+    # canonical form `exact_decimals.py` owns, and NULL for every other kind.
+    # NULL rather than "" for "no value", because "" is not a number in any
+    # grammar and a second spelling of "nothing declared" is one the rules in
+    # `Meta` would each have to remember. `blank=True` only so that "" reaches
+    # `clean`'s own refusal rather than Django's generic one.
+    #
+    # Text rather than a numeric column, deliberately: a numeric column fixes a
+    # scale, and no precision limit governs a Measurement quantity.
+    constant_value = models.TextField(null=True, blank=True, default=None)
 
     # The opt-in grouping, and every part of this declaration is a fence.
     # OPTIONAL, because a quantity stands alone and an analytics heading can
@@ -1210,6 +1227,32 @@ class Measurement(DeclarationPart, BaseModel):
             models.CheckConstraint(
                 condition=~models.Q(unit=""),
                 name="ck_measurement_unit_is_declared",
+            ),
+            # A CONSTANT'S VALUE (#571), three rules at the database. A
+            # constant owes its value and only a constant may carry one; the
+            # value is in its one canonical form; and under an `integer`
+            # declaration it is whole, which in the canonical form is exactly
+            # "has no point". `clean` refuses the first and the third with
+            # their reasons, and puts a value in the form the second requires.
+            models.CheckConstraint(
+                condition=(models.Q(source_kind=SOURCE_KIND_CONSTANT,
+                                    constant_value__isnull=False)
+                           | (~models.Q(source_kind=SOURCE_KIND_CONSTANT)
+                              & models.Q(constant_value__isnull=True))),
+                name="ck_measurement_constant_value_iff_constant",
+            ),
+            models.CheckConstraint(
+                condition=(models.Q(constant_value__isnull=True)
+                           | models.Q(constant_value__regex=anchored(
+                               CANONICAL))),
+                name="ck_measurement_constant_value_is_canonical",
+            ),
+            models.CheckConstraint(
+                condition=(~models.Q(
+                    value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
+                           | models.Q(constant_value__isnull=True)
+                           | ~models.Q(constant_value__contains=".")),
+                name="ck_measurement_integer_constant_is_whole",
             ),
         ]
 
@@ -1302,6 +1345,22 @@ class Measurement(DeclarationPart, BaseModel):
 
     # -- validation -----------------------------------------------------------
 
+    def clean_fields(self, exclude=None):
+        """Every field but a constant value that is not text.
+
+        Django's `TextField` reads any value as text with `str()` while the
+        fields are cleaned, and for a float that text is its binary expansion
+        — `0.1 + 0.2` would arrive as `0.30000000000000004`, a number nobody
+        declared. So a value that is not text is left as it is, and
+        :meth:`clean` hands it to the canonicaliser, which refuses it by name
+        (#571). The wire never gets this far with one: a JSON number is
+        refused there as the wrong representation.
+        """
+        if (self.constant_value is not None
+                and not isinstance(self.constant_value, str)):
+            exclude = {*(exclude or ()), "constant_value"}
+        super().clean_fields(exclude=exclude)
+
     def clean(self):
         super().clean()
         errors = {}
@@ -1331,6 +1390,11 @@ class Measurement(DeclarationPart, BaseModel):
                                      for problem in problems]
         elif obligation:
             errors["source_path"] = f"the source path {obligation}"
+
+        value_error = (self._canonicalise_constant_value()
+                       or self._constant_value_obligation_error())
+        if value_error:
+            errors["constant_value"] = value_error
 
         if errors:
             raise ValidationError(errors)
@@ -1382,6 +1446,58 @@ class Measurement(DeclarationPart, BaseModel):
             return (f"reads a supplier response, and this quantity is declared "
                     f"as '{self.source_kind}', which reads none. A path here "
                     f"would be emitted by nothing.")
+        return None
+
+    def _canonicalise_constant_value(self):
+        """Put a declared value in its one canonical form, or say why it has
+        none (#571). The one validator here that WRITES, which is why it is
+        named for the act.
+
+        Done before the value is stored, so that `01.500` and `1.5` are one
+        declaration — and so that re-declaring a published value in another
+        spelling is not a revision, because the pinned elements compared on
+        save are already canonical. The database's grammar rule refuses a
+        non-canonical value from any writer that skips this.
+        """
+        if self.constant_value is None:
+            return None
+        try:
+            self.constant_value = canonical(self.constant_value)
+        except NotAnExactDecimal as refused:
+            return f"the constant value {refused}"
+        return None
+
+    def _constant_value_obligation_error(self):
+        """A constant owes its value, and only a constant may carry one (#571).
+
+        The same shape as the path's obligation above, for the same kind of
+        reason: a `constant` quantity's value is part of its declaration rather
+        than something an event carries, so a constant declared without one
+        says nothing, and a value on any other kind would be read by nothing.
+        There is no "unfinished constant" to come back to later.
+
+        Whether a fraction is admissible is the declared value type's, asked of
+        :meth:`validate_value`, the Measurement contract's own reader, so the
+        refusal a tenant reads is that reader's. The database states the same
+        rule over the canonical text, where "whole" is exactly "has no point",
+        for the writers that never come here.
+        """
+        if self.source_kind != SOURCE_KIND_CONSTANT:
+            if self.constant_value is None:
+                return None
+            return (f"the constant value is declared, and this quantity is "
+                    f"declared as '{self.source_kind}', which is not a "
+                    f"constant. Only a constant's value is part of its "
+                    f"declaration; a value here would be read by nothing.")
+        if self.constant_value is None:
+            return ("the constant value is missing, and a constant quantity's "
+                    "value is part of its declaration. Declare the value, or "
+                    "declare a source kind that supplies the quantity some "
+                    "other way.")
+        try:
+            self.validate_value(self.constant_value)
+        except ValueTypeMismatch as mismatch:
+            return str(mismatch)
         return None
 
 

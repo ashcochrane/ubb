@@ -21,6 +21,7 @@ import {
   type IntegrationReadiness,
   type TaskTypeKind,
 } from "@/lib/vocabulary";
+import { isNotRenderableValue } from "ubb-codegen";
 
 import type {
   Blueprint,
@@ -148,6 +149,9 @@ export type Shown =
   | { readonly kind: "parameter"; readonly parameter: string }
   /** Known to UBB once it is declared; not declared yet. */
   | { readonly kind: "unconfigured" }
+  /** Declared, and this Code Builder version cannot yet generate its use
+   * (#571): a constant's value. Never "not declared yet". */
+  | { readonly kind: "not_renderable" }
   /** A value of a registry concept, worded by the catalogue. */
   | {
       readonly kind: "concept";
@@ -203,14 +207,21 @@ function isSegmentList(value: unknown): value is string[] {
  * declares is shown as the document holds it — never coerced into a word or
  * a figure it does not say.
  */
-export function shownValue(argument: BlueprintArgument, place: TokenPlace): Shown {
+/** `notRenderable` is what `isNotRenderable` answers for the token: the
+ * Blueprint carries such a value unconfigured, and only its diagnostic says
+ * the tenant declared it. */
+export function shownValue(
+  argument: BlueprintArgument,
+  place: TokenPlace,
+  notRenderable: boolean,
+): Shown {
   if (argument.binding_class === "secret_reference") {
     return { kind: "secret", variable: argument.environment_variable ?? "" };
   }
   if (argument.binding_class === "runtime_bound") {
     return { kind: "parameter", parameter: argument.parameter_name ?? "" };
   }
-  if (!argument.configured) return { kind: "unconfigured" };
+  if (!argument.configured) return notRenderable ? { kind: "not_renderable" } : { kind: "unconfigured" };
   const value: unknown = argument.value;
   if (place.kind === "fact") {
     const concept = CONCEPT_OF_FACT[place.element];
@@ -228,6 +239,28 @@ export function shownValue(argument: BlueprintArgument, place: TokenPlace): Show
     if (isSegmentList(value)) return { kind: "path", segments: value };
   }
   return { kind: "text", text: asText(value) };
+}
+
+/**
+ * Whether the token at `place` is a value this Code Builder version cannot
+ * yet generate (#571) — a valued constant, which the Blueprint carries
+ * unconfigured and which on its own would read as "not declared yet". The
+ * rule is `ubb-codegen`'s, so the page and the generated files read the
+ * diagnostic one way: `addresses` is its `notRenderableAddresses`.
+ */
+export function isNotRenderable(
+  call: BlueprintCall,
+  place: TokenPlace,
+  addresses: ReadonlySet<string>,
+): boolean {
+  if (place.kind !== "keyed_value" || place.key === null) return false;
+  const eventType = call.arguments.find((argument) => argument.name === "event_type")?.value;
+  return isNotRenderableValue(
+    addresses,
+    typeof eventType === "string" ? eventType : null,
+    place.field,
+    place.key,
+  );
 }
 
 // ---------------------------------------------------------------------------

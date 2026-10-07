@@ -57,7 +57,7 @@ import { asComments } from "../comments.ts";
 import { headerText } from "../header.ts";
 import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
-import { factOfField } from "../tokens.ts";
+import { factOfField, said, SAID_OF } from "../tokens.ts";
 import {
   routeWith,
   type BodyField,
@@ -106,6 +106,7 @@ interface Uses {
 const JQ = {
   read: "read",
   notConfigured: "not_configured",
+  notRenderable: "not_renderable",
 } as const;
 
 function jqDefinitions(needs: ReadonlySet<string>): string[] {
@@ -113,7 +114,13 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
   if (needs.has(JQ.notConfigured)) {
     lines.push(
       `def ${JQ.notConfigured}($name):`,
-      `${I1}error($name + ${jqString(` ${MESSAGES.notConfigured}.`)});`,
+      `${I1}error($name + ${jqString(` ${SAID_OF.unconfigured}.`)});`,
+    );
+  }
+  if (needs.has(JQ.notRenderable)) {
+    lines.push(
+      `def ${JQ.notRenderable}($name):`,
+      `${I1}error($name + ${jqString(` ${SAID_OF.not_renderable}.`)});`,
     );
   }
   if (needs.has(JQ.read)) {
@@ -147,6 +154,9 @@ function jqValue(value: Value, needs: Set<string>): string | null {
     case "unconfigured":
       needs.add(JQ.notConfigured);
       return `${JQ.notConfigured}(${jqString(value.token)})`;
+    case "not_renderable":
+      needs.add(JQ.notRenderable);
+      return `${JQ.notRenderable}(${jqString(value.token)})`;
     case "cost":
       return null;
   }
@@ -498,8 +508,8 @@ function notReadyHelper(): string[] {
     "_ubb_not_ready() {",
     `${I1}printf '%s (%s) %s' "$1" "$2" ${shWord(MESSAGES.notReady)} >&2`,
     `${I1}shift 2`,
-    `${I1}for _ubb_name in "$@"; do`,
-    `${I2}printf ' %s %s.' "$_ubb_name" ${shWord(MESSAGES.notConfigured)} >&2`,
+    `${I1}for _ubb_reason in "$@"; do`,
+    `${I2}printf ' %s' "$_ubb_reason" >&2`,
     `${I1}done`,
     `${I1}printf '\\n' >&2`,
     "}",
@@ -689,28 +699,37 @@ function reportedCostHelpers(): string[] {
 // A call
 // ---------------------------------------------------------------------------
 
-/** Every token of a call the plan had no value to write for, by name. */
+/** Each value this file writes as a call that raises, as the sentence that
+ * says why. A value the plan wrote as unconfigured is said to have no
+ * configured value — nothing configures it, or (as since #578) it is read
+ * off a response this target cannot read, which the header's diagnostic
+ * names. One the tenant declared and this Code Builder version cannot yet
+ * generate (#571) is said to be exactly that. The sentence is made here, so
+ * the helper that prints it states no reason of its own. */
 function unwritten(call: CallPlan): string[] {
-  const named = (value: Value | null) => (value?.kind === "unconfigured" ? [value.token] : []);
+  const sentence = (value: Value | null): string[] =>
+    value?.kind === "unconfigured" || value?.kind === "not_renderable"
+      ? [said({ name: value.token, why: value.kind })]
+      : [];
   return call.body.flatMap((field) =>
     field.shape === "keyed"
-      ? field.members.flatMap((member) => named(member.value))
-      : named(field.value),
+      ? field.members.flatMap((member) => sentence(member.value))
+      : sentence(field.value),
   );
 }
 
 function guard(uses: Uses, call: CallPlan): string[] {
   // By the server's verdict, and by this target's own: a value it has no way
   // to write is a call it does not send, whatever the verdict says.
-  const names = unwritten(call);
-  if (call.call.readiness === "complete" && names.length === 0) return [];
+  const reasons = unwritten(call);
+  if (call.call.readiness === "complete" && reasons.length === 0) return [];
   uses.notReady = true;
-  const missing = names
-    .map((name) => ` ${shWord(name)}`)
+  const saying = reasons
+    .map((reason) => ` ${shWord(reason)}`)
     .join("");
   return [
     ...asComments(COMMENTS.notReadyCall, I1),
-    `${I1}_ubb_not_ready ${shWord(call.call.operationId)} ${shWord(call.call.readiness)}${missing}`,
+    `${I1}_ubb_not_ready ${shWord(call.call.operationId)} ${shWord(call.call.readiness)}${saying}`,
     `${I1}return ${status(SHELL_EXIT.notConfigured)}`,
   ];
 }

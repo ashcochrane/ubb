@@ -124,7 +124,10 @@ The three binding classes are shapes. A `platform_known` token is a literal. A `
 token is a required parameter named exactly as the Blueprint names it: a keyword parameter in
 Python, a `name=value` argument in shell. A `secret_reference` is read from the environment:
 `os.environ[...]` in Python, `$UBB_API_KEY` handed to curl on standard input in shell. A literal
-with no configured value is written as a call that raises, naming the token.
+with no configured value is written as a call that raises, naming the token. One the tenant
+declared that this Code Builder version cannot yet generate — a constant's value, which the
+Blueprint reports as `constant_measurement_not_renderable` until #584 renders it — is written as a
+call that raises saying exactly that, and never as one with no configured value.
 
 ## Comments
 
@@ -132,10 +135,11 @@ Two classes and no third. **Provenance** is generated from the Blueprint in one 
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
 closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
-`tests/__snapshots__/catalogue.v3.json` — a file named for the version, so a change under an
+`tests/__snapshots__/catalogue.v4.json` — a file named for the version, so a change under an
 unchanged number is a diff a reviewer reads. It is one catalogue for both targets, so both state
-its version: adding the shell target's members made it version 2 for Python's files too, and
-rewording the shell file's refusal of an old jq made it version 3 (#582).
+its version: adding the shell target's members made it version 2 for Python's files too,
+rewording the shell file's refusal of an old jq made it version 3 (#582), and replacing one
+diagnostic code's remediation with another's made it version 4 (#571).
 Its symbols (`UBB_API_KEY`, `UBB_BASE_URL`, `stop_requested`, `UBB_EXIT_STOP_REQUESTED` = 20, and
 the other statuses and names a shell file is made of) are the renderer's own and are not registry
 concepts.

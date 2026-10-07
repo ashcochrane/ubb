@@ -224,17 +224,24 @@ describe("the Blueprint stage", () => {
 
   // That the page CANNOT send one is the feature-wide source check in
   // `developers-feature.test.ts`; this is what the page offers instead.
-  it("offers each blocking diagnostic's request to copy, with its reference, and nothing that sends", async () => {
+  it("offers each blocking diagnostic's request, where it carries one, to copy with its reference and nothing that sends", async () => {
     renderCodeBuilder(BLOCKED);
     await resolved(/^Blocked$/);
     const blocked = await loadBlueprintFixture("blocked");
     const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
     const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
 
-    expect(blocks).toHaveLength(blocked.diagnostics.length);
-    for (const diagnostic of blocked.diagnostics) {
+    // The one diagnostic reported over a complete declaration offers nothing
+    // to change, so it renders its words and no request (#571).
+    const withARequest = blocked.diagnostics.filter((d) => d.remediation_request != null);
+    expect(blocked.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
+    expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
+    expect(blocks).toHaveLength(withARequest.length);
+    for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;
-      if (!request) throw new Error("every diagnostic in this fixture carries a request");
+      if (!request) throw new Error("filtered to the diagnostics carrying a request");
       // Two diagnostics can share an operation; the route names the object.
       const block = blocks.find((candidate) =>
         candidate.textContent?.includes(`${request.method} ${request.route}`),
@@ -258,6 +265,21 @@ describe("the Blueprint stage", () => {
     fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0]?.[0]).toMatch(/^# operation_id = "api_v1_[a-z_]+"\n(PUT|POST|PATCH) \/api\/v1\//);
+  });
+
+  it("shows a valued constant's token as declared and not yet generable, never as not declared", async () => {
+    // #571: the Blueprint carries the constant unconfigured; its diagnostic
+    // says the tenant declared it and only this Code Builder version lacks
+    // something, and the token's own row says the same.
+    renderCodeBuilder(BLOCKED);
+    await resolved(/^Blocked$/);
+    const row = stage("Blueprint").querySelector<HTMLElement>('[data-token="measurements.flat_fee"]');
+    if (row === null) throw new Error("the constant's token is not shown");
+
+    expect(
+      within(row).getByText("Valid platform configuration. This Code Builder version cannot yet generate its use."),
+    ).toBeInTheDocument();
+    expect(within(row).queryByText("Not declared yet")).toBeNull();
   });
 
   it("names what each kind's limits can announce, and where to subscribe", async () => {
@@ -492,7 +514,7 @@ describe("where an integration starts", () => {
     }
     expect(within(start).getByText("UBB_API_KEY")).toBeInTheDocument();
     expect(within(start).getByText("UBB_BASE_URL")).toBeInTheDocument();
-    const missing = within(start).getByRole("list", { name: "What must be configured" });
+    const missing = within(start).getByRole("list", { name: "Reported against this integration" });
     expect(within(missing).getByText(diagnosticCodeLabel("task_type_not_selected"))).toBeInTheDocument();
     expect(within(missing).getByText(diagnosticCodeLabel("event_type_not_selected"))).toBeInTheDocument();
   });

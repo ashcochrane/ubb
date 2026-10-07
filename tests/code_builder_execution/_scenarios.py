@@ -604,7 +604,8 @@ def _says_what_is_missing(outcome: Outcome, ran: Ran,
                if call["operation_id"] == operation
                and call["readiness"] != COMPLETE][:1]
     # "<operation> (<readiness>) is not ready to run. The generated file's
-    # header lists what to declare."
+    # header says why." No scenario declares a constant before #584, so every
+    # unconfigured value here is one the configuration lacks.
     assert (f"{operation} ({call['readiness']}) {said['notReady']}"
             in ran.stderr), ran
     missing = [argument["name"] for argument in call["arguments"]

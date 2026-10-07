@@ -7,7 +7,11 @@
  * whatever file is written. What each target DOES with an operation — an SDK
  * method, or a route and a body — is that target's own.
  */
-import { refuse, type ResolvedIntegrationBlueprint } from "./blueprint.ts";
+import {
+  refuse,
+  type DiagnosticCode,
+  type ResolvedIntegrationBlueprint,
+} from "./blueprint.ts";
 import { ENVIRONMENT } from "./catalogue.ts";
 import {
   literalOf,
@@ -36,6 +40,7 @@ export const FIELD = {
   kindOfWork: "task_type",
   eventType: "event_type",
   currency: "currency",
+  measurements: "measurements",
 } as const;
 
 /** The declared facts a target may act on, by the last segment of their name. */
@@ -64,6 +69,79 @@ export interface Lifecycle {
   readonly closing: readonly Call[];
 }
 
+/**
+ * The diagnostic a constant quantity is reported with while this version of
+ * the renderer cannot write its declared value (#571). Typed by the contract,
+ * so the day the ticket that renders a constant (#584) removes the member,
+ * this stops compiling — and goes with it.
+ */
+const NOT_RENDERABLE: DiagnosticCode = "constant_measurement_not_renderable";
+
+/**
+ * Every quantity a Blueprint reports this Code Builder version cannot yet
+ * generate the value of (#571), as its diagnostic addresses it:
+ * `<event type>:<code>`. The one reading of that diagnostic: the console
+ * shows the same tokens, and asks this too.
+ */
+export function notRenderableAddresses(
+  blueprint: Pick<ResolvedIntegrationBlueprint, "diagnostics">,
+): ReadonlySet<string> {
+  const addressed = new Set<string>();
+  for (const diagnostic of blueprint.diagnostics) {
+    if (
+      diagnostic.code === NOT_RENDERABLE &&
+      diagnostic.object_kind === "measurement" &&
+      typeof diagnostic.key === "string"
+    ) {
+      addressed.add(diagnostic.key);
+    }
+  }
+  return addressed;
+}
+
+/** Whether the value under `key` of a call's `field` is one of those: a
+ * quantity's value, matched on the call's own Event Type and the key exactly
+ * as declared — no token name is decoded. */
+export function isNotRenderableValue(
+  addresses: ReadonlySet<string>,
+  eventType: string | null,
+  field: string,
+  key: string,
+): boolean {
+  return field === FIELD.measurements && eventType !== null && addresses.has(`${eventType}:${key}`);
+}
+
+/**
+ * Every such value marked as what it is rather than left looking
+ * unconfigured: the tenant declared it, and a file that called it missing
+ * would be the false explanation the diagnostic exists to replace. Only a
+ * value that already reads as unconfigured is marked: one the Blueprint
+ * carries is never taken away.
+ */
+function withNotRenderable(calls: readonly Call[], blueprint: ResolvedIntegrationBlueprint): Call[] {
+  const addresses = notRenderableAddresses(blueprint);
+  if (addresses.size === 0) return [...calls];
+  return calls.map((call) => {
+    const eventType = keyOf(call, FIELD.eventType);
+    return {
+      ...call,
+      fields: call.fields.map((field) =>
+        field.shape !== "keyed"
+          ? field
+          : {
+              ...field,
+              entries: field.entries.map((entry) =>
+                entry.value?.binding.kind === "unconfigured" &&
+                isNotRenderableValue(addresses, eventType, field.name, entry.keyText)
+                  ? { ...entry, value: { ...entry.value, binding: { kind: "not_renderable" } } }
+                  : entry,
+              ),
+            },
+      ),
+    };
+  });
+}
+
 function carries(call: Call, field: string): boolean {
   return call.fields.some((candidate) => candidate.name === field);
 }
@@ -83,7 +161,7 @@ export function readLifecycle(
   blueprint: ResolvedIntegrationBlueprint,
   parameterName: (name: string) => string,
 ): Lifecycle {
-  const calls = blueprint.calls.map(readCall);
+  const calls = withNotRenderable(blueprint.calls.map(readCall), blueprint);
   const known: string[] = Object.values(OPERATION_IDS);
   for (const call of calls) {
     if (!known.includes(call.operationId)) {

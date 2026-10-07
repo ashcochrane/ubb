@@ -384,7 +384,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 266 -> 268 in #575: two state-only migrations, each following a
         # `choices=` list onto the set generated from the registry. Neither
         # names a retired word, so the number moved for the files existing.
-        "historical-migrations": (UNTIL_SLICE_8, 268, 19),
+        # 268 -> 269 in #571: one migration, adding the column a constant
+        # Measurement declares its value in and the guard before its rules.
+        # It names no retired word, so the number moved for the file existing.
+        "historical-migrations": (UNTIL_SLICE_8, 269, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

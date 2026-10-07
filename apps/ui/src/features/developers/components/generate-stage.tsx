@@ -87,7 +87,7 @@ export function GenerateStage({
         {`${readinessLabel(blueprint.readiness)}. `}
         {blueprint.readiness === "complete"
           ? "Every call these files make resolves against what you have declared."
-          : "A call that is not ready refuses to run, and says what is missing."}
+          : "A call that is not ready refuses to run, and says why."}
       </p>
       {TAKEN_KINDS.map((kind) => (
         <FileGroup

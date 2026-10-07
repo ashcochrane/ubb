@@ -53,12 +53,15 @@ import {
   factNamed,
   factOfField,
   literalOf,
-  unconfigured,
+  notWritten,
+  said,
+  SAID_OF,
   type Call,
   type Entry,
   type Field,
   type KeyedField,
   type Literal,
+  type NotRenderable,
   type Parameter,
   type ScalarField,
   type Token,
@@ -70,6 +73,10 @@ import { INDENT, isIdentifier, pyLiteral, pyString, unshadowed } from "./syntax.
 /** What the module turned out to need, found while writing its calls. */
 interface Uses {
   notReady: boolean;
+  /** Each of the two values a call can be written without, which decides
+   * which of their helpers the module carries. */
+  notConfigured: boolean;
+  notRenderable: boolean;
   reportedCost: boolean;
   attribute: boolean;
 }
@@ -88,11 +95,21 @@ function header(plan: Plan): string[] {
 // Values
 // ---------------------------------------------------------------------------
 
-type Valued = Token<Literal | Unconfigured | Parameter>;
+type Valued = Token<Literal | Unconfigured | NotRenderable | Parameter>;
 
 function notConfigured(plan: Plan, uses: Uses, name: string): string {
   uses.notReady = true;
+  uses.notConfigured = true;
   return `${plan.internal.notConfigured}(${pyString(name)})`;
+}
+
+/** A declared value this Code Builder version cannot yet generate (#571), in
+ * its place as a call that raises saying so — never as one that calls it
+ * missing. */
+function notRenderable(plan: Plan, uses: Uses, name: string): string {
+  uses.notReady = true;
+  uses.notRenderable = true;
+  return `${plan.internal.notRenderable}(${pyString(name)})`;
 }
 
 function plain(plan: Plan, uses: Uses, token: Valued): string {
@@ -103,6 +120,8 @@ function plain(plan: Plan, uses: Uses, token: Valued): string {
       return token.binding.name;
     case "unconfigured":
       return notConfigured(plan, uses, token.name);
+    case "not_renderable":
+      return notRenderable(plan, uses, token.name);
   }
 }
 
@@ -211,11 +230,17 @@ function entryLines(plan: Plan, uses: Uses, call: Call, field: KeyedField): stri
 function guard(plan: Plan, uses: Uses, call: Call): string[] {
   if (call.readiness === "complete") return [];
   uses.notReady = true;
-  const missing = unconfigured(call).map((name) => `, ${pyString(name)}`).join("");
+  // Each value the Blueprint leaves the call without, said as what is true
+  // of it: one nothing configures, or one the tenant declared and this Code
+  // Builder version cannot yet generate. The sentence is made here, so the
+  // helper that raises states no reason of its own.
+  const reasons = notWritten(call)
+    .map((value) => `, ${pyString(said(value))}`)
+    .join("");
   return [
     ...asComments(COMMENTS.notReadyCall, INDENT),
     `${INDENT}${plan.internal.notReady}(${pyString(call.operationId)}, ` +
-      `${pyString(call.readiness)}${missing})`,
+      `${pyString(call.readiness)}${reasons})`,
   ];
 }
 
@@ -374,8 +399,8 @@ function client(plan: Plan): string[] {
   ];
 }
 
-function notReadyHelpers(plan: Plan): string[] {
-  const { notReady, notConfigured: unset } = plan.internal;
+function notReadyHelpers(plan: Plan, uses: Uses): string[] {
+  const { notReady, notConfigured: unset, notRenderable: unrenderable } = plan.internal;
   const error = PYTHON.notReadyError;
   return [
     ...asComments(COMMENTS.notReady),
@@ -383,15 +408,17 @@ function notReadyHelpers(plan: Plan): string[] {
     `${INDENT}pass`,
     "",
     "",
-    `def ${notReady}(operation, readiness, *missing) -> NoReturn:`,
-    `${INDENT}detail = "".join(f" {name} ${MESSAGES.notConfigured}." for name in missing)`,
+    `def ${notReady}(operation, readiness, *reasons) -> NoReturn:`,
+    `${INDENT}detail = "".join(f" {reason}" for reason in reasons)`,
     `${INDENT}raise ${error}(`,
     `${INDENT.repeat(2)}f"{operation} ({readiness}) ${MESSAGES.notReady}{detail}"`,
     `${INDENT})`,
-    "",
-    "",
-    `def ${unset}(name) -> NoReturn:`,
-    `${INDENT}raise ${error}(f"{name} ${MESSAGES.notConfigured}.")`,
+    ...(uses.notConfigured
+      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.unconfigured}.")`]
+      : []),
+    ...(uses.notRenderable
+      ? ["", "", `def ${unrenderable}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.not_renderable}.")`]
+      : []),
   ];
 }
 
@@ -520,7 +547,13 @@ function section(...blocks: (readonly string[])[]): string[] {
 
 /** The module's text. */
 export function renderModule(plan: Plan): string {
-  const uses: Uses = { notReady: false, reportedCost: false, attribute: false };
+  const uses: Uses = {
+    notReady: false,
+    notConfigured: false,
+    notRenderable: false,
+    reportedCost: false,
+    attribute: false,
+  };
 
   const pricingMode = factOfField(plan.start.call, FIELD.kindOfWork, FACT.pricingMode);
   const sold = typeof pricingMode === "string" ? (PRICING_MODE_COMMENTS[pricingMode] ?? []) : [];
@@ -561,7 +594,7 @@ export function renderModule(plan: Plan): string {
     ...client(plan),
     ...(uses.attribute ? ["", "", `${plan.internal.attribute} = getattr`] : []),
     ...section(
-      uses.notReady ? notReadyHelpers(plan) : [],
+      uses.notReady ? notReadyHelpers(plan, uses) : [],
       uses.reportedCost ? reportedCostHelpers(plan) : [],
       start,
       [`${plan.internal.startTask} = ${PYTHON.startTask}`],

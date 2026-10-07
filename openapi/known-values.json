@@ -192,7 +192,7 @@
         "event_type_revised_since_publication",
         "reported_cost_mapping_missing",
         "reported_cost_provider_response_unsupported",
-        "constant_value_not_declared",
+        "constant_measurement_not_renderable",
         "derived_measurement_unsupported",
         "response_shape_not_declared",
         "response_shape_not_readable_by_target",

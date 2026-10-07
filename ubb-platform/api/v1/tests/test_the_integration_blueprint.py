@@ -1085,10 +1085,19 @@ class TestAShapeTheTargetCannotReadIsBlocked(_Routes):
 
 @pytest.mark.django_db
 class TestNoValueIsInvented(_Routes):
-    def test_a_constant_has_no_declared_value_and_is_blocked(self):
+    def test_a_constant_with_its_value_is_blocked_only_until_it_can_render(
+            self):
+        """The declaration is complete — a constant is declared with its
+        value (#571) — and this Code Builder version cannot yet generate code
+        that uses it. So the call is blocked by the code that says exactly
+        that and by nothing else of the quantity's own, the value reaches
+        neither the Blueprint nor the snapshot it is stored as (#584 carries
+        it), and no request is offered: there is nothing in the declaration
+        to change."""
         self._a_kind()
         self._event_type(measurements={"calls": {
-            **SEARCHES, "unit": "call", "source_kind": "constant"}})
+            **SEARCHES, "value_type": "decimal", "unit": "call",
+            "source_kind": "constant", "constant_value": "271828.5"}})
 
         blueprint = self._complete()
         record = _the_record(blueprint)
@@ -1098,10 +1107,16 @@ class TestNoValueIsInvented(_Routes):
         assert constant["configured"] is False
         assert constant["value"] is None
         assert record["readiness"] == "blocked"
-        blocker = _diagnostic(blueprint, "constant_value_not_declared")
-        assert (blocker["severity"], blocker["object_kind"],
-                blocker["key"], blocker["field"]) == (
-            "blocking", "measurement", f"{EVENT}:calls", "source_kind")
+        about_the_constant = [d for d in blueprint["diagnostics"]
+                              if d["key"] == f"{EVENT}:calls"]
+        assert about_the_constant == [{
+            "severity": "blocking",
+            "code": "constant_measurement_not_renderable",
+            "object_kind": "measurement", "key": f"{EVENT}:calls",
+            "field": "source_kind", "remediation_request": None}]
+        assert "271828" not in json.dumps(blueprint)
+        (stored,) = BlueprintSnapshot.objects.filter(tenant=self.tenant)
+        assert "271828" not in json.dumps(stored.content)
 
     def test_a_derived_quantity_is_always_blocked(self):
         self._a_kind()
@@ -1831,15 +1846,17 @@ class TestTheBuilderChangesNoConfiguration(_Routes):
 
     def test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them(
             self):
-        """Every diagnostic here carries a request that would change
-        configuration. An admin key asks, in both modes, and every
-        configuration table is exactly as it was: nothing is declared,
-        edited or published, and no request is executed."""
+        """Every diagnostic here but the valid constant's carries a request
+        that would change configuration. An admin key asks, in both modes,
+        and every configuration table is exactly as it was: nothing is
+        declared, edited or published, and no request is executed."""
         self._a_kind()
         self._event_type("draft.only", publish=False)
         self._event_type("unshaped", shape="")
-        self._event_type("constant", measurements={"calls": {
-            **SEARCHES, "source_kind": "constant"}})
+        self._event_type("constant", measurements={
+            "calls": {**SEARCHES, "source_kind": "constant",
+                      "constant_value": "1"},
+            "total": {**SEARCHES, "source_kind": "derived"}})
         before = _every_row()
 
         published = self._complete(
@@ -1872,6 +1889,10 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     #: diagnostic carries a request instead of naming a page.
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
+    #: The codes reported over a declaration that is complete, where nothing in
+    #: the configuration is the thing to change (#571). No request is offered
+    #: for one: the console words a request as the change an admin makes.
+    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable"}
 
     def _every_remediation(self):
         """One Blueprint per situation, between them offering a request for
@@ -1884,7 +1905,8 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
         self._event_type("unshaped", shape="")
         self._event_type("wrapped", shape="custom", label="acme-wrapper-v2")
         self._event_type("constant", measurements={
-            "calls": {**SEARCHES, "source_kind": "constant"},
+            "calls": {**SEARCHES, "source_kind": "constant",
+                      "constant_value": "1"},
             "total": {**SEARCHES, "source_kind": "derived"}})
         self._event_type("billed.by.supplier", costing_method="reported",
                          measurements={},
@@ -1915,15 +1937,19 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
         carrying = {d["object_kind"] for d in diagnostics
                     if d["remediation_request"]}
         bare = {d["object_kind"] for d in diagnostics
-                if not d["remediation_request"]}
+                if not d["remediation_request"]
+                and d["code"] not in self.NOTHING_TO_CHANGE}
         assert carrying == self.WITHOUT_A_SCREEN
         assert bare <= {"task_type", "subtask_type"}
+        assert [d["remediation_request"] for d in diagnostics
+                if d["code"] in self.NOTHING_TO_CHANGE] == [None, None]
         assert {d["code"] for d in diagnostics} >= {
             "event_type_not_declared", "event_type_not_published",
             "event_type_revised_since_publication",
             "reported_cost_mapping_missing",
             "reported_cost_provider_response_unsupported",
-            "constant_value_not_declared", "derived_measurement_unsupported",
+            "constant_measurement_not_renderable",
+            "derived_measurement_unsupported",
             "response_shape_not_declared",
             "response_shape_not_readable_by_target",
             "source_path_convention_mismatch",

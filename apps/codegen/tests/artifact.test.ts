@@ -16,6 +16,9 @@ import {
   BlueprintNotRenderable,
   COMMENTS,
   ENVIRONMENT,
+  isNotRenderableValue,
+  MESSAGES,
+  notRenderableAddresses,
   PRICING_MODE_COMMENTS,
   READINESS_COMMENTS,
   REMEDIATION,
@@ -329,7 +332,7 @@ describe("the header", () => {
     },
   );
 
-  it("lists every diagnostic with its remediation and the request that fixes it", () => {
+  it("lists every diagnostic with its remediation, and the request where it offers one", () => {
     const blueprint = fixture("blocked");
     const lines = header("blocked");
 
@@ -343,10 +346,16 @@ describe("the header", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      expect(lines).toContain(
-        `remediation_request = ${JSON.stringify(diagnostic.remediation_request)}`,
-      );
+      // A diagnostic with nothing to change carries no request (#571), and
+      // the header then states none rather than a null.
+      const request = diagnostic.remediation_request ?? null;
+      const stated = `remediation_request = ${JSON.stringify(request)}`;
+      if (request === null) expect(lines).not.toContain(stated);
+      else expect(lines).toContain(stated);
     }
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
+      "constant_measurement_not_renderable",
+    ]);
   });
 
   it("lists a diagnostic that names no declaration, and offers no request for it", () => {
@@ -398,7 +407,8 @@ describe("the header", () => {
 
   it("is the same whatever a diagnostic's request is, but for the line that states it", () => {
     const blueprint = fixture("blocked");
-    blueprint.diagnostics[0]!.remediation_request!.route = "/api/v1/somewhere-else";
+    blueprint.diagnostics.find((d) => d.remediation_request != null)!.remediation_request!.route =
+      "/api/v1/somewhere-else";
 
     const changed = only(render(blueprint), "module").contents.split("\n");
     const original = moduleOf("blocked").contents.split("\n");
@@ -415,6 +425,55 @@ describe("the shapes a value takes", () => {
     expect(fixed).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
     expect(perEvent).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.event_priced!]));
     expect(perEvent).not.toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
+  });
+
+  it("writes a valued constant as one this version cannot generate: no file of either target calls it missing", () => {
+    // #571: the constant is declared with its value, so no file may say it
+    // is missing — not the call that raises in its place, not the helper,
+    // not the preview — while this Code Builder version cannot write it.
+    for (const branch of ["constant", "shell-constant"]) {
+      const files = rendered(branch);
+      for (const file of files) {
+        expect(file.contents, `${branch}/${file.path}`).not.toContain(MESSAGES.notConfigured);
+        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/not_configured\(/);
+      }
+      const module = only(files, "module").contents;
+      expect(module, branch).toMatch(/not_renderable\("measurements\.flat_fee"\)/);
+      expect(module, branch).toContain(MESSAGES.notRenderable);
+    }
+  });
+
+  it("reads the diagnostic back only onto the quantity of the Event Type it names", () => {
+    // NOT a Blueprint the routes answered: the constant fixture with its
+    // diagnostic addressed to another Event Type's quantity of the same
+    // code. The value is then an ordinary unconfigured one, as it was before
+    // #571 — so the match needs the Event Type as well as the code.
+    const blueprint = fixture("constant");
+    for (const diagnostic of blueprint.diagnostics) diagnostic.key = "another.call:flat_fee";
+
+    const module = only(render(blueprint), "module").contents;
+
+    expect(module).toContain('"flat_fee": _not_configured("measurements.flat_fee"),');
+    expect(module).not.toContain("_not_renderable(");
+  });
+
+  it("reads only a quantity's diagnostic, and only onto a quantity", () => {
+    const constant = fixture("constant");
+    const addresses = notRenderableAddresses(constant);
+
+    expect([...addresses]).toEqual(["flat.call:flat_fee"]);
+    expect(isNotRenderableValue(addresses, "flat.call", "measurements", "flat_fee")).toBe(true);
+    // A Grouping Field keyed like the quantity is not its value.
+    expect(isNotRenderableValue(addresses, "flat.call", "grouping_fields", "flat_fee")).toBe(false);
+    expect(isNotRenderableValue(addresses, null, "measurements", "flat_fee")).toBe(false);
+    // The code reported about anything but a quantity addresses no value.
+    const aboutAnEventType = {
+      diagnostics: constant.diagnostics.map((diagnostic) => ({
+        ...diagnostic,
+        object_kind: "event_type" as const,
+      })),
+    };
+    expect([...notRenderableAddresses(aboutAnEventType)]).toEqual([]);
   });
 
   it("writes an unconfigured literal as a call that raises, naming the token", () => {

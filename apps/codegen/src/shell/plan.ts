@@ -123,6 +123,8 @@ export type Value =
       readonly declared: string;
     }
   | { readonly kind: "unconfigured"; readonly token: string }
+  /** A value the tenant declared that this renderer cannot yet write (#571). */
+  | { readonly kind: "not_renderable"; readonly token: string }
   | {
       readonly kind: "cost";
       readonly parameter: Parameter;
@@ -267,6 +269,9 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
         }
         if (bound.binding.kind === "unconfigured") {
           return { key: entry.keyText, comments, value: { kind: "unconfigured", token: bound.name } };
+        }
+        if (bound.binding.kind === "not_renderable") {
+          return { key: entry.keyText, comments, value: { kind: "not_renderable", token: bound.name } };
         }
         const stated = entry.facts.find((fact) => fact.element === FACT.sourcePath);
         if (stated !== undefined) {

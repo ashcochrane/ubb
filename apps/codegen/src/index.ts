@@ -7,6 +7,7 @@
 export { render } from "./render.ts";
 export type { FileKind, RenderedFile } from "./render.ts";
 export { BlueprintNotRenderable } from "./blueprint.ts";
+export { isNotRenderableValue, notRenderableAddresses } from "./lifecycle.ts";
 export type { ResolvedIntegrationBlueprint } from "./blueprint.ts";
 export {
   AMOUNT_REPRESENTATION,

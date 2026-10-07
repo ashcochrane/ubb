@@ -129,7 +129,7 @@
   "customer_billing_mode.prepaid": "Prepaid",
   "declaration_status.draft": "Draft",
   "declaration_status.published": "Published",
-  "diagnostic_code.constant_value_not_declared": "This constant Measurement has no declared value",
+  "diagnostic_code.constant_measurement_not_renderable": "This constant is valid platform configuration, and this Code Builder version cannot yet generate its use",
   "diagnostic_code.derived_measurement_unsupported": "A derived Measurement cannot be generated",
   "diagnostic_code.event_type_not_declared": "This Event Type is not declared",
   "diagnostic_code.event_type_not_published": "This Event Type has no published declaration",

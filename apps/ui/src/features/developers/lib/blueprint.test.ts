@@ -13,6 +13,7 @@ import {
   apiReferenceUrl,
   copyActionLabel,
   fixFor,
+  isNotRenderable,
   placesOf,
   remediationText,
   roleOf,
@@ -22,6 +23,8 @@ import {
   subjectOf,
   TERMINAL_STOP_EVENTS,
 } from "./blueprint";
+import { diagnosticCodeLabel } from "./code-builder-words";
+import { notRenderableAddresses } from "ubb-codegen";
 
 // ---------------------------------------------------------------------------
 // Hand-built tokens, for the cases no platform-written fixture holds. A
@@ -148,7 +151,7 @@ describe("where a token sits", () => {
 
 describe("how a token's value is shown", () => {
   const show = (argument: BlueprintArgument, call = aCall(argument)) =>
-    shownValue(argument, placesOf(call)[call.arguments.indexOf(argument)] ?? { kind: "field", field: argument.name });
+    shownValue(argument, placesOf(call)[call.arguments.indexOf(argument)] ?? { kind: "field", field: argument.name }, false);
 
   it("shows a credential as the variable that holds it, never a value", async () => {
     const blueprint = await loadBlueprintFixture("calculated-cost");
@@ -167,6 +170,38 @@ describe("how a token's value is shown", () => {
     const kind = start?.arguments.find((argument) => argument.name === "task_type");
 
     expect(kind && start && show(kind, start)).toEqual({ kind: "unconfigured" });
+  });
+
+  it("shows a valued constant as declared and not yet generable, never as not declared", async () => {
+    // #571: the Blueprint carries the constant unconfigured, and its
+    // diagnostic says why. Read alone, the token would say "not declared
+    // yet" of a value the tenant declared.
+    const constant = await loadBlueprintFixture("constant");
+    const addresses = notRenderableAddresses(constant);
+    const record = constant.calls.find((call) => call.operation_id === "api_v1_metering_endpoints_record_usage");
+    const places = record ? placesOf(record) : [];
+    const shownAt = (name: string) => {
+      const index = record?.arguments.findIndex((argument) => argument.name === name) ?? -1;
+      const argument = record?.arguments[index];
+      const place = places[index];
+      return argument && place && record
+        ? shownValue(argument, place, isNotRenderable(record, place, addresses))
+        : undefined;
+    };
+
+    expect([...addresses]).toEqual(["flat.call:flat_fee"]);
+    expect(shownAt("measurements.flat_fee")).toEqual({ kind: "not_renderable" });
+    // The quantity beside it is the caller's, and is shown as that.
+    expect(shownAt("measurements.searches")).toEqual({ kind: "parameter", parameter: "searches" });
+    // Addressed to another Event Type's quantity of the same code, the token
+    // reads as it did before #571: the match needs the Event Type too.
+    const at = record?.arguments.findIndex((argument) => argument.name === "measurements.flat_fee") ?? -1;
+    const token = record?.arguments[at];
+    const place = places[at];
+    const elsewhere = new Set(["another.call:flat_fee"]);
+    const marked = record && place ? isNotRenderable(record, place, elsewhere) : undefined;
+    expect(marked).toBe(false);
+    expect(token && place ? shownValue(token, place, marked === true) : undefined).toEqual({ kind: "unconfigured" });
   });
 
   it("words a fact through its registry concept", () => {
@@ -278,11 +313,26 @@ describe("what answers a diagnostic", () => {
 
   it("offers the server's request for an object with no console screen", async () => {
     const blocked = await loadBlueprintFixture("blocked");
+    // The one code reported over a complete declaration, where nothing is the
+    // thing to change: the server sends no request for it (#571).
+    const withAFix = blocked.diagnostics.filter((d) => d.code !== "constant_measurement_not_renderable");
 
-    expect(blocked.diagnostics.length).toBeGreaterThan(0);
-    for (const diagnostic of blocked.diagnostics) {
+    expect(withAFix.length).toBeGreaterThan(0);
+    expect(withAFix.length).toBe(blocked.diagnostics.length - 1);
+    for (const diagnostic of withAFix) {
       expect(fixFor(diagnostic)).toEqual({ kind: "request", request: diagnostic.remediation_request });
     }
+  });
+
+  it("offers nothing to change for a valid constant, and says only this version cannot use it", async () => {
+    const constant = await loadBlueprintFixture("constant");
+
+    expect(constant.diagnostics.map((d) => d.code)).toEqual(["constant_measurement_not_renderable"]);
+    expect(constant.diagnostics.map(fixFor)).toEqual([{ kind: "none" }]);
+    const label = diagnosticCodeLabel("constant_measurement_not_renderable");
+    expect(label).toContain("valid platform configuration");
+    expect(label).toContain("this Code Builder version cannot yet generate");
+    expect(label).not.toMatch(/missing|not declared|no declared value|unsupported/i);
   });
 
   it("points a kind of work at its page, or at Tasks where it is not declared", () => {

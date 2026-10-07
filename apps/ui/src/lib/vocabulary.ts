@@ -675,10 +675,10 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // are structural and leave a call a scaffold: no kind of work or no Event Type
 // selected, or one selected that is not declared. The rest either block a call
 // — a retired kind, a required Grouping Field that cannot be supplied, an
-// Event Type with nothing published, a cost or a quantity UBB cannot yet
-// carry, a response shape the target cannot read — or advise without blocking:
-// a declaration revised since it was published, or a path that looks
-// inconsistent with its declared shape.
+// Event Type with nothing published, a cost or a quantity generated code
+// cannot yet carry, a response shape the target cannot read — or advise
+// without blocking: a declaration revised since it was published, or a path
+// that looks inconsistent with its declared shape.
 //
 // Declared in concepts/code-builder.yaml.
 
@@ -695,7 +695,7 @@ export const DIAGNOSTIC_CODE_VALUES = [
   "event_type_revised_since_publication",
   "reported_cost_mapping_missing",
   "reported_cost_provider_response_unsupported",
-  "constant_value_not_declared",
+  "constant_measurement_not_renderable",
   "derived_measurement_unsupported",
   "response_shape_not_declared",
   "response_shape_not_readable_by_target",
@@ -717,7 +717,7 @@ export const DIAGNOSTIC_CODE_LABEL_KEYS = {
   "event_type_revised_since_publication": "diagnostic_code.event_type_revised_since_publication",
   "reported_cost_mapping_missing": "diagnostic_code.reported_cost_mapping_missing",
   "reported_cost_provider_response_unsupported": "diagnostic_code.reported_cost_provider_response_unsupported",
-  "constant_value_not_declared": "diagnostic_code.constant_value_not_declared",
+  "constant_measurement_not_renderable": "diagnostic_code.constant_measurement_not_renderable",
   "derived_measurement_unsupported": "diagnostic_code.derived_measurement_unsupported",
   "response_shape_not_declared": "diagnostic_code.response_shape_not_declared",
   "response_shape_not_readable_by_target": "diagnostic_code.response_shape_not_readable_by_target",

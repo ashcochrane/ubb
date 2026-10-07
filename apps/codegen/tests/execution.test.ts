@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { render, type RenderedFile } from "../src/index.ts";
+import { MESSAGES, render, type RenderedFile } from "../src/index.ts";
 import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
 import { everyArgument, fixture, FIXTURES, REPO_ROOT } from "./support/fixtures.ts";
 import { compiled, reportedCost, run } from "./support/python.ts";
@@ -599,8 +599,36 @@ result = {"raised": raised,
 
     const raised = answer.raised as Record<string, string>;
     expect(Object.keys(raised)).toHaveLength(4);
-    expect(raised.record_chat_completion).toContain("measurements.flat_fee has no configured value");
+    // The constant is declared with its value (#571): what stops the call is
+    // this Code Builder version, and it says so — never that a value is
+    // missing.
+    expect(raised.record_chat_completion).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
+    expect(raised.record_chat_completion).not.toContain(MESSAGES.notConfigured);
     expect(raised.record_draft_only).toContain("(blocked)");
+    expect(answer.paths).toEqual(["/api/v1/tasks"]);
+  });
+
+  it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
+    const answer = run<Record<string, unknown>>(
+      rendered("constant"),
+      `
+integration = load()
+task = integration.start_task(customer_id="c", idempotency_key="w")
+try:
+    integration.record_flat_call(customer_id="c", idempotency_key="e",
+                                 task_id=task.task_id, searches=1)
+    raised = None
+except integration.UBBIntegrationNotReady as error:
+    raised = str(error)
+result = {"raised": raised,
+          "paths": [request["path"] for request in server.requests]}
+`,
+    );
+
+    expect(answer.raised).toBe(
+      `api_v1_metering_endpoints_record_usage (blocked) ${MESSAGES.notReady} ` +
+        `measurements.flat_fee ${MESSAGES.notRenderable}.`,
+    );
     expect(answer.paths).toEqual(["/api/v1/tasks"]);
   });
 

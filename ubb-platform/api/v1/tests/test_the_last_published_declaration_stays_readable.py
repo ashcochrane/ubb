@@ -73,7 +73,8 @@ def _as_served(body):
                 code=m["code"], value_type=m["value_type"], unit=m["unit"],
                 required_for_costing=m["required_for_costing"],
                 source_kind=m["source_kind"],
-                source_path=tuple(m["source_path"]))
+                source_path=tuple(m["source_path"]),
+                constant_value=m["constant_value"])
             for m in sorted(body["measurements"], key=lambda m: m["code"])),
         reported_cost_mapping=(None if mapping is None else
                                PublishedReportedCostMapping(
@@ -147,12 +148,14 @@ class TestTheLastPublishedDeclarationStaysReadable:
                     code="input_tokens", value_type="integer", unit="token",
                     required_for_costing=True,
                     source_kind="provider_response",
-                    source_path=("usage", "input_tokens")),
+                    source_path=("usage", "input_tokens"),
+                    constant_value=None),
                 PublishedMeasurement(
                     code="output_tokens", value_type="integer", unit="token",
                     required_for_costing=False,
                     source_kind="provider_response",
-                    source_path=("usage", "output_tokens")),
+                    source_path=("usage", "output_tokens"),
+                    constant_value=None),
             ),
             reported_cost_mapping=PublishedReportedCostMapping(
                 source_kind="provider_response",

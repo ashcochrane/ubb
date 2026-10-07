@@ -20,7 +20,16 @@ import { formatDate, formatMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 
 import type { Blueprint, BlueprintArgument, BlueprintCall } from "../api/types";
-import { placesOf, screenFor, shownValue, type Shown, type TokenPlace } from "../lib/blueprint";
+import { notRenderableAddresses } from "ubb-codegen";
+
+import {
+  isNotRenderable,
+  placesOf,
+  screenFor,
+  shownValue,
+  type Shown,
+  type TokenPlace,
+} from "../lib/blueprint";
 import {
   bindingClassLabel,
   callHeading,
@@ -68,6 +77,7 @@ export function BlueprintStage({
     );
   }
   const blueprint = query.data;
+  const notRenderable = notRenderableAddresses(blueprint);
   return (
     <div className="space-y-5" aria-busy={query.isPlaceholderData}>
       <Verdict blueprint={blueprint} />
@@ -78,7 +88,11 @@ export function BlueprintStage({
       <div className="space-y-3">
         <h3 className="text-[12px] font-medium text-text-primary">Calls</h3>
         {blueprint.calls.map((call, index) => (
-          <CallFacts key={`${call.operation_id}:${index}`} call={call} />
+          <CallFacts
+            key={`${call.operation_id}:${index}`}
+            call={call}
+            notRenderable={notRenderable}
+          />
         ))}
       </div>
       <KindWebhooks blueprint={blueprint} />
@@ -121,7 +135,13 @@ function Verdict({ blueprint }: { blueprint: Blueprint }) {
   );
 }
 
-function CallFacts({ call }: { call: BlueprintCall }) {
+function CallFacts({
+  call,
+  notRenderable,
+}: {
+  call: BlueprintCall;
+  notRenderable: ReadonlySet<string>;
+}) {
   const title = callHeading(call);
   const places = placesOf(call);
   return (
@@ -143,7 +163,14 @@ function CallFacts({ call }: { call: BlueprintCall }) {
         <tbody>
           {call.arguments.map((argument, index) => {
             const place: TokenPlace = places[index] ?? { kind: "field", field: argument.name };
-            return <TokenRow key={`${argument.name}:${index}`} argument={argument} place={place} />;
+            return (
+              <TokenRow
+                key={`${argument.name}:${index}`}
+                argument={argument}
+                place={place}
+                notRenderable={isNotRenderable(call, place, notRenderable)}
+              />
+            );
           })}
         </tbody>
       </table>
@@ -151,7 +178,15 @@ function CallFacts({ call }: { call: BlueprintCall }) {
   );
 }
 
-function TokenRow({ argument, place }: { argument: BlueprintArgument; place: TokenPlace }) {
+function TokenRow({
+  argument,
+  place,
+  notRenderable,
+}: {
+  argument: BlueprintArgument;
+  place: TokenPlace;
+  notRenderable: boolean;
+}) {
   const screen = screenFor(argument, place);
   const provenance = argument.provenance ?? null;
   return (
@@ -160,7 +195,7 @@ function TokenRow({ argument, place }: { argument: BlueprintArgument; place: Tok
         <code className="font-mono">{argument.name}</code>
       </td>
       <td className="px-3 py-1.5">
-        <ShownValue shown={shownValue(argument, place)} />
+        <ShownValue shown={shownValue(argument, place, notRenderable)} />
         {screen !== null && (
           <div>
             <ScreenLink screen={screen} />
@@ -203,6 +238,12 @@ export function ShownValue({ shown }: { shown: Shown }) {
       );
     case "unconfigured":
       return <span className="text-text-secondary">Not declared yet</span>;
+    case "not_renderable":
+      return (
+        <span className="text-text-secondary">
+          Valid platform configuration. This Code Builder version cannot yet generate its use.
+        </span>
+      );
     case "concept":
       return <OpenSetValue labelKeys={shown.labelKeys} value={shown.value} />;
     case "words":

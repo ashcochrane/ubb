@@ -32,6 +32,8 @@ function shown(value: Value): string {
       return `$${value.parameter.name}${value.path.map((segment) => `[${jqString(segment)}]`).join("")}`;
     case "unconfigured":
       return `not_configured(${jqString(value.token)})`;
+    case "not_renderable":
+      return `not_renderable(${jqString(value.token)})`;
     case "cost":
       return `to_micros($${value.parameter.name}, ${jqString(value.representation)}, ${jqString(value.declared)})`;
   }

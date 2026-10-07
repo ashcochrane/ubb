@@ -264,6 +264,40 @@ the contract states a value only where the backend already returns it. Full
 rules, and the order they force on a slice, in
 [`openapi/README.md`](../../openapi/README.md).
 
+## A declared exact decimal is a canonical decimal string (#571)
+
+Money crosses the wire as integer micros. A **declared quantity that may carry
+a fraction** does not fit that shape, and a JSON number is the wrong one: most
+clients parse it into a binary float, which gives 2**53 + 1 back as ...992.
+So the first such field — a `constant` Measurement's `constant_value` — is
+**a JSON string for both value types**, and the declared `value_type` gives
+its meaning (owner ruling on #571, comment 6024142285):
+
+- **Accepted**: `^(-?[0-9]+(\.[0-9]+)?)$` — base 10, an optional leading `-`,
+  ASCII digits, and an optional fractional part with a digit on each side of
+  the point. No exponent, no `+`, no whitespace, separators or locale
+  formatting. A JSON number or flag is refused as the wrong representation.
+- **Stored and answered** in ONE canonical form,
+  `^(0|-?(0\.[0-9]*[1-9]|[1-9][0-9]*(\.[0-9]*[1-9])?))$`: no unnecessary
+  leading zero, no trailing fractional zero or point, and `0` for every
+  spelling of zero (`01.500` is `1.5`, `-0.000` is `0`). Canonical forms are
+  what a publication compares, so a value re-declared in another spelling is
+  not a revision.
+- **The grammar is checked as text**, by a full match over ASCII `[0-9]`,
+  never by asking a decimal parser whether the text is a number — Python's
+  `Decimal` reads whitespace, underscores, other scripts' digits, `NaN`,
+  `Infinity` and exponents. Nothing on the way rounds it and no precision
+  limit is introduced. `apps/platform/event_types/exact_decimals.py` owns both
+  grammars and the one function between them; the contract states both as a
+  `pattern` on the string member, and a test holds the contract and the two
+  patterns spelled above to that module.
+- **The string is not evidence that the value is a string.** A generated
+  integration emits a correctly typed exact literal for its target.
+
+This is the precedent the exact recording representation of a Measurement
+quantity (#603) weighs. It is **not** a decision for recording: the recording
+request still carries whole numbers, and #603 decides what it carries.
+
 ## Adding a surface
 
 1. Raise `Problem`s with registry codes; need a new code → add it to
