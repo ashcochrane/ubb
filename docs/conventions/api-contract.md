@@ -273,7 +273,7 @@ So the first such field — a `constant` Measurement's `constant_value` — is
 **a JSON string for both value types**, and the declared `value_type` gives
 its meaning (owner ruling on #571, comment 6024142285):
 
-- **Accepted**: `^-?[0-9]+(\.[0-9]+)?$` — base 10, an optional leading `-`,
+- **Accepted**: `^(-?[0-9]+(\.[0-9]+)?)$` — base 10, an optional leading `-`,
   ASCII digits, and an optional fractional part with a digit on each side of
   the point. No exponent, no `+`, no whitespace, separators or locale
   formatting. A JSON number or flag is refused as the wrong representation.
@@ -288,8 +288,9 @@ its meaning (owner ruling on #571, comment 6024142285):
   `Decimal` reads whitespace, underscores, other scripts' digits, `NaN`,
   `Infinity` and exponents. Nothing on the way rounds it and no precision
   limit is introduced. `apps/platform/event_types/exact_decimals.py` owns both
-  grammars and the one function between them, and the contract states both as
-  a `pattern` on the string member, held to that module by a test.
+  grammars and the one function between them; the contract states both as a
+  `pattern` on the string member, and a test holds the contract and the two
+  patterns spelled above to that module.
 - **The string is not evidence that the value is a string.** A generated
   integration emits a correctly typed exact literal for its target.
 

@@ -2744,6 +2744,8 @@ measurement_key:
     # catalogue's version-4 pin. The 25th is the migration adding the column,
     # which `historical-migrations` excludes (268 -> 269), so the exclusions
     # stand at 438. The one that left is the version-3 pin.
+    # (Taken twice, the second after the review pass, which added and removed
+    # no file.)
 
     - term: units
       retired_as: >-

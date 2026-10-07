@@ -30,13 +30,16 @@ from apps.platform.event_types.models import EventType, Measurement
 from apps.platform.event_types.publication import last_published_declaration
 
 CONTRACT = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
+CONVENTION = (Path(__file__).resolve().parents[4] / "docs" / "conventions"
+              / "api-contract.md")
 
 FLAT_FEE = "flat_fee"
 
 #: Absent from the body, as opposed to sent as null.
 OMITTED = object()
 
-#: Values no binary float and no 28-digit decimal context holds.
+#: Values a binary float would change, and two of them longer than the 28
+#: digits at which a decimal context rounds.
 SIXTY_DIGITS = "1234567890" * 6
 FORTY_FRACTIONAL_DIGITS = "3." + "1415926535" * 4
 TWO_TO_THE_FIFTY_THIRD_PLUS_ONE = "9007199254740993"
@@ -75,6 +78,64 @@ def test_the_contract_states_both_grammars_and_what_gives_the_meaning():
     assert "constant_value" in schemas["MeasurementOut"]["required"]
     assert "constant_value" not in schemas["MeasurementIn"].get(
         "required", [])
+    # And the convention that states the grammars for a reader spells the
+    # same two, so it cannot drift from what the server enforces.
+    convention = CONVENTION.read_text(encoding="utf-8")
+    assert f"`{anchored(ACCEPTED)}`" in convention
+    assert f"`{anchored(CANONICAL)}`" in convention
+
+
+#: The member one valueless constant used to produce, and the one a valued
+#: constant produces until a Code Builder version renders it (#571).
+REMOVED = "constant_value_not_declared"
+ADDED = "constant_measurement_not_renderable"
+
+#: Every generated surface the closed set of diagnostic codes reaches.
+GENERATED = (
+    "openapi/v1.json", "openapi/known-values.json",
+    "ubb-platform/core/vocabulary.py", "ubb-sdk/ubb/vocabulary.py",
+    "ubb-sdk/ubb/_core/models/integration_blueprint_diagnostic_code.py",
+    "apps/ui/src/api/schema.json", "apps/ui/src/lib/vocabulary.ts",
+    "apps/ui/src/locales/en.json", "apps/codegen/src/catalogue.ts",
+)
+
+
+def _registry_values(concept):
+    """A closed concept's values, line-walked: the platform's lock carries no
+    YAML parser."""
+    lines = (CONTRACT.parents[1] / "domain-vocabulary" / "concepts"
+             / "code-builder.yaml").read_text(encoding="utf-8").splitlines()
+    start = lines.index(f"{concept}:")
+    at = lines.index("  values:", start) + 1
+    values = []
+    while lines[at].startswith("    - "):
+        values.append(lines[at].removeprefix("    - "))
+        at += 1
+    return values
+
+
+def test_the_removed_member_is_on_no_surface_and_its_successor_on_every_one():
+    """The registry's same-commit rule, surface by surface: nothing can now
+    declare a constant without its value, so no surface may still name that
+    state — and every one must name the state a valued constant is in. The
+    registry's own comment records the removal, so the registry is read by
+    its values."""
+    root = CONTRACT.parents[1]
+
+    assert REMOVED not in _registry_values("diagnostic_code")
+    assert ADDED in _registry_values("diagnostic_code")
+    for path in GENERATED:
+        text = (root / path).read_text(encoding="utf-8")
+        assert REMOVED not in text, path
+        assert ADDED in text, path
+    written = [*(root / "apps" / "codegen" / "fixtures" / "blueprints").glob(
+        "*.json"), *(root / "apps" / "codegen" / "tests" / "__snapshots__"
+                     ).rglob("*.*"),
+               *(root / "apps" / "ui" / "src" / "features" / "developers"
+                 / "api" / "verifications").glob("*.json")]
+    assert len(written) > 100, "the platform-written files were not found"
+    assert [path.name for path in written
+            if REMOVED in path.read_text(encoding="utf-8")] == []
 
 
 def a_constant(value=OMITTED, *, value_type="decimal",
@@ -294,8 +355,8 @@ class TestAConstantDeclaresItsValue(BlueprintRoutes):
                                                            value):
         """Declared, answered, stored, published, kept and audited, with no
         stage converting it. A float gives 2**53 + 1 back as ...992, and
-        `Decimal.normalize()`, `quantize()` and arithmetic round at 28 digits,
-        which the sixty-digit value is longer than."""
+        `Decimal.normalize()` and arithmetic round at 28 digits, which the
+        sixty-digit and forty-fractional-digit values are longer than."""
         declared = self._declare(a_constant(value, value_type=value_type))
 
         assert declared.status_code == 201, declared.content

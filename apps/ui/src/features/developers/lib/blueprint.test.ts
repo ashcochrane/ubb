@@ -279,8 +279,8 @@ describe("what answers a diagnostic", () => {
 
   it("offers the server's request for an object with no console screen", async () => {
     const blocked = await loadBlueprintFixture("blocked");
-    // The one code naming what this Code Builder cannot yet generate rather
-    // than anything to change: the server sends no request for it (#571).
+    // The one code reported over a complete declaration, where nothing is the
+    // thing to change: the server sends no request for it (#571).
     const withAFix = blocked.diagnostics.filter((d) => d.code !== "constant_measurement_not_renderable");
 
     expect(withAFix.length).toBeGreaterThan(0);
@@ -296,7 +296,7 @@ describe("what answers a diagnostic", () => {
     expect(constant.diagnostics.map((d) => d.code)).toEqual(["constant_measurement_not_renderable"]);
     expect(constant.diagnostics.map(fixFor)).toEqual([{ kind: "none" }]);
     const label = diagnosticCodeLabel("constant_measurement_not_renderable");
-    expect(label).toContain("valid configuration");
+    expect(label).toContain("valid platform configuration");
     expect(label).toContain("this Code Builder version cannot yet generate");
     expect(label).not.toMatch(/missing|not declared|no declared value|unsupported/i);
   });

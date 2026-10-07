@@ -224,15 +224,15 @@ describe("the Blueprint stage", () => {
 
   // That the page CANNOT send one is the feature-wide source check in
   // `developers-feature.test.ts`; this is what the page offers instead.
-  it("offers each blocking diagnostic's request to copy, with its reference, and nothing that sends", async () => {
+  it("offers each blocking diagnostic's request, where it carries one, to copy with its reference and nothing that sends", async () => {
     renderCodeBuilder(BLOCKED);
     await resolved(/^Blocked$/);
     const blocked = await loadBlueprintFixture("blocked");
     const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
     const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
 
-    // The one diagnostic naming what this Code Builder cannot yet generate
-    // offers nothing to change, so it renders its words and no request (#571).
+    // The one diagnostic reported over a complete declaration offers nothing
+    // to change, so it renders its words and no request (#571).
     const withARequest = blocked.diagnostics.filter((d) => d.remediation_request != null);
     expect(blocked.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
       "constant_measurement_not_renderable",

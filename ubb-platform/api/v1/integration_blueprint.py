@@ -1063,8 +1063,9 @@ def _event_type_content(resolved):
 #: Code Builder version does not render it: the call it belongs to is blocked
 #: and its token unconfigured. So no value is kept beside the Blueprint either
 #: — the ticket that renders a constant (#584) adds it to the token and to the
-#: configuration in one commit, and only then does a changed value move a
-#: fingerprint.
+#: configuration in one commit, which is when the value itself joins what a
+#: fingerprint hashes. (A changed value moves the fingerprint already, but only
+#: by the republication it takes: the revision is hashed, the value is not.)
 _NOT_KEPT_YET = frozenset({"constant_value"})
 
 

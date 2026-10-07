@@ -20,6 +20,7 @@ from importlib import import_module
 
 import pytest
 from django.apps import apps as live_apps
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, migrations, transaction
 
 from apps.platform.event_types.exact_decimals import (
@@ -98,8 +99,10 @@ def test_the_spellings_python_decimal_would_have_read_are_still_refused(
     `Decimal`, so the grammar — not Python's parser — is what refuses it."""
     Decimal(written)
 
-    with pytest.raises(NotAnExactDecimal):
+    with pytest.raises(NotAnExactDecimal) as refused:
         canonical(written)
+
+    assert "base-10 digits" in str(refused.value)
 
 
 @pytest.mark.parametrize("value", [12, 12.5, True, None, b"12"])
@@ -119,12 +122,12 @@ def test_only_text_is_read_as_a_declared_value(value):
     "9007199254740993",
     "-" + "9" * 45 + "." + "9" * 45,
 ])
-def test_a_value_longer_than_any_float_or_decimal_context_is_kept_exactly(
+def test_a_value_a_float_or_a_decimal_context_would_change_is_kept_exactly(
         written):
     """No precision limit governs a Measurement quantity, and nothing on the
-    way to storage rounds: `Decimal.normalize()`, `quantize()` and arithmetic
-    all round at the context's 28 digits, and a float gives 2**53 + 1 back as
-    ...992."""
+    way to storage rounds. A float gives 2**53 + 1 back as ...992; the other
+    three are longer than the 28 digits at which `Decimal.normalize()` and
+    arithmetic round."""
     assert canonical(written) == written
 
 
@@ -187,6 +190,26 @@ class TestTheDatabaseHoldsTheRule:
 
         assert "ck_measurement_integer_constant_is_whole" in str(
             refused.value)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [12.5, 0.1 + 0.2, 12, True])
+def test_the_model_reads_no_number_as_text_on_the_way_to_the_rule(value):
+    """Django's `TextField` reads any value as text with `str()` while the
+    fields are cleaned — which, for a float, is its binary expansion
+    (`0.30000000000000004`). A writer that skips the wire's refusal meets the
+    canonicaliser's own instead, and nothing is stored."""
+    declared = Measurement(event_type=_event_type(), code="flat_fee",
+                           unit=UNIT_CALL, source_kind=SOURCE_KIND_CONSTANT,
+                           value_type=MEASUREMENT_VALUE_TYPE_DECIMAL,
+                           constant_value=value)
+
+    with pytest.raises(ValidationError) as refused:
+        declared.full_clean()
+
+    assert "is not text" in " ".join(
+        refused.value.message_dict["constant_value"])
+    assert declared.constant_value == value
 
 
 # ---------------------------------------------------------------------------

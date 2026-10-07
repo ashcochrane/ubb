@@ -5,9 +5,9 @@ number of either value type: a whole count, or one carrying a fraction. It is
 held, published and read as TEXT in ONE canonical form, because every way of
 holding it as a number loses something on the way to somebody: a binary float
 gives 2**53 + 1 back as ...992, a numeric column fixes a scale, and Python's
-own `Decimal` rounds at its context's 28 digits the moment anything normalises,
-quantizes or adds. No precision limit governs a Measurement quantity, so none
-is introduced here.
+own `Decimal` rounds at its context's 28 digits the moment anything normalises
+or adds (and `quantize()` refuses a result longer than that). No precision
+limit governs a Measurement quantity, so none is introduced here.
 
 **The text is not evidence that the value is a string.** The declared
 `value_type` gives the semantics; a renderer that emits the value emits a

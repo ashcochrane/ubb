@@ -329,7 +329,7 @@ describe("the header", () => {
     },
   );
 
-  it("lists every diagnostic with its remediation and the request that fixes it", () => {
+  it("lists every diagnostic with its remediation, and the request where it offers one", () => {
     const blueprint = fixture("blocked");
     const lines = header("blocked");
 

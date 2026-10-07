@@ -499,7 +499,7 @@ describe("the header of a shell file", () => {
     },
   );
 
-  it("lists every diagnostic with its remediation and the request that fixes it", () => {
+  it("lists every diagnostic with its remediation, and the request where it offers one", () => {
     const blueprint = fixture("shell-blocked");
     const lines = header("shell-blocked");
 

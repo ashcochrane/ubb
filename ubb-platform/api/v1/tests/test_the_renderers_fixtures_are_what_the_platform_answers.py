@@ -259,9 +259,6 @@ def _blocked(routes, target=PYTHON):
         target=target)
 
 
-#: Declared names carrying each character a renderer could trip over. Every
-#: one is admitted by the route that declares it — which is what makes this a
-#: fixture of something a tenant can really hold.
 def _constant(routes, target=PYTHON):
     """A constant quantity declared WITH its value (#571), beside one the
     caller supplies. The declaration is complete, and the call is blocked
@@ -277,6 +274,9 @@ def _constant(routes, target=PYTHON):
                            event_types=["flat.call"], target=target)
 
 
+#: Declared names carrying each character a renderer could trip over. Every
+#: one is admitted by the route that declares it — which is what makes this a
+#: fixture of something a tenant can really hold.
 ODD_EVENT_TYPE = "it's a $5 chat-completion"
 ODD_QUANTITIES = (
     "it's", "$HOME", "$(whoami)", "back`tick", "back\\slash", 'dou"ble',

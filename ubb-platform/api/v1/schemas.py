@@ -4418,7 +4418,8 @@ class IntegrationBlueprintDiagnostic(Schema):
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
     Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work.
+    kind of work — and null for `constant_measurement_not_renderable`, where
+    the declaration is complete and nothing in it is the thing to change.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode

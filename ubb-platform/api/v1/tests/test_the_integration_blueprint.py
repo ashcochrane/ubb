@@ -1846,10 +1846,10 @@ class TestTheBuilderChangesNoConfiguration(_Routes):
 
     def test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them(
             self):
-        """Every diagnostic here carries a request that would change
-        configuration. An admin key asks, in both modes, and every
-        configuration table is exactly as it was: nothing is declared,
-        edited or published, and no request is executed."""
+        """Every diagnostic here but the valid constant's carries a request
+        that would change configuration. An admin key asks, in both modes,
+        and every configuration table is exactly as it was: nothing is
+        declared, edited or published, and no request is executed."""
         self._a_kind()
         self._event_type("draft.only", publish=False)
         self._event_type("unshaped", shape="")
@@ -1889,10 +1889,9 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     #: diagnostic carries a request instead of naming a page.
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
-    #: The codes that name what this Code Builder cannot yet generate rather
-    #: than anything wrong with the configuration (#571). No request is
-    #: offered for one: the console words a request as the change an admin
-    #: makes, and a valid declaration is not the thing to change.
+    #: The codes reported over a declaration that is complete, where nothing in
+    #: the configuration is the thing to change (#571). No request is offered
+    #: for one: the console words a request as the change an admin makes.
     NOTHING_TO_CHANGE = {"constant_measurement_not_renderable"}
 
     def _every_remediation(self):

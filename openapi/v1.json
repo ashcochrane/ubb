@@ -3487,7 +3487,7 @@
         "type": "object"
       },
       "IntegrationBlueprintDiagnostic": {
-        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work.",
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work \u2014 and null for `constant_measurement_not_renderable`, where\nthe declaration is complete and nothing in it is the thing to change.",
         "properties": {
           "code": {
             "enum": [
