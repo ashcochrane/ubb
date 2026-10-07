@@ -29,6 +29,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.models import REPORTED_COST_MAPPING, EventType
 from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
@@ -57,16 +58,18 @@ def _customer(tenant, external_id="c1"):
 
 
 def _declaration(tenant, *, costing_method=COSTING_METHOD_CALCULATED,
-                 quantities=("prompt_tokens",), mapping=False):
+                 quantities=("prompt_tokens",), mapping=False,
+                 published=True):
     """An Event Type declared the way a tenant declares one.
 
     `quantities` and `mapping` are what make the *"carries no cost at all"*
     question answerable: an Event Type with neither has no axis a Cost Rate
-    could name and nowhere a supplier figure could come from.
+    could name and nowhere a supplier figure could come from. Published
+    unless asked otherwise, because recording reads nothing else (#605).
     """
     return declares_an_event_type(
         tenant, EVENT_TYPE_KEY, costing_method=costing_method,
-        quantities=quantities, mapping=mapping)
+        quantities=quantities, mapping=mapping, published=published)
 
 
 def _price(tenant, customer, **kwargs):
@@ -179,10 +182,21 @@ class TestTheComputeSpineDecidesTheStatus:
         a rule that only counted them would call this call free. The method
         itself is the declaration that a supplier charges for it, and a mapping
         nobody has written yet is an outstanding task.
+
+        Recording reads the last publication (#605), and publication refuses
+        this shape — the blocker below — so the lifecycle never hands it to
+        recording. The rule is asked of the published copy all the same,
+        and a copy says whatever wrote it, so it is written here as
+        publication would have kept it: the rule must not depend on the
+        blocker having held.
         """
         tenant = _tenant()
-        _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
-                     quantities=(), mapping=False)
+        draft = _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
+                             quantities=(), mapping=False, published=False)
+        assert draft.publication_blockers() == (REPORTED_COST_MAPPING,)
+        EventType.objects.filter(pk=draft.pk).update(
+            published_revision=1,
+            published_declaration=draft._declaration_to_pin())
 
         costing = _price(tenant, _customer(tenant), measurements={})
 

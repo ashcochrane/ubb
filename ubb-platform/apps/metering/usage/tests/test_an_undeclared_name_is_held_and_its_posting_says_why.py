@@ -610,8 +610,11 @@ class TestWhatARecoveryDoesWithIt:
     undeclared spelling, declared by the rate fixture beneath another Event
     Type, which is exactly what a rate matched by spelling looks like. The
     run must not settle the posting against it while the name is undeclared
-    beneath the posting's own Event Type, and must the moment the tenant
-    declares it there — from the receipt's bag, so at the whole call's cost.
+    beneath the posting's own Event Type, and must once the tenant declares it
+    there and publishes the declaration — from the receipt's bag, so at the
+    whole call's cost. A run re-resolves through the same costing read
+    recording does, so a name declared in a draft is not declared for it
+    either (#605).
     """
 
     def _an_undeclared_name_with_a_rate_at_its_spelling(self):
@@ -643,13 +646,21 @@ class TestWhatARecoveryDoesWithIt:
             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
         assert posting.provider_cost_micros is None
 
-    def test_a_run_settles_the_posting_once_the_name_is_declared_beneath_its_event_type(self):
+    def test_a_run_settles_the_posting_once_the_declared_name_is_published(self):
         tenant, posting = self._an_undeclared_name_with_a_rate_at_its_spelling()
+        event_type = EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY)
         Measurement.objects.create(
-            event_type=EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY),
-            code=A_NAME_NOBODY_DECLARED, unit=UNIT_TOKEN,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+            event_type=event_type, code=A_NAME_NOBODY_DECLARED,
+            unit=UNIT_TOKEN, source_kind=SOURCE_KIND_CALLER_SUPPLIED)
 
+        self._a_run(tenant)
+
+        posting.refresh_from_db()
+        assert posting.unresolved_reason == \
+            UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED, \
+            "a run settled the posting against a draft declaration"
+
+        EventType.objects.get(pk=event_type.pk).publish()
         self._a_run(tenant)
 
         posting.refresh_from_db()

@@ -71,7 +71,7 @@ from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
-from apps.platform.grouping_fields.services import DimensionError, DimensionService
+from apps.platform.grouping_fields.services import DimensionService
 
 logger = logging.getLogger(__name__)
 
@@ -80,15 +80,16 @@ metering_router = Router(auth=ApiKeyAuth())
 _product_check = ProductAccess("metering")
 
 
-# --- The request-item adapters over UsageService.record_usage ---------------
+# --- The request-item adapters over the recording path ---------------------
 #
 # These moved here when the async accept pipeline was deleted. They were
 # lifted out of this module by #113 to be SHARED between the endpoints and
 # that pipeline; with the pipeline gone the two recording routes below are
 # their only callers, so the seam that justified a separate module no longer
 # has two sides. Written once, here, rather than twice: the single route and
-# the batch route must map fields and classify errors identically or the
-# batch stops being "N sequential singles".
+# the batch route must map fields, take the same steps in the same order
+# (`replay_or_record`, #605) and classify errors identically, or the batch
+# stops being "N sequential singles".
 
 
 class SupplierCostNotAdmissible(ValueError):
@@ -105,7 +106,7 @@ class SupplierCostNotAdmissible(ValueError):
 
 
 def admit_supplier_cost(tenant, item):
-    """Refuse a supplier cost the Event Type's declaration does not admit (#324).
+    """Refuse a supplier cost the Event Type's publication does not admit (#324).
 
     **WHY A REFUSAL AND NOT A QUIET DROP.** The figure is COGS or it is
     nothing: where no declaration admits it, UBB will never read it as cost, so
@@ -123,10 +124,14 @@ def admit_supplier_cost(tenant, item):
     is the whole surface — and it is where the batch route can refuse ONE item
     without throwing away the events beside it.
 
-    **IT RUNS BEFORE ANYTHING IS WRITTEN.** Both routes call it above the
-    grouping-field admission, which records novel values against a cardinality
-    cap: a refusal underneath that would have spent a tenant's keyspace on a
-    request that was never recorded. Nothing here writes, so first is free.
+    **IT RUNS BEFORE ANYTHING IS WRITTEN, AND AFTER THE REPLAY LOOKUP.**
+    `replay_or_record` calls it above the grouping-field admission, which
+    records novel values against a cardinality cap: a refusal underneath that
+    would have spent a tenant's keyspace on a request that was never
+    recorded. Nothing here writes, so going ahead of it is free. And it reads
+    the Event Type's last publication, which may have changed since an event
+    was recorded, so a retry of that event is answered with what was recorded
+    before this is asked (#605).
 
     **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** One query, and only on a
     request that carries the figure — which is precisely the branch on which
@@ -161,7 +166,7 @@ def admit_supplier_cost(tenant, item):
 def usage_kwargs(item):
     """The single↔batch pass-through, written ONCE (#112): the field-for-
     field map from a request item (RecordUsageRequest — the single and batch
-    items share the schema) onto record_usage's keyword surface."""
+    items share the schema) onto record_new_usage's keyword surface."""
     return dict(
         idempotency_key=item.idempotency_key,
         provider_cost_micros=item.provider_cost_micros,
@@ -177,11 +182,14 @@ def usage_kwargs(item):
 
 
 def usage_error(e):
-    """The ONE record_usage error map (#112): exception → (code, detail).
+    """The ONE recording error map (#112): exception → (code, detail).
     The specific-before-general order lives HERE and only here —
     EffectiveAtError (which IS a ValueError, so it must be tested before the
-    generic branch), then plain ValueError. The single endpoint raises the code
-    as a Problem; the batch wraps the same code in a verdict dict.
+    generic branch), then plain ValueError — which is also what the two
+    admissions raise (`SupplierCostNotAdmissible`, `DimensionError`), so every
+    refusal `replay_or_record` can raise is mapped here. The single endpoint
+    raises the code as a Problem; the batch wraps the same code in a verdict
+    dict.
 
     **A COST UBB CANNOT WORK OUT IS NO LONGER AN ERROR (#320)**, so the branch
     that was first here is gone along with the exception it named and the wire
@@ -250,6 +258,53 @@ def _rejected(code, detail):
             "stop": False, "stop_reason": None, "stop_scope": None}
 
 
+def replay_or_record(tenant, customer, item):
+    """One request item's recording, in the one order both routes take: its
+    plain-data acknowledgement, or the ``ValueError`` that refuses it.
+
+    The customer (and task) are resolved in the tenant first, by the caller,
+    so nothing here is a way round authentication, tenant isolation or the
+    lookup scope. Then, and the order is the point:
+
+    1. **REPLAY WINS (#605).** An event already recorded under this key
+       answers its original acknowledgement before either admission below is
+       asked. Both read current configuration — the Event Type's last
+       publication, the Grouping Field registry — and current configuration
+       must not make an already-successful write unreplayable: a retry carrying
+       a figure the publication has stopped admitting, or a grouping value a
+       field retired since would refuse, is the same event and gets the same
+       answer. Found by `UsageService.replay`, the recording path's own lookup
+       — keyed by tenant, customer and key, with no body compared.
+    2. **The supplier's own figure (#324)** is admissible only where the Event
+       Type's last publication declares it arrives on the call. Refused rather
+       than dropped: a 200 would tell an integrator UBB is using a number it
+       discards. It is a single read, so it goes ahead of the next step at no
+       cost.
+    3. **The grouping-field admission (Task 9) WRITES** — it records novel
+       values against each key's cardinality cap — so it comes after the
+       refusal above, which would otherwise have burned keyspace on a request
+       that was never recorded, and before the recording core, outside its
+       retry machinery. A replay never reaches it, so a retry neither
+       re-admits nor records a value.
+    4. **The recording core**, for a new event.
+
+    Written once, for the reason the adapters around it are: the single route
+    and the batch item must take the same steps in the same order, or the
+    batch stops being "N sequential singles". Every refusal it raises is a
+    ``ValueError`` — ``SupplierCostNotAdmissible`` and ``DimensionError`` are
+    — so each route renders all of them through :func:`usage_error`.
+    """
+    replayed = UsageService.replay(tenant, customer, item.idempotency_key)
+    if replayed is not None:
+        return replayed
+    admit_supplier_cost(tenant, item)
+    dimension_slots = DimensionService.admit(
+        tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
+    return UsageService.record_new_usage(
+        tenant=tenant, customer=customer, dimension_slots=dimension_slots,
+        **usage_kwargs(item))
+
+
 def record_sync_item(tenant, item, customers, task_exists):
     """One batch item == one independent POST /usage, error mapping included.
 
@@ -276,26 +331,10 @@ def record_sync_item(tenant, item, customers, task_exists):
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
             return _rejected("not_found", "Task not found")
-    # #324: this item's own refusal, and it runs FIRST for the reason the
-    # grouping-field admission below states about itself — that one WRITES.
-    # A refusal underneath it would have spent novel grouping values out of
-    # the tenant's cardinality cap on an item that was never recorded.
+    # A bad item is THIS item's rejection, the same as any other validation
+    # failure, and the batch carries on.
     try:
-        admit_supplier_cost(tenant, item)
-    except SupplierCostNotAdmissible as exc:
-        return _rejected("validation_error", str(exc))
-    # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
-    # grouping field is THIS item's rejection, same as any other validation
-    # failure below, and never reaches record_usage.
-    try:
-        dimension_slots = DimensionService.admit(
-            tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
-    except DimensionError as exc:
-        return _rejected("validation_error", str(exc))
-    try:
-        result = UsageService.record_usage(
-            tenant=tenant, customer=customer, dimension_slots=dimension_slots,
-            **usage_kwargs(item))
+        result = replay_or_record(tenant, customer, item)
     except ValueError as e:
         return _rejected(*usage_error(e))
     return {"accepted": True, **with_receipt_reads(result)}
@@ -324,43 +363,17 @@ def record(tenant, payload):
 
     A function of its own so that the Code Builder's verification records
     exactly as a tenant's own code does (`api/v1/verification.py`): the
-    supplier-cost admission, the grouping-field admission and the recording
-    core, in this order, from one place.
+    customer and task lookup, then `replay_or_record` — the one order both
+    recording routes take.
     """
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=tenant, customer=customer)
-    # #324: the supplier's own figure is admissible only where the Event Type
-    # declares it arrives on the call. Refused rather than dropped — a 200 here
-    # would tell an integrator UBB is using a number it discards.
-    #
-    # IT RUNS BEFORE THE GROUPING-FIELD ADMISSION, AND THE ORDER IS THE POINT:
-    # that one WRITES (see its own note below), so a refusal underneath it
-    # would have burned novel values out of the tenant's cardinality cap for a
-    # request that was never recorded. This one is a single read and can go
-    # first at no cost.
+    # Every refusal below is a whole-request 422, never a partial record.
     try:
-        admit_supplier_cost(tenant, payload)
-    except SupplierCostNotAdmissible as exc:
-        raise Problem("validation_error", str(exc))
-    # Task 9: admission is a WRITE (records GroupingFieldValue rows), so it runs
-    # BEFORE the recording core, outside record_usage's own retry/replay
-    # machinery — a bad grouping field is a whole-request 422, never a partial
-    # record.
-    try:
-        dimension_slots = DimensionService.admit(
-            tenant, payload.grouping_fields,
-            scope=GROUPING_FIELD_SCOPE_EVENT)
-    except DimensionError as exc:
-        raise Problem("validation_error", str(exc))
-    try:
-        result = UsageService.record_usage(
-            tenant=tenant, customer=customer,
-            dimension_slots=dimension_slots,
-            **usage_kwargs(payload))
+        result = replay_or_record(tenant, customer, payload)
     except ValueError as e:
-        code, detail = usage_error(e)
-        raise Problem(code, detail)
+        raise Problem(*usage_error(e))
     # Kill execution is the recording core's job (#112): a crossing verdict
     # registers kill_and_announce on the recording transaction's on_commit,
     # so the kills have already fired by the time this returns.
@@ -1598,8 +1611,9 @@ def execute_resolution_run(request, payload: ResolutionRunIn):
 
     **Nothing is repriced.** A rule takes effect from the moment it is published
     forward, so writing one today does not change work recorded in July; what a
-    run completes is what today's markup rung and today's Event Type
-    declarations resolve at that past instant.
+    run completes is what today's markup rung and each Event Type's last
+    published declaration resolve at that past instant. A draft change to an
+    Event Type does not reach a run until it is published.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response

@@ -1117,15 +1117,16 @@ class Measurement(DeclarationPart, BaseModel):
     ``apps/platform/tests/test_event_type_declaration_invariants.py`` is what
     holds that to the tree.
 
-    **The rating path reads this table, and reads two things off it (#320,
-    #326).** Whether any quantity is declared here at all is half of what makes
-    an Event Type carry no cost — the other half is the reported-cost mapping
-    beside it — and `costing.py` asks that question with a count rather than by
-    loading the rows. The second read arrived with the reference: **a Cost Rate
-    still matches on `measurement_key`**, and since #326 it holds this record
-    rather than a spelling of it, so resolution reads the code back through the
-    reference (`PricingService._matching_rules_across` joins on
-    `measurement__code`).
+    **The rating path reads what this table PUBLISHED, and reads this table
+    itself for one thing (#320, #326, #605).** Whether any quantity is
+    declared at all is half of what makes an Event Type carry no cost — the
+    other half is the reported-cost mapping beside it — and `costing.py` asks
+    that question of the copy publication kept of these rows, never of the
+    rows themselves: they are the draft. The read of this table arrived with
+    the reference: **a Cost Rate still matches on `measurement_key`**, and
+    since #326 it holds this record rather than a spelling of it, so
+    resolution reads the code back through the reference
+    (`PricingService._matching_rules_across` joins on `measurement__code`).
 
     **That join is not this record selecting a rate, and the distinction is
     load-bearing.** Nothing on this row is a selector: declarations are

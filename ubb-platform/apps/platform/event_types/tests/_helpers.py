@@ -3,6 +3,14 @@
 `cost_rate_in_default_book`'s shape one product along
 (`apps/metering/pricing/tests/_helpers.py`): a caller says what it wants
 declared and never learns which fields carry it.
+
+**PUBLISHED BY DEFAULT (#605).** Production recording reads an Event Type's
+last publication and never its draft, so a declaration a fixture leaves in
+draft is one recording has never seen — it records exactly as a key nobody
+declared. Each helper therefore publishes what it declares, through the
+model's own `publish()`, and every test gets the declaration production would
+read. A test that is ABOUT a draft says so: `declares_an_event_type` takes
+`published=False`, the one escape, because it is the general shape.
 """
 from apps.platform.event_types.models import (
     EventType, Measurement, ReportedCostMapping)
@@ -35,7 +43,8 @@ def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
     Two records saying one thing: this Event Type's supplier cost is the figure
     the supplier itself reports, and the caller's own code passes it in on the
     call. Anything less than the pair is a 422 on `provider_cost_micros`
-    (#324), so a test that wants the figure accepted wants exactly this.
+    (#324), so a test that wants the figure accepted wants exactly this — and
+    wants it published, because production never reads a draft (#605).
 
     **THE COMMONEST REASON A TEST NEEDS IT is that it predates the registry.**
     Recording a supplier cost against no declaration at all was how every
@@ -49,7 +58,7 @@ def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
     ReportedCostMapping.objects.create(
         event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
         amount_representation=AMOUNT_REPRESENTATION_MICROS, currency=currency)
-    return event_type
+    return event_type.publish()
 
 
 def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
@@ -68,13 +77,19 @@ def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
     invented beside it. `get_or_create` on the pair would not be enough —
     locality means the same name under another Event Type is a different
     record, and creating one is exactly the divergence the unique constraint
-    over the reference would then stop refusing.
+    over the reference would then stop refusing. Such a declaration is
+    answered as it stands, published or not: it is the caller's.
 
     The costing method is the CALCULATED one on purpose. `declares_a_caller_
     supplied_cost` above is what a test asks for when it wants a supplier's own
     figure admitted; declaring a quantity says nothing about where its cost
     comes from, and a helper that quietly said both would make every rate
     fixture in the tree a `reported` one.
+
+    A quantity this helper declares is published with the Event Type above it,
+    which is a new publication each time a second one joins (#605): declaring
+    a part under a published Event Type returns it to draft, as it would for a
+    tenant.
     """
     declaration = declaration_named(tenant=tenant,
                                     measurement_key=measurement_key)
@@ -83,14 +98,17 @@ def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
     event_type, _ = EventType.objects.get_or_create(
         tenant=tenant, key=key,
         defaults={"costing_method": COSTING_METHOD_CALCULATED})
-    return Measurement.objects.create(
+    measurement = Measurement.objects.create(
         event_type=event_type, code=measurement_key, unit=UNIT_TOKEN,
         source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+    event_type.publish()
+    return measurement
 
 
 def declares_an_event_type(tenant, key, *,
                            costing_method=COSTING_METHOD_CALCULATED,
-                           quantities=(), mapping=False, currency="usd"):
+                           quantities=(), mapping=False, currency="usd",
+                           published=True):
     """An Event Type declared the way a tenant declares one, with what it
     carries said in one call (#428).
 
@@ -105,6 +123,11 @@ def declares_an_event_type(tenant, key, *,
     once and stays the door for a test that wants the supplier's figure
     accepted; this is the general shape, for a test that wants to say which
     facts hold and which do not.
+
+    Published unless `published=False`, and a `reported` declaration with no
+    mapping cannot be: `publish()` refuses it, and so does this, rather than
+    handing back a draft the caller did not ask for. A test that wants that
+    shape is a test about a draft, and says so.
     """
     event_type = EventType.objects.create(
         tenant=tenant, key=key, costing_method=costing_method)
@@ -117,4 +140,6 @@ def declares_an_event_type(tenant, key, *,
             event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
             amount_representation=AMOUNT_REPRESENTATION_MICROS,
             currency=currency)
+    if published:
+        event_type.publish()
     return event_type

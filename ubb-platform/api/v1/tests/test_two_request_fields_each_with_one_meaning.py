@@ -29,18 +29,35 @@ fields make each row self-describing.
 The values are imported, never spelled: `core.vocabulary` is generated from
 `domain-vocabulary/`, and a literal here would be a second copy of a set the
 registry owns (ADR-0008 §3).
+
+**WHICH declaration admits the figure is the Event Type's LAST PUBLICATION
+(#605).** Draft changes do not affect production recording. Production uses the
+Event Type's last published declaration; changes take effect when they are
+published. The same holds for every other declaration fact recording reads —
+the costing method, the no-cost state, the missing-cost answer and the declared
+quantity names — because the owner ruled them one unit (comment `6041500996`).
+An Event Type declared and never published has no production declaration, so a
+recording against it takes whatever path an undeclared key takes: the cases
+below compare the two outcomes to EACH OTHER, never to what that path happens
+to answer today, because #568 owns it. And a replay answers what was recorded
+BEFORE any of this is asked, so a later publication cannot make a successful
+write unreplayable. Each of those runs on the single route and on a batch item,
+through the tenant's own Event Type routes.
 """
 
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 from django.test import Client, SimpleTestCase, TestCase
+from django.utils import timezone
 
 from api.v1.schemas import RecordUsageRequest
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from apps.platform.event_types.models import EventType, ReportedCostMapping
+from apps.platform.event_types.models import (
+    REPORTED_COST_MAPPING, EventType, QuarantinedKey, ReportedCostMapping)
 from apps.platform.event_types.tests._helpers import (
     declares_a_caller_supplied_cost)
 from apps.platform.grouping_fields.models import (
@@ -53,8 +70,12 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    GROUPING_FIELD_SCOPE_EVENT,
+    MEASUREMENT_VALUE_TYPE_INTEGER,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_PROVIDER_RESPONSE,
+    UNIT_CALL,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
@@ -89,11 +110,15 @@ class _RecordingCase(TestCase):
                                                 external_id="two_fields")
 
     def declare(self, key, *, costing_method=COSTING_METHOD_REPORTED,
-                source_kind=None):
+                source_kind=None, published=True):
         """An Event Type for `key`, with a reported-cost mapping when asked.
 
         `source_kind=None` declares no mapping at all, which is the commonest
         shape and the one every calculated declaration has.
+
+        PUBLISHED unless asked otherwise, because the publication is what
+        recording reads (#605): a draft here would be a declaration production
+        has never seen, and a refusal below would pass for the wrong reason.
 
         The ADMITTING pair has its own door — `declares_a_caller_supplied_cost`
         — and every test below that wants the figure accepted goes through it,
@@ -110,6 +135,8 @@ class _RecordingCase(TestCase):
                              else []),
                 amount_representation=AMOUNT_REPRESENTATION_MICROS,
                 currency="usd")
+        if published:
+            event_type.publish()
         return event_type
 
     def post(self, correlation, **body):
@@ -209,17 +236,33 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         self.refused("provider-response", event_type="acme.read",
                      provider_cost_micros=SUPPLIER)
 
-    def test_a_reported_declaration_with_no_mapping_refuses_it(self):
+    def test_a_reported_declaration_with_no_mapping_is_answered_as_undeclared(self):
         """`reported` alone does not say WHERE the figure comes from.
 
         A declaration with no mapping is one a tenant has started and not
-        finished — its postings say `reported_cost_missing` — and the missing
-        half is precisely the half that would admit this field.
+        finished, and the missing half is precisely the half that would admit
+        this field. It cannot be published until the mapping is declared —
+        the blocker says so — so production never reads it at all (#605): the
+        figure meets whatever a key nobody declared meets, compared here to
+        that rather than to what it is today (#568 owns that path).
         """
-        self.declare("acme.half")
+        half = self.declare("acme.half", published=False)
+        self.assertEqual(half.publication_blockers(), (REPORTED_COST_MAPPING,))
 
-        self.refused("no-mapping", event_type="acme.half",
-                     provider_cost_micros=SUPPLIER)
+        against_the_draft = self.post("no-mapping", event_type="acme.half",
+                                      provider_cost_micros=SUPPLIER)
+        against_nothing = self.post("nobody", event_type="nobody.declared",
+                                    provider_cost_micros=SUPPLIER)
+
+        def outcome(response, key):
+            body = response.json()
+            if response.status_code == 200:
+                return 200, {fact: body[fact] for fact in COSTING_FACTS}
+            return (response.status_code, body["code"],
+                    body["detail"].replace(repr(key), "<key>"))
+
+        self.assertEqual(outcome(against_the_draft, "acme.half"),
+                         outcome(against_nothing, "nobody.declared"))
 
     def test_the_refusal_names_the_declaration_that_would_admit_it(self):
         """A 422 that says only "no" leaves the integrator guessing.
@@ -407,6 +450,596 @@ class TheClaimedCostIsAcceptedAnywhereTest(_RecordingCase):
         cost = next(entry for entry in response.json()["rows"][0]["measures"]
                     if entry["measure"] == "supplier_cogs")
         self.assertEqual(cost["amount_micros"], 4_000)
+
+
+# ---------------------------------------------------------------------------
+# #605 — the last publication governs, on both routes
+# ---------------------------------------------------------------------------
+
+#: The supplier's response shape a `provider_response` mapping is read under.
+SHAPE = "openai.responses.python.v1"
+
+#: What a recording concluded about cost and price, as the acknowledgement
+#: says it. The keys two outcomes are compared on — every one a column, or read
+#: off the receipt, so a replay answers each as the recording did.
+COSTING_FACTS = ("costing_status", "unresolved_reason", "provider_cost_micros",
+                 "claimed_provider_cost_micros", "billed_cost_micros",
+                 "pricing_status", "not_applicable_reason",
+                 "uncosted_measurement_keys", "pricing_method")
+
+#: The same conclusions as the posting stores them.
+ECONOMIC_COLUMNS = ("costing_status", "unresolved_reason",
+                    "provider_cost_micros", "claimed_provider_cost_micros",
+                    "billed_cost_micros", "pricing_status",
+                    "not_applicable_reason")
+
+
+class Outcome(NamedTuple):
+    """One recording, the same shape whichever route answered it.
+
+    `body` is the acknowledgement where the event was recorded, and the
+    refusal's `code` and `detail` where it was not.
+    """
+
+    accepted: bool
+    body: dict
+
+
+class _PublicationCase(_RecordingCase):
+    """The tenant's own Event Type routes, beside the recording ones.
+
+    Every Event Type a case records against is declared, edited and
+    published the way a tenant does it, through these routes, because the
+    claim is about what the lifecycle a tenant drives leaves production
+    reading. Two things are set up below the routes, and each says so: the
+    Cost Rates (`rate`), whose own quantity declarations come from the shared
+    rate fixture under an Event Type no case records against, and a retired
+    Grouping Field (`retire`), which no route can produce.
+    """
+
+    def admin(self, method, path, data=None):
+        response = getattr(self.http, method)(
+            f"/api/v1/event-types{path}", data=json.dumps(data or {}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertLess(response.status_code, 300, response.content)
+
+    def declared(self, key, *, costing_method, quantities=(),
+                 source_kind=None):
+        """A draft Event Type, with each quantity and mapping beneath it."""
+        self.admin("post", "", {"key": key, "costing_method": costing_method,
+                                "source_shape_id": SHAPE})
+        for code in quantities:
+            self.quantity(key, code)
+        if source_kind is not None:
+            self.mapping(key, source_kind)
+
+    def published(self, key, **declaration):
+        self.declared(key, **declaration)
+        self.publish(key)
+
+    def publish(self, key):
+        self.admin("post", f"/{key}/publish")
+
+    def quantity(self, key, code):
+        self.admin("put", f"/{key}/measurements/{code}",
+                   {"value_type": MEASUREMENT_VALUE_TYPE_INTEGER,
+                    "unit": UNIT_CALL,
+                    "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+
+    def withdraw_quantity(self, key, code):
+        self.admin("delete", f"/{key}/measurements/{code}")
+
+    def mapping(self, key, source_kind):
+        reads_the_response = source_kind == SOURCE_KIND_PROVIDER_RESPONSE
+        self.admin("put", f"/{key}/reported-cost-mapping", {
+            "source_kind": source_kind,
+            "amount_representation": AMOUNT_REPRESENTATION_MICROS,
+            "source_path": ["usage", "total_cost"] if reads_the_response else [],
+            "currency": "usd"})
+
+    def withdraw_mapping(self, key):
+        self.admin("delete", f"/{key}/reported-cost-mapping")
+
+    def costing_method(self, key, method):
+        self.admin("patch", f"/{key}", {"costing_method": method})
+
+    def rate(self, code, micros=1_000):
+        """A Cost Rate for `code`, at `micros` a unit. The rate names a
+        declaration of its own (`declares_a_quantity`), never the Event Type
+        under test, so withdrawing a quantity there is never refused."""
+        cost_rate_in_default_book(self.tenant, measurement_key=code,
+                                  rate_per_unit_micros=micros, unit_quantity=1)
+
+    def a_grouping_field(self):
+        """An event-scoped Grouping Field with room for new values."""
+        GroupingField.objects.create(
+            tenant=self.tenant, key="model", slot="grouping_field_1",
+            scope=GROUPING_FIELD_SCOPE_EVENT, max_cardinality=5)
+
+    def retire(self, key):
+        """A Grouping Field retired. Written to the row: no tenant route
+        retires one."""
+        GroupingField.objects.filter(tenant=self.tenant, key=key).update(
+            retired_at=timezone.now())
+
+    def admitted(self, outcome):
+        self.assertTrue(outcome.accepted, outcome.body)
+        return outcome.body
+
+    def refused_the_supplier_cost(self, outcome):
+        """The #324 refusal, by its own message — not merely a refusal."""
+        self.assertFalse(outcome.accepted, outcome.body)
+        self.assertEqual(outcome.body["code"], "validation_error")
+        self.assertIn("provider_cost_micros is the supplier's own reported "
+                      "cost", outcome.body["detail"])
+        self.assertIn(SOURCE_KIND_CALLER_SUPPLIED, outcome.body["detail"])
+
+    def held(self, key):
+        """What was held for `key`, without the key: the quantity names and
+        numbers a remediation would have to decide about."""
+        return sorted(
+            (row.unrecognised, row.measurement_key, row.quantity,
+             json.dumps(row.quantities, sort_keys=True))
+            for row in QuarantinedKey.objects.filter(tenant=self.tenant,
+                                                     event_type_key=key))
+
+
+class _OnTheSingleRoute(_PublicationCase):
+    """`POST /usage`: a 200 recorded it, a 422 did not."""
+
+    def send(self, correlation, **body):
+        response = self.post(correlation, **body)
+        self.assertIn(response.status_code, (200, 422), response.content)
+        answer = response.json()
+        if response.status_code == 200:
+            return Outcome(True, answer)
+        return Outcome(False, {"code": answer["code"],
+                               "detail": answer["detail"]})
+
+
+class _OnTheBatchRoute(_PublicationCase):
+    """One item of `POST /usage/batch`: the item's own verdict says which."""
+
+    def send(self, correlation, **body):
+        response = self.post_batch(
+            usage_payload(self.customer, correlation, **body))
+        self.assertEqual(response.status_code, 200, response.content)
+        verdict = dict(response.json()["results"][0])
+        if verdict.pop("accepted"):
+            return Outcome(True, verdict)
+        return Outcome(False, {"code": verdict["code"],
+                               "detail": verdict["detail"]})
+
+
+class _TheSupplierCostFollowsThePublication:
+    """The owner's example, in both directions (#605).
+
+    A deployed integration was generated against the publication. A draft edit
+    to the mapping's source kind must not start refusing the figure that
+    integration sends — nor start admitting one it does not — until the edit
+    is published.
+    """
+
+    def test_a_draft_to_provider_response_leaves_the_figure_admitted(self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.mapping("acme.embed", SOURCE_KIND_PROVIDER_RESPONSE)
+
+        ack = self.admitted(self.send("draft", event_type="acme.embed",
+                                      provider_cost_micros=SUPPLIER))
+
+        self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+
+        self.publish("acme.embed")
+
+        self.refused_the_supplier_cost(self.send(
+            "published", event_type="acme.embed",
+            provider_cost_micros=SUPPLIER))
+
+    def test_a_draft_to_caller_supplied_leaves_the_figure_refused(self):
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        self.mapping("acme.read", SOURCE_KIND_CALLER_SUPPLIED)
+
+        self.refused_the_supplier_cost(self.send(
+            "draft", event_type="acme.read", provider_cost_micros=SUPPLIER))
+        self.assertEqual(Posting.objects.count(), 0)
+
+        self.publish("acme.read")
+
+        ack = self.admitted(self.send("published", event_type="acme.read",
+                                      provider_cost_micros=SUPPLIER))
+        self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
+
+    def test_a_withdrawn_mapping_in_draft_leaves_the_figure_admitted(self):
+        """The edit that cannot even be published: a `reported` declaration
+        with no mapping is blocked. Production keeps the publication it has."""
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.withdraw_mapping("acme.embed")
+
+        ack = self.admitted(self.send("withdrawn", event_type="acme.embed",
+                                      provider_cost_micros=SUPPLIER))
+
+        self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
+
+
+class TheSupplierCostFollowsThePublicationOnTheSingleRouteTest(
+        _TheSupplierCostFollowsThePublication, _OnTheSingleRoute):
+    pass
+
+
+class TheSupplierCostFollowsThePublicationOnTheBatchRouteTest(
+        _TheSupplierCostFollowsThePublication, _OnTheBatchRoute):
+    pass
+
+
+class _EveryOtherFactFollowsThePublication:
+    """The rest of the one unit the owner ruled on (#605): the costing method,
+    the no-cost state, the missing-cost answer and the declared quantity names.
+    Each is changed in draft, recorded against, then published and recorded
+    against again."""
+
+    def costing(self, correlation, key, **body):
+        ack = self.admitted(self.send(correlation, event_type=key, **body))
+        return ack["costing_status"], ack["unresolved_reason"]
+
+    def test_a_draft_from_reported_to_calculated_waits_for_publication(self):
+        self.rate("calls")
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       quantities=("calls",),
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        missing = (COSTING_STATUS_UNRESOLVED,
+                   UNRESOLVED_REASON_REPORTED_COST_MISSING)
+        self.assertEqual(self.costing("before", "acme.embed",
+                                      measurements={"calls": 3}), missing)
+
+        self.costing_method("acme.embed", COSTING_METHOD_CALCULATED)
+
+        self.assertEqual(self.costing("draft", "acme.embed",
+                                      measurements={"calls": 3}), missing)
+
+        self.publish("acme.embed")
+
+        ack = self.admitted(self.send("published", event_type="acme.embed",
+                                      measurements={"calls": 3}))
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+        self.assertEqual(ack["provider_cost_micros"], 3_000)
+
+    def test_a_draft_from_calculated_to_reported_waits_for_publication(self):
+        self.rate("calls")
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
+                       quantities=("calls",))
+
+        self.costing_method("acme.calc", COSTING_METHOD_REPORTED)
+        self.mapping("acme.calc", SOURCE_KIND_CALLER_SUPPLIED)
+
+        ack = self.admitted(self.send("draft", event_type="acme.calc",
+                                      measurements={"calls": 3}))
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+        self.assertEqual(ack["provider_cost_micros"], 3_000)
+        self.refused_the_supplier_cost(self.send(
+            "draft-figure", event_type="acme.calc",
+            provider_cost_micros=SUPPLIER))
+
+        self.publish("acme.calc")
+
+        self.assertEqual(
+            self.costing("published", "acme.calc", measurements={"calls": 3}),
+            (COSTING_STATUS_UNRESOLVED,
+             UNRESOLVED_REASON_REPORTED_COST_MISSING))
+
+    def test_a_quantity_added_in_draft_is_not_declared_until_published(self):
+        self.rate("calls")
+        self.rate("tokens")
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
+                       quantities=("calls",))
+        report = {"calls": 1, "tokens": 1}
+        held = (COSTING_STATUS_UNRESOLVED,
+                UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
+
+        self.quantity("acme.calc", "tokens")
+
+        self.assertEqual(self.costing("draft", "acme.calc",
+                                      measurements=report), held)
+        self.assertEqual(len(self.held("acme.calc")), 1)
+
+        self.publish("acme.calc")
+
+        ack = self.admitted(self.send("published", event_type="acme.calc",
+                                      measurements=report))
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+        self.assertEqual(ack["provider_cost_micros"], 2_000)
+        self.assertEqual(len(self.held("acme.calc")), 1)
+
+    def test_a_quantity_withdrawn_in_draft_stays_declared_until_published(self):
+        self.rate("calls")
+        self.rate("tokens")
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
+                       quantities=("calls", "tokens"))
+        report = {"calls": 1, "tokens": 1}
+
+        self.withdraw_quantity("acme.calc", "tokens")
+
+        ack = self.admitted(self.send("draft", event_type="acme.calc",
+                                      measurements=report))
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+        self.assertEqual(ack["provider_cost_micros"], 2_000)
+        self.assertEqual(self.held("acme.calc"), [])
+
+        self.publish("acme.calc")
+
+        self.assertEqual(
+            self.costing("published", "acme.calc", measurements=report),
+            (COSTING_STATUS_UNRESOLVED,
+             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED))
+
+    def test_a_draft_that_would_declare_a_cost_waits_for_publication(self):
+        """Published with nothing to cost; a draft quantity changes nothing."""
+        self.rate("calls")
+        self.published("acme.free", costing_method=COSTING_METHOD_CALCULATED)
+        self.assertEqual(
+            self.costing("before", "acme.free", measurements={"calls": 3}),
+            (COSTING_STATUS_NOT_APPLICABLE, None))
+
+        self.quantity("acme.free", "calls")
+
+        self.assertEqual(
+            self.costing("draft", "acme.free", measurements={"calls": 3}),
+            (COSTING_STATUS_NOT_APPLICABLE, None))
+
+        self.publish("acme.free")
+
+        self.assertEqual(
+            self.costing("published", "acme.free", measurements={"calls": 3}),
+            (COSTING_STATUS_KNOWN, None))
+
+    def test_a_draft_that_would_declare_no_cost_waits_for_publication(self):
+        """The inverse, through the half the quantities do not cover: a
+        published MAPPING is enough to carry a cost, so withdrawing it in
+        draft changes nothing until the withdrawal is published.
+
+        The call measures nothing. This declaration declares no quantity, so
+        any name it reported would be held as undeclared — a third answer that
+        would hide the two this case is about."""
+        self.published("acme.mapped", costing_method=COSTING_METHOD_CALCULATED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.assertEqual(self.costing("before", "acme.mapped"),
+                         (COSTING_STATUS_KNOWN, None))
+
+        self.withdraw_mapping("acme.mapped")
+
+        self.assertEqual(self.costing("draft", "acme.mapped"),
+                         (COSTING_STATUS_KNOWN, None))
+
+        self.publish("acme.mapped")
+
+        self.assertEqual(self.costing("published", "acme.mapped"),
+                         (COSTING_STATUS_NOT_APPLICABLE, None))
+
+
+class EveryOtherFactFollowsThePublicationOnTheSingleRouteTest(
+        _EveryOtherFactFollowsThePublication, _OnTheSingleRoute):
+    pass
+
+
+class EveryOtherFactFollowsThePublicationOnTheBatchRouteTest(
+        _EveryOtherFactFollowsThePublication, _OnTheBatchRoute):
+    pass
+
+
+class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
+    """Declared and never published → no production declaration (#605).
+
+    The ruling is DELEGATION: recording against such a key takes exactly the
+    path a key nobody declared takes, with no refusal and no implementation of
+    its own. What that path does is #568's to decide, so nothing here says
+    what it answers — every case records one body against a key nobody
+    declared and the same body against a key declared and never published,
+    and compares the two outcomes to each other.
+
+    Three drafts, one for each way a leaked draft would show: a `reported` one
+    admitting a caller-supplied figure, a `calculated` one whose declared names
+    would hold the unknown one, and one declaring nothing, which would carry no
+    cost. For every body at least one of them, had it leaked, would answer
+    differently from the undeclared path.
+    """
+
+    BODIES = {
+        "quantities": {"measurements": {"calls": 3}},
+        "a name nobody declared": {"measurements": {"calls": 3,
+                                                    "mystery": 2}},
+        "the supplier's own figure": {"provider_cost_micros": SUPPLIER},
+    }
+
+    DRAFTS = {
+        "reported": {"costing_method": COSTING_METHOD_REPORTED,
+                     "quantities": ("calls",),
+                     "source_kind": SOURCE_KIND_CALLER_SUPPLIED},
+        "calculated": {"costing_method": COSTING_METHOD_CALCULATED,
+                       "quantities": ("calls",)},
+        "nothing": {"costing_method": COSTING_METHOD_CALCULATED},
+    }
+
+    def comparable(self, outcome, key):
+        """An outcome with `key` taken out, which is all two keys may differ
+        by: a refusal's message names the Event Type it was asked about."""
+        if not outcome.accepted:
+            return (False, outcome.body["code"],
+                    outcome.body["detail"].replace(repr(key), "<key>"))
+        posting = Posting.objects.get(id=outcome.body["event_id"])
+        return (True,
+                {fact: outcome.body[fact] for fact in COSTING_FACTS},
+                {column: getattr(posting, column)
+                 for column in ECONOMIC_COLUMNS},
+                self.held(key))
+
+    def test_each_body_is_recorded_as_against_a_key_nobody_declared(self):
+        self.rate("calls")
+        for draft, declaration in self.DRAFTS.items():
+            for case, (name, body) in enumerate(self.BODIES.items()):
+                with self.subTest(draft=draft, body=name):
+                    unpublished = f"draft.{draft}.case{case}"
+                    undeclared = f"nobody.{draft}.case{case}"
+                    self.declared(unpublished, **declaration)
+
+                    against_the_draft = self.send(
+                        unpublished, event_type=unpublished, **body)
+                    against_nothing = self.send(
+                        undeclared, event_type=undeclared, **body)
+
+                    self.assertEqual(
+                        self.comparable(against_the_draft, unpublished),
+                        self.comparable(against_nothing, undeclared))
+
+
+class ANeverPublishedEventTypeOnTheSingleRouteTest(
+        _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne,
+        _OnTheSingleRoute):
+    pass
+
+
+class ANeverPublishedEventTypeOnTheBatchRouteTest(
+        _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne,
+        _OnTheBatchRoute):
+    pass
+
+
+class _AReplayAnswersWhatWasRecorded:
+    """Replay wins (#605, owner ruling 2).
+
+    Once an event is recorded under an idempotency key, a retry answers the
+    original acknowledgement — whatever has been published since, and before
+    any admission is asked, so current configuration cannot make an already
+    successful write unreplayable. Keyed exactly as it always was, by the
+    tenant, the customer and the key: no body is compared.
+    """
+
+    def replays(self, original, replay):
+        """The replay IS the original: the same event, the same conclusions,
+        and nothing new recorded."""
+        self.assertEqual(replay["event_id"], original["event_id"])
+        self.assertEqual({fact: replay[fact] for fact in COSTING_FACTS},
+                         {fact: original[fact] for fact in COSTING_FACTS})
+        self.assertEqual(replay["measurements"], original["measurements"])
+        self.assertEqual(Posting.objects.count(), 1)
+
+    def test_a_replay_records_nothing_new(self):
+        self.rate("calls")
+        original = self.admitted(self.send("once", measurements={"calls": 3}))
+
+        self.replays(original, self.admitted(
+            self.send("once", measurements={"calls": 3})))
+
+    def test_a_replay_after_the_source_kind_is_republished(self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        original = self.admitted(self.send(
+            "kind", event_type="acme.embed", provider_cost_micros=SUPPLIER))
+        self.mapping("acme.embed", SOURCE_KIND_PROVIDER_RESPONSE)
+        self.publish("acme.embed")
+
+        self.replays(original, self.admitted(self.send(
+            "kind", event_type="acme.embed", provider_cost_micros=SUPPLIER)))
+
+    def test_a_replay_after_the_costing_method_is_republished(self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        original = self.admitted(self.send(
+            "method", event_type="acme.embed", provider_cost_micros=SUPPLIER))
+        self.costing_method("acme.embed", COSTING_METHOD_CALCULATED)
+        self.publish("acme.embed")
+
+        self.replays(original, self.admitted(self.send(
+            "method", event_type="acme.embed", provider_cost_micros=SUPPLIER)))
+
+    def test_a_replay_after_the_quantities_are_republished(self):
+        """The original held a name; declaring it since neither re-costs the
+        recorded event nor holds the name a second time."""
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
+                       quantities=("calls",))
+        report = {"calls": 1, "tokens": 1}
+        original = self.admitted(self.send(
+            "names", event_type="acme.calc", measurements=report))
+        self.assertEqual(original["unresolved_reason"],
+                         UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
+        self.quantity("acme.calc", "tokens")
+        self.publish("acme.calc")
+
+        self.replays(original, self.admitted(self.send(
+            "names", event_type="acme.calc", measurements=report)))
+        self.assertEqual(len(self.held("acme.calc")), 1)
+
+    def test_a_replay_after_its_grouping_field_is_retired(self):
+        """The Grouping Field registry is current configuration too, and its
+        admission WRITES: a replay neither re-admits nor records a value.
+
+        No tenant route retires a field, so `retire` writes `retired_at`
+        directly; the replay carries a value the retired field would refuse,
+        which only an admission that ran would notice.
+        """
+        self.a_grouping_field()
+        original = self.admitted(self.send(
+            "grouped", **declared_grouping_values({"model": "gpt-4"})))
+        self.retire("model")
+
+        self.replays(original, self.admitted(self.send(
+            "grouped", **declared_grouping_values({"model": "gpt-5"}))))
+        self.assertEqual(
+            sorted(GroupingFieldValue.objects.values_list("value", flat=True)),
+            ["gpt-4"])
+
+    def test_a_replay_with_a_different_body_answers_the_original(self):
+        """No body is compared, as before #605 — and a different body is not
+        a new event either: it carries a figure nothing here admits, which only
+        an admission that ran would refuse."""
+        self.rate("calls")
+        original = self.admitted(self.send("body", measurements={"calls": 3}))
+
+        replay = self.admitted(self.send("body", measurements={"calls": 9},
+                                         claimed_provider_cost_micros=CLAIMED,
+                                         provider_cost_micros=SUPPLIER))
+
+        self.replays(original, replay)
+        self.assertEqual(replay["measurements"], {"calls": 3})
+
+    def test_a_replay_is_the_same_customers(self):
+        """The lookup's scope is unchanged: the same key under another
+        customer of the tenant is that customer's own new event."""
+        self.rate("calls")
+        first = self.admitted(self.send("shared", measurements={"calls": 3}))
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="another")
+
+        second = self.admitted(self.send("shared", measurements={"calls": 4}))
+
+        self.assertNotEqual(second["event_id"], first["event_id"])
+        self.assertEqual(second["measurements"], {"calls": 4})
+        self.assertEqual(Posting.objects.count(), 2)
+
+    def test_a_refused_new_event_writes_nothing(self):
+        """Replay-first moves no refusal: a NEW event the publication does not
+        admit records nothing and spends no grouping value."""
+        self.a_grouping_field()
+
+        self.refused_the_supplier_cost(self.send(
+            "new", event_type="acme.embed", provider_cost_micros=SUPPLIER,
+            **declared_grouping_values({"model": "gpt-4"})))
+
+        self.assertEqual(Posting.objects.count(), 0)
+        self.assertEqual(GroupingFieldValue.objects.count(), 0)
+
+
+class AReplayAnswersWhatWasRecordedOnTheSingleRouteTest(
+        _AReplayAnswersWhatWasRecorded, _OnTheSingleRoute):
+    pass
+
+
+class AReplayAnswersWhatWasRecordedOnTheBatchRouteTest(
+        _AReplayAnswersWhatWasRecorded, _OnTheBatchRoute):
+    pass
 
 
 class TheWholeRequestIsPublishedTest(SimpleTestCase):

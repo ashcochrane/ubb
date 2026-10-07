@@ -70,6 +70,10 @@ def sync_detailed(
 
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
+
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a
     mapping in order to redeclare it is an ordinary edit rather than a sequence
@@ -108,6 +112,10 @@ def sync(
 
      Withdraw the mapping. A `reported` declaration then cannot publish.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
+
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a
     mapping in order to redeclare it is an ordinary edit rather than a sequence
@@ -140,6 +148,10 @@ async def asyncio_detailed(
     """ Withdraw Reported Cost Mapping
 
      Withdraw the mapping. A `reported` declaration then cannot publish.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
 
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a
@@ -178,6 +190,10 @@ async def asyncio(
     """ Withdraw Reported Cost Mapping
 
      Withdraw the mapping. A `reported` declaration then cannot publish.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
 
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a

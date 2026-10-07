@@ -52,11 +52,16 @@ repair. The row serializers live beside their Out schemas in ``schemas.py``,
 which is the same convention's other half.
 
 **What this module does NOT do.** It resolves nothing, rates nothing and costs
-nothing — no recording path reads a single row it serves. Slice 2 owns the
-declaration; slice 3 owns every behaviour the declaration selects. The one
-place that shows through is ``event_type_out``'s ``publication_blockers``,
-which is served rather than stored so that two encodings of one fact cannot
-disagree.
+nothing. Slice 2 owns the declaration; slice 3 owns every behaviour the
+declaration selects. The one place that shows through is ``event_type_out``'s
+``publication_blockers``, which is served rather than stored so that two
+encodings of one fact cannot disagree.
+
+**What it serves is the draft, and recording never reads it (#605).** These
+routes serve the live declaration, edits and all. Production recording reads
+what the Event Type's last publication kept (``costing.cost_declaration``), so
+draft changes do not affect production recording: changes take effect when
+they are published, through the publish route below.
 """
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -476,6 +481,10 @@ def declare_event_type(request, payload: EventTypeIn):
 def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
     """Edit a declaration. Changing a pinned element returns it to draft.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
@@ -523,6 +532,10 @@ def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
 @records_audit("event_type.published")
 def publish_event_type(request, key: str):
     """Publish the declaration, or refuse and say what is missing.
+
+    This is when a change takes effect. Draft changes do not affect production
+    recording. Production uses the Event Type's last published declaration;
+    changes take effect when they are published.
 
     A refusal rather than a partial publication: the two outcomes a caller must
     tell apart are published and not-published, and an incomplete mapping
@@ -574,10 +587,12 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
     is keyed on the pair and never on the code alone: a tenant's Gemini and
     OpenAI integrations never have to agree about spelling to both be correct.
 
-    Declaring one under a PUBLISHED Event Type revises the publication — the
-    model does that, on the same footing as an edit, because a published
-    declaration that grows a required quantity is a different declaration from
-    the one a tenant generated their integration against.
+    Declaring one under a PUBLISHED Event Type returns it to draft — the model
+    does that, on the same footing as an edit, because a published declaration
+    that grows a required quantity is a different declaration from the one a
+    tenant generated their integration against. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
     """
     _product_check(request)
     tenant = request.auth.tenant
@@ -615,6 +630,10 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
 @records_audit("measurement.withdrawn")
 def withdraw_measurement(request, key: str, code: str):
     """Withdraw one declared quantity, unless a rate still prices it.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
@@ -683,6 +702,11 @@ def declare_reported_cost_mapping(request, key: str,
                                   payload: ReportedCostMappingIn):
     """Declare where a supplier's own cost figure is read from. One per type.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
+
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
@@ -720,6 +744,10 @@ def declare_reported_cost_mapping(request, key: str,
 @records_audit("reported_cost_mapping.withdrawn")
 def withdraw_reported_cost_mapping(request, key: str):
     """Withdraw the mapping. A `reported` declaration then cannot publish.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
 
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a

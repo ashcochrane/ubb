@@ -306,9 +306,10 @@ class AnEmptyPlanBookAndNoDeclaredRungIsUnknownTest(
         declared to take a margin with. Built inline rather than through a
         shared helper: one caller wants an Event Type that declares nothing.
         """
+        # Published: recording reads the last publication, never a draft (#605).
         EventType.objects.create(
             tenant=self.tenant, key=EVENT_TYPE,
-            costing_method=COSTING_METHOD_CALCULATED)
+            costing_method=COSTING_METHOD_CALCULATED).publish()
 
         receipt = self.resolved()
 
@@ -367,9 +368,10 @@ class AnEmptyPlanBookFallsToTheTenantsDeclaredRungTest(
         """Not the silent zero this programme deletes: the basis is genuinely
         zero because the tenant SAID this call has no cost, so a margin over it
         is zero and settles (#147 §7.3)."""
+        # Published: recording reads the last publication, never a draft (#605).
         EventType.objects.create(
             tenant=self.tenant, key=EVENT_TYPE,
-            costing_method=COSTING_METHOD_CALCULATED)
+            costing_method=COSTING_METHOD_CALCULATED).publish()
 
         receipt = self.resolved()
 

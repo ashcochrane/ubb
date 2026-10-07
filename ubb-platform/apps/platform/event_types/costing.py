@@ -1,9 +1,10 @@
-"""What an Event Type declares about cost, for the paths that act on it (#320).
+"""What an Event Type's last publication declares about cost, for the paths
+that act on it (#320, #605).
 
 ``Measurement``'s own docstring has said *"nothing rates against these ... slice
 3 wires it"* since the table was created. This is that wire, and it is
 deliberately one function returning plain data rather than an ORM row handed
-across: its callers need three facts about a declaration and have no business
+across: its callers need four facts about a declaration and have no business
 holding a record they could accidentally save.
 
 **Two callers, one query each, asking different questions of the same record.**
@@ -18,25 +19,32 @@ declared, not about how a cost is computed, and a copy of it in metering would
 be a second definition of a kernel fact (ADR-0006 §4) — one that would go stale
 the day a third way to declare a cost arrives. The pricer asks; this answers.
 
+**Draft changes do not affect production recording (#605).** Production uses
+the Event Type's last published declaration; changes take effect when they are
+published. Every fact below is read off the copy ``publish`` keeps on the
+Event Type's row (#573), through ``publication.last_published_declaration``,
+and none of them off the draft — the four are one unit, and a read that took
+one from each would let an unpublished edit change half of what production
+does.
+
 **One query, and it stays one.** The recording path is the hottest write in the
-system, so the count of declared quantities is annotated and the reported-cost
-mapping is joined rather than each being fetched on access — three round trips
-collapsed into one, on the ``uq_event_type_key`` unique index. Nothing is
-cached: a declaration a tenant edited must take effect on the next call, and the
-rate-card cache next door exists because rates are read once per *quantity* per
-event, which this is not.
+system, and the published copy is one column on one row, read on the
+``uq_event_type_key`` unique index with no join: the quantities and the mapping
+beneath the Event Type are not consulted, because they are the draft. Nothing
+is cached: a publication must take effect on the next call, and the rate-card
+cache next door exists because rates are read once per *quantity* per event,
+which this is not.
 """
 from typing import NamedTuple
 
-from django.contrib.postgres.aggregates import ArrayAgg
-
 from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
 
-from .models import REPORTED_COST_MAPPING, EventType
+from .publication import last_published_declaration
 
 
 class CostDeclaration(NamedTuple):
-    """The four facts about a declaration that a cost decision turns on."""
+    """The four facts about a published declaration that a cost decision
+    turns on."""
 
     #: How this Event Type's supplier cost is arrived at — held by reference
     #: from `core.vocabulary`, never re-spelled here.
@@ -45,79 +53,72 @@ class CostDeclaration(NamedTuple):
     #: tenant made, and the one thing that makes a posting `not_applicable`
     #: rather than merely uncosted.
     declares_no_cost: bool
-    #: WHERE the supplier's reported figure comes from, or `None` where this
-    #: Event Type declares no mapping at all. The rating path reads only the
+    #: WHERE the supplier's reported figure comes from, or `None` where the
+    #: publication declares no mapping at all. The rating path reads only the
     #: PRESENCE of a mapping (#320); this is the one question that needs the
-    #: kind itself, and it is answered off the row already joined below rather
-    #: than by a second query.
+    #: kind itself, and it is answered off the same publication rather than by
+    #: a second query.
     reported_cost_source_kind: str | None
     #: WHICH quantity codes this Event Type declares (#428) — the set a name on
     #: a report is measured against, so the compute spine can tell a quantity
     #: nobody declared from one nobody wrote a rate for. Declarations are
     #: Event-Type-local (#193 §C2), so this is THIS declaration's set and never
     #: the tenant's catalogue: a name declared beneath another Event Type is
-    #: not declared here. Empty for a declaration carrying no quantity, which
+    #: not declared here. Empty for a publication carrying no quantity, which
     #: is a different answer from the `None` the whole record is for an Event
-    #: Type nobody declared — the first is a tenant's statement, the second is
-    #: the registry's opt-in.
+    #: Type with no publication — the first is a tenant's statement, the second
+    #: is the registry's opt-in.
     declared_quantity_codes: frozenset[str]
 
 
 def cost_declaration(*, tenant, key):
-    """What `key` declares about cost for `tenant`, or `None` if it declares nothing.
+    """What `key`'s last publication declares about cost for `tenant`, or
+    `None` if nothing is published.
 
-    `None` is not "no cost" — it is *no declaration*, which is a different
-    answer and the commoner one. The Event Type registry is opt-in: a tenant may
-    record against a key they never declared, and every such posting costs the
-    way this repository has always costed, against Cost Rates. Reading absence
-    as `not_applicable` would report a design decision nobody made.
+    `None` is not "no cost" — it is *no production declaration*, which is a
+    different answer and the commoner one. The Event Type registry is opt-in,
+    and reading absence as `not_applicable` would report a design decision
+    nobody made.
 
-    **A DRAFT DECLARATION COUNTS, AND THAT IS A CHOICE.** `declaration_status`
-    is not filtered on here. Publication governs what a generated integration
-    was built against — that is what `published_revision` counts — and it is not
-    a claim about what the tenant means today. A tenant who corrects a
-    declaration sees the correction on the next call rather than after a
-    publish, and a draft `reported` declaration is answered `reported_cost_
-    missing` rather than being costed against rate cards it has disowned, which
-    is the truer of the two available answers.
+    **THE LAST PUBLICATION GOVERNS, AND THE DRAFT NEVER DOES (#605).** Until
+    #605 this read joined the live rows, and its docstring said *"a draft
+    declaration counts, and that is a choice"*: slice 3's #320 made it so a
+    tenant who corrected a declaration would see the correction on the next
+    call. The owner and consultant ruled the other way (comment `6041500996`
+    on #605). A deployed integration was generated against the publication,
+    and a read of the draft let an unpublished edit to the mapping switch which
+    figure production admits — refusing every call that integration makes,
+    with nobody having published anything. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
+
+    **NEVER PUBLISHED IS UNDECLARED, BY DELEGATION.** An Event Type declared
+    and never published has no production declaration, so this answers the
+    same `None` a key nobody declared does — and so does one published before
+    copies were kept and revised since (#573), whose content is gone until it
+    is published again. One answer, so a recording against any of them takes
+    the one path an undeclared key takes, with no refusal and no path of its
+    own. What that path does is not this read's to say (#568 owns it).
 
     **A `reported` declaration always carries a cost, mapping or no mapping.**
     The method itself is the statement that a supplier reports a figure; a
     missing mapping means the figure has nowhere to come *from*, which is
     `reported_cost_missing` — an outstanding task — and not "this call is free".
     So `declares_no_cost` asks the spec's *"no rate axis and no cost mapping"*
-    question only of the declarations where both halves can honestly be absent.
+    question only of the declarations where both halves can honestly be absent:
+    a costing method other than `reported`, no published quantity and no
+    published mapping.
     """
-    if not key:
+    published = last_published_declaration(tenant=tenant, key=key)
+    if published is None:
         return None
-    # STILL ONE QUERY (#428). The codes ride the same join the count of them
-    # used to, aggregated into an array rather than counted, and the count the
-    # no-cost rule reads is taken off the set — a second round trip for the
-    # names would be paid once per recording call, on the hottest write path in
-    # the system, and `tests/test_costing.py` pins the number.
-    row = (EventType.objects
-           .filter(tenant=tenant, key=key)
-           .select_related(REPORTED_COST_MAPPING)
-           .annotate(declared_codes=ArrayAgg("measurements__code"))
-           .first())
-    if row is None:
-        return None
-    # A missing reverse one-to-one answers None through getattr's default, the
-    # same read `EventType.publication_blockers` makes.
-    mapping = getattr(row, REPORTED_COST_MAPPING, None)
-    # A LEFT JOIN OVER A DECLARATION WITH NOTHING BENEATH IT YIELDS ONE ROW
-    # WITH A NULL CODE, and the aggregate keeps it: `{NULL}`, an array whose one
-    # member is not a name. Stripped here, so a declaration carrying no
-    # quantity answers an empty set and reads as carrying none, rather than as
-    # carrying a name every real name would then be compared against. The
-    # aggregate itself is never null — the declaration's own row always joins
-    # — so there is nothing to coalesce before the strip.
-    declared_codes = frozenset(code for code in row.declared_codes
-                               if code is not None)
+    mapping = published.reported_cost_mapping
+    declared_codes = frozenset(quantity.code
+                               for quantity in published.measurements)
     return CostDeclaration(
-        costing_method=row.costing_method,
+        costing_method=published.costing_method,
         declares_no_cost=(
-            row.costing_method != COSTING_METHOD_REPORTED
+            published.costing_method != COSTING_METHOD_REPORTED
             and not declared_codes
             and mapping is None),
         reported_cost_source_kind=(None if mapping is None
@@ -141,7 +142,7 @@ def admits_a_caller_supplied_cost(declaration):
     method would admit a number that came from somewhere the tenant never
     declared.
 
-    `None` — no declaration at all — is a **no**. The Event Type registry is
+    `None` — no published declaration — is a **no**. The Event Type registry is
     opt-in and most postings still have no declaration, so this is the commonest
     answer rather than an error case; what a tenant may not do is assert the
     supplier's own number against nothing. The refusal itself is the caller's

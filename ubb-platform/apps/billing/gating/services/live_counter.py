@@ -56,7 +56,7 @@ the seat level's durable-lane compare and the kill the pool's stop registers
 SEEDING (the one deliberate over-permissive window): the prepaid counter
 seeds from the DURABLE wallet balance, which at first-use may still be high
 by the usage that is recorded-but-not-yet-async-debited (handlers.py drains
-the debit after record_usage commits). The live counter is therefore
+the debit after the recording commits). The live counter is therefore
 over-permissive by at most that one outbox-drain window, bounded and
 reconcile-corrected, and backstopped by the durable START-GATE (RiskService
 reads the real wallet for a NEW run). This is the reworded I2 contract (a
@@ -210,7 +210,7 @@ def stop_channel(owner_id) -> str:
 
 
 class LiveCounter:
-    # ---- synchronous usage hook (called from record_usage) ----
+    # ---- synchronous usage hook (called from the recording core) ----
     @staticmethod
     def debit(owner_id, tenant, billed_cost_micros, *, effective_at=None, now=None):
         """Apply this event to the owner's live counters, synchronously, and

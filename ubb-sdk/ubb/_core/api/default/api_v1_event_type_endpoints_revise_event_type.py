@@ -97,6 +97,10 @@ def sync_detailed(
 
      Edit a declaration. Changing a pinned element returns it to draft.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
@@ -153,6 +157,10 @@ def sync(
 
      Edit a declaration. Changing a pinned element returns it to draft.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
     remember to route through is a rule that holds until the first caller who
@@ -203,6 +211,10 @@ async def asyncio_detailed(
     r""" Revise Event Type
 
      Edit a declaration. Changing a pinned element returns it to draft.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
 
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to
@@ -259,6 +271,10 @@ async def asyncio(
     r""" Revise Event Type
 
      Edit a declaration. Changing a pinned element returns it to draft.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
 
     The un-publishing is the model's, not this handler's, and deliberately so:
     it is a rule about what a change MEANS, and anything a caller has to

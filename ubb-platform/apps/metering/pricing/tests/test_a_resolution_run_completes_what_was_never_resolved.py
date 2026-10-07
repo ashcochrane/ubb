@@ -357,12 +357,15 @@ class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
 
         A tenant who declared that a supplier would report its own figure, and
         never received one, changes the declaration to say the cost is
-        calculated from Cost Rates instead. That is live configuration with no
-        effective moment — the same class of change as declaring a markup rung —
-        and it is what makes this posting's cost resolvable in principle.
+        calculated from Cost Rates instead, and publishes it — the change takes
+        effect when it is published, and not before (#605). It has no effective
+        moment beyond that — the same class of change as declaring a markup
+        rung — and it is what makes this posting's cost resolvable in principle.
         """
-        EventType.objects.filter(tenant=self.tenant, key=REPORTED_CALL).update(
-            costing_method=COSTING_METHOD_CALCULATED)
+        event_type = EventType.objects.get(tenant=self.tenant, key=REPORTED_CALL)
+        event_type.costing_method = COSTING_METHOD_CALCULATED
+        event_type.save()
+        event_type.publish()
 
     def test_the_two_causes_keep_different_things_on_the_record(self):
         """The premise: one record can be re-resolved and the other cannot."""

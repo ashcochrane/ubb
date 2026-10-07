@@ -104,6 +104,11 @@ def sync_detailed(
 
      Declare where a supplier's own cost figure is read from. One per type.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
+
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
@@ -152,6 +157,11 @@ def sync(
 
      Declare where a supplier's own cost figure is read from. One per type.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
+
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
@@ -194,6 +204,11 @@ async def asyncio_detailed(
     """ Declare Reported Cost Mapping
 
      Declare where a supplier's own cost figure is read from. One per type.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
 
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
@@ -242,6 +257,11 @@ async def asyncio(
     """ Declare Reported Cost Mapping
 
      Declare where a supplier's own cost figure is read from. One per type.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
 
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built

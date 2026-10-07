@@ -196,6 +196,24 @@ naming the state the unit is really in (#409, #416). Entity creates dedupe
 on natural identity or answer 409 `conflict` (customers, plans, rate-card
 books, rates, webhook configs, referral attribution).
 
+**Recording reads the Event Type's last publication (#605).** Draft changes do
+not affect production recording. Production uses the Event Type's last
+published declaration; changes take effect when they are published. Every
+declaration fact recording consumes comes from that one read, and an Event
+Type declared and never published is recorded as an undeclared key is.
+
+**A usage replay is answered before anything about current configuration is
+asked (#605).** On both recording routes the order is: resolve the customer
+(and task) in this tenant, find an event already recorded under the tenant,
+customer and `idempotency_key` — one lookup, `UsageService.replay`, shared by
+the routes and `UsageService`'s own recording path — and return its original
+acknowledgement;
+only a new event meets the admissions (the Event Type's published declaration,
+the Grouping Field registry). So a publication or a retired field since cannot
+make an already-successful write unreplayable. No body is compared: a usage
+repeat carrying different fields still answers the original, which is the
+existing contract and not a pinned-field check like the start's.
+
 ## Vocabulary: the values a field may carry (#208)
 
 Two vendor extensions are part of the published dialect. Both are

@@ -79,6 +79,10 @@ def sync_detailed(
 
      Withdraw one declared quantity, unless a rate still prices it.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
 
@@ -122,6 +126,10 @@ def sync(
 
      Withdraw one declared quantity, unless a rate still prices it.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
 
@@ -159,6 +167,10 @@ async def asyncio_detailed(
     """ Withdraw Measurement
 
      Withdraw one declared quantity, unless a rate still prices it.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
@@ -202,6 +214,10 @@ async def asyncio(
     """ Withdraw Measurement
 
      Withdraw one declared quantity, unless a rate still prices it.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
 
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.

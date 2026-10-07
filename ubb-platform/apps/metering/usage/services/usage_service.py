@@ -79,7 +79,7 @@ class EffectiveAtError(ValueError):
 
 
 def validate_effective_at(tenant, owner_id, effective_at, now):
-    """Validate a caller-supplied effective_at at the record_usage choke point.
+    """Validate a caller-supplied effective_at at the recording choke point.
 
     Raises EffectiveAtError with code:
     - effective_at_naive      — no timezone info;
@@ -203,7 +203,7 @@ def _result(event, *, task=None,
             stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None,
             parent_task_id=_UNRESOLVED):
-    """Build the record_usage response.
+    """Build the recording response — a new event's, or a replay's.
 
     One-rule (#37): every recorded event answers success; the stop
     instruction rides these fields. The named unit's BOTH running totals
@@ -213,9 +213,9 @@ def _result(event, *, task=None,
     (parent is immutable, so a replay can never read it stale).
 
     Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
-    return path of record_usage — the happy path AND both idempotent-replay
-    returns — so a replayed event for an already-stopped owner never reports
-    "all clear".
+    return path of the recording path — the happy path AND every replay, all
+    of which `UsageService.replay` answers — so a replayed event for an
+    already-stopped owner never reports "all clear".
 
     ``task`` is the accumulated row on the happy path; a replay passes none
     and the unit is read back here (#452) — the same one lookup the parent
@@ -419,7 +419,7 @@ RecordingOutcome = namedtuple("RecordingOutcome", "event task verdicts live")
 class RecordingConflict(IntegrityError):
     """The recording savepoint (price → create → accumulate) hit an
     IntegrityError — the core's idempotency boundary (#112). The typed
-    re-raise lets ``record_usage`` react to THIS boundary alone: an
+    re-raise lets ``record_new_usage`` react to THIS boundary alone: an
     IntegrityError from a post-savepoint stage (live-debit ledger, outbox)
     stays a plain IntegrityError and propagates as the hard failure it is
     (500 + full rollback — the event was NOT durably recorded without its
@@ -472,14 +472,14 @@ class UsageService:
     def _record_core(inp):
         """The recording body (#112): price → create → accumulate inside a
         savepoint, then live-debit → stop-context tag → backfill-dirty marker
-        → UsageRecorded emission → kill registration. ``record_usage`` is a
-        thin input adapter over this core.
+        → UsageRecorded emission → kill registration. ``record_new_usage``
+        is a thin input adapter over this core.
 
         Must run inside the caller's transaction (write_event asserts it). The
         savepoint around price/create/accumulate is the idempotency boundary:
         its IntegrityError propagates as RecordingConflict, with everything
-        after it unentered, and ``record_usage`` answers it with the replay
-        result.
+        after it unentered, and ``record_new_usage`` answers it with the
+        replay result.
 
         Kill execution (#112): the core computes reasons.kill_plan inside the
         recording transaction and registers execution on its own
@@ -594,7 +594,8 @@ class UsageService:
                 # Placed by the posting's own moment, which is what the period
                 # close reads (#329) and what a replay is stamped with; never by
                 # the clock. One event holds each name once: a replay of the
-                # same key answers in `record_usage` before anything is priced,
+                # same key is answered by `UsageService.replay` before anything
+                # is priced (#605),
                 # and a racing duplicate is refused at the insert above, which
                 # never reaches this line — the savepoint's own contribution.
                 for measurement_key, quantity in \
@@ -694,20 +695,83 @@ class UsageService:
         return RecordingOutcome(event, task, verdicts, live)
 
     @staticmethod
+    def replay(tenant, customer, idempotency_key):
+        """The original acknowledgement of the event already recorded under
+        this key, or `None` where nothing is (#605).
+
+        THE ONE REPLAY LOOKUP, and every caller that asks the question asks
+        it here: :meth:`record_usage` before it records,
+        :meth:`record_new_usage` when its insert loses a race to the same key,
+        and both recording routes (`metering_endpoints.replay_or_record`),
+        which ask it BEFORE any admission. A second copy of the query in a
+        route would be a second definition of "already recorded" one edit from
+        disagreeing with this one, and the disagreement would be a duplicate
+        posting.
+
+        Keyed by the tenant, the customer and the key, and by nothing in the
+        request: no body is compared, as none ever was. A replay answers what
+        the recording concluded — every cost and price fact is read off the row
+        (`_result`) — so configuration changed since, a publication included,
+        cannot alter it, and an admission it would now fail cannot refuse it.
+
+        `select_related` on the measurement child (#270): a replay's response
+        carries the ORIGINAL quantities, which the posting reads through the
+        child — and the replay path is the hot one, so it pays for that read
+        here rather than a second query per retry.
+        """
+        existing = Posting.objects.select_related("measurement").filter(
+            tenant=tenant, customer=customer,
+            idempotency_key=idempotency_key).first()
+        if existing is None:
+            return None
+        return _result(existing, **_replay_stop(customer, tenant))
+
+    @staticmethod
+    def record_usage(tenant, customer, idempotency_key, **recording):
+        """Replay the event already recorded under this key, or record a new
+        one — the whole recording path for a caller with nothing to admit.
+
+        The two recording routes do not come through here: each asks
+        :meth:`replay` itself, then runs its admissions, then calls
+        :meth:`record_new_usage` — so a replay is answered before anything
+        about the current configuration is asked (#605). This is the same
+        order with no admissions in it. No production code calls it; it is
+        the door the service-level tests record through, and it keeps their
+        replays answered exactly as a route answers them. ``recording`` is
+        :meth:`record_new_usage`'s keyword surface.
+        """
+        replayed = UsageService.replay(tenant, customer, idempotency_key)
+        if replayed is not None:
+            return replayed
+        return UsageService.record_new_usage(tenant, customer, idempotency_key,
+                                             **recording)
+
+    @staticmethod
     @transaction.atomic
-    def record_usage(tenant, customer, idempotency_key, *,
-                     provider_cost_micros=None,
-                     claimed_provider_cost_micros=None,
-                     provider="", event_type="", currency=None,
-                     metadata=None, task_id=None, measurements=None,
-                     effective_at=None, dimension_slots=None):
-        """The recording path (#112): validation + replay + owner resolve,
-        then the recording core. The keyword surface is the input adapter every
-        service-level call site and both recording endpoints already speak; it
-        lost the nameless inline quantity in #272, lost the second open bag in
-        #273, gained the caller's own claimed cost in #324, and lost the
-        customer price in #365 — a price is resolved and held by UBB, so there
-        is no keyword here for one and no wire field above it either.
+    def record_new_usage(tenant, customer, idempotency_key, *,
+                         provider_cost_micros=None,
+                         claimed_provider_cost_micros=None,
+                         provider="", event_type="", currency=None,
+                         metadata=None, task_id=None, measurements=None,
+                         effective_at=None, dimension_slots=None):
+        """The recording path (#112) for a key :meth:`replay` found nothing
+        under: validation + owner resolve, then the recording core. The keyword
+        surface is the input adapter every service-level call site and both
+        recording endpoints already speak; it lost the nameless inline quantity
+        in #272, lost the second open bag in #273, gained the caller's own
+        claimed cost in #324, and lost the customer price in #365 — a price is
+        resolved and held by UBB, so there is no keyword here for one and no
+        wire field above it either.
+
+        **ASK :meth:`replay` FIRST — every caller does, and this does not ask
+        again (#605).** Replay wins BEFORE effective_at validation: a
+        whole-batch retry must return the original event even if the window
+        has since aged past the timestamp or the period closed, so a caller
+        that came here without asking would refuse a legitimate retry. The
+        question is not repeated here because both routes have just asked it,
+        and a second lookup would be paid by every new event on the hottest
+        write in the system. A replay that arrives between the two is a race
+        like any other, and the conflict below answers it with the original.
 
         It lost the SECOND caller-supplied correlation value in #411, which is
         why ``idempotency_key`` is now the third positional parameter rather
@@ -729,17 +793,6 @@ class UsageService:
         for both routes before this runs. Whichever figure arrives here is
         costed — that separation is what lets the batch route refuse one item
         without disturbing the others, and it is why nothing below re-asks."""
-        # select_related on the measurement child (#270): a replay's response
-        # carries the ORIGINAL quantities, which the posting now reads through
-        # the child — and the replay path is the hot one, so it pays for that
-        # read here rather than a second query per retry.
-        existing = Posting.objects.select_related("measurement").filter(
-            tenant=tenant, customer=customer, idempotency_key=idempotency_key).first()
-        if existing:
-            # Replay wins BEFORE effective_at validation: a whole-batch retry
-            # must return the original event even if the window has since aged
-            # past the timestamp or the period closed.
-            return _result(existing, **_replay_stop(customer, tenant))
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result. The
@@ -777,17 +830,16 @@ class UsageService:
         except RecordingConflict as exc:
             # ONLY the savepoint's typed conflict — a post-savepoint
             # IntegrityError propagates as the hard failure it is (it cannot
-            # be a replay: our own row exists), exactly as on main.
-            try:
-                existing = Posting.objects.select_related("measurement").get(
-                    tenant=tenant, customer=customer, idempotency_key=idempotency_key)
-            except Posting.DoesNotExist:
+            # be a replay: our own row exists), exactly as on main. The
+            # concurrent writer's event is found by the one replay lookup.
+            replayed = UsageService.replay(tenant, customer, idempotency_key)
+            if replayed is None:
                 # Not the idempotency duplicate — some other insert inside the
                 # savepoint failed (counter/task machinery). Surface the original
                 # IntegrityError attributably instead of masking it as a replay
                 # (or as an unexplained DoesNotExist).
                 raise exc
-            return _result(existing, **_replay_stop(customer, tenant))
+            return replayed
         task, live = outcome.task, outcome.live
         # Stop-verdict fields: a task/subtask-scoped verdict wins the scalar
         # slot over the customer-wide verdict (which still surfaces on the

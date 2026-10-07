@@ -59,6 +59,10 @@ unrecognised. That is a standing departure from spec §3.4's "held outside the
 record until registered", not decided by #428 and owned by nobody; and the
 :class:`Replay` the two naming remediations return has no consumer either —
 both UNOWNED RESIDUALS, said here rather than left to read as wired.
+
+A report against a key declared and never published takes whatever path an
+undeclared one does (#605): recording reads it as undeclared, so what #568
+makes of that path, it makes of this key too.
 """
 from dataclasses import dataclass
 from datetime import datetime
