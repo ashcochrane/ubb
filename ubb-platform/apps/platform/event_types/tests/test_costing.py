@@ -12,7 +12,7 @@ cases cannot cover:
 * the fourth fact has an empty case and an absent case that look alike from
   the spine — a declaration carrying no quantities answers an empty set, and
   no declaration at all answers `None` — and the difference is the whole of
-  the opt-in rule the join rests on.
+  the opt-in rule the hold rests on.
 
 **#605 moved the read onto the last publication**, for all four facts at once:
 draft changes do not affect production recording. The cases below hold the
@@ -32,12 +32,9 @@ from apps.platform.event_types.models import (
 from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
-    AMOUNT_REPRESENTATION_MICROS,
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     SOURCE_KIND_CALLER_SUPPLIED,
-    SOURCE_KIND_PROVIDER_RESPONSE,
-    UNIT_TOKEN,
 )
 
 KEY = "acme.embed"
@@ -133,32 +130,34 @@ class TestTheReadIsTheLastPublication:
 
     def test_a_draft_revision_moves_none_of_the_four_facts(self):
         """Every fact revised in draft at once, and the read unmoved — then
-        published, and every one of them moved. One case for the four because
+        published, and each of the four moved. One case for the four because
         the owner ruled them one unit: a read that took one fact from the
-        publication and another from the draft fails here whichever it is."""
+        publication and another from the draft fails here whichever it is.
+
+        A `reported` declaration with a quantity and a mapping, revised to a
+        `calculated` one carrying neither, is the one revision that moves all
+        four at once: the method, the no-cost state (it now carries none), the
+        source kind (no mapping, so none) and the declared codes (none)."""
         tenant = _tenant()
         event_type = _declaration(tenant, costing_method=COSTING_METHOD_REPORTED,
                                   quantities=("prompt_tokens",), mapping=True)
         published = _facts(cost_declaration(tenant=tenant, key=KEY))
+        assert published == (COSTING_METHOD_REPORTED, False,
+                             SOURCE_KIND_CALLER_SUPPLIED,
+                             frozenset({"prompt_tokens"}))
 
         event_type = EventType.objects.get(pk=event_type.pk)
         event_type.costing_method = COSTING_METHOD_CALCULATED
         event_type.save()
-        Measurement.objects.create(event_type=event_type, code="cached_tokens",
-                                   unit=UNIT_TOKEN,
-                                   source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-        mapping = ReportedCostMapping.objects.get(event_type=event_type)
-        mapping.source_kind = SOURCE_KIND_PROVIDER_RESPONSE
-        mapping.source_path = ["usage", "total_cost"]
-        mapping.save()
+        Measurement.objects.get(event_type=event_type).delete()
+        ReportedCostMapping.objects.get(event_type=event_type).delete()
 
         assert _facts(cost_declaration(tenant=tenant, key=KEY)) == published
 
         EventType.objects.get(pk=event_type.pk).publish()
 
         assert _facts(cost_declaration(tenant=tenant, key=KEY)) == (
-            COSTING_METHOD_CALCULATED, False, SOURCE_KIND_PROVIDER_RESPONSE,
-            frozenset({"prompt_tokens", "cached_tokens"}))
+            COSTING_METHOD_CALCULATED, True, None, frozenset())
 
     def test_a_withdrawn_mapping_still_carries_a_cost_until_published(self):
         """The no-cost rule's mapping half, read off the publication: a

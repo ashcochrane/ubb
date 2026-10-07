@@ -8,9 +8,9 @@ declared and never learns which fields carry it.
 last publication and never its draft, so a declaration a fixture leaves in
 draft is one recording has never seen — it records exactly as a key nobody
 declared. Each helper therefore publishes what it declares, through the
-model's own `publish()`, unless the caller passes `published=False`: the
-tests that are ABOUT a draft say so, and every other test gets the declaration
-production would read.
+model's own `publish()`, and every test gets the declaration production would
+read. A test that is ABOUT a draft says so: `declares_an_event_type` takes
+`published=False`, the one escape, because it is the general shape.
 """
 from apps.platform.event_types.models import (
     EventType, Measurement, ReportedCostMapping)
@@ -37,15 +37,14 @@ DECLARED = "declared.call"
 MEASURES = "measured.call"
 
 
-def declares_a_caller_supplied_cost(tenant, key, *, currency="usd",
-                                    published=True):
+def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
     """The ONE declaration under which a caller may state the supplier's cost.
 
     Two records saying one thing: this Event Type's supplier cost is the figure
     the supplier itself reports, and the caller's own code passes it in on the
     call. Anything less than the pair is a 422 on `provider_cost_micros`
     (#324), so a test that wants the figure accepted wants exactly this — and
-    wants it published, because a draft admits nothing (#605).
+    wants it published, because production never reads a draft (#605).
 
     **THE COMMONEST REASON A TEST NEEDS IT is that it predates the registry.**
     Recording a supplier cost against no declaration at all was how every
@@ -59,13 +58,10 @@ def declares_a_caller_supplied_cost(tenant, key, *, currency="usd",
     ReportedCostMapping.objects.create(
         event_type=event_type, source_kind=SOURCE_KIND_CALLER_SUPPLIED,
         amount_representation=AMOUNT_REPRESENTATION_MICROS, currency=currency)
-    if published:
-        event_type.publish()
-    return event_type
+    return event_type.publish()
 
 
-def declares_a_quantity(tenant, measurement_key, *, key=MEASURES,
-                        published=True):
+def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
     """The declaration a rate must name before it may price that quantity (#326).
 
     **THE COMMONEST REASON A TEST NEEDS IT is that it predates the reference.**
@@ -105,8 +101,7 @@ def declares_a_quantity(tenant, measurement_key, *, key=MEASURES,
     measurement = Measurement.objects.create(
         event_type=event_type, code=measurement_key, unit=UNIT_TOKEN,
         source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-    if published:
-        event_type.publish()
+    event_type.publish()
     return measurement
 
 

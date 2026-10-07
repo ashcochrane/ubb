@@ -79,7 +79,7 @@ class EffectiveAtError(ValueError):
 
 
 def validate_effective_at(tenant, owner_id, effective_at, now):
-    """Validate a caller-supplied effective_at at the record_usage choke point.
+    """Validate a caller-supplied effective_at at the recording choke point.
 
     Raises EffectiveAtError with code:
     - effective_at_naive      — no timezone info;
@@ -203,7 +203,7 @@ def _result(event, *, task=None,
             stop=False, stop_reason=None, stop_scope=None,
             suspended=False, new_balance_micros=None,
             parent_task_id=_UNRESOLVED):
-    """Build the record_usage response.
+    """Build the recording response — a new event's, or a replay's.
 
     One-rule (#37): every recorded event answers success; the stop
     instruction rides these fields. The named unit's BOTH running totals
@@ -213,9 +213,9 @@ def _result(event, *, task=None,
     (parent is immutable, so a replay can never read it stale).
 
     Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
-    return path of record_usage — the happy path AND both idempotent-replay
-    returns — so a replayed event for an already-stopped owner never reports
-    "all clear".
+    return path of the recording path — the happy path AND every replay, all
+    of which `UsageService.replay` answers — so a replayed event for an
+    already-stopped owner never reports "all clear".
 
     ``task`` is the accumulated row on the happy path; a replay passes none
     and the unit is read back here (#452) — the same one lookup the parent
@@ -419,7 +419,7 @@ RecordingOutcome = namedtuple("RecordingOutcome", "event task verdicts live")
 class RecordingConflict(IntegrityError):
     """The recording savepoint (price → create → accumulate) hit an
     IntegrityError — the core's idempotency boundary (#112). The typed
-    re-raise lets ``record_usage`` react to THIS boundary alone: an
+    re-raise lets ``record_new_usage`` react to THIS boundary alone: an
     IntegrityError from a post-savepoint stage (live-debit ledger, outbox)
     stays a plain IntegrityError and propagates as the hard failure it is
     (500 + full rollback — the event was NOT durably recorded without its
@@ -472,14 +472,14 @@ class UsageService:
     def _record_core(inp):
         """The recording body (#112): price → create → accumulate inside a
         savepoint, then live-debit → stop-context tag → backfill-dirty marker
-        → UsageRecorded emission → kill registration. ``record_usage`` is a
-        thin input adapter over this core.
+        → UsageRecorded emission → kill registration. ``record_new_usage``
+        is a thin input adapter over this core.
 
         Must run inside the caller's transaction (write_event asserts it). The
         savepoint around price/create/accumulate is the idempotency boundary:
         its IntegrityError propagates as RecordingConflict, with everything
-        after it unentered, and ``record_usage`` answers it with the replay
-        result.
+        after it unentered, and ``record_new_usage`` answers it with the
+        replay result.
 
         Kill execution (#112): the core computes reasons.kill_plan inside the
         recording transaction and registers execution on its own
@@ -594,7 +594,8 @@ class UsageService:
                 # Placed by the posting's own moment, which is what the period
                 # close reads (#329) and what a replay is stamped with; never by
                 # the clock. One event holds each name once: a replay of the
-                # same key answers in `record_usage` before anything is priced,
+                # same key is answered by `UsageService.replay` before anything
+                # is priced (#605),
                 # and a racing duplicate is refused at the insert above, which
                 # never reaches this line — the savepoint's own contribution.
                 for measurement_key, quantity in \
@@ -699,11 +700,13 @@ class UsageService:
         this key, or `None` where nothing is (#605).
 
         THE ONE REPLAY LOOKUP, and every caller that asks the question asks
-        it here: :meth:`record_usage` before it records, :meth:`record_new_usage`
-        when its insert loses a race to the same key, and both recording routes
-        (`api/v1/metering_endpoints.py`), which ask it BEFORE any admission. A second copy of the query in a route would be a second
-        definition of "already recorded" one edit from disagreeing with this
-        one, and the disagreement would be a duplicate posting.
+        it here: :meth:`record_usage` before it records,
+        :meth:`record_new_usage` when its insert loses a race to the same key,
+        and both recording routes (`metering_endpoints.replay_or_record`),
+        which ask it BEFORE any admission. A second copy of the query in a
+        route would be a second definition of "already recorded" one edit from
+        disagreeing with this one, and the disagreement would be a duplicate
+        posting.
 
         Keyed by the tenant, the customer and the key, and by nothing in the
         request: no body is compared, as none ever was. A replay answers what
@@ -732,8 +735,10 @@ class UsageService:
         :meth:`replay` itself, then runs its admissions, then calls
         :meth:`record_new_usage` — so a replay is answered before anything
         about the current configuration is asked (#605). This is the same
-        order with no admissions in it, for every service-level caller.
-        ``recording`` is :meth:`record_new_usage`'s keyword surface.
+        order with no admissions in it. No production code calls it; it is
+        the door the service-level tests record through, and it keeps their
+        replays answered exactly as a route answers them. ``recording`` is
+        :meth:`record_new_usage`'s keyword surface.
         """
         replayed = UsageService.replay(tenant, customer, idempotency_key)
         if replayed is not None:

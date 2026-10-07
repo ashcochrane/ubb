@@ -10,15 +10,16 @@ hourly reconcile beat; enforcing tenants only).
 THE CAUSE, per Ruling A2 (#233, slice 1 / #192), quoted: "the drift CAN occur
 on the surviving path... The repair's stated cause is therefore incomplete:
 the reservation is one cause, not the cause."
-``UsageService.record_usage`` is ``@transaction.atomic``; the ``Posting``
-row is created inside an INNER atomic — a savepoint — and the live-counter
-debit is issued AFTER that savepoint commits while the OUTER transaction is
-still open. Everything from the debit to the outer commit (stop-context
-tagging, the backfill-dirty marker, the outbox insert) is a window in which
-the row can still be rolled back and the Redis debit, which has no rollback,
-cannot. This module was written for a reservation taken on the arrival-time
-fast lane, whose row rolled back the same way; that lane is deleted in slice 1
-and the window above is what survives it. Pinned, on the route, by
+``UsageService.record_new_usage`` — what both recording routes call once
+the replay lookup has found nothing (#605) — is ``@transaction.atomic``;
+the ``Posting`` row is created inside an INNER atomic — a savepoint — and the
+live-counter debit is issued AFTER that savepoint commits while the OUTER
+transaction is still open. Everything from the debit to the outer commit
+(stop-context tagging, the backfill-dirty marker, the outbox insert) is a
+window in which the row can still be rolled back and the Redis debit, which
+has no rollback, cannot. This module was written for a reservation taken on
+the arrival-time fast lane, whose row rolled back the same way; that lane is
+deleted in slice 1 and the window above is what survives it. Pinned, on the route, by
 ``api/v1/tests/test_recording_drift_pins.py``.
 
 Per owner, from one snapshot under ``lock_for_billing`` (the lock every

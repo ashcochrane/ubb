@@ -70,8 +70,11 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
+    GROUPING_FIELD_SCOPE_EVENT,
+    MEASUREMENT_VALUE_TYPE_INTEGER,
     SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_PROVIDER_RESPONSE,
+    UNIT_CALL,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
@@ -233,20 +236,33 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         self.refused("provider-response", event_type="acme.read",
                      provider_cost_micros=SUPPLIER)
 
-    def test_a_reported_declaration_with_no_mapping_refuses_it(self):
+    def test_a_reported_declaration_with_no_mapping_is_answered_as_undeclared(self):
         """`reported` alone does not say WHERE the figure comes from.
 
         A declaration with no mapping is one a tenant has started and not
         finished, and the missing half is precisely the half that would admit
         this field. It cannot be published until the mapping is declared —
-        the blocker says so — so production never reads it at all (#605), and
-        the figure is refused as it is against a key nobody declared.
+        the blocker says so — so production never reads it at all (#605): the
+        figure meets whatever a key nobody declared meets, compared here to
+        that rather than to what it is today (#568 owns that path).
         """
         half = self.declare("acme.half", published=False)
         self.assertEqual(half.publication_blockers(), (REPORTED_COST_MAPPING,))
 
-        self.refused("no-mapping", event_type="acme.half",
-                     provider_cost_micros=SUPPLIER)
+        against_the_draft = self.post("no-mapping", event_type="acme.half",
+                                      provider_cost_micros=SUPPLIER)
+        against_nothing = self.post("nobody", event_type="nobody.declared",
+                                    provider_cost_micros=SUPPLIER)
+
+        def outcome(response, key):
+            body = response.json()
+            if response.status_code == 200:
+                return 200, {fact: body[fact] for fact in COSTING_FACTS}
+            return (response.status_code, body["code"],
+                    body["detail"].replace(repr(key), "<key>"))
+
+        self.assertEqual(outcome(against_the_draft, "acme.half"),
+                         outcome(against_nothing, "nobody.declared"))
 
     def test_the_refusal_names_the_declaration_that_would_admit_it(self):
         """A 422 that says only "no" leaves the integrator guessing.
@@ -472,9 +488,13 @@ class Outcome(NamedTuple):
 class _PublicationCase(_RecordingCase):
     """The tenant's own Event Type routes, beside the recording ones.
 
-    Every declaration below is made, edited and published the way a tenant
-    does it — nothing writes a catalogue row directly — because the claim is
-    about what the lifecycle a tenant drives leaves production reading.
+    Every Event Type a case records against is declared, edited and
+    published the way a tenant does it, through these routes, because the
+    claim is about what the lifecycle a tenant drives leaves production
+    reading. Two things are set up below the routes, and each says so: the
+    Cost Rates (`rate`), whose own quantity declarations come from the shared
+    rate fixture under an Event Type no case records against, and a retired
+    Grouping Field (`retire`), which no route can produce.
     """
 
     def admin(self, method, path, data=None):
@@ -503,7 +523,8 @@ class _PublicationCase(_RecordingCase):
 
     def quantity(self, key, code):
         self.admin("put", f"/{key}/measurements/{code}",
-                   {"value_type": "integer", "unit": "call",
+                   {"value_type": MEASUREMENT_VALUE_TYPE_INTEGER,
+                    "unit": UNIT_CALL,
                     "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
 
     def withdraw_quantity(self, key, code):
@@ -529,6 +550,18 @@ class _PublicationCase(_RecordingCase):
         under test, so withdrawing a quantity there is never refused."""
         cost_rate_in_default_book(self.tenant, measurement_key=code,
                                   rate_per_unit_micros=micros, unit_quantity=1)
+
+    def a_grouping_field(self):
+        """An event-scoped Grouping Field with room for new values."""
+        GroupingField.objects.create(
+            tenant=self.tenant, key="model", slot="grouping_field_1",
+            scope=GROUPING_FIELD_SCOPE_EVENT, max_cardinality=5)
+
+    def retire(self, key):
+        """A Grouping Field retired. Written to the row: no tenant route
+        retires one."""
+        GroupingField.objects.filter(tenant=self.tenant, key=key).update(
+            retired_at=timezone.now())
 
     def admitted(self, outcome):
         self.assertTrue(outcome.accepted, outcome.body)
@@ -807,9 +840,11 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
     declared and the same body against a key declared and never published,
     and compares the two outcomes to each other.
 
-    Two drafts, chosen so a draft that LEAKED would differ from the undeclared
-    path on every body: a `reported` one admitting a caller-supplied figure,
-    and a `calculated` one whose declared names would hold the unknown one.
+    Three drafts, one for each way a leaked draft would show: a `reported` one
+    admitting a caller-supplied figure, a `calculated` one whose declared names
+    would hold the unknown one, and one declaring nothing, which would carry no
+    cost. For every body at least one of them, had it leaked, would answer
+    differently from the undeclared path.
     """
 
     BODIES = {
@@ -825,6 +860,7 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
                      "source_kind": SOURCE_KIND_CALLER_SUPPLIED},
         "calculated": {"costing_method": COSTING_METHOD_CALCULATED,
                        "quantities": ("calls",)},
+        "nothing": {"costing_method": COSTING_METHOD_CALCULATED},
     }
 
     def comparable(self, outcome, key):
@@ -940,17 +976,14 @@ class _AReplayAnswersWhatWasRecorded:
         """The Grouping Field registry is current configuration too, and its
         admission WRITES: a replay neither re-admits nor records a value.
 
-        No tenant route retires a field, so the setup writes `retired_at`
+        No tenant route retires a field, so `retire` writes `retired_at`
         directly; the replay carries a value the retired field would refuse,
         which only an admission that ran would notice.
         """
-        GroupingField.objects.create(
-            tenant=self.tenant, key="model", slot="grouping_field_1",
-            scope="event", max_cardinality=5)
+        self.a_grouping_field()
         original = self.admitted(self.send(
             "grouped", **declared_grouping_values({"model": "gpt-4"})))
-        GroupingField.objects.filter(tenant=self.tenant, key="model").update(
-            retired_at=timezone.now())
+        self.retire("model")
 
         self.replays(original, self.admitted(self.send(
             "grouped", **declared_grouping_values({"model": "gpt-5"}))))
@@ -989,9 +1022,7 @@ class _AReplayAnswersWhatWasRecorded:
     def test_a_refused_new_event_writes_nothing(self):
         """Replay-first moves no refusal: a NEW event the publication does not
         admit records nothing and spends no grouping value."""
-        GroupingField.objects.create(
-            tenant=self.tenant, key="model", slot="grouping_field_1",
-            scope="event", max_cardinality=5)
+        self.a_grouping_field()
 
         self.refused_the_supplier_cost(self.send(
             "new", event_type="acme.embed", provider_cost_micros=SUPPLIER,

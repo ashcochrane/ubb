@@ -140,8 +140,8 @@ Operational variants (a batch endpoint versus a standard one) are separate Event
 averaging two genuinely different supplier costs produces a number wrong for both.
 **Draft changes do not affect production recording. Production uses the Event Type's last
 published declaration; changes take effect when they are published** (#605) — for every fact
-recording reads: the costing method and the no-cost state, the reported-cost source kind, the
-missing-cost answer and the declared quantity names. An Event Type declared and never published
+recording reads: the costing method (and with it the missing-cost answer), the no-cost state,
+the reported-cost source kind and the declared quantity names. An Event Type declared and never published
 has no production declaration, so recording against it takes the one path a key nobody declared
 takes (what that path does is #568's).
 (`apps/platform/event_types/models.py:EventType`)
@@ -241,8 +241,8 @@ the same write as the posting that says `measurement_not_declared` (metering glo
 caller stated, a supplier reports or the declaration says does not exist: there the posting's
 reason is not the name, and a held row beside it would block a period close over a name whose cost
 is already settled. The Event Type half has none — the registry is opt-in and a report against an
-undeclared Event Type, or one declared and never published (#605), is recorded and costed against
-Cost Rates (`costing.cost_declaration`), so
+undeclared Event Type is recorded and costed against Cost Rates (`costing.cost_declaration`); one
+declared and never published takes whatever path an undeclared one does (#605, #568's to decide), so
 §3.4's "not recorded" line describes a posture the registry has not adopted; UNOWNED RESIDUAL, as
 is the consumer of `Replay`, and as is the remediation-time divergence #428 named and did not
 close: a declaration DELETED with names held beneath it leaves a Resolution Run to rate those

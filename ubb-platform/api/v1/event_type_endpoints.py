@@ -631,6 +631,10 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
 def withdraw_measurement(request, key: str, code: str):
     """Withdraw one declared quantity, unless a rate still prices it.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published.
+
     A real delete rather than the data plane's soft delete: that rule protects
     rows carrying money history, and a part of a declaration carries none.
 
@@ -698,6 +702,11 @@ def declare_reported_cost_mapping(request, key: str,
                                   payload: ReportedCostMappingIn):
     """Declare where a supplier's own cost figure is read from. One per type.
 
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping until the
+    new one is published.
+
     A sibling of the quantities rather than one of them, which is why it is a
     PUT on a singular path: money with a currency does not fit a shape built
     for a quantity and its unit, and there is exactly one such number per
@@ -735,6 +744,10 @@ def declare_reported_cost_mapping(request, key: str,
 @records_audit("reported_cost_mapping.withdrawn")
 def withdraw_reported_cost_mapping(request, key: str):
     """Withdraw the mapping. A `reported` declaration then cannot publish.
+
+    Draft changes do not affect production recording. Production uses the
+    Event Type's last published declaration; changes take effect when they are
+    published — so recording keeps reading the published mapping.
 
     Not refused here, and that is deliberate: the blocker is reported on the
     declaration itself and enforced where publication happens, so withdrawing a

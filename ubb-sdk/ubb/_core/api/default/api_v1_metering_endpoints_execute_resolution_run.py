@@ -98,8 +98,9 @@ def sync_detailed(
 
     **Nothing is repriced.** A rule takes effect from the moment it is published
     forward, so writing one today does not change work recorded in July; what a
-    run completes is what today's markup rung and today's Event Type
-    declarations resolve at that past instant.
+    run completes is what today's markup rung and each Event Type's last
+    published declaration resolve at that past instant. A draft change to an
+    Event Type does not reach a run until it is published.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response
@@ -171,8 +172,9 @@ def sync(
 
     **Nothing is repriced.** A rule takes effect from the moment it is published
     forward, so writing one today does not change work recorded in July; what a
-    run completes is what today's markup rung and today's Event Type
-    declarations resolve at that past instant.
+    run completes is what today's markup rung and each Event Type's last
+    published declaration resolve at that past instant. A draft change to an
+    Event Type does not reach a run until it is published.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response
@@ -239,8 +241,9 @@ async def asyncio_detailed(
 
     **Nothing is repriced.** A rule takes effect from the moment it is published
     forward, so writing one today does not change work recorded in July; what a
-    run completes is what today's markup rung and today's Event Type
-    declarations resolve at that past instant.
+    run completes is what today's markup rung and each Event Type's last
+    published declaration resolve at that past instant. A draft change to an
+    Event Type does not reach a run until it is published.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response
@@ -312,8 +315,9 @@ async def asyncio(
 
     **Nothing is repriced.** A rule takes effect from the moment it is published
     forward, so writing one today does not change work recorded in July; what a
-    run completes is what today's markup rung and today's Event Type
-    declarations resolve at that past instant.
+    run completes is what today's markup rung and each Event Type's last
+    published declaration resolve at that past instant. A draft change to an
+    Event Type does not reach a run until it is published.
 
     **A run moves no money.** No invoice, credit note, charge or refund follows
     from one. It completes the numbers and records that it did, and the response
