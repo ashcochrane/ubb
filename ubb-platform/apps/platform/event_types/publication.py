@@ -29,9 +29,12 @@ purpose: none of them is pinned, so each may change without a new publication,
 and the current value on the catalogue is the right one to read. A copy of them
 here would be a second answer that goes stale the first time one is corrected.
 
-**Internal.** Not on the tenant contract: the Event Type routes serve the live
-declaration, and what consumes this is the composition layer resolving an
-integration from published configuration.
+**Internal, and what production reads.** Not on the tenant contract: the Event
+Type routes serve the live declaration. What consumes this is production
+recording — every declaration fact it reads, through
+``costing.cost_declaration`` (#605): draft changes do not affect production
+recording, and changes take effect when they are published — and the
+composition layer resolving an integration from published configuration.
 """
 from datetime import datetime
 from typing import NamedTuple
@@ -89,9 +92,11 @@ def last_published_declaration(*, tenant, key):
     """What `key` declared for `tenant` at its current publication, or `None`.
 
     `None` is *nothing published*: the key is not declared, or it is and has
-    never been published. A caller that must tell those apart asks the
+    never been published, or it was published before copies were kept and
+    revised since (#573). A caller that must tell those apart asks the
     catalogue whether the key exists; what this refuses to do is make up the
-    difference from a draft.
+    difference from a draft. Recording deliberately does not tell them apart
+    (#605): all three take the path a key nobody declared takes.
 
     One query, on the ``uq_event_type_key`` unique index, and no join: the
     parts beneath the Event Type are not consulted, because they are the draft.

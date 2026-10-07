@@ -54,8 +54,9 @@ re-runs over stored receipts.
 **What still has no production caller is** :func:`hold_an_unrecognised_event_type`.
 The Event Type registry is opt-in (``costing.cost_declaration``): a report
 against a key nobody declared is recorded and costed against Cost Rates as it
-always was, so nothing on the recording path can find an Event Type
-unrecognised. That is a standing departure from spec §3.4's "held outside the
+always was — and so is a report against a key declared and never published,
+which recording reads exactly as an undeclared one (#605) — so nothing on the
+recording path can find an Event Type unrecognised. That is a standing departure from spec §3.4's "held outside the
 record until registered", not decided by #428 and owned by nobody; and the
 :class:`Replay` the two naming remediations return has no consumer either —
 both UNOWNED RESIDUALS, said here rather than left to read as wired.

@@ -81,9 +81,10 @@ class _AReadingMixin(ATenantWithUnresolvedPostingsMixin):
         return {row["usage_event_id"] for row in queue["data"]}
 
     def declares_an_event_type_with_no_cost(self):
+        # Published: recording reads the last publication, never a draft (#605).
         return EventType.objects.create(
             tenant=self.tenant, key=FREE_CALL,
-            costing_method=COSTING_METHOD_CALCULATED)
+            costing_method=COSTING_METHOD_CALCULATED).publish()
 
 
 class TheQueueIsTheSetARunIsAimedAtTest(_AReadingMixin, TestCase):

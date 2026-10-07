@@ -138,9 +138,16 @@ the supplier** — three absences held to the tree by
 `apps/platform/tests/test_event_type_declaration_invariants.py` rather than asserted here.
 Operational variants (a batch endpoint versus a standard one) are separate Event Types, because
 averaging two genuinely different supplier costs produces a number wrong for both.
+**Draft changes do not affect production recording. Production uses the Event Type's last
+published declaration; changes take effect when they are published** (#605) — for every fact
+recording reads: the costing method and the no-cost state, the reported-cost source kind, the
+missing-cost answer and the declared quantity names. An Event Type declared and never published
+has no production declaration, so recording against it takes the one path a key nobody declared
+takes (what that path does is #568's).
 (`apps/platform/event_types/models.py:EventType`)
 _Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised
-string is quarantined for later resolution, not silently declared.
+string is quarantined for later resolution, not silently declared; and saying an edit to an Event
+Type "takes effect" before it is published.
 
 **Last-published declaration**:
 What an Event Type said at its current publication — the pinned elements of the Event Type and of
@@ -153,7 +160,9 @@ integration a tenant already deployed reads what that integration was generated 
 is being edited. An Event Type never published has none, and the read answers `None` rather than
 falling back to the draft. It carries only what publication pins: the supplier, the category, a
 quantity's display name and its analytics grouping may each change without a new publication, so
-they are read from the catalogue. Internal — the tenant routes serve the live declaration.
+they are read from the catalogue. It is what production recording reads, for every declaration
+fact it consumes, through `costing.cost_declaration` (#605), and what the Code Builder resolves
+from. Not on the tenant contract — the tenant routes serve the live declaration.
 (`apps/platform/event_types/publication.py:last_published_declaration`)
 _Avoid_: reading a published-and-since-revised Event Type's Measurements or mapping off the
 catalogue's rows as "the published declaration" — they are the draft the moment an edit lands.
@@ -232,7 +241,8 @@ the same write as the posting that says `measurement_not_declared` (metering glo
 caller stated, a supplier reports or the declaration says does not exist: there the posting's
 reason is not the name, and a held row beside it would block a period close over a name whose cost
 is already settled. The Event Type half has none — the registry is opt-in and a report against an
-undeclared Event Type is recorded and costed against Cost Rates (`costing.cost_declaration`), so
+undeclared Event Type, or one declared and never published (#605), is recorded and costed against
+Cost Rates (`costing.cost_declaration`), so
 §3.4's "not recorded" line describes a posture the registry has not adopted; UNOWNED RESIDUAL, as
 is the consumer of `Replay`, and as is the remediation-time divergence #428 named and did not
 close: a declaration DELETED with names held beneath it leaves a Resolution Run to rate those

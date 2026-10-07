@@ -54,7 +54,7 @@ def _declared(tenant=None, key=KEY):
     tenant = tenant or Tenant.objects.create(name="T")
     event_type = declares_an_event_type(
         tenant, key, costing_method=COSTING_METHOD_REPORTED,
-        quantities=("input_tokens",), mapping=True)
+        quantities=("input_tokens",), mapping=True, published=False)
     return EventType.objects.get(pk=event_type.pk)
 
 

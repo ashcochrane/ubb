@@ -61,9 +61,13 @@ class TestUsageGroupingFields:
         assert "scope" in r.json()["detail"]
 
     def test_cardinality_overflow_is_422(self):
+        # Two NEW events fill the cap, each under its own key. A second post
+        # under the first key is a replay, and since #605 a replay admits no
+        # grouping value at all — it answers the original before any
+        # admission runs — so it would spend nothing.
         self._declare()
         self._post(grouping_fields={"model": "a"})
-        self._post(grouping_fields={"model": "b"})
+        self._post(idempotency_key="k2", grouping_fields={"model": "b"})
         r = self.client.post(
             "/api/v1/metering/usage",
             data={"customer_id": str(self.customer.id),

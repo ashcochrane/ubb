@@ -804,7 +804,7 @@ class PricingService:
         cost is settled or outstanding for a reason that has nothing to do with
         the name, and a reason that named it there would be false about the
         remedy. The registry is opt-in, so the question is asked only where a
-        declaration exists to be missing from.
+        published declaration exists to be missing from (#605).
 
         **THE SPINE DECIDES THE STATUSES AND THE RECEIPT RECORDS THEM (#349).**
         Nothing here assembles the stored record by hand: the two sides are
@@ -924,9 +924,10 @@ class PricingService:
             costing_status = COSTING_STATUS_UNRESOLVED
             unresolved_reason = UNRESOLVED_REASON_REPORTED_COST_MISSING
         else:
-            # Calculated, or declared nowhere at all — the registry is opt-in
-            # and this is how everything recorded against an undeclared key has
-            # always costed.
+            # Calculated, or with no publication at all — the registry is
+            # opt-in and this is how everything recorded against an undeclared
+            # key has always costed. A key declared and never published is one
+            # of those (#605): `resolve_declaration` answers `None` for it.
             computed_micros = 0
             uncosted = {}
             undeclared = {}
@@ -945,7 +946,9 @@ class PricingService:
             # one reason, and where a report carries both an undeclared name
             # and a declared-but-unrated one the reason is the name: no rate
             # can be written against a name the catalogue does not carry
-            # (#326), so the declaration is the earlier fix. The unrated one
+            # (#326), so the declaration is the earlier fix — and the set is
+            # the last publication's (#605): a name declared in a draft is
+            # still held until the draft is published. The unrated one
             # stays in the uncosted mapping for the run that costs it later.
             #
             # AN EMPTY KEY IS NOT A NAME. It is not a spelling anybody can
@@ -1499,7 +1502,8 @@ def resolve_price(subject, as_of):
             books=selected_pricing_books)
 
     def resolve_declaration():
-        """What this event's Event Type declares about cost, or None.
+        """What this event's Event Type declares about cost, or None — as its
+        last publication declares it, never its draft (#605).
 
         A function rather than a value so the spine decides *whether* the
         declaration matters, the same way it decides which cards to resolve. A

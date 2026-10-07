@@ -81,6 +81,10 @@ def sync_detailed(
 
      Publish the declaration, or refuse and say what is missing.
 
+    This is when a change takes effect. Draft changes do not affect production
+    recording. Production uses the Event Type's last published declaration;
+    changes take effect when they are published.
+
     A refusal rather than a partial publication: the two outcomes a caller must
     tell apart are published and not-published, and an incomplete mapping
     published anyway generates an integration that computes no cost at all.
@@ -119,6 +123,10 @@ def sync(
 
      Publish the declaration, or refuse and say what is missing.
 
+    This is when a change takes effect. Draft changes do not affect production
+    recording. Production uses the Event Type's last published declaration;
+    changes take effect when they are published.
+
     A refusal rather than a partial publication: the two outcomes a caller must
     tell apart are published and not-published, and an incomplete mapping
     published anyway generates an integration that computes no cost at all.
@@ -151,6 +159,10 @@ async def asyncio_detailed(
     """ Publish Event Type
 
      Publish the declaration, or refuse and say what is missing.
+
+    This is when a change takes effect. Draft changes do not affect production
+    recording. Production uses the Event Type's last published declaration;
+    changes take effect when they are published.
 
     A refusal rather than a partial publication: the two outcomes a caller must
     tell apart are published and not-published, and an incomplete mapping
@@ -189,6 +201,10 @@ async def asyncio(
     """ Publish Event Type
 
      Publish the declaration, or refuse and say what is missing.
+
+    This is when a change takes effect. Draft changes do not affect production
+    recording. Production uses the Event Type's last published declaration;
+    changes take effect when they are published.
 
     A refusal rather than a partial publication: the two outcomes a caller must
     tell apart are published and not-published, and an incomplete mapping

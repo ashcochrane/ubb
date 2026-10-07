@@ -110,10 +110,12 @@ def sync_detailed(
     is keyed on the pair and never on the code alone: a tenant's Gemini and
     OpenAI integrations never have to agree about spelling to both be correct.
 
-    Declaring one under a PUBLISHED Event Type revises the publication — the
-    model does that, on the same footing as an edit, because a published
-    declaration that grows a required quantity is a different declaration from
-    the one a tenant generated their integration against.
+    Declaring one under a PUBLISHED Event Type returns it to draft — the model
+    does that, on the same footing as an edit, because a published declaration
+    that grows a required quantity is a different declaration from the one a
+    tenant generated their integration against. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
 
     Args:
         key (str):
@@ -163,10 +165,12 @@ def sync(
     is keyed on the pair and never on the code alone: a tenant's Gemini and
     OpenAI integrations never have to agree about spelling to both be correct.
 
-    Declaring one under a PUBLISHED Event Type revises the publication — the
-    model does that, on the same footing as an edit, because a published
-    declaration that grows a required quantity is a different declaration from
-    the one a tenant generated their integration against.
+    Declaring one under a PUBLISHED Event Type returns it to draft — the model
+    does that, on the same footing as an edit, because a published declaration
+    that grows a required quantity is a different declaration from the one a
+    tenant generated their integration against. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
 
     Args:
         key (str):
@@ -211,10 +215,12 @@ async def asyncio_detailed(
     is keyed on the pair and never on the code alone: a tenant's Gemini and
     OpenAI integrations never have to agree about spelling to both be correct.
 
-    Declaring one under a PUBLISHED Event Type revises the publication — the
-    model does that, on the same footing as an edit, because a published
-    declaration that grows a required quantity is a different declaration from
-    the one a tenant generated their integration against.
+    Declaring one under a PUBLISHED Event Type returns it to draft — the model
+    does that, on the same footing as an edit, because a published declaration
+    that grows a required quantity is a different declaration from the one a
+    tenant generated their integration against. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
 
     Args:
         key (str):
@@ -264,10 +270,12 @@ async def asyncio(
     is keyed on the pair and never on the code alone: a tenant's Gemini and
     OpenAI integrations never have to agree about spelling to both be correct.
 
-    Declaring one under a PUBLISHED Event Type revises the publication — the
-    model does that, on the same footing as an edit, because a published
-    declaration that grows a required quantity is a different declaration from
-    the one a tenant generated their integration against.
+    Declaring one under a PUBLISHED Event Type returns it to draft — the model
+    does that, on the same footing as an edit, because a published declaration
+    that grows a required quantity is a different declaration from the one a
+    tenant generated their integration against. Draft changes do not affect
+    production recording. Production uses the Event Type's last published
+    declaration; changes take effect when they are published.
 
     Args:
         key (str):

@@ -76,9 +76,11 @@ horizon.
 
 **Recording core**:
 The recording body (price → create → accumulate → stop-context tag → dirty marker →
-`usage.recorded` → kill registration on its own `on_commit`); `record_usage` is a thin input
-adapter over it. It was extracted when there were two lanes to keep from drifting; only one
-lane remains, and the core stays because the seam is where a recording side effect belongs.
+`usage.recorded` → kill registration on its own `on_commit`); `record_new_usage` is a thin input
+adapter over it, and `record_usage` is `replay` — the one lookup of an event already recorded
+under a key, which both recording routes also ask before their admissions (#605) — or that. It was
+extracted when there were two lanes to keep from drifting; only one lane remains, and the core
+stays because the seam is where a recording side effect belongs.
 (`apps/metering/usage/services/usage_service.py:UsageService._record_core`)
 _Avoid_: adding a recording side effect to the adapter rather than the core — the adapter's job
 is to turn a request into a `RecordingInput`, nothing more.
@@ -242,19 +244,20 @@ and the posture rule only works because there are exactly two.
 Which input was missing when the supplier cost could not be settled, read **only** where
 `costing_status` is `unresolved` and never on its own — the registry's own summary calls a status
 that says a cost is missing without saying what would settle it a shrug. Three values, each naming
-a remedy: `reported_cost_missing` (an Event Type declared to report its cost, recorded with no
+a remedy: `reported_cost_missing` (an Event Type published as reporting its cost, recorded with no
 supplier figure — what settles it is the figure arriving, and its receipt keeps no quantities);
 `cost_rate_missing` (a quantity matched no Cost Rate in force at the event's moment — what settles
 it is a rate, and a Resolution Run re-costs it from the receipt's `uncosted_quantities`); and
-`measurement_not_declared` (the event matched a declared Event Type and carries a name that
-declaration does not carry — what settles it is the tenant deciding what the name meant). **#428
+`measurement_not_declared` (the event matched a published Event Type and carries a name its last
+publication does not carry — what settles it is the tenant deciding what the name meant). **#428
 DECIDED that the third is answered in the compute spine's rating branch and only there**, and that
 the hold follows the reason: a figure the caller supplied, a declaration that reports its cost and
 one that declares none never read a name, so a report on those branches holds nothing even when it
 carries one. The alternative — hold on every branch — was refused because it puts a held row that
 blocks a period close beside a posting whose cost is already settled, and the two records would
 then disagree about what is unaccounted for. The registry is opt-in, so an undeclared Event Type
-has no declaration for a name to be missing from and costs as it always did. **The same report
+has no declaration for a name to be missing from and costs as it always did — and so does one
+declared and never published, because recording reads only the last publication (#605). **The same report
 that writes `measurement_not_declared` holds the name** — see the platform glossary's *Held name*;
 the two records are one write in `UsageService._record_core`, and
 `usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py` compares the period

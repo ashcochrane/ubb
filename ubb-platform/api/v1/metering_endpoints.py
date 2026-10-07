@@ -105,7 +105,7 @@ class SupplierCostNotAdmissible(ValueError):
 
 
 def admit_supplier_cost(tenant, item):
-    """Refuse a supplier cost the Event Type's declaration does not admit (#324).
+    """Refuse a supplier cost the Event Type's publication does not admit (#324).
 
     **WHY A REFUSAL AND NOT A QUIET DROP.** The figure is COGS or it is
     nothing: where no declaration admits it, UBB will never read it as cost, so
@@ -126,7 +126,13 @@ def admit_supplier_cost(tenant, item):
     **IT RUNS BEFORE ANYTHING IS WRITTEN.** Both routes call it above the
     grouping-field admission, which records novel values against a cardinality
     cap: a refusal underneath that would have spent a tenant's keyspace on a
-    request that was never recorded. Nothing here writes, so first is free.
+    request that was never recorded. Nothing here writes, so going first is
+    free.
+
+    **AND AFTER THE REPLAY LOOKUP (#605).** It reads the Event Type's last
+    publication, which may have changed since an event was recorded; a retry
+    of that event is answered with what was recorded before this is asked, so
+    a publication cannot make a successful write unreplayable.
 
     **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** One query, and only on a
     request that carries the figure — which is precisely the branch on which
@@ -276,8 +282,13 @@ def record_sync_item(tenant, item, customers, task_exists):
                 id=item.task_id, tenant=tenant, customer=customer).exists()
         if not task_exists[task_key]:
             return _rejected("not_found", "Task not found")
-    # #324: this item's own refusal, and it runs FIRST for the reason the
-    # grouping-field admission below states about itself — that one WRITES.
+    # #605: an item already recorded under its key answers what was recorded,
+    # before either admission below is asked — see `record` for why.
+    replayed = UsageService.replay(tenant, customer, item.idempotency_key)
+    if replayed is not None:
+        return {"accepted": True, **with_receipt_reads(replayed)}
+    # #324: this item's own refusal, and it runs before the grouping-field
+    # admission for the reason that one states about itself — it WRITES.
     # A refusal underneath it would have spent novel grouping values out of
     # the tenant's cardinality cap on an item that was never recorded.
     try:
@@ -286,14 +297,14 @@ def record_sync_item(tenant, item, customers, task_exists):
         return _rejected("validation_error", str(exc))
     # Task 9: admission is a WRITE, run BEFORE the recording core — a bad
     # grouping field is THIS item's rejection, same as any other validation
-    # failure below, and never reaches record_usage.
+    # failure below, and never reaches the recording core.
     try:
         dimension_slots = DimensionService.admit(
             tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     except DimensionError as exc:
         return _rejected("validation_error", str(exc))
     try:
-        result = UsageService.record_usage(
+        result = UsageService.record_new_usage(
             tenant=tenant, customer=customer, dimension_slots=dimension_slots,
             **usage_kwargs(item))
     except ValueError as e:
@@ -324,12 +335,26 @@ def record(tenant, payload):
 
     A function of its own so that the Code Builder's verification records
     exactly as a tenant's own code does (`api/v1/verification.py`): the
-    supplier-cost admission, the grouping-field admission and the recording
-    core, in this order, from one place.
+    replay lookup, the supplier-cost admission, the grouping-field admission
+    and the recording core, in this order, from one place.
     """
     customer = get_object_or_404(Customer, id=payload.customer_id, tenant=tenant)
     if payload.task_id is not None:
         get_object_or_404(Task, id=payload.task_id, tenant=tenant, customer=customer)
+    # #605: REPLAY WINS. An event already recorded under this key answers its
+    # original acknowledgement BEFORE either admission below is asked. Both
+    # read current configuration — the Event Type's publication, the Grouping
+    # Field registry — and current configuration must not make an
+    # already-successful write unreplayable: a retry carrying a figure the
+    # publication has stopped admitting, or a grouping value a field retired
+    # since would refuse, is the same event and gets the same answer. Keyed by
+    # tenant, customer and key exactly as the recording core keys it, through
+    # the core's own lookup, and with no body compared. The customer and the
+    # task are still resolved first, in this tenant: a replay is not a way
+    # round authentication, tenant isolation or the lookup scope.
+    replayed = UsageService.replay(tenant, customer, payload.idempotency_key)
+    if replayed is not None:
+        return with_receipt_reads(replayed)
     # #324: the supplier's own figure is admissible only where the Event Type
     # declares it arrives on the call. Refused rather than dropped — a 200 here
     # would tell an integrator UBB is using a number it discards.
@@ -338,15 +363,15 @@ def record(tenant, payload):
     # that one WRITES (see its own note below), so a refusal underneath it
     # would have burned novel values out of the tenant's cardinality cap for a
     # request that was never recorded. This one is a single read and can go
-    # first at no cost.
+    # ahead of it at no cost.
     try:
         admit_supplier_cost(tenant, payload)
     except SupplierCostNotAdmissible as exc:
         raise Problem("validation_error", str(exc))
     # Task 9: admission is a WRITE (records GroupingFieldValue rows), so it runs
-    # BEFORE the recording core, outside record_usage's own retry/replay
-    # machinery — a bad grouping field is a whole-request 422, never a partial
-    # record.
+    # BEFORE the recording core, outside the core's own retry machinery — a bad
+    # grouping field is a whole-request 422, never a partial record. A replay
+    # never reaches it, so a retry neither re-admits nor records a value.
     try:
         dimension_slots = DimensionService.admit(
             tenant, payload.grouping_fields,
@@ -354,7 +379,7 @@ def record(tenant, payload):
     except DimensionError as exc:
         raise Problem("validation_error", str(exc))
     try:
-        result = UsageService.record_usage(
+        result = UsageService.record_new_usage(
             tenant=tenant, customer=customer,
             dimension_slots=dimension_slots,
             **usage_kwargs(payload))

@@ -12915,7 +12915,7 @@
         "summary": "Get Event Type"
       },
       "patch": {
-        "description": "Edit a declaration. Changing a pinned element returns it to draft.\n\nThe un-publishing is the model's, not this handler's, and deliberately so:\nit is a rule about what a change MEANS, and anything a caller has to\nremember to route through is a rule that holds until the first caller who\ndoes not. What this decides is what an absent field means \u2014 untouched,\nnever cleared \u2014 and that an empty string detaches a satellite, because \"no\nsupplier\" is a state a tenant reaches on purpose.",
+        "description": "Edit a declaration. Changing a pinned element returns it to draft.\n\nDraft changes do not affect production recording. Production uses the\nEvent Type's last published declaration; changes take effect when they are\npublished.\n\nThe un-publishing is the model's, not this handler's, and deliberately so:\nit is a rule about what a change MEANS, and anything a caller has to\nremember to route through is a rule that holds until the first caller who\ndoes not. What this decides is what an absent field means \u2014 untouched,\nnever cleared \u2014 and that an empty string detaches a satellite, because \"no\nsupplier\" is a state a tenant reaches on purpose.",
         "operationId": "api_v1_event_type_endpoints_revise_event_type",
         "parameters": [
           {
@@ -13116,7 +13116,7 @@
         "summary": "Withdraw Measurement"
       },
       "put": {
-        "description": "Declare or re-declare one quantity beneath an Event Type.\n\nThe same name on two Event Types is two independent declarations, so this\nis keyed on the pair and never on the code alone: a tenant's Gemini and\nOpenAI integrations never have to agree about spelling to both be correct.\n\nDeclaring one under a PUBLISHED Event Type revises the publication \u2014 the\nmodel does that, on the same footing as an edit, because a published\ndeclaration that grows a required quantity is a different declaration from\nthe one a tenant generated their integration against.",
+        "description": "Declare or re-declare one quantity beneath an Event Type.\n\nThe same name on two Event Types is two independent declarations, so this\nis keyed on the pair and never on the code alone: a tenant's Gemini and\nOpenAI integrations never have to agree about spelling to both be correct.\n\nDeclaring one under a PUBLISHED Event Type returns it to draft \u2014 the model\ndoes that, on the same footing as an edit, because a published declaration\nthat grows a required quantity is a different declaration from the one a\ntenant generated their integration against. Draft changes do not affect\nproduction recording. Production uses the Event Type's last published\ndeclaration; changes take effect when they are published.",
         "operationId": "api_v1_event_type_endpoints_declare_measurement",
         "parameters": [
           {
@@ -13210,7 +13210,7 @@
     },
     "/api/v1/event-types/{key}/publish": {
       "post": {
-        "description": "Publish the declaration, or refuse and say what is missing.\n\nA refusal rather than a partial publication: the two outcomes a caller must\ntell apart are published and not-published, and an incomplete mapping\npublished anyway generates an integration that computes no cost at all.\nWhat is missing travels on the 409 so the caller can say which.",
+        "description": "Publish the declaration, or refuse and say what is missing.\n\nThis is when a change takes effect. Draft changes do not affect production\nrecording. Production uses the Event Type's last published declaration;\nchanges take effect when they are published.\n\nA refusal rather than a partial publication: the two outcomes a caller must\ntell apart are published and not-published, and an incomplete mapping\npublished anyway generates an integration that computes no cost at all.\nWhat is missing travels on the 409 so the caller can say which.",
         "operationId": "api_v1_event_type_endpoints_publish_event_type",
         "parameters": [
           {
