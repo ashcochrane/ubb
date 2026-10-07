@@ -734,10 +734,12 @@ class TestOrdinaryRecordingHasNoVerificationSwitch(VerifyRoutes):
     (`test_an_undeclared_event_type_holds_nothing_and_costs_as_it_always_did`);
     this pins that nothing here added a way round it."""
 
-    #: Every field the recording request publishes, as it stood before
-    #: verification existed.
+    #: Every field the recording request publishes. Verification added none;
+    #: the one added since is #570's transport for a supplier cost read off
+    #: the provider's response, which is no verification switch either.
     RECORDING_FIELDS = {
         "customer_id", "idempotency_key", "metadata", "provider_cost_micros",
+        "provider_response_cost_micros",
         "claimed_provider_cost_micros", "measurements", "currency", "task_id",
         "event_type", "provider", "grouping_fields", "effective_at"}
 

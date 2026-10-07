@@ -539,6 +539,8 @@ result = answers
     const record = send.calls.find((call) => call.callee.endsWith(".record_usage"))!;
 
     expect(Object.keys(record.keywords)).not.toContain("provider_cost_micros");
+    // Its own transport exists since #570; rendering the read onto it is #583's.
+    expect(Object.keys(record.keywords)).not.toContain("provider_response_cost_micros");
     expect(Object.keys(record.keywords)).not.toContain("currency");
   });
 });

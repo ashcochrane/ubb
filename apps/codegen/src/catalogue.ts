@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 4;
+export const CATALOGUE_VERSION = 5;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -272,10 +272,11 @@ export const REMEDIATION: Readonly<Record<DiagnosticCode, readonly string[]>> = 
     "declares nowhere to read that figure from. Declare the mapping with the",
     "request below.",
   ],
-  reported_cost_provider_response_unsupported: [
-    "The supplier's cost is declared to be read off the response, and no",
-    "generated call can carry a cost read that way. Declare it as supplied",
-    "by the caller with the request below.",
+  reported_cost_provider_response_not_renderable: [
+    "The reported-cost mapping is valid platform configuration: the supplier's",
+    "cost is read from the provider's response. This Code Builder version",
+    "cannot yet generate code that reads it, so the call is blocked until a",
+    "version that can. Nothing in the declaration needs to change.",
   ],
   constant_measurement_not_renderable: [
     "The constant quantity is valid platform configuration, with its value",

@@ -788,11 +788,14 @@ class UsageService:
         item rejection and never reaches here.
 
         ``provider_cost_micros`` is admitted the same way (#324): WHETHER a
-        caller may state the supplier's own cost turns on the Event Type's
-        declaration, and `metering_endpoints.admit_supplier_cost` answers it
-        for both routes before this runs. Whichever figure arrives here is
-        costed — that separation is what lets the batch route refuse one item
-        without disturbing the others, and it is why nothing below re-asks."""
+        supplier cost may arrive on the call, and on which of its two
+        transports (#570), turns on the Event Type's last publication, and
+        `metering_endpoints.admit_supplier_cost` answers it for both routes
+        before this runs. Here it is the ONE figure, whichever transport
+        carried it — `usage_kwargs` hands either on under this keyword.
+        Whichever figure arrives here is costed — that separation is what lets
+        the batch route refuse one item without disturbing the others, and it
+        is why nothing below re-asks."""
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result. The

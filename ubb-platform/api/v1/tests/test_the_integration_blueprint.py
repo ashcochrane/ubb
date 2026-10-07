@@ -1135,9 +1135,12 @@ class TestNoValueIsInvented(_Routes):
             "blocking", f"{EVENT}:total")
 
     def test_a_cost_read_from_the_response_is_blocked_and_fills_no_field(self):
-        """There is no truthful request field for a cost UBB's caller read off
-        its supplier's response, so the call carries none — least of all the
-        one whose contract means the caller supplied it."""
+        """A cost read off the supplier's response has its own request field
+        since #570, and this Code Builder version cannot yet generate the read
+        (#583 renders it). So the call is blocked and carries no cost field —
+        least of all the one whose contract means the caller supplied it — and
+        the diagnostic offers no request, because the mapping is valid
+        configuration and nothing in it is the thing to change."""
         self._a_kind()
         self._event_type(
             costing_method="reported", measurements={},
@@ -1151,13 +1154,14 @@ class TestNoValueIsInvented(_Routes):
 
         assert record["readiness"] == "blocked"
         assert not [argument for argument in record["arguments"]
-                    if argument["name"].startswith("provider_cost_micros")
+                    if argument["name"].startswith(("provider_cost_micros",
+                                                    "provider_response"))
                     or argument["name"] == "currency"]
         blocker = _diagnostic(
-            blueprint, "reported_cost_provider_response_unsupported")
+            blueprint, "reported_cost_provider_response_not_renderable")
         assert (blocker["severity"], blocker["object_kind"], blocker["key"],
-                blocker["field"]) == (
-            "blocking", "reported_cost_mapping", EVENT, "source_kind")
+                blocker["field"], blocker["remediation_request"]) == (
+            "blocking", "reported_cost_mapping", EVENT, "source_kind", None)
 
 
 # ---------------------------------------------------------------------------
@@ -1890,9 +1894,12 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
     #: The codes reported over a declaration that is complete, where nothing in
-    #: the configuration is the thing to change (#571). No request is offered
-    #: for one: the console words a request as the change an admin makes.
-    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable"}
+    #: the configuration is the thing to change (#571, #570): valid
+    #: configuration this Code Builder version cannot yet render. No request is
+    #: offered for one: the console words a request as the change an admin
+    #: makes.
+    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable",
+                         "reported_cost_provider_response_not_renderable"}
 
     def _every_remediation(self):
         """One Blueprint per situation, between them offering a request for
@@ -1941,13 +1948,18 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                 and d["code"] not in self.NOTHING_TO_CHANGE}
         assert carrying == self.WITHOUT_A_SCREEN
         assert bare <= {"task_type", "subtask_type"}
+        # Each reported once over the published Blueprint and once over the
+        # draft preview, and never with a request.
+        assert sorted(d["code"] for d in diagnostics
+                      if d["code"] in self.NOTHING_TO_CHANGE) == sorted(
+            [*self.NOTHING_TO_CHANGE] * 2)
         assert [d["remediation_request"] for d in diagnostics
-                if d["code"] in self.NOTHING_TO_CHANGE] == [None, None]
+                if d["code"] in self.NOTHING_TO_CHANGE] == [None] * 4
         assert {d["code"] for d in diagnostics} >= {
             "event_type_not_declared", "event_type_not_published",
             "event_type_revised_since_publication",
             "reported_cost_mapping_missing",
-            "reported_cost_provider_response_unsupported",
+            "reported_cost_provider_response_not_renderable",
             "constant_measurement_not_renderable",
             "derived_measurement_unsupported",
             "response_shape_not_declared",

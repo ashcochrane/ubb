@@ -173,6 +173,21 @@ describe("what the catalogue says about a registry concept", () => {
     expect(words).not.toMatch(/missing|not declared|unsupported|request below/i);
   });
 
+  it("says a cost read off the response waits only on this version, never that it cannot be carried", () => {
+    // #570: the cost has its own transport now, so a `provider_response`
+    // mapping is valid configuration and only the Code Builder lacks the read.
+    // Nothing may say it is unsupported, cannot be recorded, or should be
+    // declared as supplied by the caller.
+    const words = REMEDIATION.reported_cost_provider_response_not_renderable.join(" ");
+
+    expect(words).toContain("valid platform configuration");
+    expect(words).toContain("This Code Builder version cannot yet generate code that reads it");
+    expect(words).toContain("Nothing in the declaration needs to change.");
+    expect(words).not.toMatch(
+      /missing|not declared|unsupported|cannot be recorded|supplied by the caller|request below/i,
+    );
+  });
+
   it("agrees with the committed contract about which codes there are", () => {
     const known = JSON.parse(
       readFileSync(join(REPO_ROOT, "openapi", "known-values.json"), "utf-8"),

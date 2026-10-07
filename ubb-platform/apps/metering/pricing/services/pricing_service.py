@@ -896,11 +896,14 @@ class PricingService:
         # ---- COST ----
         unresolved_reason = None
         if caller_provider_cost is not None:
-            # A figure the caller supplied IS the answer, and no declaration is
-            # consulted to confirm it. WHERE such a figure may be supplied at
-            # all is a separate question, answered before this runs and with
-            # its own 422 — `metering_endpoints.admit_supplier_cost` (#324).
-            # Costing a figure that arrived is this one.
+            # A figure that arrived on the call IS the answer, and no
+            # declaration is consulted to confirm it — whichever of the two
+            # transports carried it, the caller's own or one read off the
+            # provider's response (#570), since both reach here as this one
+            # argument. WHERE such a figure may arrive at all, and on which
+            # transport, is a separate question, answered before this runs and
+            # with its own 422 — `metering_endpoints.admit_supplier_cost`
+            # (#324, #570). Costing a figure that arrived is this one.
             computed_micros = caller_provider_cost
             costing_status = COSTING_STATUS_KNOWN
             # A FIGURE THAT ARRIVED IS A REPORTED COST, whoever declared what.

@@ -133,6 +133,28 @@ class MeteringClientTest(unittest.TestCase):
         self.assertIsNone(result.provider_cost_micros)
 
     @patch("ubb.metering.httpx.Client.post")
+    def test_record_usage_carries_a_figure_read_off_the_response_on_its_own_key(
+            self, mock_post):
+        """A supplier cost obtained from the provider's response travels under
+        its OWN key (#570), never the caller-supplied one: the two keys are two
+        statements about where the number came from, and the route admits each
+        only where the Event Type declares that source. It comes back as the
+        one resolved cost, with no second cost field on the response."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: {
+            "event_id": "evt_r", "new_balance_micros": 9_000_000,
+            "suspended": False, "costing_status": "known",
+            "pricing_status": "known", "provider_cost_micros": 7_350})
+        result = self.client.record_usage(
+            customer_id="cust_1", idempotency_key="ir",
+            event_type="web.search", provider_response_cost_micros=7_350)
+
+        body = mock_post.call_args.kwargs["json"]
+        self.assertEqual(body["provider_response_cost_micros"], 7_350)
+        self.assertNotIn("provider_cost_micros", body)
+        self.assertNotIn("claimed_provider_cost_micros", body)
+        self.assertEqual(result.provider_cost_micros, 7_350)
+
+    @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_omits_the_claim_when_it_is_not_given(self, mock_post):
         """Absent is absent: an omitted claim sends no key at all.
 
@@ -147,8 +169,9 @@ class MeteringClientTest(unittest.TestCase):
         self.client.record_usage(customer_id="cust_1",
                                  idempotency_key="id")
 
-        self.assertNotIn("claimed_provider_cost_micros",
-                         mock_post.call_args.kwargs["json"])
+        body = mock_post.call_args.kwargs["json"]
+        self.assertNotIn("claimed_provider_cost_micros", body)
+        self.assertNotIn("provider_response_cost_micros", body)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_usage_with_the_open_bag(self, mock_post):
@@ -1091,6 +1114,7 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
         self.client.record_batch([{
             "customer_id": "c1", "idempotency_key": "i1",
             "provider_cost_micros": 1_000, "claimed_provider_cost_micros": 2_000,
+            "provider_response_cost_micros": 3_000,
             "currency": "usd", "event_type": "completion", "provider": "openai",
             "measurements": {"tokens": 10}, "metadata": {"run": "nightly"},
             "grouping_fields": {"model": "gpt-4"},
@@ -1100,6 +1124,8 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
         (sent,) = mock_post.call_args.kwargs["json"]["events"]
         self.assertEqual(sent["grouping_fields"], {"model": "gpt-4"})
         self.assertEqual(sent["metadata"], {"run": "nightly"})
+        # The #570 transport rides a batch item under its own key, untouched.
+        self.assertEqual(sent["provider_response_cost_micros"], 3_000)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_the_sdk_s_own_alias_is_admitted_and_translated(self, mock_post):
@@ -1131,7 +1157,7 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
             "customer_id", "idempotency_key", "claimed_provider_cost_micros",
             "currency", "effective_at", "event_type", "grouping_fields",
             "measurements", "metadata", "provider", "provider_cost_micros",
-            "task_id", "recorded_at",
+            "provider_response_cost_micros", "task_id", "recorded_at",
         }
         published = {f.name for f in attrs_fields(RecordUsageRequest)
                      if f.name != "additional_properties"}

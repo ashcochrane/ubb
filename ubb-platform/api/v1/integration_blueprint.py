@@ -150,7 +150,7 @@ from core.vocabulary import (
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_SELECTED,
     DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING,
-    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED,
+    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_NOT_DECLARED,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_RETIRED,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE,
@@ -255,9 +255,11 @@ EFFECTS = {
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE: _BLOCKING,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED: _BLOCKING,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING: _BLOCKING,
-    # Lifted by the ticket that consumes a truthful transport for a cost read
-    # off a supplier's response; the member leaves the registry with it.
-    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED: _BLOCKING,
+    # Valid configuration this Code Builder version cannot yet render: a cost
+    # read off a supplier's response has its own transport since #570, and
+    # generated code does not yet read it. Lifted by the ticket that renders
+    # the read (#583); the member leaves the registry with it.
+    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED: _BLOCKING,
@@ -935,13 +937,20 @@ def _reported_cost(resolution, call, declaration, declared_by):
             remediation_request=declare)
         return False
     if mapping.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
-        # A cost read off the supplier's response has no truthful request
-        # field: the one that exists means the caller supplied the figure. So
-        # the call fills none, rather than the wrong one.
+        # The mapping is valid platform configuration, and a cost read off the
+        # supplier's response has a truthful request field of its own since
+        # #570 (`provider_response_cost_micros`) — but this Code Builder
+        # version cannot yet generate the read and the conversion, so the call
+        # is blocked by a code naming exactly that, which the ticket that
+        # renders the read (#583) removes. It fills no cost field rather than
+        # the caller-supplied one, whose contract means the caller supplied the
+        # figure. No remediation request, deliberately: the console words one
+        # as the change an admin makes, and nothing in a valid declaration is
+        # the thing to change (as for a constant's value, #571).
         resolution.report(
-            call, DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED,
+            call, DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE,
             CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
-            field="source_kind", remediation_request=declare)
+            field="source_kind")
         return True
     if mapping.source_kind != SOURCE_KIND_CALLER_SUPPLIED:
         raise ValueError(

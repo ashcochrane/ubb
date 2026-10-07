@@ -181,6 +181,13 @@ Seventeen members stand at this commit. Two changes are already expected: the ti
 cost read off a supplier's response removes `reported_cost_provider_response_unsupported`, and the
 ticket that makes a fixed-price kind ready or not adds the member for a missing agreed price.
 
+*Since:* #571 swapped `constant_value_not_declared` for `constant_measurement_not_renderable`, and
+#570, which carries that cost on a transport of its own (`provider_response_cost_micros`), swapped
+`reported_cost_provider_response_unsupported` for `reported_cost_provider_response_not_renderable`:
+the mapping is valid configuration that this Code Builder version cannot yet render, and the ticket
+that renders the read (#583) removes it. Both carry no remediation request — nothing in a valid
+declaration is the thing to change.
+
 ### 7. What this ADR does not decide
 
 How long a snapshot is kept: the Verify ticket set it (#580, ADR-0018 §5 — thirty days after it

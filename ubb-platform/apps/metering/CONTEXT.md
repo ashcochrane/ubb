@@ -177,8 +177,13 @@ A record linked one-to-one to a posting, created only when billing emits `refund
 ## Cost & margin
 
 **Provider cost (COGS)**:
-The upstream cost of the usage, in micros — caller-supplied or summed from the rules in a cost book.
-_Avoid_: "our cost" — this is what the upstream provider charged.
+The upstream cost of the usage, in micros — summed from the rules in a cost book, or a reported figure
+that arrived on the call on the transport its Event Type's published **reported-cost mapping**
+admits: `provider_cost_micros` where the caller supplies it, `provider_response_cost_micros` where
+the caller obtained it from the provider's response (#570). Either way it is one amount in one
+column, and every response publishes it as `provider_cost_micros`, whichever source supplied it.
+_Avoid_: "our cost" — this is what the upstream provider charged; and treating the response-read
+transport as a second cost fact — it is a way in, never a second column or a second field back.
 
 **Billed cost**:
 What the customer is charged, in micros — from a matching pricing rule, else the markup rung, and

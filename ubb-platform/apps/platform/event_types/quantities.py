@@ -15,7 +15,7 @@ docstring has said since the table was created that a rate would hold this by
 reference in its own slice. The pricer asks; this answers.
 
 **IT ANSWERS `None` RATHER THAN REFUSING, and that is the same division of
-labour `admits_a_caller_supplied_cost` draws.** A refusal has a wording, a
+labour `admitted_supplier_cost_source` draws.** A refusal has a wording, a
 status code and an audience; those belong to the edge the caller is standing at
 — `api/v1/metering_endpoints.py` for a rate written over HTTP — and the
 database's own check is what holds the line for every other door. This says only

@@ -45,8 +45,8 @@ class RecordUsageResponse:
             ceiling_used_percentage (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
-                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
-                treats as cost.
+                supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as
+                `provider_cost_micros` on a response.
             grouping_fields (RecordUsageResponseGroupingFields | Unset):
             measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
             new_balance_micros (int | None | Unset):
@@ -61,7 +61,11 @@ class RecordUsageResponse:
                 explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a
                 provenance section of cross-reference ids that nothing reads to reconstruct an amount.
             pricing_receipt_subject_type (None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset):
-            provider_cost_micros (int | None | Unset):
+            provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
+                canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
+                arrived on the transport the Event Type's last publication admits (`provider_cost_micros` or
+                `provider_response_cost_micros` on the recording request). `costing_status` beside it says whether it is
+                settled.
             stop (bool | Unset):  Default: False.
             stop_context (list[Any] | None | Unset):
             stop_reason (None | str | Unset):

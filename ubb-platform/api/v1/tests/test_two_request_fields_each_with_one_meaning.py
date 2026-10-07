@@ -1,24 +1,44 @@
-"""A number the supplier reported and a number the caller believes (#324).
+"""A number the supplier reported and a number the caller believes (#324, #570).
 
-Two different facts, and after this ticket they arrive on two different fields.
-Before it, one field carried both and neither the caller nor UBB could tell
-which had arrived:
+Different facts, and they arrive on different fields. Before #324 one field
+carried both and neither the caller nor UBB could tell which had arrived:
 
-* `provider_cost_micros` is what the **supplier** says the call cost. It is
-  COGS. It is admissible only where the Event Type declares the reported
-  costing method **and** a mapping whose source kind is the caller-supplied
-  one — the declaration that says "this number arrives on the call". Anywhere
-  else it is **refused, naming that declaration** — a 422 on the single route,
-  and a rejected item verdict on the batch route, whose body is 200 whatever
-  its items say. The alternative is the failure this module exists to stop: a
-  caller sending the figure somewhere UBB will never read it as cost and never
-  finding out. Django Ninja **drops** a body key no schema publishes rather
-  than refusing it, and a wrong request that answers `200` is invisible to
-  every gate in this repository.
+* `provider_cost_micros` is the supplier cost **supplied directly by the
+  caller**. It is COGS. It is admissible only where the Event Type declares the
+  reported costing method **and** a mapping whose source kind is the
+  caller-supplied one — the declaration that says "the caller supplies this
+  number". Anywhere else it is **refused, naming the field that is admissible
+  there, or that none is** — a 422 on the single route, and a rejected item
+  verdict on the batch route, whose body is 200 whatever its items say. The
+  alternative is the failure this module exists to stop: a caller sending the
+  figure somewhere UBB will never read it as cost and never finding out.
+  Django Ninja **drops** a body key no schema publishes rather than refusing
+  it, and a wrong request that answers `200` is invisible to every gate in this
+  repository.
+
+* `provider_response_cost_micros` is the supplier cost the caller **obtained
+  from the provider's response** (#570). It is COGS too, and it is the only
+  field that may carry it: admissible only where the mapping's source kind is
+  `provider_response`, refused anywhere else in the same way. UBB cannot verify
+  how the figure was obtained, and admits it because the declared source says
+  that is where it comes from. It is a TRANSPORT and not a second cost fact:
+  the figure lands in the one supplier-cost column and is read back as
+  `provider_cost_micros`, which on every response is the resolved cost
+  whichever valid transport supplied it. Both fields on one event are refused
+  — nothing is summed or chosen.
 
 * `claimed_provider_cost_micros` is what the **caller** believes it cost. It is
   accepted on any event, recorded as stated, and is never COGS: never rated,
   never summed into a cost total, never the number beside it.
+
+THE ADMISSION MATRIX (owner ruling on #570, comment `6040966104`), the same on
+the single route and on a batch item:
+
+    published declaration          provider_cost_micros   provider_response_…
+    reported + caller_supplied     admitted               refused
+    reported + provider_response   refused                admitted
+    calculated, or none at all     refused                refused
+    reported, no mapping           refused                refused
 
 **WHY NOT ONE FIELD ROUTED BY THE DECLARATION.** A field whose meaning flips
 with a declaration the caller cannot see at the call site is retroactive —
@@ -52,12 +72,17 @@ from typing import NamedTuple
 from django.test import Client, SimpleTestCase, TestCase
 from django.utils import timezone
 
-from api.v1.schemas import RecordUsageRequest
+from api.v1 import metering_endpoints, verification
+from api.v1.integration_blueprint import _event_type_content
+from api.v1.schemas import (
+    IntegrationBlueprintVerificationRecordIn, RecordUsageRequest)
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import (
     REPORTED_COST_MAPPING, EventType, QuarantinedKey, ReportedCostMapping)
+from apps.platform.event_types.publication import last_published_declaration
+from core.problems import Problem
 from apps.platform.event_types.tests._helpers import (
     declares_a_caller_supplied_cost)
 from apps.platform.grouping_fields.models import (
@@ -96,6 +121,32 @@ SPEC_PATH = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
 #: neither of which is a plausible default.
 SUPPLIER = 4_200
 CLAIMED = 987_654
+#: A supplier figure read off the provider's response (#570) — a third number,
+#: so a case can tell which transport's figure reached the posting.
+FROM_THE_RESPONSE = 7_350
+
+#: The two transports a supplier cost may arrive on (#570), and the source
+#: kind whose published mapping admits each — the matrix's two columns.
+CALLER_FIELD = "provider_cost_micros"
+RESPONSE_FIELD = "provider_response_cost_micros"
+ADMITTED_BY = {SOURCE_KIND_CALLER_SUPPLIED: CALLER_FIELD,
+               SOURCE_KIND_PROVIDER_RESPONSE: RESPONSE_FIELD}
+
+#: How every refusal of a figure opens: the meaning of the field refused. Held
+#: here rather than imported, so a reworded message is a red test to read.
+OPENS_WITH = {
+    CALLER_FIELD: "provider_cost_micros is a supplier cost supplied directly "
+                  "by the caller",
+    RESPONSE_FIELD: "provider_response_cost_micros is a supplier cost the "
+                    "caller obtained from the provider's response",
+}
+#: What a refusal says where no transport is admissible at all.
+NEITHER = ("neither provider_cost_micros nor provider_response_cost_micros "
+           "is admissible")
+#: What a refusal of both transports on one event says.
+BOTH_SENT = ("provider_cost_micros and provider_response_cost_micros were "
+             "both sent")
+NOTHING_CHOSEN = "nothing is summed or chosen"
 
 
 class _RecordingCase(TestCase):
@@ -227,14 +278,34 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         """The sharp one: the METHOD is right and the SOURCE KIND is not.
 
         This declaration says the figure is read out of the supplier's own
-        response by the generated integration. A number arriving on the call
-        instead did not come from where the tenant declared it comes from, and
-        a check that stopped at the costing method would admit it.
+        response by the generated integration. A number supplied directly by
+        the caller did not come from where the tenant declared it comes from,
+        and a check that stopped at the costing method would admit it. Since
+        #570 that figure has its own transport, so the refusal says which one
+        to send it on instead of leaving the caller nowhere to go.
         """
         self.declare("acme.read", source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
 
-        self.refused("provider-response", event_type="acme.read",
-                     provider_cost_micros=SUPPLIER)
+        body = self.refused("provider-response", event_type="acme.read",
+                            provider_cost_micros=SUPPLIER)
+
+        self.assertTrue(body["detail"].startswith(OPENS_WITH[CALLER_FIELD]),
+                        body["detail"])
+        self.assertIn(f"admissible only as {RESPONSE_FIELD}", body["detail"])
+        self.assertEqual(Posting.objects.count(), 0)
+
+    def test_the_same_figure_read_off_the_response_is_admitted_on_its_own_field(
+            self):
+        """The inversion of the case above (#570): the declaration that
+        refuses `provider_cost_micros` admits the figure on the transport whose
+        published meaning is "obtained from the provider's response"."""
+        self.declare("acme.read", source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        ack = self.record("read", event_type="acme.read",
+                          provider_response_cost_micros=FROM_THE_RESPONSE)
+
+        self.assertEqual(ack["provider_cost_micros"], FROM_THE_RESPONSE)
+        self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
 
     def test_a_reported_declaration_with_no_mapping_is_answered_as_undeclared(self):
         """`reported` alone does not say WHERE the figure comes from.
@@ -276,6 +347,8 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
         detail = body["detail"]
         self.assertIn(COSTING_METHOD_REPORTED, detail)
         self.assertIn(SOURCE_KIND_CALLER_SUPPLIED, detail)
+        self.assertIn(SOURCE_KIND_PROVIDER_RESPONSE, detail)
+        self.assertIn(NEITHER, detail)
         self.assertIn("claimed_provider_cost_micros", detail,
                       "the refusal names no field the caller MAY use")
 
@@ -530,13 +603,27 @@ class _PublicationCase(_RecordingCase):
     def withdraw_quantity(self, key, code):
         self.admin("delete", f"/{key}/measurements/{code}")
 
-    def mapping(self, key, source_kind):
+    def mapping(self, key, source_kind, currency="usd"):
         reads_the_response = source_kind == SOURCE_KIND_PROVIDER_RESPONSE
         self.admin("put", f"/{key}/reported-cost-mapping", {
             "source_kind": source_kind,
             "amount_representation": AMOUNT_REPRESENTATION_MICROS,
             "source_path": ["usage", "total_cost"] if reads_the_response else [],
-            "currency": "usd"})
+            "currency": currency})
+
+    def published_reported_with_no_mapping(self, key):
+        """The matrix's fourth row, which no route can publish: `publish`
+        refuses a `reported` declaration with no mapping (the blocker below),
+        so the lifecycle never hands it to recording. The rule is asked of the
+        published copy all the same, so the copy is written here as
+        publication would have kept it — admission must not depend on the
+        blocker having held."""
+        self.declared(key, costing_method=COSTING_METHOD_REPORTED)
+        draft = EventType.objects.get(tenant=self.tenant, key=key)
+        self.assertEqual(draft.publication_blockers(), (REPORTED_COST_MAPPING,))
+        EventType.objects.filter(pk=draft.pk).update(
+            published_revision=1,
+            published_declaration=draft._declaration_to_pin())
 
     def withdraw_mapping(self, key):
         self.admin("delete", f"/{key}/reported-cost-mapping")
@@ -567,13 +654,53 @@ class _PublicationCase(_RecordingCase):
         self.assertTrue(outcome.accepted, outcome.body)
         return outcome.body
 
-    def refused_the_supplier_cost(self, outcome):
-        """The #324 refusal, by its own message — not merely a refusal."""
+    def refused_the_figure(self, outcome, field):
+        """A supplier-cost refusal (#324, #570) of `field`, which every one
+        opens by saying what that field means. Returns the message."""
         self.assertFalse(outcome.accepted, outcome.body)
         self.assertEqual(outcome.body["code"], "validation_error")
-        self.assertIn("provider_cost_micros is the supplier's own reported "
-                      "cost", outcome.body["detail"])
-        self.assertIn(SOURCE_KIND_CALLER_SUPPLIED, outcome.body["detail"])
+        detail = outcome.body["detail"]
+        self.assertTrue(detail.startswith(OPENS_WITH[field]), detail)
+        return detail
+
+    def refused_for_its_other_transport(self, outcome, field, *, admissible):
+        """The declared source admits a figure — on the OTHER field, which
+        the message names, with the source kind that admits it."""
+        detail = self.refused_the_figure(outcome, field)
+        self.assertIn(f"admissible only as {admissible}: send it there",
+                      detail)
+        (kind,) = [kind for kind, transport in ADMITTED_BY.items()
+                   if transport == admissible]
+        self.assertIn(f"'{kind}'", detail)
+        self.assertNotIn(NEITHER, detail)
+
+    def refused_with_nothing_admissible(self, outcome, field):
+        """No published declaration admits either transport, so the message
+        says neither is, which declarations would, and the field accepted on
+        any event."""
+        detail = self.refused_the_figure(outcome, field)
+        self.assertIn(NEITHER, detail)
+        self.assertIn(f"'{SOURCE_KIND_CALLER_SUPPLIED}' (for {CALLER_FIELD})",
+                      detail)
+        self.assertIn(
+            f"'{SOURCE_KIND_PROVIDER_RESPONSE}' (for {RESPONSE_FIELD})", detail)
+        self.assertIn("claimed_provider_cost_micros", detail)
+
+    def refused_as_both(self, outcome, *, admissible):
+        """Both transports on one event: refused whatever is declared, saying
+        nothing is summed or chosen, and naming the one field that would be
+        admitted alone — or that neither would."""
+        self.assertFalse(outcome.accepted, outcome.body)
+        self.assertEqual(outcome.body["code"], "validation_error")
+        detail = outcome.body["detail"]
+        self.assertTrue(detail.startswith(BOTH_SENT), detail)
+        self.assertIn(NOTHING_CHOSEN, detail)
+        if admissible is None:
+            self.assertIn(NEITHER, detail)
+        else:
+            self.assertIn(f"admits only {admissible}: send the figure there "
+                          f"alone", detail)
+            self.assertNotIn(NEITHER, detail)
 
     def held(self, key):
         """What was held for `key`, without the key: the quantity names and
@@ -613,12 +740,13 @@ class _OnTheBatchRoute(_PublicationCase):
 
 
 class _TheSupplierCostFollowsThePublication:
-    """The owner's example, in both directions (#605).
+    """The owner's example, in both directions (#605), for both transports
+    (#570).
 
     A deployed integration was generated against the publication. A draft edit
     to the mapping's source kind must not start refusing the figure that
-    integration sends — nor start admitting one it does not — until the edit
-    is published.
+    integration sends — nor start admitting one it does not — on EITHER
+    transport, until the edit is published. Then the admission flips, on both.
     """
 
     def test_a_draft_to_provider_response_leaves_the_figure_admitted(self):
@@ -631,27 +759,45 @@ class _TheSupplierCostFollowsThePublication:
 
         self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
         self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+        self.refused_for_its_other_transport(self.send(
+            "draft-response", event_type="acme.embed",
+            provider_response_cost_micros=FROM_THE_RESPONSE),
+            RESPONSE_FIELD, admissible=CALLER_FIELD)
 
         self.publish("acme.embed")
 
-        self.refused_the_supplier_cost(self.send(
+        self.refused_for_its_other_transport(self.send(
             "published", event_type="acme.embed",
-            provider_cost_micros=SUPPLIER))
+            provider_cost_micros=SUPPLIER),
+            CALLER_FIELD, admissible=RESPONSE_FIELD)
+        ack = self.admitted(self.send(
+            "published-response", event_type="acme.embed",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.assertEqual(ack["provider_cost_micros"], FROM_THE_RESPONSE)
 
     def test_a_draft_to_caller_supplied_leaves_the_figure_refused(self):
         self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
                        source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
         self.mapping("acme.read", SOURCE_KIND_CALLER_SUPPLIED)
 
-        self.refused_the_supplier_cost(self.send(
-            "draft", event_type="acme.read", provider_cost_micros=SUPPLIER))
+        self.refused_for_its_other_transport(self.send(
+            "draft", event_type="acme.read", provider_cost_micros=SUPPLIER),
+            CALLER_FIELD, admissible=RESPONSE_FIELD)
         self.assertEqual(Posting.objects.count(), 0)
+        ack = self.admitted(self.send(
+            "draft-response", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.assertEqual(ack["provider_cost_micros"], FROM_THE_RESPONSE)
 
         self.publish("acme.read")
 
         ack = self.admitted(self.send("published", event_type="acme.read",
                                       provider_cost_micros=SUPPLIER))
         self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
+        self.refused_for_its_other_transport(self.send(
+            "published-response", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE),
+            RESPONSE_FIELD, admissible=CALLER_FIELD)
 
     def test_a_withdrawn_mapping_in_draft_leaves_the_figure_admitted(self):
         """The edit that cannot even be published: a `reported` declaration
@@ -664,6 +810,19 @@ class _TheSupplierCostFollowsThePublication:
                                       provider_cost_micros=SUPPLIER))
 
         self.assertEqual(ack["provider_cost_micros"], SUPPLIER)
+
+    def test_a_withdrawn_response_mapping_in_draft_leaves_its_figure_admitted(
+            self):
+        """The same, for the transport the response mapping admits."""
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        self.withdraw_mapping("acme.read")
+
+        ack = self.admitted(self.send(
+            "withdrawn", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+
+        self.assertEqual(ack["provider_cost_micros"], FROM_THE_RESPONSE)
 
 
 class TheSupplierCostFollowsThePublicationOnTheSingleRouteTest(
@@ -720,9 +879,9 @@ class _EveryOtherFactFollowsThePublication:
                                       measurements={"calls": 3}))
         self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
         self.assertEqual(ack["provider_cost_micros"], 3_000)
-        self.refused_the_supplier_cost(self.send(
+        self.refused_with_nothing_admissible(self.send(
             "draft-figure", event_type="acme.calc",
-            provider_cost_micros=SUPPLIER))
+            provider_cost_micros=SUPPLIER), CALLER_FIELD)
 
         self.publish("acme.calc")
 
@@ -840,8 +999,9 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
     declared and the same body against a key declared and never published,
     and compares the two outcomes to each other.
 
-    Three drafts, one for each way a leaked draft would show: a `reported` one
-    admitting a caller-supplied figure, a `calculated` one whose declared names
+    Four drafts, one for each way a leaked draft would show: a `reported` one
+    admitting a caller-supplied figure, another admitting a figure read off
+    the provider's response (#570), a `calculated` one whose declared names
     would hold the unknown one, and one declaring nothing, which would carry no
     cost. For every body at least one of them, had it leaked, would answer
     differently from the undeclared path.
@@ -852,12 +1012,18 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
         "a name nobody declared": {"measurements": {"calls": 3,
                                                     "mystery": 2}},
         "the supplier's own figure": {"provider_cost_micros": SUPPLIER},
+        "a figure read off the response": {
+            "provider_response_cost_micros": FROM_THE_RESPONSE},
     }
 
     DRAFTS = {
         "reported": {"costing_method": COSTING_METHOD_REPORTED,
                      "quantities": ("calls",),
                      "source_kind": SOURCE_KIND_CALLER_SUPPLIED},
+        "response": {
+            "costing_method": COSTING_METHOD_REPORTED,
+            "quantities": ("calls",),
+            "source_kind": SOURCE_KIND_PROVIDER_RESPONSE},
         "calculated": {"costing_method": COSTING_METHOD_CALCULATED,
                        "quantities": ("calls",)},
         "nothing": {"costing_method": COSTING_METHOD_CALCULATED},
@@ -1021,15 +1187,62 @@ class _AReplayAnswersWhatWasRecorded:
 
     def test_a_refused_new_event_writes_nothing(self):
         """Replay-first moves no refusal: a NEW event the publication does not
-        admit records nothing and spends no grouping value."""
+        admit records nothing and spends no grouping value — on either
+        transport, and for each kind of refusal."""
         self.a_grouping_field()
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        grouped = declared_grouping_values({"model": "gpt-4"})
 
-        self.refused_the_supplier_cost(self.send(
-            "new", event_type="acme.embed", provider_cost_micros=SUPPLIER,
-            **declared_grouping_values({"model": "gpt-4"})))
+        self.refused_with_nothing_admissible(self.send(
+            "new", event_type="nobody.declared",
+            provider_response_cost_micros=FROM_THE_RESPONSE, **grouped),
+            RESPONSE_FIELD)
+        self.refused_for_its_other_transport(self.send(
+            "other", event_type="acme.embed",
+            provider_response_cost_micros=FROM_THE_RESPONSE, **grouped),
+            RESPONSE_FIELD, admissible=CALLER_FIELD)
+        self.refused_as_both(self.send(
+            "both", event_type="acme.embed", provider_cost_micros=SUPPLIER,
+            provider_response_cost_micros=FROM_THE_RESPONSE, **grouped),
+            admissible=CALLER_FIELD)
+        self.refused_with_nothing_admissible(self.send(
+            "old", event_type="nobody.declared", provider_cost_micros=SUPPLIER,
+            **grouped), CALLER_FIELD)
 
         self.assertEqual(Posting.objects.count(), 0)
         self.assertEqual(GroupingFieldValue.objects.count(), 0)
+
+    def test_a_figure_read_off_the_response_replays_what_was_recorded(self):
+        """The new transport joins the existing policy and adds none (#570):
+        one posting, then the original acknowledgement for the same body, for
+        a different figure (no body is compared), and after a publication
+        that would now refuse the field — a replay never meets the matrix."""
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        original = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.assertEqual(original["provider_cost_micros"], FROM_THE_RESPONSE)
+        self.assertEqual(Posting.objects.count(), 1)
+
+        self.replays(original, self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE)))
+        self.replays(original, self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE + 1)))
+
+        self.mapping("acme.read", SOURCE_KIND_CALLER_SUPPLIED)
+        self.publish("acme.read")
+        self.refused_for_its_other_transport(self.send(
+            "new-after", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE),
+            RESPONSE_FIELD, admissible=CALLER_FIELD)
+
+        self.replays(original, self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE)))
 
 
 class AReplayAnswersWhatWasRecordedOnTheSingleRouteTest(
@@ -1040,6 +1253,362 @@ class AReplayAnswersWhatWasRecordedOnTheSingleRouteTest(
 class AReplayAnswersWhatWasRecordedOnTheBatchRouteTest(
         _AReplayAnswersWhatWasRecorded, _OnTheBatchRoute):
     pass
+
+
+# ---------------------------------------------------------------------------
+# #570 — a figure read off the provider's response has its own transport
+# ---------------------------------------------------------------------------
+
+class _TheAdmissionMatrix:
+    """The owner's matrix (#570, comment `6040966104`), cell by cell, read off
+    the PUBLISHED declaration (#605): each row is published through the
+    tenant's routes, and each case sends one transport, the other, then both.
+
+    An admitted figure is the supplier cost; a refused one says which field IS
+    admissible for the declared source, or that none is; both on one event are
+    refused whatever is declared.
+    """
+
+    def row(self, key, *, admits, figure_reaches=None):
+        """Every cell of one row, against the Event Type `key`."""
+        for field, figure in ((CALLER_FIELD, SUPPLIER),
+                              (RESPONSE_FIELD, FROM_THE_RESPONSE)):
+            outcome = self.send(f"{key}-{field}", event_type=key,
+                                **{field: figure})
+            if field == admits:
+                ack = self.admitted(outcome)
+                self.assertEqual(ack["provider_cost_micros"], figure)
+                self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
+            elif admits is None:
+                self.refused_with_nothing_admissible(outcome, field)
+            else:
+                self.refused_for_its_other_transport(outcome, field,
+                                                     admissible=admits)
+        self.refused_as_both(self.send(
+            f"{key}-both", event_type=key, provider_cost_micros=SUPPLIER,
+            provider_response_cost_micros=FROM_THE_RESPONSE),
+            admissible=admits)
+        self.assertEqual(Posting.objects.count(), 0 if admits is None else 1)
+
+    def test_reported_and_caller_supplied_admits_only_provider_cost_micros(
+            self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.row("acme.embed", admits=CALLER_FIELD)
+
+    def test_reported_and_provider_response_admits_only_its_own_field(self):
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        self.row("acme.read", admits=RESPONSE_FIELD)
+
+    def test_calculated_admits_neither(self):
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED)
+        self.row("acme.calc", admits=None)
+
+    def test_calculated_with_a_response_mapping_still_admits_neither(self):
+        """The METHOD decides first: a mapping beneath a calculated Event Type
+        names where a figure would come from, and the tenant declared that UBB
+        works the cost out from rates instead."""
+        self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+        self.row("acme.calc", admits=None)
+
+    def test_no_declaration_at_all_admits_neither(self):
+        self.row("nobody.declared", admits=None)
+
+    def test_reported_with_no_mapping_admits_neither(self):
+        self.published_reported_with_no_mapping("acme.half")
+        self.row("acme.half", admits=None)
+
+    def test_an_event_naming_no_event_type_admits_neither(self):
+        """The recording request's key is optional; with none there is no
+        declaration to read, and the message says so rather than naming one."""
+        for field, figure in ((CALLER_FIELD, SUPPLIER),
+                              (RESPONSE_FIELD, FROM_THE_RESPONSE)):
+            detail = self.refused_the_figure(
+                self.send(f"unnamed-{field}", **{field: figure}), field)
+            self.assertIn(NEITHER, detail)
+            self.assertIn("names no Event Type", detail)
+        self.refused_as_both(self.send(
+            "unnamed-both", provider_cost_micros=SUPPLIER,
+            provider_response_cost_micros=FROM_THE_RESPONSE), admissible=None)
+        self.assertEqual(Posting.objects.count(), 0)
+
+
+class TheAdmissionMatrixOnTheSingleRouteTest(_TheAdmissionMatrix,
+                                             _OnTheSingleRoute):
+    pass
+
+
+class TheAdmissionMatrixOnTheBatchRouteTest(_TheAdmissionMatrix,
+                                            _OnTheBatchRoute):
+    pass
+
+
+def _every_key(value):
+    """Every key of a JSON body, at any depth."""
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            yield key
+            yield from _every_key(inner)
+    elif isinstance(value, list):
+        for inner in value:
+            yield from _every_key(inner)
+
+
+class _AFigureReadOffTheResponseIsTheSupplierCost:
+    """What an admitted `provider_response_cost_micros` becomes (#570): the
+    posting's one supplier-cost column, costed exactly as a caller-supplied
+    figure is — the spine's "a figure that arrived" branch — and read back as
+    `provider_cost_micros`. It is a transport and never echoed under its own
+    name, and it never touches the caller's claim."""
+
+    def test_it_is_the_postings_supplier_cost_and_read_back_as_one(self):
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        ack = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=FROM_THE_RESPONSE))
+
+        self.assertEqual((ack["costing_status"], ack["unresolved_reason"],
+                          ack["provider_cost_micros"]),
+                         (COSTING_STATUS_KNOWN, None, FROM_THE_RESPONSE))
+        posting = Posting.objects.get(id=ack["event_id"])
+        self.assertEqual(posting.provider_cost_micros, FROM_THE_RESPONSE)
+        self.assertIsNone(posting.claimed_provider_cost_micros,
+                          "the figure was taken for the caller's claim")
+        self.assertIsNone(ack["claimed_provider_cost_micros"])
+        receipt = getattr(posting, Posting.RECEIPT_COLUMN)
+        self.assertEqual(receipt["costing"]["method"],
+                         COSTING_METHOD_REPORTED)
+        detail = self.detail(ack["event_id"])
+        self.assertEqual(detail["provider_cost_micros"], FROM_THE_RESPONSE)
+        for body in (ack, detail):
+            self.assertNotIn(RESPONSE_FIELD, set(_every_key(body)),
+                             "the transport was echoed as a second cost fact")
+
+    def test_it_is_costed_exactly_as_a_caller_supplied_figure_is(self):
+        """One path, not two: the same number on each transport, each under
+        the declaration that admits it, reaches the same conclusions."""
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        supplied = self.admitted(self.send(
+            "supplied", event_type="acme.embed", provider_cost_micros=SUPPLIER))
+        read = self.admitted(self.send(
+            "read", event_type="acme.read",
+            provider_response_cost_micros=SUPPLIER))
+
+        self.assertEqual({fact: read[fact] for fact in COSTING_FACTS},
+                         {fact: supplied[fact] for fact in COSTING_FACTS})
+        stored = {key: {column: getattr(posting, column)
+                        for column in ECONOMIC_COLUMNS}
+                  for key, posting in (
+                      ("supplied", Posting.objects.get(id=supplied["event_id"])),
+                      ("read", Posting.objects.get(id=read["event_id"])))}
+        self.assertEqual(stored["read"], stored["supplied"])
+
+    def test_without_it_the_reported_cost_is_still_missing(self):
+        """Nothing is made up: a `provider_response` event that carries no
+        figure is unresolved, as it was before the transport existed."""
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        ack = self.admitted(self.send("none", event_type="acme.read"))
+
+        self.assertEqual((ack["costing_status"], ack["unresolved_reason"]),
+                         (COSTING_STATUS_UNRESOLVED,
+                          UNRESOLVED_REASON_REPORTED_COST_MISSING))
+        self.assertIsNone(ack["provider_cost_micros"])
+        self.assertIsNone(
+            Posting.objects.get(id=ack["event_id"]).provider_cost_micros)
+
+
+class AFigureReadOffTheResponseOnTheSingleRouteTest(
+        _AFigureReadOffTheResponseIsTheSupplierCost, _OnTheSingleRoute):
+    pass
+
+
+class AFigureReadOffTheResponseOnTheBatchRouteTest(
+        _AFigureReadOffTheResponseIsTheSupplierCost, _OnTheBatchRoute):
+    pass
+
+
+class _TheCurrencyRuleIsTheSharedOne:
+    """The new transport takes the event-currency path the caller-supplied
+    one takes and no other (#570 ruling 5): the event's `currency` must match
+    the tenant's, with no FX and no second check of its own. So each currency
+    is sent on both transports, each under the declaration that admits it,
+    and the two outcomes are compared to EACH OTHER — including for a tenant
+    whose currency is not USD, where a check of the new field's own would
+    show."""
+
+    CURRENCIES = (None, "usd", "USD", "eur", "EUR")
+
+    def comparable(self, outcome):
+        if not outcome.accepted:
+            return False, outcome.body["code"], outcome.body["detail"]
+        return True, {fact: outcome.body[fact] for fact in COSTING_FACTS}
+
+    def outcomes(self, tenant_currency):
+        self.tenant.default_currency = tenant_currency
+        self.tenant.save(update_fields=["default_currency"])
+        self.declared("acme.embed", costing_method=COSTING_METHOD_REPORTED)
+        self.mapping("acme.embed", SOURCE_KIND_CALLER_SUPPLIED,
+                     currency=tenant_currency)
+        self.publish("acme.embed")
+        self.declared("acme.read", costing_method=COSTING_METHOD_REPORTED)
+        self.mapping("acme.read", SOURCE_KIND_PROVIDER_RESPONSE,
+                     currency=tenant_currency)
+        self.publish("acme.read")
+        answers = {}
+        for case, currency in enumerate(self.CURRENCIES):
+            sent = {} if currency is None else {"currency": currency}
+            supplied = self.send(f"supplied-{case}", event_type="acme.embed",
+                                 provider_cost_micros=SUPPLIER, **sent)
+            read = self.send(f"read-{case}", event_type="acme.read",
+                             provider_response_cost_micros=SUPPLIER, **sent)
+            with self.subTest(tenant=tenant_currency, currency=currency):
+                self.assertEqual(self.comparable(read),
+                                 self.comparable(supplied))
+            answers[currency] = read
+        return answers
+
+    def test_a_usd_tenant(self):
+        answers = self.outcomes("usd")
+
+        self.assertTrue(answers[None].accepted)
+        self.assertTrue(answers["USD"].accepted)
+        refused = answers["eur"]
+        self.assertFalse(refused.accepted)
+        self.assertTrue(refused.body["detail"].startswith(
+            "currency mismatch: event currency 'eur' does not match tenant "
+            "currency 'usd'"), refused.body["detail"])
+
+    def test_a_tenant_whose_currency_is_not_usd(self):
+        answers = self.outcomes("eur")
+
+        self.assertTrue(answers["eur"].accepted, answers["eur"].body)
+        self.assertTrue(answers["EUR"].accepted)
+        self.assertFalse(answers["usd"].accepted)
+
+
+class TheCurrencyRuleOnTheSingleRouteTest(_TheCurrencyRuleIsTheSharedOne,
+                                          _OnTheSingleRoute):
+    pass
+
+
+class TheCurrencyRuleOnTheBatchRouteTest(_TheCurrencyRuleIsTheSharedOne,
+                                         _OnTheBatchRoute):
+    pass
+
+
+class TheBatchRefusesOneTransportAndRecordsItsSiblingsTest(_PublicationCase):
+    """Per ITEM (#570 ruling 1): one batch, each transport admitted where its
+    mapping is published and refused where it is not, both on one item
+    refused — and every admitted sibling recorded."""
+
+    def test_each_item_answers_for_itself(self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        def item(correlation, key, **figures):
+            return usage_payload(self.customer, correlation, event_type=key,
+                                 **figures)
+
+        response = self.post_batch(
+            item("wrong", "acme.embed",
+                 provider_response_cost_micros=FROM_THE_RESPONSE),
+            item("read", "acme.read",
+                 provider_response_cost_micros=FROM_THE_RESPONSE),
+            item("both", "acme.read", provider_cost_micros=SUPPLIER,
+                 provider_response_cost_micros=FROM_THE_RESPONSE),
+            item("supplied", "acme.embed", provider_cost_micros=SUPPLIER))
+
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual((body["accepted"], body["rejected"]), (2, 2))
+        wrong, read, both, supplied = body["results"]
+        self.refused_for_its_other_transport(
+            Outcome(False, wrong), RESPONSE_FIELD, admissible=CALLER_FIELD)
+        self.refused_as_both(Outcome(False, both), admissible=RESPONSE_FIELD)
+        self.assertEqual((read["accepted"], read["provider_cost_micros"]),
+                         (True, FROM_THE_RESPONSE))
+        self.assertEqual((supplied["accepted"],
+                          supplied["provider_cost_micros"]), (True, SUPPLIER))
+        self.assertEqual(
+            sorted(Posting.objects.values_list("provider_cost_micros",
+                                               flat=True)),
+            sorted([FROM_THE_RESPONSE, SUPPLIER]))
+
+
+class AVerificationRecordTakesTheSameTransportTest(_PublicationCase):
+    """Verify's recording input carries "the same fields, with the same
+    rules, as on a recording" (`IntegrationBlueprintVerificationRecordIn`), so
+    it gains the transport with the recording request (#570).
+
+    It cannot be driven through Verify's route before #583: a Blueprint
+    holding a `provider_response` mapping is blocked, and Verify refuses one
+    that is not complete. So the record is made as the run makes it — from
+    the configuration's own account of the published Event Type
+    (`_event_type_content`), through `_recording`, into the recording route's
+    `record` — and asked the matrix's cells directly.
+    """
+
+    def verify_record(self, key, position, **figures):
+        claim = IntegrationBlueprintVerificationRecordIn(event_type=key,
+                                                         **figures)
+        declared = _event_type_content({
+            "declaration": last_published_declaration(tenant=self.tenant,
+                                                      key=key),
+            "provider_key": None})
+        recording = verification._recording(self.customer, declared, claim,
+                                            None, position)
+        try:
+            return Outcome(True, metering_endpoints.record(self.tenant,
+                                                           recording))
+        except Problem as refusal:
+            return Outcome(False, {"code": refusal.code,
+                                   "detail": refusal.detail})
+
+    def test_the_record_admits_each_transport_where_its_mapping_is_published(
+            self):
+        self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+        self.published("acme.read", costing_method=COSTING_METHOD_REPORTED,
+                       source_kind=SOURCE_KIND_PROVIDER_RESPONSE)
+
+        read = self.admitted(self.verify_record(
+            "acme.read", 0, provider_response_cost_micros=FROM_THE_RESPONSE))
+        self.refused_for_its_other_transport(
+            self.verify_record("acme.read", 1, provider_cost_micros=SUPPLIER),
+            CALLER_FIELD, admissible=RESPONSE_FIELD)
+        self.refused_for_its_other_transport(
+            self.verify_record("acme.embed", 2,
+                               provider_response_cost_micros=FROM_THE_RESPONSE),
+            RESPONSE_FIELD, admissible=CALLER_FIELD)
+        self.refused_as_both(self.verify_record(
+            "acme.read", 3, provider_cost_micros=SUPPLIER,
+            provider_response_cost_micros=FROM_THE_RESPONSE),
+            admissible=RESPONSE_FIELD)
+
+        self.assertEqual(read["provider_cost_micros"], FROM_THE_RESPONSE)
+        self.assertEqual(read["costing_status"], COSTING_STATUS_KNOWN)
+
+    def test_the_input_carries_the_field_with_the_recording_requests_bounds(
+            self):
+        verify = IntegrationBlueprintVerificationRecordIn.model_fields
+        record = RecordUsageRequest.model_fields
+        for name in (CALLER_FIELD, RESPONSE_FIELD):
+            with self.subTest(field=name):
+                self.assertEqual(verify[name].metadata, record[name].metadata)
+                self.assertEqual(verify[name].description,
+                                 record[name].description)
 
 
 class TheWholeRequestIsPublishedTest(SimpleTestCase):
@@ -1082,6 +1651,16 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
             "provider_cost_micros"]
 
         self.assertEqual(_bounds(claim), _bounds(supplier))
+
+    def test_the_figure_read_off_the_response_carries_the_same_bound(self):
+        """#570: the same amount on another transport, so the same bound —
+        and it is optional, like the field beside it."""
+        request = self.schemas["RecordUsageRequest"]
+        self.assertEqual(_bounds(request["properties"][RESPONSE_FIELD]),
+                         _bounds(request["properties"][CALLER_FIELD]))
+        self.assertEqual(_bounds(request["properties"][RESPONSE_FIELD]),
+                         (0, 999_999_999_999))
+        self.assertNotIn(RESPONSE_FIELD, request.get("required", []))
 
     def test_the_three_unrelated_amounts_keep_their_own_bound(self):
         """The same literal, three schemas along, and NOT the same rule.
@@ -1156,6 +1735,122 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
             "RecordUsageResponse", "UnresolvedQueueRow", "UsageEventDetailOut",
             "UsageEventOut", "ItemisedEventRow", "ItemisedEventsOut",
             "SpendControlFamilyTotalsRow"})
+
+
+#: What each published meaning must say (#570 ruling 2), held here rather
+#: than read off the constants that publish them, so a reverted wording is a
+#: red test rather than a constant agreeing with itself.
+SAYS_SUPPLIED_BY_THE_CALLER = (
+    "supplied directly by the caller",
+    "source_kind is `caller_supplied`")
+SAYS_OBTAINED_FROM_THE_RESPONSE = (
+    "as the caller obtained it from the provider's response",
+    "source_kind is `provider_response`",
+    "UBB cannot verify how the figure was obtained",
+    "not echoed under its own name")
+SAYS_RESOLVED = (
+    "The supplier cost (COGS) UBB resolved for this event",
+    "whichever valid source supplied it",
+    "`provider_cost_micros` or `provider_response_cost_micros`")
+SAYS_THE_CLAIM_IS_NEVER_COGS = (
+    "never COGS",
+    "The supplier cost UBB treats as COGS is the one it resolves")
+#: The sentence #570 falsified: two request fields now carry a supplier cost
+#: UBB treats as cost, so neither is "the only one".
+FALSIFIED = "the only one UBB treats as cost"
+
+#: The schemas a recording publishes its supplier cost back on, beside the
+#: caller's claim.
+RECORDING_RESPONSES = ("RecordUsageResponse", "UsageEventOut",
+                       "UsageEventDetailOut")
+#: The two request schemas that take a supplier cost.
+RECORDING_REQUESTS = ("RecordUsageRequest",
+                      "IntegrationBlueprintVerificationRecordIn")
+
+
+class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
+    """The three meanings (#570 ruling 2), each the field's PUBLISHED
+    description, walked off the committed contract."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.spec = json.loads(SPEC_PATH.read_text(encoding="utf-8"))
+        cls.schemas = cls.spec["components"]["schemas"]
+
+    def said(self, schema, field):
+        return self.schemas[schema]["properties"][field].get("description",
+                                                             "")
+
+    def says(self, schema, field, phrases):
+        description = self.said(schema, field)
+        for phrase in phrases:
+            self.assertIn(phrase, description, f"{schema}.{field}")
+
+    def test_each_request_field_says_where_its_figure_comes_from(self):
+        for schema in RECORDING_REQUESTS:
+            with self.subTest(schema=schema):
+                self.says(schema, CALLER_FIELD, SAYS_SUPPLIED_BY_THE_CALLER)
+                self.says(schema, RESPONSE_FIELD,
+                          SAYS_OBTAINED_FROM_THE_RESPONSE)
+        # One wording per field across both requests.
+        for field in (CALLER_FIELD, RESPONSE_FIELD):
+            self.assertEqual(*(self.said(schema, field)
+                               for schema in RECORDING_REQUESTS))
+
+    def test_each_response_publishes_the_one_resolved_amount(self):
+        for schema in RECORDING_RESPONSES:
+            with self.subTest(schema=schema):
+                self.says(schema, CALLER_FIELD, SAYS_RESOLVED)
+                self.assertEqual(self.said(schema, CALLER_FIELD),
+                                 self.said(RECORDING_RESPONSES[0],
+                                           CALLER_FIELD))
+
+    def test_the_claims_meaning_is_true_on_the_request_and_every_response(
+            self):
+        for schema in ("RecordUsageRequest", *RECORDING_RESPONSES):
+            with self.subTest(schema=schema):
+                self.says(schema, "claimed_provider_cost_micros",
+                          SAYS_THE_CLAIM_IS_NEVER_COGS)
+        self.assertNotIn(FALSIFIED, json.dumps(self.spec))
+
+    def test_no_response_carries_the_transport(self):
+        """A transport, not a second cost fact: no response model gains it.
+        Held twice — as the exact set of schemas naming it, and by walking
+        every schema any operation answers with, refs followed."""
+        carrying = {name for name, schema in self.schemas.items()
+                    if RESPONSE_FIELD in schema.get("properties", {})}
+        self.assertEqual(carrying, set(RECORDING_REQUESTS))
+
+        answered = set()
+        for operations in self.spec["paths"].values():
+            for operation in operations.values():
+                for response in operation.get("responses", {}).values():
+                    answered |= _schemas_reached(response, self.schemas)
+        self.assertGreater(len(answered), 50, "the walk reached nothing")
+        self.assertIn("RecordUsageResponse", answered)
+        self.assertEqual(
+            {name for name in answered
+             if RESPONSE_FIELD in self.schemas[name].get("properties", {})},
+            set())
+
+
+def _schemas_reached(node, schemas, seen=None):
+    """Every component schema `node` reaches through `$ref`, transitively."""
+    seen = set() if seen is None else seen
+    if isinstance(node, dict):
+        ref = node.get("$ref", "")
+        if ref.startswith("#/components/schemas/"):
+            name = ref.rsplit("/", 1)[-1]
+            if name not in seen:
+                seen.add(name)
+                _schemas_reached(schemas[name], schemas, seen)
+        for value in node.values():
+            _schemas_reached(value, schemas, seen)
+    elif isinstance(node, list):
+        for value in node:
+            _schemas_reached(value, schemas, seen)
+    return seen
 
 
 def _bounds(node):

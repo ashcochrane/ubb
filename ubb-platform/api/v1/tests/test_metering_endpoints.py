@@ -84,7 +84,8 @@ def declared_grouping_values(values):
 #: that asymmetry and the measurement behind it.
 THE_WHOLE_RECORDING_REQUEST = frozenset({
     "customer_id", "idempotency_key", "metadata",
-    "provider_cost_micros", "claimed_provider_cost_micros",
+    "provider_cost_micros", "provider_response_cost_micros",
+    "claimed_provider_cost_micros",
     "measurements", "currency", "task_id", "event_type",
     "provider", "grouping_fields", "effective_at",
 })

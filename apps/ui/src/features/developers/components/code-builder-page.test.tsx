@@ -231,13 +231,18 @@ describe("the Blueprint stage", () => {
     const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
     const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
 
-    // The one diagnostic reported over a complete declaration offers nothing
-    // to change, so it renders its words and no request (#571).
+    // The two diagnostics reported over a valid declaration this Code Builder
+    // version cannot yet render offer nothing to change, so each renders its
+    // words and no request (#571, #570).
     const withARequest = blocked.diagnostics.filter((d) => d.remediation_request != null);
     expect(blocked.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
       "constant_measurement_not_renderable",
+      "reported_cost_provider_response_not_renderable",
     ]);
     expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText(diagnosticCodeLabel("reported_cost_provider_response_not_renderable")),
+    ).toBeInTheDocument();
     expect(blocks).toHaveLength(withARequest.length);
     for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;

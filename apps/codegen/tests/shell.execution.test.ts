@@ -1252,8 +1252,9 @@ printf 'disagrees=%s\\n' "$?"
       "_ubb_jq_body_record_web_search", "ubb_record_web_search",
     ]);
     for (const defined of record) {
+      // Its own transport exists since #570; rendering the read is #583's.
       expect(defined.lines.join("\n")).not.toMatch(
-        /provider_cost_micros|"currency"|_ubb_to_micros/,
+        /provider_cost_micros|provider_response_cost_micros|"currency"|_ubb_to_micros/,
       );
     }
   });

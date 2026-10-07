@@ -41,12 +41,16 @@ class UsageEventOut:
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
-                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
-                treats as cost.
+                supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as
+                `provider_cost_micros` on a response.
             event_type (str | Unset):  Default: ''.
             not_applicable_reason (None | Unset | UsageEventOutNotApplicableReasonType0):
             provider (str | Unset):  Default: ''.
-            provider_cost_micros (int | None | Unset):
+            provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
+                canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
+                arrived on the transport the Event Type's last publication admits (`provider_cost_micros` or
+                `provider_response_cost_micros` on the recording request). `costing_status` beside it says whether it is
+                settled.
             stop_context (list[Any] | None | Unset):
             unresolved_reason (None | Unset | UsageEventOutUnresolvedReasonType0):
      """

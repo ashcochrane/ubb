@@ -20,8 +20,10 @@ anybody could read back. This module is the pair of claims that replace it.
   A price under a name UBB never published reaches nothing whatever it does.
 
 **AND NO CLAIMED PRICE EITHER, WHICH IS THE PART THAT WILL BE RE-PROPOSED.**
-The cost side has two wire fields — the supplier's own reported figure and the
-caller's belief about it — and the symmetry does not carry over. Cost is
+The cost side has two kinds of wire field — the supplier's reported figure (on
+one of two transports since #570: supplied directly by the caller, or obtained
+from the provider's response) and the caller's belief about it — and the
+symmetry does not carry over. Cost is
 OBSERVED: a caller's belief about it is diagnostic, because their supplier's
 invoice is an external fact they may genuinely have seen. Price is DECIDED: a
 caller's belief about their own tenant's price is not an observation of
@@ -322,9 +324,11 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
 class TheRequestCarriesNoAmountTheCallerDecidesTest(SimpleTestCase):
     """Ruling 2, as a property of the published set rather than a sentence.
 
-    Both money fields the recording request still carries are COGS-side: what
-    the supplier says the call cost, and what the caller believes it cost. A
-    third one would be a price, whatever it was called.
+    Every money field the recording request carries is COGS-side: what the
+    supplier says the call cost — on one of two transports since #570, the
+    caller's own or one read off the provider's response, never both — and
+    what the caller believes it cost. Anything else would be a price, whatever
+    it was called.
     """
 
     def test_every_amount_on_the_request_is_a_cost(self):
@@ -332,6 +336,7 @@ class TheRequestCarriesNoAmountTheCallerDecidesTest(SimpleTestCase):
                      if name.endswith("_micros")}
 
         self.assertEqual(published, {"provider_cost_micros",
+                                     "provider_response_cost_micros",
                                      "claimed_provider_cost_micros"})
 
     def test_the_schema_class_agrees_with_that_set(self):
@@ -344,4 +349,5 @@ class TheRequestCarriesNoAmountTheCallerDecidesTest(SimpleTestCase):
                     if name.endswith("_micros")}
 
         self.assertEqual(declared, {"provider_cost_micros",
+                                    "provider_response_cost_micros",
                                     "claimed_provider_cost_micros"})

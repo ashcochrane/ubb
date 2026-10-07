@@ -472,8 +472,13 @@ def _recording(customer, declared, claim, task_id, position):
     supplier and the currency the Blueprint fills in, and the claim's sample
     values where the Blueprint asks the tenant's code for them."""
     # The currency a reported cost is declared in, where the Blueprint binds
-    # one: on an Event Type costed from the supplier's own figure. A complete
-    # Blueprint's reported cost always arrives on the call.
+    # one: on an Event Type costed from the supplier's own figure. The figure
+    # arrives on the call on the transport its mapping's source names — the
+    # caller's own, or one read off the provider's response (#570) — and each
+    # sample is passed on its own field, so the recording admits or refuses it
+    # exactly as it would a tenant's. A Blueprint whose figure is read off the
+    # response is not complete until the Code Builder renders the read (#583),
+    # and Verify runs only a complete one.
     mapping = (declared["reported_cost_mapping"]
                if declared["costing_method"] == COSTING_METHOD_REPORTED
                else None)
@@ -485,6 +490,7 @@ def _recording(customer, declared, claim, task_id, position):
         currency=(mapping["currency"] or None) if mapping else None,
         measurements=claim.measurements or None,
         provider_cost_micros=claim.provider_cost_micros,
+        provider_response_cost_micros=claim.provider_response_cost_micros,
         task_id=task_id)
 
 
