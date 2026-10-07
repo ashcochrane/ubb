@@ -142,6 +142,17 @@ disagree with the shipped bytes.
   collapsed onto the one ceiling word with the altitude in `stop_scope`, and
   the one customer-wide word split into the pool's and the floor's — and the
   server's stored rows were migrated, so no reader needs a legacy map.
+- **A supplier cost read off the provider's response has its own keyword
+  (#570).** `record_usage(..., provider_response_cost_micros=...)` — on
+  `UBBClient` too, and as a key of a `record_batch` event — carries the cost
+  you obtained from the provider's response, where your Event Type's last
+  publication declares a `provider_response` reported-cost mapping.
+  `provider_cost_micros` stays the cost you supply directly, for a
+  `caller_supplied` mapping. The route admits each only for its own source,
+  never both on one event, and refuses anything else with a 422 naming the
+  keyword that is admissible; the client holds no rule of its own. Either way
+  the cost comes back as `result.provider_cost_micros`, the one supplier cost
+  UBB resolved.
 
 ### Retained (not shims)
 

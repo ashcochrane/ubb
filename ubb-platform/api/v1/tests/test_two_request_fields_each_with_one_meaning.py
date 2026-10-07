@@ -75,7 +75,8 @@ from django.utils import timezone
 from api.v1 import metering_endpoints, verification
 from api.v1.integration_blueprint import _event_type_content
 from api.v1.schemas import (
-    IntegrationBlueprintVerificationRecordIn, RecordUsageRequest)
+    IntegrationBlueprintVerificationRecordIn, RecordUsageRequest,
+    RecordUsageResponse, UsageEventDetailOut, UsageEventOut)
 from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
@@ -1813,6 +1814,35 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
                 self.says(schema, "claimed_provider_cost_micros",
                           SAYS_THE_CLAIM_IS_NEVER_COGS)
         self.assertNotIn(FALSIFIED, json.dumps(self.spec))
+
+    def test_the_schema_classes_carry_the_same_wordings(self):
+        """The same phrases off the classes the contract is exported from, so a
+        wording changed in the source is red here before the spec is
+        regenerated — and the export's drift gate holds the two together."""
+        requests = (RecordUsageRequest,
+                    IntegrationBlueprintVerificationRecordIn)
+        responses = (RecordUsageResponse, UsageEventOut, UsageEventDetailOut)
+        for model in requests:
+            with self.subTest(model=model.__name__):
+                for field, phrases in (
+                        (CALLER_FIELD, SAYS_SUPPLIED_BY_THE_CALLER),
+                        (RESPONSE_FIELD, SAYS_OBTAINED_FROM_THE_RESPONSE)):
+                    for phrase in phrases:
+                        self.assertIn(phrase,
+                                      model.model_fields[field].description)
+        for model in responses:
+            with self.subTest(model=model.__name__):
+                for phrase in SAYS_RESOLVED:
+                    self.assertIn(
+                        phrase, model.model_fields[CALLER_FIELD].description)
+                self.assertNotIn(RESPONSE_FIELD, model.model_fields)
+        for model in (RecordUsageRequest, *responses):
+            with self.subTest(model=model.__name__, field="claim"):
+                claim = model.model_fields[
+                    "claimed_provider_cost_micros"].description
+                for phrase in SAYS_THE_CLAIM_IS_NEVER_COGS:
+                    self.assertIn(phrase, claim)
+                self.assertNotIn(FALSIFIED, claim)
 
     def test_no_response_carries_the_transport(self):
         """A transport, not a second cost fact: no response model gains it.
