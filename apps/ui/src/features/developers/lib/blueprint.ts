@@ -18,10 +18,10 @@ import {
   SOURCE_SHAPE_ID_LABEL_KEYS,
   UNIT_LABEL_KEYS,
   type ConfigurationObjectKind,
-  type DiagnosticCode,
   type IntegrationReadiness,
   type TaskTypeKind,
 } from "@/lib/vocabulary";
+import { isNotRenderableValue } from "ubb-codegen";
 
 import type {
   Blueprint,
@@ -207,10 +207,13 @@ function isSegmentList(value: unknown): value is string[] {
  * declares is shown as the document holds it — never coerced into a word or
  * a figure it does not say.
  */
+/** `notRenderable` is what `isNotRenderable` answers for the token: the
+ * Blueprint carries such a value unconfigured, and only its diagnostic says
+ * the tenant declared it. */
 export function shownValue(
   argument: BlueprintArgument,
   place: TokenPlace,
-  notRenderable = false,
+  notRenderable: boolean,
 ): Shown {
   if (argument.binding_class === "secret_reference") {
     return { kind: "secret", variable: argument.environment_variable ?? "" };
@@ -239,27 +242,12 @@ export function shownValue(
 }
 
 /**
- * The diagnostic a constant is reported with while this Code Builder version
- * cannot generate its declared value (#571). Typed by the registry's set, so
- * the day the ticket that renders a constant (#584) removes the member, this
- * stops compiling — and goes with it.
+ * Whether the token at `place` is a value this Code Builder version cannot
+ * yet generate (#571) — a valued constant, which the Blueprint carries
+ * unconfigured and which on its own would read as "not declared yet". The
+ * rule is `ubb-codegen`'s, so the page and the generated files read the
+ * diagnostic one way: `addresses` is its `notRenderableAddresses`.
  */
-const NOT_RENDERABLE: DiagnosticCode = "constant_measurement_not_renderable";
-
-/** Every value a Blueprint says this Code Builder version cannot yet
- * generate, as the diagnostic addresses it: `<event type>:<code>`. */
-export function notRenderableAddresses(blueprint: Blueprint): ReadonlySet<string> {
-  return new Set(
-    blueprint.diagnostics
-      .filter((diagnostic) => diagnostic.code === NOT_RENDERABLE)
-      .flatMap((diagnostic) => (diagnostic.key == null ? [] : [diagnostic.key])),
-  );
-}
-
-/** Whether the token at `place` is such a value: matched on the call's own
- * Event Type and the key as declared, never by decoding a token's name. The
- * Blueprint still carries it unconfigured, which on its own would read as
- * "not declared yet" — false of a value the tenant declared. */
 export function isNotRenderable(
   call: BlueprintCall,
   place: TokenPlace,
@@ -267,7 +255,12 @@ export function isNotRenderable(
 ): boolean {
   if (place.kind !== "keyed_value" || place.key === null) return false;
   const eventType = call.arguments.find((argument) => argument.name === "event_type")?.value;
-  return typeof eventType === "string" && addresses.has(`${eventType}:${place.key}`);
+  return isNotRenderableValue(
+    addresses,
+    typeof eventType === "string" ? eventType : null,
+    place.field,
+    place.key,
+  );
 }
 
 // ---------------------------------------------------------------------------

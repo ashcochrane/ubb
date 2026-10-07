@@ -305,7 +305,8 @@ def test_the_guard_refuses_a_constant_row_with_no_value_and_names_it():
             f"('Acme pre-launch')") in said
     assert "never invents one, and repairs nothing" in said
     assert "DELETE /api/v1/event-types/<key>/measurements/<code>" in said
-    assert "reset that tenant's pre-launch configuration" in said
+    assert "with the build BEFORE this migration's" in said
+    assert "POST /api/v1/sandbox/reset with keep_config false" in said
     assert Measurement.objects.get(pk=held.pk).constant_value is None
 
 

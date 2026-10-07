@@ -20,9 +20,10 @@ import { formatDate, formatMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 
 import type { Blueprint, BlueprintArgument, BlueprintCall } from "../api/types";
+import { notRenderableAddresses } from "ubb-codegen";
+
 import {
   isNotRenderable,
-  notRenderableAddresses,
   placesOf,
   screenFor,
   shownValue,

@@ -73,8 +73,12 @@ export function LifecycleScaffold({ blueprint }: { blueprint: Blueprint }) {
         </ol>
         {blueprint.diagnostics.length > 0 && (
           <div className="space-y-1">
-            <p className="text-[12px] font-medium text-text-primary">What must be configured</p>
-            <ul aria-label="What must be configured" className="list-disc pl-5 text-[12px] text-text-secondary">
+            {/* The generated file's own words for the same list. Not "what must
+                be configured": a valued constant this Code Builder version
+                cannot yet generate is reported here too (#571), and nothing in
+                its declaration is to change. */}
+            <p className="text-[12px] font-medium text-text-primary">Reported against this integration</p>
+            <ul aria-label="Reported against this integration" className="list-disc pl-5 text-[12px] text-text-secondary">
               {blueprint.diagnostics.map((diagnostic, index) => (
                 <li key={`${diagnostic.code}:${index}`}>{diagnosticCodeLabel(diagnostic.code)}</li>
               ))}

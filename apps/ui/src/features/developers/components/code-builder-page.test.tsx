@@ -238,11 +238,6 @@ describe("the Blueprint stage", () => {
       "constant_measurement_not_renderable",
     ]);
     expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
-    // And the constant's own token says the same, never "Not declared yet".
-    const constantRow = stage("Blueprint").querySelector<HTMLElement>('[data-token="measurements.flat_fee"]');
-    if (constantRow === null) throw new Error("the constant's token is not shown");
-    expect(within(constantRow).getByText(/Valid platform configuration\. This Code Builder version cannot yet generate its use\./)).toBeInTheDocument();
-    expect(within(constantRow).queryByText("Not declared yet")).toBeNull();
     expect(blocks).toHaveLength(withARequest.length);
     for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;
@@ -270,6 +265,21 @@ describe("the Blueprint stage", () => {
     fireEvent.click(copy);
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
     expect(writeText.mock.calls[0]?.[0]).toMatch(/^# operation_id = "api_v1_[a-z_]+"\n(PUT|POST|PATCH) \/api\/v1\//);
+  });
+
+  it("shows a valued constant's token as declared and not yet generable, never as not declared", async () => {
+    // #571: the Blueprint carries the constant unconfigured; its diagnostic
+    // says the tenant declared it and only this Code Builder version lacks
+    // something, and the token's own row says the same.
+    renderCodeBuilder(BLOCKED);
+    await resolved(/^Blocked$/);
+    const row = stage("Blueprint").querySelector<HTMLElement>('[data-token="measurements.flat_fee"]');
+    if (row === null) throw new Error("the constant's token is not shown");
+
+    expect(
+      within(row).getByText("Valid platform configuration. This Code Builder version cannot yet generate its use."),
+    ).toBeInTheDocument();
+    expect(within(row).queryByText("Not declared yet")).toBeNull();
   });
 
   it("names what each kind's limits can announce, and where to subscribe", async () => {
@@ -504,7 +514,7 @@ describe("where an integration starts", () => {
     }
     expect(within(start).getByText("UBB_API_KEY")).toBeInTheDocument();
     expect(within(start).getByText("UBB_BASE_URL")).toBeInTheDocument();
-    const missing = within(start).getByRole("list", { name: "What must be configured" });
+    const missing = within(start).getByRole("list", { name: "Reported against this integration" });
     expect(within(missing).getByText(diagnosticCodeLabel("task_type_not_selected"))).toBeInTheDocument();
     expect(within(missing).getByText(diagnosticCodeLabel("event_type_not_selected"))).toBeInTheDocument();
   });

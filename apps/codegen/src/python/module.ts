@@ -54,6 +54,8 @@ import {
   factOfField,
   literalOf,
   notWritten,
+  said,
+  SAID_OF,
   type Call,
   type Entry,
   type Field,
@@ -101,8 +103,9 @@ function notConfigured(plan: Plan, uses: Uses, name: string): string {
   return `${plan.internal.notConfigured}(${pyString(name)})`;
 }
 
-/** A declared value this renderer cannot yet write (#571), in its place as a
- * call that raises saying so — never as one that calls it missing. */
+/** A declared value this Code Builder version cannot yet generate (#571), in
+ * its place as a call that raises saying so — never as one that calls it
+ * missing. */
 function notRenderable(plan: Plan, uses: Uses, name: string): string {
   uses.notReady = true;
   uses.notRenderable = true;
@@ -227,13 +230,12 @@ function entryLines(plan: Plan, uses: Uses, call: Call, field: KeyedField): stri
 function guard(plan: Plan, uses: Uses, call: Call): string[] {
   if (call.readiness === "complete") return [];
   uses.notReady = true;
-  // Each value the call is written without, said as what is true of it: one
-  // nothing configures, or one the tenant declared and this renderer cannot
-  // yet write. The sentence is the catalogue's, made here, so the helper
-  // that raises carries no claim of its own about why.
+  // Each value the Blueprint leaves the call without, said as what is true
+  // of it: one nothing configures, or one the tenant declared and this Code
+  // Builder version cannot yet generate. The sentence is made here, so the
+  // helper that raises states no reason of its own.
   const reasons = notWritten(call)
-    .map(({ name, why }) =>
-      `, ${pyString(`${name} ${why === "unconfigured" ? MESSAGES.notConfigured : MESSAGES.notRenderable}.`)}`)
+    .map((value) => `, ${pyString(said(value))}`)
     .join("");
   return [
     ...asComments(COMMENTS.notReadyCall, INDENT),
@@ -398,7 +400,7 @@ function client(plan: Plan): string[] {
 }
 
 function notReadyHelpers(plan: Plan, uses: Uses): string[] {
-  const { notReady, notConfigured: unset, notRenderable: unwritable } = plan.internal;
+  const { notReady, notConfigured: unset, notRenderable: unrenderable } = plan.internal;
   const error = PYTHON.notReadyError;
   return [
     ...asComments(COMMENTS.notReady),
@@ -412,10 +414,10 @@ function notReadyHelpers(plan: Plan, uses: Uses): string[] {
     `${INDENT.repeat(2)}f"{operation} ({readiness}) ${MESSAGES.notReady}{detail}"`,
     `${INDENT})`,
     ...(uses.notConfigured
-      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${MESSAGES.notConfigured}.")`]
+      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.unconfigured}.")`]
       : []),
     ...(uses.notRenderable
-      ? ["", "", `def ${unwritable}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${MESSAGES.notRenderable}.")`]
+      ? ["", "", `def ${unrenderable}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.not_renderable}.")`]
       : []),
   ];
 }

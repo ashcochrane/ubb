@@ -14,7 +14,6 @@ import {
   copyActionLabel,
   fixFor,
   isNotRenderable,
-  notRenderableAddresses,
   placesOf,
   remediationText,
   roleOf,
@@ -25,6 +24,7 @@ import {
   TERMINAL_STOP_EVENTS,
 } from "./blueprint";
 import { diagnosticCodeLabel } from "./code-builder-words";
+import { notRenderableAddresses } from "ubb-codegen";
 
 // ---------------------------------------------------------------------------
 // Hand-built tokens, for the cases no platform-written fixture holds. A
@@ -151,7 +151,7 @@ describe("where a token sits", () => {
 
 describe("how a token's value is shown", () => {
   const show = (argument: BlueprintArgument, call = aCall(argument)) =>
-    shownValue(argument, placesOf(call)[call.arguments.indexOf(argument)] ?? { kind: "field", field: argument.name });
+    shownValue(argument, placesOf(call)[call.arguments.indexOf(argument)] ?? { kind: "field", field: argument.name }, false);
 
   it("shows a credential as the variable that holds it, never a value", async () => {
     const blueprint = await loadBlueprintFixture("calculated-cost");
@@ -193,10 +193,15 @@ describe("how a token's value is shown", () => {
     expect(shownAt("measurements.flat_fee")).toEqual({ kind: "not_renderable" });
     // The quantity beside it is the caller's, and is shown as that.
     expect(shownAt("measurements.searches")).toEqual({ kind: "parameter", parameter: "searches" });
-    // Without the diagnostic, the same token reads as it did before #571.
-    const unaddressed = record?.arguments.find((argument) => argument.name === "measurements.flat_fee");
-    const place = places[record?.arguments.findIndex((argument) => argument.name === "measurements.flat_fee") ?? -1];
-    expect(record && unaddressed && place && isNotRenderable(record, place, new Set())).toBe(false);
+    // Addressed to another Event Type's quantity of the same code, the token
+    // reads as it did before #571: the match needs the Event Type too.
+    const at = record?.arguments.findIndex((argument) => argument.name === "measurements.flat_fee") ?? -1;
+    const token = record?.arguments[at];
+    const place = places[at];
+    const elsewhere = new Set(["another.call:flat_fee"]);
+    const marked = record && place ? isNotRenderable(record, place, elsewhere) : undefined;
+    expect(marked).toBe(false);
+    expect(token && place ? shownValue(token, place, marked === true) : undefined).toEqual({ kind: "unconfigured" });
   });
 
   it("words a fact through its registry concept", () => {

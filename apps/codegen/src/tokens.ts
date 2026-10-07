@@ -44,6 +44,7 @@ import {
   type IntegrationReadiness,
   type Json,
 } from "./blueprint.ts";
+import { MESSAGES } from "./catalogue.ts";
 
 /** The fields of a request that hold an object of declared keys. */
 export const KEYED_FIELDS: readonly string[] = ["grouping_fields", "measurements"];
@@ -62,11 +63,11 @@ export interface Unconfigured {
 }
 
 /**
- * A literal the tenant HAS configured, which this version of the renderer
- * cannot yet write (#571): a constant quantity's declared value. The
- * Blueprint carries it unconfigured and reports why, and `readLifecycle`
- * reads that diagnostic back onto the value, so no file calls a declared
- * value missing. The ticket that renders a constant (#584) removes it.
+ * A literal the tenant HAS configured, which this Code Builder version cannot
+ * yet generate (#571): a constant quantity's declared value. The Blueprint
+ * carries it unconfigured and reports why, and `readLifecycle` reads that
+ * diagnostic back onto the value, so no file calls a valued constant
+ * missing. The ticket that renders a constant (#584) removes it.
  */
 export interface NotRenderable {
   readonly kind: "not_renderable";
@@ -320,9 +321,11 @@ export interface NotWritten {
   readonly why: (Unconfigured | NotRenderable)["kind"];
 }
 
-/** Every token of a call this file cannot write a value for, by name and in
- * the order the call names them: one nothing configures, or one this
- * renderer cannot yet write. */
+/** Every value the Blueprint leaves a call without, by name and in the
+ * order the call names them: one nothing configures, or one this Code
+ * Builder version cannot yet generate. A target may write further values as
+ * calls that raise — a shell file cannot read a Python object off a
+ * response — and its own plan says what it says of those. */
 export function notWritten(call: Call): NotWritten[] {
   const found: NotWritten[] = [];
   for (const field of call.fields) {
@@ -340,6 +343,18 @@ export function notWritten(call: Call): NotWritten[] {
     }
   }
   return found;
+}
+
+/** What a not-ready call says of a value it is written without, by why: the
+ * catalogue's sentence, owned here once for both targets. */
+export const SAID_OF: Readonly<Record<NotWritten["why"], string>> = {
+  unconfigured: MESSAGES.notConfigured,
+  not_renderable: MESSAGES.notRenderable,
+};
+
+/** The sentence a not-ready call says of one value it is written without. */
+export function said({ name, why }: NotWritten): string {
+  return `${name} ${SAID_OF[why]}.`;
 }
 
 /** The parameters a call asks for, each once, in the order first named. */

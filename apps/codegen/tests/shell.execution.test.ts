@@ -1384,6 +1384,42 @@ ls
     expect(ran.requests).toEqual([]);
   });
 
+  it("prints a name it cannot yet generate over whatever the name holds, and runs none of it", () => {
+    // The case above, with the diagnostic renamed too: the quantity is then
+    // a valued constant this version cannot generate (#571), and its name
+    // reaches the refusal through that sentence instead.
+    const key = "it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\n'; touch made-by-a-quote; '";
+    const blueprint = fixture("shell-blocked");
+    for (const argument of everyArgument(blueprint)) {
+      if (argument.name === "measurements" && argument.value === "flat_fee") argument.value = key;
+      if (argument.name.startsWith("measurements.flat_fee")) {
+        argument.name = argument.name.replace("measurements.flat_fee", `measurements.${key}`);
+      }
+    }
+    for (const diagnostic of blueprint.diagnostics) {
+      if (diagnostic.key === "chat.completion:flat_fee") diagnostic.key = `chat.completion:${key}`;
+    }
+    const files = render(blueprint);
+
+    expect(Object.values(parsed(files)).filter((refusal) => refusal !== null)).toEqual([]);
+    const ran = runShell(
+      files,
+      `${SOURCE}
+ubb_record_chat_completion customer_id=c idempotency_key=e task_id=t response=r.json
+printf 'status=%s\\n' "$?"
+ls
+`,
+    );
+
+    expect(said(ran)).toEqual({ status: String(SHELL_EXIT.notConfigured.status) });
+    expect(ran.stderr).toContain(
+      "measurements.it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\\u000a'; touch made-by-a-quote; ' " +
+        `${MESSAGES.notRenderable}.`,
+    );
+    expect(ran.stdout).not.toMatch(/made-by/);
+    expect(ran.requests).toEqual([]);
+  });
+
   it("refuses the record a shell file cannot read the response of, and runs the rest", () => {
     const ran = runShell(
       rendered("shell-unreadable-shape"),

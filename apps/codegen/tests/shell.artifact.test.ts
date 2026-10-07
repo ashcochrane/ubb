@@ -702,7 +702,7 @@ describe("the shapes a value takes in a shell file", () => {
     // NOT a Blueprint the routes answered: the shell-unreadable-shape fixture
     // with its verdicts changed to complete. A shell file still cannot read a
     // Python library's object, so the call still refuses, naming the values
-    // and saying of each why it has none.
+    // in the form #578 gave a value this target cannot read: unconfigured.
     const blueprint = fixture("shell-unreadable-shape");
     blueprint.readiness = "complete";
     for (const call of blueprint.calls) call.readiness = "complete";

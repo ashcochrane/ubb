@@ -57,7 +57,7 @@ import { asComments } from "../comments.ts";
 import { headerText } from "../header.ts";
 import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
-import { factOfField } from "../tokens.ts";
+import { factOfField, said, SAID_OF } from "../tokens.ts";
 import {
   routeWith,
   type BodyField,
@@ -114,13 +114,13 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
   if (needs.has(JQ.notConfigured)) {
     lines.push(
       `def ${JQ.notConfigured}($name):`,
-      `${I1}error($name + ${jqString(` ${MESSAGES.notConfigured}.`)});`,
+      `${I1}error($name + ${jqString(` ${SAID_OF.unconfigured}.`)});`,
     );
   }
   if (needs.has(JQ.notRenderable)) {
     lines.push(
       `def ${JQ.notRenderable}($name):`,
-      `${I1}error($name + ${jqString(` ${MESSAGES.notRenderable}.`)});`,
+      `${I1}error($name + ${jqString(` ${SAID_OF.not_renderable}.`)});`,
     );
   }
   if (needs.has(JQ.read)) {
@@ -699,21 +699,22 @@ function reportedCostHelpers(): string[] {
 // A call
 // ---------------------------------------------------------------------------
 
-/** Every token of a call the plan had no value to write for, by name. */
-/** Each value this file has no way to write, as the sentence that says why:
- * one nothing configures, or one the tenant declared and this renderer
- * cannot yet write (#571). The sentence is the catalogue's, made here, so the
- * helper that prints it carries no claim of its own about why. */
+/** Each value this file writes as a call that raises, as the sentence that
+ * says why. A value the plan wrote as unconfigured is said to have no
+ * configured value — nothing configures it, or (as since #578) it is read
+ * off a response this target cannot read, which the header's diagnostic
+ * names. One the tenant declared and this Code Builder version cannot yet
+ * generate (#571) is said to be exactly that. The sentence is made here, so
+ * the helper that prints it states no reason of its own. */
 function unwritten(call: CallPlan): string[] {
-  const said = (value: Value | null): string[] => {
-    if (value?.kind === "unconfigured") return [`${value.token} ${MESSAGES.notConfigured}.`];
-    if (value?.kind === "not_renderable") return [`${value.token} ${MESSAGES.notRenderable}.`];
-    return [];
-  };
+  const sentence = (value: Value | null): string[] =>
+    value?.kind === "unconfigured" || value?.kind === "not_renderable"
+      ? [said({ name: value.token, why: value.kind })]
+      : [];
   return call.body.flatMap((field) =>
     field.shape === "keyed"
-      ? field.members.flatMap((member) => said(member.value))
-      : said(field.value),
+      ? field.members.flatMap((member) => sentence(member.value))
+      : sentence(field.value),
   );
 }
 
@@ -723,12 +724,12 @@ function guard(uses: Uses, call: CallPlan): string[] {
   const reasons = unwritten(call);
   if (call.call.readiness === "complete" && reasons.length === 0) return [];
   uses.notReady = true;
-  const missing = reasons
+  const saying = reasons
     .map((reason) => ` ${shWord(reason)}`)
     .join("");
   return [
     ...asComments(COMMENTS.notReadyCall, I1),
-    `${I1}_ubb_not_ready ${shWord(call.call.operationId)} ${shWord(call.call.readiness)}${missing}`,
+    `${I1}_ubb_not_ready ${shWord(call.call.operationId)} ${shWord(call.call.readiness)}${saying}`,
     `${I1}return ${status(SHELL_EXIT.notConfigured)}`,
   ];
 }

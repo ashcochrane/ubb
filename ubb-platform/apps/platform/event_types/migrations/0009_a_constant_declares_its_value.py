@@ -76,13 +76,15 @@ def refuse_a_constant_without_a_value(apps, schema_editor):
             f"quantit{'y holds' if len(found) == 1 else 'ies hold'} no value, "
             f"and from this migration on a constant's value is part of its "
             f"declaration. UBB never invents one, and repairs nothing. Found: "
-            f"{'; '.join(found)}. For each, before migrating: withdraw the "
-            f"quantity (DELETE /api/v1/event-types/<key>/measurements/<code>) "
-            f"or re-declare it as another source kind, then publish its Event "
-            f"Type again (POST /api/v1/event-types/<key>/publish) so that no "
-            f"kept publication pins it — or reset that tenant's pre-launch "
-            f"configuration. Then migrate, and declare the constant with its "
-            f"value.")
+            f"{'; '.join(found)}. For each, with the build BEFORE this "
+            f"migration's (this build's routes read the column it adds): "
+            f"withdraw the quantity (DELETE "
+            f"/api/v1/event-types/<key>/measurements/<code>) or re-declare it "
+            f"as another source kind, then publish its Event Type again (POST "
+            f"/api/v1/event-types/<key>/publish) so that no kept publication "
+            f"pins it — or, for a sandbox tenant, reset its configuration "
+            f"(POST /api/v1/sandbox/reset with keep_config false). Then "
+            f"migrate, and declare the constant with its value.")
 
 
 class Migration(migrations.Migration):
