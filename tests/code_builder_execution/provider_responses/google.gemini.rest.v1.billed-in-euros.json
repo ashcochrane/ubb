@@ -1,0 +1,21 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [{"text": "Three sources agree the bridge opened in 1932."}],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1200,
+    "candidatesTokenCount": 340,
+    "totalTokenCount": 1540
+  },
+  "billing": {
+    "amountMinor": 125,
+    "currency": "EUR"
+  },
+  "modelVersion": "gemini-2.0-flash"
+}

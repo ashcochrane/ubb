@@ -68,6 +68,10 @@ describe("the snapshots", () => {
     "scaffold",
     "blocked",
     "secret-references",
+    // #583: a supplier's cost read off the response, with its currency pinned
+    // and with its currency read beside it.
+    "response-cost",
+    "response-cost-read-currency",
   ];
 
   it("cover every branch the ticket names", () => {

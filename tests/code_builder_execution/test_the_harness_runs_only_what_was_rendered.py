@@ -20,7 +20,10 @@ from _harness import (
     API_KEY, ARTIFACT, BASE_URL, CUSTOMER, MACHINE, Purpose,
     PROVIDER_RESPONSES, ArtifactEdited, NotRunnable, REPO_ROOT, Server, render,
     run_python, run_shell, write)
-from _scenarios import GEMINI, INPUT_TOKENS, OPENAI, OUTPUT_TOKENS, held_in
+from _scenarios import (
+    BILLED, BILLED_AS_A_FLOAT, BILLED_IN_EUROS, COST_PATH, EURO_COST_PATH,
+    GEMINI, INPUT_TOKENS,
+    OPENAI, OUTPUT_TOKENS, held_at, held_in)
 
 FIXTURES = REPO_ROOT / "apps" / "codegen" / "fixtures" / "blueprints"
 
@@ -181,5 +184,17 @@ def test_the_temporary_directory_a_shell_run_is_given_is_where_it_writes(
 def test_the_provider_responses_carry_what_the_scenarios_expect():
     for supplier in (OPENAI, GEMINI):
         assert held_in(supplier) == (INPUT_TOKENS, OUTPUT_TOKENS), supplier
+    # The billed responses are the web API's own, with what it cost beside
+    # the counts: the counts the scenarios read are the same, and the cost is
+    # money as JSON writes it — a decimal string and an integer, which every
+    # target reads, and the one written as a float, which none does.
+    billed = (BILLED, BILLED_IN_EUROS, BILLED_AS_A_FLOAT)
+    for response in billed:
+        assert tuple(held_at(response, path) for path in (
+            GEMINI.input, GEMINI.output)) == (INPUT_TOKENS, OUTPUT_TOKENS)
+    assert isinstance(held_at(BILLED, COST_PATH), str)
+    assert type(held_at(BILLED_IN_EUROS, EURO_COST_PATH)) is int
+    assert type(held_at(BILLED_AS_A_FLOAT, COST_PATH)) is float
     assert sorted(path.name for path in PROVIDER_RESPONSES.glob("*.json")) == sorted(
-        f"{supplier.shape}.json" for supplier in (OPENAI, GEMINI))
+        [f"{supplier.shape}.json" for supplier in (OPENAI, GEMINI)]
+        + [f"{response.fixture}.json" for response in billed])

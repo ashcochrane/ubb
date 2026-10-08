@@ -602,10 +602,10 @@ DECLARATION_STATUS_VALUES = frozenset({
 # are structural and leave a call a scaffold: no kind of work or no Event Type
 # selected, or one selected that is not declared. The rest either block a call
 # — a retired kind, a required Grouping Field that cannot be supplied, an Event
-# Type with nothing published, a cost or a quantity generated code cannot yet
-# carry, a response shape the target cannot read — or advise without blocking:
-# a declaration revised since it was published, or a path that looks
-# inconsistent with its declared shape.
+# Type with nothing published, a reported cost with nowhere to read it from, a
+# quantity generated code cannot yet carry, a response shape the target cannot
+# read — or advise without blocking: a declaration revised since it was
+# published, or a path that looks inconsistent with its declared shape.
 #
 # Declared in concepts/code-builder.yaml.
 
@@ -620,7 +620,6 @@ DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED = 'event_type_not_declared'
 DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED = 'event_type_not_published'
 DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION = 'event_type_revised_since_publication'
 DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING = 'reported_cost_mapping_missing'
-DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE = 'reported_cost_provider_response_not_renderable'
 DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE = 'constant_measurement_not_renderable'
 DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED = 'derived_measurement_unsupported'
 DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED = 'response_shape_not_declared'
@@ -639,7 +638,6 @@ DIAGNOSTIC_CODE_VALUES = frozenset({
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
     DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING,
-    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED,

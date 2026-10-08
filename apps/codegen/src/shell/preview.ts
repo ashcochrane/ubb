@@ -22,6 +22,11 @@ export interface Preview {
   readonly contents: string;
 }
 
+/** A value read off the response file by a declared path. */
+function at(parameter: { readonly name: string }, path: readonly string[]): string {
+  return `$${parameter.name}${path.map((segment) => `[${jqString(segment)}]`).join("")}`;
+}
+
 function shown(value: Value): string {
   switch (value.kind) {
     case "literal":
@@ -29,13 +34,20 @@ function shown(value: Value): string {
     case "parameter":
       return `$${value.parameter.name}`;
     case "read":
-      return `$${value.parameter.name}${value.path.map((segment) => `[${jqString(segment)}]`).join("")}`;
+      return at(value.parameter, value.path);
     case "unconfigured":
       return `not_configured(${jqString(value.token)})`;
     case "not_renderable":
       return `not_renderable(${jqString(value.token)})`;
     case "cost":
       return `to_micros($${value.parameter.name}, ${jqString(value.representation)}, ${jqString(value.declared)})`;
+    case "response_cost":
+      return (
+        `to_micros(${at(value.parameter, value.path)}, ${jqString(value.representation)}, ` +
+        `${value.currencyPath === null ? jqString(value.declared) : at(value.parameter, value.currencyPath)})`
+      );
+    case "response_currency":
+      return `pin_currency(${at(value.parameter, value.path)})`;
   }
 }
 

@@ -15,6 +15,7 @@ import {
 import type { BlueprintVerification, BlueprintVerificationRequest } from "../api/types";
 import {
   blankSamples,
+  CURRENCY_REQUIRED,
   GROUPING_FIELD_REQUIRED,
   groupingFieldsAsked,
   isWholeNumber,
@@ -66,7 +67,8 @@ function samplesFor(plan: SamplePlan, request: BlueprintVerificationRequest): Sa
           const sample = sent?.measurements?.[measurement.code];
           return sample === undefined ? "" : String(sample);
         }),
-        providerCost: sent?.provider_cost_micros == null ? "" : String(sent.provider_cost_micros),
+        providerCost: String(sent?.provider_cost_micros ?? sent?.provider_response_cost_micros ?? ""),
+        currency: sent?.currency ?? "",
       };
     }),
   };
@@ -127,12 +129,55 @@ describe("what Verify asks for, read off the Blueprint's tokens", () => {
         `measurements.${measurement.code}.required_for_costing`,
       ]);
     }
-    expect(record?.reportsCost).toBe(false);
+    expect(record?.costField).toBeNull();
   });
 
-  it("asks for a supplier cost only where the call reports one", async () => {
-    expect((await planOf("reported-cost")).records.map((record) => record.reportsCost)).toEqual([true]);
-    expect((await planOf("calculated-cost")).records.map((record) => record.reportsCost)).toEqual([false]);
+  it("asks for a supplier cost only where the call reports one, on the field it reports it on", async () => {
+    expect((await planOf("reported-cost")).records.map((record) => record.costField)).toEqual([
+      "provider_cost_micros",
+    ]);
+    // #583: a cost generated code reads off the provider's response.
+    expect((await planOf("response-cost")).records.map((record) => record.costField)).toEqual([
+      "provider_response_cost_micros",
+    ]);
+    expect((await planOf("calculated-cost")).records.map((record) => record.costField)).toEqual([null]);
+  });
+
+  it("sends a cost read off the response on its own field, and never on the caller's", async () => {
+    const plan = await planOf("response-cost");
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, providerCost: " 0 " }));
+
+    // A cost of zero is a cost, and is sent.
+    expect(verificationRequestOf(plan, samples).records).toEqual([
+      { event_type: "grounded.search", measurements: {}, provider_response_cost_micros: 0 },
+    ]);
+  });
+
+  it("asks for a currency only where the call reads it off the response", async () => {
+    // Owner review of #608: the Blueprint binds `currency` at run time there,
+    // so it is a sample; a pinned currency is the Blueprint's own.
+    expect((await planOf("response-cost-read-currency")).records.map((record) => record.readsCurrency)).toEqual([
+      true,
+    ]);
+    for (const name of ["response-cost", "reported-cost", "calculated-cost"]) {
+      expect((await planOf(name)).records.map((record) => record.readsCurrency), name).toEqual([false]);
+    }
+  });
+
+  it("sends the currency sample as the event's currency, and only where the call reads one", async () => {
+    const reads = await planOf("response-cost-read-currency");
+    const samples = blankSamples(reads);
+    samples.records = samples.records.map((record) => ({ ...record, providerCost: "125", currency: " eur " }));
+
+    expect(verificationRequestOf(reads, samples).records).toEqual([
+      { event_type: "billed.search", measurements: {}, provider_response_cost_micros: 125, currency: "eur" },
+    ]);
+
+    const pinned = await planOf("response-cost");
+    const typed = blankSamples(pinned);
+    typed.records = typed.records.map((record) => ({ ...record, providerCost: "4200", currency: "eur" }));
+    expect(verificationRequestOf(pinned, typed).records[0]).not.toHaveProperty("currency");
   });
 
   // A key's token NAME is encoded; its VALUE is the key. A key read back out
@@ -180,6 +225,9 @@ describe("the request the samples make", () => {
       "direct-task-events-partial",
       "explicit-subtasks",
       "reported-cost",
+      "response-cost",
+      "response-cost-foreign-currency",
+      "response-cost-read-currency",
     ]);
   });
 
@@ -188,9 +236,14 @@ describe("the request the samples make", () => {
   // the committed contract the console is built from, not to a list here.
   it("posts only fields the Verify request publishes", async () => {
     const requests = await Promise.all(
-      ["reported-cost", "explicit-subtasks"].map(async (name) => {
-        const plan = await planOf(name);
-        const fixture = await loadVerificationFixture(name);
+      [
+        ["reported-cost", "reported-cost"],
+        ["response-cost", "response-cost"],
+        ["response-cost-read-currency", "response-cost-read-currency"],
+        ["explicit-subtasks", "explicit-subtasks"],
+      ].map(async ([blueprint, answered]) => {
+        const plan = await planOf(blueprint!);
+        const fixture = await loadVerificationFixture(answered!);
         return verificationRequestOf(plan, samplesFor(plan, fixture.request));
       }),
     );
@@ -202,8 +255,12 @@ describe("the request the samples make", () => {
       for (const key of Object.keys(body)) expect(request).toContain(key);
     }
     for (const key of sent) expect(record).toContain(key);
-    // Not vacuous: between them the two send every field a record can carry.
-    expect([...sent].sort()).toEqual(["event_type", "measurements", "provider_cost_micros", "subtask_type"]);
+    // Not vacuous: between them the four send every field a record can carry.
+    expect([...sent].sort()).toEqual(record.sort());
+    expect([...sent].sort()).toEqual([
+      "currency", "event_type", "measurements", "provider_cost_micros", "provider_response_cost_micros",
+      "subtask_type",
+    ]);
   });
 
   it("sends nothing for a blank sample, and trims what it sends", async () => {
@@ -307,6 +364,21 @@ describe("what the form refuses to send", () => {
     const plan = await planOf("reported-cost");
 
     expect(sampleProblems(plan, blankSamples(plan))).toEqual([]);
+  });
+
+  it("requires a currency sample where the call reads one, and judges nothing else of it", async () => {
+    const plan = await planOf("response-cost-read-currency");
+    const samples = blankSamples(plan);
+
+    expect(sampleProblems(plan, samples)).toEqual([
+      { path: ["records", 0, "currency"], message: CURRENCY_REQUIRED },
+    ]);
+    // Whether UBB admits a currency is the recording's rule, on the server
+    // (#583 D1): a foreign code and an unknown one are both sent.
+    for (const currency of ["eur", "xyz", "usd"]) {
+      samples.records = samples.records.map((record) => ({ ...record, currency }));
+      expect(sampleProblems(plan, samples), currency).toEqual([]);
+    }
   });
 
   it("refuses to run nothing", async () => {
@@ -467,6 +539,13 @@ describe("which Blueprint and which request an answer belongs to", () => {
       }),
     ],
     ["an Event Type left out", (request) => ({ ...request, records: request.records.slice(0, 0) })],
+    [
+      "a supplier cost read off the response",
+      (request) => ({
+        ...request,
+        records: request.records.map((record) => ({ ...record, provider_response_cost_micros: 4200 })),
+      }),
+    ],
   ])("is not the current one once %s on screen differs from what was sent", async (_edit, change) => {
     const sent = await sentFor("calculated-cost");
     const blueprint = await loadBlueprintFixture("calculated-cost");

@@ -75,6 +75,22 @@ must have a sample in `grouping_fields`, and one without is refused before anyth
 invented value would match no rule pinned to a real one and report a gap the configuration does
 not have: the first build did exactly that, and review found it.
 
+*A supplier's cost read off the response (#583, 2026-10-08; owner's decision D3).* It is a runtime
+value too, and its sample is what generated code sends: the cost already read and converted, in
+micros, on the field generated code fills, `provider_response_cost_micros`. The request never
+carries a raw response, so Verify tests recording and costing and not the read or the conversion,
+which running the generated artifact tests.
+
+*And the currency read beside it (owner's review of #608, 2026-10-08).* Where the mapping reads
+the currency off the response as well, the Blueprint binds `currency` at run time, so it is a
+sample too: the resulting currency code, sent as the event's currency, as generated code would
+send it. It is required there and refused on any record whose currency the Blueprint does not
+bind at run time — a pinned currency is the Blueprint's own, and an Event Type with none sends the
+tenant's — exactly as a Grouping Field sample is (§4). Whether UBB admits it is the recording's
+own rule (#583 D1): a currency UBB holds that is not the tenant's is refused inside the run and is
+never verified. As first built, the run recorded the tenant's own currency in its place — a value
+the run made up — and could verify a configuration whose generated code UBB refuses.
+
 **The customer is the one value the run makes up, because who it is cannot move what the verdict
 proves.** No cost rule names a customer: a cost book has no customer column and no rule selector
 is a customer. The snapshot holds only rules every customer gets — a customer's own pricing book is
@@ -93,7 +109,9 @@ does not judge price (§4).
   this is #567's point 4 — the artifact's readiness catches it before execution.
 - **`422 validation_error`** for a `subtask_type` the Blueprint did not select, a
   `grouping_fields` key no kind of work it selected requires (it would be sent nowhere), or a
-  required Grouping Field with no sample (§3).
+  required Grouping Field with no sample (§3) — and, since #583, a record whose currency the
+  Blueprint reads at run time with no `currency` sample, or a `currency` sample on a record whose
+  currency it does not (§3).
 
 Everything after that is a **200**. A recording's verdict is read off its acknowledgement: a
 Measurement the Event Type requires for a complete cost that the recording did not carry
@@ -158,6 +176,8 @@ and says so.
 | §1 — and with no transaction around the request, the rollback is the transaction's own | same module — `TestOutsideAnyTransactionTheRunIsStillDiscarded`: `test_nothing_it_did_is_committed` |
 | §1 — nothing waits to be delivered, against an ordinary recording that does; no Redis store is asked; no key, no credential | same module — `test_nothing_it_did_waits_to_be_delivered`, `test_an_ordinary_recording_does_wait_to_be_delivered`, `test_it_touches_neither_the_live_counter_nor_the_admission_window`, `test_it_mints_no_key`, `test_no_response_carries_a_credential` |
 | §3 — a required Grouping Field's value is the request's sample, never made up; it is what a pinned rule matches | same module — `test_the_requests_grouping_value_is_the_one_the_work_is_started_with`, `test_a_missing_required_grouping_value_is_refused_and_never_made_up`, `test_a_subtask_kind_the_run_does_not_start_needs_no_value`, `test_a_rule_pinned_to_a_grouping_value_costs_only_for_that_value`, `test_a_grouping_value_no_selected_kind_requires_is_refused` |
+| §3 — a cost read off the response is a sample in micros on its own field: recorded and costed, zero a cost, the caller's field refused in the run (#583) | same module — `TestACostReadOffTheResponseIsVerifiedOnItsOwnField`: `test_the_sample_is_recorded_and_costed_and_the_blueprint_verified`, `test_a_cost_of_zero_is_a_cost`, `test_the_callers_field_is_refused_inside_the_run` |
+| §3, §4 — a currency read at run time is a sample, never made up: the tenant's verifies, a foreign one is the recording's refusal, a missing one is refused before anything is written, and one where the Blueprint reads none is refused (owner's review of #608) | same module — `test_a_currency_read_off_the_response_is_the_samples`, `test_a_foreign_currency_sample_is_the_recordings_refusal`, `test_a_missing_currency_sample_is_refused_and_never_made_up`, `test_a_currency_sample_where_none_is_read_at_run_time_is_refused` |
 | §3 — the made-up customer decides no cost and holds no deal | same module — `TestTheCustomerItMakesUpDecidesNoCost`: `test_a_customers_own_price_is_not_in_the_snapshot`, `test_no_cost_rule_can_name_a_customer` |
 | §4 — `verified` speaks for the whole Blueprint, and for cost rather than price | same module — `TestVerifiedSpeaksForTheWholeBlueprint`: `test_a_selected_event_type_left_out_keeps_it_false`, `test_exercising_every_selected_event_type_makes_it_true`, `test_an_unpriced_recording_still_verifies_because_the_verdict_is_about_cost`; and `test_a_subtask_kind_the_run_does_not_start_needs_no_value` |
 | §2 — the real acknowledgement, the unit of work and a Subtask | same module — `test_it_records_and_answers_the_real_acknowledgement`, `test_the_unit_of_work_is_started_with_the_required_values_and_delivered`, `test_a_subtask_is_started_recorded_under_and_closed` |
@@ -173,7 +193,9 @@ and says so.
 
 ## Consequences
 
-The console's Verify stage (#581) posts `records` and a sample for every required Grouping Field,
+The console's Verify stage (#581) posts `records` (since #583 with a supplier's cost read off the
+response as a sample in micros, and the currency read beside it as a sample code, saying that
+running the generated files tests the read) and a sample for every required Grouping Field,
 shows `unexercised_event_types` / `unexercised_subtask_types` and never presents a partial run as
 the Blueprint verified, says `verified` is about recording and costing rather than price, and renders the answer as given: an
 acknowledgement's null amount is no figure, and every id in it names a record that no longer

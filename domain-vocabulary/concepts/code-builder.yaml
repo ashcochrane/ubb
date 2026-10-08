@@ -139,7 +139,7 @@ configuration_object_kind:
 diagnostic_code:
   kind: closed
   # A VERSIONED CLOSED SET, NOT A FOREVER-FINAL ONE (owner ruling of
-  # 2026-10-02 on #576). These seventeen are the set as it stands: each is a
+  # 2026-10-02 on #576). These sixteen are the set as it stands: each is a
   # condition the resolver actually reports, none is provisional (ADR-0007 §3)
   # and none is reserved for later. The set is CLOSED — a consumer may switch
   # over it exhaustively — and it CHANGES, deliberately:
@@ -151,12 +151,10 @@ diagnostic_code:
   # one something does. The Blueprint's own tests hold both directions: the
   # codes resolutions report are exactly the set the contract publishes.
   #
-  # What is already expected to change it. The ticket that renders a cost read
-  # off a supplier's response (#583) REMOVES
-  # `reported_cost_provider_response_not_renderable`. The ticket that makes a
-  # kind sold at one agreed price ready or not ADDS the member that says its
-  # price is missing. `derived_measurement_unsupported` is a stated
-  # limitation with nothing designed to lift it.
+  # What is already expected to change it. The ticket that makes a kind sold
+  # at one agreed price ready or not ADDS the member that says its price is
+  # missing. `derived_measurement_unsupported` is a stated limitation with
+  # nothing designed to lift it.
   #
   # Changed by this rule once already (#571, owner confirmation of 2026-10-06
   # on #571). A constant quantity is now declared WITH its value and refused
@@ -169,13 +167,19 @@ diagnostic_code:
   # constant's value (#584) REMOVES it.
   #
   # And a second time (#570, owner ruling of 2026-10-07 on #570). A cost read
-  # off the supplier's response now has a truthful request field of its own,
+  # off the supplier's response got a truthful request field of its own,
   # `provider_response_cost_micros`, so a `provider_response` reported-cost
-  # mapping is valid platform configuration that this Code Builder version
-  # cannot yet generate the read for. The member that said it was
+  # mapping became valid platform configuration that the Code Builder did not
+  # yet generate the read for. The member that said it was
   # unsupported, `reported_cost_provider_response_unsupported`, was REMOVED,
   # and `reported_cost_provider_response_not_renderable` ADDED in its place,
   # named the same way and for the same kind of reason.
+  #
+  # And a third time (#583, 2026-10-08). Generated code now reads a supplier's
+  # cost off the response and sends it on `provider_response_cost_micros`, so
+  # a `provider_response` mapping resolves complete on every target that can
+  # read its response shape, and `reported_cost_provider_response_not_renderable`
+  # was REMOVED with no successor: the state it named is one nothing produces.
   #
   # Named for the STATE of a declaration, `<object>_<what is true of it>`,
   # never for the ticket that will change it. A diagnostic carries no prose —
@@ -186,8 +190,9 @@ diagnostic_code:
     are structural and leave a call a scaffold: no kind of work or no Event
     Type selected, or one selected that is not declared. The rest either block
     a call — a retired kind, a required Grouping Field that cannot be supplied,
-    an Event Type with nothing published, a cost or a quantity generated code
-    cannot yet carry, a response shape the target cannot read — or advise
+    an Event Type with nothing published, a reported cost with nowhere to read
+    it from, a quantity generated code cannot yet carry, a response shape the
+    target cannot read — or advise
     without blocking: a declaration revised since it was published, or a path
     that looks inconsistent with its declared shape.
   values:
@@ -202,7 +207,6 @@ diagnostic_code:
     - event_type_not_published
     - event_type_revised_since_publication
     - reported_cost_mapping_missing
-    - reported_cost_provider_response_not_renderable
     - constant_measurement_not_renderable
     - derived_measurement_unsupported
     - response_shape_not_declared

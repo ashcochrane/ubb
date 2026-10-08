@@ -42,9 +42,11 @@ import { shownValue } from "../lib/blueprint";
 import {
   altitudeLabel,
   CALL_TITLES,
+  CURRENCY_SAMPLE,
   diagnosticCodeLabel,
   readinessLabel,
   STALE_RESULT_WARNING,
+  SUPPLIER_COST_SAMPLE,
 } from "../lib/code-builder-words";
 import {
   blankSamples,
@@ -376,10 +378,10 @@ function SampleForm({
               )}
             </Field>
           ))}
-          {record.reportsCost && (
+          {record.costField !== null && (
             <Field
-              label="Supplier cost, in micros"
-              hint="What your code reports this call cost, converted to micros as it sends it; leave it blank to send none."
+              label={SUPPLIER_COST_SAMPLE[record.costField].label}
+              hint={SUPPLIER_COST_SAMPLE[record.costField].hint}
               error={errors.records?.[index]?.providerCost?.message}
             >
               {(id) => (
@@ -389,6 +391,24 @@ function SampleForm({
                   inputMode="numeric"
                   className={CONTROL}
                   {...form.register(`records.${index}.providerCost`)}
+                />
+              )}
+            </Field>
+          )}
+          {record.readsCurrency && (
+            <Field
+              label={CURRENCY_SAMPLE.label}
+              hint={CURRENCY_SAMPLE.hint}
+              error={errors.records?.[index]?.currency?.message}
+            >
+              {(id) => (
+                <input
+                  id={id}
+                  type="text"
+                  maxLength={3}
+                  autoComplete="off"
+                  className={CONTROL}
+                  {...form.register(`records.${index}.currency`)}
                 />
               )}
             </Field>

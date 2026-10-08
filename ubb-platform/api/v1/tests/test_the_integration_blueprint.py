@@ -443,7 +443,9 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
         for blueprint, target, sdk in ((for_python, "python_sdk", 3),
                                        (for_shell, "shell_http", None)):
             assert blueprint["schema_version"] == 1
-            assert blueprint["renderer_contract_version"] == 1
+            # 2 since #583: a runtime value may carry a `source_path` fact on a
+            # field of its own, which a contract-1 renderer would misread.
+            assert blueprint["renderer_contract_version"] == 2
             assert blueprint["target"] == target
             assert blueprint["sdk_major_version"] == sdk
 
@@ -535,6 +537,82 @@ class TestEachTokenHasItsOwnClass(_Routes):
         assert (currency["binding_class"], currency["value"]) == (
             "platform_known", "usd")
         assert blueprint["readiness"] == "complete"
+
+    @pytest.mark.parametrize("target", ["python_sdk", "shell_http"])
+    def test_a_cost_read_from_the_response_is_a_runtime_root_with_its_path(
+            self, target):
+        """A supplier's cost read off the response (#583) is the response
+        object itself, with the declared path and representation stated
+        beside it, on the field whose meaning is "obtained from the provider's
+        response" (#570). Every target that can read a JSON shape resolves it
+        complete, and the field that means "supplied by the caller" is never
+        filled with it."""
+        self._a_kind()
+        self._event_type(
+            shape=A_JSON_SHAPE, costing_method="reported", measurements={},
+            mapping={"source_kind": "provider_response",
+                     "amount_representation": "major_units_decimal",
+                     "source_path": ["cost", "total"], "currency": "usd"})
+
+        blueprint = self._complete(target=target)
+        record = _the_record(blueprint)
+        published = self._call("get", f"/api/v1/event-types/{EVENT}")
+
+        cost = _one(record, "provider_response_cost_micros")
+        assert (cost["binding_class"], cost["parameter_name"]) == (
+            "runtime_bound", "response")
+        assert (_literal(record, "provider_response_cost_micros.source_path"),
+                _literal(record,
+                         "provider_response_cost_micros.amount_representation"),
+                _literal(record, "currency")) == (
+            ["cost", "total"], "major_units_decimal", "usd")
+        # Every one of them read from the Event Type's publication, as a
+        # quantity and a caller's cost are.
+        for name in ("provider_response_cost_micros",
+                     "provider_response_cost_micros.source_path",
+                     "provider_response_cost_micros.amount_representation",
+                     "currency"):
+            assert _one(record, name)["provenance"] == {
+                "object_kind": "event_type", "key": EVENT,
+                "published_revision": published["published_revision"],
+                "published_at": published["published_at"]}, name
+        assert not [argument for argument in record["arguments"]
+                    if argument["name"].startswith("provider_cost_micros")]
+        assert _named(record, "currency.source_path") == []
+        assert (record["readiness"], blueprint["readiness"]) == (
+            "complete", "complete")
+        assert blueprint["diagnostics"] == []
+
+    @pytest.mark.parametrize("target", ["python_sdk", "shell_http"])
+    def test_a_currency_read_from_the_response_is_a_runtime_root_and_a_known_path(
+            self, target):
+        """Where the mapping reads the currency off the response too, the
+        request's own `currency` is the runtime value, read off the same
+        object by the declared `currency_path` — stated as the existing
+        `source_path` fact of that field, so no value-changing fact is added
+        (#583 D2). Nothing pins a currency of its own beside it."""
+        self._a_kind()
+        self._event_type(
+            shape=A_JSON_SHAPE, costing_method="reported", measurements={},
+            mapping={"source_kind": "provider_response",
+                     "amount_representation": "minor_units",
+                     "source_path": ["cost", "total"],
+                     "currency_path": ["cost", "currency"]})
+
+        blueprint = self._complete(target=target)
+        record = _the_record(blueprint)
+
+        currency = _one(record, "currency")
+        assert (currency["binding_class"], currency["parameter_name"],
+                currency["value"]) == ("runtime_bound", "response", None)
+        path = _one(record, "currency.source_path")
+        assert (path["binding_class"], path["value"]) == (
+            "platform_known", ["cost", "currency"])
+        assert _literal(record,
+                        "provider_response_cost_micros.amount_representation"
+                        ) == "minor_units"
+        assert blueprint["readiness"] == "complete"
+        assert blueprint["diagnostics"] == []
 
     def test_the_credential_is_a_reference_and_nothing_else_is(self):
         """Every call authenticates, and what it carries is the NAME of an
@@ -1051,6 +1129,33 @@ class TestAShapeTheTargetCannotReadIsBlocked(_Routes):
                     else ["response_shape_not_readable_by_target"])
         assert _codes(blueprint, "blocking") == expected
 
+    @pytest.mark.parametrize("shape, target, readiness", [
+        (A_PYTHON_SHAPE, "python_sdk", "complete"),
+        (A_PYTHON_SHAPE, "shell_http", "blocked"),
+        (A_JSON_SHAPE, "python_sdk", "complete"),
+        (A_JSON_SHAPE, "shell_http", "complete"),
+    ])
+    def test_a_cost_read_from_the_response_is_ready_where_its_shape_is_readable(
+            self, shape, target, readiness):
+        """Readiness per target (#184 §8): the cost is read off the response
+        like any quantity, so a shape a target cannot read blocks the call
+        there and only there — and for nothing else of the cost's own."""
+        self._a_kind()
+        self._event_type(
+            shape=shape, costing_method="reported", measurements={},
+            mapping={"source_kind": "provider_response",
+                     "amount_representation": "micros",
+                     "source_path": ["usage", "cost"], "currency": "usd"})
+
+        blueprint = self._complete(target=target)
+
+        assert blueprint["readiness"] == readiness
+        assert _codes(blueprint) == (
+            [] if readiness == "complete"
+            else ["response_shape_not_readable_by_target"])
+        assert _one(_the_record(blueprint), "provider_response_cost_micros")[
+            "parameter_name"] == "response"
+
     @pytest.mark.parametrize("target", ["python_sdk", "shell_http"])
     def test_a_custom_shape_is_blocked_on_every_target(self, target):
         """No renderer defines how to traverse a tenant's own wrapper yet, and
@@ -1134,13 +1239,13 @@ class TestNoValueIsInvented(_Routes):
         assert (blocker["severity"], blocker["key"]) == (
             "blocking", f"{EVENT}:total")
 
-    def test_a_cost_read_from_the_response_is_blocked_and_fills_no_field(self):
-        """A cost read off the supplier's response has its own request field
-        since #570, and this Code Builder version cannot yet generate the read
-        (#583 renders it). So the call is blocked and carries no cost field —
-        least of all the one whose contract means the caller supplied it — and
-        the diagnostic offers no request, because the mapping is valid
-        configuration and nothing in it is the thing to change."""
+    def test_a_cost_read_from_the_response_fills_its_own_field_and_never_the_callers(
+            self):
+        """A cost read off the supplier's response is rendered since #583, on
+        its own request field (#570): the response is the runtime value, and
+        nothing is made up for it. The field whose contract means the caller
+        supplied the figure is never filled with it, and no code reports the
+        mapping as anything but what it is — valid, and complete."""
         self._a_kind()
         self._event_type(
             costing_method="reported", measurements={},
@@ -1152,16 +1257,52 @@ class TestNoValueIsInvented(_Routes):
         blueprint = self._complete()
         record = _the_record(blueprint)
 
-        assert record["readiness"] == "blocked"
-        assert not [argument for argument in record["arguments"]
-                    if argument["name"].startswith(("provider_cost_micros",
-                                                    "provider_response"))
-                    or argument["name"] == "currency"]
-        blocker = _diagnostic(
-            blueprint, "reported_cost_provider_response_not_renderable")
-        assert (blocker["severity"], blocker["object_kind"], blocker["key"],
-                blocker["field"], blocker["remediation_request"]) == (
-            "blocking", "reported_cost_mapping", EVENT, "source_kind", None)
+        assert record["readiness"] == "complete"
+        assert [argument["name"] for argument in record["arguments"]
+                if argument["name"].startswith(("provider_cost_micros",
+                                                "provider_response"))] == [
+            "provider_response_cost_micros",
+            "provider_response_cost_micros.source_path",
+            "provider_response_cost_micros.amount_representation"]
+        cost = _one(record, "provider_response_cost_micros")
+        assert (cost["value"], cost["parameter_name"]) == (None, "response")
+        assert blueprint["diagnostics"] == []
+
+    @pytest.mark.parametrize("cost_path, currency_path, advised", [
+        (["usage_metadata", "total_cost"], ["costCurrency"], ["source_path"]),
+        (["usageMetadata", "totalCost"], ["cost_currency"], ["currency_path"]),
+        (["usage_metadata", "total_cost"], ["cost_currency"],
+         ["source_path", "currency_path"]),
+        (["usageMetadata", "totalCost"], ["costCurrency"], []),
+    ])
+    def test_a_path_advisory_names_the_mappings_own_field(
+            self, cost_path, currency_path, advised):
+        """A path spelled against its shape's naming is advice, about the
+        mapping and naming the field the tenant really declared: the cost's
+        `source_path`, and the currency's `currency_path` — never a
+        `source_path` of the currency, which is only how the Blueprint states
+        the read (#583 D2). Each offers the request that declares the
+        mapping."""
+        self._a_kind()
+        self._event_type(
+            shape=A_JSON_SHAPE, costing_method="reported", measurements={},
+            mapping={"source_kind": "provider_response",
+                     "amount_representation": "micros",
+                     "source_path": cost_path, "currency_path": currency_path})
+
+        blueprint = self._complete()
+
+        advisories = [diagnostic for diagnostic in blueprint["diagnostics"]
+                      if diagnostic["code"] == "source_path_convention_mismatch"]
+        assert [diagnostic["field"] for diagnostic in advisories] == advised
+        for diagnostic in advisories:
+            assert (diagnostic["severity"], diagnostic["object_kind"],
+                    diagnostic["key"]) == (
+                "advisory", "reported_cost_mapping", EVENT)
+            request = diagnostic["remediation_request"]
+            assert (request["method"], request["route"]) == (
+                "PUT", f"/api/v1/event-types/{EVENT}/reported-cost-mapping")
+        assert blueprint["readiness"] == "complete"
 
 
 # ---------------------------------------------------------------------------
@@ -1894,12 +2035,12 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
     #: The codes reported over a declaration that is complete, where nothing in
-    #: the configuration is the thing to change (#571, #570): valid
-    #: configuration this Code Builder version cannot yet render. No request is
-    #: offered for one: the console words a request as the change an admin
-    #: makes.
-    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable",
-                         "reported_cost_provider_response_not_renderable"}
+    #: the configuration is the thing to change (#571): valid configuration
+    #: this Code Builder version cannot yet render. No request is offered for
+    #: one: the console words a request as the change an admin makes. (#570's
+    #: member for a cost read off the response left with #583, which renders
+    #: the read.)
+    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable"}
 
     def _every_remediation(self):
         """One Blueprint per situation, between them offering a request for
@@ -1954,12 +2095,11 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                       if d["code"] in self.NOTHING_TO_CHANGE) == sorted(
             [*self.NOTHING_TO_CHANGE] * 2)
         assert [d["remediation_request"] for d in diagnostics
-                if d["code"] in self.NOTHING_TO_CHANGE] == [None] * 4
+                if d["code"] in self.NOTHING_TO_CHANGE] == [None] * 2
         assert {d["code"] for d in diagnostics} >= {
             "event_type_not_declared", "event_type_not_published",
             "event_type_revised_since_publication",
             "reported_cost_mapping_missing",
-            "reported_cost_provider_response_not_renderable",
             "constant_measurement_not_renderable",
             "derived_measurement_unsupported",
             "response_shape_not_declared",

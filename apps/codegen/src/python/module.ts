@@ -21,17 +21,18 @@
  * THE DECLARED FACTS THIS TARGET ACTS ON, by the last segment of their name.
  * Every other fact is stated in a comment and changes nothing:
  *
- * - `source_path` under a keyed entry: the entry's value is read off the
- *   parameter by that path, and
- *   `response_shape_representation` on the call's Event Type says how — by
- *   subscript for JSON, by attribute for a Python object. A segment is only
- *   ever written as itself; one Python cannot spell as an attribute is
- *   reached with `getattr`, which changes the syntax and not the name. With
- *   no representation there is no way to read the path, and the value is
- *   written as a call that raises.
- * - `amount_representation` on a field: the parameter is a supplier's cost,
- *   converted to whole micros once, in the currency the call's `currency`
- *   field declares.
+ * - `source_path` under a keyed entry, or — since renderer contract 2 (#583)
+ *   — on a field of its own: the value is read off the parameter by that
+ *   path, and `response_shape_representation` on the call's Event Type says
+ *   how — by subscript for JSON, by attribute for a Python object. A segment
+ *   is only ever written as itself; one Python cannot spell as an attribute
+ *   is reached with `getattr`, which changes the syntax and not the name.
+ *   With no representation there is no way to read the path, and the value
+ *   is written as a call that raises. The fields read this way are a
+ *   supplier's cost and its currency; any other is refused.
+ * - `amount_representation` on a field: the value is a supplier's cost —
+ *   the caller's own, or one read off the response — converted to whole
+ *   micros once, in the currency the call's `currency` field pins or reads.
  * - `pricing_mode` on the kind of work: which sentence says what delivering
  *   the work does.
  */
@@ -78,7 +79,20 @@ interface Uses {
   notConfigured: boolean;
   notRenderable: boolean;
   reportedCost: boolean;
+  /** A cost the caller passes, which the comments speak to (#577). */
+  callerCost: boolean;
+  /** A supplier's cost, or its currency, read off the response (#583). */
+  responseRead: boolean;
+  /** A currency read off the response, which needs a helper of its own. */
+  currencyRead: boolean;
   attribute: boolean;
+}
+
+/** Which costs a file converts, which decides the words and helpers it
+ * carries beside the conversion. */
+export interface CostsConverted {
+  callerCost: boolean;
+  currencyRead: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,19 +181,75 @@ function entryValue(plan: Plan, uses: Uses, call: Call, entry: Entry): string | 
   return plain(plan, uses, entry.value);
 }
 
+/**
+ * A scalar field's value read off the parameter it names, by its declared
+ * `source_path` (renderer contract 2, #583): `undefined` where it declares
+ * none, and `null` where this target has no way to read the response's
+ * representation.
+ */
+function readOff(plan: Plan, uses: Uses, call: Call, field: ScalarField): string | null | undefined {
+  const path = factNamed(field.facts, FACT.sourcePath);
+  if (path === undefined) return undefined;
+  if (field.token.binding.kind !== "parameter") {
+    return refuse(`${field.name} declares a path and is not a value read at run time`);
+  }
+  uses.responseRead = true;
+  return traversal(
+    plan,
+    uses,
+    field.token.binding.name,
+    path,
+    factOfField(call, FIELD.eventType, FACT.responseRepresentation),
+  );
+}
+
+/** The currency a call's cost is converted in: the one it pins, the one read
+ * off the response, or none — which the helper then refuses. */
+function costCurrency(plan: Plan, uses: Uses, call: Call): string {
+  const { pinCurrency, readCurrency } = plan.internal;
+  const currency = call.fields.find(
+    (field): field is ScalarField => field.shape === "scalar" && field.name === FIELD.currency,
+  );
+  const read = currency === undefined ? undefined : readOff(plan, uses, call, currency);
+  if (read !== undefined) {
+    if (read === null) return notConfigured(plan, uses, currency!.token.name);
+    uses.currencyRead = true;
+    return `${pinCurrency}("", ${readCurrency}(${read}))`;
+  }
+  const declared = literalOf(call, FIELD.currency);
+  return `${pinCurrency}(${pyLiteral(typeof declared === "string" ? declared : "")}, None)`;
+}
+
 function scalarValue(plan: Plan, uses: Uses, call: Call, field: ScalarField): string {
   const representation = factNamed(field.facts, FACT.amountRepresentation);
+  const read = readOff(plan, uses, call, field);
   if (representation !== undefined && field.token.binding.kind === "parameter") {
     if (!(Object.values(AMOUNT_REPRESENTATION) as Json[]).includes(representation)) {
       refuse(`${String(representation)} is not an amount representation this target converts`);
     }
     uses.reportedCost = true;
-    const declared = literalOf(call, FIELD.currency);
+    if (read === null) return notConfigured(plan, uses, field.token.name);
+    if (read === undefined) uses.callerCost = true;
+    // A cost read off the response is refused as a float in words that say
+    // what to read instead; the conversion is the caller's cost's own.
+    const amount =
+      read === undefined ? field.token.binding.name : `${plan.internal.readAmount}(${read})`;
     return (
-      `${plan.internal.toMicros}(${field.token.binding.name}, ` +
-      `${pyLiteral(representation)}, ` +
-      `${plan.internal.pinCurrency}(${pyLiteral(typeof declared === "string" ? declared : "")}, None))`
+      `${plan.internal.toMicros}(${amount}, ${pyLiteral(representation)}, ` +
+      `${costCurrency(plan, uses, call)})`
     );
+  }
+  if (read !== undefined) {
+    // The one other value read off the response is the currency the cost
+    // beside it is in: pinned to a code UBB holds, and sent as the event's.
+    if (field.name !== FIELD.currency) {
+      refuse(
+        `${field.name} is read off the response, and this target reads only a ` +
+          `supplier's cost and its currency that way`,
+      );
+    }
+    uses.reportedCost = true;
+    return costCurrency(plan, uses, call);
   }
   return plain(plan, uses, field.token);
 }
@@ -321,10 +391,10 @@ function recordFunctions(plan: Plan, uses: Uses, record: RecordPlan): string[] {
     "stop_behavior",
     new Set([...record.parameters, record.recordedAt]),
   );
-  const readsAResponse = record.call.fields.some(
-    (field) =>
-      field.shape === "keyed" &&
-      field.entries.some((entry) => factNamed(entry.facts, FACT.sourcePath) !== undefined),
+  const readsAResponse = record.call.fields.some((field) =>
+    field.shape === "keyed"
+      ? field.entries.some((entry) => factNamed(entry.facts, FACT.sourcePath) !== undefined)
+      : factNamed(field.facts, FACT.sourcePath) !== undefined,
   );
   const forward = (recordedAt: string, stopBehaviour: string) => [
     `${INDENT}return ${send}(`,
@@ -422,7 +492,40 @@ function notReadyHelpers(plan: Plan, uses: Uses): string[] {
   ];
 }
 
-function reportedCostHelpers(plan: Plan): string[] {
+/**
+ * What a value read off the response passes through before the conversion
+ * every reported cost shares: a float is refused in words that say what to
+ * read instead, and — where the file reads one — a currency that is not text
+ * is refused before it is pinned. Everything else is the caller's cost's own
+ * rule, unchanged.
+ */
+export function responseReadHelpers(plan: Plan, costs: CostsConverted): string[] {
+  const { readAmount, readCurrency } = plan.internal;
+  const i2 = INDENT.repeat(2);
+  return [
+    ...asComments([...COMMENTS.responseCost, ...(costs.currencyRead ? COMMENTS.responseCurrency : [])]),
+    `def ${readAmount}(amount):`,
+    `${INDENT}if isinstance(amount, float):`,
+    `${i2}raise ${PYTHON.amountRefused}(`,
+    `${INDENT.repeat(3)}f"{amount!r} ${MESSAGES.floatRead}"`,
+    `${i2})`,
+    `${INDENT}return amount`,
+    ...(costs.currencyRead
+      ? [
+          "",
+          "",
+          `def ${readCurrency}(currency):`,
+          `${INDENT}if not isinstance(currency, str):`,
+          `${i2}raise ${PYTHON.currencyRefused}(`,
+          `${INDENT.repeat(3)}f"{currency!r} ${MESSAGES.currencyNotText}"`,
+          `${i2})`,
+          `${INDENT}return currency`,
+        ]
+      : []),
+  ];
+}
+
+export function reportedCostHelpers(plan: Plan, costs: CostsConverted): string[] {
   const { toMicros, pinCurrency, minorUnit } = plan.internal;
   const amount = PYTHON.amountRefused;
   const currency = PYTHON.currencyRefused;
@@ -434,7 +537,7 @@ function reportedCostHelpers(plan: Plan): string[] {
   const i3 = INDENT.repeat(3);
   const i4 = INDENT.repeat(4);
   return [
-    ...asComments(COMMENTS.reportedCost),
+    ...asComments([...COMMENTS.reportedCost, ...(costs.callerCost ? COMMENTS.callerCost : [])]),
     `class ${amount}(ValueError):`,
     `${INDENT}pass`,
     "",
@@ -552,6 +655,9 @@ export function renderModule(plan: Plan): string {
     notConfigured: false,
     notRenderable: false,
     reportedCost: false,
+    callerCost: false,
+    responseRead: false,
+    currencyRead: false,
     attribute: false,
   };
 
@@ -595,7 +701,8 @@ export function renderModule(plan: Plan): string {
     ...(uses.attribute ? ["", "", `${plan.internal.attribute} = getattr`] : []),
     ...section(
       uses.notReady ? notReadyHelpers(plan, uses) : [],
-      uses.reportedCost ? reportedCostHelpers(plan) : [],
+      uses.reportedCost ? reportedCostHelpers(plan, uses) : [],
+      uses.responseRead ? responseReadHelpers(plan, uses) : [],
       start,
       [`${plan.internal.startTask} = ${PYTHON.startTask}`],
       unitOfWork(plan),

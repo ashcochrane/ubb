@@ -76,7 +76,12 @@ name is one, two or three segments joined by dots:
   published field: `task_type.pricing_mode`, `event_type.costing_method`,
   `measurements.<key>.source_path`, `provider_cost_micros.amount_representation`.
   One element is UBB's fact rather than the tenant's and is named for its
-  registry concept: `event_type.response_shape_representation`.
+  registry concept: `event_type.response_shape_representation`. And one fact
+  says how a runtime value is READ wherever it is read off the response:
+  `source_path`, under a keyed entry or, since renderer contract 2 (#583),
+  under a field of its own — `provider_response_cost_micros.source_path`, and
+  `currency.source_path` for a currency the mapping declares a
+  `currency_path` for.
 
 A key is ONE segment whatever it contains: a dot or a percent sign inside a
 declared key is percent-encoded in the name, so a name always splits on its
@@ -150,7 +155,6 @@ from core.vocabulary import (
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_SELECTED,
     DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING,
-    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_NOT_DECLARED,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_RETIRED,
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE,
@@ -184,7 +188,13 @@ SCHEMA_VERSION = 1
 #: from the one above and never the same number by design (#148's split): the
 #: first changes when a field does, this one when what a renderer is promised
 #: about a field's meaning does.
-RENDERER_CONTRACT_VERSION = 1
+#:
+#: 2 since #583: a runtime value of a field of its own — the supplier's cost,
+#: and its currency — may carry a `source_path` fact, and is then read off the
+#: `response` parameter at that path. Contract 1 promised a path only under a
+#: keyed entry, so a renderer written to it would send the response object
+#: itself as the value. It is hashed, so every fingerprint moved with it.
+RENDERER_CONTRACT_VERSION = 2
 
 #: The SDK major the Python target is generated against (owner item 3,
 #: 2026-09-25). Stated only for that target: a shell file uses no SDK, and a
@@ -255,11 +265,6 @@ EFFECTS = {
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE: _BLOCKING,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED: _BLOCKING,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING: _BLOCKING,
-    # Valid configuration this Code Builder version cannot yet render: a cost
-    # read off a supplier's response has its own transport since #570, and
-    # generated code does not yet read it. Lifted by the ticket that renders
-    # the read (#583); the member leaves the registry with it.
-    DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED: _BLOCKING,
@@ -924,7 +929,14 @@ def _quantities(resolution, call, declaration, declared_by):
 
 def _reported_cost(resolution, call, declaration, declared_by):
     """The supplier's own cost figure, where the Event Type is costed from
-    one. Returns whether it is read off the supplier's response."""
+    one. Returns whether it is read off the supplier's response.
+
+    The figure goes on the field the admission rule admits for its source
+    (`metering_endpoints.SUPPLIER_COST_TRANSPORTS`), so the field it is sent
+    on always says truthfully where it came from (#570): a caller's own
+    figure on `provider_cost_micros`, one read off the response on
+    `provider_response_cost_micros` and never on the other.
+    """
     if declaration.costing_method != COSTING_METHOD_REPORTED:
         return False
     key = declaration.key
@@ -936,33 +948,54 @@ def _reported_cost(resolution, call, declaration, declared_by):
             CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
             remediation_request=declare)
         return False
-    if mapping.source_kind == SOURCE_KIND_PROVIDER_RESPONSE:
-        # The mapping is valid platform configuration, and a cost read off the
-        # supplier's response has a truthful request field of its own since
-        # #570 (`provider_response_cost_micros`) — but this Code Builder
-        # version cannot yet generate the read and the conversion, so the call
-        # is blocked by a code naming exactly that, which the ticket that
-        # renders the read (#583) removes. It fills no cost field rather than
-        # the caller-supplied one, whose contract means the caller supplied the
-        # figure. No remediation request, deliberately: the console words one
-        # as the change an admin makes, and nothing in a valid declaration is
-        # the thing to change (as for a constant's value, #571).
-        resolution.report(
-            call, DIAGNOSTIC_CODE_REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE,
-            CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
-            field="source_kind")
-        return True
-    if mapping.source_kind != SOURCE_KIND_CALLER_SUPPLIED:
+    if mapping.source_kind not in (SOURCE_KIND_CALLER_SUPPLIED,
+                                   SOURCE_KIND_PROVIDER_RESPONSE):
         raise ValueError(
             f"{mapping.source_kind!r} is not a source kind a reported cost "
             f"may be declared with")
+    field = metering_endpoints.SUPPLIER_COST_TRANSPORTS[mapping.source_kind]
+    if mapping.source_kind == SOURCE_KIND_CALLER_SUPPLIED:
+        call.add(
+            _runtime(field, REPORTED_COST_PARAMETER, declared_by),
+            _known(token_names.name(field, element="amount_representation"),
+                   mapping.amount_representation, declared_by))
+        if mapping.currency:
+            call.add(_known("currency", mapping.currency, declared_by))
+        return False
+
+    # Read off the response (#583), the way a quantity is: the response object
+    # is the runtime value, and the declared path and representation are
+    # stated beside it, so the conversion is the generated code's and nothing
+    # is made up for it.
+    cost_path = list(mapping.source_path)
     call.add(
-        _runtime("provider_cost_micros", REPORTED_COST_PARAMETER, declared_by),
-        _known("provider_cost_micros.amount_representation",
+        _runtime(field, RESPONSE_PARAMETER, declared_by),
+        _known(token_names.name(field, element="source_path"), cost_path,
+               declared_by),
+        _known(token_names.name(field, element="amount_representation"),
                mapping.amount_representation, declared_by))
+    paths = [("source_path", cost_path)]
     if mapping.currency:
         call.add(_known("currency", mapping.currency, declared_by))
-    return False
+    else:
+        # The currency travels beside the amount, so the request's own
+        # `currency` is read off the same object. The Blueprint states the
+        # read with the one path fact every read carries, `source_path`
+        # (#583 D2) — and what the tenant declared is `currency_path`, which
+        # is what an advisory about it names.
+        currency_path = list(mapping.currency_path)
+        call.add(
+            _runtime("currency", RESPONSE_PARAMETER, declared_by),
+            _known(token_names.name("currency", element="source_path"),
+                   currency_path, declared_by))
+        paths.append(("currency_path", currency_path))
+    for declared_as, path in paths:
+        if advisories(declaration.source_shape_id, path):
+            resolution.report(
+                call, DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH,
+                CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING, key,
+                field=declared_as, remediation_request=declare)
+    return True
 
 
 def _response_shape(resolution, call, declaration, declared_by):

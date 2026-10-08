@@ -14,5 +14,7 @@ Content-Type: application/json
   "event_type": "web.search",
   "measurements": {
     "searches": $searches
-  }
+  },
+  "provider_response_cost_micros": to_micros($response["cost"]["total"], "major_units_decimal", "usd"),
+  "currency": "usd"
 }

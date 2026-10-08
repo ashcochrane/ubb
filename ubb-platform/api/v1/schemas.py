@@ -182,6 +182,19 @@ PROVIDER_RESPONSE_COST_MEANING = (
     "a second cost: the figure is recorded as the event's supplier cost and "
     "read back as `provider_cost_micros`, and is not echoed under its own name."
 )
+#: A verification's sample of the event's currency (owner's review of #608):
+#: published as the field's description because what the sample stands for,
+#: and what Verify does not test, is the reader's to know.
+VERIFICATION_CURRENCY_SAMPLE_MEANING = (
+    "The event's currency, as generated code sends it where the Blueprint "
+    "binds `currency` at run time: a currency read off the provider's "
+    "response. A sample of the resulting value, not a reading of a response: "
+    "the read itself is the generated files' to test, by running them. "
+    "Required for such an Event Type and refused for any other, whose "
+    "currency is the Blueprint's own or the tenant's. Recorded as the event's "
+    "currency under UBB's one rule, which admits the tenant's currency and "
+    "refuses any other."
+)
 # What a response's `provider_cost_micros` is is worded in
 # `core.amount_status_pairs`, beside the pair it describes:
 # `RESOLVED_SUPPLIER_COST_MEANING` on every schema that publishes one event's,
@@ -4506,10 +4519,9 @@ class IntegrationBlueprintDiagnostic(Schema):
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
     Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work — and null for `constant_measurement_not_renderable` and
-    `reported_cost_provider_response_not_renderable`, where the declaration is
-    valid and complete and nothing in it is the thing to change: this Code
-    Builder version cannot yet generate what it declares.
+    kind of work — and null for `constant_measurement_not_renderable`, where
+    the declaration is valid and complete and nothing in it is the thing to
+    change: this Code Builder version cannot yet generate what it declares.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4563,6 +4575,9 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
     provider_response_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
         description=PROVIDER_RESPONSE_COST_MEANING)
+    currency: Optional[str] = Field(
+        default=None, max_length=3,
+        description=VERIFICATION_CURRENCY_SAMPLE_MEANING)
     subtask_type: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("measurements")

@@ -173,19 +173,26 @@ describe("what the catalogue says about a registry concept", () => {
     expect(words).not.toMatch(/missing|not declared|unsupported|request below/i);
   });
 
-  it("says a cost read off the response waits only on this version, never that it cannot be carried", () => {
-    // #570: the cost has its own transport now, so a `provider_response`
-    // mapping is valid configuration and only the Code Builder lacks the read.
-    // Nothing may say it is unsupported, cannot be recorded, or should be
-    // declared as supplied by the caller.
-    const words = REMEDIATION.reported_cost_provider_response_not_renderable.join(" ");
+  it("tells a cost read off the response what to read, where a caller is told what to pass", () => {
+    // #583: the float refusal of a cost read off the supplier's response is
+    // about the response, so it says what to READ — never "pass", which is a
+    // caller's word for a value the caller holds.
+    expect(MESSAGES.floatRead).toContain("read the response's integer or its decimal string instead");
+    expect(MESSAGES.floatRead).not.toMatch(/\bpass\b/);
+    expect(MESSAGES.float).toMatch(/\bpass\b/);
+  });
 
-    expect(words).toContain("valid platform configuration");
-    expect(words).toContain("This Code Builder version cannot yet generate code that reads it");
-    expect(words).toContain("Nothing in the declaration needs to change.");
-    expect(words).not.toMatch(
-      /missing|not declared|unsupported|cannot be recorded|supplied by the caller|request below/i,
-    );
+  it("leaves a currency UBB holds and the tenant does not to UBB, on both targets", () => {
+    // #583 D1: a currency read off the response is refused here only where it
+    // is no code UBB holds. One it holds that is not the tenant's is refused
+    // by the one shared rule when the event is recorded: no file carries the
+    // tenant's currency to compare, and none says it does.
+    for (const lines of [COMMENTS.responseCurrency, SHELL_COMMENTS.responseCurrency]) {
+      const words = lines.join(" ");
+      expect(words).toContain("that UBB does not hold is refused");
+      expect(words).toContain("refused by UBB when the event is recorded");
+      expect(words).not.toMatch(/compare|matches your|tenant's currency/i);
+    }
   });
 
   it("agrees with the committed contract about which codes there are", () => {

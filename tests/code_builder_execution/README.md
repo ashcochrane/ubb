@@ -32,8 +32,13 @@ A capability ticket adds its scenario to `SCENARIOS` in `_scenarios.py` and
 changes nothing in the harness: a `configure` that declares its configuration
 through the routes, the `works` its customer's code runs (data, not code), an
 `expect` over the runs and the records, the `readiness` its Blueprint must
-have, and where a shell artifact runs. #583 adds a supplier cost read off the
-response, #584 a constant Measurement, #586 a fixed-price kind. #585 adds no
+have, and where a shell artifact runs. #583 added a supplier cost read off the
+response (`response-cost`), a currency read beside it that the server
+refuses (`response-currency-refused`) and a cost written as a float that
+neither target sends (`response-cost-written-as-a-float`), against the three
+billed responses in `provider_responses/`, which a scenario names with
+`Response("<name>")`;
+#584 adds a constant Measurement, #586 a fixed-price kind. #585 adds no
 scenario: it extends two declarations, #569's names in
 `_customer.STOP_METADATA` and their values in `_scenarios._the_stop`, which
 both stop scenarios assert through.

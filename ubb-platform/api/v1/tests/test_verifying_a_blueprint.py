@@ -31,13 +31,14 @@ from django.db import connection
 from django.test import Client
 from django.utils import timezone
 
+from apps.metering.pricing.receipts import REPORTED_COST_SOURCE_KIND_KEY
 from apps.platform.code_builder.models import BlueprintSnapshot
 from apps.platform.code_builder.tasks import prune_blueprint_snapshots
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 
 from ._helpers import (
-    EVENT, INPUT_TOKENS, KIND, PROVIDER, SEARCHES, SUBTASK_KIND,
+    A_JSON_SHAPE, EVENT, INPUT_TOKENS, KIND, PROVIDER, SEARCHES, SUBTASK_KIND,
     BlueprintRoutes)
 
 #: A second published Event Type, declared and never selected.
@@ -607,6 +608,136 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
         assert body["task"] == {"task_type": "whole", "start": None,
                                 "close": None}
         assert body["records"] == []
+
+
+@pytest.mark.django_db
+class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
+    """A Blueprint whose supplier cost is read off the provider's response is
+    complete since #583, so Verify runs it end to end. Its sample is the cost
+    the generated code sends — already read and converted, in micros — on the
+    field that says where it came from. Reading and converting it are the
+    generated files' to prove, by running them, and Verify claims neither
+    (#583 D3)."""
+
+    def _read_off(self, **mapping):
+        self._a_kind()
+        self._event_type(
+            costing_method="reported", provider=PROVIDER, shape=A_JSON_SHAPE,
+            measurements={"searches": SEARCHES},
+            mapping={"source_kind": "provider_response",
+                     "amount_representation": "major_units_decimal",
+                     "source_path": ["usageMetadata", "totalCost"],
+                     "currency": "usd", **mapping})
+        return self._fingerprint()
+
+    def _run(self, fingerprint, **cost):
+        return self._verified(
+            fingerprint, a_record(measurements={"searches": 2}, **cost),
+            grouping_fields={})
+
+    def test_the_sample_is_recorded_and_costed_and_the_blueprint_verified(self):
+        body = self._run(self._read_off(), provider_response_cost_micros=4_200)
+
+        assert body["verified"] is True, body
+        ack = body["records"][0]["acknowledgement"]
+        assert (ack["costing_status"], ack["provider_cost_micros"]) == (
+            "known", 4_200)
+        # The immutable receipt says the figure was read off the response.
+        assert ack["pricing_receipt"]["costing"]["detail"][
+            REPORTED_COST_SOURCE_KIND_KEY] == "provider_response"
+
+    def test_a_cost_of_zero_is_a_cost(self):
+        body = self._run(self._read_off(), provider_response_cost_micros=0)
+
+        assert body["verified"] is True, body
+        ack = body["records"][0]["acknowledgement"]
+        assert (ack["costing_status"], ack["provider_cost_micros"]) == (
+            "known", 0)
+
+    def test_the_callers_field_is_refused_inside_the_run(self):
+        """The figure on the field that means "supplied by the caller" is the
+        wrong claim about where it came from, and the recording refuses it as
+        it would a tenant's own (#570)."""
+        body = self._run(self._read_off(), provider_cost_micros=4_200)
+
+        assert body["verified"] is False
+        assert body["refusal"]["operation_id"] == \
+            "api_v1_metering_endpoints_record_usage"
+        assert body["refusal"]["problem"]["status"] == 422
+        assert "provider_cost_micros" in body["refusal"]["problem"]["detail"]
+        (record,) = body["records"]
+        assert record["acknowledgement"] is None
+
+    def _reads_its_currency(self):
+        """The same, with the currency read off the response beside the cost:
+        the Blueprint binds `currency` at run time."""
+        return self._read_off(currency="",
+                              currency_path=["usageMetadata", "currency"])
+
+    def test_a_currency_read_off_the_response_is_the_samples(self):
+        """Where the Blueprint binds `currency` at run time, a sample stands
+        for it, and it is the event's currency — never one the run makes up
+        (owner's review of #608). The tenant's own is admitted."""
+        body = self._run(self._reads_its_currency(),
+                         provider_response_cost_micros=4_200, currency="usd")
+
+        assert body["verified"] is True, body
+        ack = body["records"][0]["acknowledgement"]
+        assert (ack["costing_status"], ack["provider_cost_micros"]) == (
+            "known", 4_200)
+
+    def test_a_foreign_currency_sample_is_the_recordings_refusal(self):
+        """A currency UBB holds that is not the tenant's reaches the recording
+        as the generated code sends it, and is refused there by the one shared
+        rule (422, "currency mismatch", #583 D1). Verify neither swaps it for
+        the tenant's nor refuses it with a rule of its own."""
+        body = self._run(self._reads_its_currency(),
+                         provider_response_cost_micros=125, currency="eur")
+
+        assert body["verified"] is False
+        assert body["refusal"]["operation_id"] == \
+            "api_v1_metering_endpoints_record_usage"
+        assert body["refusal"]["problem"]["status"] == 422
+        assert "currency mismatch" in body["refusal"]["problem"]["detail"]
+        (record,) = body["records"]
+        assert record["acknowledgement"] is None
+
+    def test_a_missing_currency_sample_is_refused_and_never_made_up(self):
+        """The currency is the tenant's code's to pass: without a sample
+        nothing is run, as for a Grouping Field's value."""
+        fingerprint = self._reads_its_currency()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint, a_record(measurements={"searches": 2},
+                                  provider_response_cost_micros=4_200),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "currency" in body["detail"] and repr(EVENT) in body["detail"]
+        assert what_moved(before, every_table()) == {}
+
+    def test_a_currency_sample_where_none_is_read_at_run_time_is_refused(self):
+        """A pinned currency is the Blueprint's own, and an Event Type with
+        none sends the tenant's: a sample would stand for nothing generated
+        code sends, so a caller is told rather than left believing it was
+        used."""
+        fingerprint = self._read_off()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint, a_record(measurements={"searches": 2},
+                                  provider_response_cost_micros=4_200,
+                                  currency="usd"),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "currency" in body["detail"] and repr(EVENT) in body["detail"]
+        assert what_moved(before, every_table()) == {}
 
 
 @pytest.mark.django_db

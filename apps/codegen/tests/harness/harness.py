@@ -13,6 +13,7 @@ documented environment variables.
     python harness.py compile       <directory>
     python harness.py facts         <directory>
     python harness.py reported-cost <directory> <cases.json>
+    python harness.py response-cost <directory> <cases.json> <function> <representation> <currency>
     python harness.py run           <directory> <script.py>
     python harness.py registry      <concept>...
 """
@@ -217,6 +218,60 @@ def reported_cost(directory, cases_path):
             "disagreements": disagreements}
 
 
+def read_off_a_response(cases_path, representation, currency):
+    """The platform's rows for a cost read off a response that are converted
+    as `representation` in `currency`: what one rendered module reads."""
+    cases = json.loads(Path(cases_path).read_text(encoding="utf-8"))
+    return [row for row in cases["read_off_a_response"]
+            if (row["representation"], row["currency"]) == (representation,
+                                                             currency)]
+
+
+def response_cost(directory, cases_path, function, representation, currency):
+    """A supplier's cost READ OFF A RESPONSE, run through the generated record
+    function over every row the platform answered for `representation` in
+    `currency` (#583): the response is handed over as Python's `json` reads
+    the row's text, the call is answered by a stand-in server, and what it
+    sent — or why it refused, having sent nothing — is held to the platform's
+    answer. The rows are read from the platform's own file and compared here,
+    in Python, because a nineteen-digit answer is not one every reader of
+    this one could hold. Returns the rows that disagree."""
+    server = Server()
+    os.environ["UBB_BASE_URL"] = server.url
+    os.environ["UBB_API_KEY"] = HARNESS_CREDENTIAL
+    module = _load(directory)
+    record = getattr(module, function)
+    refusals = {module.ReportedCostNotRepresentable: "amount",
+                module.ReportedCostCurrencyRefused: "currency"}
+    rows = read_off_a_response(cases_path, representation, currency)
+    disagreements = []
+    for index, row in enumerate(rows):
+        before = len(server.requests)
+        try:
+            response = json.loads(row["document"])
+        except ValueError:
+            # The tenant's own parse refuses it, and the module is handed
+            # nothing: refused as a response, before anything is sent.
+            got = {"refused": "response"}
+            if got != row["expected"]:
+                disagreements.append({"row": row, "got": got})
+            continue
+        try:
+            record(customer_id="c", idempotency_key=f"e{index}", task_id="t",
+                   response=response)
+            got = {"answer": server.requests[-1]["body"].get(
+                "provider_response_cost_micros")}
+            if "provider_cost_micros" in server.requests[-1]["body"]:
+                got["on_the_callers_field"] = True
+        except tuple(refusals) as refused:
+            got = {"refused": refusals[type(refused)]}
+            if len(server.requests) != before:
+                got["sent"] = True
+        if got != row["expected"]:
+            disagreements.append({"row": row, "got": got})
+    return {"rows": len(rows), "disagreements": disagreements}
+
+
 # ---------------------------------------------------------------------------
 # run
 # ---------------------------------------------------------------------------
@@ -338,7 +393,8 @@ def registry(*concepts):
 
 
 COMMANDS = {"compile": compiled, "facts": facts,
-            "reported-cost": reported_cost, "run": run, "registry": registry}
+            "reported-cost": reported_cost, "response-cost": response_cost,
+            "run": run, "registry": registry}
 
 if __name__ == "__main__":
     answer = COMMANDS[sys.argv[1]](*sys.argv[2:])

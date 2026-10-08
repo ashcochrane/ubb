@@ -36,8 +36,10 @@ export interface JqNeeds {
   readonly functions: readonly string[];
 }
 
-/** Passed to every program: each reads its program from standard input
- * and has no input of its own. */
+/** What the probe passes itself, so a program passing it asks nothing more:
+ * every program reads its program from standard input, and every one but
+ * the read of a response as text (#583), which names the file it reads, has
+ * no input of its own. */
 const ALWAYS = ["--null-input", "--from-file"];
 
 /** Each option a program may pass, how the probe passes it, and how the
@@ -48,6 +50,8 @@ const OPTIONS: Readonly<Record<string, { pass: string; read: string | null }>> =
   "--slurpfile": { pass: "--slurpfile probe_file /dev/null", read: "$probe_file" },
   "--raw-output": { pass: "--raw-output", read: null },
   "--compact-output": { pass: "--compact-output", read: null },
+  "--raw-input": { pass: "--raw-input", read: null },
+  "--slurp": { pass: "--slurp", read: null },
 };
 
 /** Each keyword form a program may use, how it is seen, and the smallest
@@ -61,31 +65,41 @@ const FORMS: Readonly<Record<string, { seen: RegExp; use: string; define?: strin
   "as $variable": { seen: /\bas\s+\$/, use: "(1 as $probe_value | $probe_value)" },
   elif: { seen: /\belif\b/, use: "(if false then 1 elif false then 2 else 3 end)" },
   reduce: { seen: /\breduce\b/, use: "(reduce (1, 2) as $probe_item (0; . + $probe_item))" },
+  foreach: {
+    seen: /\bforeach\b/,
+    use: "([foreach (1, 2) as $probe_item (0; . + $probe_item; .)])",
+  },
+  "try catch": { seen: /\btry\b/, use: "(try 1 catch 2)" },
 };
 
 /** The keywords every jq has, which need no form of their own. */
 const CORE = new Set(["if", "then", "else", "end", "and", "or", "true", "false", "null"]);
 
 /** The keywords the forms above stand for. */
-const FORM_KEYWORDS = new Set(["def", "as", "elif", "reduce"]);
+const FORM_KEYWORDS = new Set(["def", "as", "elif", "reduce", "foreach", "try", "catch"]);
 
 /** Every other keyword jq has: a program that used one would need a form. */
-const OTHER_KEYWORDS = new Set([
-  "foreach", "try", "catch", "label", "break", "import", "include", "__loc__",
-]);
+const OTHER_KEYWORDS = new Set(["label", "break", "import", "include", "__loc__"]);
 
 /** Each function a program may call, and a call of it jq must resolve. */
 const FUNCTIONS: Readonly<Record<string, string>> = {
+  add: "add",
   empty: "empty",
+  endswith: 'endswith("probe")',
   error: 'error("probe")',
+  explode: "explode",
   floor: "floor",
   fromjson: "fromjson",
   getpath: "getpath([])",
   has: 'has("probe")',
   keys_unsorted: "keys_unsorted",
+  last: "last",
   length: "length",
+  map: "map(.)",
   not: "not",
+  range: "range(0; 1)",
   select: "select(true)",
+  split: 'split("probe")',
   startswith: 'startswith("probe")',
   to_entries: "to_entries",
   tojson: "tojson",

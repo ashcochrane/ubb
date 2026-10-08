@@ -176,7 +176,7 @@
     },
     "diagnostic_code": {
       "advertised": true,
-      "backend_serves": "17 of 17 values",
+      "backend_serves": "16 of 16 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
@@ -191,7 +191,6 @@
         "event_type_not_published",
         "event_type_revised_since_publication",
         "reported_cost_mapping_missing",
-        "reported_cost_provider_response_not_renderable",
         "constant_measurement_not_renderable",
         "derived_measurement_unsupported",
         "response_shape_not_declared",

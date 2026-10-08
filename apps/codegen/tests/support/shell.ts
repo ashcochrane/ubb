@@ -21,7 +21,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, writeFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-import { MESSAGES, SHELL_EXIT, type RenderedFile } from "../../src/index.ts";
+import { MESSAGES, SHELL_EXIT, SHELL_MESSAGES, type RenderedFile } from "../../src/index.ts";
 import { PACKAGE_ROOT } from "./fixtures.ts";
 import { onDisk } from "./python.ts";
 
@@ -121,6 +121,50 @@ export function runShell(
   return onDisk(files, (directory) => {
     writeFileSync(join(directory, "__plan__.json"), JSON.stringify({ script, ...options }), "utf-8");
     return harness(directory, "run", "__plan__.json") as Ran;
+  });
+}
+
+/** What a refusal about the currency, and not about the amount, says. */
+const ABOUT_THE_CURRENCY = [
+  MESSAGES.currencyUnknown,
+  MESSAGES.currencyNone,
+  MESSAGES.currencyDisagrees,
+  MESSAGES.currencyNotText,
+];
+
+/**
+ * A supplier's cost read off a response, run through `record` — the generated
+ * record function — over the platform's own rows for one representation and
+ * currency, under every shell the harness has (#583).
+ */
+export function responseCostInShell(
+  files: readonly RenderedFile[],
+  casesPath: string,
+  record: string,
+  representation: string,
+  currency: string,
+): { rows: number; shells: string[]; disagreements: unknown[] } {
+  return onDisk(files, (directory) => {
+    copyFileSync(casesPath, join(directory, "__cases__.json"));
+    writeFileSync(
+      join(directory, "__messages__.json"),
+      JSON.stringify({
+        refused_status: SHELL_EXIT.valueRefused.status,
+        currency: ABOUT_THE_CURRENCY,
+        // A response it does not read at all, rather than the value in it.
+        response: [SHELL_MESSAGES.readUnreadable],
+      }),
+      "utf-8",
+    );
+    return harness(
+      directory,
+      "response-cost",
+      "__cases__.json",
+      record,
+      representation,
+      currency,
+      "__messages__.json",
+    ) as { rows: number; shells: string[]; disagreements: unknown[] };
   });
 }
 

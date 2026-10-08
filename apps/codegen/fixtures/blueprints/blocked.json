@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "renderer_contract_version": 1,
+  "renderer_contract_version": 2,
   "target": "python_sdk",
   "sdk_major_version": 3,
-  "configuration_fingerprint": "sha256:74052dfde73fc6ce0bc2c11fc40d8062ed173352de4ccfcf1e756c92757c2486",
+  "configuration_fingerprint": "sha256:404e7ae64c0d2b181b7326df4b334f6572e061bc1150bbc34da513690f860bad",
   "readiness": "blocked",
   "calls": [
     {
@@ -445,7 +445,7 @@
     },
     {
       "operation_id": "api_v1_metering_endpoints_record_usage",
-      "readiness": "blocked",
+      "readiness": "complete",
       "arguments": [
         {
           "name": "api_key",
@@ -582,6 +582,65 @@
           }
         },
         {
+          "name": "provider_response_cost_micros",
+          "binding_class": "runtime_bound",
+          "value": null,
+          "parameter_name": "response",
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "web.search",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "provider_response_cost_micros.source_path",
+          "binding_class": "platform_known",
+          "value": [
+            "cost",
+            "total"
+          ],
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "web.search",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "provider_response_cost_micros.amount_representation",
+          "binding_class": "platform_known",
+          "value": "major_units_decimal",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "web.search",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "currency",
+          "binding_class": "platform_known",
+          "value": "usd",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "web.search",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
           "name": "event_type.source_shape_id",
           "binding_class": "platform_known",
           "value": "google.gemini.rest.v1",
@@ -687,14 +746,6 @@
         "operation_id": "api_v1_event_type_endpoints_publish_event_type",
         "body": null
       }
-    },
-    {
-      "severity": "blocking",
-      "code": "reported_cost_provider_response_not_renderable",
-      "object_kind": "reported_cost_mapping",
-      "key": "web.search",
-      "field": "source_kind",
-      "remediation_request": null
     }
   ]
 }

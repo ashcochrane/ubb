@@ -3,7 +3,12 @@
 // ⚠ WHAT VERIFY ASKS FOR IS READ OFF THE BLUEPRINT'S TOKENS, NEVER RE-DERIVED.
 // A record is one per record call; its Measurements are that call's
 // `measurements` key tokens; a supplier cost is asked only where the call
-// carries a `provider_cost_micros` runtime token; a Subtask kind is chosen only
+// carries a runtime token for one — `provider_cost_micros` for the caller's
+// own figure, `provider_response_cost_micros` for one generated code reads off
+// the provider's response (#583) — and is sent on that same field, already in
+// micros; a currency is asked only where the call binds `currency` at run time
+// — read off the provider's response — and is sent as the event's currency
+// (owner review of #608); a Subtask kind is chosen only
 // among the Subtask starts; a Grouping Field sample is asked for every
 // `grouping_fields` key token on the Task start, and on each Subtask start a
 // record is placed under. Verify never makes up a value a tenant's code passes
@@ -64,8 +69,21 @@ export interface MeasurementSample {
 export interface RecordSample {
   readonly eventType: string;
   readonly measurements: readonly MeasurementSample[];
-  /** True where the call reports a supplier cost the caller supplies. */
-  readonly reportsCost: boolean;
+  /**
+   * The field the call reports a supplier cost on, where it reports one: the
+   * caller's own figure's, or the one for a figure generated code reads off
+   * the provider's response (#570, #583). Each field says where its figure
+   * came from, so a sample is sent on the call's own and never the other.
+   */
+  readonly costField: SupplierCostField | null;
+  /**
+   * Whether the call binds `currency` at run time — read off the provider's
+   * response beside the cost (#583). Then the event's currency is a value the
+   * tenant's code passes, so it is a sample here and never one made up: not
+   * the tenant's own, which generated code would not send (owner review of
+   * #608). A pinned currency is the Blueprint's, and asks for none.
+   */
+  readonly readsCurrency: boolean;
 }
 
 /** A Grouping Field a sample may be asked for, and every kind requiring it. */
@@ -95,8 +113,19 @@ export type VerifyOffer =
 /** The facts of a Measurement the Verify form shows beside its sample. */
 const MEASUREMENT_FACTS = ["value_type", "unit", "required_for_costing"];
 
-/** The request field carrying a supplier's reported cost. */
-const REPORTED_COST = "provider_cost_micros" satisfies keyof BlueprintVerificationRecordRequest;
+/** The two request fields a supplier's reported cost travels on: one for a
+ * figure the caller supplies, one for a figure read off the provider's
+ * response. */
+export const SUPPLIER_COST_FIELDS = [
+  "provider_cost_micros",
+  "provider_response_cost_micros",
+] as const satisfies readonly (keyof BlueprintVerificationRecordRequest)[];
+
+export type SupplierCostField = (typeof SUPPLIER_COST_FIELDS)[number];
+
+function isSupplierCostField(field: string): field is SupplierCostField {
+  return (SUPPLIER_COST_FIELDS as readonly string[]).includes(field);
+}
 
 function tokens(call: BlueprintCall): Array<{ argument: BlueprintArgument; place: TokenPlace }> {
   const places = placesOf(call);
@@ -142,11 +171,17 @@ function recordSample(call: BlueprintCall): RecordSample | null {
         valueType: MEASUREMENT_VALUE_TYPE_VALUES.find((known) => known === valueType) ?? null,
       };
     }),
-    reportsCost: facts.some(
-      ({ argument, place }) =>
+    costField:
+      facts.flatMap(({ argument, place }) =>
         place.kind === "field" &&
-        place.field === REPORTED_COST &&
-        argument.binding_class === "runtime_bound",
+        isSupplierCostField(place.field) &&
+        argument.binding_class === "runtime_bound"
+          ? [place.field]
+          : [],
+      )[0] ?? null,
+    readsCurrency: facts.some(
+      ({ argument, place }) =>
+        place.kind === "field" && place.field === "currency" && argument.binding_class === "runtime_bound",
     ),
   };
 }
@@ -204,8 +239,12 @@ export interface RecordSampleValues {
   subtaskType: string;
   /** Positional against the record's Measurements; "" sends none. */
   measurements: string[];
-  /** Whole micros; "" sends none. Asked only where the call reports a cost. */
+  /** Whole micros, already converted; "" sends none. Asked only where the
+   * call reports a cost, and sent on the field it reports it on. */
   providerCost: string;
+  /** The currency code the call reads off the response; asked, and
+   * required, only where it does, and sent as the event's currency. */
+  currency: string;
 }
 
 /**
@@ -227,6 +266,7 @@ export function blankSamples(plan: SamplePlan): SampleValues {
       subtaskType: "",
       measurements: record.measurements.map(() => ""),
       providerCost: "",
+      currency: "",
     })),
   };
 }
@@ -298,12 +338,14 @@ export function verificationRequestOf(
       if (sample !== "") measurements[measurement.code] = Number(sample);
     });
     const cost = typed.providerCost.trim();
+    const currency = typed.currency.trim();
     const under = placedUnder(plan, typed);
     return [
       {
         event_type: record.eventType,
         measurements,
-        ...(record.reportsCost && cost !== "" && { provider_cost_micros: Number(cost) }),
+        ...(record.costField !== null && cost !== "" && { [record.costField]: Number(cost) }),
+        ...(record.readsCurrency && currency !== "" && { currency }),
         ...(under !== null && { subtask_type: under }),
       },
     ];
@@ -325,6 +367,8 @@ export interface SampleProblem {
 export const GROUPING_FIELD_REQUIRED =
   "A sample value is required: the kind of work this run starts requires it, and Verify never makes one up.";
 export const WHOLE_NUMBER_REQUIRED = "A whole number: the request carries whole numbers only.";
+export const CURRENCY_REQUIRED =
+  "A sample currency is required: the call reads its currency off the provider's response at run time, and Verify never makes one up.";
 export const NOTHING_TO_RUN = "Include at least one Event Type.";
 
 /** What the form checks before sending. Everything else is the server's to refuse. */
@@ -345,8 +389,13 @@ export function sampleProblems(plan: SamplePlan, values: SampleValues): SamplePr
       }
     });
     const cost = typed.providerCost.trim();
-    if (record.reportsCost && cost !== "" && !isWholeNumber(cost)) {
+    if (record.costField !== null && cost !== "" && !isWholeNumber(cost)) {
       problems.push({ path: ["records", index, "providerCost"], message: WHOLE_NUMBER_REQUIRED });
+    }
+    // Only that there is one: whether UBB admits it is the recording's own
+    // rule, run on the server (#583 D1), and never copied here.
+    if (record.readsCurrency && typed.currency.trim() === "") {
+      problems.push({ path: ["records", index, "currency"], message: CURRENCY_REQUIRED });
     }
   });
   if (!values.records.some((record) => record.included)) {
@@ -366,6 +415,7 @@ export function sampleFormSchema(plan: SamplePlan) {
           subtaskType: z.string(),
           measurements: z.array(z.string()),
           providerCost: z.string(),
+          currency: z.string(),
         }),
       ),
     })
@@ -413,7 +463,10 @@ function sortedEntries(value: unknown): Array<[string, unknown]> {
  * server reads alike are one key: a map's order is not part of it, a blank
  * map is no map, and an absent optional field is null — the order of the
  * records is, because the run takes them in order. What a Verify answer is
- * evidence about, and what the mock looks an answer up by.
+ * evidence about, and what the mock looks an answer up by. Every field a
+ * record can carry is in it — each supplier cost field and the currency
+ * among them (#583) — so a sample edited after a result can never leave that
+ * result standing.
  */
 export function verificationKey(fingerprint: string, request: BlueprintVerificationRequest): string {
   return JSON.stringify([
@@ -422,6 +475,8 @@ export function verificationKey(fingerprint: string, request: BlueprintVerificat
       record.event_type,
       sortedEntries(record.measurements),
       record.provider_cost_micros ?? null,
+      record.provider_response_cost_micros ?? null,
+      record.currency ?? null,
       record.subtask_type ?? null,
     ]),
     sortedEntries(request.grouping_fields),

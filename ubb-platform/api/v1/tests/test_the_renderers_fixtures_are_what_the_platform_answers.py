@@ -22,7 +22,10 @@ under `apps/codegen/fixtures/` carries this platform's answer to each case, so
 the renderer's tests execute the generated conversion against expectations it
 did not write. Each case carries two answers, because a shell file holds text
 and nothing else: what this platform answers for the amount as the value it
-is, and what it answers for the same amount handed over as its text.
+is, and what it answers for the same amount handed over as its text. A cost
+read off the supplier's response (#583) is a third kind of case, answered
+once: the response's own JSON text, read by Python's `json` at the declared
+path and converted, which every target must answer alike.
 
 **To regenerate after a deliberate change**, run this module with
 `UBB_WRITE_CODEGEN_FIXTURES=1`: each test then writes its file before holding
@@ -78,6 +81,7 @@ from ._helpers import (
 FIXTURES = Path(__file__).resolve().parents[4] / "apps" / "codegen" / "fixtures"
 BLUEPRINTS = FIXTURES / "blueprints"
 REPORTED_COST_CASES = FIXTURES / "reported-cost-cases.json"
+RESPONSE_COST_READS = FIXTURES / "response-cost-reads.json"
 MICROS_PER_MINOR_UNIT = FIXTURES / "micros-per-minor-unit.json"
 
 WRITING = os.environ.get("UBB_WRITE_CODEGEN_FIXTURES") == "1"
@@ -179,6 +183,56 @@ def _reported_cost(routes, target=PYTHON):
                            event_types=["web.search"], target=target)
 
 
+#: Where a supplier's cost, and the currency it is in, sit in each kind of
+#: response — spelled in each shape's own naming, so neither asks for advice.
+_A_SUPPLIERS_COST = {
+    A_PYTHON_SHAPE: {"provider": "openai",
+                     "amount": ["billing", "amount_minor"],
+                     "currency": ["billing", "currency"]},
+    A_JSON_SHAPE: {"provider": "google",
+                   "amount": ["billing", "amountMinor"],
+                   "currency": ["billing", "currency"]},
+}
+
+
+def _response_cost(routes, target=PYTHON):
+    """An Event Type costed from the supplier's own figure READ OFF ITS
+    RESPONSE (#583), as a decimal of the major unit in a currency the
+    declaration pins, beside a quantity read off the same JSON response. Every
+    target reads JSON, so the branch is complete on both."""
+    routes._a_kind("grounded_answer")
+    routes._event_type(
+        "grounded.search", costing_method="reported", provider="google",
+        shape=A_JSON_SHAPE,
+        measurements={"input_tokens": {
+            **INPUT_TOKENS,
+            "source_path": _A_SUPPLIERS_RESPONSE[A_JSON_SHAPE]["input"]}},
+        mapping={"source_kind": "provider_response",
+                 "amount_representation": MAJOR,
+                 "source_path": ["usageMetadata", "totalCost"],
+                 "currency": "usd"})
+    return routes._resolve(task_type="grounded_answer",
+                           event_types=["grounded.search"], target=target)
+
+
+def _response_cost_read_currency(routes, target=PYTHON, shape=A_PYTHON_SHAPE):
+    """The same, with the currency read off the response too: the mapping
+    declares a `currency_path` and pins none, so the request's `currency` is
+    a runtime value read by that path (#583 D2), and the amount is a count
+    of that currency's minor unit."""
+    response = _A_SUPPLIERS_COST[shape]
+    routes._a_kind("grounded_answer")
+    routes._event_type(
+        "billed.search", costing_method="reported",
+        provider=response["provider"], shape=shape, measurements={},
+        mapping={"source_kind": "provider_response",
+                 "amount_representation": MINOR,
+                 "source_path": response["amount"],
+                 "currency_path": response["currency"]})
+    return routes._resolve(task_type="grounded_answer",
+                           event_types=["billed.search"], target=target)
+
+
 def _direct_task_events(routes, target=PYTHON):
     """Two Event Types recorded straight against the Task: no Subtask, no
     Grouping Field, no ceiling, nothing read off a response."""
@@ -232,10 +286,12 @@ def _scaffold(routes, target=PYTHON):
 
 def _blocked(routes, target=PYTHON):
     """Every way a known structure can lack something it cannot run without:
-    a constant this Code Builder cannot yet render, a derived quantity, a cost
-    read off the supplier's response, and an Event Type never published. Asked
-    for as shell, the first Event Type's shape is one more: a Python library's
-    object, which a shell file cannot read."""
+    a constant this Code Builder cannot yet render, a derived quantity, and an
+    Event Type never published. Asked for as shell, the first Event Type's
+    shape is one more: a Python library's object, which a shell file cannot
+    read. Beside them, a cost read off the supplier's JSON response, which
+    blocked this Blueprint until #583 and is a complete call since — so the
+    one Blueprint holds a complete call among blocked ones."""
     routes._a_kind()
     routes._event_type(
         "chat.completion", shape=A_PYTHON_SHAPE,
@@ -327,6 +383,8 @@ def _as_shell(declare, **declared):
 BLUEPRINT_FIXTURES = {
     "calculated-cost": _calculated_cost,
     "reported-cost": _reported_cost,
+    "response-cost": _response_cost,
+    "response-cost-read-currency": _response_cost_read_currency,
     "direct-task-events": _direct_task_events,
     "explicit-subtasks": _explicit_subtasks,
     "fixed-price": _fixed_price,
@@ -337,6 +395,9 @@ BLUEPRINT_FIXTURES = {
     "draft-preview": _draft_preview,
     "shell-calculated-cost": _as_shell(_calculated_cost, shape=A_JSON_SHAPE),
     "shell-reported-cost": _as_shell(_reported_cost),
+    "shell-response-cost": _as_shell(_response_cost),
+    "shell-response-cost-read-currency": _as_shell(
+        _response_cost_read_currency, shape=A_JSON_SHAPE),
     "shell-direct-task-events": _as_shell(_direct_task_events),
     "shell-explicit-subtasks": _as_shell(_explicit_subtasks),
     "shell-fixed-price": _as_shell(_fixed_price),
@@ -356,6 +417,8 @@ BLUEPRINT_FIXTURES = {
 READINESS = {
     "calculated-cost": "complete",
     "reported-cost": "complete",
+    "response-cost": "complete",
+    "response-cost-read-currency": "complete",
     "direct-task-events": "complete",
     "explicit-subtasks": "complete",
     "fixed-price": "complete",
@@ -366,6 +429,8 @@ READINESS = {
     "draft-preview": "complete",
     "shell-calculated-cost": "complete",
     "shell-reported-cost": "complete",
+    "shell-response-cost": "complete",
+    "shell-response-cost-read-currency": "complete",
     "shell-direct-task-events": "complete",
     "shell-explicit-subtasks": "complete",
     "shell-fixed-price": "complete",
@@ -450,15 +515,40 @@ def test_the_fixtures_cover_what_they_are_named_for():
             ] == ["source_path_convention_mismatch"]
     assert sorted({d["code"] for d in resolved("blocked")["diagnostics"]}) == [
         "constant_measurement_not_renderable",
-        "derived_measurement_unsupported", "event_type_not_published",
-        "reported_cost_provider_response_not_renderable"]
+        "derived_measurement_unsupported", "event_type_not_published"]
     # Valid configuration this Code Builder version cannot yet render offers
-    # nothing to change (#571, #570); every other code names its fix.
+    # nothing to change (#571); every other code names its fix.
     for name in ("blocked", "shell-blocked"):
-        assert sorted(d["code"] for d in resolved(name)["diagnostics"]
+        blocked = resolved(name)
+        assert sorted(d["code"] for d in blocked["diagnostics"]
                       if d["remediation_request"] is None) == [
-            "constant_measurement_not_renderable",
-            "reported_cost_provider_response_not_renderable"]
+            "constant_measurement_not_renderable"]
+        # The cost read off the response is a complete call among the
+        # blocked ones (#583).
+        (search,) = [call for call in blocked["calls"]
+                     if literal({"calls": [call]}, "event_type") == [
+                         "web.search"]]
+        assert search["readiness"] == "complete"
+    # A cost read off the response, on its own field, complete on both
+    # targets (#583) — with the currency pinned, and with it read too.
+    for name in ("response-cost", "shell-response-cost"):
+        response_cost = resolved(name)
+        assert response_cost["diagnostics"] == []
+        assert literal(response_cost,
+                       "provider_response_cost_micros.source_path") == [
+            ["usageMetadata", "totalCost"]]
+        assert literal(response_cost, "currency") == ["usd"]
+        assert literal(response_cost,
+                       "provider_cost_micros.amount_representation") == []
+    for name, shape in (("response-cost-read-currency", A_PYTHON_SHAPE),
+                        ("shell-response-cost-read-currency", A_JSON_SHAPE)):
+        read_currency = resolved(name)
+        assert read_currency["diagnostics"] == []
+        assert literal(read_currency, "currency.source_path") == [
+            _A_SUPPLIERS_COST[shape]["currency"]]
+        assert literal(read_currency,
+                       "event_type.response_shape_representation") == [
+            "python_object" if shape == A_PYTHON_SHAPE else "json"]
     # A constant declared with its value is complete configuration: the one
     # thing between it and a runnable file is this Code Builder's version.
     for name in ("constant", "shell-constant"):
@@ -500,7 +590,6 @@ def test_the_fixtures_cover_what_they_are_named_for():
                    }) == [
         "constant_measurement_not_renderable",
         "derived_measurement_unsupported", "event_type_not_published",
-        "reported_cost_provider_response_not_renderable",
         "response_shape_not_readable_by_target"]
 
 
@@ -525,10 +614,12 @@ def _record(event_type, **fields):
 #: Each committed answer: the Blueprint whose fingerprint is verified (or one
 #: never stored), the request, and the status it must be answered with. The
 #: requests are what the page can send — a sample for every Measurement it
-#: shows, a supplier cost only where the call reports one, and a sample for
-#: every Grouping Field a kind the run starts requires — except the five a page
-#: cannot make and must still render: the four refusals before a run, and a
-#: supplier cost sent on a call that reports none, refused inside it.
+#: shows, a supplier cost only where the call reports one and on the field the
+#: call reports it on, a currency only where the call reads one off the
+#: response, and a sample for every Grouping Field a kind the run
+#: starts requires — except the five a page cannot make and must still
+#: render: the four refusals before a run, and a supplier cost sent on a call
+#: that reports none, refused inside it.
 VERIFIED = {
     # Every selected Event Type exercised, and its cost the supplier's own:
     # recorded and costed completely, so verified. The tenant declares no
@@ -536,6 +627,31 @@ VERIFIED = {
     "reported-cost": ("reported-cost", {
         "records": [_record("web.search", measurements={"searches": 3},
                             provider_cost_micros=1_250_000)],
+        "grouping_fields": {}}, 200),
+    # The same for a cost read off the provider's response (#583 D3): the
+    # sample is the cost already converted to micros, sent on the field that
+    # says where it came from. What the generated code reads and converts is
+    # not what Verify tests — running the generated files does.
+    "response-cost": ("response-cost", {
+        "records": [_record("grounded.search",
+                            measurements={"input_tokens": 1200},
+                            provider_response_cost_micros=4_200)],
+        "grouping_fields": {}}, 200),
+    # With the currency read off the response too, the Blueprint binds
+    # `currency` at run time, so the request samples it as the event's — the
+    # resulting value, never one the run makes up (owner's review of #608).
+    # The tenant's own: recorded and costed, so verified.
+    "response-cost-read-currency": ("response-cost-read-currency", {
+        "records": [_record("billed.search", measurements={},
+                            provider_response_cost_micros=1_250_000,
+                            currency="usd")],
+        "grouping_fields": {}}, 200),
+    # A currency UBB holds that is not the tenant's: the recording's own
+    # refusal inside the run (#583 D1), so never verified.
+    "response-cost-foreign-currency": ("response-cost-read-currency", {
+        "records": [_record("billed.search", measurements={},
+                            provider_response_cost_micros=1_250_000,
+                            currency="eur")],
         "grouping_fields": {}}, 200),
     # Costed from Cost Rates the tenant never declared: recorded, its cost
     # unresolved, so not verified, and the acknowledgement names the gap.
@@ -824,6 +940,140 @@ CURRENCIES = [
     ("", "jpy"), ("", None), ("usd", ""), ("gbp", "GBP"),
 ]
 
+#: Where every response below holds its cost.
+COST_PATH = ["cost", "total"]
+
+
+def _at_the_cost(token):
+    """A response holding `token`, written exactly so, at `COST_PATH`."""
+    return '{"cost": {"total": ' + token + '}}'
+
+
+#: A supplier's cost READ OFF ITS RESPONSE (#583): the JSON text the response
+#: holds, what the cost is declared to represent, and its currency. What the
+#: JSON says is half the question, as the type is above: Python's `json`
+#: reads `1` as an integer and `"1"` as a string, and `1.0`, `1e0` and `1.25`
+#: as binary floats, which `to_micros` refuses (#193 §D5). A generated file
+#: answers each row exactly so on every target — a shell file included, which
+#: holds no number type and must see the token as it was written. Every
+#: response has the path in it: what is checked is the value at the path, and
+#: a path that is not there is the verify script's to find. Every response
+#: but the last rows is one Python's `json` reads — `NaN` and `Infinity`
+#: among them, which JSON itself does not admit. Those last rows it cannot
+#: read, wherever the fault sits, so a tenant's own code never hands them to
+#: a generated module, and a shell file, handed the text, must not read them
+#: either: jq reads every one.
+READ_OFF_A_RESPONSE = [
+    # The rows the owner's ruling names (comment 6056978888 on #583).
+    (_at_the_cost("1"), MICROS, "usd"),
+    (_at_the_cost('"1"'), MICROS, "usd"),
+    (_at_the_cost('"1.25"'), MAJOR, "usd"),
+    (_at_the_cost('"1.25"'), MINOR, "usd"),
+    (_at_the_cost('"1.25"'), MICROS, "usd"),
+    (_at_the_cost("1.0"), MAJOR, "usd"),
+    (_at_the_cost("1e0"), MICROS, "usd"),
+    (_at_the_cost("1.25"), MAJOR, "usd"),
+    # Every other way JSON spells a number with a fraction or an exponent —
+    # each one a binary float to Python, and each the integer 1 or 15 to a
+    # jq that prints a number by its value.
+    (_at_the_cost("1E0"), MICROS, "usd"),
+    (_at_the_cost("1e+0"), MICROS, "usd"),
+    (_at_the_cost("0.1e1"), MICROS, "usd"),
+    (_at_the_cost("10e-1"), MICROS, "usd"),
+    (_at_the_cost("1.5e1"), MICROS, "usd"),
+    (_at_the_cost("1e2"), MICROS, "usd"),
+    (_at_the_cost("1.000"), MICROS, "usd"),
+    (_at_the_cost("-0.0"), MICROS, "usd"),
+    # A zero cost is a cost (owner's ruling 5), and a negative one converts
+    # as it does for a caller (the recording's bound is the server's).
+    (_at_the_cost("0"), MICROS, "usd"),
+    (_at_the_cost("-0"), MICROS, "usd"),
+    (_at_the_cost('"0"'), MAJOR, "usd"),
+    (_at_the_cost("-1"), MICROS, "usd"),
+    (_at_the_cost("1"), MAJOR, "usd"),
+    (_at_the_cost("1"), MINOR, "usd"),
+    (_at_the_cost("7"), MINOR, "jpy"),
+    # Where a double stops carrying an integer exactly: the largest
+    # fifteen-digit one, the first sixteen-digit one, the last a double
+    # holds exactly and the first it does not, and the column's own bound.
+    # Each is read as written, never as the double a jq would make of it.
+    (_at_the_cost("999999999999999"), MICROS, "usd"),
+    (_at_the_cost("1000000000000000"), MICROS, "usd"),
+    (_at_the_cost("9007199254740992"), MICROS, "usd"),
+    (_at_the_cost("9007199254740993"), MICROS, "usd"),
+    (_at_the_cost(str(MICROS_LIMIT)), MICROS, "usd"),
+    (_at_the_cost(str(MICROS_LIMIT + 1)), MICROS, "usd"),
+    (_at_the_cost("12345678901234567890123"), MICROS, "usd"),
+    # A decimal string is the supplier's decimal, whatever it spells.
+    (_at_the_cost('"0.0000001"'), MAJOR, "usd"),
+    (_at_the_cost('" 1.5 "'), MAJOR, "usd"),
+    (_at_the_cost('"1e3"'), MICROS, "usd"),
+    (_at_the_cost('"9007199254740993"'), MICROS, "usd"),
+    (_at_the_cost('""'), MICROS, "usd"),
+    (_at_the_cost('"free"'), MICROS, "usd"),
+    (_at_the_cost('"12\\\\"'), MICROS, "usd"),
+    (_at_the_cost('"1\\u0000"'), MICROS, "usd"),
+    # What is not an amount at all.
+    (_at_the_cost("true"), MICROS, "usd"),
+    (_at_the_cost("null"), MICROS, "usd"),
+    (_at_the_cost("{}"), MICROS, "usd"),
+    (_at_the_cost("[1]"), MICROS, "usd"),
+    (_at_the_cost("NaN"), MICROS, "usd"),
+    # The rest of the response, written to mislead a reader of its text:
+    # escaped quotes and backslashes before the path, a key that looks like a
+    # number, floats beside the cost, whitespace of every kind, a repeated key
+    # (the last one is the value, to Python and to jq), and an escaped key.
+    ('{"a\\"": 1.0, "cost": {"total": 7}}', MICROS, "usd"),
+    ('{"x\\\\\\\\": "1.0", "cost": {"total": 8}}', MICROS, "usd"),
+    ('{"1.0": {"total": 2.5}, "cost": {"items": [1e0, 2.5], "total": 9}}',
+     MICROS, "usd"),
+    ('{\r\n\t"cost" :\r\n\t{ "total" :\t12 }\r\n}\r\n', MICROS, "usd"),
+    ('{"cost": {"total": "2", "total": 1.0}}', MICROS, "usd"),
+    ('{"cost": {"total": 1.5, "total": 3}}', MICROS, "usd"),
+    ('{"\\u0063ost": {"total": 42}}', MICROS, "usd"),
+    ('{"t": true, "f": false, "n": null, "cost": {"total": 1e0}}',
+     MICROS, "usd"),
+    # What Python's `json` reads beside JSON, off the path, leaves the cost
+    # to be read.
+    ('{"x": NaN, "cost": {"total": 5}}', MICROS, "usd"),
+    ('{"x": [Infinity, -Infinity], "cost": {"total": "5"}}', MICROS, "usd"),
+    # What it does not read makes the whole response unreadable, wherever it
+    # sits: a sign of `+`, leading zeros, a point with no digit on one side,
+    # `nan` and `inf` spelled any other way, a NUL after a number or inside a
+    # string, and a byte-order mark.
+    *[('{"x": ' + token + ', "cost": {"total": 5}}', MICROS, "usd")
+      for token in ("+1", "01", "-01", ".5", "-.5", "1.", "1.e5", "nan",
+                    "-nan", "NAN", "nan1", "inf", "-inf", "infinity", "INF",
+                    "+Infinity", "-NaN")],
+    *[(_at_the_cost(token), MICROS, "usd")
+      for token in ("+1", "01", ".5", "1.", "nan", "inf")],
+    ('{"x": "a\x00b", "cost": {"total": 5}}', MICROS, "usd"),
+    ('{"x": 1\x00, "cost": {"total": 5}}', MICROS, "usd"),
+    (_at_the_cost("1\x00"), MICROS, "usd"),
+    ('\ufeff{"cost": {"total": 5}}', MICROS, "usd"),
+]
+
+
+def _read_at_the_cost(document):
+    """What Python's `json` puts at `COST_PATH`."""
+    value = json.loads(document)
+    for segment in COST_PATH:
+        value = value[segment]
+    return value
+
+
+def _the_read(document, representation, currency):
+    """What a cost read off `document` is answered: Python's `json` and then
+    `to_micros`. A response `json` cannot read is refused as a RESPONSE: a
+    tenant's own code fails to parse it before a generated module is handed
+    anything, and a generated file reading the text must refuse it as well."""
+    try:
+        value = _read_at_the_cost(document)
+    except ValueError:
+        return {"refused": "response"}
+    return _answered(to_micros, value, representation, currency)
+
+
 #: Which of the two things a refusal is about. A generated module raises its
 #: own two types, since it cannot import this tree's.
 _REFUSALS = {AmountNotRepresentable: "amount", CurrencyDisagreement: "currency",
@@ -860,7 +1110,11 @@ def test_the_reported_cost_cases_carry_this_platforms_answers():
     decimal, an integer and a float of the same digits are one argument, so
     the answer is this platform's for the text. They differ exactly where
     the type was the reason — a binary float is refused, and its text is the
-    decimal it spells."""
+    decimal it spells.
+
+    A cost read off a response is answered ONCE (#583): the response is the
+    supplier's JSON, and what is at the path is what Python's `json` reads
+    there, so a shell file reading the same text must answer the same."""
     produced = {
         "amounts": [
             {"amount": amount, "representation": representation,
@@ -874,9 +1128,80 @@ def test_the_reported_cost_cases_carry_this_platforms_answers():
             {"declared": declared, "reported": reported,
              "expected": _answered(pin_currency, declared, reported)}
             for declared, reported in CURRENCIES],
+        "read_off_a_response": [
+            {"document": document, "path": COST_PATH,
+             "representation": representation, "currency": currency,
+             "expected": _the_read(document, representation, currency)}
+            for document, representation, currency in READ_OFF_A_RESPONSE],
     }
 
     _held(REPORTED_COST_CASES, produced)
+
+
+def _a_cost_read_at_the_cost(routes, representation, currency):
+    """An Event Type that reads nothing off its response but the supplier's
+    cost, at `COST_PATH`, as `representation`, in a currency it pins."""
+    routes._a_kind("grounded_answer")
+    routes._event_type(
+        "grounded.search", costing_method="reported", provider="google",
+        shape=A_JSON_SHAPE, measurements={},
+        mapping={"source_kind": "provider_response",
+                 "amount_representation": representation,
+                 "source_path": list(COST_PATH), "currency": currency})
+
+
+@pytest.mark.django_db
+def test_the_blueprints_the_rows_are_read_through_are_what_the_route_answers():
+    """The renderers are held to the rows above through a Blueprint the
+    routes answer, one for each representation and currency the rows are
+    read as and each target — not through a committed Blueprint varied in the
+    test (ADR-0016 §5), since the routes produce these as readily. The one
+    exception is a currency UBB does not hold, which the routes refuse to
+    pin: that document the renderer's test derives, and says so."""
+    produced = {}
+    for representation, currency in sorted({
+            (representation, currency)
+            for _, representation, currency in READ_OFF_A_RESPONSE
+            if currency in SUPPORTED_CURRENCIES}):
+        routes = _Configured()
+        routes.setup_method()
+        _a_cost_read_at_the_cost(routes, representation, currency)
+        for target in (PYTHON, SHELL):
+            blueprint = routes._resolve(task_type="grounded_answer",
+                                        event_types=["grounded.search"],
+                                        target=target)
+            assert blueprint["readiness"] == "complete", blueprint["diagnostics"]
+            produced.setdefault(f"{representation} {currency}", {})[target] = (
+                blueprint)
+
+    # Every representation there is, so no row is read through a document
+    # this test did not produce but for the currency the routes refuse.
+    assert {key.split()[0] for key in produced} == {MICROS, MAJOR, MINOR}
+    _held(RESPONSE_COST_READS, produced)
+
+
+def test_a_cost_read_off_a_response_is_answered_as_ruled():
+    """The rows the owner's ruling names, answered as it names them: an
+    integer and a decimal string are read, every number written with a
+    fraction or an exponent is a binary float and refused, a zero is a cost,
+    and an integer past what a double carries is still carried exactly."""
+    def answer(token, representation=MICROS):
+        return _answered(to_micros, _read_at_the_cost(_at_the_cost(token)),
+                         representation, "usd")
+
+    assert answer("1") == {"answer": 1}
+    assert answer('"1"') == {"answer": 1}
+    assert answer('"1.25"', MAJOR) == {"answer": 1_250_000}
+    for floating in ("1.0", "1e0", "1.25", "1E0", "0.1e1", "1.5e1"):
+        assert answer(floating, MAJOR) == {"refused": "amount"}, floating
+    assert answer("0") == answer('"0"') == answer("-0") == {"answer": 0}
+    assert answer("999999999999999") == {"answer": 999_999_999_999_999}
+    assert answer("9007199254740993") == {"answer": 9_007_199_254_740_993}
+    # And every one of them is a row the renderers are held to.
+    documents = {document for document, _, _ in READ_OFF_A_RESPONSE}
+    for token in ("1", '"1"', '"1.25"', "1.0", "1e0", "1.25", "0", '"0"',
+                  "999999999999999", "1000000000000000", "9007199254740993"):
+        assert _at_the_cost(token) in documents, token
 
 
 def test_the_currency_table_is_this_platforms():
@@ -902,6 +1227,8 @@ def test_the_reported_cost_cases_reach_every_answer_there_is():
     assert outcomes(pin_currency, CURRENCIES) == {"answer", "refused"}
     assert {_answered(to_micros, *case).get("refused") for case in amounts
             } == {None, "amount", "currency"}
+    assert {_the_read(*case).get("refused") for case in READ_OFF_A_RESPONSE
+            } == {None, "amount", "currency", "response"}
 
 
 def test_an_amount_as_text_is_answered_differently_only_where_the_type_was_why():

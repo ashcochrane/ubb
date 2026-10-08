@@ -35,6 +35,8 @@ type Branches = Readonly<Record<string, () => ResolvedIntegrationBlueprint>>;
 export const PYTHON_BRANCHES: Branches = {
   "calculated-cost": () => fixture("calculated-cost"),
   "reported-cost": () => fixture("reported-cost"),
+  "response-cost": () => fixture("response-cost"),
+  "response-cost-read-currency": () => fixture("response-cost-read-currency"),
   "direct-task-events": () => fixture("direct-task-events"),
   "explicit-subtasks": () => fixture("explicit-subtasks"),
   "fixed-price": () => fixture("fixed-price"),
@@ -53,6 +55,8 @@ export const PYTHON_BRANCHES: Branches = {
 export const SHELL_BRANCHES: Branches = {
   "shell-calculated-cost": () => fixture("shell-calculated-cost"),
   "shell-reported-cost": () => fixture("shell-reported-cost"),
+  "shell-response-cost": () => fixture("shell-response-cost"),
+  "shell-response-cost-read-currency": () => fixture("shell-response-cost-read-currency"),
   "shell-direct-task-events": () => fixture("shell-direct-task-events"),
   "shell-explicit-subtasks": () => fixture("shell-explicit-subtasks"),
   "shell-fixed-price": () => fixture("shell-fixed-price"),

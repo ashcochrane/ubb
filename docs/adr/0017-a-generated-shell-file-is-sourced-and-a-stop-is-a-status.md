@@ -65,6 +65,13 @@ one, runs every runnable file but has no `keys_unsorted`, which only the verify 
 refused there alone. The refusal names jq 1.5 or later as the version that runs every file the
 renderer writes, and a lifecycle is run on jq 1.5.
 
+*Extended by #583 (2026-10-08).* The program that reads a supplier's cost off a response as it was
+written (§6) asks jq for more, so the closed table gained what it asks for and nothing else: the
+options `--raw-input` and `--slurp`, the `foreach` and `try … catch` forms, and the functions
+`add`, `endswith`, `explode`, `last`, `map`, `range` and `split`. Only a file whose programs use
+them probes for them. All of them are jq 1.5's, so the version the refusal names did not move; jq
+1.4, which has no `foreach`, was already refused, and is refused by this file for that as well.
+
 The verify script is the one file that is run and not sourced, so it ends with `exit`. It needs
 jq and not curl.
 
@@ -122,7 +129,10 @@ shell argument is always text, so: a keyed entry that declares a `value_type` is
 as a whole number of at most fifteen digits and carried exactly or refused; one that declares a
 `source_path` is the path of a FILE holding the supplier's JSON response, and what is read off it
 is held to the same: a whole number, or nothing is sent; a field that declares an
-`amount_representation` is a cost (§6); everything else is a JSON string.
+`amount_representation` is a cost (§6); everything else is a JSON string. Since renderer contract 2
+(#583; ADR-0015 §3) a field's own value may declare a `source_path` too — a supplier's cost, and
+the currency beside it where the mapping reads one — and is then read off that same file, the cost
+as it was written (§6).
 
 The names a call site depends on are `ubb_start_task`, `ubb_run_task`, `ubb_close_task`,
 `ubb_start_subtask_<name>` and `ubb_record_<name>`, with `<name>` and the collision rule exactly
@@ -181,6 +191,15 @@ Runtime values reach a program only as `--arg`, `--argjson` or `--slurpfile`. A 
 to the program that reads it the same way, as an argument, which is also what gives a malformed or
 an empty response one failure whichever jq reads it: read as jq's input, the two fail differently
 on jq 1.6 and 1.7, and an empty one does not fail on 1.6 at all.
+
+**One program takes the response as its input, and reads it as text** (#583, 2026-10-08): the one
+that reads a supplier's cost or its currency off it (§6) names the file after its program, with
+`--raw-input --slurp`. Read raw, every file is one string whatever it holds, and the program
+parses it itself, under `try`: a malformed response, an empty one, one of whitespace only and one
+holding two documents are each "not JSON" alike, on jq 1.5, 1.6, 1.7.1 and 1.8.1 and on gojq, so
+the failure is still one failure whichever jq reads it — and so is one holding a number jq reads
+and Python's `json` does not (§6). The program is still a function of its own with its program on
+standard input, and no heredoc is opened inside a substitution.
 
 ### 4. A stop is a status, set in the caller's shell, and every other failure is another status
 
@@ -303,8 +322,100 @@ Two known differences from the platform's reader, both outside the table and bot
 accepts the decimal digits of every script and the shell reads ASCII digits only, and it strips
 every character Unicode calls a space where the shell strips the ones POSIX does.
 
+**A cost read off the supplier's response is read as the response wrote it** (#583, 2026-10-08).
+Here the text is not the caller's but the response's, and the response says whether it wrote a
+number as an integer: `1`, `1.0` and `1e0` are three tokens, and Python's `json` reads the last
+two as binary floats, which the platform refuses. So the file must see the token, and a jq number
+cannot show it. Run with real binaries, jq 1.5 and 1.6 make the three one double and round an
+integer past fifteen or so digits; jq 1.7.1 and 1.8.1 keep the digits but not the spelling,
+printing `1e0` and `1.5e1` as `1` and `15`. No version of jq tells the three apart as numbers, so
+gating the file on a version that "preserves the literal" was rejected.
+
+**What is read instead is the text.** The response is jq's raw input (§3). It is parsed once to
+find what sits at the path, and split at its quotes — a quote that ends a string is told from an
+escaped one by the parity of the backslashes before it — so that what is inside a string is told
+from what is not. Outside the strings, whitespace is dropped and each structural character is
+marked, so every run between two marks is one scalar.
+
+**First, a number Python's `json` does not read is not read, wherever it sits.** jq reads numbers
+JSON does not allow: every jq run reads `+1`, `01`, `.5` or `1.`, `nan` and `inf` in any
+spelling, and a number with a NUL after it (its C reader stops there); jq 1.5 and 1.6 read a NUL
+inside a string too. Python reads `NaN`, `Infinity` and `-Infinity` and none of the rest, and a
+tenant's own Python code would have failed to parse such a response before a generated module was
+handed anything. So, with those three words and JSON's own three taken out, a scalar holding a
+letter other than an exponent's, a parenthesis, a NUL or a byte-order mark, or shaped as no number
+Python reads (a leading `+`, a leading zero before a digit, a point with no digit on one side),
+makes the whole response unreadable — and so does a NUL inside a string. This is targeted at
+those spellings. It is not an implementation of Python's whole parser, and it is no promise that
+the file accepts exactly the documents Python's `json` accepts (the differences that remain are
+the limitations below).
+
+**Then the token.** Where the value at the path is a number, the program makes a copy of the text
+in which every scalar outside a string is written as a JSON string of its own characters, and
+reads the same path in the copy: what is there is the token as written. It is accepted if and only
+if it is an integer, `-?(0|[1-9][0-9]*)`; anything else that is a number is refused as a float, in
+words that send the reader to the response's integer or its decimal text. A string's own text is
+passed through, and one holding NUL, which no shell variable can hold and the platform refuses, is
+refused. What it reads is then the amount as text, and §6's conversion is applied to it unchanged
+(`_ubb_to_micros`, `_ubb_pin_currency`).
+
+**The work over the whole text is jq's own `split` and `add`**, which every jq runs in C, and
+nothing `join`s. The program looks at characters one at a time in two places only: a part of the
+text that ends in a backslash, to count the backslashes, and the token at the path. A first
+version that walked the whole text a character at a time took up to 21 s on the 4.4 MB response
+measured, and `join` up to 50 s.
+
+**The invariant, and its proof.** For the supported response shapes and the declared
+reported-cost and currency paths, both generated targets implement the same value semantics, and
+neither ever reinterprets a JSON number written with a fraction or an exponent as an admissible
+exact reported cost (owner's review of #608). That is the contract, and it is narrower than
+"the shell file reads exactly the documents Python reads", which is not true and does not need to
+be. The platform's table carries rows read off a response, answered by `json.loads` and
+`to_micros` — the responses it cannot read among them, refused as a response on both targets — and
+the file is held to every row under `sh` and `bash`, as the Python target is. Beside the table,
+the rendered program was run on jq 1.5, 1.6, 1.7.1 and 1.8.1 and on gojq, with Python's reading as
+the oracle, over thirty lexical forms at the path, twenty-nine adversarial responses, two thousand
+generated ones, and the same two thousand with a token planted off the path (one of twenty-eight,
+seven of which Python reads). On jq 1.5, 1.6, 1.7.1 and 1.8.1 it disagreed nowhere; gojq's
+differences are the first of the limitations below. The shell no longer imposes the old arbitrary
+fifteen-digit limit on a cost's input: exact conversion and the platform's economic bounds remain
+authoritative. (Fifteen digits stay a quantity's limit, §2.)
+
+**Limitation: the read's cost.** One read of a cost took 55–100 ms on a 60 KB response, 0.4–1.3 s
+on 0.77 MB of text and 1.5–5.3 s on 4.4 MB of embeddings, across jq 1.5 to 1.8.1 (jq 1.5 the
+slowest, and an integer slower than a decimal string, since only a number is re-read). The check
+for numbers Python does not read is most of a decimal string's read on the large responses (the
+read without it took 0.16–0.39 s on the 4.4 MB one) and about half of an integer's, and it runs on
+every read, wherever the cost sits. It is accepted as it stands, and no response-size limit is
+imposed. If real integrations show multi-megabyte provider responses are common, that is a focused
+renderer-performance follow-up, never a reason to weaken exactness here.
+
+**Limitations: whole-document parser differences.** jq is not Python's `json`, and these are
+recorded rather than reimplemented — this target will not carry a JSON parser of its own. None is
+a cost read differently at the declared path, and each needs a response no JSON writer produces:
+
+- gojq reads no `NaN` or `Infinity` anywhere, so it refuses a response holding one, which Python
+  reads. It is not in the standing matrix, and the refusal sends nothing.
+- jq refuses a lone surrogate escape (`"\ud800"`), which Python reads; jq 1.6 and 1.7.1 refuse
+  arrays and objects nested past 256 levels, which Python reads. Both are refusals that send
+  nothing.
+- An integer of more than 4,300 digits anywhere in the response is read by every jq. Python
+  refuses it, but by a default its own interpreter sets and a tenant may change
+  (`sys.set_int_max_str_digits`), and which an interpreter older than 2022's security releases
+  does not have: that is Python's guard, not JSON's grammar.
+
 The currency-disagreement proof is the helper's, as ADR-0016 §4 records for Python and for the
 same reason. #583 owes the case through the artifact.
+
+*Ruled on #583 (2026-10-08, decision D1): the refusal reaches the integration from the server.* A
+mapping that declares a `currency_path` has the file read the currency off the response, refuse
+locally only a code the helper's table does not hold or a value that is not text, and send a code
+it holds as the event's `currency`. The file holds no copy of the tenant's currency to compare. A
+currency UBB holds that is not the tenant's is refused by the one shared check on the server (422,
+"currency mismatch", nothing recorded), and the file returns that refusal as it returns any
+failed request: curl's status, with the body printed (§4). The generated integration does not
+refuse it itself. Seam C's `response-currency-refused` scenario runs that case in the standing
+matrix.
 
 ### 7. A request preview is documentation
 
@@ -382,7 +493,8 @@ built, the boundary declared work that returned a failure `failed`, and the oute
    converted on its text, a response as a file, one preview a call, no host, no curl timeout the
    renderer made up, and catalogue version 2 (version 3 since #582, which reworded the refusal of
    an old jq — see the amendment to §1; version 4 since #571, which replaced one diagnostic code's
-   remediation with another's).
+   remediation with another's, and 5 since #570, which did the same; version 6 since #583, which
+   removed that code's remediation and added the words for a cost read off the response — §6).
 
 **A path for work that has already happened is not rendered, and that is a stated limitation of
 this target in v1** (ruling 6), not something a shell file is implied to do. The Python target has
@@ -394,9 +506,10 @@ target.** A shell path can be added without breaking a file already generated.
 
 The fields #569 will publish in a stop's metadata (#585). Execution against the real application,
 and images that really lack a tool or carry an old one, are #582's and are in
-`tests/code_builder_execution/`, with the standing matrix of shells. A cost read off a supplier's
-response, a constant's value and a missing agreed price (#583, #584, #586): each arrives as tokens
-and needs no new rule here.
+`tests/code_builder_execution/`, with the standing matrix of shells. A constant's value and a
+missing agreed price (#584, #586): each arrives as tokens and needs no new rule here. A cost read
+off a supplier's response (#583) arrived as tokens too, and needed one rule of its own: the read as
+written of §6.
 
 ## What proves it
 
@@ -428,6 +541,8 @@ and needs no new rule here.
 | §5 — only published keys are sent, by every complete branch, run | same module — "sends only keys the operation's request publishes: %s, run as its own blocks say", "reads these branches' published keys off a contract that has some" |
 | §5 — the credential is curl's standard input and is written nowhere | `apps/codegen/tests/shell.artifact.test.ts` — "reads the credential from the environment, hands it to curl on standard input, and writes it nowhere" |
 | §6 — the conversion is the platform's, case for case, on text | `apps/codegen/tests/shell.execution.test.ts` — "is converted exactly as the platform converts its text, case for case, under sh and bash", "does no arithmetic on the amount: nothing in the file could round it", "goes on the wire as whole micros, every digit of it, with the declared currency"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_the_reported_cost_cases_carry_this_platforms_answers`, `test_an_amount_as_text_is_answered_differently_only_where_the_type_was_why` |
+| §6 — a cost read off a response is read as written and answered as the platform answers, row for row; a float is refused however it is spelled; the response is read as text; a currency UBB holds and the tenant does not is the server's refusal, returned (#583) | `apps/codegen/tests/shell.execution.test.ts` — "is read and converted exactly as the platform answers, row for row, under sh and bash", "refuses, before anything is sent, a number written as a float, however it is spelled", "goes on the wire as provider_response_cost_micros, every digit, never as provider_cost_micros", "reads the response as text, never as a jq number, and never a second time where nothing else is read", "returns UBB's refusal of a currency it holds and the tenant does not, as curl gave it"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_a_cost_read_off_a_response_is_answered_as_ruled` |
+| §6 — the same against the real application, in the standing matrix: recorded as COGS with its source on the receipt, and a currency the tenant does not hold refused by the server | `tests/code_builder_execution/test_every_scenario_runs_unmodified.py::test_a_scenario_runs_unmodified` (`response-cost`, `response-currency-refused`) |
 | §7 — a preview carries no verdict and the header does | `apps/codegen/tests/shell.artifact.test.ts` — "carries no readiness verdict, and the header of the runnable file does", "is not the runnable file: it defines nothing and runs nothing" |
 | §8 — what is refused | `apps/codegen/tests/shell.artifact.test.ts` — "refuses %s rather than writing a file that is wrong", "does not ask a shell Blueprint for an SDK major, and states the one it is given" |
 | §9 — the tools are checked for in CI before the tests, and no setting takes the tests off the runner | `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_ci_runs_the_renderers_suite_and_can_fail_on_it`, `test_the_shell_tests_have_no_way_to_pass_without_a_shell` |

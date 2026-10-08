@@ -17,6 +17,7 @@ mounted into.
     python shell_harness.py syntax
     python shell_harness.py run           <plan.json>
     python shell_harness.py reported-cost <cases.json> <messages.json>
+    python shell_harness.py response-cost <cases.json> <function> <representation> <currency> <messages.json>
 """
 import json
 import os
@@ -24,7 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from harness import HARNESS_CREDENTIAL, Server
+from harness import HARNESS_CREDENTIAL, Server, read_off_a_response
 
 #: The shells a generated file is run under. `sh` is whatever the machine's
 #: POSIX shell is — dash on the CI runner and in the test image — and `bash`
@@ -140,7 +141,53 @@ def reported_cost(cases_path, messages_path):
             "disagreements": disagreements}
 
 
-COMMANDS = {"syntax": syntax, "run": run, "reported-cost": reported_cost}
+def response_cost(cases_path, function, representation, currency,
+                  messages_path):
+    """A supplier's cost READ OFF A RESPONSE, run through the generated record
+    function over every row the platform answered for `representation` in
+    `currency` (#583), under every shell the harness has: each row's text is
+    written to a file exactly as it is, the function is called with that
+    file, a stand-in server answers, and what was sent — or why it refused,
+    having sent nothing — is held to the platform's answer. Returns the rows
+    that disagree."""
+    rows = read_off_a_response(cases_path, representation, currency)
+    said = json.loads(Path(messages_path).read_text(encoding="utf-8"))
+    Path("__record__.sh").write_bytes(
+        b'. ./' + MODULE.encode() + b'\n' + function.encode() +
+        b' customer_id=c idempotency_key="$1" task_id=t'
+        b' response=__response__.json\n')
+    server = Server()
+    environment = _environment(server, None)
+    disagreements = []
+    for shell in SHELLS:
+        for index, row in enumerate(rows):
+            Path("__response__.json").write_bytes(row["document"].encode("utf-8"))
+            before = len(server.requests)
+            ran = _ran([shell, "__record__.sh", f"e{index}"], environment)
+            sent = server.requests[before:]
+            if ran["status"] == 0 and len(sent) == 1:
+                got = {"answer": sent[0]["body"].get("provider_response_cost_micros")}
+                if "provider_cost_micros" in sent[0]["body"]:
+                    got["on_the_callers_field"] = True
+            elif ran["status"] == said["refused_status"]:
+                about = ("response" if any(message in ran["stderr"]
+                                           for message in said["response"])
+                         else "currency" if any(message in ran["stderr"]
+                                                for message in said["currency"])
+                         else "amount")
+                got = {"refused": about}
+                if sent:
+                    got["sent"] = True
+            else:
+                got = {"unexpected": ran}
+            if got != row["expected"]:
+                disagreements.append({"shell": shell, "row": row, "got": got})
+    return {"rows": len(rows), "shells": list(SHELLS),
+            "disagreements": disagreements}
+
+
+COMMANDS = {"syntax": syntax, "run": run, "reported-cost": reported_cost,
+            "response-cost": response_cost}
 
 if __name__ == "__main__":
     answer = COMMANDS[sys.argv[1]](*sys.argv[2:])
