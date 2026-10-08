@@ -214,6 +214,35 @@ make an already-successful write unreplayable. No body is compared: a usage
 repeat carrying different fields still answers the original, which is the
 existing contract and not a pinned-field check like the start's.
 
+## A supplier cost: one transport per source, one amount back (#570)
+
+The recording request carries one supplier-cost field per reported-cost
+source that reaches UBB on the call: `provider_cost_micros` (supplied
+directly by the caller) and `provider_response_cost_micros` (obtained from
+the provider's response; UBB cannot verify how, and admits it on the declared
+source's word). Each is admitted only where the Event Type's last publication
+declares that source, never both on one event, and is refused — a 422, or a
+rejected batch item — anywhere else rather than dropped; the refusal names
+the field that is admissible, or says neither is. Either lands in the one
+supplier-cost column, and every response publishes it as
+`provider_cost_micros`, the canonical resolved COGS: no response carries the
+transport's name. The source the figure was admitted under is kept on the
+Pricing Receipt (`reported_cost_source_kind` in the costing section's
+detail), so the record never relies on what the Event Type publishes today.
+A new way for a supplier cost to arrive gets a field of its own — an existing
+field's published meaning is never widened to carry it.
+
+Each field's meaning is its published description, and **every
+`provider_cost_micros` a schema declares carries one**: one event's cost the
+canonical wording (`core.amount_status_pairs.RESOLVED_SUPPLIER_COST_MEANING`),
+a total the aggregate wording naming the `unresolved_event_count` beside it
+(`supplier_cost_total_meaning`), webhook payloads included. The two untyped
+containers that can hold one say what theirs means on the container: the
+batch route's `results` (an accepted item carries `RecordUsageResponse`'s
+fields and meanings) and the Pricing Receipt's `totals`. A schema that gains
+the field is a red test until its meaning is chosen. Pinned by
+`api/v1/tests/test_two_request_fields_each_with_one_meaning.py`.
+
 ## Vocabulary: the values a field may carry (#208)
 
 Two vendor extensions are part of the published dialect. Both are

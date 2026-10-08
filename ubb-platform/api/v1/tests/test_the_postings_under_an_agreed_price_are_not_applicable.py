@@ -124,7 +124,7 @@ class AgreedPriceTestBase(ChargeTestBase):
 
         No caller-supplied figure here, deliberately: the route admits one only
         where the Event Type declares a reported cost mapped to the caller
-        (`admits_a_caller_supplied_cost`), so a granularity fixture that stated
+        (`admitted_supplier_cost_source`), so a granularity fixture that stated
         a cost would exercise a shape `POST /usage` refuses. Costing it through
         the declaration is both route-faithful and the only way the declaration
         is load-bearing rather than decorative.

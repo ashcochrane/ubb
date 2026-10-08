@@ -29,6 +29,7 @@ from typing import Annotated, ClassVar, Optional
 
 from pydantic import Field
 
+from core.amount_status_pairs import RESOLVED_SUPPLIER_COST_MEANING
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     PRICING_STATUS_KNOWN,
@@ -238,7 +239,13 @@ class UsageRecorded(EventSchema):
     # NULL for a cost UBB could not settle, and this payload is filled straight
     # from that column — so for three commits a subscriber read the same null
     # for "no supplier cost" and "a supplier cost we have not learned yet".
-    provider_cost_micros: int | None = None
+    #
+    # ITS MEANING IS PUBLISHED, in the one wording every per-event schema uses
+    # (`core.amount_status_pairs`; the owner's review of #570's PR #607 asked
+    # that no public `provider_cost_micros` be left undescribed).
+    provider_cost_micros: Annotated[
+        int | None,
+        Field(description=RESOLVED_SUPPLIER_COST_MEANING)] = None
     # WHICH OF THOSE TWO THE NULL ABOVE MEANS, carried because two products
     # accumulate off this payload and neither can count what it excluded without
     # it. `not_applicable` also arrives as a null amount, and counting it as

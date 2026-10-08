@@ -451,7 +451,14 @@ def test_the_fixtures_cover_what_they_are_named_for():
     assert sorted({d["code"] for d in resolved("blocked")["diagnostics"]}) == [
         "constant_measurement_not_renderable",
         "derived_measurement_unsupported", "event_type_not_published",
-        "reported_cost_provider_response_unsupported"]
+        "reported_cost_provider_response_not_renderable"]
+    # Valid configuration this Code Builder version cannot yet render offers
+    # nothing to change (#571, #570); every other code names its fix.
+    for name in ("blocked", "shell-blocked"):
+        assert sorted(d["code"] for d in resolved(name)["diagnostics"]
+                      if d["remediation_request"] is None) == [
+            "constant_measurement_not_renderable",
+            "reported_cost_provider_response_not_renderable"]
     # A constant declared with its value is complete configuration: the one
     # thing between it and a runnable file is this Code Builder's version.
     for name in ("constant", "shell-constant"):
@@ -493,7 +500,7 @@ def test_the_fixtures_cover_what_they_are_named_for():
                    }) == [
         "constant_measurement_not_renderable",
         "derived_measurement_unsupported", "event_type_not_published",
-        "reported_cost_provider_response_unsupported",
+        "reported_cost_provider_response_not_renderable",
         "response_shape_not_readable_by_target"]
 
 

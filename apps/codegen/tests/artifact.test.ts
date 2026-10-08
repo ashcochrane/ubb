@@ -346,7 +346,7 @@ describe("the header", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      // A diagnostic with nothing to change carries no request (#571), and
+      // A diagnostic with nothing to change carries no request (#571, #570), and
       // the header then states none rather than a null.
       const request = diagnostic.remediation_request ?? null;
       const stated = `remediation_request = ${JSON.stringify(request)}`;
@@ -355,6 +355,7 @@ describe("the header", () => {
     }
     expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
       "constant_measurement_not_renderable",
+      "reported_cost_provider_response_not_renderable",
     ]);
   });
 

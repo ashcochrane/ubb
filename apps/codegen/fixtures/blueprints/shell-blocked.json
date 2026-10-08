@@ -3,7 +3,7 @@
   "renderer_contract_version": 1,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:e01a6ff8101fd0243721d2f1b491b3d1e039103a8e9bd3675eaf8c819a647042",
+  "configuration_fingerprint": "sha256:5b1376212344bfc8c53c4aaee3fb49c82b9bcf8001d274f834196b33c330db49",
   "readiness": "blocked",
   "calls": [
     {
@@ -709,22 +709,11 @@
     },
     {
       "severity": "blocking",
-      "code": "reported_cost_provider_response_unsupported",
+      "code": "reported_cost_provider_response_not_renderable",
       "object_kind": "reported_cost_mapping",
       "key": "web.search",
       "field": "source_kind",
-      "remediation_request": {
-        "method": "PUT",
-        "route": "/api/v1/event-types/web.search/reported-cost-mapping",
-        "operation_id": "api_v1_event_type_endpoints_declare_reported_cost_mapping",
-        "body": {
-          "source_kind": null,
-          "amount_representation": null,
-          "source_path": null,
-          "currency_path": null,
-          "currency": null
-        }
-      }
+      "remediation_request": null
     }
   ]
 }

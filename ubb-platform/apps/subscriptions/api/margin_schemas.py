@@ -1,6 +1,8 @@
 from typing import Annotated, List, Optional
 from ninja import Schema, Field
 
+from core.amount_status_pairs import supplier_cost_total_meaning
+
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
 #
@@ -190,7 +192,8 @@ class SeatMarginOut(Schema):
     supplied_revenue_micros: int
     usage_billed_micros: int
     usage_revenue_micros: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "this customer's events in the window the margin covers"))
     unresolved_event_count: int
     #: The revenue half's own count (#351). It bounds the margin the OTHER way
     #: from the count above it: an excluded cost makes the margin a ceiling, an
@@ -265,7 +268,8 @@ class BusinessMarginTotals(Schema):
     #: Stripe and which part the tenant stated about a system UBB cannot see.
     supplied_revenue_micros: int
     usage_revenue_micros: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "every seat's events in the window, the seats' own totals added up"))
     #: The seats' counts added up, exactly as the cost above is: one seat's
     #: unresolved cost makes the business figure a floor too.
     unresolved_event_count: int

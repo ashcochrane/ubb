@@ -177,8 +177,13 @@ A record linked one-to-one to a posting, created only when billing emits `refund
 ## Cost & margin
 
 **Provider cost (COGS)**:
-The upstream cost of the usage, in micros — caller-supplied or summed from the rules in a cost book.
-_Avoid_: "our cost" — this is what the upstream provider charged.
+The upstream cost of the usage, in micros — summed from the rules in a cost book, or a reported figure
+that arrived on the call on the transport its Event Type's published **reported-cost mapping**
+admits: `provider_cost_micros` where the caller supplies it, `provider_response_cost_micros` where
+the caller obtained it from the provider's response (#570). Either way it is one amount in one
+column, and every response publishes it as `provider_cost_micros`, whichever source supplied it.
+_Avoid_: "our cost" — this is what the upstream provider charged; and treating the response-read
+transport as a second cost fact — it is a way in, never a second column or a second field back.
 
 **Billed cost**:
 What the customer is charged, in micros — from a matching pricing rule, else the markup rung, and
@@ -518,6 +523,13 @@ pricing sections carry their method, status and detail BY VALUE, and the `proven
 carries cross-reference ids that nothing reads to reconstruct an amount. It is **not** a guarantee
 that customer revenue exists and not evidence a customer was charged — a metering-only tenant has a
 receipt for every event it records and bills nobody through UBB.
+**A reported cost names the source it was admitted under** (#179 §3.6, #570). Since #570, where the
+cost is a figure that arrived on the call, the costing section's method is `reported` and its detail
+carries `reported_cost_source_kind` — `caller_supplied` or `provider_response`, the source whose
+transport carried it, which the Event Type's publication admitted at the time — so the record says
+where its one canonical cost came from after that publication has moved on, without a second amount
+or the transport's own field. A Resolution Run completing the price side leaves it as recording
+wrote it. A receipt written before #570 carries no such key, and is read as written, never rewritten.
 **The subject decides what its amounts owe** (#418). A receipt explains one usage row or one
 Charge, and only the first has amounts resolution DERIVED: a Charge's price was AGREED before the
 work ran and pinned to it, and its supplier cost is zero because there is no supplier behind a

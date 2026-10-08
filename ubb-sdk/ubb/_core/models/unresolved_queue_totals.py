@@ -24,7 +24,11 @@ class UnresolvedQueueTotals:
 
         Attributes:
             currency (str):
-            provider_cost_micros (int):
+            provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over the queued postings in this
+                currency, across the whole filter rather than one page: each event's canonical `provider_cost_micros`, whichever
+                valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in
+                `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is
+                not counted.
             queued_event_count (int):
             unresolved_event_count (int):
      """

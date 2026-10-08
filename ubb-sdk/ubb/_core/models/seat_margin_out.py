@@ -28,7 +28,10 @@ class SeatMarginOut:
             event_count (int):
             gross_margin_micros (int):
             margin_percentage (float):
-            provider_cost_micros (int):
+            provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over this customer's events in
+                the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it.
+                An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so
+                the total is a floor; one declared to carry no cost adds nothing and is not counted.
             subscription_revenue_micros (int):
             supplied_revenue_micros (int):
             total_revenue_micros (int):

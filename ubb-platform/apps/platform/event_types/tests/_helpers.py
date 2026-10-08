@@ -38,13 +38,16 @@ MEASURES = "measured.call"
 
 
 def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
-    """The ONE declaration under which a caller may state the supplier's cost.
+    """The ONE declaration under which a caller may supply the supplier's cost
+    directly, on `provider_cost_micros`.
 
     Two records saying one thing: this Event Type's supplier cost is the figure
     the supplier itself reports, and the caller's own code passes it in on the
     call. Anything less than the pair is a 422 on `provider_cost_micros`
     (#324), so a test that wants the figure accepted wants exactly this — and
-    wants it published, because production never reads a draft (#605).
+    wants it published, because production never reads a draft (#605). (A cost
+    read off the provider's response arrives on a field of its own, under a
+    `provider_response` mapping, #570.)
 
     **THE COMMONEST REASON A TEST NEEDS IT is that it predates the registry.**
     Recording a supplier cost against no declaration at all was how every

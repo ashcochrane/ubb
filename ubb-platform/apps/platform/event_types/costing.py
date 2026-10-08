@@ -9,9 +9,9 @@ holding a record they could accidentally save.
 
 **Two callers, one query each, asking different questions of the same record.**
 The compute spine asks what a posting's cost status should be. The recording
-edge asks whether the caller may state the supplier's figure at all (#324) —
-and only ever when one arrived, which is precisely the branch on which the
-spine never looks the declaration up.
+edge asks whether a supplier's figure may arrive on the call at all, and on
+which transport (#324, #570) — and only ever when one arrived, which is
+precisely the branch on which the spine never looks the declaration up.
 
 **Why this lives beside the declaration rather than in the pricer.** *"This
 Event Type carries no cost at all"* is a statement about what the tenant
@@ -37,7 +37,9 @@ which this is not.
 """
 from typing import NamedTuple
 
-from core.vocabulary import COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED
+from core.vocabulary import (
+    COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED,
+    SOURCE_KIND_PROVIDER_RESPONSE)
 
 from .publication import last_published_declaration
 
@@ -127,29 +129,49 @@ def cost_declaration(*, tenant, key):
     )
 
 
-def admits_a_caller_supplied_cost(declaration):
-    """May a caller state the supplier's own cost on a call against this key?
+#: The reported-cost sources whose figure reaches UBB on the recording call
+#: (#324, #570). The caller supplies one directly; the other is what the
+#: caller's own integration read off the supplier's response. Each arrives on a
+#: transport of its own, and the recording edge says which field is which.
+#: `constant` and `derived` are not here: a mapping may not declare either
+#: (`REPORTED_COST_KIND_REFUSALS`), so neither can be published.
+SOURCES_THAT_ARRIVE_ON_THE_CALL = frozenset({SOURCE_KIND_CALLER_SUPPLIED,
+                                             SOURCE_KIND_PROVIDER_RESPONSE})
 
-    Exactly one declaration says yes: the **reported** costing method with a
-    mapping whose source kind is the **caller-supplied** one. That pair is the
-    tenant saying "the supplier reports this number and my own code passes it
-    in", and it is the only shape under which UBB will read the figure as COGS.
+
+def admitted_supplier_cost_source(declaration):
+    """WHERE a supplier cost on a call against this key may come from — the
+    source kind whose figure the declaration admits — or `None` where no
+    figure is admissible at all (#324, #570).
+
+    At most one source answers, so a figure may arrive by at most one
+    transport: the **reported** costing method with a mapping whose source
+    kind is one of `SOURCES_THAT_ARRIVE_ON_THE_CALL`. That pair is the tenant
+    saying "the supplier reports this number, and it reaches UBB on the call
+    from here", and it is the only shape under which UBB reads a figure that
+    arrived as COGS.
 
     **BOTH HALVES, AND THE SECOND IS THE ONE THAT BITES.** `reported` alone
-    says a supplier reports a figure, not that it arrives on the call — a
-    mapping declaring `provider_response` says the generated integration reads
-    it out of the supplier's own response, and a check that stopped at the
-    method would admit a number that came from somewhere the tenant never
-    declared.
+    says a supplier reports a figure, not where it comes from — a mapping
+    declaring `provider_response` says the integration reads it out of the
+    supplier's own response, a `caller_supplied` one that the caller passes it
+    in, and each source has its own field. A check that stopped at the method
+    would admit a figure on a transport that names a source the tenant never
+    declared. Without a mapping (a shape `publish` refuses, but which the rule
+    does not trust it to have refused) nothing is declared to arrive, and the
+    answer is `None`.
 
-    `None` — no published declaration — is a **no**. The Event Type registry is
-    opt-in and most postings still have no declaration, so this is the commonest
-    answer rather than an error case; what a tenant may not do is assert the
-    supplier's own number against nothing. The refusal itself is the caller's
-    edge to render (`api/v1/metering_endpoints.py`), which is where a 422 and
-    its wording belong; this answers only what the declaration permits.
+    `None` for the declaration — no published declaration — is `None` too. The
+    Event Type registry is opt-in and most postings still have no declaration,
+    so this is the commonest answer rather than an error case; what a tenant
+    may not do is assert the supplier's own number against nothing. The
+    refusal itself is the caller's edge to render
+    (`api/v1/metering_endpoints.py`), which is where a 422, its wording and
+    the field each source is carried on belong; this answers only what the
+    declaration permits.
     """
-    return (declaration is not None
-            and declaration.costing_method == COSTING_METHOD_REPORTED
-            and declaration.reported_cost_source_kind
-            == SOURCE_KIND_CALLER_SUPPLIED)
+    if (declaration is None
+            or declaration.costing_method != COSTING_METHOD_REPORTED):
+        return None
+    source = declaration.reported_cost_source_kind
+    return source if source in SOURCES_THAT_ARRIVE_ON_THE_CALL else None

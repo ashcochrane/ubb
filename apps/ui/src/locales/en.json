@@ -136,7 +136,7 @@
   "diagnostic_code.event_type_not_selected": "No Event Type is selected",
   "diagnostic_code.event_type_revised_since_publication": "This Event Type has been revised since it was published",
   "diagnostic_code.reported_cost_mapping_missing": "This Event Type declares no reported-cost mapping",
-  "diagnostic_code.reported_cost_provider_response_unsupported": "A cost read from the provider's response cannot be recorded yet",
+  "diagnostic_code.reported_cost_provider_response_not_renderable": "This reported-cost mapping is valid platform configuration, and this Code Builder version cannot yet generate code that reads the cost from the provider's response",
   "diagnostic_code.required_grouping_field_not_declared": "A required Grouping Field is not declared",
   "diagnostic_code.required_grouping_field_retired": "A required Grouping Field is retired",
   "diagnostic_code.required_grouping_field_wrong_scope": "A required Grouping Field is declared at a scope this start cannot set",

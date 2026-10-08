@@ -15,6 +15,10 @@ the rule are next door to the model, in
 
 Recording is not here: what a recorded quantity looks like on the wire is
 #603's, and nothing in this module records anything.
+
+It also holds the registry's same-commit rule for the closed diagnostic set,
+because #571 swapped a member of it — and #570 swapped another under the same
+rule, so both swaps are asserted here, surface by surface.
 """
 import json
 from pathlib import Path
@@ -90,6 +94,33 @@ def test_the_contract_states_both_grammars_and_what_gives_the_meaning():
 REMOVED = "constant_value_not_declared"
 ADDED = "constant_measurement_not_renderable"
 
+#: Every member swapped under the registry's same-commit rule, removed member
+#: first. The second is #570's: a cost read off the supplier's response has a
+#: truthful request field now, so the member that called its mapping
+#: unsupported went, and the one saying only this Code Builder version cannot
+#: yet render the read came in (#583 removes it).
+SWAPS = {
+    "#571": (REMOVED, ADDED),
+    "#570": ("reported_cost_provider_response_unsupported",
+             "reported_cost_provider_response_not_renderable"),
+}
+
+#: #570's removed member's explanation, in its own WORDS (#571's owner
+#: ruling: a new diagnostic that replaces a false explanation replaces it on
+#: every surface — so the search is for what it said, not only for its name).
+#: Each phrase sits on ONE line of a surface that carried it at `555fd1e4` —
+#: the label, the catalogue, and the header of both blocked files — because a
+#: generated file wraps its prose, and a phrase spanning a line break would
+#: match nothing before the swap as well as after it. #571's own is not here:
+#: "has no configured value" is still the renderer's true sentence for a token
+#: that has none, and #571's tests pin where.
+OLD_EXPLANATIONS = {
+    "#570": ("cannot be recorded yet",
+             "generated call can carry a cost read that way",
+             "Declare it as supplied",
+             "by the caller with the request below"),
+}
+
 #: Every generated surface the closed set of diagnostic codes reaches.
 GENERATED = (
     "openapi/v1.json", "openapi/known-values.json",
@@ -114,28 +145,52 @@ def _registry_values(concept):
     return values
 
 
-def test_the_removed_member_is_on_no_surface_and_its_successor_on_every_one():
-    """The registry's same-commit rule, surface by surface: nothing can now
-    declare a constant without its value, so no surface may still name that
-    state — and every one must name the state a valued constant is in. The
-    registry's own comment records the removal, so the registry is read by
-    its values."""
+def _platform_written():
+    """Every file a renderer or the platform wrote: the committed Blueprint
+    fixtures, the rendered snapshots, and Verify's answers."""
     root = CONTRACT.parents[1]
-
-    assert REMOVED not in _registry_values("diagnostic_code")
-    assert ADDED in _registry_values("diagnostic_code")
-    for path in GENERATED:
-        text = (root / path).read_text(encoding="utf-8")
-        assert REMOVED not in text, path
-        assert ADDED in text, path
     written = [*(root / "apps" / "codegen" / "fixtures" / "blueprints").glob(
         "*.json"), *(root / "apps" / "codegen" / "tests" / "__snapshots__"
                      ).rglob("*.*"),
                *(root / "apps" / "ui" / "src" / "features" / "developers"
                  / "api" / "verifications").glob("*.json")]
     assert len(written) > 100, "the platform-written files were not found"
-    assert [path.name for path in written
-            if REMOVED in path.read_text(encoding="utf-8")] == []
+    return written
+
+
+@pytest.mark.parametrize("ticket", sorted(SWAPS))
+def test_the_removed_member_is_on_no_surface_and_its_successor_on_every_one(
+        ticket):
+    """The registry's same-commit rule, surface by surface: a state nothing
+    produces any more is named on no surface, and the state that replaced it
+    on every one. (#571: nothing can declare a constant without its value. #570:
+    a cost read off the supplier's response has a transport of its own.) The
+    registry's own comment records each removal, so the registry is read by
+    its values."""
+    removed, added = SWAPS[ticket]
+    root = CONTRACT.parents[1]
+
+    assert removed not in _registry_values("diagnostic_code")
+    assert added in _registry_values("diagnostic_code")
+    for path in GENERATED:
+        text = (root / path).read_text(encoding="utf-8")
+        assert removed not in text, path
+        assert added in text, path
+    assert [path.name for path in _platform_written()
+            if removed in path.read_text(encoding="utf-8")] == []
+
+
+@pytest.mark.parametrize("ticket", sorted(OLD_EXPLANATIONS))
+def test_no_generated_surface_still_gives_the_removed_explanation(ticket):
+    """A false explanation goes with its member, in its own words: no file a
+    renderer or the platform wrote, and no generated surface, still carries a
+    phrase of the explanation the removed member gave — each one a phrase that
+    surface did carry before the swap, so this can go red."""
+    root = CONTRACT.parents[1]
+    surfaces = [*_platform_written(), *(root / path for path in GENERATED)]
+    for words in OLD_EXPLANATIONS[ticket]:
+        assert [path.name for path in surfaces
+                if words in path.read_text(encoding="utf-8")] == [], words
 
 
 def a_constant(value=OMITTED, *, value_type="decimal",

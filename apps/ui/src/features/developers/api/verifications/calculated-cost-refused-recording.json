@@ -75,7 +75,7 @@
         "title": "Validation error",
         "status": 422,
         "code": "validation_error",
-        "detail": "provider_cost_micros is the supplier's own reported cost for this call. Event Type 'chat.completion' does not declare it: it is admissible only where the Event Type declares costing_method 'reported' with a reported-cost mapping whose source_kind is 'caller_supplied'. Declare that pair, or send what you believe this call cost as claimed_provider_cost_micros, which is accepted on any event and is never treated as cost."
+        "detail": "provider_cost_micros is a supplier cost supplied directly by the caller. Event Type 'chat.completion' admits no supplier cost on the call: neither provider_cost_micros nor provider_response_cost_micros is admissible. Each is admissible only where the Event Type's last publication declares costing_method 'reported' with a reported-cost mapping whose source_kind is 'caller_supplied' (for provider_cost_micros) or 'provider_response' (for provider_response_cost_micros). Declare and publish that, or send what you believe this call cost as claimed_provider_cost_micros, which is accepted on any event and is never treated as cost."
       }
     }
   }

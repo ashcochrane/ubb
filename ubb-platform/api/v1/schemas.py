@@ -12,6 +12,8 @@ from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from apps.platform.work import services as work_services
+from core.amount_status_pairs import (
+    RESOLVED_SUPPLIER_COST_MEANING, supplier_cost_total_meaning)
 from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
@@ -40,8 +42,10 @@ RECEIPT_DESCRIPTION = (
     "(receipt_schema_version) and the version of the engine that computed it "
     "(pricing_engine_version), the subject it explains, a costing and a "
     "pricing section holding their method, status and detail BY VALUE, the "
-    "totals, and a provenance section of cross-reference ids that nothing "
-    "reads to reconstruct an amount."
+    "totals (`provider_cost_micros` and `billed_cost_micros`: the amount each "
+    "section resolved, null where it is not settled), and a provenance "
+    "section of cross-reference ids that nothing reads to reconstruct an "
+    "amount."
 )
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
@@ -131,13 +135,62 @@ class AffordabilityResponse(Schema):
 #: half of saying so. Four paraphrases would be four chances to soften it, so
 #: the constant is shared and the sentence is stated once. It moved above the
 #: request in #324, which is where the figure now enters.
+#:
+#: ⚠ ITS LAST SENTENCE WAS FALSIFIED BY #570 AND IS REWORDED, NOT DROPPED. It
+#: said `provider_cost_micros` was "the only one UBB treats as cost" — true of
+#: the request while it had one supplier-cost field, false once a figure read
+#: off the provider's response got a transport of its own, and on a response
+#: it named a field whose meaning is the RESOLVED cost, not a caller's input.
+#: What stays true in all four places is that COGS is what UBB resolves.
 CLAIMED_PROVIDER_COST_MEANING = (
     "What the caller believes this call cost. Diagnostic only, recorded as "
     "stated and never COGS: it is never rated, never summed into a cost "
-    "total, and never becomes the supplier cost beside it. "
-    "`provider_cost_micros` is the supplier's own reported figure and the "
-    "only one UBB treats as cost."
+    "total, and never becomes the supplier cost beside it. The supplier cost "
+    "UBB treats as COGS is the one it resolves, published as "
+    "`provider_cost_micros` on a response."
 )
+
+#: THE THREE SUPPLIER-COST MEANINGS (owner ruling on #570, comment
+#: `6040966104`), each PUBLISHED as its field's description because a
+#: generated client's user never reads this module. Two request fields carry a
+#: supplier cost — one per reported-cost source that arrives on the call — and
+#: one response field publishes the cost UBB resolved, whichever of them (or a
+#: Cost Rate) supplied it. The request fields are refused, never dropped, where
+#: the Event Type's last publication does not admit them
+#: (`metering_endpoints.admit_supplier_cost`).
+CALLER_SUPPLIED_COST_MEANING = (
+    "The supplier cost of this call (COGS), supplied directly by the caller. "
+    "Admissible only where the Event Type's last publication declares "
+    "costing_method `reported` with a reported-cost mapping whose "
+    "source_kind is `caller_supplied`, and refused anywhere else rather than "
+    "dropped. A figure obtained from the provider's response is sent as "
+    "`provider_response_cost_micros` instead, never here."
+)
+#: The transport for a cost read off the supplier's response (#570). Its
+#: last two sentences are the ones the ruling insisted on: UBB cannot see how
+#: the caller came by the number, and the field is a transport rather than a
+#: second cost fact.
+PROVIDER_RESPONSE_COST_MEANING = (
+    "The supplier cost of this call (COGS), as the caller obtained it from the "
+    "provider's response. Admissible only where the Event Type's last "
+    "publication declares costing_method `reported` with a reported-cost "
+    "mapping whose source_kind is `provider_response`, and refused anywhere "
+    "else rather than dropped; never sent together with "
+    "`provider_cost_micros`. "
+    "UBB cannot verify how the figure was obtained: it admits it because the "
+    "declared source says that is where it comes from. It is a transport, not "
+    "a second cost: the figure is recorded as the event's supplier cost and "
+    "read back as `provider_cost_micros`, and is not echoed under its own name."
+)
+# What a response's `provider_cost_micros` is is worded in
+# `core.amount_status_pairs`, beside the pair it describes:
+# `RESOLVED_SUPPLIER_COST_MEANING` on every schema that publishes one event's,
+# and `supplier_cost_total_meaning(...)` on every one that publishes a total.
+# There, because a product's API module and the kernel's webhook payload
+# publish it too and may not import this module (ADR-001). The owner's review
+# of #607 asked that no public `provider_cost_micros` be left undescribed by
+# accident; `test_two_request_fields_each_with_one_meaning.py` walks the
+# contract for every schema carrying it.
 
 
 #: THE ONE BODY KEY THIS REQUEST REFUSES RATHER THAN DROPS (#365). Spelled once,
@@ -190,11 +243,20 @@ class RecordUsageRequest(Schema):
     # went with it — it advertised a grouping capability this bag deliberately
     # does not have. Keys are yours: UBB stores and returns them as authored.
     metadata: dict = Field(default_factory=dict)
-    # THE SUPPLIER'S OWN REPORTED COST, and the only figure here UBB treats as
-    # COGS. Admissible only where the Event Type declares that it arrives on
-    # the call — `metering_endpoints.admit_supplier_cost` owns that rule and
-    # refuses everything else with a 422 rather than dropping it (#324).
-    provider_cost_micros: Optional[int] = Field(default=None, ge=0, le=999_999_999_999)
+    # THE SUPPLIER'S REPORTED COST, ON ONE OF TWO TRANSPORTS (#324, #570): the
+    # first when the caller supplies it, the second when the caller's own
+    # integration read it off the provider's response. Each is admissible only
+    # where the Event Type's last publication declares that source, never the
+    # two together — `metering_endpoints.admit_supplier_cost` owns the rule and
+    # refuses everything else with a 422 rather than dropping it. Both are
+    # COGS, both land in the one supplier-cost column, and the meanings are
+    # published as each field's description. Same bound as each other.
+    provider_cost_micros: Optional[int] = Field(
+        default=None, ge=0, le=999_999_999_999,
+        description=CALLER_SUPPLIED_COST_MEANING)
+    provider_response_cost_micros: Optional[int] = Field(
+        default=None, ge=0, le=999_999_999_999,
+        description=PROVIDER_RESPONSE_COST_MEANING)
     # WHAT THE CALLER BELIEVES THE CALL COST, on its own field so it can be
     # accepted anywhere without ever being read as the number above. The
     # meaning is published rather than kept in this comment: the same sentence
@@ -289,7 +351,9 @@ class RecordUsageRequest(Schema):
                 f"response, rather than stated on the call — configure a price "
                 f"rule for the quantity this event measures. The supplier's "
                 f"own cost is still yours to report: provider_cost_micros "
-                f"where your Event Type declares it arrives on the call, or "
+                f"where your Event Type declares the caller supplies it, "
+                f"provider_response_cost_micros where it declares the cost is "
+                f"read from the provider's response, or "
                 f"claimed_provider_cost_micros anywhere.")
         return body
 
@@ -305,7 +369,18 @@ class UsageBatchResponse(Schema):
     # the single-call success body plus {"accepted": true}; rejected items are
     # {"accepted": false, "code", "detail", "stop": false, "stop_reason":
     # null, "stop_scope": null} with `code` from the registry.
-    results: list[dict]
+    #
+    # ⚠ THE ITEMS ARE UNTYPED, SO WHAT THEY HOLD IS SAID ON THE LIST (the
+    # owner's review of #570's PR #607): an accepted item carries money fields
+    # — its `provider_cost_micros` among them — that no schema node here can
+    # describe, and a comment above a field is not part of the contract.
+    results: list[dict] = Field(description=(
+        "One verdict per submitted event, in the order submitted. An accepted "
+        "item (`accepted: true`) carries the single route's acknowledgement "
+        "fields (`RecordUsageResponse`), each with the meaning that schema "
+        "publishes for it — `provider_cost_micros` included. A rejected item "
+        "carries `accepted: false`, a registry `code` and a `detail`, with "
+        "`stop` false and `stop_reason` and `stop_scope` null."))
     accepted: int
     rejected: int
 
@@ -555,7 +630,8 @@ class RecordUsageResponse(Schema):
     event_id: str
     new_balance_micros: Optional[int] = None
     suspended: bool
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # Whether the number above is settled. See `CostingStatus`: without it a
     # supplier cost of zero and one UBB has not learned yet are the same
     # answer on the wire.
@@ -734,7 +810,8 @@ class UsageEventOut(Schema):
     kind: UsageEventKind
     event_type: str = ""
     provider: str = ""
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # On the lean list row too, and that is the point rather than symmetry: a
     # list is where a reader totals a column by eye, so this is exactly where
     # an unknown cost reading as zero would be believed.
@@ -856,7 +933,8 @@ class UsageEventDetailOut(Schema):
     # `test_the_cost_reaches_the_contract.py` asserts the property over all
     # three rather than trusting a claim spread across two earlier commits.
     # What #323 does add is the two fields below.
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     # Whether the number above is settled. Typed required, like the status
     # below it and for the same reason: every posting has an answer.
     costing_status: CostingStatus
@@ -2696,7 +2774,8 @@ class UnresolvedQueueRow(Schema):
     #: totals are per currency and a reader has to be able to see which row
     #: belongs to which total.
     currency: str
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     #: Whether the supplier cost above is settled — and on this surface it is
     #: the reason the row is in the list at all, half the time.
     costing_status: CostingStatus
@@ -2727,7 +2806,9 @@ class UnresolvedQueueTotals(Schema):
     #: WHAT UBB HAS ALREADY PAID THE SUPPLIER for the calls in this queue —
     #: money out with no settled price against it. Over the whole filter, not
     #: over one page.
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the queued postings in this currency, across the whole filter "
+        "rather than one page"))
     #: How many queued postings that total could NOT include, because their own
     #: supplier cost is one UBB has not learned either. The total is a floor and
     #: this is how far short it may fall.
@@ -2796,7 +2877,11 @@ class WaivedLossRow(Schema):
     currency: str
     #: THE SUPPLIER COST PAID ON WAIVED CALLS. See `basis` on the envelope for
     #: why this, and not a sum of prices: a waived charge never carried one.
-    provider_cost_micros: int
+    #: No waived posting can carry a no-cost declaration
+    #: (`metering.queries.get_waived_loss`), so its wording leaves that out.
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the postings in this currency whose price was waived",
+        can_hold_a_no_cost_event=False))
     #: How many waived postings that figure could NOT include, because their
     #: own supplier cost is also one UBB never learned. The figure is a floor
     #: and this says how far short.
@@ -4093,7 +4178,8 @@ class ItemisedEventRow(Schema):
     effective_at: datetime
     billed_cost_micros: Optional[int] = None
     pricing_status: PricingStatus
-    provider_cost_micros: Optional[int] = None
+    provider_cost_micros: Optional[int] = Field(
+        default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     costing_status: CostingStatus
     #: The Charge this posting projects, where it is a delivered fixed-price
     #: unit's one posting (ADR-0013); null on a metered event.
@@ -4109,7 +4195,8 @@ class ItemisedEventsOut(Schema):
     event_count: int
     billed_cost_micros: int
     unpriced_event_count: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "the events this episode itemises"))
     unresolved_event_count: int
 
 
@@ -4205,7 +4292,8 @@ class SpendControlFamilyTotalsRow(Schema):
     event_count: int
     billed_cost_micros: int
     unpriced_event_count: int
-    provider_cost_micros: int
+    provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
+        "this family's itemised events, each counted once"))
     unresolved_event_count: int
 
 
@@ -4418,8 +4506,10 @@ class IntegrationBlueprintDiagnostic(Schema):
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
     Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work — and null for `constant_measurement_not_renderable`, where
-    the declaration is complete and nothing in it is the thing to change.
+    kind of work — and null for `constant_measurement_not_renderable` and
+    `reported_cost_provider_response_not_renderable`, where the declaration is
+    valid and complete and nothing in it is the thing to change: this Code
+    Builder version cannot yet generate what it declares.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4459,15 +4549,20 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
     """One recording the verification makes: the Event Type it claims, and
     the sample values a tenant's code would send for it.
 
-    `measurements` and `provider_cost_micros` are the same fields, with the
-    same rules, as on a recording. `subtask_type` records this event under a
-    Subtask of that kind, which must be one the Blueprint selected; left out,
-    the event is recorded under the Task itself.
+    `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
+    are the same fields, with the same rules, as on a recording.
+    `subtask_type` records this event under a Subtask of that kind, which must
+    be one the Blueprint selected; left out, the event is recorded under the
+    Task itself.
     """
     event_type: str = Field(max_length=100)
     measurements: dict[str, int] = Field(default_factory=dict)
     provider_cost_micros: Optional[int] = Field(
-        default=None, ge=0, le=999_999_999_999)
+        default=None, ge=0, le=999_999_999_999,
+        description=CALLER_SUPPLIED_COST_MEANING)
+    provider_response_cost_micros: Optional[int] = Field(
+        default=None, ge=0, le=999_999_999_999,
+        description=PROVIDER_RESPONSE_COST_MEANING)
     subtask_type: Optional[str] = Field(default=None, max_length=64)
 
     @field_validator("measurements")

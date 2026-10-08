@@ -8,7 +8,7 @@ class IntegrationBlueprintDiagnosticCode(str, Enum):
     EVENT_TYPE_NOT_SELECTED = "event_type_not_selected"
     EVENT_TYPE_REVISED_SINCE_PUBLICATION = "event_type_revised_since_publication"
     REPORTED_COST_MAPPING_MISSING = "reported_cost_mapping_missing"
-    REPORTED_COST_PROVIDER_RESPONSE_UNSUPPORTED = "reported_cost_provider_response_unsupported"
+    REPORTED_COST_PROVIDER_RESPONSE_NOT_RENDERABLE = "reported_cost_provider_response_not_renderable"
     REQUIRED_GROUPING_FIELD_NOT_DECLARED = "required_grouping_field_not_declared"
     REQUIRED_GROUPING_FIELD_RETIRED = "required_grouping_field_retired"
     REQUIRED_GROUPING_FIELD_WRONG_SCOPE = "required_grouping_field_wrong_scope"

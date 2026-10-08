@@ -209,6 +209,30 @@ _Avoid_: reading it as an amount or a cost — it is a quantity in the Measureme
 reading a blocked Code Builder call over it as a fault in the declaration — the declaration is
 complete, and only this Code Builder version cannot yet generate code that uses it.
 
+**Reported-cost mapping**:
+Where a `reported` Event Type's supplier cost comes from — a sibling of its Measurements, because it
+is money with a currency: a source kind, an amount representation, a currency and, for a figure read
+off a response, a structured `source_path`. Two source kinds may be declared, and each reaches UBB
+on the recording call on a **transport of its own** (#324, #570): `caller_supplied` on
+`provider_cost_micros` (the caller supplies the figure directly) and `provider_response` on
+`provider_response_cost_micros` (the caller's integration obtained it from the provider's response —
+UBB cannot verify how, and admits it on the declared source's word). A figure is admitted only on
+the transport the Event Type's **last publication** declares (#605), never on both at once, and
+refused — never dropped — anywhere else; `calculated`, no publication and `reported` with no
+mapping admit neither. `constant` is refused at declaration permanently and `derived` as a v1
+limitation. Either transport is the same economic fact: it lands in the posting's one supplier-cost
+column and every response reads it back as **`provider_cost_micros`, the one canonical supplier cost
+UBB resolved** — the transport is never echoed. **Which source admitted it is kept**, by value, on
+the posting's Pricing Receipt (`reported_cost_source_kind` in the costing section's detail, #179
+§3.6), so the record never depends on what the Event Type publishes today. (`apps/platform/event_types/models.py:
+ReportedCostMapping`; `apps/platform/event_types/costing.py:admitted_supplier_cost_source`;
+`api/v1/metering_endpoints.py:admit_supplier_cost`)
+_Avoid_: sending a figure read off the response as `provider_cost_micros` — that field's published
+meaning is "supplied directly by the caller"; reading the caller's `claimed_provider_cost_micros` as
+either transport — it is a belief, never COGS; and reading a blocked Code Builder call over a
+`provider_response` mapping as a fault in the declaration — it is valid configuration that this Code
+Builder version cannot yet generate the read for (#583 renders it).
+
 **Measurement concept (analytics grouping)**:
 Two quantities a tenant has **said** mean the same thing, so one chart may add a supplier's
 `prompt_tokens` to another's `input_tokens`. **Opt-in and analytics-only**: it carries no amount, no

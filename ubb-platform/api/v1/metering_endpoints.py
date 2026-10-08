@@ -63,10 +63,11 @@ from apps.platform.audit.marker import records_audit
 # names a module and a constant after that.
 from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
-    admits_a_caller_supplied_cost, cost_declaration)
+    admitted_supplier_cost_source, cost_declaration)
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
-    GROUPING_FIELD_SCOPE_EVENT, SOURCE_KIND_CALLER_SUPPLIED)
+    GROUPING_FIELD_SCOPE_EVENT, SOURCE_KIND_CALLER_SUPPLIED,
+    SOURCE_KIND_PROVIDER_RESPONSE)
 from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
@@ -93,7 +94,8 @@ _product_check = ProductAccess("metering")
 
 
 class SupplierCostNotAdmissible(ValueError):
-    """A caller stated the supplier's own cost where no declaration admits it.
+    """A supplier cost arrived on a transport the Event Type's last
+    publication does not admit — or on both transports at once.
 
     Raised by :func:`admit_supplier_cost` before anything is written or
     recorded. The single route renders it as a **422**; the batch route renders
@@ -105,8 +107,82 @@ class SupplierCostNotAdmissible(ValueError):
     """
 
 
+#: THE FIELD EACH REPORTED-COST SOURCE'S FIGURE ARRIVES ON (#324, #570) — one
+#: transport per source, so the field a figure came in on says where the
+#: caller's integration got it. A figure read off the supplier's response is
+#: never sent in the field whose published contract means "the caller supplied
+#: this" (owner ruling on #570): the two are different statements about one
+#: number, and the declaration decides which one a call may make. Both land in
+#: the one supplier-cost column, through the one keyword `usage_kwargs` maps
+#: them onto, and a response reads either back as `provider_cost_micros`.
+SUPPLIER_COST_TRANSPORTS = {
+    SOURCE_KIND_CALLER_SUPPLIED: "provider_cost_micros",
+    SOURCE_KIND_PROVIDER_RESPONSE: "provider_response_cost_micros",
+}
+
+#: What each transport's figure IS, in a refusal's words: every refusal opens
+#: with the refused field's, and names the admissible field's — the published
+#: meanings (`api/v1/schemas.py`), shortened to a clause.
+_A_FIGURE_ON = {
+    "provider_cost_micros":
+        "a supplier cost supplied directly by the caller",
+    "provider_response_cost_micros":
+        "a supplier cost the caller obtained from the provider's response",
+}
+
+
+def _transports_carrying_a_figure(item):
+    """The supplier-cost fields this request item sets, in a fixed order."""
+    return [field for field in SUPPLIER_COST_TRANSPORTS.values()
+            if getattr(item, field) is not None]
+
+
+#: Each transport's source kind — :data:`SUPPLIER_COST_TRANSPORTS` read the
+#: other way round.
+_SOURCE_OF = {field: source
+              for source, field in SUPPLIER_COST_TRANSPORTS.items()}
+
+
+def _the_supplier_cost(item):
+    """The one supplier-cost figure the item carries and the source kind of
+    the transport it arrived on — `(None, None)` where it carries none.
+
+    The source is the transport's, and that IS the source the figure was
+    admitted under: admission has refused any item whose transport is not the
+    one the governing publication admits, and any item carrying two."""
+    carried = _transports_carrying_a_figure(item)
+    if not carried:
+        return None, None
+    return getattr(item, carried[0]), _SOURCE_OF[carried[0]]
+
+
+def _nothing_admissible(subject):
+    return (
+        f"{subject} admits no supplier cost on the call: neither "
+        f"provider_cost_micros nor provider_response_cost_micros is "
+        f"admissible. Each is admissible only where the Event Type's last "
+        f"publication declares costing_method '{COSTING_METHOD_REPORTED}' "
+        f"with a reported-cost mapping whose source_kind is "
+        f"'{SOURCE_KIND_CALLER_SUPPLIED}' (for provider_cost_micros) or "
+        f"'{SOURCE_KIND_PROVIDER_RESPONSE}' (for "
+        f"provider_response_cost_micros). Declare and publish that, or send "
+        f"what you believe this call cost as claimed_provider_cost_micros, "
+        f"which is accepted on any event and is never treated as cost.")
+
+
 def admit_supplier_cost(tenant, item):
-    """Refuse a supplier cost the Event Type's publication does not admit (#324).
+    """Refuse a supplier cost the Event Type's publication does not admit
+    (#324), on a transport it does not admit, or on both at once (#570).
+
+    **ONE RULE FOR BOTH FIELDS.** The declaration admits at most one source
+    (`costing.admitted_supplier_cost_source`), the source names one field
+    (`SUPPLIER_COST_TRANSPORTS`), and a request is admitted only when that one
+    field is exactly what it set. So the owner's matrix on #570 is this one
+    comparison: `caller_supplied` admits `provider_cost_micros` alone,
+    `provider_response` admits `provider_response_cost_micros` alone, and
+    `calculated`, no publication, or `reported` with no mapping admit neither.
+    Both fields on one event are refused whatever is declared: nothing is
+    summed, and nothing is chosen between two figures for one call.
 
     **WHY A REFUSAL AND NOT A QUIET DROP.** The figure is COGS or it is
     nothing: where no declaration admits it, UBB will never read it as cost, so
@@ -141,35 +217,78 @@ def admit_supplier_cost(tenant, item):
     across the batch, because a batch item is a whole independent request here
     and a shared verdict would be the first place they stopped being one.
 
-    The message names both halves of the declaration that would admit the
-    figure, and the field that is accepted anywhere, so a caller reading the
-    body knows what to do next rather than only what they may not do.
+    **EACH REFUSAL HAS ITS OWN MESSAGE**, and every one names what the caller
+    may do next rather than only what they may not: it opens with what the
+    refused field means, then names the field that IS admissible for the
+    declared source and what THAT field means — or says neither is, which
+    declarations would admit each, and the field accepted anywhere.
+
+    **IT NEVER TELLS A CALLER TO MOVE A FIGURE TO THE OTHER FIELD.** The field
+    a figure arrives on is the caller's statement of where it came from, so
+    "send it there instead" would ask a caller holding a cost read off the
+    provider's response to call it one they supplied directly — the relabelling
+    the owner's ruling on #570 forbids. The message says which source the
+    declaration admits and leaves the caller to say which theirs is: if it is
+    the other one, the declaration is what needs to change.
     """
-    if item.provider_cost_micros is None:
+    carried = _transports_carrying_a_figure(item)
+    if not carried:
         return
-    if admits_a_caller_supplied_cost(
-            cost_declaration(tenant=tenant, key=item.event_type)):
+    source = admitted_supplier_cost_source(
+        cost_declaration(tenant=tenant, key=item.event_type))
+    admitted = SUPPLIER_COST_TRANSPORTS.get(source)
+    if carried == [admitted]:
         return
-    named = (f"Event Type {item.event_type!r} does not declare it"
-             if item.event_type
-             else "This event names no Event Type, so nothing declares it")
+    subject = (f"Event Type {item.event_type!r}" if item.event_type
+               else "An event that names no Event Type")
+    if len(carried) > 1:
+        raise SupplierCostNotAdmissible(
+            "provider_cost_micros and provider_response_cost_micros were both "
+            "sent. An event carries its supplier cost on one transport at "
+            "most — the one its Event Type's last publication admits — and "
+            "nothing is summed or chosen between two figures for one call. "
+            + (f"{subject} admits only {admitted}, {_A_FIGURE_ON[admitted]}: "
+               f"send one figure, and only on the field that says where it "
+               f"came from." if admitted is not None
+               else _nothing_admissible(subject)))
+    (field,) = carried
+    opening = f"{field} is {_A_FIGURE_ON[field]}."
+    if admitted is None:
+        raise SupplierCostNotAdmissible(
+            f"{opening} {_nothing_admissible(subject)}")
     raise SupplierCostNotAdmissible(
-        f"provider_cost_micros is the supplier's own reported cost for this "
-        f"call. {named}: it is admissible only where the "
-        f"Event Type declares costing_method '{COSTING_METHOD_REPORTED}' with "
-        f"a reported-cost mapping whose source_kind is "
-        f"'{SOURCE_KIND_CALLER_SUPPLIED}'. Declare that pair, or send what you "
-        f"believe this call cost as claimed_provider_cost_micros, which is "
-        f"accepted on any event and is never treated as cost.")
+        f"{opening} The last publication of {subject} declares a reported "
+        f"cost whose source_kind is '{source}', so the only supplier cost it "
+        f"admits on the call is {admitted}, {_A_FIGURE_ON[admitted]}. Where "
+        f"your figure comes from decides the field: if it is not that source, "
+        f"it is the declaration that has to change, and a change takes effect "
+        f"when it is published.")
 
 
 def usage_kwargs(item):
     """The single↔batch pass-through, written ONCE (#112): the field-for-
     field map from a request item (RecordUsageRequest — the single and batch
-    items share the schema) onto record_new_usage's keyword surface."""
+    items share the schema) onto record_new_usage's keyword surface.
+
+    **EITHER SUPPLIER-COST TRANSPORT IS THE ONE SUPPLIER COST (#570).** A
+    figure read off the provider's response and one the caller supplied are
+    the same economic fact arriving two ways, so both are handed on as the one
+    keyword the recording core costs a figure that arrived from — the compute
+    spine's "a figure that arrived is a reported cost" branch — and land in the
+    one column. Never through the caller's claim, which is never COGS. At most
+    one of the two is set: `admit_supplier_cost` has refused both, and it runs
+    first on every path that reaches here.
+
+    **AND THE SOURCE IT WAS ADMITTED UNDER GOES WITH IT** (#179 §3.6, the
+    owner's review of #570). One amount and no echo means the receipt is the
+    only place left that can say which transport carried the figure, so the
+    recording core is handed the source kind to keep there by value — never
+    a second amount, and never the transport's own field."""
+    figure, source = _the_supplier_cost(item)
     return dict(
         idempotency_key=item.idempotency_key,
-        provider_cost_micros=item.provider_cost_micros,
+        provider_cost_micros=figure,
+        reported_cost_source_kind=source,
         claimed_provider_cost_micros=item.claimed_provider_cost_micros,
         currency=item.currency,
         metadata=item.metadata,
@@ -275,11 +394,12 @@ def replay_or_record(tenant, customer, item):
        field retired since would refuse, is the same event and gets the same
        answer. Found by `UsageService.replay`, the recording path's own lookup
        — keyed by tenant, customer and key, with no body compared.
-    2. **The supplier's own figure (#324)** is admissible only where the Event
-       Type's last publication declares it arrives on the call. Refused rather
-       than dropped: a 200 would tell an integrator UBB is using a number it
-       discards. It is a single read, so it goes ahead of the next step at no
-       cost.
+    2. **A supplier cost (#324, #570)** is admissible only on the transport
+       the Event Type's last publication admits — `provider_cost_micros` for
+       a caller-supplied source, `provider_response_cost_micros` for one read
+       off the provider's response, never both. Refused rather than dropped: a
+       200 would tell an integrator UBB is using a number it discards. It is a
+       single read, so it goes ahead of the next step at no cost.
     3. **The grouping-field admission (Task 9) WRITES** — it records novel
        values against each key's cardinality cap — so it comes after the
        refusal above, which would otherwise have burned keyspace on a request

@@ -219,6 +219,7 @@ class UBBClient:
 
     def record_usage(self, customer_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,
+                     provider_response_cost_micros: int | None = None,
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
@@ -243,12 +244,14 @@ class UBBClient:
         and any other value raises ``UBBValidationError`` before anything is
         sent. The keyword replaced a boolean in #574.
 
-        Pricing: supply ``provider_cost_micros`` (the SUPPLIER'S own reported
-        cost, admissible only where the Event Type declares that it arrives on
-        the call, and refused with a 422 otherwise) and/or ``measurements``
-        (named quantities
-        priced server-side by the rate card); both are optional here and the
-        server enforces its pricing rules. ``claimed_provider_cost_micros`` is
+        Pricing: supply the SUPPLIER'S reported cost — ``provider_cost_micros``
+        where you supply it directly, or ``provider_response_cost_micros``
+        where you obtained it from the provider's response; each admissible
+        only where the Event Type's last publication declares that source,
+        never both, and refused with a 422 otherwise — and/or ``measurements``
+        (named quantities priced server-side by your cost rules); all are
+        optional here and the server enforces its pricing rules.
+        ``claimed_provider_cost_micros`` is
         your own belief about the cost: accepted anywhere and never COGS. There
         is no keyword for what you CHARGE — that is resolved from the rules your
         tenant configures and read off the response.
@@ -269,6 +272,7 @@ class UBBClient:
             customer_id=customer_id,
             idempotency_key=idempotency_key,
             provider_cost_micros=provider_cost_micros,
+            provider_response_cost_micros=provider_response_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             provider=provider,
             event_type=event_type,

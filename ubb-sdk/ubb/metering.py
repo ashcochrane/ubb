@@ -474,6 +474,7 @@ class MeteringClient:
 
     def record_usage(self, customer_id: str, idempotency_key: str, *,
                      provider_cost_micros: int | None = None,
+                     provider_response_cost_micros: int | None = None,
                      claimed_provider_cost_micros: int | None = None,
                      provider: str = "", event_type: str = "",
                      currency: str | None = None,
@@ -522,21 +523,30 @@ class MeteringClient:
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
 
-        ``provider_cost_micros`` is the SUPPLIER'S OWN reported cost, and it
-        is COGS. UBB accepts it only where the Event Type declares that the
-        figure arrives on the call — the reported costing method with a
-        caller-supplied source — and refuses it anywhere else rather than
-        recording a number it would never read as cost: a 422 from this call,
-        and a rejected item verdict from ``record_batch``, whose response is
-        200 whatever its items say. This client holds no list of which Event
-        Types those are, per the open-world rule in
+        THE SUPPLIER'S REPORTED COST HAS TWO KEYWORDS, ONE PER SOURCE (#570),
+        and both are COGS. ``provider_cost_micros`` is the supplier cost YOU
+        supply directly; ``provider_response_cost_micros`` is the supplier
+        cost you obtained from the provider's response. UBB accepts each only
+        where the Event Type's last publication declares that source — the
+        reported costing method with a ``caller_supplied`` or a
+        ``provider_response`` reported-cost mapping respectively — never the
+        two on one event, and refuses anything else rather than recording a
+        number it would never read as cost: a 422 from this call, and a
+        rejected item verdict from ``record_batch``, whose response is 200
+        whatever its items say. The refusal names the keyword that IS
+        accepted for the declared source, or says none is. UBB cannot verify
+        how a response figure was obtained; it takes the declared source's
+        word for it. Either way the figure comes back as
+        ``result.provider_cost_micros``, the one supplier cost UBB resolved —
+        there is no second cost field on the response. This client holds no
+        list of which Event Types admit which, per the open-world rule in
         ``docs/conventions/sdk-wrap.md``: the route decides and says so.
 
         ``claimed_provider_cost_micros`` is what YOU believe the call cost. It
         is accepted on any event, recorded as stated, and never treated as
-        cost — never rated, never summed into a cost total, never the figure
-        above. Send it when you have an estimate and no declaration, which is
-        the case the 422 above points at.
+        cost — never rated, never summed into a cost total, never either
+        figure above. Send it when you have an estimate and no declaration,
+        which is the case the 422 above points at.
 
         THERE IS NO KEYWORD FOR THE CUSTOMER'S PRICE, and there is no equivalent
         of the claimed cost on that side either. What you charge a customer is
@@ -588,6 +598,9 @@ class MeteringClient:
             body["effective_at"] = _serialize_recorded_at(recorded_at)
         if provider_cost_micros is not None:
             body["provider_cost_micros"] = provider_cost_micros
+        if provider_response_cost_micros is not None:
+            body["provider_response_cost_micros"] = (
+                provider_response_cost_micros)
         if claimed_provider_cost_micros is not None:
             body["claimed_provider_cost_micros"] = claimed_provider_cost_micros
         if measurements is not None:

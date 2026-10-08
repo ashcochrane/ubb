@@ -34,8 +34,8 @@ class RecordUsageRequest:
             idempotency_key (str):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
-                supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB
-                treats as cost.
+                supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as
+                `provider_cost_micros` on a response.
             currency (None | str | Unset):
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
@@ -43,7 +43,17 @@ class RecordUsageRequest:
             measurements (None | RecordUsageRequestMeasurementsType0 | Unset):
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset):
-            provider_cost_micros (int | None | Unset):
+            provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
+                caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
+                reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A
+                figure obtained from the provider's response is sent as `provider_response_cost_micros` instead, never here.
+            provider_response_cost_micros (int | None | Unset): The supplier cost of this call (COGS), as the caller
+                obtained it from the provider's response. Admissible only where the Event Type's last publication declares
+                costing_method `reported` with a reported-cost mapping whose source_kind is `provider_response`, and refused
+                anywhere else rather than dropped; never sent together with `provider_cost_micros`. UBB cannot verify how the
+                figure was obtained: it admits it because the declared source says that is where it comes from. It is a
+                transport, not a second cost: the figure is recorded as the event's supplier cost and read back as
+                `provider_cost_micros`, and is not echoed under its own name.
             task_id (None | Unset | UUID):
      """
 
@@ -58,6 +68,7 @@ class RecordUsageRequest:
     metadata: RecordUsageRequestMetadata | Unset = UNSET
     provider: None | str | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
+    provider_response_cost_micros: int | None | Unset = UNSET
     task_id: None | Unset | UUID = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -127,6 +138,12 @@ class RecordUsageRequest:
         else:
             provider_cost_micros = self.provider_cost_micros
 
+        provider_response_cost_micros: int | None | Unset
+        if isinstance(self.provider_response_cost_micros, Unset):
+            provider_response_cost_micros = UNSET
+        else:
+            provider_response_cost_micros = self.provider_response_cost_micros
+
         task_id: None | str | Unset
         if isinstance(self.task_id, Unset):
             task_id = UNSET
@@ -160,6 +177,8 @@ class RecordUsageRequest:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
             field_dict["provider_cost_micros"] = provider_cost_micros
+        if provider_response_cost_micros is not UNSET:
+            field_dict["provider_response_cost_micros"] = provider_response_cost_micros
         if task_id is not UNSET:
             field_dict["task_id"] = task_id
 
@@ -290,6 +309,16 @@ class RecordUsageRequest:
         provider_cost_micros = _parse_provider_cost_micros(d.pop("provider_cost_micros", UNSET))
 
 
+        def _parse_provider_response_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        provider_response_cost_micros = _parse_provider_response_cost_micros(d.pop("provider_response_cost_micros", UNSET))
+
+
         def _parse_task_id(data: object) -> None | Unset | UUID:
             if data is None:
                 return data
@@ -322,6 +351,7 @@ class RecordUsageRequest:
             metadata=metadata,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
+            provider_response_cost_micros=provider_response_cost_micros,
             task_id=task_id,
         )
 

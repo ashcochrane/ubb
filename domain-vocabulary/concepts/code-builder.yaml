@@ -151,10 +151,9 @@ diagnostic_code:
   # one something does. The Blueprint's own tests hold both directions: the
   # codes resolutions report are exactly the set the contract publishes.
   #
-  # What is already expected to change it. The ticket that carries a cost read
-  # off a supplier's response REMOVES
-  # `reported_cost_provider_response_unsupported`, which exists only because
-  # that cost has no truthful request field today. The ticket that makes a
+  # What is already expected to change it. The ticket that renders a cost read
+  # off a supplier's response (#583) REMOVES
+  # `reported_cost_provider_response_not_renderable`. The ticket that makes a
   # kind sold at one agreed price ready or not ADDS the member that says its
   # price is missing. `derived_measurement_unsupported` is a stated
   # limitation with nothing designed to lift it.
@@ -168,6 +167,15 @@ diagnostic_code:
   # `response_shape_not_readable_by_target`, for a capability the Code Builder
   # lacks rather than a fault in the declaration. The ticket that renders a
   # constant's value (#584) REMOVES it.
+  #
+  # And a second time (#570, owner ruling of 2026-10-07 on #570). A cost read
+  # off the supplier's response now has a truthful request field of its own,
+  # `provider_response_cost_micros`, so a `provider_response` reported-cost
+  # mapping is valid platform configuration that this Code Builder version
+  # cannot yet generate the read for. The member that said it was
+  # unsupported, `reported_cost_provider_response_unsupported`, was REMOVED,
+  # and `reported_cost_provider_response_not_renderable` ADDED in its place,
+  # named the same way and for the same kind of reason.
   #
   # Named for the STATE of a declaration, `<object>_<what is true of it>`,
   # never for the ticket that will change it. A diagnostic carries no prose —
@@ -194,7 +202,7 @@ diagnostic_code:
     - event_type_not_published
     - event_type_revised_since_publication
     - reported_cost_mapping_missing
-    - reported_cost_provider_response_unsupported
+    - reported_cost_provider_response_not_renderable
     - constant_measurement_not_renderable
     - derived_measurement_unsupported
     - response_shape_not_declared

@@ -218,6 +218,24 @@ class TestMeteringDelegation:
         assert kwargs["task_id"] == "task_1"
         assert kwargs["stop_behavior"] == STOP_BEHAVIOR_RETURN
 
+    def test_record_usage_forwards_each_supplier_cost_on_its_own_keyword(self):
+        """Both transports reach the metering client under their own names
+        (#570) — a facade that folded one into the other, or dropped the new
+        one, would send a figure the route refuses or never sees. Parity of
+        the signatures says the keyword is accepted; this says it is
+        forwarded."""
+        self.client.metering.record_usage = MagicMock(return_value=object())
+        self.client.record_usage("cust1", "i1",
+                                 provider_response_cost_micros=7_350)
+        _, kwargs = self.client.metering.record_usage.call_args
+        assert kwargs["provider_response_cost_micros"] == 7_350
+        assert kwargs["provider_cost_micros"] is None
+
+        self.client.record_usage("cust1", "i2", provider_cost_micros=4_200)
+        _, kwargs = self.client.metering.record_usage.call_args
+        assert kwargs["provider_cost_micros"] == 4_200
+        assert kwargs["provider_response_cost_micros"] is None
+
 
 class TestRecordUsageSignatureParity:
     """UBBClient.record_usage must be a non-lossy passthrough of

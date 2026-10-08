@@ -919,6 +919,7 @@
             "type": "integer"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over every seat's events in the window, the seats' own totals added up: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -3487,7 +3488,7 @@
         "type": "object"
       },
       "IntegrationBlueprintDiagnostic": {
-        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work \u2014 and null for `constant_measurement_not_renderable`, where\nthe declaration is complete and nothing in it is the thing to change.",
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work \u2014 and null for `constant_measurement_not_renderable` and\n`reported_cost_provider_response_not_renderable`, where the declaration is\nvalid and complete and nothing in it is the thing to change: this Code\nBuilder version cannot yet generate what it declares.",
         "properties": {
           "code": {
             "enum": [
@@ -3502,7 +3503,7 @@
               "event_type_not_published",
               "event_type_revised_since_publication",
               "reported_cost_mapping_missing",
-              "reported_cost_provider_response_unsupported",
+              "reported_cost_provider_response_not_renderable",
               "constant_measurement_not_renderable",
               "derived_measurement_unsupported",
               "response_shape_not_declared",
@@ -3894,7 +3895,7 @@
         "type": "object"
       },
       "IntegrationBlueprintVerificationRecordIn": {
-        "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements` and `provider_cost_micros` are the same fields, with the\nsame rules, as on a recording. `subtask_type` records this event under a\nSubtask of that kind, which must be one the Blueprint selected; left out,\nthe event is recorded under the Task itself.",
+        "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements`, `provider_cost_micros` and `provider_response_cost_micros`\nare the same fields, with the same rules, as on a recording.\n`subtask_type` records this event under a Subtask of that kind, which must\nbe one the Blueprint selected; left out, the event is recorded under the\nTask itself.",
         "properties": {
           "event_type": {
             "maxLength": 100,
@@ -3919,7 +3920,22 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost of this call (COGS), supplied directly by the caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A figure obtained from the provider's response is sent as `provider_response_cost_micros` instead, never here.",
             "title": "Provider Cost Micros"
+          },
+          "provider_response_cost_micros": {
+            "anyOf": [
+              {
+                "maximum": 999999999999,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The supplier cost of this call (COGS), as the caller obtained it from the provider's response. Admissible only where the Event Type's last publication declares costing_method `reported` with a reported-cost mapping whose source_kind is `provider_response`, and refused anywhere else rather than dropped; never sent together with `provider_cost_micros`. UBB cannot verify how the figure was obtained: it admits it because the declared source says that is where it comes from. It is a transport, not a second cost: the figure is recorded as the event's supplier cost and read back as `provider_cost_micros`, and is not echoed under its own name.",
+            "title": "Provider Response Cost Micros"
           },
           "subtask_type": {
             "anyOf": [
@@ -4183,6 +4199,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
             "title": "Provider Cost Micros"
           }
         },
@@ -4216,6 +4233,7 @@
             "type": "array"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the events this episode itemises: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -6524,7 +6542,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as `provider_cost_micros` on a response.",
             "title": "Claimed Provider Cost Micros"
           },
           "currency": {
@@ -6621,7 +6639,22 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost of this call (COGS), supplied directly by the caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A figure obtained from the provider's response is sent as `provider_response_cost_micros` instead, never here.",
             "title": "Provider Cost Micros"
+          },
+          "provider_response_cost_micros": {
+            "anyOf": [
+              {
+                "maximum": 999999999999,
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The supplier cost of this call (COGS), as the caller obtained it from the provider's response. Admissible only where the Event Type's last publication declares costing_method `reported` with a reported-cost mapping whose source_kind is `provider_response`, and refused anywhere else rather than dropped; never sent together with `provider_cost_micros`. UBB cannot verify how the figure was obtained: it admits it because the declared source says that is where it comes from. It is a transport, not a second cost: the figure is recorded as the event's supplier cost and read back as `provider_cost_micros`, and is not echoed under its own name.",
+            "title": "Provider Response Cost Micros"
           },
           "task_id": {
             "anyOf": [
@@ -6705,7 +6738,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as `provider_cost_micros` on a response.",
             "title": "Claimed Provider Cost Micros"
           },
           "costing_status": {
@@ -6806,7 +6839,7 @@
                 "type": "null"
               }
             ],
-            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
             "title": "Pricing Receipt"
           },
           "pricing_receipt_subject_type": {
@@ -6845,6 +6878,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
             "title": "Provider Cost Micros"
           },
           "stop": {
@@ -7675,6 +7709,7 @@
             "type": "number"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over this customer's events in the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -7761,6 +7796,7 @@
             "type": "integer"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over this family's itemised events, each counted once: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -9757,6 +9793,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
             "title": "Provider Cost Micros"
           },
           "unresolved_reason": {
@@ -9800,6 +9837,7 @@
             "type": "string"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the queued postings in this currency, across the whole filter rather than one page: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -9869,6 +9907,7 @@
             "type": "integer"
           },
           "results": {
+            "description": "One verdict per submitted event, in the order submitted. An accepted item (`accepted: true`) carries the single route's acknowledgement fields (`RecordUsageResponse`), each with the meaning that schema publishes for it \u2014 `provider_cost_micros` included. A rejected item carries `accepted: false`, a registry `code` and a `detail`, with `stop` false and `stop_reason` and `stop_scope` null.",
             "items": {
               "additionalProperties": true,
               "type": "object"
@@ -9907,7 +9946,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as `provider_cost_micros` on a response.",
             "title": "Claimed Provider Cost Micros"
           },
           "costing_status": {
@@ -10021,7 +10060,7 @@
           "pricing_receipt": {
             "additionalProperties": true,
             "default": {},
-            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals, and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
             "title": "Pricing Receipt",
             "type": "object"
           },
@@ -10066,6 +10105,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
             "title": "Provider Cost Micros"
           },
           "stop_context": {
@@ -10144,7 +10184,7 @@
                 "type": "null"
               }
             ],
-            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. `provider_cost_micros` is the supplier's own reported figure and the only one UBB treats as cost.",
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as `provider_cost_micros` on a response.",
             "title": "Claimed Provider Cost Micros"
           },
           "costing_status": {
@@ -10226,6 +10266,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
             "title": "Provider Cost Micros"
           },
           "stop_context": {
@@ -10509,6 +10550,7 @@
             "type": "string"
           },
           "provider_cost_micros": {
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the postings in this currency whose price was waived: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -23518,6 +23560,7 @@
                           }
                         ],
                         "default": null,
+                        "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
                         "title": "Provider Cost Micros"
                       },
                       "task_id": {

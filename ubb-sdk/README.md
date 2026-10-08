@@ -82,8 +82,11 @@ print(res.uncosted_measurement_keys)     # measurement keys with no matching cos
 > the cost resolves. `costing_status == "not_applicable"` is different again: that Event Type
 > declares no cost at all, which is a design decision and not something to fix.
 > An event that measures nothing at all is a marker event and is accepted — there is nothing to
-> resolve a rule against, and nothing was claimed to have been consumed. Pass
-> `provider_cost_micros` directly whenever the cost is known but the measurements are not.
+> resolve a rule against, and nothing was claimed to have been consumed. Pass the supplier's cost
+> directly whenever it is known but the measurements are not: `provider_cost_micros` where your Event
+> Type declares a `caller_supplied` reported-cost mapping, `provider_response_cost_micros` where it
+> declares `provider_response` (a cost read off the provider's response). Each is refused anywhere
+> else, and either comes back as `res.provider_cost_micros`.
 
 `res.uncosted_measurement_keys` is your signal that a measurement was recorded with no cost rule —
 publish one into a cost book for any measurement key you want costed. **This is not a refusal:**
@@ -469,7 +472,8 @@ client.list_pricing_books(cursor=None, limit=None)
 
 # record_usage  → RecordUsageResponse
 client.record_usage(customer_id: str, idempotency_key: str, *,
-    provider_cost_micros=None, claimed_provider_cost_micros=None,
+    provider_cost_micros=None, provider_response_cost_micros=None,
+    claimed_provider_cost_micros=None,
     provider="", event_type="", currency=None,
     grouping_fields=None, metadata=None, task_id=None, measurements=None,
     recorded_at=None, stop_behavior="raise")   # a stop verdict raises UBBStopRequested;
@@ -533,7 +537,7 @@ for row in answer.rows:
 | Field | Meaning |
 |---|---|
 | `event_id` | Unique ID for this event |
-| `provider_cost_micros` | COGS computed from your cost rules — `None` when UBB does not know it |
+| `provider_cost_micros` | The COGS UBB resolved — from your cost rules, or the supplier's reported cost on whichever field your Event Type admits — `None` when UBB does not know it |
 | `costing_status` | Whether that COGS is settled: `known` / `unresolved` / `not_applicable` |
 | `uncosted_measurement_keys` | Measurements with no matching cost rule |
 | `billed_cost_micros` | Amount charged to the customer wallet |

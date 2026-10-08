@@ -27,21 +27,33 @@ class IntegrationBlueprintVerificationRecordIn:
     """ One recording the verification makes: the Event Type it claims, and
     the sample values a tenant's code would send for it.
 
-    `measurements` and `provider_cost_micros` are the same fields, with the
-    same rules, as on a recording. `subtask_type` records this event under a
-    Subtask of that kind, which must be one the Blueprint selected; left out,
-    the event is recorded under the Task itself.
+    `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
+    are the same fields, with the same rules, as on a recording.
+    `subtask_type` records this event under a Subtask of that kind, which must
+    be one the Blueprint selected; left out, the event is recorded under the
+    Task itself.
 
         Attributes:
             event_type (str):
             measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset):
-            provider_cost_micros (int | None | Unset):
+            provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
+                caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
+                reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A
+                figure obtained from the provider's response is sent as `provider_response_cost_micros` instead, never here.
+            provider_response_cost_micros (int | None | Unset): The supplier cost of this call (COGS), as the caller
+                obtained it from the provider's response. Admissible only where the Event Type's last publication declares
+                costing_method `reported` with a reported-cost mapping whose source_kind is `provider_response`, and refused
+                anywhere else rather than dropped; never sent together with `provider_cost_micros`. UBB cannot verify how the
+                figure was obtained: it admits it because the declared source says that is where it comes from. It is a
+                transport, not a second cost: the figure is recorded as the event's supplier cost and read back as
+                `provider_cost_micros`, and is not echoed under its own name.
             subtask_type (None | str | Unset):
      """
 
     event_type: str
     measurements: IntegrationBlueprintVerificationRecordInMeasurements | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
+    provider_response_cost_micros: int | None | Unset = UNSET
     subtask_type: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -63,6 +75,12 @@ class IntegrationBlueprintVerificationRecordIn:
         else:
             provider_cost_micros = self.provider_cost_micros
 
+        provider_response_cost_micros: int | None | Unset
+        if isinstance(self.provider_response_cost_micros, Unset):
+            provider_response_cost_micros = UNSET
+        else:
+            provider_response_cost_micros = self.provider_response_cost_micros
+
         subtask_type: None | str | Unset
         if isinstance(self.subtask_type, Unset):
             subtask_type = UNSET
@@ -79,6 +97,8 @@ class IntegrationBlueprintVerificationRecordIn:
             field_dict["measurements"] = measurements
         if provider_cost_micros is not UNSET:
             field_dict["provider_cost_micros"] = provider_cost_micros
+        if provider_response_cost_micros is not UNSET:
+            field_dict["provider_response_cost_micros"] = provider_response_cost_micros
         if subtask_type is not UNSET:
             field_dict["subtask_type"] = subtask_type
 
@@ -112,6 +132,16 @@ class IntegrationBlueprintVerificationRecordIn:
         provider_cost_micros = _parse_provider_cost_micros(d.pop("provider_cost_micros", UNSET))
 
 
+        def _parse_provider_response_cost_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        provider_response_cost_micros = _parse_provider_response_cost_micros(d.pop("provider_response_cost_micros", UNSET))
+
+
         def _parse_subtask_type(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -126,6 +156,7 @@ class IntegrationBlueprintVerificationRecordIn:
             event_type=event_type,
             measurements=measurements,
             provider_cost_micros=provider_cost_micros,
+            provider_response_cost_micros=provider_response_cost_micros,
             subtask_type=subtask_type,
         )
 

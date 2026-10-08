@@ -358,6 +358,7 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             effective_at="2026-01-01T00:00:00+00:00",
             measurements={"input_tokens": 3},
             caller_provider_cost=None,
+            reported_cost_source_kind=None,
             # The ordinary regime and the ordinary posture (#418): this case is
             # about what a component's quantity key is CALLED, and both facts
             # decide only whether a CUSTOMER price applies at all.

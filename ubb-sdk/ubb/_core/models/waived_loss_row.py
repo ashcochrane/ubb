@@ -24,7 +24,10 @@ class WaivedLossRow:
 
         Attributes:
             currency (str):
-            provider_cost_micros (int):
+            provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over the postings in this
+                currency whose price was waived: each event's canonical `provider_cost_micros`, whichever valid source supplied
+                it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside
+                it, so the total is a floor.
             unresolved_event_count (int):
             waived_event_count (int):
      """
