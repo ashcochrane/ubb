@@ -97,7 +97,7 @@ def get_customer_balance(customer_id):
 
 
 def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
-                            effective_at=None, now=None):
+                            customer_id=None, effective_at=None, now=None):
     """Tier-2 synchronous live-counter hook — the cross-product PORT for the
     metering choke point.
 
@@ -107,19 +107,31 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     need not import a billing internal — mirrors is_usage_period_closed().
     No-op unless the tenant has enforcement enabled. Returns the live verdict
     dict ({mode, balance_micros|spend_micros, stop fields}) or None.
+
+    The counters debited are the billing owner's; the stop fields are those
+    of the recording's customer, ``customer_id`` — every customer-wide stop
+    that applies to it, named as :func:`read_live_stop` names one (#609).
     """
     from apps.billing.gating.services.live_counter import LiveCounter
     return LiveCounter.debit(
-        owner_id, tenant, billed_cost_micros, effective_at=effective_at, now=now)
+        owner_id, tenant, billed_cost_micros, customer_id=customer_id,
+        effective_at=effective_at, now=now)
 
 
-def read_live_stop(owner_id, tenant) -> dict:
-    """Read the customer-wide stop verdict for a billing owner — the
+def read_live_stop(owner_id, tenant, *, customer_id=None) -> dict:
+    """Read the customer-wide stop verdict for a recording of
+    ``customer_id`` funded by the billing owner ``owner_id`` — the
     cross-product port for the metering replay paths. Returns
     {stop, stop_reason, stop_scope}; {stop: False, ...} when enforcement is off
-    (short-circuits before touching Redis)."""
+    (short-circuits before touching Redis).
+
+    EVERY CUSTOMER-WIDE STOP THAT APPLIES IS READ, AND ONE IS NAMED (#609):
+    the billing owner's lines and, for a pooled seat, the seat's own Pool
+    level. The owner's stop is named over the seat's — the precedence the
+    owner and consultant confirmed (2026-10-08) — and the seat's when the
+    owner stands unstopped; both carry the scope ``customer``."""
     from apps.billing.gating.services.live_counter import LiveCounter
-    return LiveCounter.read(owner_id, tenant)
+    return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
 
 
 def get_negative_balance_stats(tenant_id=None):
@@ -391,7 +403,9 @@ def get_open_customer_stops(owner_id, tenant_id):
     rows, one per episode; the stop-context tagging marks each. The read is
     the ledger service's own (`open_stop_lines`), the one the lifting paths
     make; an owner's id is unique across tenants, so the tenant is not a
-    second filter here."""
+    second filter here. The ledger's owner is the customer whose line it is,
+    so a pooled seat's id answers the seat's own Pool level (#459), which
+    the stop-context tagging itemises after its billing owner's (#609)."""
     from apps.billing.gating.services.stop_signal_service import StopSignalService
     return StopSignalService.open_stop_lines(owner_id)
 

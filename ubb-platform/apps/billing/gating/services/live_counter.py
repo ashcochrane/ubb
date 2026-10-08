@@ -192,9 +192,29 @@ def _livespend_key(owner_id, label) -> str:
 
 
 def _stop_key(owner_id) -> str:
-    # Customer-wide cooperative stop flag. Owner-keyed (NOT month-scoped), so a
-    # pooled business stops all its seats and an allocated seat stops itself.
+    # Customer-wide cooperative stop flag, keyed by the customer whose stop
+    # line it is (NOT month-scoped): a billing owner's lines stop all its
+    # seats, and a pooled seat's own Pool level (#459) is flagged on the
+    # seat's key and stops that seat alone (`_stop_keys`).
     return f"ubb:stop:{owner_id}"
+
+
+def _stop_keys(owner_id, customer_id=None) -> list:
+    """The flag keys that can stop a recording of ``customer_id``, in the
+    order an acknowledgement names them (#609): the billing owner's, then,
+    for a pooled seat (a customer that is not its own billing owner), the
+    seat's own, where its own Pool level is flagged.
+
+    THE ORDER IS THE PRECEDENCE, CONFIRMED BY THE OWNER AND CONSULTANT
+    (2026-10-08): the billing owner's stop is the broader constraint — it
+    would block the event whatever the seat's own state — so it is named
+    over the seat's, and the seat's is named only when the owner stands
+    unstopped. Acknowledgement precedence only: nothing here writes either
+    flag, so the seat's own stop stands as the seat's ledger left it."""
+    keys = [_stop_key(owner_id)]
+    if customer_id is not None and str(customer_id) != str(owner_id):
+        keys.append(_stop_key(customer_id))
+    return keys
 
 
 def _spend_pool_key(customer_id, label) -> str:
@@ -212,17 +232,21 @@ def stop_channel(owner_id) -> str:
 class LiveCounter:
     # ---- synchronous usage hook (called from the recording core) ----
     @staticmethod
-    def debit(owner_id, tenant, billed_cost_micros, *, effective_at=None, now=None):
+    def debit(owner_id, tenant, billed_cost_micros, *, customer_id=None,
+              effective_at=None, now=None):
         """Apply this event to the owner's live counters, synchronously, and
-        return the customer-wide stop verdict.
+        return the customer-wide stop verdict for the recording's customer,
+        ``customer_id`` (#609: a pooled seat's own Pool stop is read after
+        the owner's — ``read``).
 
         P3: if this event drives a counter across its line — the wallet
         below the hard floor, or the owner's month spend at or over the
         owner's pool's stop line — the owner-keyed stop flag is SET
         (cooperative — never rolls back this event; I3). The returned dict
         carries {mode, balance_micros, spend_micros, stop, stop_reason,
-        stop_scope} (the stop fields reflect the flag AFTER this event, so a
-        flag a sibling run set is surfaced too), plus
+        stop_scope} (the stop fields reflect the flags AFTER this event, so a
+        flag a sibling run set is surfaced too, and so is a pooled seat's own
+        flag, which only the drawdown and the seat-level beat set), plus
         ``stop_episodes_opened`` — ``{line: episode_seq}`` for every stop
         line THIS debit won the transition on, the #41 tipping-event
         attribution; two lines number their episodes independently (#458)
@@ -257,7 +281,7 @@ class LiveCounter:
         if not enforcing(tenant) or billed_cost_micros <= 0:
             return None
         if not live_counter_maintenance_on(tenant):
-            return LiveCounter.read(owner_id, tenant)
+            return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
         try:
             from django.utils import timezone
             now = now or timezone.now()
@@ -320,7 +344,7 @@ class LiveCounter:
                 # that episode's tipping event (#41 stop-context), keyed by
                 # the LINE it is on.
                 base["stop_episodes_opened"] = opened
-            base.update(LiveCounter.read(owner_id, tenant))
+            base.update(LiveCounter.read(owner_id, tenant, customer_id=customer_id))
             return base
         except Exception:
             logger.warning("live_counter.debit_failed",
@@ -594,12 +618,19 @@ class LiveCounter:
         return realigned
 
     @staticmethod
-    def read(owner_id, tenant, *, counter=False, now=None) -> dict:
+    def read(owner_id, tenant, *, customer_id=None, counter=False, now=None) -> dict:
         """The owner's live position. Default: the customer-wide stop verdict
         {stop, stop_reason, stop_scope} — fail-open (a Redis failure reads as
         not-stopped) and short-circuiting to not-stopped when enforcement is
         off, BEFORE touching Redis (D17). This is the money-path read (ack
         verdicts, the start-gate, the queries.py port).
+
+        ``customer_id`` is the recording's customer, for an acknowledgement
+        (#609). Where it is a pooled seat, the seat's own Pool level is
+        flagged on its own key, and the verdict reads every flag that can
+        stop that recording — the owner's, then the seat's (``_stop_keys``:
+        one round trip, and the first standing flag in that order is the
+        stop named). Every flag carries the scope ``customer``.
 
         counter=True additionally reads the raw counter the upward repair
         measures — the wallet balance for a wallet-holding mode, the owner's
@@ -616,14 +647,14 @@ class LiveCounter:
                 verdict.update({"counter_micros": None, "counter_blind": False})
             return verdict
         try:
-            v = _client().get(_stop_key(owner_id))
+            words = _client().mget(_stop_keys(owner_id, customer_id))
         except Exception:
-            v = None
-        else:
-            if v is not None:
-                reason = v.decode() if isinstance(v, bytes) else str(v)
-                verdict = {"stop": True, "stop_reason": reason,
-                           "stop_scope": "customer"}
+            words = []
+        v = next((word for word in words if word is not None), None)
+        if v is not None:
+            reason = v.decode() if isinstance(v, bytes) else str(v)
+            verdict = {"stop": True, "stop_reason": reason,
+                       "stop_scope": "customer"}
         if counter:
             try:
                 if tenant.billing_mode == "postpaid":

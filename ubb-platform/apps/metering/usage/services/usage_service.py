@@ -302,14 +302,18 @@ def _tag_stop_context(event, **builder_kwargs):
 
 
 def _replay_stop(customer, tenant):
-    """Customer-wide stop verdict for the idempotent-replay return paths.
-    Skips the owner resolve + Redis read entirely when enforcement is off, so
-    the common replay path stays fast for un-enrolled tenants."""
+    """Customer-wide stop verdict for the idempotent-replay return paths —
+    every customer-wide stop that applies to ``customer``, its billing
+    owner's and, for a pooled seat, its own Pool level's, named by the port's
+    precedence (#609). Skips the owner resolve + Redis read entirely when
+    enforcement is off, so the common replay path stays fast for un-enrolled
+    tenants."""
     from apps.platform.tenants.flags import enforcing
     if not enforcing(tenant):
         return {}
     from apps.billing.queries import read_live_stop
-    return read_live_stop(customer.resolve_billing_owner().id, tenant)
+    return read_live_stop(customer.resolve_billing_owner().id, tenant,
+                          customer_id=customer.id)
 
 
 @dataclass(frozen=True)
@@ -643,10 +647,13 @@ class UsageService:
         # propagates above, so a duplicate never double-decrements). No-op when
         # enforcement_mode is off. Routed through the sanctioned billing
         # read/port contract (apps.billing.queries) — metering must not import
-        # a billing internal directly (product-boundary ADR-001).
+        # a billing internal directly (product-boundary ADR-001). The stop it
+        # answers is the RECORDING CUSTOMER's (#609): the owner's lines and,
+        # for a pooled seat, the seat's own Pool level.
         from apps.billing.queries import record_live_usage_debit
         live = record_live_usage_debit(
             inp.billing_owner_id, tenant, billed_cost_micros,
+            customer_id=customer.id,
             effective_at=inp.effective_at, now=inp.now) or {}
         # Stop-context tagging (#41): runs AFTER the live debit so a fresh
         # crossing (stop_episodes_opened — one entry per line this debit
@@ -655,7 +662,8 @@ class UsageService:
         _tag_stop_context(
             event, task=task, verdicts=verdicts, now=inp.now,
             owner=inp.owner_row, tenant=tenant,
-            opened_episodes=live.get("stop_episodes_opened"))
+            opened_episodes=live.get("stop_episodes_opened"),
+            customer=customer)
         if inp.effective_at is not None:
             # Backfill into a CLOSED month: mark the period stale so the hourly
             # resnapshot task rebuilds its cached economics. Same transaction as
