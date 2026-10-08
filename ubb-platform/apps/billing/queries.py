@@ -97,7 +97,7 @@ def get_customer_balance(customer_id):
 
 
 def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
-                            customer_id=None, effective_at=None, now=None):
+                            customer_id, effective_at=None, now=None):
     """Tier-2 synchronous live-counter hook — the cross-product PORT for the
     metering choke point.
 
@@ -111,6 +111,8 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     The counters debited are the billing owner's; the stop fields are those
     of the recording's customer, ``customer_id`` — every customer-wide stop
     that applies to it, named as :func:`read_live_stop` names one (#609).
+    Required, as it is there: an acknowledgement that left it out would
+    fall back to the owner's stops alone and say nothing about it.
     """
     from apps.billing.gating.services.live_counter import LiveCounter
     return LiveCounter.debit(
@@ -118,7 +120,7 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
         effective_at=effective_at, now=now)
 
 
-def read_live_stop(owner_id, tenant, *, customer_id=None) -> dict:
+def read_live_stop(owner_id, tenant, *, customer_id) -> dict:
     """Read the customer-wide stop verdict for a recording of
     ``customer_id`` funded by the billing owner ``owner_id`` — the
     cross-product port for the metering replay paths. Returns
@@ -129,7 +131,9 @@ def read_live_stop(owner_id, tenant, *, customer_id=None) -> dict:
     the billing owner's lines and, for a pooled seat, the seat's own Pool
     level. The owner's stop is named over the seat's — the precedence the
     owner and consultant confirmed (2026-10-08) — and the seat's when the
-    owner stands unstopped; both carry the scope ``customer``."""
+    owner stands unstopped; both carry the scope ``customer``. ``customer_id``
+    is REQUIRED: a read that omitted it would silently drop the seat's own
+    stop, which is the defect #609 closed."""
     from apps.billing.gating.services.live_counter import LiveCounter
     return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
 

@@ -2771,8 +2771,8 @@ measurement_key:
     # (`units` 42 files / 119 occurrences, UNMOVED). 1 file arrived and none
     # left, and it is swept: the exclusions stand at 438. It is the test module
     # that pins the acknowledgement's precedence on both recording routes. The
-    # ticket adds no migration and no generated file. (Taken once, before the
-    # review pass.)
+    # ticket adds no migration and no generated file. (Taken twice, the second
+    # after the review pass, which added and removed no file.)
 
     - term: units
       retired_as: >-

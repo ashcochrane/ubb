@@ -191,12 +191,13 @@ def _livespend_key(owner_id, label) -> str:
     return f"ubb:livespend:{owner_id}:{label}"
 
 
-def _stop_key(owner_id) -> str:
+def _stop_key(customer_id) -> str:
     # Customer-wide cooperative stop flag, keyed by the customer whose stop
-    # line it is (NOT month-scoped): a billing owner's lines stop all its
-    # seats, and a pooled seat's own Pool level (#459) is flagged on the
-    # seat's key and stops that seat alone (`_stop_keys`).
-    return f"ubb:stop:{owner_id}"
+    # line it is (NOT month-scoped) — the signal ledger's owner of that line:
+    # a billing owner's lines stop all its seats, and a pooled seat's own Pool
+    # level (#459) is flagged on the seat's key and stops that seat alone
+    # (`_stop_keys`).
+    return f"ubb:stop:{customer_id}"
 
 
 def _stop_keys(owner_id, customer_id=None) -> list:

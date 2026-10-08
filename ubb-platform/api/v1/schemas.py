@@ -695,6 +695,9 @@ class RecordUsageResponse(Schema):
     # simultaneous customer-wide stop, and among unit verdicts the WIDEST
     # tripped scope wins (a parent trip beats a subtask trip — stop the whole
     # tree); the losers surface on the next ack and via the pushed events.
+    # Among customer-wide stops, the billing owner's is named over a pooled
+    # seat's own Pool stop, which is named only when the owner stands
+    # unstopped (#609); stop_context itemises both.
     # stop_reason says WHICH BOUND was reached, in the registry's words (the
     # known values ride the contract as metadata) plus the one verdict that is
     # not a bound, `task_not_active`; stop_scope ∈ task | subtask | customer,

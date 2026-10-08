@@ -53,6 +53,9 @@ class StopContextTestBase(TestCase):
 
     def _build(self, task=None, verdicts=None, **kw):
         kw.setdefault("owner", self.customer)
+        # The recording's customer: its own billing owner unless a case says
+        # otherwise (a pooled seat's own level, #609).
+        kw.setdefault("customer", kw["owner"])
         kw.setdefault("tenant", self.tenant)
         kw.setdefault("now", self.now)
         return build_stop_context(task=task, verdicts=verdicts, **kw)

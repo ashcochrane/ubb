@@ -26,10 +26,11 @@ is visible on the wire where the business's stop is its wallet floor; the
 Pool-and-Pool case pins what the wire can show (the stop, and both lines
 itemised).
 
-Every case runs on both recording routes: the shape is a mixin, bound twice
-by naming the route. The replay is pinned as it stands before #569: it reads
-the stops standing NOW. #569's snapshot will freeze what the original
-acknowledgement named, and inverts the one pin here that says otherwise.
+Every case runs on both recording routes: the shape is a mixin, bound twice,
+and each binding says how its route records one report. The replay is pinned
+as it stands before #569: it reads the stops standing NOW. #569's snapshot
+will freeze what the original acknowledgement named, and inverts the two
+pins here that say otherwise (each marked "Before #569").
 """
 import json
 import uuid
@@ -37,19 +38,15 @@ from unittest import mock
 
 from apps.billing.gating.models import CustomerSpendPool, StopSignalState
 from apps.billing.gating.services.live_counter import LiveCounter
+from apps.billing.gating.services.stop_signal_service import (
+    STATE_STOPPED, StopSignalService)
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
     DOORBELL, PoolTestBase)
 from apps.billing.wallets.models import Wallet
-from apps.metering.pricing.tests._helpers import what_it_bills
-from apps.platform.event_types.tests._helpers import DECLARED
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from core.vocabulary import (SPEND_POOL_ENFORCE_MODE_BLOCKING,
-                             TASK_STATUS_KILLED)
-
-SINGLE = "single"
-BATCH = "batch"
+from core.vocabulary import TASK_STATUS_KILLED
 
 #: The seat level's line: the tenant default, which reaches every seat and
 #: never a business, so each seat has a Pool of its own at this figure.
@@ -57,59 +54,35 @@ SEAT_LINE = 3_000_000
 #: The business level's line, above the seat's, so one report tips the seat
 #: level (on the drawdown) before the business level (on the live debit).
 BUSINESS_LINE = 5_000_000
+#: What a ledger line holds about its episode — compared before and after
+#: the business stops, to show precedence moved none of it.
+EPISODE_FACTS = ("reason", "state", "episode_seq", "transitioned_at",
+                 "control_id", "announce_outbox_id")
 
 
-class ThePooledSeatsStopsOnItsAcknowledgements:
-    """The shared shape. Each route below runs every case; the class that
-    binds it says which route it is about by naming it."""
-
-    ROUTE = None
+class APooledSeatsOwnPoolStopReachesItsAcknowledgements:
+    """The shared shape. Each binding below runs every case on one route and
+    supplies `_through_the_route`, the one thing the two routes differ in."""
 
     def setUp(self):
         super().setUp()
-        self.biz = self._customer("biz", wallet=self.WALLET,
-                                  account_type="business",
-                                  billing_topology="pooled")
-        self.seat1 = self._customer("s1", account_type="seat", parent=self.biz)
-        self.seat2 = self._customer("s2", account_type="seat", parent=self.biz)
+        self._a_pooled_business_with_two_seats()
 
-    # -- the levels ---------------------------------------------------------
+    # -- one recording ------------------------------------------------------
 
-    def _seat_level(self):
-        return CustomerSpendPool.objects.create(
-            tenant=self.tenant, customer=None, cap_micros=SEAT_LINE,
-            enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)
-
-    def _business_level(self):
-        return self._pool(self.biz, BUSINESS_LINE)
-
-    # -- one recording, through this class's route --------------------------
-
-    def _ack(self, customer, *, key=None, bills=1_000_000, task_id=None):
+    def _report(self, customer, *, key=None, bills=1_000_000, task_id=None):
         """One usage report for `customer` under `key` (a new one by default),
-        through this class's route: the acknowledgement as a caller reads it.
-        The kills a stop registers run on commit, as `_record` runs them."""
-        item = {"customer_id": str(customer.id),
-                "idempotency_key": key or f"idem-{uuid.uuid4()}",
-                "event_type": DECLARED, "provider_cost_micros": 1_000,
-                "task_id": task_id, **what_it_bills({"bills": bills})}
-        path, body = (("/api/v1/metering/usage", item) if self.ROUTE == SINGLE
-                      else ("/api/v1/metering/usage/batch", {"events": [item]}))
-        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
-            response = self.http.post(path, data=json.dumps(body),
-                                      **self._headers())
-        self.assertEqual(response.status_code, 200, response.content)
-        if self.ROUTE == SINGLE:
-            return response.json()
-        [result] = response.json()["results"]
-        self.assertTrue(result["accepted"], result)
-        return result
+        through the bound route: the acknowledgement as a caller reads it."""
+        fields = {"bills": bills, "task_id": task_id}
+        if key is not None:
+            fields["idempotency_key"] = key
+        return self._through_the_route(customer, **fields)
 
     def _fresh_and_replayed(self, customer):
         """A new report's acknowledgement, then the same key sent again."""
         key = f"idem-{uuid.uuid4()}"
-        fresh = self._ack(customer, key=key)
-        replayed = self._ack(customer, key=key)
+        fresh = self._report(customer, key=key)
+        replayed = self._report(customer, key=key)
         self.assertEqual(replayed["event_id"], fresh["event_id"])
         return fresh, replayed
 
@@ -119,7 +92,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         detected it yet) and the drain drives the seat's own line. Returns
         that report's key."""
         key = f"idem-{uuid.uuid4()}"
-        tipping = self._ack(seat, key=key, bills=SEAT_LINE)
+        tipping = self._report(seat, key=key, bills=SEAT_LINE)
         self.assertFalse(tipping["stop"])
         self._drain()
         seat.refresh_from_db()
@@ -144,7 +117,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """The standing ledger line of `owner` (a business or a seat) on
         `word`, as `stop_context` itemises it."""
         row = StopSignalState.objects.get(owner=owner, reason=word,
-                                          state="stopped")
+                                          state=STATE_STOPPED)
         return {"limit": word, "stop_scope": "customer",
                 "tripped_at": row.transitioned_at.isoformat(),
                 "episode_seq": row.episode_seq}
@@ -161,10 +134,10 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """Case 1, Pool and Pool. Both lines are the Pool's, so the scalar
         fields read alike at either level; `stop_context` carries both lines,
         the business's first, and the seat's line is late."""
-        self._seat_level()
-        self._business_level()
+        self._default_pool(SEAT_LINE)
+        self._pool(self.biz, BUSINESS_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
-        tipping = self._ack(self.seat1, bills=2_000_000)   # the business's line
+        tipping = self._report(self.seat1, bills=2_000_000)   # the business's line
         self._assert_stopped(tipping, reasons.CUSTOMER_SPEND_POOL)
 
         for ack in self._fresh_and_replayed(self.seat1):
@@ -180,9 +153,9 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         stop is its wallet floor, the seat's is its own Pool. The
         acknowledgement names the business's."""
         Wallet.objects.filter(customer=self.biz).update(balance_micros=4_000_000)
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
-        tipping = self._ack(self.seat1, bills=2_000_000)   # the wallet goes below
+        tipping = self._report(self.seat1, bills=2_000_000)   # the wallet goes below
         self._assert_stopped(tipping, reasons.HARD_FLOOR)
 
         for ack in self._fresh_and_replayed(self.seat1):
@@ -194,8 +167,8 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
     def test_the_business_stop_alone_is_named(self):
         """Case 2: the business is past its Pool and no seat has a level of
         its own."""
-        self._business_level()
-        tipping = self._ack(self.seat1, bills=BUSINESS_LINE)
+        self._pool(self.biz, BUSINESS_LINE)
+        tipping = self._report(self.seat1, bills=BUSINESS_LINE)
         self._assert_stopped(tipping, reasons.CUSTOMER_SPEND_POOL)
 
         for seat in (self.seat1, self.seat2):
@@ -210,7 +183,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """Case 3: the seat is past its own Pool and the business is past
         nothing. Every later acknowledgement for the seat says so; its
         sibling, whose own Pool stands at nothing, is not stopped by it."""
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
 
         for ack in self._fresh_and_replayed(self.seat1):
@@ -225,8 +198,8 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
 
     def test_neither_stop_names_no_stop(self):
         """Case 4: both levels declared, neither reached."""
-        self._seat_level()
-        self._business_level()
+        self._default_pool(SEAT_LINE)
+        self._pool(self.biz, BUSINESS_LINE)
 
         for seat in (self.seat1, self.seat2):
             for ack in self._fresh_and_replayed(seat):
@@ -236,7 +209,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """The two levels coincide for a customer that is its own billing
         owner: one line, one flag, read once and itemised once."""
         self._pool(self.customer, BUSINESS_LINE)
-        tipping = self._ack(self.customer, bills=BUSINESS_LINE)
+        tipping = self._report(self.customer, bills=BUSINESS_LINE)
         self._assert_stopped(tipping, reasons.CUSTOMER_SPEND_POOL)
 
         for ack in self._fresh_and_replayed(self.customer):
@@ -250,21 +223,21 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """Acknowledgement precedence only: naming the business's stop moves
         nothing the seat's own level holds — its ledger line, its suspension
         and its flag are exactly as they were before the business stopped."""
-        self._seat_level()
-        self._business_level()
+        self._default_pool(SEAT_LINE)
+        self._pool(self.biz, BUSINESS_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
-        before = StopSignalState.objects.filter(owner=self.seat1).values(
-            "reason", "state", "episode_seq", "transitioned_at", "control_id",
-            "announce_outbox_id")
-        before = list(before)
+        seat_ledger = StopSignalState.objects.filter(owner=self.seat1)
+        before = list(seat_ledger.values(*EPISODE_FACTS))
 
-        self._assert_stopped(self._ack(self.seat1, bills=2_000_000),
+        self._assert_stopped(self._report(self.seat1, bills=2_000_000),
                              reasons.CUSTOMER_SPEND_POOL)
-        self._ack(self.seat1)
+        self._report(self.seat1)
 
-        self.assertEqual(list(StopSignalState.objects.filter(owner=self.seat1).values(
-            "reason", "state", "episode_seq", "transitioned_at", "control_id",
-            "announce_outbox_id")), before)
+        # Case 1 holds: the business's own line opened beside the seat's.
+        self.assertEqual(
+            [line["reason"] for line in StopSignalService.open_stop_lines(self.biz.id)],
+            [reasons.CUSTOMER_SPEND_POOL])
+        self.assertEqual(list(seat_ledger.values(*EPISODE_FACTS)), before)
         self.seat1.refresh_from_db()
         self.assertEqual(self.seat1.status, "suspended")
         self.assertEqual(self.seat1.suspension_reason, reasons.CUSTOMER_SPEND_POOL)
@@ -275,14 +248,14 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         """The seat's own stop killed its work; a late report on that work
         is `task_not_active` in the scalar slot, and the seat's line is still
         itemised beside it."""
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         unit = self._unit(self.seat1)
-        tipping = self._ack(self.seat1, bills=SEAT_LINE, task_id=unit)
+        tipping = self._report(self.seat1, bills=SEAT_LINE, task_id=unit)
         self.assertFalse(tipping["stop"])
         self._drain()
         self.assertEqual(Task.objects.get(id=unit).status, TASK_STATUS_KILLED)
 
-        late = self._ack(self.seat1, task_id=unit)
+        late = self._report(self.seat1, task_id=unit)
 
         self.assertTrue(late["stop"])
         self.assertEqual(late["stop_reason"], reasons.TASK_NOT_ACTIVE)
@@ -294,10 +267,10 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
 
     def test_once_the_seats_stop_clears_its_acknowledgements_say_not_stopped(self):
         from apps.billing.gating.tasks import reconcile_customer_spend_pool_counters
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
         stopped_key = f"idem-{uuid.uuid4()}"
-        self._assert_stopped(self._ack(self.seat1, key=stopped_key),
+        self._assert_stopped(self._report(self.seat1, key=stopped_key),
                              reasons.CUSTOMER_SPEND_POOL)
 
         # The tenant raises the seat level; the seat-level beat lifts the line.
@@ -311,7 +284,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         for ack in self._fresh_and_replayed(self.seat1):
             self._assert_not_stopped(ack)
         # Before #569 a replay reads the stops standing now.
-        self.assertFalse(self._ack(self.seat1, key=stopped_key)["stop"])
+        self.assertFalse(self._report(self.seat1, key=stopped_key)["stop"])
 
     # -- the replay, as it stands before #569 -------------------------------
 
@@ -321,10 +294,10 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
         carries the seat's stop, because a replay reads the stops standing
         now. #569's snapshot answers the original instead, and inverts this
         pin."""
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         tipping_key = self._stop_the_seat_at_its_own_level(self.seat1)
 
-        replayed = self._ack(self.seat1, key=tipping_key)
+        replayed = self._report(self.seat1, key=tipping_key)
 
         self._assert_stopped(replayed, reasons.CUSTOMER_SPEND_POOL)
 
@@ -333,7 +306,7 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
     def test_a_blind_read_is_not_stopped(self):
         """Redis cannot answer: the acknowledgement fails open, fresh and
         replayed, and the report is still recorded."""
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
         key = f"idem-{uuid.uuid4()}"
         blind = mock.patch(
@@ -341,15 +314,15 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
             side_effect=ConnectionError("redis is down"))
 
         with blind:
-            fresh = self._ack(self.seat1, key=key)
-            replayed = self._ack(self.seat1, key=key)
+            fresh = self._report(self.seat1, key=key)
+            replayed = self._report(self.seat1, key=key)
 
         for ack in (fresh, replayed):
             self.assertFalse(ack["stop"], ack)
         self.assertEqual(replayed["event_id"], fresh["event_id"])
 
     def test_a_tenant_that_does_not_enforce_reads_no_customer_wide_stop(self):
-        self._seat_level()
+        self._default_pool(SEAT_LINE)
         self._stop_the_seat_at_its_own_level(self.seat1)
         Tenant.objects.filter(id=self.tenant.id).update(enforcement_mode="off")
 
@@ -357,12 +330,23 @@ class ThePooledSeatsStopsOnItsAcknowledgements:
             self._assert_not_stopped(ack)
 
 
-class ThePooledSeatsStopsOnTheSingleRouteTest(
-        ThePooledSeatsStopsOnItsAcknowledgements, PoolTestBase):
-    ROUTE = SINGLE
+class APooledSeatsOwnPoolStopOnTheSingleRouteTest(
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
+
+    def _through_the_route(self, customer, **fields):
+        return self._record(customer, **fields)
 
 
-class ThePooledSeatsStopsOnABatchItemTest(
-        ThePooledSeatsStopsOnItsAcknowledgements, PoolTestBase):
+class APooledSeatsOwnPoolStopOnABatchItemTest(
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
     """The other route, owed by name: one batch item is one single report."""
-    ROUTE = BATCH
+
+    def _through_the_route(self, customer, **fields):
+        body = {"events": [self._usage(customer, **fields)]}
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            response = self.http.post("/api/v1/metering/usage/batch",
+                                      data=json.dumps(body), **self._headers())
+        self.assertEqual(response.status_code, 200, response.content)
+        [result] = response.json()["results"]
+        self.assertTrue(result["accepted"], result)
+        return result
