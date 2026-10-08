@@ -95,9 +95,9 @@ _ubb_jq_cost_record_billed_search() {
     --from-file /dev/stdin "$1" <<'UBB_JQ'
   # Reads one value off the response as the response wrote it, and prints
   # what kind of value it is: for a string or an integer, with its text. A
-  # response Python's json would not read is not read here either, and a
-  # number is never read for what it is worth, because that loses how it
-  # was written.
+  # response holding a number Python's json does not read is not read, and
+  # no number is read for what it is worth, because that loses how it was
+  # written.
   def ubb_escapes_next:
     if endswith("\\") then
       explode as $c
@@ -176,9 +176,9 @@ _ubb_jq_currency_record_billed_search() {
     --from-file /dev/stdin "$1" <<'UBB_JQ'
   # Reads one value off the response as the response wrote it, and prints
   # what kind of value it is: for a string or an integer, with its text. A
-  # response Python's json would not read is not read here either, and a
-  # number is never read for what it is worth, because that loses how it
-  # was written.
+  # response holding a number Python's json does not read is not read, and
+  # no number is read for what it is worth, because that loses how it was
+  # written.
   def ubb_escapes_next:
     if endswith("\\") then
       explode as $c

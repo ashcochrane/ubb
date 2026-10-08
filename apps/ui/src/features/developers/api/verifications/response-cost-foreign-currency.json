@@ -1,0 +1,75 @@
+{
+  "blueprint": "response-cost-read-currency",
+  "configuration_fingerprint": "sha256:6894a8e53712aeab483db913594682d3d46b4ae1102aec4b37f7003b9ff85e3d",
+  "request": {
+    "records": [
+      {
+        "event_type": "billed.search",
+        "measurements": {},
+        "provider_response_cost_micros": 1250000,
+        "currency": "eur"
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 200,
+  "answer": {
+    "configuration_fingerprint": "sha256:6894a8e53712aeab483db913594682d3d46b4ae1102aec4b37f7003b9ff85e3d",
+    "verified": false,
+    "unexercised_event_types": [],
+    "unexercised_subtask_types": [],
+    "environment": {
+      "discarded": true,
+      "customer_external_id": "ubb-verification",
+      "rules_effective_at": "2026-09-01T12:30:00Z"
+    },
+    "task": {
+      "task_type": "grounded_answer",
+      "start": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "task_type": "grounded_answer",
+        "status": "active",
+        "task_cogs_ceiling_micros": null,
+        "agreed_price_micros": null,
+        "external_task_id": "",
+        "created_at": "2026-09-01T12:30:00Z",
+        "replayed": false
+      },
+      "close": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "status": "cancelled",
+        "outcome": "cancelled",
+        "replayed": false,
+        "charge_created": false,
+        "total_billed_cost_micros": 0,
+        "total_provider_cost_micros": 0,
+        "unresolved_event_count": 0,
+        "unpriced_event_count": 0,
+        "event_count": 0
+      }
+    },
+    "subtasks": [],
+    "records": [
+      {
+        "event_type": "billed.search",
+        "subtask_type": null,
+        "acknowledgement": null,
+        "replay": null,
+        "missing_required_measurement_keys": [],
+        "complete": false
+      }
+    ],
+    "refusal": {
+      "operation_id": "api_v1_metering_endpoints_record_usage",
+      "problem": {
+        "type": "https://ubb.dev/errors/validation_error",
+        "title": "Validation error",
+        "status": 422,
+        "code": "validation_error",
+        "detail": "currency mismatch: event currency 'eur' does not match tenant currency 'usd' (per-tenant single currency; multi-currency/FX is not supported)"
+      }
+    }
+  }
+}

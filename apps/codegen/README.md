@@ -90,10 +90,12 @@ ADR-0017 has the reasons. In short:
   text, and a number at the declared path is the characters written there, never the number jq
   would make of it — every jq parses `1e0` as `1`, and 1.5 and 1.6 `1.0` too, where Python's
   `json` reads both as binary floats. An integer or a decimal string is read; a number written with
-  a fraction or an exponent is refused. And a response Python's `json` would not read — jq reads
-  `01`, `.5`, `+1`, `nan` and more — is not read either, wherever the fault sits, so both targets
-  answer every row of the platform's table alike. `src/shell/written.ts` has the reading, and
-  ADR-0017 §6 the evidence it was settled on.
+  a fraction or an exponent is refused. A response holding a number Python's `json` does not read
+  — jq reads `01`, `.5`, `+1`, `nan` and more — is not read either, wherever it sits. At the
+  declared paths both targets give a value the same meaning and answer every row of the
+  platform's table alike; that is the contract, not that the file accepts exactly the documents
+  Python accepts. `src/shell/written.ts` has the reading, and ADR-0017 §6 the evidence, the read's
+  cost and the parser differences that remain as limitations.
 
 Every jq program is read by jq from standard input, from a quoted heredoc
 (`jq … --from-file /dev/stdin <<'UBB_JQ'`), in a function that is nothing but that program

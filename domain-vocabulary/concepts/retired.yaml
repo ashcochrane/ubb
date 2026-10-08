@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,373 of 2,811 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,375 of 2,813 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2748,17 +2748,19 @@ measurement_key:
     # no file.)
     #
     # 2026-10-08, #583 (the Code Builder renders a supplier's cost read off the
-    # response, on both targets): 2,326 of 2,764 -> 2,373 of 2,811 tracked
-    # files (`units` 42 files / 119 occurrences, UNMOVED). 47 files arrived and
+    # response, on both targets): 2,326 of 2,764 -> 2,375 of 2,813 tracked
+    # files (`units` 42 files / 119 occurrences, UNMOVED). 49 files arrived and
     # none left — the catalogue's version-5 pin was renamed to its version-6
-    # one — and ALL 47 are swept: the exclusions stand at 438. 36 are the four
+    # one — and ALL 49 are swept: the exclusions stand at 438. 36 are the four
     # new branches' snapshots; 4 their platform-written Blueprints; 1 the
-    # Blueprints the platform's case rows are read through; 1 the
-    # platform-written Verify answer for the new branch; 3 the billed supplier
+    # Blueprints the platform's case rows are read through; 3 platform-written
+    # Verify answers (the new branch's, and a currency read off the response
+    # sampled as the tenant's and as a foreign one); 3 the billed supplier
     # responses Seam C reads; and 2 the renderer's own (the read of a value as
-    # the response wrote it, and its tests' rows). (Taken twice: 2,371 of
-    # 2,809 before the review pass, which added the Blueprints the rows are
-    # read through and the response that bills in a float.)
+    # the response wrote it, and its tests' rows). (Taken three times: 2,371
+    # of 2,809 before the code review, which added the Blueprints the rows are
+    # read through and the response that bills in a float; 2,373 of 2,811
+    # before the owner's review, which added the two currency answers.)
     #
     # One retired word came within a docstring of moving the count: a test
     # fixture's "minor units" of a currency, the money sense, was reworded to

@@ -447,7 +447,8 @@ _ubb_to_micros() {
 # text, an integer as its digits. A number written with a fraction or an
 # exponent is a binary float, and is refused as UBB_EXIT_VALUE_REFUSED:
 # read the response's integer or decimal string instead. So is a
-# response Python's json would not read.
+# response holding a number Python's json does not read, such as 01, .5
+# or nan, wherever it sits.
 _ubb_read_amount() {
   case $_ubb_read in
     string:* | integer:*)
@@ -702,9 +703,9 @@ _ubb_jq_cost_record_web_search() {
     --from-file /dev/stdin "$1" <<'UBB_JQ'
   # Reads one value off the response as the response wrote it, and prints
   # what kind of value it is: for a string or an integer, with its text. A
-  # response Python's json would not read is not read here either, and a
-  # number is never read for what it is worth, because that loses how it
-  # was written.
+  # response holding a number Python's json does not read is not read, and
+  # no number is read for what it is worth, because that loses how it was
+  # written.
   def ubb_escapes_next:
     if endswith("\\") then
       explode as $c

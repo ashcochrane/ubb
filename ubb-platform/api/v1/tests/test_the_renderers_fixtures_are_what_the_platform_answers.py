@@ -615,7 +615,8 @@ def _record(event_type, **fields):
 #: never stored), the request, and the status it must be answered with. The
 #: requests are what the page can send — a sample for every Measurement it
 #: shows, a supplier cost only where the call reports one and on the field the
-#: call reports it on, and a sample for every Grouping Field a kind the run
+#: call reports it on, a currency only where the call reads one off the
+#: response, and a sample for every Grouping Field a kind the run
 #: starts requires — except the five a page cannot make and must still
 #: render: the four refusals before a run, and a supplier cost sent on a call
 #: that reports none, refused inside it.
@@ -635,6 +636,22 @@ VERIFIED = {
         "records": [_record("grounded.search",
                             measurements={"input_tokens": 1200},
                             provider_response_cost_micros=4_200)],
+        "grouping_fields": {}}, 200),
+    # With the currency read off the response too, the Blueprint binds
+    # `currency` at run time, so the request samples it as the event's — the
+    # resulting value, never one the run makes up (owner's review of #608).
+    # The tenant's own: recorded and costed, so verified.
+    "response-cost-read-currency": ("response-cost-read-currency", {
+        "records": [_record("billed.search", measurements={},
+                            provider_response_cost_micros=1_250_000,
+                            currency="usd")],
+        "grouping_fields": {}}, 200),
+    # A currency UBB holds that is not the tenant's: the recording's own
+    # refusal inside the run (#583 D1), so never verified.
+    "response-cost-foreign-currency": ("response-cost-read-currency", {
+        "records": [_record("billed.search", measurements={},
+                            provider_response_cost_micros=1_250_000,
+                            currency="eur")],
         "grouping_fields": {}}, 200),
     # Costed from Cost Rates the tenant never declared: recorded, its cost
     # unresolved, so not verified, and the acknowledgement names the gap.

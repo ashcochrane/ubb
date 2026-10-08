@@ -35,6 +35,11 @@ class IntegrationBlueprintVerificationRecordIn:
 
         Attributes:
             event_type (str):
+            currency (None | str | Unset): The event's currency, as generated code sends it where the Blueprint binds
+                `currency` at run time: a currency read off the provider's response. A sample of the resulting value, not a
+                reading of a response: the read itself is the generated files' to test, by running them. Required for such an
+                Event Type and refused for any other, whose currency is the Blueprint's own or the tenant's. Recorded as the
+                event's currency under UBB's one rule, which admits the tenant's currency and refuses any other.
             measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset):
             provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
                 caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
@@ -51,6 +56,7 @@ class IntegrationBlueprintVerificationRecordIn:
      """
 
     event_type: str
+    currency: None | str | Unset = UNSET
     measurements: IntegrationBlueprintVerificationRecordInMeasurements | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     provider_response_cost_micros: int | None | Unset = UNSET
@@ -64,6 +70,12 @@ class IntegrationBlueprintVerificationRecordIn:
     def to_dict(self) -> dict[str, Any]:
         from ..models.integration_blueprint_verification_record_in_measurements import IntegrationBlueprintVerificationRecordInMeasurements
         event_type = self.event_type
+
+        currency: None | str | Unset
+        if isinstance(self.currency, Unset):
+            currency = UNSET
+        else:
+            currency = self.currency
 
         measurements: dict[str, Any] | Unset = UNSET
         if not isinstance(self.measurements, Unset):
@@ -93,6 +105,8 @@ class IntegrationBlueprintVerificationRecordIn:
         field_dict.update({
             "event_type": event_type,
         })
+        if currency is not UNSET:
+            field_dict["currency"] = currency
         if measurements is not UNSET:
             field_dict["measurements"] = measurements
         if provider_cost_micros is not UNSET:
@@ -111,6 +125,16 @@ class IntegrationBlueprintVerificationRecordIn:
         from ..models.integration_blueprint_verification_record_in_measurements import IntegrationBlueprintVerificationRecordInMeasurements
         d = dict(src_dict)
         event_type = d.pop("event_type")
+
+        def _parse_currency(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        currency = _parse_currency(d.pop("currency", UNSET))
+
 
         _measurements = d.pop("measurements", UNSET)
         measurements: IntegrationBlueprintVerificationRecordInMeasurements | Unset
@@ -154,6 +178,7 @@ class IntegrationBlueprintVerificationRecordIn:
 
         integration_blueprint_verification_record_in = cls(
             event_type=event_type,
+            currency=currency,
             measurements=measurements,
             provider_cost_micros=provider_cost_micros,
             provider_response_cost_micros=provider_response_cost_micros,

@@ -20,14 +20,18 @@
  * marked with U+0001, which no JSON text holds outside a string, so every run
  * between two marks is one scalar.
  *
- * FIRST, A RESPONSE PYTHON'S `json` CANNOT READ IS NOT READ HERE EITHER. jq
- * reads more than JSON: a number written `+1`, `01`, `.5` or `1.`, `nan` and
- * `inf` in any spelling, a NUL after a number, and (jq 1.5 and 1.6) a NUL
- * inside a string. Python
- * reads `NaN`, `Infinity` and `-Infinity`, and none of the others. So with
- * those six words and JSON's three taken out, a scalar holding anything a
- * number Python reads never holds (`NOT_PYTHONS`) makes the whole response
- * unreadable, wherever in it the scalar sits.
+ * FIRST, A NUMBER PYTHON'S `json` DOES NOT READ IS NOT READ, WHEREVER IT
+ * SITS. jq reads numbers JSON does not allow: `+1`, `01`, `.5` or `1.`, `nan`
+ * and `inf` in any spelling, a number with a NUL after it, and (jq 1.5 and
+ * 1.6) a NUL inside a string. Python reads `NaN`, `Infinity` and `-Infinity`,
+ * and none of the others. So with those three words and JSON's three taken
+ * out, a scalar holding anything a number Python reads never holds
+ * (`NOT_PYTHONS`) makes the whole response unreadable. This is targeted at
+ * those spellings, not an implementation of Python's whole parser: it is no
+ * promise that the file accepts exactly the documents Python accepts. The
+ * invariant is narrower — at the declared paths, both targets give a value
+ * the same meaning, and neither ever takes a number written with a fraction
+ * or an exponent for an exact reported cost (ADR-0017 §6).
  *
  * THEN, where the value at the path is a number, jq parses a COPY of the text
  * in which every scalar outside a string is written as a JSON string of its
@@ -42,9 +46,9 @@
  * path.
  *
  * Measured against jq 1.4, 1.5, 1.6, 1.7.1 and 1.8.1 and gojq 0.12.17, with
- * `json.loads` as the oracle — see ADR-0017 §6 for the forms, the documents
- * and the three differences that remain, all of them refusals or Python's own
- * limits rather than JSON's. jq 1.4 cannot compile the program (it has no
+ * `json.loads` as the oracle — see ADR-0017 §6 for the forms, the documents,
+ * the read's cost, and the whole-document parser differences that remain as
+ * the target's limitations. jq 1.4 cannot compile the program (it has no
  * `foreach`), which the probe, derived from this text, refuses before
  * anything is sent.
  *
@@ -76,8 +80,8 @@ const WHITESPACE = [" ", "\t", "\n", "\r"];
 const WORDS = ["true", "false", "null", "NaN", "Infinity", "-Infinity"];
 
 /**
- * What jq reads outside a string and Python's `json` does not, once the
- * words are taken out and each scalar sits between two marks. jq hands
+ * The numbers jq reads outside a string and Python's `json` does not, once
+ * the words are taken out and each scalar sits between two marks. jq hands
  * every other character outside a string to its number reader, which takes
  * a sign of `+`, leading zeros, a point with no digit on one side (`.5`,
  * `1.`), `nan` and `inf` spelled every way, and a number with a NUL after it,

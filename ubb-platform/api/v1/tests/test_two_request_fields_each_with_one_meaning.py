@@ -1767,8 +1767,10 @@ class AVerificationRecordTakesTheSameTransportTest(_PublicationCase):
             "declaration": last_published_declaration(tenant=self.tenant,
                                                       key=key),
             "provider_key": None})
+        # Every mapping here pins its currency (or has none), so no record's
+        # currency is a sample: the run would send the Blueprint's own.
         recording = verification._recording(self.customer, declared, claim,
-                                            None, position)
+                                            None, position, sampled=False)
         try:
             return Outcome(True, metering_endpoints.record(self.tenant,
                                                            recording))

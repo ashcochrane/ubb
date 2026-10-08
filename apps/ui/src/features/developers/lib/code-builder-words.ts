@@ -83,6 +83,21 @@ export const SUPPLIER_COST_SAMPLE: Readonly<
 };
 
 /**
+ * What a sample of the event's currency is, where the call reads it off the
+ * provider's response (owner review of #608): the resulting currency code
+ * generated code sends, sent as the event's own — never the tenant's made up
+ * in its place. Said in the same terms as the cost read beside it: Verify
+ * samples the value, and only running the generated files tests the read.
+ * Whether UBB admits it is UBB's own rule, on the server.
+ */
+export const CURRENCY_SAMPLE = {
+  label: "Currency read off the provider response",
+  hint:
+    "Verify supplies the resulting currency code to test UBB recording, which admits only your " +
+    "UBB currency. Generated-artifact execution tests the provider-response read.",
+} as const;
+
+/**
  * What `verified` speaks for (owner ruling on #599): the whole Blueprint, and
  * recording and costing only. Said beside every verdict, because a price is
  * the first thing a reader would take it to prove.

@@ -3896,6 +3896,19 @@
       "IntegrationBlueprintVerificationRecordIn": {
         "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements`, `provider_cost_micros` and `provider_response_cost_micros`\nare the same fields, with the same rules, as on a recording.\n`subtask_type` records this event under a Subtask of that kind, which must\nbe one the Blueprint selected; left out, the event is recorded under the\nTask itself.",
         "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "maxLength": 3,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The event's currency, as generated code sends it where the Blueprint binds `currency` at run time: a currency read off the provider's response. A sample of the resulting value, not a reading of a response: the read itself is the generated files' to test, by running them. Required for such an Event Type and refused for any other, whose currency is the Blueprint's own or the tenant's. Recorded as the event's currency under UBB's one rule, which admits the tenant's currency and refuses any other.",
+            "title": "Currency"
+          },
           "event_type": {
             "maxLength": 100,
             "title": "Event Type",

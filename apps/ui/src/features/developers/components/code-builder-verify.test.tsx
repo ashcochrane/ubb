@@ -19,12 +19,13 @@ import type { BlueprintVerification } from "../api/types";
 import { credentialShapeIn } from "../lib/credential-shapes";
 import type { CodeBuilderSearch } from "../lib/code-builder-search";
 import {
+  CURRENCY_SAMPLE,
   diagnosticCodeLabel,
   STALE_RESULT_WARNING,
   SUPPLIER_COST_SAMPLE,
   VERIFIED_SCOPE,
 } from "../lib/code-builder-words";
-import { GROUPING_FIELD_REQUIRED } from "../lib/verification";
+import { CURRENCY_REQUIRED, GROUPING_FIELD_REQUIRED } from "../lib/verification";
 import { renderCodeBuilder } from "../test-utils";
 import { REPLAY_TASK_TOTALS } from "./acknowledgement-card";
 
@@ -92,6 +93,19 @@ async function verifyReadOffCost() {
   const record = await recordFields("grounded.search");
   type(record, "input_tokens", "1200");
   type(record, READ_OFF_COST.label, "4200");
+  send();
+  return result();
+}
+
+/** A currency read off the response beside the cost: the Blueprint binds it
+ * at run time, so it is a sample (owner review of #608). */
+const READ_CURRENCY: CodeBuilderSearch = { task_type: "grounded_answer", event_types: ["billed.search"] };
+
+/** A run with the currency sample as the platform verified it with. */
+async function verifyReadCurrency(currency: string) {
+  const record = await recordFields("billed.search");
+  type(record, READ_OFF_COST.label, "1250000");
+  type(record, CURRENCY_SAMPLE.label, currency);
   send();
   return result();
 }
@@ -172,6 +186,29 @@ describe("Verify, offered", () => {
     // Never the raw response: nothing here takes one.
     expect(within(record).queryByLabelText(/response/i)).toBe(within(record).getByLabelText(READ_OFF_COST.label));
   });
+
+  // Owner review of #608: where the Blueprint binds `currency` at run time it
+  // is a sample — the resulting code, never the tenant's made up in its place
+  // — and a pinned currency, the Blueprint's own, asks for none.
+  it("asks a currency read off the response as the code would send it, and only there", async () => {
+    renderCodeBuilder(READ_CURRENCY);
+    const record = await recordFields("billed.search");
+
+    expect(within(record).getByLabelText(CURRENCY_SAMPLE.label)).toBeInTheDocument();
+    expect(record).toHaveTextContent(CURRENCY_SAMPLE.hint);
+    // Required, and never filled in for the developer.
+    type(record, READ_OFF_COST.label, "1250000");
+    send();
+    expect(await within(record).findByText(CURRENCY_REQUIRED)).toBeInTheDocument();
+    expect(within(verify()).queryByRole("region", { name: "Verify result" })).toBeNull();
+  });
+
+  it("asks no currency where the Blueprint pins one", async () => {
+    renderCodeBuilder(READ_OFF);
+    const record = await recordFields("grounded.search");
+
+    expect(within(record).queryByLabelText(CURRENCY_SAMPLE.label)).toBeNull();
+  });
 });
 
 describe("Verify, run", () => {
@@ -184,6 +221,26 @@ describe("Verify, run", () => {
 
     expect(within(shown).getByRole("status")).toHaveTextContent(/^Verified:/);
     expect(shown).toHaveTextContent((await answer("response-cost")).configuration_fingerprint);
+  });
+
+  // The mock answers only the requests the platform verified, each of which
+  // sent the currency sample as the event's: a page that dropped it, or sent
+  // the tenant's in its place, would be told it is not in the mock.
+  it("verifies a currency read off the response with your UBB currency", async () => {
+    renderCodeBuilder(READ_CURRENCY);
+    const shown = await verifyReadCurrency("usd");
+
+    expect(within(shown).getByRole("status")).toHaveTextContent(/^Verified:/);
+    expect(shown).toHaveTextContent((await answer("response-cost-read-currency")).configuration_fingerprint);
+  });
+
+  it("shows UBB's own refusal of a foreign currency read off the response, and never says verified", async () => {
+    renderCodeBuilder(READ_CURRENCY);
+    const shown = await verifyReadCurrency("eur");
+
+    expect(within(shown).getByRole("status")).not.toHaveTextContent(/Verified:/);
+    expect(within(shown).getByRole("status")).toHaveTextContent("The run was refused before it finished.");
+    expect(within(shown).getByRole("alert")).toHaveTextContent("currency mismatch");
   });
 
   it("verifies the Blueprint on screen and names where it ran", async () => {
@@ -406,6 +463,17 @@ describe("a result and the samples it ran with", () => {
     await verifyReadOffCost();
 
     type(await recordFields("grounded.search"), READ_OFF_COST.label, "4201");
+
+    await isGone();
+    expect(verify()).not.toHaveTextContent(/Verified:/);
+  });
+
+  // The currency sample is part of the request too (owner review of #608).
+  it("clears a Verified result once the currency read off the response changes", async () => {
+    renderCodeBuilder(READ_CURRENCY);
+    await verifyReadCurrency("usd");
+
+    type(await recordFields("billed.search"), CURRENCY_SAMPLE.label, "eur");
 
     await isGone();
     expect(verify()).not.toHaveTextContent(/Verified:/);

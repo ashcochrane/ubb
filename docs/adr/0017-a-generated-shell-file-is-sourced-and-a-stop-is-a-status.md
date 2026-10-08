@@ -197,9 +197,9 @@ that reads a supplier's cost or its currency off it (§6) names the file after i
 `--raw-input --slurp`. Read raw, every file is one string whatever it holds, and the program
 parses it itself, under `try`: a malformed response, an empty one, one of whitespace only and one
 holding two documents are each "not JSON" alike, on jq 1.5, 1.6, 1.7.1 and 1.8.1 and on gojq, so
-the failure is still one failure whichever jq reads it — and so is a response jq reads and Python's
-`json` does not (§6). The program is still a function of its own with its program on standard
-input, and no heredoc is opened inside a substitution.
+the failure is still one failure whichever jq reads it — and so is one holding a number jq reads
+and Python's `json` does not (§6). The program is still a function of its own with its program on
+standard input, and no heredoc is opened inside a substitution.
 
 ### 4. A stop is a status, set in the caller's shell, and every other failure is another status
 
@@ -337,15 +337,18 @@ escaped one by the parity of the backslashes before it — so that what is insid
 from what is not. Outside the strings, whitespace is dropped and each structural character is
 marked, so every run between two marks is one scalar.
 
-**First, a response Python's `json` does not read is not read here either.** jq reads more than
-JSON, wherever in the response it sits: every jq run reads a number written `+1`, `01`, `.5` or
-`1.`, `nan` and `inf` in any spelling, and a NUL after a number (its C reader stops there); jq 1.5
-and 1.6 read a NUL inside a string too. Python reads `NaN`, `Infinity` and `-Infinity` and none of
-the rest, and a tenant's own Python code would have failed to parse such a response before a
-generated module was handed anything. So, with those three words and JSON's own three taken out,
-a scalar holding a letter other than an exponent's, a parenthesis, a NUL or a byte-order mark, or
-shaped as no number Python reads (a leading `+`, a leading zero before a digit, a point with no
-digit on one side), makes the whole response unreadable — and so does a NUL inside a string.
+**First, a number Python's `json` does not read is not read, wherever it sits.** jq reads numbers
+JSON does not allow: every jq run reads `+1`, `01`, `.5` or `1.`, `nan` and `inf` in any
+spelling, and a number with a NUL after it (its C reader stops there); jq 1.5 and 1.6 read a NUL
+inside a string too. Python reads `NaN`, `Infinity` and `-Infinity` and none of the rest, and a
+tenant's own Python code would have failed to parse such a response before a generated module was
+handed anything. So, with those three words and JSON's own three taken out, a scalar holding a
+letter other than an exponent's, a parenthesis, a NUL or a byte-order mark, or shaped as no number
+Python reads (a leading `+`, a leading zero before a digit, a point with no digit on one side),
+makes the whole response unreadable — and so does a NUL inside a string. This is targeted at
+those spellings. It is not an implementation of Python's whole parser, and it is no promise that
+the file accepts exactly the documents Python's `json` accepts (the differences that remain are
+the limitations below).
 
 **Then the token.** Where the value at the path is a number, the program makes a copy of the text
 in which every scalar outside a string is written as a JSON string of its own characters, and
@@ -360,25 +363,36 @@ refused. What it reads is then the amount as text, and §6's conversion is appli
 nothing `join`s. The program looks at characters one at a time in two places only: a part of the
 text that ends in a backslash, to count the backslashes, and the token at the path. A first
 version that walked the whole text a character at a time took up to 21 s on the 4.4 MB response
-measured, and `join` up to 50 s. As built, one read of a cost took 55–100 ms on a 60 KB response,
-0.4–1.3 s on 0.77 MB of text and 1.5–5.3 s on 4.4 MB of embeddings, across jq 1.5 to 1.8.1 (jq 1.5
-the slowest, and an integer slower than a decimal string, since only a number is re-read). The
-check that Python reads the response is most of a decimal string's read on the large responses
-(the read without it took 0.16–0.39 s on the 4.4 MB one) and about half of an integer's. It is
-the price of identical answers: it runs on every read, wherever the cost sits.
+measured, and `join` up to 50 s.
 
-**The proof is identical answers.** The platform's table carries rows read off a response,
-answered by `json.loads` and `to_micros` — the responses it cannot read among them, refused as a
-response on both targets — and the file is held to every row under `sh` and `bash`, as the Python
-target is. Beside the table, the rendered program was run on jq 1.5, 1.6, 1.7.1 and 1.8.1 and on
-gojq, with Python's reading as the oracle, over thirty lexical forms at the path, twenty-nine
-adversarial responses, two thousand generated ones, and the same two thousand with a token planted
-off the path (one of twenty-eight, seven of which Python reads). On jq 1.5, 1.6, 1.7.1 and 1.8.1
-it disagreed nowhere; gojq's differences are the first of those below. So an integer of any length
-is carried exactly here, as text: the fifteen digits of §2 are a quantity's limit, not a cost's.
+**The invariant, and its proof.** For the supported response shapes and the declared
+reported-cost and currency paths, both generated targets implement the same value semantics, and
+neither ever reinterprets a JSON number written with a fraction or an exponent as an admissible
+exact reported cost (owner's review of #608). That is the contract, and it is narrower than
+"the shell file reads exactly the documents Python reads", which is not true and does not need to
+be. The platform's table carries rows read off a response, answered by `json.loads` and
+`to_micros` — the responses it cannot read among them, refused as a response on both targets — and
+the file is held to every row under `sh` and `bash`, as the Python target is. Beside the table,
+the rendered program was run on jq 1.5, 1.6, 1.7.1 and 1.8.1 and on gojq, with Python's reading as
+the oracle, over thirty lexical forms at the path, twenty-nine adversarial responses, two thousand
+generated ones, and the same two thousand with a token planted off the path (one of twenty-eight,
+seven of which Python reads). On jq 1.5, 1.6, 1.7.1 and 1.8.1 it disagreed nowhere; gojq's
+differences are the first of the limitations below. The shell no longer imposes the old arbitrary
+fifteen-digit limit on a cost's input: exact conversion and the platform's economic bounds remain
+authoritative. (Fifteen digits stay a quantity's limit, §2.)
 
-**What remains different is stated rather than discovered.** None of it is a cost read
-differently, and each would need a response no JSON writer produces:
+**Limitation: the read's cost.** One read of a cost took 55–100 ms on a 60 KB response, 0.4–1.3 s
+on 0.77 MB of text and 1.5–5.3 s on 4.4 MB of embeddings, across jq 1.5 to 1.8.1 (jq 1.5 the
+slowest, and an integer slower than a decimal string, since only a number is re-read). The check
+for numbers Python does not read is most of a decimal string's read on the large responses (the
+read without it took 0.16–0.39 s on the 4.4 MB one) and about half of an integer's, and it runs on
+every read, wherever the cost sits. It is accepted as it stands, and no response-size limit is
+imposed. If real integrations show multi-megabyte provider responses are common, that is a focused
+renderer-performance follow-up, never a reason to weaken exactness here.
+
+**Limitations: whole-document parser differences.** jq is not Python's `json`, and these are
+recorded rather than reimplemented — this target will not carry a JSON parser of its own. None is
+a cost read differently at the declared path, and each needs a response no JSON writer produces:
 
 - gojq reads no `NaN` or `Infinity` anywhere, so it refuses a response holding one, which Python
   reads. It is not in the standing matrix, and the refusal sends nothing.

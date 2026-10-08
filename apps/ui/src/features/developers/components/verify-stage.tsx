@@ -42,6 +42,7 @@ import { shownValue } from "../lib/blueprint";
 import {
   altitudeLabel,
   CALL_TITLES,
+  CURRENCY_SAMPLE,
   diagnosticCodeLabel,
   readinessLabel,
   STALE_RESULT_WARNING,
@@ -390,6 +391,24 @@ function SampleForm({
                   inputMode="numeric"
                   className={CONTROL}
                   {...form.register(`records.${index}.providerCost`)}
+                />
+              )}
+            </Field>
+          )}
+          {record.readsCurrency && (
+            <Field
+              label={CURRENCY_SAMPLE.label}
+              hint={CURRENCY_SAMPLE.hint}
+              error={errors.records?.[index]?.currency?.message}
+            >
+              {(id) => (
+                <input
+                  id={id}
+                  type="text"
+                  maxLength={3}
+                  autoComplete="off"
+                  className={CONTROL}
+                  {...form.register(`records.${index}.currency`)}
                 />
               )}
             </Field>

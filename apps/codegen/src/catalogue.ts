@@ -557,7 +557,8 @@ export const SHELL_COMMENTS = {
     "text, an integer as its digits. A number written with a fraction or an",
     "exponent is a binary float, and is refused as UBB_EXIT_VALUE_REFUSED:",
     "read the response's integer or decimal string instead. So is a",
-    "response Python's json would not read.",
+    "response holding a number Python's json does not read, such as 01, .5",
+    "or nan, wherever it sits.",
   ],
   /** A currency read off the response beside it (#583 D1). */
   responseCurrency: [
@@ -569,9 +570,9 @@ export const SHELL_COMMENTS = {
   writtenProgram: [
     "Reads one value off the response as the response wrote it, and prints",
     "what kind of value it is: for a string or an integer, with its text. A",
-    "response Python's json would not read is not read here either, and a",
-    "number is never read for what it is worth, because that loses how it",
-    "was written.",
+    "response holding a number Python's json does not read is not read, and",
+    "no number is read for what it is worth, because that loses how it was",
+    "written.",
   ],
   runTask: [
     "The whole of a Task, as one command you name. It is run with the Task's",

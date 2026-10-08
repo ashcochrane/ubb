@@ -668,18 +668,76 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         (record,) = body["records"]
         assert record["acknowledgement"] is None
 
-    def test_a_currency_read_off_the_response_is_recorded_as_the_tenants(self):
-        """No sample stands for a currency the generated code reads off the
-        response: the recording carries none, which is the tenant's own — the
-        one currency a recording admits (#583 D1)."""
-        fingerprint = self._read_off(currency="",
-                                     currency_path=["usageMetadata", "currency"])
+    def _reads_its_currency(self):
+        """The same, with the currency read off the response beside the cost:
+        the Blueprint binds `currency` at run time."""
+        return self._read_off(currency="",
+                              currency_path=["usageMetadata", "currency"])
 
-        body = self._run(fingerprint, provider_response_cost_micros=4_200)
+    def test_a_currency_read_off_the_response_is_the_samples(self):
+        """Where the Blueprint binds `currency` at run time, a sample stands
+        for it, and it is the event's currency — never one the run makes up
+        (owner's review of #608). The tenant's own is admitted."""
+        body = self._run(self._reads_its_currency(),
+                         provider_response_cost_micros=4_200, currency="usd")
 
         assert body["verified"] is True, body
-        assert body["records"][0]["acknowledgement"][
-            "provider_cost_micros"] == 4_200
+        ack = body["records"][0]["acknowledgement"]
+        assert (ack["costing_status"], ack["provider_cost_micros"]) == (
+            "known", 4_200)
+
+    def test_a_foreign_currency_sample_is_the_recordings_refusal(self):
+        """A currency UBB holds that is not the tenant's reaches the recording
+        as the generated code sends it, and is refused there by the one shared
+        rule (422, "currency mismatch", #583 D1). Verify neither swaps it for
+        the tenant's nor refuses it with a rule of its own."""
+        body = self._run(self._reads_its_currency(),
+                         provider_response_cost_micros=125, currency="eur")
+
+        assert body["verified"] is False
+        assert body["refusal"]["operation_id"] == \
+            "api_v1_metering_endpoints_record_usage"
+        assert body["refusal"]["problem"]["status"] == 422
+        assert "currency mismatch" in body["refusal"]["problem"]["detail"]
+        (record,) = body["records"]
+        assert record["acknowledgement"] is None
+
+    def test_a_missing_currency_sample_is_refused_and_never_made_up(self):
+        """The currency is the tenant's code's to pass: without a sample
+        nothing is run, as for a Grouping Field's value."""
+        fingerprint = self._reads_its_currency()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint, a_record(measurements={"searches": 2},
+                                  provider_response_cost_micros=4_200),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "currency" in body["detail"] and repr(EVENT) in body["detail"]
+        assert what_moved(before, every_table()) == {}
+
+    def test_a_currency_sample_where_none_is_read_at_run_time_is_refused(self):
+        """A pinned currency is the Blueprint's own, and an Event Type with
+        none sends the tenant's: a sample would stand for nothing generated
+        code sends, so a caller is told rather than left believing it was
+        used."""
+        fingerprint = self._read_off()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint, a_record(measurements={"searches": 2},
+                                  provider_response_cost_micros=4_200,
+                                  currency="usd"),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert "currency" in body["detail"] and repr(EVENT) in body["detail"]
+        assert what_moved(before, every_table()) == {}
 
 
 @pytest.mark.django_db

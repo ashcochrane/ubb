@@ -116,7 +116,8 @@ from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant
 from core.problems import PROBLEM_TYPE_BASE, Problem
 from core.vocabulary import (
-    COSTING_METHOD_REPORTED, COSTING_STATUS_UNRESOLVED,
+    BINDING_CLASS_RUNTIME_BOUND, COSTING_METHOD_REPORTED,
+    COSTING_STATUS_UNRESOLVED,
     INTEGRATION_READINESS_COMPLETE,
     TASK_OUTCOME_CANCELLED, TASK_OUTCOME_DELIVERED)
 
@@ -157,9 +158,12 @@ def verify(tenant, configuration_fingerprint, payload):
             f"diagnostics are fixed")
     _refuse_a_subtask_kind_not_selected(configuration, payload)
     _refuse_grouping_values_that_do_not_match(configuration, payload)
+    sampled = _currencies_read_at_run_time(
+        identity[integration_blueprint.BLUEPRINT])
+    _refuse_currency_samples_that_do_not_match(sampled, payload)
 
     with transaction.atomic():
-        answer = _Run(configuration, payload).run()
+        answer = _Run(configuration, payload, sampled).run()
         # (e): whatever the run wrote goes with the transaction it wrote in.
         transaction.set_rollback(True)
     return {"configuration_fingerprint": configuration_fingerprint, **answer}
@@ -232,6 +236,56 @@ def _refuse_grouping_values_that_do_not_match(configuration, payload):
             f"passes at run time is never made up")
 
 
+def _currencies_read_at_run_time(blueprint):
+    """The Event Types whose recording the Blueprint gives a `currency` bound
+    at run time — read off the provider's response (#583 D2). For these, and
+    these alone, the currency is the tenant's code's to pass, so a sample
+    stands for it."""
+    sampled = set()
+    for call in blueprint["calls"]:
+        if call["operation_id"] != RECORD:
+            continue
+        named = {argument["name"]: argument for argument in call["arguments"]}
+        currency = named.get("currency")
+        if (currency is not None
+                and currency["binding_class"] == BINDING_CLASS_RUNTIME_BOUND):
+            sampled.add(named["event_type"]["value"])
+    return sampled
+
+
+def _refuse_currency_samples_that_do_not_match(sampled, payload):
+    """A currency sample on every recording whose currency is read at run
+    time, and on no other (owner's review of #608).
+
+    A missing one is refused rather than made up: the tenant's own currency
+    is not what generated code sends there, and recording it would verify a
+    value no run of the generated files would send. One given where the
+    Blueprint binds no currency at run time would stand for nothing: the
+    currency there is the Blueprint's own or the tenant's, and a caller is
+    told rather than left believing it was used.
+    """
+    missing = list(dict.fromkeys(
+        claim.event_type for claim in payload.records
+        if claim.event_type in sampled and not claim.currency))
+    if missing:
+        raise Problem(
+            "validation_error",
+            f"currency must give a sample for "
+            f"{', '.join(repr(key) for key in missing)}: the Blueprint reads "
+            f"its currency off the provider's response at run time, and a "
+            f"value a tenant's code passes at run time is never made up")
+    unwanted = list(dict.fromkeys(
+        claim.event_type for claim in payload.records
+        if claim.event_type not in sampled and claim.currency))
+    if unwanted:
+        raise Problem(
+            "validation_error",
+            f"currency is sampled only where the Blueprint reads it at run "
+            f"time, and it does not for "
+            f"{', '.join(repr(key) for key in unwanted)}: its currency is the "
+            f"Blueprint's own or the tenant's")
+
+
 class _Refused(Exception):
     """A call of the run answered with a refusal: the run stops there."""
 
@@ -239,9 +293,11 @@ class _Refused(Exception):
 class _Run:
     """One verification run, inside the transaction that is thrown away."""
 
-    def __init__(self, configuration, payload):
+    def __init__(self, configuration, payload, sampled):
         self.configuration = configuration
         self.payload = payload
+        #: The Event Types whose currency is the request's sample.
+        self.sampled = sampled
         self.at = timezone.now()
         self.refusal = None
 
@@ -359,7 +415,8 @@ class _Run:
                 records.append(record)
                 recording = _recording(
                     customer, event_types[claim.event_type], claim,
-                    unit["start"]["task_id"], position)
+                    unit["start"]["task_id"], position,
+                    sampled=claim.event_type in self.sampled)
                 record["acknowledgement"] = self._call(
                     RECORD, metering_endpoints.record, tenant, recording)
                 record["replay"] = self._call(
@@ -467,7 +524,7 @@ def _the_change_that_adds(rule):
 # Recording, and reading the acknowledgement
 # ---------------------------------------------------------------------------
 
-def _recording(customer, declared, claim, task_id, position):
+def _recording(customer, declared, claim, task_id, position, *, sampled):
     """The recording a generated file makes for this Event Type: the
     supplier and the currency the Blueprint fills in, and the claim's sample
     values where the Blueprint asks the tenant's code for them."""
@@ -480,9 +537,10 @@ def _recording(customer, declared, claim, task_id, position):
     # sampled as the cost generated code sends, already converted to micros
     # (#583 D3): reading and converting it is the generated files' to prove,
     # by running them. Where the mapping reads the currency off the response
-    # too, no sample stands for it and the recording carries none, which the
-    # recording reads as the tenant's own currency — the one currency it
-    # admits (#583 D1).
+    # too (`sampled`), the Blueprint binds `currency` at run time, so the
+    # claim's sample is the event's currency, as generated code would send it
+    # — never the tenant's own made up in its place (owner's review of #608).
+    # The recording admits or refuses it by the one shared rule (#583 D1).
     mapping = (declared["reported_cost_mapping"]
                if declared["costing_method"] == COSTING_METHOD_REPORTED
                else None)
@@ -491,7 +549,8 @@ def _recording(customer, declared, claim, task_id, position):
         idempotency_key=f"ubb-verification-record-{position}",
         event_type=declared["key"],
         provider=declared["provider_key"] or None,
-        currency=(mapping["currency"] or None) if mapping else None,
+        currency=(claim.currency if sampled
+                  else (mapping["currency"] or None) if mapping else None),
         measurements=claim.measurements or None,
         provider_cost_micros=claim.provider_cost_micros,
         provider_response_cost_micros=claim.provider_response_cost_micros,

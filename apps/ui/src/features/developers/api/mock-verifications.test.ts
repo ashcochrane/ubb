@@ -118,6 +118,17 @@ describe("one spelling of a request", () => {
     // where the figure came from.
     expect(withCost("provider_response_cost_micros", 4200)).not.toBe(withCost("provider_cost_micros", 4200));
   });
+
+  it("differs for every currency a record carries (owner review of #608)", () => {
+    const withCurrency = (currency: string) =>
+      verificationKey("sha256:x", {
+        ...request,
+        records: [{ ...request.records[0]!, currency }, ...request.records.slice(1)],
+      });
+
+    expect(withCurrency("usd")).not.toBe(verificationKey("sha256:x", request));
+    expect(withCurrency("usd")).not.toBe(withCurrency("eur"));
+  });
 });
 
 describe("the mock's Verify", () => {
