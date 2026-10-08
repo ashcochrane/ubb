@@ -19,8 +19,14 @@ import { describe, expect, it } from "vitest";
 import { MESSAGES, render, type RenderedFile } from "../src/index.ts";
 import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
 import { everyArgument, fixture, FIXTURES, REPO_ROOT } from "./support/fixtures.ts";
-import { compiled, reportedCost, run } from "./support/python.ts";
+import { compiled, reportedCost, responseCost, run } from "./support/python.ts";
 import { factsOf, PYTHON_BRANCH_NAMES, rendered } from "./support/rendered.ts";
+import {
+  aCostReadAt,
+  CASES as RESPONSE_CASES,
+  responseRows,
+  rowGroups,
+} from "./support/responseCost.ts";
 
 interface Sent {
   method: string;
@@ -533,15 +539,194 @@ result = answers
     expect(module).not.toContain("_to_micros");
   });
 
-  it("is never rendered for a cost read off the response, which stays blocked", () => {
+  it("is rendered for a cost read off the response on its own field, never the caller's", () => {
+    // The blocked fixture's cost read off the response is a complete call
+    // among blocked ones since #583: read, converted and sent on the field
+    // whose meaning is "obtained from the provider's response" (#570).
     const module = factsOf("blocked")["ubb_integration.py"]!;
     const send = module.functions._send_web_search!;
     const record = send.calls.find((call) => call.callee.endsWith(".record_usage"))!;
 
     expect(Object.keys(record.keywords)).not.toContain("provider_cost_micros");
-    // Its own transport exists since #570; rendering the read onto it is #583's.
-    expect(Object.keys(record.keywords)).not.toContain("provider_response_cost_micros");
-    expect(Object.keys(record.keywords)).not.toContain("currency");
+    expect(record.keywords.provider_response_cost_micros).toEqual({
+      expression:
+        "_to_micros(_read_amount(response['cost']['total']), 'major_units_decimal', _pin_currency('usd', None))",
+    });
+    expect(record.keywords.currency).toBe("usd");
+  });
+});
+
+describe("a supplier's cost read off the response", () => {
+  /** The platform's rows, through the record function of a module that reads
+   * nothing else off the response. */
+  function rowsAnswered(representation: string, currency: string, path: readonly string[]) {
+    return responseCost(
+      render(aCostReadAt("python_sdk", path, representation, currency)),
+      RESPONSE_CASES,
+      "record_grounded_search",
+      representation,
+      currency,
+    );
+  }
+
+  it("is read and converted exactly as the platform answers, row for row", () => {
+    // B6: Python's json and to_micros are the oracle, and this target is held
+    // to every row — the ruled ones among them: 1 and "1" read, "1.25" read
+    // where the representation allows it, and 1.0, 1e0 and 1.25 refused.
+    let rows = 0;
+    for (const { representation, currency, path } of rowGroups()) {
+      const answer = rowsAnswered(representation, currency, path);
+      expect(answer.disagreements, `${representation} ${currency}`).toEqual([]);
+      rows += answer.rows;
+    }
+    expect(rows).toBe(responseRows().length);
+    expect(rows).toBeGreaterThan(40);
+  });
+
+  it("goes on the wire as provider_response_cost_micros, never as provider_cost_micros", () => {
+    const sent = run<Record<string, unknown>[]>(
+      rendered("response-cost"),
+      `
+integration = load()
+integration.record_grounded_search(
+    customer_id="c", idempotency_key="e", task_id="t",
+    response={"usageMetadata": {"promptTokenCount": 1200, "totalCost": "0.0042"}})
+integration.record_grounded_search(
+    customer_id="c", idempotency_key="e2", task_id="t",
+    response={"usageMetadata": {"promptTokenCount": 1, "totalCost": 0}})
+result = server.bodies("/api/v1/metering/usage")
+`,
+    );
+
+    expect(sent).toEqual([
+      expect.objectContaining({
+        provider_response_cost_micros: 4200, currency: "usd", measurements: { input_tokens: 1200 },
+      }),
+      // A cost of zero is a cost.
+      expect.objectContaining({ provider_response_cost_micros: 0, currency: "usd" }),
+    ]);
+    for (const body of sent) expect(Object.keys(body)).not.toContain("provider_cost_micros");
+  });
+
+  it("reads the currency off the response, pins it, and sends it as the event's", () => {
+    const sent = run<Record<string, unknown>[]>(
+      rendered("response-cost-read-currency"),
+      `${AN_OBJECT}
+integration = load()
+integration.record_billed_search(
+    customer_id="c", idempotency_key="e", task_id="t",
+    response=Shaped(billing=Shaped(amount_minor="125", currency=" EUR ")))
+result = server.bodies("/api/v1/metering/usage")
+`,
+    );
+
+    expect(sent).toEqual([
+      expect.objectContaining({ provider_response_cost_micros: 1_250_000, currency: "eur" }),
+    ]);
+  });
+
+  it("refuses, before anything is sent, a currency it cannot read as one UBB holds", () => {
+    // D1: refused here only where it is no code UBB holds — or no text at
+    // all. Nothing here knows the tenant's currency to compare with.
+    const answer = run<{ refused: string[]; said: string[]; sent: number }>(
+      rendered("response-cost-read-currency"),
+      `${AN_OBJECT}
+integration = load()
+refused, said = [], []
+for currency in ("xyz", 840, None):
+    try:
+        integration.record_billed_search(
+            customer_id="c", idempotency_key="e", task_id="t",
+            response=Shaped(billing=Shaped(amount_minor="125", currency=currency)))
+    except integration.ReportedCostCurrencyRefused as error:
+        refused.append(type(error).__name__)
+        said.append(str(error))
+result = {"refused": refused, "said": said, "sent": len(server.requests)}
+`,
+    );
+
+    expect(answer.refused).toHaveLength(3);
+    expect(answer.said[0]).toContain(MESSAGES.currencyUnknown);
+    expect(answer.said[1]).toContain(MESSAGES.currencyNotText);
+    expect(answer.sent).toBe(0);
+  });
+
+  it("surfaces UBB's refusal of a currency it holds and the tenant does not, as the SDK's error", () => {
+    // D1: the one shared rule is the server's. A recognised currency that is
+    // not the tenant's is sent, refused there, and that refusal propagates.
+    const answer = run<Record<string, unknown>>(
+      rendered("response-cost-read-currency"),
+      `${AN_OBJECT}
+from ubb.exceptions import UBBAPIError
+integration = load()
+server.queue("/api/v1/metering/usage", http_status=422, raw_body=${JSON.stringify(
+        JSON.stringify({
+          type: "https://ubb.dev/errors/validation_error",
+          title: "Validation error",
+          status: 422,
+          code: "validation_error",
+          detail: "currency mismatch: event currency 'eur' does not match tenant currency 'usd'",
+        }),
+      )})
+raised = None
+try:
+    integration.record_billed_search(
+        customer_id="c", idempotency_key="e", task_id="t",
+        response=Shaped(billing=Shaped(amount_minor="125", currency="EUR")))
+except UBBAPIError as error:
+    raised = error
+result = {"status": getattr(raised, "status_code", None),
+          "detail": getattr(raised, "detail", None),
+          "sent": server.bodies("/api/v1/metering/usage")}
+`,
+    );
+
+    expect(answer.status).toBe(422);
+    expect(answer.detail).toContain("currency mismatch");
+    expect(answer.sent).toEqual([expect.objectContaining({ currency: "eur" })]);
+  });
+
+  it("refuses a float, an over-precise amount, a flag and a null before anything is sent", () => {
+    const answer = run<{ said: string[]; sent: number }>(
+      rendered("response-cost"),
+      `
+integration = load()
+said = []
+for cost in (0.0042, "0.0000001", True, None):
+    try:
+        integration.record_grounded_search(
+            customer_id="c", idempotency_key="e", task_id="t",
+            response={"usageMetadata": {"promptTokenCount": 1, "totalCost": cost}})
+    except integration.ReportedCostNotRepresentable as error:
+        said.append(str(error))
+result = {"said": said, "sent": len(server.requests)}
+`,
+    );
+
+    expect(answer.said).toHaveLength(4);
+    // A float read off the response is told what to READ, not what to pass.
+    expect(answer.said[0]).toContain(MESSAGES.floatRead);
+    expect(answer.said[1]).toContain(MESSAGES.fractional);
+    expect(answer.said[2]).toContain(MESSAGES.flag);
+    expect(answer.said[3]).toContain(MESSAGES.missing);
+    expect(answer.sent).toBe(0);
+  });
+
+  it("reads a decimal a tenant parsed with parse_float=Decimal", () => {
+    const sent = run<Record<string, unknown>[]>(
+      rendered("response-cost"),
+      `
+import json
+integration = load()
+integration.record_grounded_search(
+    customer_id="c", idempotency_key="e", task_id="t",
+    response=json.loads('{"usageMetadata": {"promptTokenCount": 1, "totalCost": 0.0042}}',
+                        parse_float=Decimal))
+result = server.bodies("/api/v1/metering/usage")
+`,
+    );
+
+    expect(sent).toEqual([expect.objectContaining({ provider_response_cost_micros: 4200 })]);
   });
 });
 
@@ -588,6 +773,7 @@ for name in ("record_chat_completion", "record_draft_only", "record_web_search",
         arguments["response"] = object()
     if name == "record_web_search":
         arguments["searches"] = 1
+        arguments["response"] = {"cost": {"total": "0.25"}}
     if name.startswith("backfill"):
         arguments["recorded_at"] = "2026-08-01T09:30:00+00:00"
     try:
@@ -600,14 +786,17 @@ result = {"raised": raised,
     );
 
     const raised = answer.raised as Record<string, string>;
-    expect(Object.keys(raised)).toHaveLength(4);
+    // The cost read off the response is a complete call since #583, and runs.
+    expect(Object.keys(raised).sort()).toEqual([
+      "backfill_chat_completion", "record_chat_completion", "record_draft_only",
+    ]);
     // The constant is declared with its value (#571): what stops the call is
     // this Code Builder version, and it says so — never that a value is
     // missing.
     expect(raised.record_chat_completion).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
     expect(raised.record_chat_completion).not.toContain(MESSAGES.notConfigured);
     expect(raised.record_draft_only).toContain("(blocked)");
-    expect(answer.paths).toEqual(["/api/v1/tasks"]);
+    expect(answer.paths).toEqual(["/api/v1/tasks", "/api/v1/metering/usage"]);
   });
 
   it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
@@ -923,5 +1112,88 @@ result = {"status": ran.returncode, "output": ran.stdout + ran.stderr}
 
     expect(answer.status).toBe(2);
     expect(answer.output).toContain("chat.completion");
+  });
+
+  describe("of a supplier's cost read off the response", () => {
+    // B8 (owner's ruling 5 on #583): checked by structure and never by size.
+    // The response is written as TEXT, so a float can be spelled `1.0`.
+    function verifyText(branch: string, eventType: string, text: string) {
+      return run<{ status: number; output: string }>(
+        rendered(branch),
+        `
+import json, subprocess, sys
+captured = directory / "captured.json"
+captured.write_bytes(json.loads(${JSON.stringify(JSON.stringify(text))}).encode("utf-8"))
+ran = subprocess.run([sys.executable, str(directory / "verify_integration.py"),
+                      json.loads(${JSON.stringify(JSON.stringify(eventType))}), str(captured)],
+                     capture_output=True, text=True, encoding="utf-8")
+result = {"status": ran.returncode, "output": ran.stdout + ran.stderr}
+`,
+      );
+    }
+    const atTheCost = (token: string) =>
+      `{"usageMetadata": {"promptTokenCount": 1200, "totalCost": ${token}}}`;
+    const line = (verdict: string, name: string, message: string) =>
+      `  ${verdict} "${name}" ${message}`;
+    const COST = "provider_response_cost_micros";
+
+    it("passes a cost of zero, written as an integer and as a decimal string", () => {
+      for (const token of ["0", '"0"', '"0.0042"', "42"]) {
+        const answer = verifyText("response-cost", "grounded.search", atTheCost(token));
+
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyResolves));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyAmount));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyConverts));
+        expect(answer.status, token).toBe(0);
+      }
+    });
+
+    it("fails, by structure, a cost that is missing, null, a float or not an amount", () => {
+      const missing = verifyText(
+        "response-cost",
+        "grounded.search",
+        '{"usageMetadata": {"promptTokenCount": 1200}}',
+      );
+      expect(missing.output).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyResolves));
+      expect(missing.status).toBe(1);
+
+      for (const token of ["null", "1.0", "1e0", "0.0042", "true", '{"total": 1}']) {
+        const answer = verifyText("response-cost", "grounded.search", atTheCost(token));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyResolves));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyAmount));
+        expect(answer.status, token).toBe(1);
+      }
+    });
+
+    it("fails an amount that does not convert to whole micros exactly", () => {
+      const answer = verifyText("response-cost", "grounded.search", atTheCost('"0.0000001"'));
+
+      expect(answer.output).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyAmount));
+      expect(answer.output).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyConverts));
+      expect(answer.status).toBe(1);
+    });
+
+    it("checks a currency read beside the cost: that it is there, and one UBB holds", () => {
+      const billed = (currency: string) => `{"billing": {"amount_minor": "125"${currency}}}`;
+      const held = verifyText("response-cost-read-currency", "billed.search", billed(', "currency": " EUR "'));
+      const foreign = verifyText("response-cost-read-currency", "billed.search", billed(', "currency": "xyz"'));
+      const absent = verifyText("response-cost-read-currency", "billed.search", billed(""));
+
+      expect(held.output).toContain(line(MESSAGES.verifyOk, "currency", MESSAGES.verifyCurrency));
+      expect(held.output).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyConverts));
+      expect(held.status).toBe(0);
+      expect(foreign.output).toContain(line(MESSAGES.verifyFail, "currency", MESSAGES.verifyCurrency));
+      expect(foreign.status).toBe(1);
+      expect(absent.output).toContain(line(MESSAGES.verifyFail, "currency", MESSAGES.verifyResolves));
+      expect(absent.status).toBe(1);
+    });
+
+    it("has something to check for an Event Type that reads only a cost", () => {
+      const asked = verifyText("response-cost-read-currency", "something.else", "{}");
+
+      expect(asked.status).toBe(2);
+      expect(asked.output).toContain('  "billed.search"');
+      expect(asked.output).not.toContain(MESSAGES.verifyNothing);
+    });
   });
 });

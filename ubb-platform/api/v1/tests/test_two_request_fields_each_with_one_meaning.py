@@ -1748,15 +1748,16 @@ class AVerificationRecordTakesTheSameTransportTest(_PublicationCase):
     rules, as on a recording" (`IntegrationBlueprintVerificationRecordIn`), so
     it gains the transport with the recording request (#570).
 
-    It cannot be driven through Verify's route before #583: a Blueprint
-    holding a `provider_response` mapping is blocked, and Verify refuses one
-    that is not complete. So the record is built by the run's own
-    `_recording`, from the configuration's own account of the published Event
-    Type (`_event_type_content`), and handed to the recording route's
-    `record`, which is what the run records through — without the Task the
-    run starts around it, and without the run's refusal wrapper (`_call`),
-    neither of which decides admission — and asked the matrix's cells
-    directly.
+    Driven through Verify's route end to end since #583, which made a
+    Blueprint holding a `provider_response` mapping complete
+    (`test_verifying_a_blueprint.py`,
+    `TestACostReadOffTheResponseIsVerifiedOnItsOwnField`). Here the matrix's
+    cells are asked directly, one record each: the record is built by the
+    run's own `_recording`, from the configuration's own account of the
+    published Event Type (`_event_type_content`), and handed to the recording
+    route's `record`, which is what the run records through — without the
+    Task the run starts around it, and without the run's refusal wrapper
+    (`_call`), neither of which decides admission.
     """
 
     def verify_record(self, key, position, **figures):

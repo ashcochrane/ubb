@@ -103,6 +103,17 @@ choose a branch. It never asks the developer for one again.
 The table gains no field for any of this, which is what lets the tickets that lift a blocked case
 leave it unchanged.
 
+**Renderer contract 2 (#583, 2026-10-08).** Contract 1 promised a renderer a `source_path` fact
+only under a declared key (`measurements.<key>.source_path`): the value at that key is read off the
+call's `response` parameter. Contract 2 promises the same of a runtime value named for its own
+field: a runtime-bound `<field>` may carry a `<field>.source_path` fact, and its value is then read
+off `response` at that path. Today that is a supplier's cost (`provider_response_cost_micros`, its
+representation beside it as `provider_response_cost_micros.amount_representation`) and, where the
+mapping reads the currency too, `currency` with `currency.source_path`. The table gains no field.
+A contract-1 renderer would silently mis-render such a value, so the version moved, and a renderer
+refuses a contract it was not written to (`READABLE_RENDERER_CONTRACT_VERSIONS`,
+`apps/codegen/src/render.ts`).
+
 A literal is untyped JSON. Where one carries a closed concept's value — a pricing mode, a costing
 method, a quantity's value type, an amount representation, a response shape's representation — the
 contract cannot mark it there. Each is a declared value, marked on the route that declares it where
@@ -140,6 +151,10 @@ is hashed, so every list whose order means nothing is put in a canonical order f
   says what the catalogue does;
 - a rule scheduled to open or close passing its moment. The identity holds the rules in force now;
 - a new `schema_version` or `renderer_contract_version`.
+
+The last has happened once: #583 moved `renderer_contract_version` from 1 to 2 (§3, 2026-10-08), so
+every Blueprint's fingerprint moved once, by design — every committed fixture, every generated
+header and every platform-written Verify answer with it.
 
 **What does not, and must not:**
 
@@ -183,10 +198,11 @@ ticket that makes a fixed-price kind ready or not adds the member for a missing 
 
 *Since:* #571 swapped `constant_value_not_declared` for `constant_measurement_not_renderable`, and
 #570, which carries that cost on a transport of its own (`provider_response_cost_micros`), swapped
-`reported_cost_provider_response_unsupported` for `reported_cost_provider_response_not_renderable`:
-the mapping is valid configuration that this Code Builder version cannot yet render, and the ticket
-that renders the read (#583) removes it. Both carry no remediation request — nothing in a valid
-declaration is the thing to change.
+`reported_cost_provider_response_unsupported` for `reported_cost_provider_response_not_renderable`,
+for a mapping that was valid configuration the Code Builder did not yet render. Neither carried a
+remediation request — nothing in a valid declaration was the thing to change. #583 renders the read
+on both targets and removed `reported_cost_provider_response_not_renderable` with no successor
+(2026-10-08): sixteen members stand.
 
 ### 7. What this ADR does not decide
 
@@ -222,7 +238,9 @@ owner's wording for the codes.
 | §4 — what moves the fingerprint: a republication, a changed kind | same module — `test_a_republication_is_a_new_fingerprint_though_the_declaration_is_the_same`, `test_a_changed_kind_of_work_is_a_new_fingerprint` |
 | §4 — what it is the hash of, and what must not move it | same module — `TestTheFingerprintIsOfTheResolvedContractAndNothingElse`: `test_it_is_the_hash_of_the_identity_half_of_the_stored_row`, `test_the_request_a_diagnostic_offers_is_kept_and_is_not_hashed`, `test_a_request_spelled_another_way_is_the_same_fingerprint`, `test_the_order_a_kind_lists_its_requirements_in_is_not_part_of_it`, `test_the_order_a_tenant_lists_its_products_in_is_not_part_of_it`, `test_the_rules_are_in_the_order_of_what_they_say`, `test_nothing_volatile_is_in_it`, `test_resolving_again_later_is_the_same_fingerprint`; and `test_the_same_selection_in_another_order_is_the_same_blueprint` |
 | §4 — the store hashes the identity half and only that; first wins on presentation | `ubb-platform/apps/platform/code_builder/tests/test_snapshots.py` — `test_the_fingerprint_is_of_the_identity_and_not_of_the_presentation`, `test_an_identity_already_kept_keeps_the_presentation_it_came_with`, `test_it_can_be_reproduced_by_anything_that_can_write_json` |
+| §3 — contract 2: a runtime value of its own field read off the response, with its path; the cost fills its own field and never the caller's | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `test_the_document_says_which_shape_it_is_and_what_it_was_resolved_for`, `test_a_cost_read_from_the_response_is_a_runtime_root_with_its_path`, `test_a_currency_read_from_the_response_is_a_runtime_root_and_a_known_path`, `test_a_cost_read_from_the_response_fills_its_own_field_and_never_the_callers` |
 | §6 — the published set is exactly what resolutions report | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py` — `test_every_published_code_is_one_a_resolution_reports` |
+| §6 — a member removed with no successor is on no surface | `ubb-platform/api/v1/tests/test_a_constant_measurement_declares_its_value.py` — `test_a_member_removed_with_no_successor_is_on_no_surface` |
 | §5 — the request takes no path, and the question is put as a diagnostic | same module — `TestTheSelectionIsTheOnlyInput`: `test_the_request_publishes_the_selection_and_nothing_else`, `test_where_no_mapping_resolves_the_blueprint_asks_and_takes_no_path` |
 
 ## Consequences

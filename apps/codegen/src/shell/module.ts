@@ -19,7 +19,9 @@
  * EVERY JQ PROGRAM ARRIVES THROUGH A QUOTED HEREDOC, read by jq from standard
  * input (`--from-file /dev/stdin`). The shell expands nothing inside one, so
  * no declared name can end a string or start a command. Runtime values reach
- * a program only as `--arg`, `--argjson` or `--slurpfile`. Every line of a
+ * a program only as `--arg`, `--argjson` or `--slurpfile` — or, where a
+ * supplier's cost is read off the response as it was written (#583), as the
+ * response file the program reads as text, its one input. Every line of a
  * program is indented, and the delimiter is not: no line generated from a
  * declaration can be the line that ends the heredoc.
  *
@@ -77,6 +79,7 @@ import {
   shWord,
   wireName,
 } from "./syntax.ts";
+import { readHelpers, writtenProgram } from "./written.ts";
 
 const I1 = INDENT;
 const I2 = INDENT.repeat(2);
@@ -94,6 +97,12 @@ function status(of: { readonly name: string }): string {
 interface Uses {
   notReady: boolean;
   reportedCost: boolean;
+  /** A cost the caller passes, which the comments speak to (#578). */
+  callerCost: boolean;
+  /** A supplier's cost read off the response (#583). */
+  responseRead: boolean;
+  /** A currency read off the response, which needs a helper of its own. */
+  currencyRead: boolean;
   wholeNumber: boolean;
   urlValue: boolean;
 }
@@ -158,6 +167,8 @@ function jqValue(value: Value, needs: Set<string>): string | null {
       needs.add(JQ.notRenderable);
       return `${JQ.notRenderable}(${jqString(value.token)})`;
     case "cost":
+    case "response_cost":
+    case "response_currency":
       return null;
   }
 }
@@ -224,9 +235,13 @@ function givenOnly(field: BodyField): boolean {
   return field.shape === "scalar" && field.optional;
 }
 
-/** Whether jq writes a field: every one but a cost, which the shell writes. */
+/** Values the shell writes into the body itself, and jq never: a converted
+ * cost, and a currency read off the response once it is pinned. */
+const WRITTEN_BY_THE_SHELL: readonly Value["kind"][] = ["cost", "response_cost", "response_currency"];
+
+/** Whether jq writes a field: every one but those the shell writes. */
 function sent(field: BodyField): boolean {
-  return field.shape === "keyed" || field.value.kind !== "cost";
+  return field.shape === "keyed" || !WRITTEN_BY_THE_SHELL.includes(field.value.kind);
 }
 
 /** The function that is the jq program of `name`, and nothing else. */
@@ -239,20 +254,22 @@ function programName(name: string): string {
  * program in a quoted heredoc on its standard input. Every line of the
  * program is indented and the delimiter is not, so no line of a program can
  * be the line that ends it. The function holds no other command: it sets
- * nothing, and what it returns is jq's own status.
+ * nothing, and what it returns is jq's own status. A program that reads a
+ * file as its input names it last, after the program.
  */
 function program(
   name: string,
   flags: readonly string[],
   bindings: readonly string[],
   lines: readonly string[],
+  input: string | null = null,
 ): string[] {
   if (lines.some((line) => line.trim() === "")) refuse("a jq program holds a blank line");
   return [
     `${programName(name)}() {`,
     `${I1}jq ${flags.join(" ")} \\`,
     ...bindings.map((binding) => `${I2}${binding} \\`),
-    `${I2}--from-file /dev/stdin <<'${SHELL_FILE.heredoc}'`,
+    `${I2}--from-file /dev/stdin${input === null ? "" : ` ${input}`} <<'${SHELL_FILE.heredoc}'`,
     ...lines.map((line) => `${I1}${line}`),
     SHELL_FILE.heredoc,
     "}",
@@ -531,7 +548,7 @@ function eitherCase(code: string): string {
   return Array.from(code, (letter) => `[${letter.toUpperCase()}${letter.toLowerCase()}]`).join("");
 }
 
-function reportedCostHelpers(): string[] {
+export function reportedCostHelpers(callerCost: boolean): string[] {
   const refused = status(SHELL_EXIT.valueRefused);
   const refuseAmount = (message: string, indent: string) => [
     `${indent}printf '%s %s\\n' "$1" ${shWord(message)} >&2`,
@@ -554,7 +571,7 @@ function reportedCostHelpers(): string[] {
     `${indent}done`,
   ];
   return [
-    ...asComments(SHELL_COMMENTS.reportedCost),
+    ...asComments([...SHELL_COMMENTS.reportedCost, ...(callerCost ? SHELL_COMMENTS.callerCost : [])]),
     "_ubb_known_currency() {",
     `${I1}case $1 in`,
     ...currencies,
@@ -787,6 +804,111 @@ function costs(call: CallPlan): { field: Cost; value: Extract<Value, { kind: "co
 
 type Cost = Extract<BodyField, { shape: "scalar" }>;
 
+/** A call's name without the file's prefix: what the functions written for
+ * it — its programs, and a verify script's check — are named by. */
+export function callTail(call: CallPlan): string {
+  return call.name.replace(/^ubb_/, "");
+}
+
+/** The scalar field of `call` whose value is of `kind`, or `undefined`. */
+export function scalarOf<K extends Value["kind"]>(
+  call: CallPlan,
+  kind: K,
+): { field: Cost; value: Extract<Value, { kind: K }> } | undefined {
+  for (const field of call.body) {
+    if (field.shape === "scalar" && field.value.kind === kind) {
+      return { field, value: field.value as Extract<Value, { kind: K }> };
+    }
+  }
+  return undefined;
+}
+
+/** The two programs a call reads its cost, and the currency beside it, off
+ * the response with. */
+function readProgramNames(call: CallPlan): { cost: string; currency: string } {
+  const tail = callTail(call);
+  return { cost: `cost_${tail}`, currency: `currency_${tail}` };
+}
+
+/** The same two programs by the names of the functions they are written as,
+ * which the verify script calls. */
+export function readFunctions(call: CallPlan): { cost: string; currency: string } {
+  const names = readProgramNames(call);
+  return { cost: programName(names.cost), currency: programName(names.currency) };
+}
+
+/** Each program that reads a value off `call`'s response as written. */
+export function readPrograms(call: CallPlan): string[] {
+  const cost = scalarOf(call, "response_cost");
+  const currency = scalarOf(call, "response_currency");
+  if (cost === undefined) {
+    return currency === undefined
+      ? []
+      : refuse(`the call ${call.name} reads a currency off the response with no cost beside it`);
+  }
+  const names = readProgramNames(call);
+  const reading = (name: string, path: readonly string[]) =>
+    program(name, ["--raw-output", "--raw-input", "--slurp"], [], writtenProgram(path), '"$1"');
+  return [
+    ...reading(names.cost, cost.value.path),
+    ...(currency === undefined ? [] : ["", ...reading(names.currency, currency.value.path)]),
+    "",
+  ];
+}
+
+/**
+ * Reading, pinning and converting a cost read off the response, in that
+ * order, before anything is built: each refusal returns before a request
+ * exists. Leaves the micros in `_ubb_micros_<field>`, and a currency read
+ * beside it pinned in `_ubb_pinned_currency`.
+ */
+function readCost(call: CallPlan, report: string): string[] {
+  const cost = scalarOf(call, "response_cost");
+  if (cost === undefined) return [];
+  const currency = scalarOf(call, "response_currency");
+  const names = readProgramNames(call);
+  const refused = status(SHELL_EXIT.valueRefused);
+  const from = `"$${shVariable(cost.value.parameter.name)}"`;
+  const read = (name: string, field: Cost, helper: string, path: readonly string[]) => [
+    ...asComments(field.comments, I1),
+    `${I1}_ubb_read=$(${programName(name)} ${from}) || return ${refused}`,
+    `${I1}${helper} ${report} ${field.name} ${shWord(jqLiteral([...path]))} || return $?`,
+  ];
+  return [
+    ...read(names.cost, cost.field, "_ubb_read_amount", cost.value.path),
+    ...(currency === undefined
+      ? [`${I1}_ubb_pin_currency ${shWord(cost.value.declared)} '' || return $?`]
+      : [
+          ...read(names.currency, currency.field, "_ubb_read_currency", currency.value.path),
+          `${I1}_ubb_pin_currency '' "$_ubb_reported" || return $?`,
+          `${I1}_ubb_pinned_currency=$_ubb_currency`,
+        ]),
+    `${I1}_ubb_to_micros "$_ubb_amount" ${shWord(cost.value.representation)} "$_ubb_currency" || return $?`,
+    `${I1}_ubb_micros_${wireName(cost.field.name)}=$_ubb_micros`,
+  ];
+}
+
+/** Each field the shell writes into a call's body, as the line that writes
+ * it in: a converted cost as its digits, and a pinned currency as a code
+ * from the closed table. Neither is ever a jq number or jq text. */
+function splices(call: CallPlan): string[] {
+  const written = (name: string, value: string) =>
+    `${I1}_ubb_body="{\\"${wireName(name)}\\":${value},\${_ubb_body#?}"`;
+  const cost = scalarOf(call, "response_cost");
+  const currency = scalarOf(call, "response_currency");
+  return [
+    ...costs(call).map(({ field }) => written(field.name, `$_ubb_micros_${wireName(field.name)}`)),
+    ...(cost === undefined ? [] : [written(cost.field.name, `$_ubb_micros_${wireName(cost.field.name)}`)]),
+    ...(currency === undefined ? [] : [written(currency.field.name, `\\"$_ubb_pinned_currency\\"`)]),
+  ];
+}
+
+/** Whether the program `lines` reads the jq variable of `parameter`. */
+function readsTheParameter(lines: readonly string[], parameter: Parameter): boolean {
+  const variable = new RegExp(`\\$${jqVariable(parameter.name)}(?![A-Za-z0-9_])`);
+  return lines.some((line) => variable.test(line));
+}
+
 function path(call: CallPlan): string {
   // Fixed text as the contract spells it, and the value of a parameter where
   // the route has a place.
@@ -817,21 +939,31 @@ function ending(call: CallPlan): string[] {
 
 function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): string[] {
   const converted = costs(call);
-  if (converted.length > 0) {
+  const readOff = scalarOf(call, "response_cost") !== undefined;
+  if (converted.length > 0 || readOff) {
     uses.reportedCost = true;
+    uses.callerCost ||= converted.length > 0;
+    uses.responseRead ||= readOff;
+    uses.currencyRead ||= scalarOf(call, "response_currency") !== undefined;
     if (!call.body.some((field) => !givenOnly(field) && sent(field))) {
       refuse(`the call ${call.name} sends nothing but a converted cost`);
     }
   }
   const tail = ending(call);
   // Named for the call it is the body of, without the prefix every call has.
-  const body = `body_${call.name.replace(/^ubb_/, "")}`;
+  const body = `body_${callTail(call)}`;
+  const lines = bodyProgram(call);
   return [
+    ...readPrograms(call),
     ...program(
       body,
       ["--compact-output", "--null-input"],
-      call.parameters.flatMap((parameter) => binding(parameter) ?? []),
-      bodyProgram(call),
+      // Only what the program reads: a response a cost is read off and no
+      // quantity is, is never parsed again here.
+      call.parameters
+        .filter((parameter) => readsTheParameter(lines, parameter))
+        .flatMap((parameter) => binding(parameter) ?? []),
+      lines,
     ),
     "",
     ...asComments(comments),
@@ -850,15 +982,14 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
       `${I1}_ubb_to_micros "$${shVariable(value.parameter.name)}" ${shWord(value.representation)} "$_ubb_currency" || return $?`,
       `${I1}_ubb_micros_${wireName(field.name)}=$_ubb_micros`,
     ]),
+    ...readCost(call, call.name),
     // Where jq cannot build the body, what it was handed is why: a response
     // that does not hold what a declared path reads, or is not one.
     ...capture("_ubb_body", body, [], [`return ${status(SHELL_EXIT.valueRefused)}`]),
-    // A converted cost is written into the body as its digits, by the shell:
-    // it never becomes a jq number, which could not hold all of them.
-    ...converted.map(
-      ({ field }) =>
-        `${I1}_ubb_body="{\\"${wireName(field.name)}\\":$_ubb_micros_${wireName(field.name)},\${_ubb_body#?}"`,
-    ),
+    // A converted cost is written into the body as its digits, and a pinned
+    // currency as its code, by the shell: a cost never becomes a jq number,
+    // which could not hold all of them.
+    ...splices(call),
     `${I1}_ubb_post ${path(call)} "$_ubb_body" || return $?`,
     ...tail,
     "}",
@@ -925,7 +1056,15 @@ function section(...blocks: (readonly string[])[]): string[] {
 
 /** The runnable file's text. */
 export function renderModule(plan: Plan): string {
-  const uses: Uses = { notReady: false, reportedCost: false, wholeNumber: false, urlValue: false };
+  const uses: Uses = {
+    notReady: false,
+    reportedCost: false,
+    callerCost: false,
+    responseRead: false,
+    currencyRead: false,
+    wholeNumber: false,
+    urlValue: false,
+  };
 
   const pricingMode = factOfField(plan.start.call, FIELD.kindOfWork, FACT.pricingMode);
   const sold = typeof pricingMode === "string" ? (PRICING_MODE_COMMENTS[pricingMode] ?? []) : [];
@@ -950,7 +1089,8 @@ export function renderModule(plan: Plan): string {
     acknowledgement(),
     parameterHelpers(uses),
     uses.notReady ? notReadyHelper() : [],
-    uses.reportedCost ? reportedCostHelpers() : [],
+    uses.reportedCost ? reportedCostHelpers(uses.callerCost) : [],
+    uses.responseRead ? readHelpers(uses.currencyRead) : [],
     start,
     runTask(),
     ...subtasks,

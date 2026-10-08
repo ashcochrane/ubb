@@ -15,8 +15,10 @@ nothing in the harness:
 * `shells` is where a shell artifact runs: dash and bash unless the scenario
   names the whole standing matrix (`MATRIX`).
 
-#583 adds a supplier cost read off the response (`provider_response`)
-against a fixture in `provider_responses/`; #584 a constant Measurement;
+#583 added a supplier cost read off the response (`provider_response`)
+against fixtures in `provider_responses/`, a currency read beside it that the
+server refuses, and a cost written as a float that neither target sends
+(scenarios 6 to 8); #584 adds a constant Measurement;
 #585 extends two declarations rather than adding a scenario: #569's names in
 `_customer.STOP_METADATA` (what a Python process reports of a stop) and
 their values in `_the_stop`, which both stop scenarios assert through; #586
@@ -34,15 +36,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Mapping
 
+from apps.metering.pricing.receipts import REPORTED_COST_SOURCE_KIND_KEY
 from apps.metering.usage.models import Posting, PostingMeasurement
+from apps.platform.event_types.reported_cost import to_micros
 from apps.platform.work import reasons
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
-    AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL, CODE_TARGET_PYTHON_SDK,
+    AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
+    AMOUNT_REPRESENTATION_MINOR_UNITS, CODE_TARGET_PYTHON_SDK,
     CODE_TARGET_SHELL_HTTP, COSTING_STATUS_KNOWN,
     OUTCOME_REASON_EXECUTION_FAILED, PRICING_STATUS_KNOWN,
-    TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED,
-    TASK_STATUS_KILLED)
+    SOURCE_KIND_CALLER_SUPPLIED, SOURCE_KIND_PROVIDER_RESPONSE,
+    TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
+    TASK_STATUS_FAILED, TASK_STATUS_KILLED)
 
 from _customer import CustomerId, Record, Response, Subtask, Work
 from _harness import COMPLETE, PROVIDER_RESPONSES, Artifact, Ran, catalogue
@@ -115,16 +121,18 @@ INPUT_TOKENS = 1200
 OUTPUT_TOKENS = 340
 
 
-def held_in(supplier: Supplier) -> tuple[int, int]:
-    document = json.loads(
-        (PROVIDER_RESPONSES / f"{supplier.shape}.json").read_text(encoding="utf-8"))
+def held_at(response: Response, path: tuple[str, ...]):
+    """What `response` holds at `path`, as Python's `json` reads it."""
+    value = json.loads((PROVIDER_RESPONSES / f"{response.fixture}.json")
+                       .read_text(encoding="utf-8"))
+    for segment in path:
+        value = value[segment]
+    return value
 
-    def at(path):
-        value = document
-        for segment in path:
-            value = value[segment]
-        return value
-    return at(supplier.input), at(supplier.output)
+
+def held_in(supplier: Supplier) -> tuple[int, int]:
+    return (held_at(supplier.response, supplier.input),
+            held_at(supplier.response, supplier.output))
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +316,10 @@ def _a_delivered_lifecycle(outcome: Outcome) -> None:
         COSTING_STATUS_KNOWN, REPORTED_MICROS)
     assert (search.pricing_status, search.billed_cost_micros) == (
         PRICING_STATUS_KNOWN, _marked_up(REPORTED_MICROS))
+    # The caller's figure arrived on the caller's field, and the record says
+    # so — scenario 6 is the same assertion for a figure read off a response.
+    assert getattr(search, Posting.RECEIPT_COLUMN)["costing"]["detail"][
+        REPORTED_COST_SOURCE_KIND_KEY] == SOURCE_KIND_CALLER_SUPPLIED, search
 
     # The work and its Subtask, as the API answers them: both delivered, and
     # the work's totals carry the Subtask's.
@@ -742,6 +754,169 @@ CUSTOM_SHAPE = Scenario(
 )
 
 
+# ---------------------------------------------------------------------------
+# 6. A supplier's cost read off the response (#583)
+# ---------------------------------------------------------------------------
+#
+# The supplier's own figure, read by the generated code off the JSON response
+# at the declared path, converted once under the declared representation and
+# sent on `provider_response_cost_micros`. What is recorded as COGS is the
+# fixture's amount, converted by the platform's own definition, and the
+# immutable receipt says where the figure came from (#570's provenance). Run in
+# the whole standing matrix, jq 1.5 and bash 3.2 included: the file reads the
+# amount as the response wrote it, which every jq there can do (#583 B7).
+
+#: A web API's JSON that also says what the call cost: a decimal string of the
+#: major unit at `COST_PATH`, in a currency the declaration pins.
+BILLED = Response("google.gemini.rest.v1.billed")
+COST_PATH = ("billing", "totalCost")
+
+#: The same response billed in euros: an integer of the minor unit, with the
+#: currency beside it, which the declaration reads rather than pins.
+BILLED_IN_EUROS = Response("google.gemini.rest.v1.billed-in-euros")
+EURO_COST_PATH = ("billing", "amountMinor")
+EURO_CURRENCY_PATH = ("billing", "currency")
+
+
+def _response_cost_configuration(tenant: ScenarioTenant, target: str) -> dict:
+    tenant._a_kind("grounded_answer")
+    tenant._event_type(
+        "grounded.search", costing_method="reported",
+        provider=GEMINI.provider, shape=GEMINI.shape,
+        measurements={"input_tokens": _quantity("provider_response",
+                                                path=GEMINI.input)},
+        mapping={"source_kind": SOURCE_KIND_PROVIDER_RESPONSE,
+                 "amount_representation":
+                     AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
+                 "source_path": list(COST_PATH), "currency": "usd"})
+    tenant.customer("acme")
+    return {"task_type": "grounded_answer",
+            "event_types": ["grounded.search"]}
+
+
+def _the_cost_read_off_the_response(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert ran.status == 0, ran
+    # The platform's own conversion of the fixture's own figure: the oracle
+    # the generated code is held to, never a number spelled here.
+    expected = to_micros(held_at(BILLED, COST_PATH),
+                         AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL, "usd")
+    assert expected == 4_200
+    (search,) = outcome.postings().values()
+    assert search.idempotency_key == "event-1"
+    assert (search.costing_status, search.provider_cost_micros) == (
+        COSTING_STATUS_KNOWN, expected), ran
+    assert outcome.measured(search) == {"input_tokens": INPUT_TOKENS}
+    # The immutable record says the figure was read off the response, which
+    # is the transport it arrived on and no other (#570).
+    receipt = getattr(search, Posting.RECEIPT_COLUMN)
+    assert receipt["costing"]["detail"][REPORTED_COST_SOURCE_KIND_KEY] == (
+        SOURCE_KIND_PROVIDER_RESPONSE), receipt
+    task = outcome.tenant.task(ran.said["task_id"])
+    assert task["status"] == TASK_STATUS_COMPLETED, task
+    assert (task["event_count"], task["total_provider_cost_micros"]) == (
+        1, expected), task
+
+
+RESPONSE_COST = Scenario(
+    name="response-cost",
+    configure=_response_cost_configuration,
+    works=lambda target: (_a_lone_record(
+        "acme", "grounded.search", response=BILLED),),
+    expect=_the_cost_read_off_the_response,
+    shells=MATRIX,
+)
+
+
+# ---------------------------------------------------------------------------
+# 7. A currency read off the response that is not the tenant's (#583 D1)
+# ---------------------------------------------------------------------------
+#
+# The response bills in euros, a currency UBB holds, and the tenant's is US
+# dollars. The generated code reads the currency, pins it to the code UBB
+# holds and sends it as the event's: it carries no copy of the tenant's
+# currency, so it refuses nothing here. The one shared rule is the server's,
+# which refuses the event (422, no FX), and the artifact surfaces that refusal
+# — the SDK's error from Python, curl's status from shell. Nothing is
+# recorded. Whether a unit of work was started is each target's own rule for
+# an ordinary failure, and is not what this asserts.
+
+def _currency_read_configuration(tenant: ScenarioTenant, target: str) -> dict:
+    tenant._a_kind("grounded_answer")
+    tenant._event_type(
+        "billed.search", costing_method="reported",
+        provider=GEMINI.provider, shape=GEMINI.shape, measurements={},
+        mapping={"source_kind": SOURCE_KIND_PROVIDER_RESPONSE,
+                 "amount_representation": AMOUNT_REPRESENTATION_MINOR_UNITS,
+                 "source_path": list(EURO_COST_PATH),
+                 "currency_path": list(EURO_CURRENCY_PATH)})
+    tenant.customer("acme")
+    return {"task_type": "grounded_answer",
+            "event_types": ["billed.search"]}
+
+
+def _a_currency_the_server_refuses(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert held_at(BILLED_IN_EUROS, EURO_CURRENCY_PATH) == "EUR"
+    assert outcome.tenant.tenant.default_currency.lower() == "usd"
+    # Sent — the file refuses no currency UBB holds — and refused there.
+    assert RECORD_USAGE in ran.requests, ran
+    _refused(outcome, ran, status=422, code="validation_error")
+    assert "currency mismatch" in ran.stderr, ran
+    # Nothing recorded for it: no Posting at all.
+    assert outcome.postings() == {}, ran
+    assert not Posting.objects.filter(tenant=outcome.tenant.tenant).exists()
+
+
+CURRENCY_REFUSED_BY_THE_SERVER = Scenario(
+    name="response-currency-refused",
+    configure=_currency_read_configuration,
+    works=lambda target: (_a_lone_record(
+        "acme", "billed.search", response=BILLED_IN_EUROS),),
+    expect=_a_currency_the_server_refuses,
+    shells=MATRIX,
+)
+
+
+# ---------------------------------------------------------------------------
+# 8. A cost the response writes as a float (#583 B6, B7)
+# ---------------------------------------------------------------------------
+#
+# `1e0`: a binary float to Python's `json`, and refused as money, and the
+# integer 1 to every jq in the matrix — jq 1.5 and 1.6 make a double of it,
+# and 1.7 prints a zero exponent away — so a file that asked jq for the
+# number would send a cost. Both targets refuse it before the record is
+# sent, in the words that say what to read instead. What becomes of the work
+# then is each target's own rule for an ordinary failure, as for scenario 4.
+
+#: The same response, its cost written as a float.
+BILLED_AS_A_FLOAT = Response("google.gemini.rest.v1.billed-as-a-float")
+
+
+def _a_float_refused_before_it_is_sent(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert held_at(BILLED_AS_A_FLOAT, COST_PATH) == 1.0
+    assert catalogue()["MESSAGES"]["floatRead"] in ran.stderr, ran
+    assert RECORD_USAGE not in ran.requests, ran
+    assert ran.requests[0] == TASK_START, ran
+    assert outcome.postings() == {}, ran
+    if outcome.target == SHELL:
+        assert ran.status == declared_status(
+            outcome.artifact, "UBB_EXIT_VALUE_REFUSED"), ran
+    else:
+        assert ran.status == UNCAUGHT, ran
+
+
+COST_WRITTEN_AS_A_FLOAT = Scenario(
+    name="response-cost-written-as-a-float",
+    configure=_response_cost_configuration,
+    works=lambda target: (_a_lone_record(
+        "acme", "grounded.search", response=BILLED_AS_A_FLOAT),),
+    expect=_a_float_refused_before_it_is_sent,
+    shells=MATRIX,
+)
+
+
 SCENARIOS: tuple[Scenario, ...] = (
     REPRESENTATIVE_LIFECYCLE,
     CEILING_CROSSED,
@@ -750,4 +925,7 @@ SCENARIOS: tuple[Scenario, ...] = (
     SCAFFOLD,
     BLOCKED,
     CUSTOM_SHAPE,
+    RESPONSE_COST,
+    CURRENCY_REFUSED_BY_THE_SERVER,
+    COST_WRITTEN_AS_A_FLOAT,
 )

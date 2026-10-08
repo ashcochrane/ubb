@@ -80,7 +80,13 @@ describe("one spelling of a request", () => {
     const reordered: BlueprintVerificationRequest = {
       grouping_fields: { environment: "staging", phase: "draft" },
       records: [
-        { event_type: "a.event", measurements: { a: 1, b: 2 }, provider_cost_micros: null, subtask_type: null },
+        {
+          event_type: "a.event",
+          measurements: { a: 1, b: 2 },
+          provider_cost_micros: null,
+          provider_response_cost_micros: null,
+          subtask_type: null,
+        },
         { event_type: "b.event", measurements: {} },
       ],
     };
@@ -95,6 +101,22 @@ describe("one spelling of a request", () => {
       verificationKey("sha256:x", { ...request, grouping_fields: { phase: "final", environment: "staging" } }),
     ).not.toBe(key);
     expect(verificationKey("sha256:x", { ...request, records: [...request.records].reverse() })).not.toBe(key);
+  });
+
+  it("differs for every supplier cost a record carries, on either field (#583 D3)", () => {
+    const withCost = (field: "provider_cost_micros" | "provider_response_cost_micros", micros: number) =>
+      verificationKey("sha256:x", {
+        ...request,
+        records: [{ ...request.records[0]!, [field]: micros }, ...request.records.slice(1)],
+      });
+
+    expect(withCost("provider_response_cost_micros", 4200)).not.toBe(verificationKey("sha256:x", request));
+    expect(withCost("provider_response_cost_micros", 4200)).not.toBe(
+      withCost("provider_response_cost_micros", 4201),
+    );
+    // The same figure on the other field is another request: the field says
+    // where the figure came from.
+    expect(withCost("provider_response_cost_micros", 4200)).not.toBe(withCost("provider_cost_micros", 4200));
   });
 });
 

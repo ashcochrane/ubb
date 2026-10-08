@@ -313,14 +313,14 @@ describe("what answers a diagnostic", () => {
 
   it("offers the server's request for an object with no console screen", async () => {
     const blocked = await loadBlueprintFixture("blocked");
-    // The two codes reported over a valid declaration this Code Builder
+    // The one code reported over a valid declaration this Code Builder
     // version cannot yet render, where nothing is the thing to change: the
-    // server sends no request for either (#571, #570).
-    const nothingToChange = new Set(["constant_measurement_not_renderable", "reported_cost_provider_response_not_renderable"]);
+    // server sends no request for it (#571).
+    const nothingToChange = new Set(["constant_measurement_not_renderable"]);
     const withAFix = blocked.diagnostics.filter((d) => !nothingToChange.has(d.code));
 
     expect(withAFix.length).toBeGreaterThan(0);
-    expect(withAFix.length).toBe(blocked.diagnostics.length - 2);
+    expect(withAFix.length).toBe(blocked.diagnostics.length - 1);
     for (const diagnostic of withAFix) {
       expect(fixFor(diagnostic)).toEqual({ kind: "request", request: diagnostic.remediation_request });
     }
@@ -337,15 +337,14 @@ describe("what answers a diagnostic", () => {
     expect(label).not.toMatch(/missing|not declared|no declared value|unsupported/i);
   });
 
-  it("offers nothing to change for a cost read off the response, and says only this version cannot read it", async () => {
-    const blocked = await loadBlueprintFixture("blocked");
-    const read = blocked.diagnostics.filter((d) => d.code === "reported_cost_provider_response_not_renderable");
-
-    expect(read.map(fixFor)).toEqual([{ kind: "none" }]);
-    const label = diagnosticCodeLabel("reported_cost_provider_response_not_renderable");
-    expect(label).toContain("valid platform configuration");
-    expect(label).toContain("this Code Builder version cannot yet generate");
-    expect(label).not.toMatch(/missing|not declared|unsupported|cannot be recorded|supplied by the caller/i);
+  it("reports nothing about a cost read off the response, which this version renders (#583)", async () => {
+    for (const name of ["blocked", "response-cost", "response-cost-read-currency"]) {
+      const blueprint = await loadBlueprintFixture(name);
+      expect(
+        blueprint.diagnostics.filter((d) => d.object_kind === "reported_cost_mapping"),
+        name,
+      ).toEqual([]);
+    }
   });
 
   it("points a kind of work at its page, or at Tasks where it is not declared", () => {

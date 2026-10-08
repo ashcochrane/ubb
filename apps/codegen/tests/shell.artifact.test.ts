@@ -56,7 +56,7 @@ const SHARED = [
   COMMENTS.noDiagnostics, COMMENTS.diagnostics, COMMENTS.remediationRequest,
   COMMENTS.apiKey, COMMENTS.baseUrl, COMMENTS.notReadyCall, COMMENTS.start,
   COMMENTS.subtask, COMMENTS.environmentFile, COMMENTS.verifyPaths,
-  COMMENTS.callSiteSubtask,
+  COMMENTS.verifyCosts, COMMENTS.callSiteSubtask,
 ];
 
 const CATALOGUE_LINES = new Set<string>([
@@ -340,10 +340,11 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
       // A heredoc inside a substitution is read as shell by bash 3.2: one
       // backtick in a declared name would end the file there.
       expect(inside, inside).not.toContain("<<");
-      // What a substitution runs is one function that is a jq program, or
-      // the credential piped to curl.
+      // What a substitution runs is one function that is a jq program —
+      // handed, where it reads one, the file it reads (#583) — or the
+      // credential piped to curl.
       expect(inside.trim(), inside).toMatch(
-        /^(_ubb_jq_[a-z0-9_]+( "\$1")?$|printf 'Authorization: Bearer %s\\n' "\$UBB_API_KEY" \| curl \\\n)/,
+        /^(_ubb_jq_[a-z0-9_]+( "\$(1|_ubb_p_[A-Za-z0-9_]+)")?$|printf 'Authorization: Bearer %s\\n' "\$UBB_API_KEY" \| curl \\\n)/,
       );
       // And no other function of this file, on the stop's path or off it:
       // what one sets, and the status it returns, are its caller's to see.
@@ -385,9 +386,11 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
       expect(runs.length, file.path).toBe(programs.length);
       // And never from inside a command substitution, in either file.
       expect(substitutions(file.contents).filter((inside) => inside.includes("<<"))).toEqual([]);
-      expect(code.match(/--from-file \/dev\/stdin( >\/dev\/null 2>&1)? <<'UBB_JQ'/g)).toHaveLength(
-        programs.length,
-      );
+      // A program that reads a response as text names it as its input,
+      // after the program (#583).
+      expect(
+        code.match(/--from-file \/dev\/stdin( "\$1")?( >\/dev\/null 2>&1)? <<'UBB_JQ'/g),
+      ).toHaveLength(programs.length);
       for (const program of programs) {
         // Quoted, so the shell expands nothing inside it.
         expect(program.quoted, program.opener).toBe(true);
@@ -465,7 +468,7 @@ describe("the header of a shell file", () => {
     expect(header("shell-calculated-cost")).toEqual(
       expect.arrayContaining([
         "schema_version = 1",
-        "renderer_contract_version = 1",
+        "renderer_contract_version = 2",
         // No SDK stands between a shell file and the API, and none is claimed.
         "sdk_major_version = null",
         'target = "shell_http"',
@@ -504,7 +507,7 @@ describe("the header of a shell file", () => {
     const blueprint = fixture("shell-blocked");
     const lines = header("shell-blocked");
 
-    expect(blueprint.diagnostics.length).toBeGreaterThan(4);
+    expect(blueprint.diagnostics.length).toBeGreaterThan(3);
     for (const diagnostic of blueprint.diagnostics) {
       const at = lines.indexOf(
         `diagnostic = "${diagnostic.code}" · severity "${diagnostic.severity}"` +
@@ -514,7 +517,7 @@ describe("the header of a shell file", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      // A diagnostic with nothing to change carries no request (#571, #570), and
+      // A diagnostic with nothing to change carries no request (#571), and
       // the header then states none rather than a null.
       const request = diagnostic.remediation_request ?? null;
       const stated = `remediation_request = ${JSON.stringify(request)}`;
@@ -523,7 +526,6 @@ describe("the header of a shell file", () => {
     }
     expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
       "constant_measurement_not_renderable",
-      "reported_cost_provider_response_not_renderable",
     ]);
   });
 
@@ -634,6 +636,30 @@ describe("a request preview", () => {
 });
 
 describe("the shapes a value takes in a shell file", () => {
+  it("carries the words and helpers of the costs it converts, and no other's", () => {
+    // #583: a file that reads a cost off the response says nothing written
+    // for a caller's value, and a currency's words and helper go only where a
+    // currency is read.
+    const said = (branch: string) => hashComments(moduleOf(branch).contents).map(commentText);
+    const caller = said("shell-reported-cost");
+    const pinned = said("shell-response-cost");
+    const read = said("shell-response-cost-read-currency");
+
+    for (const words of [caller, pinned, read]) {
+      expect(words).toEqual(expect.arrayContaining([...SHELL_COMMENTS.reportedCost]));
+    }
+    expect(caller).toEqual(expect.arrayContaining([...SHELL_COMMENTS.callerCost]));
+    expect(caller).not.toEqual(expect.arrayContaining([...SHELL_COMMENTS.responseCost]));
+    for (const words of [pinned, read]) {
+      expect(words).toEqual(expect.arrayContaining([...SHELL_COMMENTS.responseCost]));
+      expect(words).not.toEqual(expect.arrayContaining([...SHELL_COMMENTS.callerCost]));
+    }
+    expect(read).toEqual(expect.arrayContaining([...SHELL_COMMENTS.responseCurrency]));
+    expect(pinned).not.toEqual(expect.arrayContaining([...SHELL_COMMENTS.responseCurrency]));
+    expect(moduleOf("shell-response-cost-read-currency").contents).toContain("_ubb_read_currency() {");
+    expect(moduleOf("shell-response-cost").contents).not.toContain("_ubb_read_currency");
+  });
+
   it("writes a kind of work sold whole with what delivering it does", () => {
     const fixed = hashComments(moduleOf("shell-fixed-price").contents).map(commentText);
     const perEvent = hashComments(moduleOf("shell-direct-task-events").contents).map(commentText);

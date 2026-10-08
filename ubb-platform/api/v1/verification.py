@@ -476,9 +476,13 @@ def _recording(customer, declared, claim, task_id, position):
     # arrives on the call on the transport its mapping's source names — the
     # caller's own, or one read off the provider's response (#570) — and each
     # sample is passed on its own field, so the recording admits or refuses it
-    # exactly as it would a tenant's. A Blueprint whose figure is read off the
-    # response is not complete until the Code Builder renders the read (#583),
-    # and Verify runs only a complete one.
+    # exactly as it would a tenant's. A figure read off the response is
+    # sampled as the cost generated code sends, already converted to micros
+    # (#583 D3): reading and converting it is the generated files' to prove,
+    # by running them. Where the mapping reads the currency off the response
+    # too, no sample stands for it and the recording carries none, which the
+    # recording reads as the tenant's own currency — the one currency it
+    # admits (#583 D1).
     mapping = (declared["reported_cost_mapping"]
                if declared["costing_method"] == COSTING_METHOD_REPORTED
                else None)

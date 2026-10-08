@@ -107,6 +107,24 @@ export function reportedCost(
 }
 
 /**
+ * A supplier's cost read off a response, run through `record` — the generated
+ * record function — over the platform's own rows for one representation and
+ * currency (#583). The rows are read by the harness from the platform's file,
+ * so no answer passes through a reader that could not hold it.
+ */
+export function responseCost(
+  files: readonly RenderedFile[],
+  casesPath: string,
+  record: string,
+  representation: string,
+  currency: string,
+): { rows: number; disagreements: unknown[] } {
+  return onDisk(files, (directory) =>
+    harness("response-cost", directory, casesPath, record, representation, currency),
+  ) as { rows: number; disagreements: unknown[] };
+}
+
+/**
  * The values of closed registry concepts, and the version of the SDK in this
  * tree, as the SDK's generated vocabulary holds them.
  */

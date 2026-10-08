@@ -45,6 +45,7 @@ import {
   diagnosticCodeLabel,
   readinessLabel,
   STALE_RESULT_WARNING,
+  SUPPLIER_COST_SAMPLE,
 } from "../lib/code-builder-words";
 import {
   blankSamples,
@@ -376,10 +377,10 @@ function SampleForm({
               )}
             </Field>
           ))}
-          {record.reportsCost && (
+          {record.costField !== null && (
             <Field
-              label="Supplier cost, in micros"
-              hint="What your code reports this call cost, converted to micros as it sends it; leave it blank to send none."
+              label={SUPPLIER_COST_SAMPLE[record.costField].label}
+              hint={SUPPLIER_COST_SAMPLE[record.costField].hint}
               error={errors.records?.[index]?.providerCost?.message}
             >
               {(id) => (

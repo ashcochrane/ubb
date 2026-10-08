@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "renderer_contract_version": 1,
+  "renderer_contract_version": 2,
   "target": "shell_http",
   "sdk_major_version": null,
   "configuration_fingerprint": null,

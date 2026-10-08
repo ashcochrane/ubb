@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 5;
+export const CATALOGUE_VERSION = 6;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -272,12 +272,6 @@ export const REMEDIATION: Readonly<Record<DiagnosticCode, readonly string[]>> = 
     "declares nowhere to read that figure from. Declare the mapping with the",
     "request below.",
   ],
-  reported_cost_provider_response_not_renderable: [
-    "The reported-cost mapping is valid platform configuration: the supplier's",
-    "cost is read from the provider's response. This Code Builder version",
-    "cannot yet generate code that reads it, so the call is blocked until a",
-    "version that can. Nothing in the declaration needs to change.",
-  ],
   constant_measurement_not_renderable: [
     "The constant quantity is valid platform configuration, with its value",
     "declared. This Code Builder version cannot yet generate code that uses",
@@ -357,11 +351,29 @@ export const COMMENTS = {
   notReadyCall: [
     "This call is not ready to run. See the header of this file.",
   ],
+  /** Every converted cost, whichever way it arrives. */
   reportedCost: [
     "A cost a supplier reports is converted to whole micros once, here,",
     "through Decimal. A binary float is refused. An amount finer than a",
-    "micro is refused, never rounded. A currency other than the declared",
-    "one fails, never converts.",
+    "micro is refused, never rounded.",
+  ],
+  /** A cost the caller passes, in a file that has one (#577). */
+  callerCost: [
+    "A currency other than the declared one fails, never converts.",
+  ],
+  /** A cost read off the response, in a file that reads one (#583). */
+  responseCost: [
+    "A cost read off your supplier's response is read as it is there: an",
+    "integer, a decimal string, or a Decimal where you parse JSON with",
+    "parse_float=Decimal. A binary float is refused: read the response's",
+    "integer or decimal string instead.",
+  ],
+  /** A currency read off the response beside it (#583 D1). */
+  responseCurrency: [
+    "A currency read off the response that UBB does not hold is refused",
+    "here. One it holds that is not your UBB currency is refused by UBB",
+    "when the event is recorded, and that refusal reaches you as the SDK's",
+    "error.",
   ],
   start: [
     "idempotency_key is your own identifier for this piece of work, and the",
@@ -402,6 +414,12 @@ export const COMMENTS = {
   ],
   verifyPaths: [
     "Every quantity read off a response, by Event Type, and where.",
+  ],
+  verifyCosts: [
+    "Every supplier cost read off a response, by Event Type: where, what it",
+    "represents, and its currency or where that is read. A cost of zero is",
+    "a cost: what is checked is that each value is there, is what a cost",
+    "may be, and converts.",
   ],
   callSiteUnitOfWork: [
     "Where the piece of work begins. Everything it does goes inside.",
@@ -518,14 +536,42 @@ export const SHELL_COMMENTS = {
     "A value written into a URL is one that needs no encoding there, or it",
     "is refused as UBB_EXIT_VALUE_REFUSED.",
   ],
+  /** Every converted cost, whichever way it arrives. */
   reportedCost: [
     "A cost a supplier reports is converted to whole micros once, here, on",
     "its digits as text: no arithmetic is done on the amount, so nothing can",
-    "round it. An amount finer than a micro is refused, never rounded. A",
-    "currency other than the declared one fails, never converts. Both are",
+    "round it. An amount finer than a micro is refused, never rounded, as",
     "UBB_EXIT_VALUE_REFUSED.",
-    "Pass the amount as the text your supplier wrote. A number another tool",
-    "has parsed, jq included, may already have been rounded.",
+  ],
+  /** A cost the caller passes, in a file that has one (#578). */
+  callerCost: [
+    "A currency other than the declared one fails, never converts, as",
+    "UBB_EXIT_VALUE_REFUSED. Pass the amount as the text your supplier",
+    "wrote. A number another tool has parsed, jq included, may already have",
+    "been rounded.",
+  ],
+  /** A cost read off the response, in a file that reads one (#583). */
+  responseCost: [
+    "A cost read off your supplier's response is read as it is written",
+    "there, never as the number jq would make of it: a JSON string as its",
+    "text, an integer as its digits. A number written with a fraction or an",
+    "exponent is a binary float, and is refused as UBB_EXIT_VALUE_REFUSED:",
+    "read the response's integer or decimal string instead. So is a",
+    "response Python's json would not read.",
+  ],
+  /** A currency read off the response beside it (#583 D1). */
+  responseCurrency: [
+    "A currency read off the response that UBB does not hold is refused as",
+    "UBB_EXIT_VALUE_REFUSED. One it holds that is not your UBB currency is",
+    "refused by UBB when the event is recorded, and the call returns what",
+    "curl gave that refusal.",
+  ],
+  writtenProgram: [
+    "Reads one value off the response as the response wrote it, and prints",
+    "what kind of value it is: for a string or an integer, with its text. A",
+    "response Python's json would not read is not read here either, and a",
+    "number is never read for what it is worth, because that loses how it",
+    "was written.",
   ],
   runTask: [
     "The whole of a Task, as one command you name. It is run with the Task's",
@@ -571,6 +617,11 @@ export const SHELL_COMMENTS = {
     "Checks that jq can do what this script asks of it. It contacts nothing",
     "and creates nothing.",
   ],
+  verifyCosts: [
+    "What checks a supplier's cost read off a response: the runnable file's",
+    "own programs and functions, which read, pin and convert it here exactly",
+    "as they do there, and one check of each Event Type that reads a cost.",
+  ],
   callSiteRunTask: [
     "Where the piece of work begins. Everything it does goes inside the",
     "function, which is handed the work's task_id. Check the status of each",
@@ -610,6 +661,11 @@ export const MESSAGES = {
   environmentNotSet: "is not set. Set it in the environment this code runs in.",
   stop: "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
   float: "is a binary float, and a reported cost is money: pass its decimal text or an integer",
+  /** The same refusal of a cost read off a response, which says what to read
+   * rather than what to pass (#583). */
+  floatRead:
+    "is a binary float, and a reported cost is money: read the response's integer or its decimal string instead",
+  currencyNotText: "is not a currency code: a currency read off a response is text",
   flag: "is a flag, not a reported cost",
   missing: "no cost was reported, and a missing cost is not a zero",
   notANumber: "is not a number",
@@ -622,12 +678,16 @@ export const MESSAGES = {
   currencyNone: "this cost is denominated in no currency",
   currencyDisagrees: "the supplier reported this cost in another currency than the declared one",
   verifyUsage: "usage: python verify_integration.py EVENT_TYPE captured-response.json",
-  verifyEventTypes: "Event Types with a quantity read off a response:",
-  verifyNothing: "No selected Event Type reads a quantity off a response. There is nothing to check.",
+  verifyEventTypes: "Event Types with a quantity or a cost read off a response:",
+  verifyNothing:
+    "No selected Event Type reads a quantity or a cost off a response. There is nothing to check.",
   verifyResolves: "resolves in the captured response",
   verifyNumber: "is a number",
   verifyNotZero: "is not zero (a constant zero is what a path to the wrong field reads)",
   verifyDistinct: "is read from a path no other quantity is read from",
+  verifyAmount: "is an integer or a decimal string, as a reported cost must be",
+  verifyConverts: "converts to whole micros exactly",
+  verifyCurrency: "is a currency UBB holds",
   verifyPassed: "Every check passed.",
   verifyFailed: "check(s) failed.",
   verifyOk: "ok  ",
@@ -659,6 +719,11 @@ export const SHELL_MESSAGES = {
   noEventId: "the acknowledgement carries no event_id",
   noValue: "the response holds no value at",
   notWhole: "the response holds a value that is not a whole number at",
+  /** Why a value read off the response as written was refused, said after
+   * `<call>: <field> read at <path>` (#583). */
+  readMissing: "is not in the response",
+  readUnreadable: "cannot be read: the response is not JSON",
+  readNull: "is null: no cost was reported, and a missing cost is not a zero",
   inexact: "the response holds a number too large to be carried exactly at",
   verifyUsage: "usage: sh verify_integration.sh EVENT_TYPE captured-response.json",
 } as const;

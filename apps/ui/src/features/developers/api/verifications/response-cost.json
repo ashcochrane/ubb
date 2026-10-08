@@ -1,0 +1,203 @@
+{
+  "blueprint": "response-cost",
+  "configuration_fingerprint": "sha256:a92a3c28148574ac289218e55d3fc4f2715dec7765116e6b2b795638218cb984",
+  "request": {
+    "records": [
+      {
+        "event_type": "grounded.search",
+        "measurements": {
+          "input_tokens": 1200
+        },
+        "provider_response_cost_micros": 4200
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 200,
+  "answer": {
+    "configuration_fingerprint": "sha256:a92a3c28148574ac289218e55d3fc4f2715dec7765116e6b2b795638218cb984",
+    "verified": true,
+    "unexercised_event_types": [],
+    "unexercised_subtask_types": [],
+    "environment": {
+      "discarded": true,
+      "customer_external_id": "ubb-verification",
+      "rules_effective_at": "2026-09-01T12:30:00Z"
+    },
+    "task": {
+      "task_type": "grounded_answer",
+      "start": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "task_type": "grounded_answer",
+        "status": "active",
+        "task_cogs_ceiling_micros": null,
+        "agreed_price_micros": null,
+        "external_task_id": "",
+        "created_at": "2026-09-01T12:30:00Z",
+        "replayed": false
+      },
+      "close": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "status": "completed",
+        "outcome": "delivered",
+        "replayed": false,
+        "charge_created": false,
+        "total_billed_cost_micros": 0,
+        "total_provider_cost_micros": 4200,
+        "unresolved_event_count": 0,
+        "unpriced_event_count": 1,
+        "event_count": 1
+      }
+    },
+    "subtasks": [],
+    "records": [
+      {
+        "event_type": "grounded.search",
+        "subtask_type": null,
+        "acknowledgement": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": 4200,
+          "costing_status": "known",
+          "unresolved_reason": null,
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "unknown",
+          "not_applicable_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": 0,
+          "task_total_provider_cost_micros": 4200,
+          "task_total_unresolved_event_count": 0,
+          "task_total_unpriced_event_count": 1,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "input_tokens": 1200
+          },
+          "pricing_receipt": {
+            "receipt_schema_version": 1,
+            "pricing_engine_version": "2.1.0",
+            "subject_type": "usage_event",
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "currency": "usd",
+            "costing": {
+              "method": "reported",
+              "status": "known",
+              "detail": {
+                "components": [],
+                "uncosted_measurement_keys": [],
+                "uncosted_quantities": {},
+                "undeclared_quantities": {},
+                "unresolved_reason": null,
+                "reported_cost_source_kind": "provider_response"
+              }
+            },
+            "pricing": {
+              "method": null,
+              "status": "unknown",
+              "detail": {
+                "components": [],
+                "pricing_mode": "event_priced",
+                "not_applicable_reason": null
+              }
+            },
+            "totals": {
+              "provider_cost_micros": 4200,
+              "billed_cost_micros": null
+            },
+            "provenance": {
+              "cost_rate_ids": {},
+              "price_rate_ids": {}
+            }
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "replay": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": 4200,
+          "costing_status": "known",
+          "unresolved_reason": null,
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "unknown",
+          "not_applicable_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": null,
+          "task_total_provider_cost_micros": null,
+          "task_total_unresolved_event_count": null,
+          "task_total_unpriced_event_count": null,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "input_tokens": 1200
+          },
+          "pricing_receipt": {
+            "totals": {
+              "billed_cost_micros": null,
+              "provider_cost_micros": 4200
+            },
+            "costing": {
+              "detail": {
+                "components": [],
+                "unresolved_reason": null,
+                "uncosted_quantities": {},
+                "undeclared_quantities": {},
+                "reported_cost_source_kind": "provider_response",
+                "uncosted_measurement_keys": []
+              },
+              "method": "reported",
+              "status": "known"
+            },
+            "pricing": {
+              "detail": {
+                "components": [],
+                "pricing_mode": "event_priced",
+                "not_applicable_reason": null
+              },
+              "method": null,
+              "status": "unknown"
+            },
+            "currency": "usd",
+            "provenance": {
+              "cost_rate_ids": {},
+              "price_rate_ids": {}
+            },
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "subject_type": "usage_event",
+            "pricing_engine_version": "2.1.0",
+            "receipt_schema_version": 1
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "missing_required_measurement_keys": [],
+        "complete": true
+      }
+    ],
+    "refusal": null
+  }
+}

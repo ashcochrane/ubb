@@ -18,6 +18,7 @@
 import { refuse, type ResolvedIntegrationBlueprint } from "../blueprint.ts";
 import { PYTHON } from "../catalogue.ts";
 import {
+  FACT,
   FIELD,
   keyOf,
   OPERATION_IDS,
@@ -25,7 +26,14 @@ import {
   type Header,
 } from "../lifecycle.ts";
 import { nameTails, type Wanted } from "../names.ts";
-import { parameters, type Call, type SecretReference, type Token } from "../tokens.ts";
+import {
+  factNamed,
+  parameters,
+  type Call,
+  type Fact,
+  type SecretReference,
+  type Token,
+} from "../tokens.ts";
 import { parameterName, unshadowed } from "./syntax.ts";
 
 export { FACT, FIELD, type Header } from "../lifecycle.ts";
@@ -64,6 +72,8 @@ export interface Internal {
   readonly toMicros: string;
   readonly pinCurrency: string;
   readonly minorUnit: string;
+  readonly readAmount: string;
+  readonly readCurrency: string;
   readonly attribute: string;
   readonly startTask: string;
   readonly send: (record: RecordPlan) => string;
@@ -81,6 +91,35 @@ export interface Plan {
   readonly internal: Internal;
 }
 
+/**
+ * Refuses a call that asks for one parameter both as something a declared
+ * path is read off and as a value sent as it is. The response object is the
+ * one parameter read by a path, and a document that also sent it whole —
+ * under `currency`, say — would have the module post the supplier's response
+ * as a field's value without a word.
+ */
+function oneUseEach(call: Call): void {
+  const read = new Set<string>();
+  const sent = new Set<string>();
+  const sort = (token: Token | null, facts: readonly Fact[]) => {
+    if (token?.binding.kind !== "parameter") return;
+    const into = factNamed(facts, FACT.sourcePath) === undefined ? sent : read;
+    into.add(token.binding.name);
+  };
+  for (const field of call.fields) {
+    if (field.shape === "scalar") sort(field.token, field.facts);
+    else field.entries.forEach((entry) => sort(entry.value, entry.facts));
+  }
+  for (const parameter of read) {
+    if (sent.has(parameter)) {
+      refuse(
+        `the parameter ${parameter} of ${call.operationId} is asked for as a ` +
+          `response a path is read off and as a value sent as it is`,
+      );
+    }
+  }
+}
+
 /** The plan for one Blueprint, or a refusal of a document it cannot render. */
 export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
   if (blueprint.sdk_major_version !== PYTHON.sdkMajorVersion) {
@@ -94,6 +133,7 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     blueprint,
     parameterName,
   );
+  calls.forEach(oneUseEach);
 
   const fixed = [PYTHON.startTask, PYTHON.unitOfWork];
   const wanted: Wanted[] = [
@@ -155,6 +195,8 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     toMicros: ownName("_to_micros"),
     pinCurrency: ownName("_pin_currency"),
     minorUnit: ownName("_minor_unit"),
+    readAmount: ownName("_read_amount"),
+    readCurrency: ownName("_read_currency"),
     attribute: ownName("_attribute"),
     startTask: ownName("_start_task"),
     send: (record) => sends.get(record)!,

@@ -1,0 +1,1748 @@
+{
+  "major_units_decimal usd": {
+    "python_sdk": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "python_sdk",
+      "sdk_major_version": 3,
+      "configuration_fingerprint": "sha256:87c45daa9bee833320bbdd75414e52a46c4f11fbfc5afbe9231f38cfb2ec527b",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "major_units_decimal",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    },
+    "shell_http": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "shell_http",
+      "sdk_major_version": null,
+      "configuration_fingerprint": "sha256:273d1badbb6fbabc963f5db4ae956e109d6e029b28a3f4a19a19f386f20ee420",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "major_units_decimal",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    }
+  },
+  "micros usd": {
+    "python_sdk": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "python_sdk",
+      "sdk_major_version": 3,
+      "configuration_fingerprint": "sha256:12f8f990f2c1f2553855e0e067ec1aa7236d7fcbf952767eac0dcc4b349fe28a",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "micros",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    },
+    "shell_http": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "shell_http",
+      "sdk_major_version": null,
+      "configuration_fingerprint": "sha256:ca888da8f431aa430f96d7f166c30d00274d7a8408744056000312302c419a5d",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "micros",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    }
+  },
+  "minor_units usd": {
+    "python_sdk": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "python_sdk",
+      "sdk_major_version": 3,
+      "configuration_fingerprint": "sha256:e0e561e0b2a54b0f87e119aa6d8a3dc4a7cdd1e1adbeaec1bed314db4bc7c20c",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "minor_units",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    },
+    "shell_http": {
+      "schema_version": 1,
+      "renderer_contract_version": 2,
+      "target": "shell_http",
+      "sdk_major_version": null,
+      "configuration_fingerprint": "sha256:ae2e5e90a06aac36a9918939d2fb1eb12797f1c2a4cbeb6d3bba32bb00fd2ab1",
+      "readiness": "complete",
+      "calls": [
+        {
+          "operation_id": "api_v1_task_endpoints_start_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_type",
+              "binding_class": "platform_known",
+              "value": "grounded_answer",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.pricing_mode",
+              "binding_class": "platform_known",
+              "value": "event_priced",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "task_type.uncapped",
+              "binding_class": "platform_known",
+              "value": true,
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "task_type",
+                "key": "grounded_answer",
+                "published_revision": null,
+                "published_at": null
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_metering_endpoints_record_usage",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "customer_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "customer_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "idempotency_key",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "idempotency_key",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "event_type",
+              "binding_class": "platform_known",
+              "value": "grounded.search",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.costing_method",
+              "binding_class": "platform_known",
+              "value": "reported",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider",
+              "binding_class": "platform_known",
+              "value": "google",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "provider",
+                "key": "google",
+                "published_revision": null,
+                "published_at": null
+              }
+            },
+            {
+              "name": "provider_response_cost_micros",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "response",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.source_path",
+              "binding_class": "platform_known",
+              "value": [
+                "cost",
+                "total"
+              ],
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "provider_response_cost_micros.amount_representation",
+              "binding_class": "platform_known",
+              "value": "minor_units",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "currency",
+              "binding_class": "platform_known",
+              "value": "usd",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.source_shape_id",
+              "binding_class": "platform_known",
+              "value": "google.gemini.rest.v1",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            },
+            {
+              "name": "event_type.response_shape_representation",
+              "binding_class": "platform_known",
+              "value": "json",
+              "parameter_name": null,
+              "environment_variable": null,
+              "configured": true,
+              "provenance": {
+                "object_kind": "event_type",
+                "key": "grounded.search",
+                "published_revision": 1,
+                "published_at": "2026-09-01T12:00:00+00:00"
+              }
+            }
+          ]
+        },
+        {
+          "operation_id": "api_v1_task_endpoints_close_task",
+          "readiness": "complete",
+          "arguments": [
+            {
+              "name": "api_key",
+              "binding_class": "secret_reference",
+              "value": null,
+              "parameter_name": null,
+              "environment_variable": "UBB_API_KEY",
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "task_id",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "task_id",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            },
+            {
+              "name": "outcome",
+              "binding_class": "runtime_bound",
+              "value": null,
+              "parameter_name": "outcome",
+              "environment_variable": null,
+              "configured": true,
+              "provenance": null
+            }
+          ]
+        }
+      ],
+      "diagnostics": []
+    }
+  }
+}

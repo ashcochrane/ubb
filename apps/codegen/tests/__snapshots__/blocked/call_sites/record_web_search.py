@@ -8,4 +8,5 @@ record_web_search(
     idempotency_key=idempotency_key,
     task_id=task_id,
     searches=searches,
+    response=response,
 )

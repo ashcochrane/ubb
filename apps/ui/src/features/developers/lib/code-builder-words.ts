@@ -21,6 +21,7 @@ import {
 
 import type { BlueprintCall } from "../api/types";
 import { roleOf, subjectOf, type CallRole } from "./blueprint";
+import type { SupplierCostField } from "./verification";
 
 export const codeTargetLabel = labelMap(CODE_TARGET_LABEL_KEYS);
 export const readinessLabel = labelMap(INTEGRATION_READINESS_LABEL_KEYS);
@@ -56,6 +57,30 @@ export const STALE_FILES_WARNING = "The files you took are stale for the current
  * the files': the page knows only that the two fingerprints differ.
  */
 export const STALE_RESULT_WARNING = "The last Verify ran against a different Blueprint, not the current one.";
+
+/**
+ * What a sample of each supplier cost field is, beside it in the Verify form.
+ * A cost the caller supplies is typed as the caller's code sends it. A cost
+ * generated code reads off the provider's response is typed as the code
+ * would send it once read and converted — and the form says, word for word
+ * as the owner ruled (#583 D3), that Verify tests the recording and costing
+ * of that figure and never the reading or the conversion, which only running
+ * the generated files tests.
+ */
+export const SUPPLIER_COST_SAMPLE: Readonly<
+  Record<SupplierCostField, { label: string; hint: string }>
+> = {
+  provider_cost_micros: {
+    label: "Supplier cost, in micros",
+    hint: "What your code reports this call cost, converted to micros as it sends it; leave it blank to send none.",
+  },
+  provider_response_cost_micros: {
+    label: "Supplier cost read off the response, in micros",
+    hint:
+      "Verify supplies the resulting supplier cost in micros to test UBB recording and costing. " +
+      "Generated-artifact execution tests the provider-response read and conversion.",
+  },
+};
 
 /**
  * What `verified` speaks for (owner ruling on #599): the whole Blueprint, and

@@ -1500,5 +1500,967 @@
         "answer": "gbp"
       }
     }
+  ],
+  "read_off_a_response": [
+    {
+      "document": "{\"cost\": {\"total\": 1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1.25\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1250000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1.25\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 12500
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1.25\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1e0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.25}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1E0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1e+0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 0.1e1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 10e-1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.5e1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1e2}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.000}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": -0.0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 0
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": -0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 0
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"0\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 0
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": -1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": -1
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "minor_units",
+      "currency": "usd",
+      "expected": {
+        "answer": 10000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 7}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "minor_units",
+      "currency": "jpy",
+      "expected": {
+        "refused": "currency"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 999999999999999}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 999999999999999
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1000000000000000}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000000000000000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 9007199254740992}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9007199254740992
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 9007199254740993}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9007199254740993
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 9223372036854775807}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9223372036854775807
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 9223372036854775808}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 12345678901234567890123}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"0.0000001\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \" 1.5 \"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "major_units_decimal",
+      "currency": "usd",
+      "expected": {
+        "answer": 1500000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1e3\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 1000
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"9007199254740993\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9007199254740993
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"free\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"12\\\\\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"1\\u0000\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": true}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": null}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": {}}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": [1]}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": NaN}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"a\\\"\": 1.0, \"cost\": {\"total\": 7}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 7
+      }
+    },
+    {
+      "document": "{\"x\\\\\\\\\": \"1.0\", \"cost\": {\"total\": 8}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 8
+      }
+    },
+    {
+      "document": "{\"1.0\": {\"total\": 2.5}, \"cost\": {\"items\": [1e0, 2.5], \"total\": 9}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 9
+      }
+    },
+    {
+      "document": "{\r\n\t\"cost\" :\r\n\t{ \"total\" :\t12 }\r\n}\r\n",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 12
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": \"2\", \"total\": 1.0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.5, \"total\": 3}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 3
+      }
+    },
+    {
+      "document": "{\"\\u0063ost\": {\"total\": 42}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 42
+      }
+    },
+    {
+      "document": "{\"t\": true, \"f\": false, \"n\": null, \"cost\": {\"total\": 1e0}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "amount"
+      }
+    },
+    {
+      "document": "{\"x\": NaN, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 5
+      }
+    },
+    {
+      "document": "{\"x\": [Infinity, -Infinity], \"cost\": {\"total\": \"5\"}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "answer": 5
+      }
+    },
+    {
+      "document": "{\"x\": +1, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": 01, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": -01, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": .5, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": -.5, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": 1., \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": 1.e5, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": nan, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": -nan, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": NAN, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": nan1, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": inf, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": -inf, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": infinity, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": INF, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": +Infinity, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": -NaN, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": +1}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 01}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": .5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1.}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": nan}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": inf}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": \"a\u0000b\", \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"x\": 1\u0000, \"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "{\"cost\": {\"total\": 1\u0000}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    },
+    {
+      "document": "﻿{\"cost\": {\"total\": 5}}",
+      "path": [
+        "cost",
+        "total"
+      ],
+      "representation": "micros",
+      "currency": "usd",
+      "expected": {
+        "refused": "response"
+      }
+    }
   ]
 }

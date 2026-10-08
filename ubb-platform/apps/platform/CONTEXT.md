@@ -229,9 +229,9 @@ ReportedCostMapping`; `apps/platform/event_types/costing.py:admitted_supplier_co
 `api/v1/metering_endpoints.py:admit_supplier_cost`)
 _Avoid_: sending a figure read off the response as `provider_cost_micros` — that field's published
 meaning is "supplied directly by the caller"; reading the caller's `claimed_provider_cost_micros` as
-either transport — it is a belief, never COGS; and reading a blocked Code Builder call over a
-`provider_response` mapping as a fault in the declaration — it is valid configuration that this Code
-Builder version cannot yet generate the read for (#583 renders it).
+either transport — it is a belief, never COGS; and having generated code compare a currency read off
+the response with the tenant's — the Code Builder renders the read on both targets (#583), sends the
+currency as read, and the server's one shared rule refuses a currency that is not the tenant's.
 
 **Measurement concept (analytics grouping)**:
 Two quantities a tenant has **said** mean the same thing, so one chart may add a supplier's

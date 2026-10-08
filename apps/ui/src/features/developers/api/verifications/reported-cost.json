@@ -1,6 +1,6 @@
 {
   "blueprint": "reported-cost",
-  "configuration_fingerprint": "sha256:36af256701e35c0c04a595d3a40f537c399286364e9f614a285bac8e4db9deef",
+  "configuration_fingerprint": "sha256:df8926b7614b6ea4c2c24bf5d9b5fee87e75978f9e398faf41d3c2f6c2772182",
   "request": {
     "records": [
       {
@@ -15,7 +15,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:36af256701e35c0c04a595d3a40f537c399286364e9f614a285bac8e4db9deef",
+    "configuration_fingerprint": "sha256:df8926b7614b6ea4c2c24bf5d9b5fee87e75978f9e398faf41d3c2f6c2772182",
     "verified": true,
     "unexercised_event_types": [],
     "unexercised_subtask_types": [],

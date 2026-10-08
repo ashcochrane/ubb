@@ -103,6 +103,11 @@ Three facts change how a value is written, and the list is closed: `source_path`
 as declared. A segment Python cannot spell as an attribute is reached with `getattr`, which changes
 the syntax and not the name. A fourth, `pricing_mode`, chooses a sentence of comment.
 
+Since renderer contract 2 (#583, 2026-10-08; ADR-0015 §3), `source_path` may also stand under a
+field's own value — a supplier's cost, or the currency beside it — and that value is then read off
+`response` at its path, as a value under a key is. The list stays closed: a currency read off the
+response is the runtime `currency` with the existing `currency.source_path` fact, and no new fact.
+
 A call that is not ready raises before it sends anything, naming every token with no configured
 value, and is still written beneath the guard so the file shows the lifecycle's shape.
 
@@ -124,11 +129,31 @@ into the module. Its definition is the platform's `to_micros` and `pin_currency`
 them case for case: the platform writes a table of its own answers, and the suite runs the
 generated helper over that table.
 
+Since #583 (2026-10-08) that includes a cost read off the supplier's response. It is read at its
+declared path as the response holds it — an integer, a decimal string, or a `Decimal` where the
+JSON was parsed with `parse_float=Decimal` — and a binary float is refused, in words of its own
+that send the reader to the response's integer or its decimal text. It is sent as
+`provider_response_cost_micros` and never as `provider_cost_micros`, which is the caller's. The
+platform's table carries rows read off a response too, answered by `json.loads` and `to_micros`,
+and the generated read is held to them case for case. A row whose response `json` cannot read is
+refused as a response: the tenant's own parse fails before the module is handed anything, and the
+shell file, which is handed the text, refuses it to match (ADR-0017 §6).
+
 A currency that disagrees with the declared one is refused by that helper, and here that is proved
 by calling the helper: for a cost the caller supplies, generated code has no supplier currency to
 pass. **It is not the end-to-end proof (§9).** The ticket that carries a cost read off a
 supplier's response (#583) passes the response's currency and owes the real case, through the
 generated artifact: a response reporting a currency other than the contract's is refused.
+
+*Ruled on #583 (2026-10-08, decision D1): the refusal reaches the integration from the server.* A
+mapping either pins a currency or declares a `currency_path`, and generated code passes the helper
+the one it has and never both, so the helper's own disagreement case is never reached by a
+generated call. Where the currency is read, generated code refuses locally only a value the
+helper's table does not recognise, and sends a recognised one as the event's `currency`. It holds
+no copy of the tenant's currency to compare. A recognised currency that is not the tenant's
+reaches UBB and is refused there by the one shared check — 422, "currency mismatch", nothing
+recorded — and the SDK's error carries that refusal out of the integration. The end-to-end proof
+is Seam C's `response-currency-refused` scenario, on both targets.
 
 ### 5. Fixtures are what the platform answered
 
@@ -199,15 +224,17 @@ five rulings:
 2. **The fixed-price fixture is route-built**, not synthetic as the ticket's criterion said: a
    real route-built Blueprint is stronger evidence. A missing agreed price stays #586's.
 3. **The currency-disagreement proof here is the helper's**, accepted for this ticket; #583 owes
-   the generated-artifact case (§4).
+   the generated-artifact case (§4). *2026-10-08:* #583 met it as the owner ruled there (D1): the
+   refusal is the server's, and the integration surfaces it (§4).
 4. **The default host is removed** (§8). This is the one thing the review changed.
 5. **#596 does not block this, and `repr` is temporary** (§4).
 
 ### 10. What this ADR does not decide
 
 The shell target (#578), which is ADR-0017's. The page that calls `render` (#579). Execution against the real
-application (#582). How a cost read off a supplier's response, a constant's value or a missing
-agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 and needs no new rule.
+application (#582). How a constant's value or a missing agreed price is rendered (#584, #586):
+each arrives as tokens under §3 and needs no new rule. A cost read off a supplier's response
+(#583) arrived that way too, and needed only renderer contract 2 (§3).
 
 ## What proves it
 
@@ -223,6 +250,7 @@ agreed price is rendered (#583, #584, #586): each arrives as tokens under §3 an
 | §3 — a call that is not ready raises, naming what is missing | same module — "raises from every call that is not ready, naming what is missing" |
 | §4 — one catch, by name, raised again | same module — "is caught in exactly one place, by name, and raised again", "passes through a tenant's own except Exception and out of the boundary" |
 | §4 — the conversion is the platform's, case for case | same module — "is converted exactly as the platform converts it, case for case"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_the_reported_cost_cases_carry_this_platforms_answers`, `test_the_currency_table_is_this_platforms` |
+| §4 — a cost read off the response is read as the platform answers it, row for row, on its own field; a currency UBB holds and the tenant does not is the server's refusal, surfaced (#583) | `apps/codegen/tests/execution.test.ts` — "is read and converted exactly as the platform answers, row for row", "goes on the wire as provider_response_cost_micros, never as provider_cost_micros", "surfaces UBB's refusal of a currency it holds and the tenant does not, as the SDK's error"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_a_cost_read_off_a_response_is_answered_as_ruled` |
 | §5 — every committed Blueprint is what the route answers, and none is added by hand | same platform module — `test_a_committed_blueprint_is_what_the_route_answers`, `test_every_committed_blueprint_is_one_this_module_produces`; `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_every_blueprint_the_suite_renders_is_one_the_platform_holds` |
 | §6 — every comment is provenance or a catalogue member, and states only what the Blueprint carries | `apps/codegen/tests/artifact.test.ts` — "carries only comments that are provenance or a catalogue member", "states in a provenance comment only what the Blueprint carries" |
 | §6 — a sentence for every code and verdict, and no other; each restated set equal to the registry's | `apps/codegen/tests/catalogue.test.ts` — "has remediation for every diagnostic code, and for no other", "says what every verdict means, and no other", "converts every amount representation, and no other", "says what delivering means under every pricing mode, and no other", "reads every response shape representation, and no other" |

@@ -1068,9 +1068,12 @@ gates:
       standing matrix of shells, with the four minimal-image preflight
       fixtures. It is the declared suite `code_builder_execution`, run by
       CI's `code-builder-execution` job and held armed by
-      `tests/contracts/test_the_execution_suite_is_enforced.py`. #583, #584,
-      #585 and #586 each add their scenario to it; #184's flip installs this
-      row over it.
+      `tests/contracts/test_the_execution_suite_is_enforced.py`. #583 added
+      its three — a supplier cost read off the response and recorded as COGS
+      with its source on the receipt, a currency read off it that the server
+      refuses, and a cost written as a float that neither target sends —
+      across the standing matrix; #584, #585 and #586 each add theirs;
+      #184's flip installs this row over it.
 
   G26:
     statement: >-

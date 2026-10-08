@@ -22,7 +22,11 @@ It renders a Blueprint that is not ready, as files that say what is missing and 
 throws `BlueprintNotRenderable` for a document it cannot read — an unknown `schema_version` or
 `renderer_contract_version`, a target with no renderer, an SDK major or an operation it is not
 written for, or a token that breaks what the contract promises. ADR-0016 §7 and ADR-0017 §8 have
-the lists.
+the lists. It reads renderer contract 2 and no other. Contract 2 (#583) lets a runtime value of a
+field of its own carry a `source_path`, which a renderer written to contract 1 would misread — that
+is why the version moved. This renderer reads the one contract it is written and tested against:
+the platform resolves contract 2 alone, so a contract-1 document is refused like any version
+outside the set.
 
 ## What an artifact is
 
@@ -82,6 +86,14 @@ ADR-0017 has the reasons. In short:
   supplier's JSON.
 - **A supplier's cost is text**, converted to whole micros on its digits with no arithmetic on the
   amount, and written into the body by the shell: it is never a jq number.
+- **A cost read off the response is read as the response wrote it** (#583): the file is read as
+  text, and a number at the declared path is the characters written there, never the number jq
+  would make of it — every jq parses `1e0` as `1`, and 1.5 and 1.6 `1.0` too, where Python's
+  `json` reads both as binary floats. An integer or a decimal string is read; a number written with
+  a fraction or an exponent is refused. And a response Python's `json` would not read — jq reads
+  `01`, `.5`, `+1`, `nan` and more — is not read either, wherever the fault sits, so both targets
+  answer every row of the platform's table alike. `src/shell/written.ts` has the reading, and
+  ADR-0017 §6 the evidence it was settled on.
 
 Every jq program is read by jq from standard input, from a quoted heredoc
 (`jq … --from-file /dev/stdin <<'UBB_JQ'`), in a function that is nothing but that program
@@ -109,7 +121,8 @@ convention is read, and it never decodes a key:
    a comment beside the value it is about.
 
 Three facts change how a value is written, by the last segment of their name: `source_path` (the
-value is read off the response by that path), `response_shape_representation` (by subscript for
+value is read off the response by that path — under a keyed entry, or, since renderer contract 2,
+on a field of its own: a supplier's cost and its currency), `response_shape_representation` (by subscript for
 JSON, by attribute for a Python object; a shell file reads JSON and nothing else), and
 `amount_representation` (the value is a supplier's cost, converted to whole micros once).
 `pricing_mode` chooses one sentence of comment. The shell target acts on one more, because a shell
@@ -135,11 +148,12 @@ Two classes and no third. **Provenance** is generated from the Blueprint in one 
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
 closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
-`tests/__snapshots__/catalogue.v4.json` — a file named for the version, so a change under an
+`tests/__snapshots__/catalogue.v6.json` — a file named for the version, so a change under an
 unchanged number is a diff a reviewer reads. It is one catalogue for both targets, so both state
 its version: adding the shell target's members made it version 2 for Python's files too,
-rewording the shell file's refusal of an old jq made it version 3 (#582), and replacing one
-diagnostic code's remediation with another's made it version 4 (#571).
+rewording the shell file's refusal of an old jq made it version 3 (#582), replacing one
+diagnostic code's remediation with another's made it version 4 (#571) and 5 (#570), and reading a
+supplier's cost off the response made it version 6 (#583).
 Its symbols (`UBB_API_KEY`, `UBB_BASE_URL`, `stop_requested`, `UBB_EXIT_STOP_REQUESTED` = 20, and
 the other statuses and names a shell file is made of) are the renderer's own and are not registry
 concepts.

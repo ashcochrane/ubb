@@ -30,7 +30,21 @@ import type { ResolvedIntegrationBlueprint } from "../src/blueprint.ts";
 import { jqNeedsOf } from "../src/shell/probe.ts";
 import { everyArgument, fixture, FIXTURES, PACKAGE_ROOT, REPO_ROOT } from "./support/fixtures.ts";
 import { BRANCHES, only, rendered, SHELL_BRANCH_NAMES } from "./support/rendered.ts";
-import { parsed, reportedCostInShell, runShell, type Ran, type RunOptions, type Sent } from "./support/shell.ts";
+import {
+  aCostReadAt,
+  CASES as RESPONSE_CASES,
+  responseRows,
+  rowGroups,
+} from "./support/responseCost.ts";
+import {
+  parsed,
+  reportedCostInShell,
+  responseCostInShell,
+  runShell,
+  type Ran,
+  type RunOptions,
+  type Sent,
+} from "./support/shell.ts";
 import { functionsOf, heredocs, substitutions } from "./support/shellText.ts";
 
 const CONTRACT = JSON.parse(readFileSync(join(REPO_ROOT, "openapi", "v1.json"), "utf-8")) as {
@@ -119,11 +133,13 @@ function lifecycle(blueprint: ResolvedIntegrationBlueprint, files: readonly Rend
   const all = everyArgument(blueprint);
   all.forEach((argument, index) => {
     if (argument.name.endsWith(".source_path") && Array.isArray(argument.value)) {
-      // A response that holds a number wherever a path is declared to read.
+      // A response that holds a number wherever a path is declared to read —
+      // and a currency code where it reads the currency (#583).
+      const held = argument.name === "currency.source_path" ? "usd" : 7;
       let at = captured;
       const path = argument.value as string[];
       path.forEach((segment, depth) => {
-        if (depth === path.length - 1) at[segment] = 7;
+        if (depth === path.length - 1) at[segment] = held;
         else at = (at[segment] ??= {}) as Record<string, unknown>;
       });
     }
@@ -557,6 +573,9 @@ printf 'status=%s\\n' "$?"
           variable: /\bas\s+\$/.test(code),
           elif: /\belif\b/.test(code),
           reduce: /\breduce\b/.test(code),
+          // #583: what the read of a response as written asks of jq.
+          foreach: /\bforeach\b/.test(code),
+          tryCatch: /\btry\b[\s\S]*\bcatch\b/.test(code),
         },
         functions: [
           ...new Set(
@@ -598,6 +617,11 @@ printf 'status=%s\\n' "$?"
     expect(asked(only(rendered("shell-scaffold"), "verify_script").contents).probe.functions).not.toContain(
       "fromjson",
     );
+    // And the forms only a read of a response as written asks for (#583).
+    const reading = asked(only(rendered("shell-response-cost"), "module").contents);
+    expect([reading.probe.forms.foreach, reading.probe.forms.tryCatch]).toEqual([true, true]);
+    const scaffold = asked(only(rendered("shell-scaffold"), "module").contents);
+    expect([scaffold.probe.forms.foreach, scaffold.probe.forms.tryCatch]).toEqual([false, false]);
   });
 
   it("refuses to render a program that asks jq for what no probe knows", () => {
@@ -610,8 +634,8 @@ printf 'status=%s\\n' "$?"
     expect(() => jqNeedsOf(command("--rawfile a /dev/null", "$a"))).toThrow(
       "no probe passes the jq option --rawfile",
     );
-    expect(() => jqNeedsOf(command("--arg a 1", "try $a catch 1"))).toThrow(
-      "no probe uses the jq keyword try",
+    expect(() => jqNeedsOf(command("--arg a 1", "label $out | $a"))).toThrow(
+      "no probe uses the jq keyword label",
     );
     // A declared name inside a string is a string, not a function.
     expect(jqNeedsOf(command("--arg a 1", '{"ltrimstr": $a} | tojson'))).toEqual({
@@ -1215,8 +1239,10 @@ done
 
   it("fails on a currency that disagrees with the declared one", () => {
     // The helper's own proof. Generated code has no supplier currency to
-    // pass for a cost the caller supplies; the ticket that reads a cost off
-    // the supplier's response (#583) owes the case through the artifact.
+    // pass for a cost the caller supplies, nor for one read off the response
+    // in a currency it pins; a currency READ off the response is pinned with
+    // none declared, and one UBB holds that the tenant does not is refused by
+    // the server (#583 D1) — run through the artifact below.
     const ran = runShell(
       rendered("shell-reported-cost"),
       `${SOURCE}
@@ -1242,21 +1268,206 @@ printf 'disagrees=%s\\n' "$?"
     expect(module).not.toContain("provider_cost_micros");
   });
 
-  it("is never rendered for a cost read off the response, which stays blocked", () => {
+  it("is rendered for a cost read off the response on its own field, never the caller's", () => {
     const record = functionsOf(only(rendered("shell-blocked"), "module").contents).filter(
       (defined) => defined.name.endsWith("record_web_search"),
     );
 
-    // The call, and the program that is its body.
+    // The call, the program that reads its cost as written, and the program
+    // that is its body (#583).
     expect(record.map((defined) => defined.name)).toEqual([
-      "_ubb_jq_body_record_web_search", "ubb_record_web_search",
+      "_ubb_jq_cost_record_web_search", "_ubb_jq_body_record_web_search", "ubb_record_web_search",
     ]);
-    for (const defined of record) {
-      // Its own transport exists since #570; rendering the read is #583's.
-      expect(defined.lines.join("\n")).not.toMatch(
-        /provider_cost_micros|provider_response_cost_micros|"currency"|_ubb_to_micros/,
+    const call = record.at(-1)!.lines.join("\n");
+    expect(call).toContain(
+      '_ubb_body="{\\"provider_response_cost_micros\\":$_ubb_micros_provider_response_cost_micros,${_ubb_body#?}"',
+    );
+    expect(record.map((defined) => defined.lines.join("\n")).join("\n")).not.toMatch(
+      /provider_cost_micros/,
+    );
+  });
+});
+
+describe("a supplier's cost read off the response, in a shell file", () => {
+  /** Run `record` of `branch` once per response, each written to a file
+   * exactly as given, and say what each call returned. */
+  function recorded(branch: string, record: string, responses: string[], options: RunOptions = {}) {
+    const lines = responses.flatMap((_response, index) => [
+      `printf '%s' "$RESPONSE_${index}" >response.json`,
+      `${record} customer_id=c idempotency_key=e${index} task_id=t response=response.json`,
+      `printf 'status_${index}=%s\\n' "$?"`,
+    ]);
+    const environment = Object.fromEntries(
+      responses.map((response, index) => [`RESPONSE_${index}`, response]),
+    );
+    const ran = runShell(rendered(branch), [SOURCE, ...lines].join("\n"), {
+      ...options,
+      environment: { ...environment, ...options.environment },
+    });
+    return { ran, statuses: responses.map((_, index) => said(ran)[`status_${index}`]) };
+  }
+  const atTheCost = (token: string) =>
+    `{"usageMetadata": {"promptTokenCount": 1200, "totalCost": ${token}}}`;
+  const REFUSED = String(SHELL_EXIT.valueRefused.status);
+
+  it("is read and converted exactly as the platform answers, row for row, under sh and bash", () => {
+    // B6 and B7: every row the platform's json and to_micros answered — 1 and
+    // "1" read, "1.25" read where the representation allows it, and 1.0, 1e0
+    // and 1.25 refused — answered the same by a file that sees only text.
+    let rows = 0;
+    for (const { representation, currency, path } of rowGroups()) {
+      const answer = responseCostInShell(
+        render(aCostReadAt("shell_http", path, representation, currency)),
+        RESPONSE_CASES,
+        "ubb_record_grounded_search",
+        representation,
+        currency,
       );
+      expect(answer.shells).toEqual(["sh", "bash"]);
+      expect(answer.disagreements, `${representation} ${currency}`).toEqual([]);
+      rows += answer.rows;
     }
+    expect(rows).toBe(responseRows().length);
+  });
+
+  it("goes on the wire as provider_response_cost_micros, every digit, never as provider_cost_micros", () => {
+    const { ran, statuses } = recorded("shell-response-cost", "ubb_record_grounded_search", [
+      atTheCost('"0.0042"'),
+      atTheCost("0"),
+      atTheCost('"0"'),
+      // Past what a double holds exactly, under the representation's micros.
+      atTheCost('"9223372036854.775807"'),
+    ]);
+
+    expect(statuses, ran.stderr).toEqual(["0", "0", "0", "0"]);
+    // Read off the bytes that arrived: the last figure has more digits than
+    // this test's own numbers hold.
+    expect(
+      ran.requests.map((request) => /"provider_response_cost_micros":(-?\d+)[,}]/.exec(request.raw)?.[1]),
+    ).toEqual(["4200", "0", "0", "9223372036854775807"]);
+    for (const request of ran.requests) {
+      expect(request.body.currency).toBe("usd");
+      expect(request.body.measurements).toEqual({ input_tokens: 1200 });
+      expect(Object.keys(request.body)).not.toContain("provider_cost_micros");
+    }
+  });
+
+  it("refuses, before anything is sent, a number written as a float, however it is spelled", () => {
+    const tokens = ["1.0", "1e0", "1E+0", "0.1e1", "1.5e1", "1.25"];
+    const { ran, statuses } = recorded(
+      "shell-response-cost",
+      "ubb_record_grounded_search",
+      tokens.map(atTheCost),
+    );
+
+    expect(statuses).toEqual(tokens.map(() => REFUSED));
+    expect(ran.stderr).toContain(
+      `ubb_record_grounded_search: provider_response_cost_micros read at ["usageMetadata","totalCost"] ${MESSAGES.floatRead}`,
+    );
+    expect(ran.requests).toEqual([]);
+  });
+
+  it("refuses an over-precise amount, a flag, a null, a missing one and a response that is not JSON", () => {
+    const { ran, statuses } = recorded("shell-response-cost", "ubb_record_grounded_search", [
+      atTheCost('"0.0000001"'),
+      atTheCost("true"),
+      atTheCost("null"),
+      '{"usageMetadata": {"promptTokenCount": 1200}}',
+      "not json",
+      // Read raw, an empty file and two documents are text that is not one
+      // JSON document, the same on every jq (#583 B7).
+      "",
+      `${atTheCost('"1"')} ${atTheCost('"2"')}`,
+    ]);
+
+    expect(statuses).toEqual([REFUSED, REFUSED, REFUSED, REFUSED, REFUSED, REFUSED, REFUSED]);
+    expect(ran.stderr).toContain(MESSAGES.fractional);
+    expect(ran.stderr).toContain(MESSAGES.flag);
+    expect(ran.stderr).toContain(SHELL_MESSAGES.readNull);
+    expect(ran.stderr).toContain(SHELL_MESSAGES.readMissing);
+    expect(ran.stderr).toContain(SHELL_MESSAGES.readUnreadable);
+    expect(ran.requests).toEqual([]);
+  });
+
+  it("reads the currency off the response, pins it, and sends it as the event's", () => {
+    const { ran, statuses } = recorded(
+      "shell-response-cost-read-currency",
+      "ubb_record_billed_search",
+      ['{"billing": {"amountMinor": "125", "currency": " EUR "}}'],
+    );
+
+    expect(statuses, ran.stderr).toEqual(["0"]);
+    expect(ran.requests.map((request) => request.body)).toEqual([
+      expect.objectContaining({ provider_response_cost_micros: 1_250_000, currency: "eur" }),
+    ]);
+  });
+
+  it("refuses, before anything is sent, a currency it cannot read as one UBB holds", () => {
+    // D1: refused here only where it is no code UBB holds, or not text.
+    const { ran, statuses } = recorded("shell-response-cost-read-currency", "ubb_record_billed_search", [
+      '{"billing": {"amountMinor": "125", "currency": "xyz"}}',
+      '{"billing": {"amountMinor": "125", "currency": 840}}',
+      '{"billing": {"amountMinor": "125"}}',
+    ]);
+
+    expect(statuses).toEqual([REFUSED, REFUSED, REFUSED]);
+    expect(ran.stderr).toContain(`xyz ${MESSAGES.currencyUnknown}`);
+    expect(ran.stderr).toContain(MESSAGES.currencyNotText);
+    expect(ran.stderr).toContain(SHELL_MESSAGES.readMissing);
+    expect(ran.requests).toEqual([]);
+  });
+
+  it("returns UBB's refusal of a currency it holds and the tenant does not, as curl gave it", () => {
+    // D1: the one shared rule is the server's. The file sends the code it
+    // read and returns the refusal: never a status a stop has, and never 0.
+    const problem = {
+      type: "https://ubb.dev/errors/validation_error",
+      title: "Validation error",
+      status: 422,
+      code: "validation_error",
+      detail: "currency mismatch: event currency 'eur' does not match tenant currency 'usd'",
+    };
+    const { ran, statuses } = recorded(
+      "shell-response-cost-read-currency",
+      "ubb_record_billed_search",
+      ['{"billing": {"amountMinor": "125", "currency": "EUR"}}'],
+      {
+        answers: [
+          {
+            path: "/api/v1/metering/usage",
+            answer: { http_status: 422, raw_body: JSON.stringify(problem) },
+          },
+        ],
+      },
+    );
+
+    expect(statuses).toEqual(["22"]);
+    expect(ran.stderr).toContain("currency mismatch");
+    expect(ran.requests.map((request) => request.body.currency)).toEqual(["eur"]);
+  });
+
+  it("reads the response as text, never as a jq number, and never a second time where nothing else is read", () => {
+    const module = only(rendered("shell-response-cost-read-currency"), "module").contents;
+    const reading = functionsOf(module).find(
+      (defined) => defined.name === "_ubb_jq_cost_record_billed_search",
+    )!;
+
+    expect(reading.lines[1]).toBe("  jq --raw-output --raw-input --slurp \\");
+    expect(reading.lines.join("\n")).toContain('--from-file /dev/stdin "$1"');
+    // Each read takes the response as its raw input and no other way: an
+    // argument that parses JSON — `--argjson`, `--slurpfile` — would hand the
+    // program numbers that have already lost how they were written.
+    const reads = functionsOf(module).filter((defined) => /^_ubb_jq_(cost|currency)_/.test(defined.name));
+    expect(reads.map((defined) => defined.name)).toEqual([
+      "_ubb_jq_cost_record_billed_search",
+      "_ubb_jq_currency_record_billed_search",
+    ]);
+    for (const read of reads) {
+      expect(read.lines.join("\n"), read.name).not.toMatch(/--argjson|--slurpfile|--arg /);
+    }
+    // The body reads nothing off the response, so it is not handed it.
+    const body = functionsOf(module).find((defined) => defined.name === "_ubb_jq_body_record_billed_search")!;
+    expect(body.lines.join("\n")).not.toMatch(/--slurpfile|p_response/);
   });
 });
 
@@ -1303,6 +1514,7 @@ printf 'start=%s\\n' "$?"
     const ran = runShell(
       rendered("shell-blocked"),
       `${SOURCE}
+printf '%s' '{"cost": {"total": "0.25"}}' >r.json
 ubb_start_task customer_id=c idempotency_key=w
 printf 'start=%s\\n' "$?"
 for record in ubb_record_chat_completion ubb_record_draft_only ubb_record_web_search; do
@@ -1317,7 +1529,8 @@ done
       start: "0",
       ubb_record_chat_completion: refused,
       ubb_record_draft_only: refused,
-      ubb_record_web_search: refused,
+      // The cost read off the response is a complete call since #583, and runs.
+      ubb_record_web_search: "0",
     });
     // The constant is declared with its value (#571): what stops the call is
     // this Code Builder version, and it says so — never that a value is
@@ -1325,7 +1538,9 @@ done
     expect(ran.stderr).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
     expect(ran.stderr).not.toContain(`measurements.flat_fee ${MESSAGES.notConfigured}`);
     expect(ran.stderr).toContain("api_v1_metering_endpoints_record_usage (blocked)");
-    expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
+    expect(ran.requests.map((request) => request.path)).toEqual([
+      "/api/v1/tasks", "/api/v1/metering/usage",
+    ]);
   });
 
   it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
@@ -1708,6 +1923,109 @@ printf 'status=%s\\n' "$?"
       expect(answer.output).toContain(SHELL_MESSAGES.verifyUsage);
       expect(answer.output).toContain('  "chat.completion"');
     }
+  });
+
+  describe("of a supplier's cost read off the response", () => {
+    // B8 (owner's ruling 5 on #583): checked by structure and never by size,
+    // with the runnable file's own reading, pinning and conversion. The
+    // response is written as TEXT, so a float can be spelled `1.0`.
+    function verifyText(branch: string, eventType: string, text: string) {
+      const ran = runShell(
+        rendered(branch),
+        `printf '%s' "$CAPTURED" >captured.json
+sh verify_integration.sh "$EVENT_TYPE" captured.json
+printf 'status=%s\\n' "$?"
+`,
+        { environment: { CAPTURED: text, EVENT_TYPE: eventType } },
+      );
+      return { status: Number(said(ran).status), output: ran.stdout + ran.stderr, requests: ran.requests };
+    }
+    const atTheCost = (token: string) =>
+      `{"usageMetadata": {"promptTokenCount": 1200, "totalCost": ${token}}}`;
+    const line = (verdict: string, name: string, message: string) =>
+      `  ${verdict} "${name}" ${message}`;
+    const COST = "provider_response_cost_micros";
+
+    it("passes a cost of zero, written as an integer and as a decimal string", () => {
+      for (const token of ["0", '"0"', '"0.0042"', "42"]) {
+        const answer = verifyText("shell-response-cost", "grounded.search", atTheCost(token));
+
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyResolves));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyAmount));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyConverts));
+        expect(answer.output, token).toContain(MESSAGES.verifyPassed);
+        expect(answer.status, token).toBe(0);
+        expect(answer.requests).toEqual([]);
+      }
+    });
+
+    it("fails, by structure, a cost that is missing, null, a float or not an amount", () => {
+      const missing = verifyText(
+        "shell-response-cost",
+        "grounded.search",
+        '{"usageMetadata": {"promptTokenCount": 1200}}',
+      );
+      expect(missing.output).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyResolves));
+      expect(missing.output).toContain(`1 ${MESSAGES.verifyFailed}`);
+      expect(missing.status).toBe(1);
+
+      for (const token of ["null", "1.0", "1e0", "0.0042", "true", '{"total": 1}']) {
+        const answer = verifyText("shell-response-cost", "grounded.search", atTheCost(token));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyResolves));
+        expect(answer.output, token).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyAmount));
+        expect(answer.status, token).toBe(1);
+      }
+    });
+
+    it("fails an amount that does not convert to whole micros exactly", () => {
+      const answer = verifyText("shell-response-cost", "grounded.search", atTheCost('"0.0000001"'));
+
+      expect(answer.output).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyAmount));
+      expect(answer.output).toContain(line(MESSAGES.verifyFail, COST, MESSAGES.verifyConverts));
+      expect(answer.status).toBe(1);
+    });
+
+    it("checks a currency read beside the cost: that it is there, and one UBB holds", () => {
+      const billed = (currency: string) => `{"billing": {"amountMinor": "125"${currency}}}`;
+      const branch = "shell-response-cost-read-currency";
+      const held = verifyText(branch, "billed.search", billed(', "currency": " EUR "'));
+      const foreign = verifyText(branch, "billed.search", billed(', "currency": "xyz"'));
+      const absent = verifyText(branch, "billed.search", billed(""));
+
+      expect(held.output).toContain(line(MESSAGES.verifyOk, "currency", MESSAGES.verifyCurrency));
+      expect(held.output).toContain(line(MESSAGES.verifyOk, COST, MESSAGES.verifyConverts));
+      expect(held.status).toBe(0);
+      expect(foreign.output).toContain(line(MESSAGES.verifyFail, "currency", MESSAGES.verifyCurrency));
+      expect(foreign.status).toBe(1);
+      expect(absent.output).toContain(line(MESSAGES.verifyFail, "currency", MESSAGES.verifyResolves));
+      expect(absent.status).toBe(1);
+    });
+
+    it("has something to check for an Event Type that reads only a cost", () => {
+      const asked = verifyText("shell-response-cost-read-currency", "something.else", "{}");
+
+      expect(asked.status).toBe(2);
+      expect(asked.output).toContain('  "billed.search"');
+      expect(asked.output).not.toContain(MESSAGES.verifyNothing);
+    });
+
+    it("reads, pins and converts with the runnable file's own text", () => {
+      // One text, two files: what the verify script calls a value is what the
+      // runnable file sends, because both are the same functions.
+      const files = rendered("shell-response-cost-read-currency");
+      const defined = (kind: "module" | "verify_script") =>
+        new Map(functionsOf(only(files, kind).contents).map((found) => [found.name, found.lines.join("\n")]));
+      const module = defined("module");
+      const verify = defined("verify_script");
+
+      for (const name of [
+        "_ubb_jq_cost_record_billed_search", "_ubb_jq_currency_record_billed_search",
+        "_ubb_pin_currency", "_ubb_to_micros", "_ubb_known_currency", "_ubb_trim",
+      ]) {
+        expect(module.get(name), name).toBeDefined();
+        expect(verify.get(name), name).toBe(module.get(name));
+      }
+    });
   });
 });
 

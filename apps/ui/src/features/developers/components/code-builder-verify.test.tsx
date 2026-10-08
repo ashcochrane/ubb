@@ -21,6 +21,7 @@ import type { CodeBuilderSearch } from "../lib/code-builder-search";
 import {
   diagnosticCodeLabel,
   STALE_RESULT_WARNING,
+  SUPPLIER_COST_SAMPLE,
   VERIFIED_SCOPE,
 } from "../lib/code-builder-words";
 import { GROUPING_FIELD_REQUIRED } from "../lib/verification";
@@ -39,6 +40,9 @@ const BLOCKED: CodeBuilderSearch = {
   task_type: "report_generation",
   event_types: ["chat.completion", "draft.only", "web.search"],
 };
+/** A supplier's cost read off the provider's response (#583). */
+const READ_OFF: CodeBuilderSearch = { task_type: "grounded_answer", event_types: ["grounded.search"] };
+const READ_OFF_COST = SUPPLIER_COST_SAMPLE.provider_response_cost_micros;
 
 const stage = (name: string) => screen.getByRole("region", { name });
 const verify = () => stage("Verify");
@@ -79,6 +83,15 @@ async function verifyReportedCost() {
   const record = await recordFields("web.search");
   type(record, "searches", "3");
   type(record, "Supplier cost, in micros", "1250000");
+  send();
+  return result();
+}
+
+/** The same for a cost read off the response, as the platform verified it. */
+async function verifyReadOffCost() {
+  const record = await recordFields("grounded.search");
+  type(record, "input_tokens", "1200");
+  type(record, READ_OFF_COST.label, "4200");
   send();
   return result();
 }
@@ -141,10 +154,38 @@ describe("Verify, offered", () => {
 
     expect(within(record).getByLabelText("input_tokens")).toBeInTheDocument();
     expect(within(record).queryByLabelText("Supplier cost, in micros")).toBeNull();
+    expect(within(record).queryByLabelText(READ_OFF_COST.label)).toBeNull();
+  });
+
+  // #583 D3: the sample is the cost generated code SENDS, already read and
+  // converted, and the form says Verify tests nothing about the reading.
+  it("asks a cost read off the response as the micros the code sends, and says what Verify does not test", async () => {
+    renderCodeBuilder(READ_OFF);
+    const record = await recordFields("grounded.search");
+
+    expect(within(record).getByLabelText(READ_OFF_COST.label)).toBeInTheDocument();
+    expect(within(record).queryByLabelText("Supplier cost, in micros")).toBeNull();
+    expect(record).toHaveTextContent(
+      "Verify supplies the resulting supplier cost in micros to test UBB recording and costing. " +
+        "Generated-artifact execution tests the provider-response read and conversion.",
+    );
+    // Never the raw response: nothing here takes one.
+    expect(within(record).queryByLabelText(/response/i)).toBe(within(record).getByLabelText(READ_OFF_COST.label));
   });
 });
 
 describe("Verify, run", () => {
+  // The mock answers only the exact request the platform verified, which sent
+  // the sample on `provider_response_cost_micros`: a page that sent it on the
+  // caller's field would be told it is not in the mock.
+  it("verifies a cost read off the response, sent on the field that says so", async () => {
+    renderCodeBuilder(READ_OFF);
+    const shown = await verifyReadOffCost();
+
+    expect(within(shown).getByRole("status")).toHaveTextContent(/^Verified:/);
+    expect(shown).toHaveTextContent((await answer("response-cost")).configuration_fingerprint);
+  });
+
   it("verifies the Blueprint on screen and names where it ran", async () => {
     renderCodeBuilder(REPORTED);
     const shown = await verifyReportedCost();
@@ -353,6 +394,18 @@ describe("a result and the samples it ran with", () => {
     await verifyReportedCost();
 
     edit(await recordFields("web.search"));
+
+    await isGone();
+    expect(verify()).not.toHaveTextContent(/Verified:/);
+  });
+
+  // #583 D3: the cost read off the response is part of the request, so a
+  // green result cannot survive its edit — as ruled for every sample on #581.
+  it("clears a Verified result once the cost read off the response changes", async () => {
+    renderCodeBuilder(READ_OFF);
+    await verifyReadOffCost();
+
+    type(await recordFields("grounded.search"), READ_OFF_COST.label, "4201");
 
     await isGone();
     expect(verify()).not.toHaveTextContent(/Verified:/);

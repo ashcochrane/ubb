@@ -300,7 +300,7 @@ describe("the header", () => {
     expect(header("calculated-cost")).toEqual(
       expect.arrayContaining([
         "schema_version = 1",
-        "renderer_contract_version = 1",
+        "renderer_contract_version = 2",
         "sdk_major_version = 3",
         'target = "python_sdk"',
         `configuration_fingerprint = "${blueprint.configuration_fingerprint}"`,
@@ -336,7 +336,7 @@ describe("the header", () => {
     const blueprint = fixture("blocked");
     const lines = header("blocked");
 
-    expect(blueprint.diagnostics.length).toBeGreaterThan(3);
+    expect(blueprint.diagnostics.length).toBeGreaterThan(2);
     for (const diagnostic of blueprint.diagnostics) {
       const at = lines.indexOf(
         `diagnostic = "${diagnostic.code}" · severity "${diagnostic.severity}"` +
@@ -346,7 +346,7 @@ describe("the header", () => {
       expect(at, diagnostic.code).toBeGreaterThan(-1);
       const after = lines.slice(at + 1, at + 1 + REMEDIATION[diagnostic.code].length);
       expect(after).toEqual(REMEDIATION[diagnostic.code]);
-      // A diagnostic with nothing to change carries no request (#571, #570), and
+      // A diagnostic with nothing to change carries no request (#571), and
       // the header then states none rather than a null.
       const request = diagnostic.remediation_request ?? null;
       const stated = `remediation_request = ${JSON.stringify(request)}`;
@@ -355,7 +355,6 @@ describe("the header", () => {
     }
     expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
       "constant_measurement_not_renderable",
-      "reported_cost_provider_response_not_renderable",
     ]);
   });
 
@@ -426,6 +425,30 @@ describe("the shapes a value takes", () => {
     expect(fixed).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
     expect(perEvent).toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.event_priced!]));
     expect(perEvent).not.toEqual(expect.arrayContaining([...PRICING_MODE_COMMENTS.fixed!]));
+  });
+
+  it("carries the words and helpers of the costs it converts, and no other's", () => {
+    // #583: a file that reads a cost off the response says nothing written
+    // for a caller's value, and a currency's words and helper go only where a
+    // currency is read.
+    const said = (branch: string) => hashComments(moduleOf(branch).contents).map(commentText);
+    const caller = said("reported-cost");
+    const pinned = said("response-cost");
+    const read = said("response-cost-read-currency");
+
+    for (const words of [caller, pinned, read]) {
+      expect(words).toEqual(expect.arrayContaining([...COMMENTS.reportedCost]));
+    }
+    expect(caller).toEqual(expect.arrayContaining([...COMMENTS.callerCost]));
+    expect(caller).not.toEqual(expect.arrayContaining([...COMMENTS.responseCost]));
+    for (const words of [pinned, read]) {
+      expect(words).toEqual(expect.arrayContaining([...COMMENTS.responseCost]));
+      expect(words).not.toEqual(expect.arrayContaining([...COMMENTS.callerCost]));
+    }
+    expect(read).toEqual(expect.arrayContaining([...COMMENTS.responseCurrency]));
+    expect(pinned).not.toEqual(expect.arrayContaining([...COMMENTS.responseCurrency]));
+    expect(moduleOf("response-cost-read-currency").contents).toContain("def _read_currency(");
+    expect(moduleOf("response-cost").contents).not.toContain("_read_currency");
   });
 
   it("writes a valued constant as one this version cannot generate: no file of either target calls it missing", () => {
@@ -604,9 +627,19 @@ describe("what the renderer refuses", () => {
     ],
     [
       "a renderer contract it does not know",
-      /written to renderer contract 1, and the Blueprint was resolved for 2/,
+      /written to renderer contract 2, and the Blueprint was resolved for 3/,
       (b) => {
-        b.renderer_contract_version = 2;
+        b.renderer_contract_version = 3;
+      },
+    ],
+    [
+      // #583: contract 1 promised a path only under a keyed entry. A document
+      // resolved for it is read by nothing here, so a renderer of either
+      // contract never meets the other's document.
+      "a document resolved for the contract before a value of its own could be read off a response",
+      /written to renderer contract 2, and the Blueprint was resolved for 1/,
+      (b) => {
+        b.renderer_contract_version = 1;
       },
     ],
     [
@@ -700,6 +733,33 @@ describe("what the renderer refuses", () => {
       (b) => {
         b.calls[0]!.arguments[4]!.binding_class = "runtime_bound";
         b.calls[0]!.arguments[4]!.parameter_name = "pricing_mode";
+      },
+    ],
+    [
+      // #583: a value of a field of its own is read off the response only for
+      // a supplier's cost and the currency beside it.
+      "a path on a field that is neither a cost nor its currency",
+      /task_id is read off the response, and this target reads only a supplier's cost and its currency that way/,
+      (b) => {
+        const record = b.calls.find((call) => call.operation_id.endsWith("record_usage"))!;
+        record.arguments.push({
+          ...record.arguments.find((argument) => argument.name === "event_type")!,
+          name: "task_id.source_path",
+          value: ["usage", "task"],
+        });
+      },
+    ],
+    [
+      // #583: the response a path is read off is never also sent whole — as
+      // the event's currency, say — however the document names it.
+      "a parameter asked for as a response and as a value",
+      /the parameter response of api_v1_metering_endpoints_record_usage is asked for as a response a path is read off and as a value sent as it is/,
+      (b) => {
+        for (const argument of everyArgument(b)) {
+          if (argument.name === "customer_id" && argument.parameter_name === "customer_id") {
+            argument.parameter_name = "response";
+          }
+        }
       },
     ],
   ];

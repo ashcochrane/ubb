@@ -66,7 +66,7 @@ function samplesFor(plan: SamplePlan, request: BlueprintVerificationRequest): Sa
           const sample = sent?.measurements?.[measurement.code];
           return sample === undefined ? "" : String(sample);
         }),
-        providerCost: sent?.provider_cost_micros == null ? "" : String(sent.provider_cost_micros),
+        providerCost: String(sent?.provider_cost_micros ?? sent?.provider_response_cost_micros ?? ""),
       };
     }),
   };
@@ -127,12 +127,29 @@ describe("what Verify asks for, read off the Blueprint's tokens", () => {
         `measurements.${measurement.code}.required_for_costing`,
       ]);
     }
-    expect(record?.reportsCost).toBe(false);
+    expect(record?.costField).toBeNull();
   });
 
-  it("asks for a supplier cost only where the call reports one", async () => {
-    expect((await planOf("reported-cost")).records.map((record) => record.reportsCost)).toEqual([true]);
-    expect((await planOf("calculated-cost")).records.map((record) => record.reportsCost)).toEqual([false]);
+  it("asks for a supplier cost only where the call reports one, on the field it reports it on", async () => {
+    expect((await planOf("reported-cost")).records.map((record) => record.costField)).toEqual([
+      "provider_cost_micros",
+    ]);
+    // #583: a cost generated code reads off the provider's response.
+    expect((await planOf("response-cost")).records.map((record) => record.costField)).toEqual([
+      "provider_response_cost_micros",
+    ]);
+    expect((await planOf("calculated-cost")).records.map((record) => record.costField)).toEqual([null]);
+  });
+
+  it("sends a cost read off the response on its own field, and never on the caller's", async () => {
+    const plan = await planOf("response-cost");
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, providerCost: " 0 " }));
+
+    // A cost of zero is a cost, and is sent.
+    expect(verificationRequestOf(plan, samples).records).toEqual([
+      { event_type: "grounded.search", measurements: {}, provider_response_cost_micros: 0 },
+    ]);
   });
 
   // A key's token NAME is encoded; its VALUE is the key. A key read back out
@@ -180,6 +197,7 @@ describe("the request the samples make", () => {
       "direct-task-events-partial",
       "explicit-subtasks",
       "reported-cost",
+      "response-cost",
     ]);
   });
 
@@ -188,7 +206,7 @@ describe("the request the samples make", () => {
   // the committed contract the console is built from, not to a list here.
   it("posts only fields the Verify request publishes", async () => {
     const requests = await Promise.all(
-      ["reported-cost", "explicit-subtasks"].map(async (name) => {
+      ["reported-cost", "response-cost", "explicit-subtasks"].map(async (name) => {
         const plan = await planOf(name);
         const fixture = await loadVerificationFixture(name);
         return verificationRequestOf(plan, samplesFor(plan, fixture.request));
@@ -202,8 +220,11 @@ describe("the request the samples make", () => {
       for (const key of Object.keys(body)) expect(request).toContain(key);
     }
     for (const key of sent) expect(record).toContain(key);
-    // Not vacuous: between them the two send every field a record can carry.
-    expect([...sent].sort()).toEqual(["event_type", "measurements", "provider_cost_micros", "subtask_type"]);
+    // Not vacuous: between them the three send every field a record can carry.
+    expect([...sent].sort()).toEqual(record.sort());
+    expect([...sent].sort()).toEqual([
+      "event_type", "measurements", "provider_cost_micros", "provider_response_cost_micros", "subtask_type",
+    ]);
   });
 
   it("sends nothing for a blank sample, and trims what it sends", async () => {
@@ -467,6 +488,13 @@ describe("which Blueprint and which request an answer belongs to", () => {
       }),
     ],
     ["an Event Type left out", (request) => ({ ...request, records: request.records.slice(0, 0) })],
+    [
+      "a supplier cost read off the response",
+      (request) => ({
+        ...request,
+        records: request.records.map((record) => ({ ...record, provider_response_cost_micros: 4200 })),
+      }),
+    ],
   ])("is not the current one once %s on screen differs from what was sent", async (_edit, change) => {
     const sent = await sentFor("calculated-cost");
     const blueprint = await loadBlueprintFixture("calculated-cost");

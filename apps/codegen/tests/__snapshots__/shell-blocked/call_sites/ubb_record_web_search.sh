@@ -5,4 +5,5 @@ ubb_record_web_search \
   customer_id="$customer_id" \
   idempotency_key="$idempotency_key" \
   task_id="$task_id" \
-  searches="$searches" || return $?
+  searches="$searches" \
+  response="$response" || return $?

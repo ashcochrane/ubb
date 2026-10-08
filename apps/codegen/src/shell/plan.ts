@@ -25,15 +25,18 @@
  * - `text`: a JSON string. The default.
  * - `number`: a keyed entry that declares a `value_type`. A whole number,
  *   checked as text and carried exactly or refused.
- * - `file`: a keyed entry that declares a `source_path`, on a call whose
- *   response is declared to be JSON. The path of a file holding the
- *   supplier's response, which the declared path is then read off.
- * - `cost`: a field that declares an `amount_representation`. A supplier's
- *   cost, converted to whole micros on its digits.
+ * - `file`: a keyed entry that declares a `source_path`, or — since renderer
+ *   contract 2 (#583) — a field of its own that does (a supplier's cost and
+ *   its currency), on a call whose response is declared to be JSON. The path
+ *   of a file holding the supplier's response, which the declared path is
+ *   then read off.
+ * - `cost`: a field that declares an `amount_representation` and no
+ *   `source_path`. A supplier's cost the caller passes, converted to whole
+ *   micros on its digits.
  * - `place`: a token named for a place in the route. Written into the URL.
- * - `unread`: a keyed entry that declares a `source_path` this target has no
- *   way to read. Still asked for, so the call's shape is the declared one;
- *   the value is written as a call that raises.
+ * - `unread`: a value that declares a `source_path` this target has no way
+ *   to read. Still asked for, so the call's shape is the declared one; the
+ *   value is written as a call that raises.
  */
 import { refuse, type Json, type ResolvedIntegrationBlueprint } from "../blueprint.ts";
 import {
@@ -131,6 +134,28 @@ export type Value =
       readonly representation: string;
       /** The currency the call declares the cost in, or none. */
       readonly declared: string;
+    }
+  /**
+   * A supplier's cost read off the response at a declared path (renderer
+   * contract 2, #583): read as the response WROTE it, converted to whole
+   * micros on its digits, and written into the body by the shell.
+   */
+  | {
+      readonly kind: "response_cost";
+      readonly parameter: Parameter;
+      readonly path: readonly string[];
+      readonly representation: string;
+      /** The currency the call pins the cost in, or none where it is read. */
+      readonly declared: string;
+      /** Where the currency is read off the same response, or `null`. */
+      readonly currencyPath: readonly string[] | null;
+    }
+  /** The currency read off the response beside such a cost: pinned to a code
+   * UBB holds, and written into the body by the shell. */
+  | {
+      readonly kind: "response_currency";
+      readonly parameter: Parameter;
+      readonly path: readonly string[];
     };
 
 /** One declared key of a keyed field, and the value under it. */
@@ -331,13 +356,55 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
       continue;
     }
     const representation = factNamed(field.facts, FACT.amountRepresentation);
-    if (representation !== undefined) {
-      if (
-        typeof representation !== "string" ||
-        !(Object.values(AMOUNT_REPRESENTATION) as string[]).includes(representation)
-      ) {
-        refuse(`${String(representation)} is not an amount representation this target converts`);
+    if (
+      representation !== undefined &&
+      (typeof representation !== "string" ||
+        !(Object.values(AMOUNT_REPRESENTATION) as string[]).includes(representation))
+    ) {
+      refuse(`${String(representation)} is not an amount representation this target converts`);
+    }
+    const read = factNamed(field.facts, FACT.sourcePath);
+    if (read !== undefined) {
+      // A value of a field of its own read off the response (renderer
+      // contract 2, #583): a supplier's cost, or the currency beside it. The
+      // response is a file, as for every quantity read off it.
+      if (representation === undefined && field.name !== FIELD.currency) {
+        refuse(
+          `${field.name} is read off the response, and this target reads only a ` +
+            `supplier's cost and its currency that way`,
+        );
       }
+      const path = segments(read);
+      const parameter = used(binding.name, readable ? "file" : "unread");
+      const currencyRead = call.fields.find(
+        (other): other is Extract<typeof other, { shape: "scalar" }> =>
+          other.shape === "scalar" && other.name === FIELD.currency,
+      );
+      const currencyPath = currencyRead === undefined
+        ? undefined
+        : factNamed(currencyRead.facts, FACT.sourcePath);
+      const declared = literalOf(call, FIELD.currency);
+      body.push({
+        shape: "scalar",
+        name: field.name,
+        comments,
+        value: !readable
+          ? { kind: "unconfigured", token: field.name }
+          : representation === undefined
+            ? { kind: "response_currency", parameter, path }
+            : {
+                kind: "response_cost",
+                parameter,
+                path,
+                representation: representation as string,
+                declared: typeof declared === "string" ? declared : "",
+                currencyPath: currencyPath === undefined ? null : segments(currencyPath),
+              },
+        optional: false,
+      });
+      continue;
+    }
+    if (representation !== undefined) {
       const declared = literalOf(call, FIELD.currency);
       body.push({
         shape: "scalar",
