@@ -346,6 +346,9 @@ class Server:
             answer = {"event_id": f"event_{len(self.requests)}",
                       "suspended": False, "costing_status": "known",
                       "pricing_status": "known", "stop": False,
+                      # Required keys, null where nothing stopped (#569).
+                      "trigger_source": None, "stop_bound_micros": None,
+                      "stop_measured_micros": None,
                       "task_id": body.get("task_id")}
         elif path.endswith("/close"):
             answer = {
