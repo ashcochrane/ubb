@@ -1092,7 +1092,8 @@
                   "enforcement_patrol",
                   "parent_cascade",
                   "pool_crossing",
-                  "stale_reaper"
+                  "stale_reaper",
+                  "charge_projection"
                 ]
               },
               {
@@ -6898,6 +6899,18 @@
             "title": "Stop",
             "type": "boolean"
           },
+          "stop_bound_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The monetary bound the stop named in `stop_reason` was measured against, as it stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling \u2014 the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For `customer_spend_pool`: the Pool's stop line (its cap times its hard-stop percentage, over 100), for the customer whose Pool it is. For `hard_floor`: the wallet's floor as a balance \u2014 the negated minimum balance, 0 or below, where 0 is a real floor. Null when nothing stopped and for `task_not_active`, and never 0 for 'does not apply'. Later configuration does not move it, and on an idempotent replay it is the original acknowledgement's.",
+            "title": "Stop Bound Micros"
+          },
           "stop_context": {
             "anyOf": [
               {
@@ -6909,6 +6922,18 @@
               }
             ],
             "title": "Stop Context"
+          },
+          "stop_measured_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The monetary amount assessed against `stop_bound_micros` when the stop was established. For `task_cogs_ceiling`: the governing unit of work's supplier cost (COGS) total, at or above the bound. For `customer_spend_pool`: that customer's month-to-date billed charges, at or above it. For `hard_floor`: the wallet balance, below it. For a customer-wide stop already standing when this report arrived, it is the figure the stop opened on, not where the counter stands now. Null when nothing stopped and for `task_not_active`. On an idempotent replay, the original acknowledgement's.",
+            "title": "Stop Measured Micros"
           },
           "stop_reason": {
             "anyOf": [
@@ -6929,6 +6954,7 @@
                 "type": "null"
               }
             ],
+            "description": "Why UBB is asking you to stop: which bound was reached, in the registry's words (the values under `x-ubb-known-values`), or `task_not_active` \u2014 the one verdict that is not a bound, which UBB produces and the registry deliberately does not list: this report landed on a unit of work that had already ended, and it was still recorded and charged. Null when `stop` is false. Open: accept a reason not listed here.",
             "title": "Stop Reason"
           },
           "stop_scope": {
@@ -7000,6 +7026,27 @@
               }
             ],
             "title": "Task Total Unresolved Event Count"
+          },
+          "trigger_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "trigger_source",
+                "x-ubb-known-values": [
+                  "usage_ingest",
+                  "enforcement_patrol",
+                  "parent_cascade",
+                  "pool_crossing",
+                  "stale_reaper",
+                  "charge_projection"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mechanism that applied the stop this acknowledgement names \u2014 never its cause, which is `stop_reason`. A unit of work's ceiling (`task_cogs_ceiling`) is crossed by this report: `usage_ingest`. A customer-wide stop (`customer_spend_pool`, `hard_floor`) names the mechanism that OPENED the stop episode this report fell in: `usage_ingest` (a usage report's recording or its drawdown), `enforcement_patrol` (the periodic reconcile) or `charge_projection` (the drawdown of a delivered fixed-price unit's Charge). Null when nothing stopped, and for `task_not_active`, where no mechanism applied a stop on this report. On an idempotent replay, the original acknowledgement's.",
+            "title": "Trigger Source"
           },
           "uncosted_measurement_keys": {
             "default": [],
@@ -9890,6 +9937,452 @@
         "title": "UnsupportedMeasureOut",
         "type": "object"
       },
+      "UsageBatchItemResponse": {
+        "description": "One batch item's verdict (#569 B9) \u2014 the field set #78 unified across\nthe batch route and the async ingest route, which slice 1 deleted; this\nis the surviving shape, TYPED. An accepted item (`accepted: true`) is the\nsingle route's acknowledgement, field for field and with the meaning\n`RecordUsageResponse` publishes for each. A rejected item was never\nrecorded: it carries `accepted: false`, a registry `code` and a\n`detail`, `stop` false, every stop fact null and no acknowledgement\nfield set.",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "billed_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billed Cost Micros"
+          },
+          "ceiling_remaining_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Remaining Micros"
+          },
+          "ceiling_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "within_ceiling",
+                  "ceiling_reached",
+                  "indeterminate",
+                  "not_applicable"
+                ],
+                "type": "string",
+                "x-ubb-concept": "ceiling_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Status"
+          },
+          "ceiling_used_percentage": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ceiling Used Percentage"
+          },
+          "claimed_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the caller believes this call cost. Diagnostic only, recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as `provider_cost_micros` on a response.",
+            "title": "Claimed Provider Cost Micros"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "costing_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "unresolved",
+                  "not_applicable"
+                ],
+                "type": "string",
+                "x-ubb-concept": "costing_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costing Status"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Id"
+          },
+          "grouping_fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Grouping Fields",
+            "type": "object"
+          },
+          "measurements": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measurements"
+          },
+          "new_balance_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Balance Micros"
+          },
+          "not_applicable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixed_task_pricing",
+                  "tenant_not_billing"
+                ],
+                "type": "string",
+                "x-ubb-concept": "not_applicable_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Applicable Reason"
+          },
+          "parent_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Task Id"
+          },
+          "pricing_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin_over_cost",
+                  "direct_event_price"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Method"
+          },
+          "pricing_receipt": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
+            "title": "Pricing Receipt"
+          },
+          "pricing_receipt_subject_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "usage_event",
+                  "charge"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_receipt_subject_type"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Receipt Subject Type"
+          },
+          "pricing_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "waived",
+                  "unknown",
+                  "not_applicable"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Status"
+          },
+          "provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The supplier cost (COGS) UBB resolved for this event: the one canonical amount, whichever valid source supplied it \u2014 worked out from Cost Rates, or a reported figure that arrived on the transport the Event Type's publication admitted when the event was recorded (`provider_cost_micros` or `provider_response_cost_micros` on the recording request) \u2014 and zero on the posting that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled: the amount is null wherever that status is not `known`.",
+            "title": "Provider Cost Micros"
+          },
+          "stop": {
+            "default": false,
+            "title": "Stop",
+            "type": "boolean"
+          },
+          "stop_bound_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The monetary bound the stop named in `stop_reason` was measured against, as it stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling \u2014 the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For `customer_spend_pool`: the Pool's stop line (its cap times its hard-stop percentage, over 100), for the customer whose Pool it is. For `hard_floor`: the wallet's floor as a balance \u2014 the negated minimum balance, 0 or below, where 0 is a real floor. Null when nothing stopped and for `task_not_active`, and never 0 for 'does not apply'. Later configuration does not move it, and on an idempotent replay it is the original acknowledgement's.",
+            "title": "Stop Bound Micros"
+          },
+          "stop_context": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Context"
+          },
+          "stop_measured_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The monetary amount assessed against `stop_bound_micros` when the stop was established. For `task_cogs_ceiling`: the governing unit of work's supplier cost (COGS) total, at or above the bound. For `customer_spend_pool`: that customer's month-to-date billed charges, at or above it. For `hard_floor`: the wallet balance, below it. For a customer-wide stop already standing when this report arrived, it is the figure the stop opened on, not where the counter stands now. Null when nothing stopped and for `task_not_active`. On an idempotent replay, the original acknowledgement's.",
+            "title": "Stop Measured Micros"
+          },
+          "stop_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "reason_code",
+                "x-ubb-known-values": [
+                  "task_cogs_ceiling",
+                  "customer_spend_pool",
+                  "parent_killed",
+                  "silence_window",
+                  "hard_floor",
+                  "absolute_deadline",
+                  "parent_expired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why UBB is asking you to stop: which bound was reached, in the registry's words (the values under `x-ubb-known-values`), or `task_not_active` \u2014 the one verdict that is not a bound, which UBB produces and the registry deliberately does not list: this report landed on a unit of work that had already ended, and it was still recorded and charged. Null when `stop` is false. Open: accept a reason not listed here.",
+            "title": "Stop Reason"
+          },
+          "stop_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Scope"
+          },
+          "suspended": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "task_total_billed_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Total Billed Cost Micros"
+          },
+          "task_total_provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Total Provider Cost Micros"
+          },
+          "task_total_unpriced_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Total Unpriced Event Count"
+          },
+          "task_total_unresolved_event_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Total Unresolved Event Count"
+          },
+          "trigger_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "trigger_source",
+                "x-ubb-known-values": [
+                  "usage_ingest",
+                  "enforcement_patrol",
+                  "parent_cascade",
+                  "pool_crossing",
+                  "stale_reaper",
+                  "charge_projection"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mechanism that applied the stop this acknowledgement names \u2014 never its cause, which is `stop_reason`. A unit of work's ceiling (`task_cogs_ceiling`) is crossed by this report: `usage_ingest`. A customer-wide stop (`customer_spend_pool`, `hard_floor`) names the mechanism that OPENED the stop episode this report fell in: `usage_ingest` (a usage report's recording or its drawdown), `enforcement_patrol` (the periodic reconcile) or `charge_projection` (the drawdown of a delivered fixed-price unit's Charge). Null when nothing stopped, and for `task_not_active`, where no mechanism applied a stop on this report. On an idempotent replay, the original acknowledgement's.",
+            "title": "Trigger Source"
+          },
+          "uncosted_measurement_keys": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncosted Measurement Keys",
+            "type": "array"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "title": "UsageBatchItemResponse",
+        "type": "object"
+      },
       "UsageBatchRequest": {
         "properties": {
           "events": {
@@ -9919,10 +10412,9 @@
             "type": "integer"
           },
           "results": {
-            "description": "One verdict per submitted event, in the order submitted. An accepted item (`accepted: true`) carries the single route's acknowledgement fields (`RecordUsageResponse`), each with the meaning that schema publishes for it \u2014 `provider_cost_micros` included. A rejected item carries `accepted: false`, a registry `code` and a `detail`, with `stop` false and `stop_reason` and `stop_scope` null.",
+            "description": "One verdict per submitted event, in the order submitted. An accepted item (`accepted: true`) carries the single route's acknowledgement fields, each with the meaning `RecordUsageResponse` publishes for it. A rejected item carries `accepted: false`, a registry `code` and a `detail`, with `stop` false and every stop fact null.",
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/UsageBatchItemResponse"
             },
             "title": "Results",
             "type": "array"
@@ -22323,7 +22815,8 @@
                           "enforcement_patrol",
                           "parent_cascade",
                           "pool_crossing",
-                          "stale_reaper"
+                          "stale_reaper",
+                          "charge_projection"
                         ]
                       },
                       "unresolved_event_count": {
@@ -22529,7 +23022,8 @@
                           "enforcement_patrol",
                           "parent_cascade",
                           "pool_crossing",
-                          "stale_reaper"
+                          "stale_reaper",
+                          "charge_projection"
                         ]
                       },
                       "unresolved_event_count": {
@@ -22730,7 +23224,8 @@
                           "enforcement_patrol",
                           "parent_cascade",
                           "pool_crossing",
-                          "stale_reaper"
+                          "stale_reaper",
+                          "charge_projection"
                         ]
                       },
                       "unresolved_event_count": {
@@ -22931,7 +23426,8 @@
                           "enforcement_patrol",
                           "parent_cascade",
                           "pool_crossing",
-                          "stale_reaper"
+                          "stale_reaper",
+                          "charge_projection"
                         ]
                       },
                       "unresolved_event_count": {

@@ -1946,6 +1946,10 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         under a MEASURE's own name with a state beside it, which is why nothing
         on this list replaces them: the property name itself is what the
         collapse stopped using for a total.
+
+        EIGHT SINCE #569: the batch item is typed, and it IS the
+        acknowledgement — so it publishes the price a recording resolved, on
+        the response side of the line like the single route's answer.
         """
         self.assertNotIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertNotIn(
@@ -1954,7 +1958,8 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         carrying = {name for name, schema in self.schemas.items()
                     if "billed_cost_micros" in schema.get("properties", {})}
         self.assertEqual(carrying, {
-            "RecordUsageResponse", "UnresolvedQueueRow", "UsageEventDetailOut",
+            "RecordUsageResponse", "UsageBatchItemResponse",
+            "UnresolvedQueueRow", "UsageEventDetailOut",
             "UsageEventOut", "ItemisedEventRow", "ItemisedEventsOut",
             "SpendControlFamilyTotalsRow"})
 
@@ -1994,9 +1999,10 @@ SAYS_THE_CLAIM_IS_NEVER_COGS = (
 FALSIFIED = "the only one UBB treats as cost"
 
 #: The schemas a recording publishes its supplier cost back on, beside the
-#: caller's claim.
+#: caller's claim. The typed batch item (#569) is the acknowledgement, so it
+#: inherits the single route's described fields and is one of them.
 RECORDING_RESPONSES = ("RecordUsageResponse", "UsageEventOut",
-                       "UsageEventDetailOut")
+                       "UsageEventDetailOut", "UsageBatchItemResponse")
 #: The two request schemas that take a supplier cost.
 RECORDING_REQUESTS = ("RecordUsageRequest",
                       "IntegrationBlueprintVerificationRecordIn")
@@ -2168,15 +2174,17 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
                 self.assertIn(SAYS_SUPPLIED_BY_THE_CALLER[0],
                               carriers[name][0])
 
-    def test_the_untyped_containers_say_what_theirs_means(self):
-        """Two published containers can hold a `provider_cost_micros` that no
-        schema node declares, so neither walk above can see it: an accepted
-        batch item, and the Pricing Receipt's totals. Each says on the
-        container what the amount inside means."""
-        results = self.schemas["UsageBatchResponse"]["properties"]["results"]
-        self.assertIn("`RecordUsageResponse`", results.get("description", ""))
-        self.assertIn("`provider_cost_micros` included", results["description"])
-        for schema in ("RecordUsageResponse", "UsageEventDetailOut"):
+    def test_the_untyped_container_says_what_its_amount_means(self):
+        """One published container can hold a `provider_cost_micros` that no
+        schema node declares, so neither walk above can see it: the Pricing
+        Receipt's totals, which say on the container what the amount inside
+        means. An accepted batch item was the second until #569 typed it — its
+        cost is a node now, which the carriers walk reads like any other."""
+        items = self.schemas["UsageBatchResponse"]["properties"]["results"]
+        self.assertEqual(items["items"],
+                         {"$ref": "#/components/schemas/UsageBatchItemResponse"})
+        for schema in ("RecordUsageResponse", "UsageEventDetailOut",
+                       "UsageBatchItemResponse"):
             with self.subTest(schema=schema):
                 receipt = self.schemas[schema]["properties"]["pricing_receipt"]
                 self.assertIn("`provider_cost_micros` and `billed_cost_micros`"

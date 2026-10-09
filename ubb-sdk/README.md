@@ -346,8 +346,14 @@ around a provider loop cannot swallow the one signal that protects your customer
 money and carry on spending. The event **was recorded and charged**; the signal is
 about the next call, never a failed submission, and it carries the whole
 acknowledgement (`stop.result`) plus `event_id`, `idempotency_key`, `stop_scope`,
-`stop_reason` and `task_id`. Catch it **once**, at the outermost boundary that can
-honour its scope, and never resend the event:
+`stop_reason`, `task_id` and how the stop was applied and measured:
+`trigger_source` (the mechanism — `usage_ingest`, `enforcement_patrol` or
+`charge_projection`; never the cause, which is `stop_reason`), `stop_bound_micros`
+(the bound `stop_reason` names, as it stood when the stop was established) and
+`stop_measured_micros` (the amount measured against it then) — each `None` where it
+does not apply, never `0` for that. A replay of the same `idempotency_key` carries
+exactly what the original acknowledgement said. Catch it **once**, at the outermost
+boundary that can honour its scope, and never resend the event:
 
 ```python
 from ubb import UBBStopRequested
@@ -357,6 +363,9 @@ try:
 except UBBStopRequested as stop:
     log.info("UBB requested a stop", extra={"scope": stop.stop_scope,
                                            "reason": stop.stop_reason,
+                                           "applied_by": stop.trigger_source,
+                                           "bound": stop.stop_bound_micros,
+                                           "measured": stop.stop_measured_micros,
                                            "event_id": stop.event_id})
     stop_dispatching_new_work(stop.stop_scope)   # "task", or the whole "customer"
 ```
@@ -383,7 +392,8 @@ is never guessed at.
 `result.stop` set instead of raising. The one reason to choose it is recording work
 that has **already** happened one call at a time, where a stop raised part-way would
 leave the rest unrecorded — and `record_batch` is the better tool for that, because
-it **never raises**: each item carries its own `stop` / `stop_reason` / `stop_scope`,
+it **never raises**: each item carries its own `stop` / `stop_reason` / `stop_scope`
+and `trigger_source` / `stop_bound_micros` / `stop_measured_micros`, typed,
 `result.stop` says whether any item asked for one, and `result.first_stop_index`
 names the earliest that did. One stopped piece of work does not abandon the other
 forty-nine.
@@ -543,6 +553,7 @@ for row in answer.rows:
 | `billed_cost_micros` | Amount charged to the customer wallet |
 | `new_balance_micros` | Customer wallet balance after this event |
 | `stop` / `stop_scope` / `stop_reason` | Spend-stop verdict (rides this 200 response; `record_usage` raises it as `UBBStopRequested` by default, carrying this whole object as `stop.result`) |
+| `trigger_source` / `stop_bound_micros` / `stop_measured_micros` | How that stop was applied (the mechanism) and the bound and amount it was measured on, as when it was established — `None` where they do not apply |
 
 ---
 

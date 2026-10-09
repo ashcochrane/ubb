@@ -21,11 +21,15 @@ class BatchItemResult:
     words come from the platform's error-code registry.
 
     ``stop`` / ``stop_reason`` / ``stop_scope`` are the item's own spend-stop
-    verdict, lifted off ``data`` exactly as ``accepted`` and ``code`` are. An
-    item that was recorded may also be asking you to stop, and the batch
-    REPORTS that here rather than raising (#421): one stopped piece of work
-    must not abandon the rest of the batch. A rejected item was not recorded,
-    so nothing can have stopped — its ``stop`` is False."""
+    verdict, and ``trigger_source`` / ``stop_bound_micros`` /
+    ``stop_measured_micros`` say how that stop was applied and what it was
+    measured on (#569) — the same three ``UBBStopRequested`` carries for a
+    single call. All are read off the item's TYPED model, exactly as
+    ``accepted`` and ``code`` are. An item that was recorded may also be
+    asking you to stop, and the batch REPORTS that here rather than raising
+    (#421): one stopped piece of work must not abandon the rest of the
+    batch. A rejected item was not recorded, so nothing can have stopped —
+    its ``stop`` is False and every stop fact None."""
     accepted: bool
     code: str | None = None
     detail: str | None = None
@@ -34,6 +38,9 @@ class BatchItemResult:
     stop: bool = False
     stop_reason: str | None = None
     stop_scope: str | None = None
+    trigger_source: str | None = None
+    stop_bound_micros: int | None = None
+    stop_measured_micros: int | None = None
 
 # `stop` and `first_stop_index` are properties, not fields: a derived fact is
 # not stored beside its source (ADR-0006 §4), so a report built by hand and

@@ -67,6 +67,7 @@ from ubb.vocabulary import STOP_BEHAVIOR_RAISE, STOP_BEHAVIOR_RETURN
 # Generated DTOs (the wrap, #84): response types come from the committed core,
 # never hand-typed again.
 from ubb._core.models.record_usage_response import RecordUsageResponse
+from ubb._core.models.usage_batch_item_response import UsageBatchItemResponse
 #: The REQUEST model, imported for its field names alone — see
 #: `_declared_recording_keys` below.
 from ubb._core.models.record_usage_request import RecordUsageRequest
@@ -647,7 +648,9 @@ class MeteringClient:
         replay return the original event ids with zero new rows.
 
         A stop is REPORTED, never raised (#421). Each item carries its own
-        verdict (``item.stop`` / ``stop_reason`` / ``stop_scope``);
+        verdict (``item.stop`` / ``stop_reason`` / ``stop_scope``) and how it
+        was applied and measured (``item.trigger_source`` /
+        ``stop_bound_micros`` / ``stop_measured_micros``, #569);
         ``result.stop`` says whether any recorded item asked for one and
         ``result.first_stop_index`` names the earliest that did. One stopped
         piece of work must not abandon the rest of the batch, and a stop
@@ -684,23 +687,32 @@ class MeteringClient:
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH,
                           json={"events": wire_events})
         body = r.json()
+        # THE ITEMS ARE TYPED SINCE #569, AND PARSED AS SUCH: each through the
+        # generated item model (`docs/conventions/sdk-wrap.md` — never a
+        # hand-read dict), one row at a time because `from_wire` normalizes
+        # a model's own fields and not a list nested inside it. `data` keeps
+        # the raw row, as it always has.
+        rows = body.get("results", [])
         results = [
             BatchItemResult(
-                accepted=item.get("accepted", False),
-                code=item.get("code"),
-                detail=item.get("detail"),
-                event_id=item.get("event_id"),
-                data=item,
+                accepted=item.accepted,
+                code=item.code,
+                detail=item.detail,
+                event_id=item.event_id,
+                data=row,
                 # A rejected item carries the server's constant verdict —
-                # `stop: false`, null reason and scope — because nothing was
-                # recorded and so nothing can have stopped; an accepted item
-                # may omit the key altogether, since the contract's `stop`
-                # is optional with a false default. Both read as False.
-                stop=bool(item.get("stop", False)),
-                stop_reason=item.get("stop_reason"),
-                stop_scope=item.get("stop_scope"),
+                # `stop: false` and every stop fact null — because nothing
+                # was recorded and so nothing can have stopped; an accepted
+                # item may omit the key altogether, since the contract's
+                # `stop` is optional with a false default. Both read False.
+                stop=bool(item.stop),
+                stop_reason=item.stop_reason,
+                stop_scope=item.stop_scope,
+                trigger_source=item.trigger_source,
+                stop_bound_micros=item.stop_bound_micros,
+                stop_measured_micros=item.stop_measured_micros,
             )
-            for item in body.get("results", [])
+            for row, item in zip(rows, list_from_wire(UsageBatchItemResponse, rows))
         ]
         return BatchResult(results=results, accepted=body.get("accepted", 0),
                            rejected=body.get("rejected", 0))

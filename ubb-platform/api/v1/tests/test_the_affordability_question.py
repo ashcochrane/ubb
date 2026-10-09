@@ -26,6 +26,7 @@ from apps.billing.gating.services.customer_spend_pool_service import (
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     StopSignalService, control_id_of)
+from apps.billing.gating.tests._helpers import FIXTURE_OPENING
 from apps.billing.wallets.models import CustomerBillingProfile
 from apps.platform.customers.models import (
     CUSTOMER_STATUS_CLOSED, CUSTOMER_STATUS_SUSPENDED, Customer)
@@ -236,7 +237,7 @@ class TheAffordabilityQuestionTest(TestCase):
             enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)
         StopSignalService.drive_stop(
             self.customer.id, self.tenant, line=reasons.CUSTOMER_SPEND_POOL,
-            control_id=pool.id)
+            control_id=pool.id, **FIXTURE_OPENING)
         held_by_the_pool = self._answer()
 
         self.assertFalse(unlined["allowed"])
@@ -260,11 +261,11 @@ class TheAffordabilityQuestionTest(TestCase):
             enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)
         StopSignalService.drive_stop(
             self.customer.id, self.tenant, line=reasons.CUSTOMER_SPEND_POOL,
-            control_id=pool.id)
+            control_id=pool.id, **FIXTURE_OPENING)
         StopSignalService.drive_stop(
             self.customer.id, self.tenant, line=reasons.HARD_FLOOR,
             control_id=control_id_of(reasons.HARD_FLOOR, self.customer.id,
-                                     self.tenant))
+                                     self.tenant), **FIXTURE_OPENING)
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.status, CUSTOMER_STATUS_SUSPENDED)
 

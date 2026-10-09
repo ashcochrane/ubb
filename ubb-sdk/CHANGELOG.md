@@ -153,6 +153,18 @@ disagree with the shipped bytes.
   keyword that is admissible; the client holds no rule of its own. Either way
   the cost comes back as `result.provider_cost_micros`, the one supplier cost
   UBB resolved.
+- **A stop says how it was applied and what it was measured on (#569).**
+  `trigger_source`, `stop_bound_micros` and `stop_measured_micros` ride the
+  acknowledgement, every `record_batch` item (`BatchItemResult`, typed — the
+  batch's items are parsed through their generated model now) and
+  `UBBStopRequested` (properties over `result`): the mechanism that applied
+  the stop (`usage_ingest`, `enforcement_patrol`, `charge_projection`; never
+  the cause, which is `stop_reason`), the bound `stop_reason` names as it
+  stood when the stop was established, and the amount measured against it
+  then. Each is `None` where it does not apply — never `0` for that; a zero
+  floor is a real `0`. A replay of an `idempotency_key` now answers exactly
+  what the original acknowledgement said, its stop included, rather than the
+  customer's stop as it stands at the retry.
 
 ### Retained (not shims)
 

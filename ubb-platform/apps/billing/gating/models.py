@@ -165,6 +165,23 @@ class StopSignalState(BaseModel):
     # nothing and passes nothing to a kill, and on a row that predates #458.
     control_id = models.UUIDField(null=True, blank=True)
     transitioned_at = models.DateTimeField()
+    # THE EPISODE'S OPENING FACTS (#569): the mechanism that applied the stop
+    # (the registry's `trigger_source` — `usage_ingest`, `enforcement_patrol`
+    # or `charge_projection` on these lines), the bound the line was measured
+    # against as resolved at the crossing, and the amount measured against it
+    # then — the stop line's figure and the month-to-date charges for the
+    # Pool's line, the floor as a balance (`-min_balance_micros`) and the
+    # wallet balance for the hard floor's. Stamped with `control_id` by the
+    # WINNING stop transition and by nothing else, so every acknowledgement
+    # naming the episode says what opened it, never what the counter or the
+    # configuration says now; the next episode overwrites them as it
+    # overwrites `control_id`. They also ride the fast flag beside the word
+    # (`LiveCounter`), because a recording reads the flag, and another
+    # recording's flag is visible before its transaction commits. Null on the
+    # wind-down line, which stops nothing, and on a row opened before #569.
+    trigger_source = models.CharField(max_length=64, null=True, blank=True)
+    stop_bound_micros = models.BigIntegerField(null=True, blank=True)
+    stop_measured_micros = models.BigIntegerField(null=True, blank=True)
     # Announcement bookkeeping (delivery spec §B, #43): the OutboxEvent id of
     # this row's LAST announcement, stamped inside the same atomic unit as the
     # transition/re-mint that emitted it — stamp and event commit or vanish

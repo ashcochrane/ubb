@@ -27,7 +27,8 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
-from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
+from apps.billing.gating.tests._helpers import (
+    FIXTURE_OPENING, drive_a_stop, stop_line)
 from core.vocabulary import (
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY)
 
@@ -271,10 +272,10 @@ class TestTwoStopLinesAtOnce:
         floor = StopSignalService.drive_stop(
             c.id, t, line=reasons.HARD_FLOOR,
             control_id=control_id_of(reasons.HARD_FLOOR, c.id, t),
-            balance_micros=-1)
+            balance_micros=-1, **FIXTURE_OPENING)
         pooled = StopSignalService.drive_stop(
             c.id, t, line=reasons.CUSTOMER_SPEND_POOL,
-            control_id=control_id_of(reasons.CUSTOMER_SPEND_POOL, c.id, t))
+            control_id=control_id_of(reasons.CUSTOMER_SPEND_POOL, c.id, t), **FIXTURE_OPENING)
         return pool, floor, pooled
 
     def test_each_line_opens_its_own_episode_and_announces_once(self):
@@ -338,7 +339,7 @@ class TestTwoStopLinesAtOnce:
         c = Customer.objects.create(tenant=t, external_id="c1")
         StopSignalService.drive_stop(
             c.id, t, line=reasons.HARD_FLOOR,
-            control_id=control_id_of(reasons.HARD_FLOOR, c.id, t))
+            control_id=control_id_of(reasons.HARD_FLOOR, c.id, t), **FIXTURE_OPENING)
         row = StopSignalState.objects.get(owner=c)
         with pytest.raises(IntegrityError):
             with transaction.atomic():
@@ -352,7 +353,8 @@ class TestTwoStopLinesAtOnce:
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1")
         with pytest.raises(ValueError):
-            StopSignalService.drive_stop(c.id, t, line=LINE_SOFT_FLOOR, control_id=None)
+            StopSignalService.drive_stop(c.id, t, line=LINE_SOFT_FLOOR, control_id=None,
+                                         **FIXTURE_OPENING)
         with pytest.raises(ValueError):
             StopSignalService.drive_clear(c.id, t, line=LINE_SOFT_FLOOR,
                                           clear_reason=CLEAR_RECONCILED)

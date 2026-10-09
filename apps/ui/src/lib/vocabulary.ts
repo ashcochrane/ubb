@@ -1852,6 +1852,7 @@ export const TRIGGER_SOURCE_KNOWN_VALUES = [
   "parent_cascade",
   "pool_crossing",
   "stale_reaper",
+  "charge_projection",
 ] as const;
 
 export type TriggerSourceKnown = (typeof TRIGGER_SOURCE_KNOWN_VALUES)[number];
@@ -1867,6 +1868,7 @@ export const TRIGGER_SOURCE_LABEL_KEYS = {
   "parent_cascade": "trigger_source.parent_cascade",
   "pool_crossing": "trigger_source.pool_crossing",
   "stale_reaper": "trigger_source.stale_reaper",
+  "charge_projection": "trigger_source.charge_projection",
 } as const satisfies Record<TriggerSourceKnown, string>;
 
 

@@ -375,29 +375,6 @@ class UsageBatchRequest(Schema):
     events: list[RecordUsageRequest] = Field(min_length=1, max_length=100)
 
 
-class UsageBatchResponse(Schema):
-    # Per-item VERDICTS — the field set #78 unified across this route and the
-    # async ingest route, which slice 1 deleted; this is the surviving shape.
-    # Positionally aligned with the request's events[]. Success items mirror
-    # the single-call success body plus {"accepted": true}; rejected items are
-    # {"accepted": false, "code", "detail", "stop": false, "stop_reason":
-    # null, "stop_scope": null} with `code` from the registry.
-    #
-    # ⚠ THE ITEMS ARE UNTYPED, SO WHAT THEY HOLD IS SAID ON THE LIST (the
-    # owner's review of #570's PR #607): an accepted item carries money fields
-    # — its `provider_cost_micros` among them — that no schema node here can
-    # describe, and a comment above a field is not part of the contract.
-    results: list[dict] = Field(description=(
-        "One verdict per submitted event, in the order submitted. An accepted "
-        "item (`accepted: true`) carries the single route's acknowledgement "
-        "fields (`RecordUsageResponse`), each with the meaning that schema "
-        "publishes for it — `provider_cost_micros` included. A rejected item "
-        "carries `accepted: false`, a registry `code` and a `detail`, with "
-        "`stop` false and `stop_reason` and `stop_scope` null."))
-    accepted: int
-    rejected: int
-
-
 #: Whether the supplier cost beside it is settled (#317). `closed` — UBB owns
 #: all three — so the export writes a real `enum` here, and this file spells
 #: none of the values. The same marker mechanism as the block near the foot of
@@ -638,6 +615,71 @@ CeilingStatus = Annotated[
 ReasonCode = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "reason_code"})]
 
+#: THE MECHANISM THAT APPLIED THE STOP — the registry's open `trigger_source`
+#: (#412, #458): on a stop episode's rows, as the applying lane recorded it;
+#: on the recording acknowledgement, as the stop it names was applied (#569).
+#: Open, so the marker is known-values metadata beside a plain string, and it
+#: sits on the string member of every `Optional` carrier; null where nothing
+#: applied a stop, or where a row stamped before the mechanism was recorded
+#: says nothing.
+TriggerSource = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
+
+#: WHAT `stop_reason` MAY SAY ON AN ACKNOWLEDGEMENT (#569 B10). The
+#: registry's known values travel as `x-ubb-known-values` metadata; the one
+#: verdict UBB produces beyond them is published here, because the registry
+#: deliberately does not list it (it names bounds, and this is not one —
+#: `work/reasons.py`) and so has no entry able to say it.
+STOP_REASON_ON_AN_ACKNOWLEDGEMENT = (
+    "Why UBB is asking you to stop: which bound was reached, in the "
+    "registry's words (the values under `x-ubb-known-values`), or "
+    "`task_not_active` — the one verdict that is not a bound, which UBB "
+    "produces and the registry deliberately does not list: this report "
+    "landed on a unit of work that had already ended, and it was still "
+    "recorded and charged. Null when `stop` is false. Open: accept a reason "
+    "not listed here.")
+
+#: THE MECHANISM, ON AN ACKNOWLEDGEMENT (#569 B3, B5) — the per-reason
+#: meaning, published once, on the field.
+TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT = (
+    "The mechanism that applied the stop this acknowledgement names — never "
+    "its cause, which is `stop_reason`. A unit of work's ceiling "
+    "(`task_cogs_ceiling`) is crossed by this report: `usage_ingest`. A "
+    "customer-wide stop (`customer_spend_pool`, `hard_floor`) names the "
+    "mechanism that OPENED the stop episode this report fell in: "
+    "`usage_ingest` (a usage report's recording or its drawdown), "
+    "`enforcement_patrol` (the periodic reconcile) or `charge_projection` "
+    "(the drawdown of a delivered fixed-price unit's Charge). Null when "
+    "nothing stopped, and for `task_not_active`, where no mechanism applied "
+    "a stop on this report. On an idempotent replay, the original "
+    "acknowledgement's.")
+
+#: THE BOUND, ON AN ACKNOWLEDGEMENT (#569 B3, B4).
+STOP_BOUND_ON_AN_ACKNOWLEDGEMENT = (
+    "The monetary bound the stop named in `stop_reason` was measured "
+    "against, as it stood when that stop was established. For "
+    "`task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling — "
+    "the unit `stop_scope` names, so scope `task` on contained work's report "
+    "is its parent's. For `customer_spend_pool`: the Pool's stop line (its "
+    "cap times its hard-stop percentage, over 100), for the customer whose "
+    "Pool it is. For `hard_floor`: the wallet's floor as a balance — the "
+    "negated minimum balance, 0 or below, where 0 is a real floor. Null when "
+    "nothing stopped and for `task_not_active`, and never 0 for 'does not "
+    "apply'. Later configuration does not move it, and on an idempotent "
+    "replay it is the original acknowledgement's.")
+
+#: THE AMOUNT MEASURED, ON AN ACKNOWLEDGEMENT (#569 B3, B4).
+STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT = (
+    "The monetary amount assessed against `stop_bound_micros` when the stop "
+    "was established. For `task_cogs_ceiling`: the governing unit of work's "
+    "supplier cost (COGS) total, at or above the bound. For "
+    "`customer_spend_pool`: that customer's month-to-date billed charges, at "
+    "or above it. For `hard_floor`: the wallet balance, below it. For a "
+    "customer-wide stop already standing when this report arrived, it is "
+    "the figure the stop opened on, not where the counter stands now. Null "
+    "when nothing stopped and for `task_not_active`. On an idempotent "
+    "replay, the original acknowledgement's.")
+
 
 class RecordUsageResponse(Schema):
     event_id: str
@@ -700,14 +742,33 @@ class RecordUsageResponse(Schema):
     # unstopped (#609); stop_context itemises both.
     # stop_reason says WHICH BOUND was reached, in the registry's words (the
     # known values ride the contract as metadata) plus the one verdict that is
-    # not a bound, `task_not_active`; stop_scope ∈ task | subtask | customer,
+    # not a bound, `task_not_active` — which its description now publishes
+    # (#569 B10); stop_scope ∈ task | subtask | customer,
     # and it is the scope alone that says which altitude a ceiling crossing
     # was at. On a subtask's ack, scope `task` names the PARENT
     # (parent_task_id above) — the whole tree is stopped, not just the named
     # unit. `suspended` stays the durable owner status.
     stop: bool = False
-    stop_reason: Optional[ReasonCode] = None
+    stop_reason: Optional[ReasonCode] = Field(
+        default=None, description=STOP_REASON_ON_AN_ACKNOWLEDGEMENT)
     stop_scope: Optional[str] = None
+    # HOW THE STOP WAS APPLIED AND WHAT IT WAS MEASURED ON (#569; #179 §1.3):
+    # the mechanism, the bound `stop_reason` names as it stood when the stop
+    # was established, and the amount measured against it then — so a
+    # handler can log what happened without a follow-up read. `stop_reason`
+    # says what the two figures mean economically, so there is no field
+    # saying which kind of amount they are. ALWAYS PRESENT, null where they
+    # do not apply, never 0 for that. They sit after the stop trio and
+    # before the assessment, whose order the shell target reads (#180 §11).
+    # The customer whose line a customer-wide stop is (a pooled seat's own,
+    # or its billing owner's) is kept by UBB and not published here (#569
+    # B13); `stop_context` itemises every standing line.
+    trigger_source: Optional[TriggerSource] = Field(
+        default=None, description=TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT)
+    stop_bound_micros: Optional[int] = Field(
+        default=None, description=STOP_BOUND_ON_AN_ACKNOWLEDGEMENT)
+    stop_measured_micros: Optional[int] = Field(
+        default=None, description=STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT)
     # WHAT THE NAMED UNIT'S CEILING ASSESSMENT CONCLUDED, and the utilisation
     # beside it (#452, slice 6 §3). The stop above is the verdict; this is
     # where the unit stands, in the registry's word, whether or not anything
@@ -722,11 +783,12 @@ class RecordUsageResponse(Schema):
     # Null exactly when no unit is named — nothing to assess — which is why
     # the marker sits on the string member and not on the union (the
     # `NotApplicableReason` argument). On an idempotent REPLAY it is the
-    # unit's standing NOW, on the same footing as `stop` (read from the
-    # durable flag at replay time), while the unit totals above stay null on
-    # a replay because they say what THIS recording did, and a replay did
-    # nothing. The two figures are ALSO null under `not_applicable`: no
-    # ceiling, no share of one.
+    # ORIGINAL acknowledgement's assessment, on the same footing as `stop`:
+    # both are answered from what the original kept, never from the unit as
+    # it stands now (#569, departing from #452 — ADR-0019), while the unit
+    # totals above stay null on a replay because they say what THIS
+    # recording did, and a replay did nothing. The two figures are ALSO null
+    # under `not_applicable`: no ceiling, no share of one.
     ceiling_status: Optional[CeilingStatus] = None
     ceiling_used_percentage: Optional[int] = None
     ceiling_remaining_micros: Optional[int] = None
@@ -780,6 +842,48 @@ class RecordUsageResponse(Schema):
     # where a caller sees what its posting was attributed to without a second
     # call.
     grouping_fields: dict[str, str] = {}
+
+
+class UsageBatchItemResponse(RecordUsageResponse):
+    """One batch item's verdict (#569 B9) — the field set #78 unified across
+    the batch route and the async ingest route, which slice 1 deleted; this
+    is the surviving shape, TYPED. An accepted item (`accepted: true`) is the
+    single route's acknowledgement, field for field and with the meaning
+    `RecordUsageResponse` publishes for each. A rejected item was never
+    recorded: it carries `accepted: false`, a registry `code` and a
+    `detail`, `stop` false, every stop fact null and no acknowledgement
+    field set."""
+    # INHERITED, SO AN ACKNOWLEDGEMENT FIELD IS ON THE ITEM BY CONSTRUCTION:
+    # a field added to the single route's answer is a field every accepted
+    # item carries, described once. The four the acknowledgement always sets
+    # are nullable here, because a rejected item recorded nothing to set them
+    # from. `accepted` is a plain boolean and not a discriminator: an OpenAPI
+    # discriminator must be a string property, so the item is one schema
+    # rather than a `oneOf` of two.
+    accepted: bool
+    code: Optional[str] = None
+    detail: Optional[str] = None
+    event_id: Optional[str] = None
+    suspended: Optional[bool] = None
+    costing_status: Optional[CostingStatus] = None
+    pricing_status: Optional[PricingStatus] = None
+
+
+class UsageBatchResponse(Schema):
+    # Per-item VERDICTS, positionally aligned with the request's events[].
+    # Typed since #569: each is a `UsageBatchItemResponse`, so every field an
+    # accepted item carries — its money fields and its stop facts among them
+    # — is described by a schema node and no longer only by this list's
+    # prose (the owner's review of #570's PR #607 asked for the prose while
+    # the items were untyped).
+    results: list[UsageBatchItemResponse] = Field(description=(
+        "One verdict per submitted event, in the order submitted. An accepted "
+        "item (`accepted: true`) carries the single route's acknowledgement "
+        "fields, each with the meaning `RecordUsageResponse` publishes for "
+        "it. A rejected item carries `accepted: false`, a registry `code` and "
+        "a `detail`, with `stop` false and every stop fact null."))
+    accepted: int
+    rejected: int
 
 
 class BalanceResponse(Schema):
@@ -4174,14 +4278,6 @@ ControlFamily = Annotated[
 #: it is never null here.
 CeilingBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
-
-#: THE MECHANISM THAT APPLIED THE STOP — the registry's open `trigger_source`,
-#: as the applying lane recorded it on the row (#412, #458). Open, so the
-#: marker is known-values metadata beside a plain string; null where a row
-#: stamped before the mechanism was recorded says nothing.
-TriggerSource = Annotated[
-    str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
-
 
 class ItemisedEventRow(Schema):
     """One event itemised under an episode: the tipping event

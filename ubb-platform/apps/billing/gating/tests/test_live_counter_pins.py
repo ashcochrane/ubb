@@ -76,9 +76,20 @@ def test_postpaid_livespend_key_format():
 
 
 def test_stop_flag_key_format(tenant, owner):
+    """The key, and since #569 the value: the stop's word AND its episode's
+    opening facts, as one compact JSON document — so a reader can never see
+    the word without the facts it opened on. A bare word (a flag written
+    before #569, or planted by the door) still reads, with no facts."""
     LiveCounter.debit(owner.id, tenant, 21_000_000)  # crosses the (0) floor
-    assert _raw().get(f"ubb:stop:{owner.id}") == reasons.HARD_FLOOR.encode()
+    assert _raw().get(f"ubb:stop:{owner.id}") == (
+        b'{"reason":"hard_floor","trigger_source":"usage_ingest",'
+        b'"stop_bound_micros":0,"stop_measured_micros":-1000000}')
     assert Door.stop_reason(owner.id) == reasons.HARD_FLOOR
+    Door.plant_stop(owner.id, reasons.CUSTOMER_SPEND_POOL)
+    assert Door.stop_reason(owner.id) == reasons.CUSTOMER_SPEND_POOL
+    assert Door.stop_opening(owner.id) == {
+        "trigger_source": None, "stop_bound_micros": None,
+        "stop_measured_micros": None}
 
 
 def test_stop_channel_format(owner):

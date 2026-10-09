@@ -168,6 +168,19 @@ class PoolTestBase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         return response.json()
 
+    def _one_batch_item(self, customer=None, *, bills, task_id=None, **extra):
+        """One usage report as the batch route's only item: that item's
+        verdict, accepted or not, as a caller reads it. The callbacks run as
+        `_record`'s do."""
+        body = {"events": [self._usage(customer, bills=bills, task_id=task_id,
+                                       **extra)]}
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            response = self.http.post("/api/v1/metering/usage/batch",
+                                      data=json.dumps(body), **self._headers())
+        self.assertEqual(response.status_code, 200, response.content)
+        [result] = response.json()["results"]
+        return result
+
     def _drain(self):
         """Run the drawdown handler for every `usage.recorded` row not yet
         drained — the durable lane, exactly as the outbox would run it."""

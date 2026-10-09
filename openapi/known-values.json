@@ -568,7 +568,7 @@
     },
     "trigger_source": {
       "advertised": true,
-      "backend_serves": "5 of 5 values",
+      "backend_serves": "6 of 6 values",
       "kind": "open",
       "representation": "known_values",
       "values": [
@@ -576,7 +576,8 @@
         "enforcement_patrol",
         "parent_cascade",
         "pool_crossing",
-        "stale_reaper"
+        "stale_reaper",
+        "charge_projection"
       ]
     },
     "unit": {

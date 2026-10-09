@@ -512,6 +512,27 @@ def get_posting_effective_at(posting_id) -> datetime | None:
     ).first()
 
 
+def get_posting_kind(posting_id) -> str | None:
+    """Which kind of posting a row is (the registry's `usage_event_kind`): a
+    metered usage report's, or a delivered fixed-price unit's Charge — or
+    None where no such posting exists (a malformed id included, on
+    `get_posting_effective_at`'s terms).
+
+    The drawdown handler asks this, because the one `usage.recorded` payload
+    both kinds emit DELIBERATELY carries no discriminator
+    (`charge_projection.py`), and a stop the drawdown opens records which
+    mechanism opened it (#569): a usage report's drawdown is `usage_ingest`,
+    a Charge's is `charge_projection`."""
+    from apps.metering.usage.models import Posting
+
+    try:
+        uuid.UUID(str(posting_id))
+    except (ValueError, TypeError):
+        return None
+    return Posting.objects.filter(id=posting_id).values_list(
+        "kind", flat=True).first()
+
+
 def get_customer_ids_with_postings(tenant_id, period_start: date, period_end: date) -> list:
     """Distinct customer ids with ANY usage in [period_start, period_end).
 

@@ -75,15 +75,38 @@ at the grain asked for, or unavailable because the *stretch* asked about reaches
 horizon.
 
 **Recording core**:
-The recording body (price → create → accumulate → stop-context tag → dirty marker →
-`usage.recorded` → kill registration on its own `on_commit`); `record_new_usage` is a thin input
-adapter over it, and `record_usage` is `replay` — the one lookup of an event already recorded
-under a key, which both recording routes also ask before their admissions (#605) — or that. It was
+The recording body (price → create → accumulate → live debit → stop acknowledgement, in one
+savepoint, then stop-context tag → dirty marker → `usage.recorded` → kill registration on its own
+`on_commit`); `record_new_usage` is a thin input adapter over it, and `record_usage` is `replay` —
+the one lookup of an event already recorded under a key, which both recording routes also ask
+before their admissions (#605) — or that. It was
 extracted when there were two lanes to keep from drifting; only one lane remains, and the core
 stays because the seam is where a recording side effect belongs.
 (`apps/metering/usage/services/usage_service.py:UsageService._record_core`)
 _Avoid_: adding a recording side effect to the adapter rather than the core — the adapter's job
 is to turn a request into a `RecordingInput`, nothing more.
+
+**Stop acknowledgement** (#569, ADR-0019):
+What one recorded result's acknowledgement said about stopping, kept with its posting and answered
+from on every replay — one per posting the recording path writes, `stop` true OR false, written in
+the recording's own savepoint after the live debit that decides it. It holds the stop facts
+(`stop`, `stop_reason`, `stop_scope`, and how the stop was applied and measured: `trigger_source`,
+`stop_bound_micros`, `stop_measured_micros`), the named unit's ceiling assessment and parent, and —
+internal, never published — which unit (`stop_task_id`) or whose customer-wide line
+(`stop_customer_id`: the billing owner, or a pooled seat whose own Pool line was named) the stop is
+about, because two Pool stops read alike at both levels. Insert-only, held by a database trigger
+(`UPDATE` never; `DELETE` only as a sandbox's postings are discarded). **A replay reads it and
+nothing else** for those fields — never the live flag, the unit of work, a Pool, configuration, a
+counter or the **Stop context** — so an original "not stopped" replays not stopped although the
+customer is stopped now, and an original stop replays with its original mechanism and figures
+after every live fact has moved. A recording-path posting without one raises
+`StopAcknowledgementMissing`; nothing is reconstructed. A Charge's posting acknowledges nothing and
+has none, so a report sent under the key it holds is refused before anything is recorded.
+(`apps/metering/usage/models.py:StopAcknowledgement`;
+`apps/metering/usage/services/usage_service.py:_the_stop_it_acknowledges`)
+_Avoid_: reading a replay's stop off the posting's **Stop context** — that is an itemisation of
+every line the event landed past, not the one stop the acknowledgement named; "snapshot" as the
+record's public name — it publishes nothing of its own, only what the acknowledgement already did.
 
 **effective_at**:
 When the usage economically *happened* — caller-suppliable, bounded by the tenant's backfill window

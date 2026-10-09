@@ -160,7 +160,9 @@ def reconcile_usage_drawdowns():
             result = wallet_ops.draw_down_usage(
                 customer_id=owner_id, tenant=tenant,
                 usage_event_id=ev["id"],
-                billed_cost_micros=ev["billed_cost_micros"], repair=True)
+                billed_cost_micros=ev["billed_cost_micros"],
+                trigger_source=None,  # a repair opens no episode (I12)
+                repair=True)
             if result.outcome != "applied":
                 continue  # replayed: the live twin (or a prior run) won
             repaired += 1

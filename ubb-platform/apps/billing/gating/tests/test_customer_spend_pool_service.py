@@ -8,7 +8,8 @@ from apps.billing.gating.services.live_counter import LiveCounter
 from apps.platform.events.schemas import CustomerSpendPoolThresholdReached
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
-    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE)
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
+    TRIGGER_SOURCE_USAGE_INGEST)
 
 
 @pytest.mark.django_db
@@ -94,10 +95,14 @@ class TestCustomerSpendPoolService:
         from apps.platform.events.models import OutboxEvent
         c = self._cust(cap_micros=1_000, enforce_mode="alert_only")
         self._usage(c, 850, 1)                 # durable event backs the spend
-        CustomerSpendPoolService.record_usage_spend(c, 850)  # crosses 50% (500) and 80% (800)
+        # crosses 50% (500) and 80% (800)
+        CustomerSpendPoolService.record_usage_spend(
+            c, 850, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert OutboxEvent.objects.filter(event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE).count() == 2
         self._usage(c, 10, 2)
-        CustomerSpendPoolService.record_usage_spend(c, 10)   # 860 — no new level
+        # 860 — no new level
+        CustomerSpendPoolService.record_usage_spend(
+            c, 10, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert OutboxEvent.objects.filter(event_type=CustomerSpendPoolThresholdReached.EVENT_TYPE).count() == 2
 
     def test_threshold_alert_dedup_on_repeated_emit(self):

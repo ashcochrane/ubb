@@ -756,11 +756,35 @@ _Avoid_: `outcome_reason` for this field — that is the caller's word for why w
 the retired mechanism-named spellings, and `customer_floor` (see **Task floor snapshot
 (removed)**).
 
+**Stop bound (`stop_bound_micros`)**:
+The monetary bound the **Stop reason** names, as it stood when the stop was ESTABLISHED (#569) —
+the reason says WHICH bound was reached, this says its amount. Per reason: the governing unit's
+pinned COGS ceiling (`task_cogs_ceiling` — the unit `stop_scope` names, so a `task`-scoped stop on
+contained work's report is its parent's); the Pool's stop line, `cap × hard_stop_pct ÷ 100`, of the
+customer whose Pool it is (`customer_spend_pool`); the wallet floor AS A BALANCE, `−min_balance`,
+where `0` is a real floor (`hard_floor`). Null for `task_not_active` (not a bound) and when nothing
+stopped — never `0` for "does not apply". For a customer-wide stop it is the episode's opening
+figure, recorded on the signal ledger and the stop flag, never today's configuration; on an
+idempotent replay it is the original acknowledgement's.
+(`api/v1/schemas.py:STOP_BOUND_ON_AN_ACKNOWLEDGEMENT`; ADR-0019)
+_Avoid_: "stop line" for this field — that is the billing glossary's word for the Pool's and the
+floor's lines only, and was not broadened to a unit ceiling to fit a name.
+
+**Stop measured amount (`stop_measured_micros`)**:
+The amount assessed against the **Stop bound** when the stop was established (#569): the governing
+unit's supplier cost (COGS) total, at or above the bound; the customer's month-to-date billed
+charges, at or above it; the wallet balance, below it. What the number is follows from the **Stop
+reason**, so no field says which kind of amount it is. Null exactly where the bound is.
+(`api/v1/schemas.py:STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT`; ADR-0019)
+_Avoid_: "current COGS" — false for two of the three reasons, and "current" is false on every
+replay.
+
 **Trigger source**:
 WHICH MECHANISM applied a stop, beside the **Stop reason** saying why — two fields because they are
 two questions, and neither derives from the other: one reason is reached by several mechanisms and
 one mechanism reaches several reasons. Open (`usage_ingest`, `enforcement_patrol`, `parent_cascade`,
-`pool_crossing`, `stale_reaper`), so a subscriber must accept one it has not seen. It rides both
+`pool_crossing`, `stale_reaper`, `charge_projection`), so a subscriber must accept one it has not
+seen. It rides both
 terminal stop events, where the contract advertises the set as documentation metadata rather than
 as an `enum`. Every path that APPLIES a stop names itself (`pool_crossing` reaches `task.killed` since #459,
 when a blocking pool's stop began to kill through the kernel); a patrol RE-MINT deliberately
@@ -769,6 +793,12 @@ because it repairs the delivery of a stop another mechanism made and the row doe
 **`parent_cascade` is the one that reaches no event and never will**: a cascade announces nothing,
 because its parent's own stop is the one signal a customer's workers receive, so that mechanism is
 recorded on each stopped row's metadata instead of on a payload.
+**On a recording acknowledgement (#569)** it names the mechanism of the stop the acknowledgement
+carries: `usage_ingest` for a ceiling the report crossed; for a customer-wide stop, the mechanism
+that OPENED its episode — `usage_ingest` (a usage report's live debit or drawdown),
+`enforcement_patrol` (the reconcile passes and the seat-level beat) or `charge_projection` (the
+drawdown of a delivered fixed-price unit's Charge, told apart by the posting's kind); null for
+`task_not_active`, where nothing applied a stop on that report.
 (`apps/platform/work/reasons.py:KNOWN_TRIGGER_SOURCES`; registry concept `trigger_source`)
 _Avoid_: `customer_floor` — the retired per-task floor snapshot's reason string (see
 **Task floor snapshot (removed)** below); it can never be emitted by current code, though

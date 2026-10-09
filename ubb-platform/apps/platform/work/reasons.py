@@ -10,7 +10,7 @@ these constants; no stop path may invent a reason string.
 Two registry concepts have their declared backend consumer HERE, and both are
 now PAID IN FULL:
 
-  `trigger_source`  — all five known mechanisms, in `KNOWN_TRIGGER_SOURCES`.
+  `trigger_source`  — all six known mechanisms, in `KNOWN_TRIGGER_SOURCES`.
   `reason_code`     — all seven known values, each bound to a constant below.
                       A stop says WHICH BOUND was reached — the unit's own
                       ceiling, the customer's pool, the wallet's floor, a
@@ -55,6 +55,9 @@ slice (the per-task floor snapshot's, and the silence window's pre-registry
 one) have left the published verdicts list with nothing to name them.
 """
 
+from typing import NamedTuple
+from uuid import UUID
+
 from core.vocabulary import (
     REASON_CODE_ABSOLUTE_DEADLINE,
     REASON_CODE_CUSTOMER_SPEND_POOL,
@@ -63,6 +66,7 @@ from core.vocabulary import (
     REASON_CODE_PARENT_KILLED,
     REASON_CODE_SILENCE_WINDOW,
     REASON_CODE_TASK_COGS_CEILING,
+    TRIGGER_SOURCE_CHARGE_PROJECTION,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL,
     TRIGGER_SOURCE_PARENT_CASCADE,
     TRIGGER_SOURCE_POOL_CROSSING,
@@ -155,7 +159,7 @@ CROSSING_REASONS = frozenset({TASK_COGS_CEILING})
 # ingest or by the patrol, and the same mechanism can find several causes —
 # so the producer names its own mechanism at the point it acts.
 #
-# ⚠ ALL FIVE ARE PRODUCED TODAY, AND THE SET STAYS OPEN ANYWAY. The terminal
+# ⚠ ALL SIX ARE PRODUCED TODAY, AND THE SET STAYS OPEN ANYWAY. The terminal
 # stop events carry the mechanism, and the four paths that APPLY a stop each
 # name themselves on the event: the usage-ingest lane, the enforcement patrol,
 # the sweeper, and — since #459 — the customer spend pool's crossing, which
@@ -166,7 +170,16 @@ CROSSING_REASONS = frozenset({TASK_COGS_CEILING})
 # signal, so the mechanism is recorded on each stopped row instead
 # (`services.TaskService._cascade`).
 #
-# The whole five are held here anyway, because the registry names this module as
+# `charge_projection` (#569) is the sixth, and it applies no unit's stop: it is
+# the mechanism that OPENS a customer-wide stop episode when the drawdown of a
+# delivered fixed-price unit's Charge posting crosses the wallet's floor or a
+# Pool's stop line — the one drawdown that is not a usage report's. It rides
+# the signal ledger's episode and every recording acknowledgement that names
+# that episode (`apps.billing.handlers` reads the posting's kind to tell it
+# from `usage_ingest`). A mechanism and never a cause: the cause stays the
+# floor's or the Pool's word in `stop_reason`.
+#
+# The whole six are held here anyway, because the registry names this module as
 # the concept's backend consumer and a consumer holds the vocabulary rather than
 # the subset it happens to drive. That is what let the split into four events
 # ADD a field to a payload rather than open a second place these words are
@@ -177,6 +190,7 @@ KNOWN_TRIGGER_SOURCES = frozenset({
     TRIGGER_SOURCE_PARENT_CASCADE,
     TRIGGER_SOURCE_POOL_CROSSING,
     TRIGGER_SOURCE_STALE_REAPER,
+    TRIGGER_SOURCE_CHARGE_PROJECTION,
 })
 
 
@@ -240,3 +254,44 @@ def stop_fields(verdicts, *, is_subtask):
     if verdicts.get("task_not_active"):
         return TASK_NOT_ACTIVE, unit_scope(is_subtask=is_subtask)
     return None, None
+
+
+class CeilingCrossing(NamedTuple):
+    """The figures one unit's ceiling was crossed on (#569 B7): the unit, the
+    ceiling it pinned at start, and its supplier cost (COGS) total at the
+    crossing. The accumulate verdict carries one beside each crossing flag
+    that fired, so an acknowledgement's bound and measured amount come off
+    the crossing itself and never off a later read of the row."""
+    task_id: UUID
+    ceiling_micros: int
+    provider_cost_micros: int
+
+
+def unit_stop(verdicts, *, unit_id, is_subtask):
+    """The unit-scoped stop an accumulate verdict puts on the acknowledgement,
+    with the figures it was measured on (#569), or None when nothing
+    unit-scoped fired — ``{stop_reason, stop_scope, stop_bound_micros,
+    stop_measured_micros, stop_task_id}``.
+
+    ``stop_fields`` decides the reason and the scope (the WIDEST tripped
+    scope wins), and the figures follow the scope: a `task`-scoped stop on a
+    contained unit's report carries its PARENT's ceiling and rolled-up total,
+    never the contained unit's own — whose crossing, if it fired too, is
+    the losing verdict. ``stop_task_id`` is the unit the stop is about: the
+    crossing's unit, or for `task_not_active` the named unit itself — which
+    names no bound, so both figures are null (a stop reason is "which bound
+    was reached", and this is the one verdict that is not a bound). Which
+    MECHANISM applied the stop is the caller's to say, at the point it acts —
+    this module maps no cause to a mechanism (``KNOWN_TRIGGER_SOURCES``)."""
+    reason, scope = stop_fields(verdicts, is_subtask=is_subtask)
+    if reason is None:
+        return None
+    if reason == TASK_NOT_ACTIVE:
+        return {"stop_reason": reason, "stop_scope": scope,
+                "stop_bound_micros": None, "stop_measured_micros": None,
+                "stop_task_id": unit_id}
+    crossing = verdicts["task_crossing" if scope == "task" else "subtask_crossing"]
+    return {"stop_reason": reason, "stop_scope": scope,
+            "stop_bound_micros": crossing.ceiling_micros,
+            "stop_measured_micros": crossing.provider_cost_micros,
+            "stop_task_id": crossing.task_id}

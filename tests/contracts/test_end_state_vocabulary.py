@@ -211,16 +211,19 @@ def test_the_receipts_qualification_travels_with_its_name(registry):
 
     spec = json.loads(
         (REPO_ROOT / "openapi" / "v1.json").read_text(encoding="utf-8"))
-    described = [
-        node.get("description", "")
-        for schema in spec["components"]["schemas"].values()
+    described = {
+        schema_name: node.get("description", "")
+        for schema_name, schema in spec["components"]["schemas"].items()
         for name, node in (schema.get("properties") or {}).items()
-        if name == "pricing_receipt"]
+        if name == "pricing_receipt"}
 
-    assert len(described) == 2, (
-        f"expected the receipt on the two responses that publish it, found "
-        f"{len(described)}")
-    for description in described:
+    # NAMED, NOT COUNTED: #569 typed the batch item, which inherits the single
+    # route's acknowledgement and with it the receipt and its description —
+    # a third carrier, and every one of them owes the sentence.
+    assert set(described) == {"RecordUsageResponse", "UsageBatchItemResponse",
+                              "UsageEventDetailOut"}, (
+        f"the receipt is published on {sorted(described)}")
+    for description in described.values():
         assert "ECONOMIC RESOLUTION" in description
         assert "not a guarantee that customer revenue exists" in description
         assert "not evidence a customer was charged" in description

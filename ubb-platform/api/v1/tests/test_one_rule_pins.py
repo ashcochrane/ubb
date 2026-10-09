@@ -411,29 +411,38 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         self.assertIsNone(body["ceiling_used_percentage"])
         self.assertIsNone(body["ceiling_remaining_micros"])
 
-    def test_a_replayed_acknowledgement_carries_the_units_standing_now(self, _mock):
-        """An idempotent replay answers with the unit's CURRENT assessment,
-        on `stop`'s own footing (the durable flag is read at replay time),
-        while the unit totals stay null because they say what this recording
-        did and a replay did nothing. Driven past the original: a later
-        report moves the unit onto its ceiling, and the replay of the FIRST
-        report says so rather than repeating what the first one saw."""
+    def test_a_replayed_acknowledgement_carries_the_original_assessment(self, _mock):
+        """INVERTED BY #569 (it was `test_a_replayed_acknowledgement_carries_
+        the_units_standing_now`, #452's rule). An idempotent replay answers
+        with the ORIGINAL acknowledgement's assessment, on `stop`'s own
+        footing: both are read from what the original kept, never from the
+        unit as it stands now — the owner's and consultant's ruling of
+        2026-10-08, because the assessment is stop state derived from the
+        unit, and a replay may not reconstruct stop state from current facts
+        (ADR-0019 records the departure from #452). The unit totals stay null
+        because they say what this recording did and a replay did nothing.
+        Driven past the original: a later report moves the unit onto its
+        ceiling, and the replay of the FIRST report still says what the first
+        one saw."""
         task = self._task(limit=10_000_000)
         with self.captureOnCommitCallbacks(execute=True):
             first = self._record(task_id=str(task.id), idempotency_key="k-1",
                                  provider_cost_micros=4_000_000, bills=1_000)
             self.assertEqual(first.json()["ceiling_status"],
                              CEILING_STATUS_WITHIN_CEILING)
-            self._record(task_id=str(task.id), provider_cost_micros=6_000_000,
-                         bills=1_000)
+            reached = self._record(task_id=str(task.id),
+                                   provider_cost_micros=6_000_000, bills=1_000)
+            self.assertEqual(reached.json()["ceiling_status"],
+                             CEILING_STATUS_CEILING_REACHED)
             replay = self._record(task_id=str(task.id), idempotency_key="k-1",
                                   provider_cost_micros=4_000_000,
                                   bills=1_000).json()
         self.assertEqual(replay["event_id"], first.json()["event_id"])
         self.assertIsNone(replay["task_total_provider_cost_micros"])
-        self.assertEqual(replay["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
-        self.assertEqual(replay["ceiling_used_percentage"], 100)
-        self.assertEqual(replay["ceiling_remaining_micros"], 0)
+        self.assertEqual(replay["ceiling_status"], CEILING_STATUS_WITHIN_CEILING)
+        self.assertEqual(replay["ceiling_used_percentage"], 40)
+        self.assertEqual(replay["ceiling_remaining_micros"], 6_000_000)
+        self.assertFalse(replay["stop"])
 
     def test_the_stops_shape_on_the_acknowledgement_is_unchanged(self, _mock):
         """`stop`, `stop_reason` and `stop_scope` keep their names, types and

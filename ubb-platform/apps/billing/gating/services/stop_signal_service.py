@@ -68,6 +68,30 @@ LINE_SOFT_FLOOR = "soft_floor"
 #: and the flag lifts only when every one of them has cleared.
 STOP_LINES = (LINE_HARD_FLOOR, LINE_CUSTOMER_SPEND_POOL)
 
+#: HOW A STOP EPISODE OPENED (#569): the mechanism that applied the stop, the
+#: bound its line was measured against as resolved at the crossing, and the
+#: amount measured against it then. Spelled as the recording acknowledgement
+#: publishes them, because they travel ledger row -> fast flag -> the
+#: recording's snapshot unchanged, and one spelling end to end is what keeps
+#: a renamed key from answering null somewhere along the way.
+OPENING_FACTS = ("trigger_source", "stop_bound_micros", "stop_measured_micros")
+
+
+def opening_facts(*, trigger_source, stop_bound_micros, stop_measured_micros):
+    """The three opening facts as one plain-data value — every key present,
+    so a reader never has to tell a missing key from a figure that does not
+    apply. Required keywords, so a lane cannot open an episode and forget to
+    say how."""
+    return {"trigger_source": trigger_source,
+            "stop_bound_micros": stop_bound_micros,
+            "stop_measured_micros": stop_measured_micros}
+
+
+#: An episode no lane stamped — the wind-down line, a row opened before #569,
+#: or a flag planted without facts: every figure null, never 0.
+NO_OPENING_FACTS = opening_facts(trigger_source=None, stop_bound_micros=None,
+                                 stop_measured_micros=None)
+
 STATE_STOPPED = "stopped"
 STATE_CLEARED = "cleared"
 
@@ -149,16 +173,21 @@ def _line_row(owner_id, line):
                     reason=line))
 
 
-def _open_line(owner_id, tenant, line, *, control_id, now):
+def _open_line(owner_id, tenant, line, *, control_id, now, opening):
     """Open an episode on ``line`` — the shared stop-side transition. Returns
-    the row when THIS call won (created, or flipped from cleared), else None."""
+    the row when THIS call won (created, or flipped from cleared), else None.
+
+    ``opening`` is the episode's opening facts (``OPENING_FACTS``), stamped
+    beside the control by the winning transition and by nothing else (#569):
+    a lane that loses leaves the opener's facts standing."""
     from apps.billing.gating.models import StopSignalState
 
     row, created = StopSignalState.objects.select_for_update().get_or_create(
         owner_id=owner_id, control_family=family_of_line(line), reason=line,
         defaults={"tenant_id": tenant.id, "state": STATE_STOPPED,
                   "episode_seq": 1, "clear_reason": "",
-                  "control_id": control_id, "transitioned_at": now})
+                  "control_id": control_id, "transitioned_at": now,
+                  **opening})
     if not created:
         if row.state == STATE_STOPPED:
             return None
@@ -167,8 +196,11 @@ def _open_line(owner_id, tenant, line, *, control_id, now):
         row.clear_reason = ""
         row.control_id = control_id
         row.transitioned_at = now
+        for fact in OPENING_FACTS:
+            setattr(row, fact, opening[fact])
         row.save(update_fields=["state", "episode_seq", "clear_reason",
-                                "control_id", "transitioned_at", "updated_at"])
+                                "control_id", "transitioned_at", *OPENING_FACTS,
+                                "updated_at"])
     return row
 
 
@@ -188,7 +220,8 @@ def _close_line(owner_id, line, *, clear_reason):
 
 class StopSignalService:
     @staticmethod
-    def drive_stop(owner_id, tenant, *, line, control_id, balance_micros=0):
+    def drive_stop(owner_id, tenant, *, line, control_id, trigger_source,
+                   stop_bound_micros, stop_measured_micros, balance_micros=0):
         """Drive the stop transition for (owner, ``line``) — one of the two
         STOP_LINES, named by the stop word the lane produces.
 
@@ -198,7 +231,12 @@ class StopSignalService:
 
         1. flips the ledger row to ``stopped``, increments ``episode_seq``
            and records ``control_id`` — the row that declares the control,
-           passed by the caller because only the caller holds it (§1);
+           passed by the caller because only the caller holds it (§1) — and
+           the episode's opening facts (#569): ``trigger_source``, the
+           mechanism of the calling lane; ``stop_bound_micros``, the line as
+           the lane resolved it at this crossing; ``stop_measured_micros``,
+           what the lane measured against it. All three are required: every
+           lane that can open an episode says how it did;
         2. emits ``customer.stopped`` carrying the episode id, the line's word as
            `reason_code`, the family the word belongs to and the id;
         3. durably suspends the owner (active->suspended winning flip +
@@ -227,7 +265,10 @@ class StopSignalService:
         with transaction.atomic():
             owner = Customer.objects.select_for_update().get(id=owner_id)
             row = _open_line(owner_id, tenant, line, control_id=control_id,
-                             now=timezone.now())
+                             now=timezone.now(), opening=opening_facts(
+                                 trigger_source=trigger_source,
+                                 stop_bound_micros=stop_bound_micros,
+                                 stop_measured_micros=stop_measured_micros))
             if row is None:
                 return None
             emit_stamped(row, StopFired(
@@ -285,16 +326,18 @@ class StopSignalService:
     def open_stop_lines(owner_id):
         """The stop lines currently holding this owner, as plain data in line
         order — ``[{reason, control_family, control_id, episode_seq,
-        transitioned_at}, ...]``, empty when no stop is open. The one read
-        every lifting path makes (the customer-wide stop flag and the money
-        suspension lift only when this answers empty, §9) and the one the
-        stop-context tagging reads through billing's read contract."""
+        transitioned_at, trigger_source, stop_bound_micros,
+        stop_measured_micros}, ...]``, empty when no stop is open. The one
+        read every lifting path makes (the customer-wide stop flag and the
+        money suspension lift only when this answers empty, §9), the one the
+        stop-context tagging reads through billing's read contract, and the
+        one the fast flag is re-aligned from — word and opening facts (#569)."""
         from apps.billing.gating.models import StopSignalState
 
         rows = {r["reason"]: r for r in StopSignalState.objects
                 .filter(owner_id=owner_id, reason__in=STOP_LINES, state=STATE_STOPPED)
                 .values("reason", "control_family", "control_id",
-                        "episode_seq", "transitioned_at")}
+                        "episode_seq", "transitioned_at", *OPENING_FACTS)}
         return [rows[line] for line in STOP_LINES if line in rows]
 
     @staticmethod
@@ -339,7 +382,7 @@ class StopSignalService:
 
         with transaction.atomic():
             row = _open_line(owner_id, tenant, LINE_SOFT_FLOOR, control_id=None,
-                             now=timezone.now())
+                             now=timezone.now(), opening=NO_OPENING_FACTS)
             if row is None:
                 return None
             emit_stamped(row, SoftFloorCrossed(

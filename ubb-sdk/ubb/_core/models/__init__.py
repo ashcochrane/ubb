@@ -317,9 +317,19 @@ from .unresolved_queue_row_pricing_status import UnresolvedQueueRowPricingStatus
 from .unresolved_queue_row_unresolved_reason_type_0 import UnresolvedQueueRowUnresolvedReasonType0
 from .unresolved_queue_totals import UnresolvedQueueTotals
 from .unsupported_measure_out import UnsupportedMeasureOut
+from .usage_batch_item_response import UsageBatchItemResponse
+from .usage_batch_item_response_ceiling_status_type_0 import UsageBatchItemResponseCeilingStatusType0
+from .usage_batch_item_response_costing_status_type_0 import UsageBatchItemResponseCostingStatusType0
+from .usage_batch_item_response_grouping_fields import UsageBatchItemResponseGroupingFields
+from .usage_batch_item_response_measurements_type_0 import UsageBatchItemResponseMeasurementsType0
+from .usage_batch_item_response_not_applicable_reason_type_0 import UsageBatchItemResponseNotApplicableReasonType0
+from .usage_batch_item_response_pricing_method_type_0 import UsageBatchItemResponsePricingMethodType0
+from .usage_batch_item_response_pricing_receipt_subject_type_type_0 import UsageBatchItemResponsePricingReceiptSubjectTypeType0
+from .usage_batch_item_response_pricing_receipt_type_0 import UsageBatchItemResponsePricingReceiptType0
+from .usage_batch_item_response_pricing_status_type_0 import UsageBatchItemResponsePricingStatusType0
+from .usage_batch_item_response_unresolved_reason_type_0 import UsageBatchItemResponseUnresolvedReasonType0
 from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
-from .usage_batch_response_results_item import UsageBatchResponseResultsItem
 from .usage_event_detail_out import UsageEventDetailOut
 from .usage_event_detail_out_costing_status import UsageEventDetailOutCostingStatus
 from .usage_event_detail_out_grouping_fields import UsageEventDetailOutGroupingFields
@@ -680,9 +690,19 @@ __all__ = (
     "UnresolvedQueueRowUnresolvedReasonType0",
     "UnresolvedQueueTotals",
     "UnsupportedMeasureOut",
+    "UsageBatchItemResponse",
+    "UsageBatchItemResponseCeilingStatusType0",
+    "UsageBatchItemResponseCostingStatusType0",
+    "UsageBatchItemResponseGroupingFields",
+    "UsageBatchItemResponseMeasurementsType0",
+    "UsageBatchItemResponseNotApplicableReasonType0",
+    "UsageBatchItemResponsePricingMethodType0",
+    "UsageBatchItemResponsePricingReceiptSubjectTypeType0",
+    "UsageBatchItemResponsePricingReceiptType0",
+    "UsageBatchItemResponsePricingStatusType0",
+    "UsageBatchItemResponseUnresolvedReasonType0",
     "UsageBatchRequest",
     "UsageBatchResponse",
-    "UsageBatchResponseResultsItem",
     "UsageEventDetailOut",
     "UsageEventDetailOutCostingStatus",
     "UsageEventDetailOutGroupingFields",

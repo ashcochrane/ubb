@@ -5,7 +5,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
 from apps.platform.work import reasons
-from apps.metering.usage.models import Posting
+from apps.metering.usage.models import Posting, StopAcknowledgement
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import declares_a_markup
 from apps.metering.usage.services.usage_service import SLOTS, UsageService, _result
@@ -47,6 +47,12 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 # what its ceiling concluded, in the registry's word, and the utilisation
 # beside it. Null on the same rule as the unit totals — no named unit, nothing
 # to assess — which the builder call below (no task) is what pins.
+#
+# `trigger_source`, `stop_bound_micros` and `stop_measured_micros` joined in
+# #569: how the stop was applied and what it was measured on, null where
+# nothing stopped. Since #569 the builder reads every stop fact and the
+# assessment off the stop acknowledgement the recording kept — on the fresh
+# path and every replay alike — so the call below hands it one.
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "costing_status",
     "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
@@ -56,6 +62,7 @@ _RESULT_KEYS = {
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",
     "task_total_unresolved_event_count", "task_total_unpriced_event_count",
     "stop", "stop_reason", "stop_scope",
+    "trigger_source", "stop_bound_micros", "stop_measured_micros",
     "ceiling_status", "ceiling_used_percentage", "ceiling_remaining_micros",
     "stop_context", "measurements", "pricing_receipt", "grouping_fields",
 }
@@ -94,7 +101,8 @@ class ResultSignatureTest(TestCase):
             task_id=None, measurements={}, pricing_receipt={},
             stop_context=None, **{slot: "" for slot in SLOTS},
         )
-        out = _result(event)
+        # What a recording that stopped nothing and named no unit keeps.
+        out = _result(event, StopAcknowledgement(stop=False))
         # The EXACT new key set — retired keys (hard_stop,
         # run_total_cost_micros, run_id) can never sneak back in.
         self.assertEqual(set(out), _RESULT_KEYS)
@@ -109,6 +117,9 @@ class ResultSignatureTest(TestCase):
         self.assertFalse(out["stop"])
         self.assertIsNone(out["stop_reason"])
         self.assertIsNone(out["stop_scope"])
+        self.assertIsNone(out["trigger_source"])
+        self.assertIsNone(out["stop_bound_micros"])
+        self.assertIsNone(out["stop_measured_micros"])
         self.assertFalse(out["suspended"])
         self.assertIsNone(out["new_balance_micros"])
         self.assertIsNone(out["parent_task_id"])

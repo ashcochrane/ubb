@@ -81,7 +81,8 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     COSTING_STATUS_KNOWN, MEASUREMENTS_STATUS_NOT_APPLICABLE,
     OUTCOME_REASON_EXECUTION_FAILED, PRICING_STATUS_KNOWN, TASK_OUTCOME_FAILED,
-    USAGE_EVENT_KIND_METERED_USAGE, USAGE_EVENT_KIND_TASK_CHARGE,
+    TRIGGER_SOURCE_CHARGE_PROJECTION, USAGE_EVENT_KIND_METERED_USAGE,
+    USAGE_EVENT_KIND_TASK_CHARGE,
 )
 
 #: What a supplier charged for a projection: nothing, and settled. Spelled once
@@ -507,7 +508,8 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
             result = wallet_ops.draw_down_usage(
                 customer_id=self.customer.id, tenant=self.tenant,
                 usage_event_id=projection.id,
-                billed_cost_micros=THE_AGREED_PRICE + 1)
+                billed_cost_micros=THE_AGREED_PRICE + 1,
+                trigger_source=TRIGGER_SOURCE_CHARGE_PROJECTION)
 
         assert result.outcome == "replayed"
         assert "ledger.usage_deduction_amount_mismatch" in caplog.text

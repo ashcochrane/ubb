@@ -128,7 +128,10 @@ class TestLiveCounterPostpaid:
         LiveCounter.debit(c.id, t, 5_000_000, now=now)
         prior = now.replace(day=1) - datetime.timedelta(days=2)
         out = LiveCounter.debit(c.id, t, 9_000_000, effective_at=prior, now=now)
-        assert out is None
+        # It moves no counter, and since #569 (B8) it still READS the
+        # standing stop rather than answering None — here, nothing stands.
+        assert out == LiveCounter.read(c.id, t, customer_id=c.id)
+        assert out["stop"] is False
         assert Door.spend(c.id, now=now) == 5_000_000
 
     def test_pooled_postpaid_aggregates_seats_at_owner(self):
@@ -253,7 +256,8 @@ class TestStopFlag:
         # I3: the breaching event is recorded + charged (200 cooperative, not rolled back)
         assert res["stop"] is True and res["stop_reason"] == stop_line(t)
         assert Posting.objects.filter(id=res["event_id"]).exists()
-        # I4: the idempotent replay return ALSO carries the stop verdict
+        # The idempotent replay carries the stop verdict the ORIGINAL kept
+        # (#569, ADR-0019 — no longer Tier-2 I4's re-read of the flag).
         replay = UsageService.record_usage(
             tenant=t, customer=c, idempotency_key="k1",
             measurements=priced_at(6_000_000))

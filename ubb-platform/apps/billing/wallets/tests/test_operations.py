@@ -24,6 +24,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
+from core.vocabulary import TRIGGER_SOURCE_USAGE_INGEST
 
 
 def _tenant(**kw):
@@ -101,12 +102,13 @@ def _op_registry(tenant, customer, wallet):
          None),
         ("draw_down_usage", lambda: wallet_ops.draw_down_usage(
             customer_id=customer.id, tenant=tenant,
-            usage_event_id=str(uuid.uuid4()), billed_cost_micros=1_000_000),
+            usage_event_id=str(uuid.uuid4()), billed_cost_micros=1_000_000,
+            trigger_source=TRIGGER_SOURCE_USAGE_INGEST),
          None),
         ("draw_down_usage[repair]", lambda: wallet_ops.draw_down_usage(
             customer_id=customer.id, tenant=tenant,
             usage_event_id=str(uuid.uuid4()), billed_cost_micros=1_000_000,
-            repair=True), None),
+            repair=True, trigger_source=None), None),
         ("credit_top_up", lambda: wallet_ops.credit_top_up(
             customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
             idempotency_key=f"auto_topup:{uuid.uuid4()}", source="auto_topup",
@@ -419,11 +421,12 @@ class TestReplays:
         event_id = str(uuid.uuid4())
         wallet_ops.draw_down_usage(customer_id=c.id, tenant=t,
                                    usage_event_id=event_id,
-                                   billed_cost_micros=1_000_000)
+                                   billed_cost_micros=1_000_000,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         with caplog.at_level("ERROR", logger="ubb.billing"):
             again = wallet_ops.draw_down_usage(
                 customer_id=c.id, tenant=t, usage_event_id=event_id,
-                billed_cost_micros=2_000_000)
+                billed_cost_micros=2_000_000, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert again.outcome == "replayed"
         assert any("usage_deduction_amount_mismatch" in r.message
                    for r in caplog.records)
@@ -487,7 +490,7 @@ class TestExpiryPlacement:
         elif op_name == "draw_down_usage":
             wallet_ops.draw_down_usage(
                 customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
-                billed_cost_micros=1_000_000)
+                billed_cost_micros=1_000_000, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         elif op_name == "claw_back_dispute":
             wallet_ops.claw_back_dispute(
                 customer_id=c.id, tenant=t, amount_micros=1_000_000,
@@ -548,7 +551,8 @@ class TestMoneyRules:
         grant = _mint(t, c, kind="promo", amount=10_000_000)  # balance 10
         wallet_ops.draw_down_usage(customer_id=c.id, tenant=t,
                                    usage_event_id=str(uuid.uuid4()),
-                                   billed_cost_micros=7_000_000)  # balance 3
+                                   billed_cost_micros=7_000_000,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST)  # balance 3
         result = wallet_ops.void_grant(customer_id=c.id, tenant=t,
                                        grant_id=grant.id)
         assert result.outcome == "applied"
@@ -644,7 +648,8 @@ class TestMoneyRules:
         event_id = uuid.uuid4()
         wallet_ops.draw_down_usage(customer_id=c.id, tenant=t,
                                    usage_event_id=event_id,
-                                   billed_cost_micros=4_000_000)
+                                   billed_cost_micros=4_000_000,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         with patch("apps.metering.queries.get_posting_price",
                    return_value={"billed_cost_micros": 4_000_000, "pricing_status": "known"}):
             result = wallet_ops.refund_usage(
@@ -670,7 +675,7 @@ class TestDrawdownTail:
         _wallet(c, balance=1_000_000)
         result = wallet_ops.draw_down_usage(
             customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
-            billed_cost_micros=2_000_000)
+            billed_cost_micros=2_000_000, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert result.outcome == "applied"
         assert OutboxEvent.objects.filter(
             event_type="wallet.balance_overage").count() == 1
@@ -689,7 +694,8 @@ class TestDrawdownTail:
             top_up_amount_micros=20_000_000)
         wallet_ops.draw_down_usage(customer_id=c.id, tenant=t,
                                    usage_event_id=str(uuid.uuid4()),
-                                   billed_cost_micros=3_000_000)
+                                   billed_cost_micros=3_000_000,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert OutboxEvent.objects.filter(
             event_type="wallet.balance_low").count() == 1
 
@@ -703,7 +709,7 @@ class TestDrawdownTail:
                    "LiveCounter.ensure_stop_flag") as flag:
             wallet_ops.draw_down_usage(
                 customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
-                billed_cost_micros=2_000_000)
+                billed_cost_micros=2_000_000, trigger_source=TRIGGER_SOURCE_USAGE_INGEST)
         assert drive.called
         assert flag.called
         # Enforcing: the folded suspension rides the signal ledger, never the
@@ -722,7 +728,7 @@ class TestDrawdownTail:
             top_up_amount_micros=20_000_000)
         result = wallet_ops.draw_down_usage(
             customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
-            billed_cost_micros=2_000_000, repair=True)
+            billed_cost_micros=2_000_000, repair=True, trigger_source=None)
         assert result.outcome == "applied"
         w.refresh_from_db()
         assert w.balance_micros == -1_000_000

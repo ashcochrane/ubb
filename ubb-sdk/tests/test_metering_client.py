@@ -359,8 +359,13 @@ class MeteringClientTest(unittest.TestCase):
 
     @patch("ubb.metering.httpx.Client.post")
     def test_record_batch_does_not_mutate_caller_events(self, mock_post):
+        # The batch's items are typed since #569, so the body is a transcript
+        # of what the server sends — `accepted` and the two statuses
+        # included — rather than the pre-#78 `ok` / `succeeded` shape it was.
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "results": [{"ok": True, "event_id": "e1", "suspended": False}], "succeeded": 1, "failed": 0,
+            "results": [{"accepted": True, "event_id": "e1", "suspended": False,
+                         "costing_status": "known", "pricing_status": "known"}],
+            "accepted": 1, "rejected": 0,
         })
         ev = {"customer_id": "cust_1", "idempotency_key": "k1",
               "recorded_at": "2026-06-01T12:00:00+00:00"}
