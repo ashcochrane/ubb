@@ -28,15 +28,18 @@ import json
 import uuid
 from unittest import mock
 
-from django.db import DatabaseError, IntegrityError, connection, transaction
+from django.db import (DatabaseError, IntegrityError, connection, models,
+                       transaction)
 
 from api.v1.tests.test_a_stop_acknowledgement_says_what_stopped_it import (
     STOP_FACTS, ReadsAStopAcknowledgement)
 from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
-    DOORBELL, SOLD_WHOLE, THE_AGREED_PRICE, PoolTestBase)
+    DOORBELL, SOLD_WHOLE, THE_AGREED_PRICE, PoolTestBase, ThroughABatchItem,
+    ThroughTheSingleRoute)
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.metering.usage.models import Posting, StopAcknowledgement
+from apps.metering.usage.tests._helpers import rule_on_the_table
 from apps.metering.usage.services.usage_service import (
     StopAcknowledgementMissing, UsageService)
 from apps.platform.customers.models import Customer
@@ -50,7 +53,7 @@ from core.vocabulary import (
     TRIGGER_SOURCE_USAGE_INGEST)
 
 #: The ceiling assessment beside the stop facts — also the original's on a
-#: replay (answer 5).
+#: replay (ADR-0019 §5).
 ASSESSMENT = ("ceiling_status", "ceiling_used_percentage",
               "ceiling_remaining_micros")
 
@@ -278,20 +281,13 @@ class AReplayAnswersWhatTheAcknowledgementSaid(MovesTheLiveFactsOn):
 
 
 class AReplayOnTheSingleRouteTest(AReplayAnswersWhatTheAcknowledgementSaid,
-                                  PoolTestBase):
-
-    def _through_the_route(self, customer, **fields):
-        return self._record(customer, **fields)
+                                  ThroughTheSingleRoute, PoolTestBase):
+    pass
 
 
 class AReplayOnABatchItemTest(AReplayAnswersWhatTheAcknowledgementSaid,
-                              PoolTestBase):
-    """The other route, owed by name: one batch item is one single report."""
-
-    def _through_the_route(self, customer, **fields):
-        result = self._one_batch_item(customer, **fields)
-        self.assertTrue(result["accepted"], result)
-        return result
+                              ThroughABatchItem, PoolTestBase):
+    pass
 
 
 class AKeyReplaysAcrossTheTwoRoutesTest(MovesTheLiveFactsOn, PoolTestBase):
@@ -327,7 +323,7 @@ class TheStopAcknowledgementIsKeptOnceTest(PoolTestBase):
     """The record's own rules: one per recorded result, written with its
     posting, insert-only at the database, and never reconstructed."""
 
-    def _snapshot(self):
+    def _one_kept(self):
         self._record(bills=1_000)
         return StopAcknowledgement.objects.get()
 
@@ -384,43 +380,71 @@ class TheStopAcknowledgementIsKeptOnceTest(PoolTestBase):
         self.assertFalse(Posting.objects.filter(
             idempotency_key="kept-together").exists())
 
+    def _around_the_guard_save(self, kept, **columns):
+        """`save()`, reaching around the model's own refusal — what a writer
+        bypassing the override looks like (`usage/tests/_helpers.through_save`):
+        the plain `save()` raises before the database is asked anything, and
+        would prove nothing about it."""
+        for name, value in columns.items():
+            setattr(kept, name, value)
+        models.Model.save(kept)
+
     def test_an_update_is_refused_by_the_database_through_every_door(self):
-        snapshot = self._snapshot()
+        kept = self._one_kept()
         doors = {
+            "save(), around the guard": lambda: self._around_the_guard_save(
+                StopAcknowledgement.objects.get(id=kept.id), stop=True),
             "a queryset update": lambda: StopAcknowledgement.objects.filter(
-                id=snapshot.id).update(stop_bound_micros=1),
+                id=kept.id).update(stop_bound_micros=1),
             "raw SQL": lambda: connection.cursor().execute(
                 "UPDATE ubb_stop_acknowledgement SET stop = true WHERE id = %s",
-                [snapshot.id]),
+                [kept.id]),
         }
         for door, write in doors.items():
             with self.subTest(door=door):
                 with self.assertRaisesRegex(IntegrityError, "insert-only"), \
                         transaction.atomic():
                     write()
-        snapshot.refresh_from_db()
-        self.assertFalse(snapshot.stop)
-        self.assertIsNone(snapshot.stop_bound_micros)
+        kept.refresh_from_db()
+        self.assertFalse(kept.stop)
+        self.assertIsNone(kept.stop_bound_micros)
+        # The model's own door is shut too (not the enforcement).
         with self.assertRaises(ValueError):
-            snapshot.save()
+            kept.save()
 
     def test_a_delete_is_refused_by_the_database_through_every_door(self):
-        snapshot = self._snapshot()
+        kept = self._one_kept()
         doors = {
+            "delete(), around the guard": lambda: models.Model.delete(
+                StopAcknowledgement.objects.get(id=kept.id)),
             "a queryset delete": lambda: StopAcknowledgement.objects.filter(
-                id=snapshot.id).delete(),
+                id=kept.id).delete(),
             "raw SQL": lambda: connection.cursor().execute(
                 "DELETE FROM ubb_stop_acknowledgement WHERE id = %s",
-                [snapshot.id]),
+                [kept.id]),
         }
         for door, write in doors.items():
             with self.subTest(door=door):
                 with self.assertRaisesRegex(IntegrityError, "insert-only"), \
                         transaction.atomic():
                     write()
-        self.assertTrue(StopAcknowledgement.objects.filter(id=snapshot.id).exists())
+        self.assertTrue(StopAcknowledgement.objects.filter(id=kept.id).exists())
         with self.assertRaises(ValueError):
-            snapshot.delete()
+            kept.delete()
+
+    def test_the_rule_fires_before_each_update_and_delete_and_never_on_insert(self):
+        """`BEFORE UPDATE OR DELETE ... FOR EACH ROW`, read out of `tgtype`'s
+        bits. The INSERT bit being OFF is the load-bearing half: the
+        migration's cost argument is that the recording path's one insert per
+        recorded result never enters the function (`django-patterns.md`: a
+        rule asserts its statement mask rather than describing it)."""
+        tgtype, _ = rule_on_the_table("trg_stop_acknowledgement_is_insert_only",
+                                      table="ubb_stop_acknowledgement")
+        self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")
+        self.assertTrue(tgtype & (1 << 1), "not BEFORE")
+        self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
+        self.assertTrue(tgtype & (1 << 3), "does not fire on DELETE")
+        self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
 
     def test_a_sandbox_is_discarded_with_its_records(self):
         """The admitted move: a sandbox's reset discards its postings

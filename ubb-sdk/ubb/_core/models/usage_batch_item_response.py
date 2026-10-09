@@ -33,9 +33,9 @@ T = TypeVar("T", bound="UsageBatchItemResponse")
 
 @_attrs_define
 class UsageBatchItemResponse:
-    """ One batch item's verdict (#569 B9) — the field set #78 unified across
-    the batch route and the async ingest route, which slice 1 deleted; this
-    is the surviving shape, TYPED. An accepted item (`accepted: true`) is the
+    """ One batch item's verdict (#569, ADR-0019 §8) — the field set #78
+    unified across the batch route and the async ingest route, which slice 1
+    deleted; this is the surviving shape, TYPED. An accepted item (`accepted: true`) is the
     single route's acknowledgement, field for field and with the meaning
     `RecordUsageResponse` publishes for each. A rejected item was never
     recorded: it carries `accepted: false`, a registry `code` and a

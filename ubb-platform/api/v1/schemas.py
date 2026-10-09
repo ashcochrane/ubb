@@ -625,7 +625,7 @@ ReasonCode = Annotated[
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
 
-#: WHAT `stop_reason` MAY SAY ON AN ACKNOWLEDGEMENT (#569 B10). The
+#: WHAT `stop_reason` MAY SAY ON AN ACKNOWLEDGEMENT (#569, ADR-0019 §2). The
 #: registry's known values travel as `x-ubb-known-values` metadata; the one
 #: verdict UBB produces beyond them is published here, because the registry
 #: deliberately does not list it (it names bounds, and this is not one —
@@ -639,7 +639,7 @@ STOP_REASON_ON_AN_ACKNOWLEDGEMENT = (
     "recorded and charged. Null when `stop` is false. Open: accept a reason "
     "not listed here.")
 
-#: THE MECHANISM, ON AN ACKNOWLEDGEMENT (#569 B3, B5) — the per-reason
+#: THE MECHANISM, ON AN ACKNOWLEDGEMENT (#569, ADR-0019 §1, §3) — the per-reason
 #: meaning, published once, on the field.
 TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT = (
     "The mechanism that applied the stop this acknowledgement names — never "
@@ -654,7 +654,7 @@ TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT = (
     "a stop on this report. On an idempotent replay, the original "
     "acknowledgement's.")
 
-#: THE BOUND, ON AN ACKNOWLEDGEMENT (#569 B3, B4).
+#: THE BOUND, ON AN ACKNOWLEDGEMENT (#569, ADR-0019 §1, §2).
 STOP_BOUND_ON_AN_ACKNOWLEDGEMENT = (
     "The monetary bound the stop named in `stop_reason` was measured "
     "against, as it stood when that stop was established. For "
@@ -668,7 +668,7 @@ STOP_BOUND_ON_AN_ACKNOWLEDGEMENT = (
     "apply'. Later configuration does not move it, and on an idempotent "
     "replay it is the original acknowledgement's.")
 
-#: THE AMOUNT MEASURED, ON AN ACKNOWLEDGEMENT (#569 B3, B4).
+#: THE AMOUNT MEASURED, ON AN ACKNOWLEDGEMENT (#569, ADR-0019 §1, §2).
 STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT = (
     "The monetary amount assessed against `stop_bound_micros` when the stop "
     "was established. For `task_cogs_ceiling`: the governing unit of work's "
@@ -743,7 +743,7 @@ class RecordUsageResponse(Schema):
     # stop_reason says WHICH BOUND was reached, in the registry's words (the
     # known values ride the contract as metadata) plus the one verdict that is
     # not a bound, `task_not_active` — which its description now publishes
-    # (#569 B10); stop_scope ∈ task | subtask | customer,
+    # (#569, ADR-0019 §2); stop_scope ∈ task | subtask | customer,
     # and it is the scope alone that says which altitude a ceiling crossing
     # was at. On a subtask's ack, scope `task` names the PARENT
     # (parent_task_id above) — the whole tree is stopped, not just the named
@@ -761,8 +761,8 @@ class RecordUsageResponse(Schema):
     # do not apply, never 0 for that. They sit after the stop trio and
     # before the assessment, whose order the shell target reads (#180 §11).
     # The customer whose line a customer-wide stop is (a pooled seat's own,
-    # or its billing owner's) is kept by UBB and not published here (#569
-    # B13); `stop_context` itemises every standing line.
+    # or its billing owner's) is kept by UBB and not published here (#569,
+    # ADR-0019 §4); `stop_context` itemises every standing line.
     trigger_source: Optional[TriggerSource] = Field(
         default=None, description=TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT)
     stop_bound_micros: Optional[int] = Field(
@@ -845,9 +845,9 @@ class RecordUsageResponse(Schema):
 
 
 class UsageBatchItemResponse(RecordUsageResponse):
-    """One batch item's verdict (#569 B9) — the field set #78 unified across
-    the batch route and the async ingest route, which slice 1 deleted; this
-    is the surviving shape, TYPED. An accepted item (`accepted: true`) is the
+    """One batch item's verdict (#569, ADR-0019 §8) — the field set #78
+    unified across the batch route and the async ingest route, which slice 1
+    deleted; this is the surviving shape, TYPED. An accepted item (`accepted: true`) is the
     single route's acknowledgement, field for field and with the meaning
     `RecordUsageResponse` publishes for each. A rejected item was never
     recorded: it carries `accepted: false`, a registry `code` and a

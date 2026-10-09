@@ -110,12 +110,14 @@ PricingStatus = Annotated[
 #: an open set is designed for a producer that drives some of it.
 #:
 #: THE FIELD IS HERE BECAUSE THE BACKEND NOW SERVES THE CONCEPT. Its declared
-#: backend consumer is `apps/platform/work/reasons.py`, which holds all five
-#: mechanisms by reference — and a concept the backend serves that declares an
-#: `openapi` consumer must appear in the published document, or the contract
-#: is silent about a value UBB is already sending. The alternative was to hold
-#: fewer than five words in that module for no reason but to keep this field
-#: away, which is a worse contract bought with a worse module.
+#: backend consumer is `apps/platform/work/reasons.py`, which holds every
+#: mechanism by reference (six since #569's `charge_projection`, which opens a
+#: customer-wide episode and rides the recording acknowledgement, never these
+#: payloads) — and a concept the backend serves that declares an `openapi`
+#: consumer must appear in the published document, or the contract is silent
+#: about a value UBB is already sending. The alternative was to hold fewer
+#: words in that module than the registry declares for no reason but to keep
+#: this field away, which is a worse contract bought with a worse module.
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
 

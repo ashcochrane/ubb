@@ -208,6 +208,26 @@ class PoolTestBase(TestCase):
         return response.json()["reason"]
 
 
+class ThroughTheSingleRoute:
+    """Binds a shape shared across the two recording routes to the single
+    route: one report is one `POST /usage`. A shape that runs on both routes
+    is a mixin calling `_through_the_route`, bound once with this and once
+    with `ThroughABatchItem` (#609's pattern)."""
+
+    def _through_the_route(self, customer, **fields):
+        return self._record(customer, **fields)
+
+
+class ThroughABatchItem:
+    """The other route, owed by name: one batch item is one single report,
+    accepted (a shape asserting a refusal reads `_one_batch_item` itself)."""
+
+    def _through_the_route(self, customer, **fields):
+        result = self._one_batch_item(customer, **fields)
+        self.assertTrue(result["accepted"], result)
+        return result
+
+
 # ---------------------------------------------------------------------------
 # Claim 4 — the same shape, both postures
 # ---------------------------------------------------------------------------

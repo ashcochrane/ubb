@@ -1502,6 +1502,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # queue of unresolved amounts that did not say which of them were
     # unresolved would be the one place the ambiguity really bites.
     # ⚠ SIX SINCE #465: the event a spend-control episode itemises.
+    # ⚠ SEVEN SINCE #569: the typed batch item, which IS the acknowledgement —
+    # it inherits every field and marker of `RecordUsageResponse`, so it is on
+    # every line below that names the acknowledgement, and for the same reason.
     placed("costing_status", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
@@ -1526,6 +1529,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # through a list of unresolved costs is looking for what to configure, and
     # a column of `unresolved` with no reason is a column of shrugs. A queue
     # publishing the status and not the cause would be the finding.
+    # ⚠ AND THE TYPED BATCH ITEM (#569) KEEPS IT TOO: it carries both, as the
+    # acknowledgement it is.
     placed("unresolved_reason", {"RecordUsageResponse", "UsageBatchItemResponse",
                                  "UsageEventOut",
                                  "UsageEventDetailOut", "UnresolvedQueueRow"})
@@ -1549,6 +1554,7 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # revenue for this window settled, and if not, why not — and `unknown`
     # there is a tenant that has supplied no figure covering it. It is the
     # placement that keeps the four revenue states from gaining a fifth.
+    # ⚠ EIGHT SINCE #569: the typed batch item, the acknowledgement itself.
     placed("pricing_status", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
@@ -1569,6 +1575,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # schema that carries the method in either direction — the two responses
     # publishing the receipt, the two bodies that state a rule, the diff row
     # that shows one changing, and the inherited rule a client copies from.
+    # ⚠ SEVEN SINCE #569: the receipt now goes on the typed batch item too (it
+    # inherits the acknowledgement), so by the rule the method does.
     placed("pricing_method", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventDetailOut",
                               "BookChangeIn", "CustomerOverrideIn",
@@ -1600,6 +1608,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # so there is nothing on that payload for a subject type to be about. Said
     # here rather than left silent, because a marker missing from a payload and
     # a marker that was never due there are indistinguishable from the count.
+    # ⚠ THREE SINCE #569: the typed batch item publishes the receipt (it
+    # inherits the acknowledgement), so by the rule above it carries this too —
+    # the "third response gaining the record" arrived WITH the marker.
     placed("pricing_receipt_subject_type", {"RecordUsageResponse",
                                             "UsageBatchItemResponse",
                                             "UsageEventDetailOut"})

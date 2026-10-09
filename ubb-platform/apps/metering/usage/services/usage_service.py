@@ -359,13 +359,13 @@ def _the_stop_it_acknowledges(task, verdicts, live):
     * A unit's ceiling crossed by THIS recording was applied by this lane —
       ``usage_ingest``, the mechanism ``_execute_kills`` names on the kill —
       on the governing unit's pinned ceiling and its supplier cost total at
-      the crossing, off the accumulate verdict (B7).
+      the crossing, off the accumulate verdict (ADR-0019 §2).
     * ``task_not_active`` names no bound and no mechanism applied anything
       on this report: null, null, null.
     * A customer-wide stop is the live verdict's: the stop the flags name
       (#609's precedence — the business's line over a pooled seat's own),
       the mechanism that OPENED its episode and the figures it opened on,
-      which ride the flag (B4, B6), and WHOSE line it is (B13), kept here
+      which ride the flag (ADR-0019 §2, §6), and WHOSE line it is (ADR-0019 §4), kept here
       and never published.
     * Nothing stopped: every fact null.
 
@@ -738,7 +738,7 @@ class UsageService:
                 # stop it answers is the RECORDING CUSTOMER's (#609): the
                 # owner's lines and, for a pooled seat, the seat's own Pool
                 # level — and it answers for a report it does not count, too
-                # (#569 B8).
+                # (#569, ADR-0019 §7).
                 from apps.billing.queries import record_live_usage_debit
                 live = record_live_usage_debit(
                     inp.billing_owner_id, tenant, billed_cost_micros,

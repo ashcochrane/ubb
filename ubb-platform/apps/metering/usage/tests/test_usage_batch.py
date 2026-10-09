@@ -57,7 +57,7 @@ VERDICT_ONLY = ("accepted", "code", "detail")
 
 
 def _rejected(code, detail):
-    """What a rejected item says (#569 B9): nothing was recorded, so nothing
+    """What a rejected item says (#569, ADR-0019 §8): nothing was recorded, so nothing
     stopped — and nothing applied, bounded or measured a stop."""
     return {"accepted": False, "code": code, "detail": detail,
             "stop": False, "stop_reason": None, "stop_scope": None,

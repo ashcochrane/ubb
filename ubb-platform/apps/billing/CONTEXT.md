@@ -271,8 +271,10 @@ recording's flag before that transaction commits already hears how the episode o
 never see a word without its facts. Every write of a flag carries them: the live debit's crossing
 writes its own; `ensure_stop_flag` and the re-point after a line lifts copy the ledger's open row;
 a debit that sets an absent flag but loses the drive to an episode the ledger already holds
-re-aligns the flag to that episode's facts. A bare word — planted, or set before #569 — reads with
-none (null, never 0). The read also says WHOSE flag was named (the billing owner, or the seat),
+re-aligns the flag to that episode's facts; and a flag carrying other facts than the ledger's open
+episode on its line (a lane's drive raised) is re-aligned by `ensure_stop_flag` the next time a
+durable lane finds that episode open — the ledger owns how an episode opened. A bare word —
+planted by the test door — reads with none (null, never 0). The read also says WHOSE flag was named (the billing owner, or the seat),
 which metering keeps on the recording's stop acknowledgement and never publishes.
 
 **Signal ledger (`StopSignalState`)**:

@@ -529,8 +529,9 @@ class TheWordsTheseStopsTravelUnderTest(TestCase):
         return imported, bound
 
     def test_every_mechanism_that_can_apply_a_stop_is_held_by_reference(self):
-        """All five, which is what makes the concept's backend debt payable
-        here rather than partly here."""
+        """All of them — six since #569's `charge_projection` — which is what
+        makes the concept's backend debt payable here rather than partly
+        here."""
         imported, _ = self._referenced("TRIGGER_SOURCE_")
         self.assertEqual(imported, TRIGGER_SOURCE_NAMES)
         self.assertEqual(reasons.KNOWN_TRIGGER_SOURCES,

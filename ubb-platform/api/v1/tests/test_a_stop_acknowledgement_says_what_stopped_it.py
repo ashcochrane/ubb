@@ -28,19 +28,27 @@ drawdown of a delivered fixed-price unit's Charge (`charge_projection`).
 Every case runs on both recording routes: the shape is a mixin, bound twice,
 and each binding says how its route records one report (#609's pattern).
 """
+import datetime
 import json
 from unittest import mock
 
+from django.db import DatabaseError
+from django.utils import timezone
+
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import Door
-from apps.billing.gating.tasks import reconcile_live_ledgers
+from apps.billing.gating.services.stop_signal_service import StopSignalService
+from apps.billing.gating.tasks import (
+    reconcile_customer_spend_pool_counters, reconcile_live_ledgers)
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
-    DOORBELL, SOLD_WHOLE, THE_AGREED_PRICE, PoolTestBase)
+    DOORBELL, SOLD_WHOLE, THE_AGREED_PRICE, PoolTestBase, ThroughABatchItem,
+    ThroughTheSingleRoute)
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.platform.work import reasons
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_POSTPAID,
     PRICING_MODE_FIXED, PRICING_STATUS_KNOWN, SPEND_POOL_ENFORCE_MODE_BLOCKING,
     TASK_OUTCOME_DELIVERED, TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_CHARGE_PROJECTION,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL, TRIGGER_SOURCE_USAGE_INGEST)
@@ -219,7 +227,7 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
                              bound=8_000_000, measured=9_000_000)
 
     def test_a_later_report_keeps_the_opening_bound_after_the_pool_changes(self):
-        """B4: the bound is the one the episode OPENED on. The tenant lowers
+        """ADR-0019 §2: the bound is the one the episode OPENED on. The tenant lowers
         the Pool while the episode stands; a later report still names the
         stop line it opened on (8,000,000), not today's (3,000,000)."""
         pool = self._pool_line(self.customer, cap=10_000_000, pct=80)
@@ -278,6 +286,35 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
                              TRIGGER_SOURCE_ENFORCEMENT_PATROL,
                              bound=0, measured=-1_000_000)
 
+    def test_facts_a_failed_drive_left_on_the_flag_follow_the_ledger(self):
+        """A pooled seat's drawdown found its own Pool line crossed, but the
+        ledger drive RAISED, so the flag was set with no episode open and
+        carries no facts — the failure path's window, which a report inside
+        it acknowledges as it stands (ADR-0019, Consequences). The seat-level
+        beat then opens the episode as the patrol, and the flag's facts are
+        re-aligned to the ledger's: later reports carry how the episode
+        opened. Nothing else re-points a seat's flag, so only the
+        re-alignment can repair it."""
+        self._a_pooled_business_with_two_seats()
+        self._default_pool(3_000_000)
+        self._report(self.seat1, bills=3_200_000)
+        ledger_down = mock.patch.object(
+            StopSignalService, "drive_stop",
+            side_effect=DatabaseError("the ledger is unavailable"))
+        with ledger_down:
+            self._drain()
+        self._assert_stopped(self._report(self.seat1),
+                             reasons.CUSTOMER_SPEND_POOL, "customer", None,
+                             bound=None, measured=None)
+        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
+            reconcile_customer_spend_pool_counters()
+
+        later = self._report(self.seat1)
+
+        self._assert_stopped(later, reasons.CUSTOMER_SPEND_POOL, "customer",
+                             TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+                             bound=3_000_000, measured=3_201_000)
+
     def test_a_charges_drawdown_opens_its_episode_as_the_charge_projection(self):
         """A delivered fixed-price unit's Charge reaches the money rails as
         one posting, which the live lane never sees; its drawdown crosses the
@@ -304,7 +341,7 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
                              TRIGGER_SOURCE_CHARGE_PROJECTION,
                              bound=7_200_000, measured=THE_AGREED_PRICE)
 
-    # -- B8: a report the live debit does not count still hears the stop ----
+    # -- ADR-0019 §7: a report the live debit does not count still hears the stop ----
 
     def test_a_report_that_costs_nothing_carries_the_standing_stop(self):
         self._pool_line(self.customer, cap=10_000_000, pct=80)
@@ -343,7 +380,7 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
         self.biz.refresh_from_db()
         self.assertEqual(self.biz.status, "active")
 
-    # -- B13: two standing Pool lines, and whose figures are frozen ---------
+    # -- ADR-0019 §4: two standing Pool lines, and whose figures are frozen ---------
 
     def test_both_levels_standing_name_the_business_line_and_its_figures(self):
         """The two lines carry identical words; only the figures can show
@@ -377,18 +414,45 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
         self._assert_not_stopped(self._report(self.seat2))
 
 
-class AStopAcknowledgementOnTheSingleRouteTest(
-        AStopAcknowledgementSaysWhatStoppedIt, PoolTestBase):
+class ABackDatedPostpaidReportHearsTheStandingStop(ReadsAStopAcknowledgement):
+    """The third report the live debit does not count (ADR-0019 §7): a
+    postpaid report back-dated into an earlier month moves no counter (I9) —
+    and still reads the standing stop, its acknowledgement kept for good."""
 
-    def _through_the_route(self, customer, **fields):
-        return self._record(customer, **fields)
+    def test_a_report_back_dated_into_last_month_carries_the_standing_stop(self):
+        self.tenant.backfill_window_days = 60
+        self.tenant.save(update_fields=["backfill_window_days"])
+        self._pool_line(self.customer, cap=10_000_000, pct=80)
+        self._report(bills=9_000_000)
+        last_month = timezone.now().replace(day=1) - datetime.timedelta(days=2)
+
+        back_dated = self._report(bills=1_000_000,
+                                  effective_at=last_month.isoformat())
+
+        self._assert_stopped(back_dated, reasons.CUSTOMER_SPEND_POOL, "customer",
+                             TRIGGER_SOURCE_USAGE_INGEST,
+                             bound=8_000_000, measured=9_000_000)
+        self.assertEqual(Door.spend(self.customer.id), 9_000_000)
+
+
+class ABackDatedPostpaidReportOnTheSingleRouteTest(
+        ABackDatedPostpaidReportHearsTheStandingStop, ThroughTheSingleRoute,
+        PoolTestBase):
+    MODE = CUSTOMER_BILLING_MODE_POSTPAID
+
+
+class ABackDatedPostpaidReportOnABatchItemTest(
+        ABackDatedPostpaidReportHearsTheStandingStop, ThroughABatchItem,
+        PoolTestBase):
+    MODE = CUSTOMER_BILLING_MODE_POSTPAID
+
+
+class AStopAcknowledgementOnTheSingleRouteTest(
+        AStopAcknowledgementSaysWhatStoppedIt, ThroughTheSingleRoute,
+        PoolTestBase):
+    pass
 
 
 class AStopAcknowledgementOnABatchItemTest(
-        AStopAcknowledgementSaysWhatStoppedIt, PoolTestBase):
-    """The other route, owed by name: one batch item is one single report."""
-
-    def _through_the_route(self, customer, **fields):
-        result = self._one_batch_item(customer, **fields)
-        self.assertTrue(result["accepted"], result)
-        return result
+        AStopAcknowledgementSaysWhatStoppedIt, ThroughABatchItem, PoolTestBase):
+    pass

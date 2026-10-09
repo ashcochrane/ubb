@@ -9938,7 +9938,7 @@
         "type": "object"
       },
       "UsageBatchItemResponse": {
-        "description": "One batch item's verdict (#569 B9) \u2014 the field set #78 unified across\nthe batch route and the async ingest route, which slice 1 deleted; this\nis the surviving shape, TYPED. An accepted item (`accepted: true`) is the\nsingle route's acknowledgement, field for field and with the meaning\n`RecordUsageResponse` publishes for each. A rejected item was never\nrecorded: it carries `accepted: false`, a registry `code` and a\n`detail`, `stop` false, every stop fact null and no acknowledgement\nfield set.",
+        "description": "One batch item's verdict (#569, ADR-0019 \u00a78) \u2014 the field set #78\nunified across the batch route and the async ingest route, which slice 1\ndeleted; this is the surviving shape, TYPED. An accepted item (`accepted: true`) is the\nsingle route's acknowledgement, field for field and with the meaning\n`RecordUsageResponse` publishes for each. A rejected item was never\nrecorded: it carries `accepted: false`, a registry `code` and a\n`detail`, `stop` false, every stop fact null and no acknowledgement\nfield set.",
         "properties": {
           "accepted": {
             "title": "Accepted",

@@ -31,9 +31,14 @@ tenant's posting cannot leave either, its measurement child refuses first.
 Django raises as ``IntegrityError``, and its message says *insert-only* so a
 test can assert the rule rather than "something refused".
 
-**No backfill.** UBB is not deployed anywhere, so no recorded posting predates
-this table, and a recording-path posting without a row here is an invariant
-violation the replay raises by name rather than reconstructs.
+**No backfill, by ruling rather than by accident** (#569: "UBB is not
+deployed: no backfill"). A replay may never reconstruct what an
+acknowledgement said from facts that have moved since, and a backfill could
+only do that. So a posting recorded before this table exists — on a
+developer's database, the only place one can — has no row, and replaying its
+key raises ``StopAcknowledgementMissing`` by name, which is the invariant
+violation a missing row is, rather than answering something its original
+never said.
 
 The reverse drops the trigger, its function and the table: what ``0044``
 left.

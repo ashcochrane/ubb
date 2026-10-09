@@ -790,9 +790,12 @@ as an `enum`. Every path that APPLIES a stop names itself (`pool_crossing` reach
 when a blocking pool's stop began to kill through the kernel); a patrol RE-MINT deliberately
 names none,
 because it repairs the delivery of a stop another mechanism made and the row does not record which.
-**`parent_cascade` is the one that reaches no event and never will**: a cascade announces nothing,
-because its parent's own stop is the one signal a customer's workers receive, so that mechanism is
-recorded on each stopped row's metadata instead of on a payload.
+Of the mechanisms that stop a UNIT, **`parent_cascade` is the one that reaches no event and never
+will**: a cascade announces nothing, because its parent's own stop is the one signal a customer's
+workers receive, so that mechanism is recorded on each stopped row's metadata instead of on a
+payload. (`charge_projection` reaches no terminal event either, for a different reason: it stops no
+unit — it opens a customer-wide episode, recorded on the signal ledger and carried on
+acknowledgements.)
 **On a recording acknowledgement (#569)** it names the mechanism of the stop the acknowledgement
 carries: `usage_ingest` for a ceiling the report crossed; for a customer-wide stop, the mechanism
 that OPENED its episode — `usage_ingest` (a usage report's live debit or drawdown),

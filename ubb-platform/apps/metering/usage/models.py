@@ -813,8 +813,9 @@ class StopAcknowledgement(BaseModel):
       stop on contained work, the parent), or WHOSE customer-wide line it is
       (``stop_customer_id`` — the billing owner, or a pooled seat whose own
       Pool line was named). The acknowledgement does not publish either
-      (#569 B13): two Pool stops read alike at both levels, and this is what
-      says which one an acknowledgement's figures were frozen from.
+      (#569, ADR-0019 §4): two Pool stops read alike at both levels, and
+      this is what says which one an acknowledgement's figures were frozen
+      from.
 
     **Why a record of its own** (the owner's and consultant's ruling,
     2026-10-08): nothing that existed was an immutable authority for every

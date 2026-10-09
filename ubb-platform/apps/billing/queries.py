@@ -109,7 +109,7 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     ({mode, balance_micros|spend_micros} where the counters moved, and the
     stop fields) — and the stop fields come back for EVERY report, a zero,
     unpriced or (postpaid) back-dated one included, which moves no counter
-    but still hears the standing stop (#569 B8).
+    but still hears the standing stop (#569, ADR-0019 §7).
 
     The counters debited are the billing owner's; the stop fields are those
     of the recording's customer, ``customer_id`` — every customer-wide stop
@@ -125,7 +125,7 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     stop, how its episode opened (#569 — the mechanism, and the bound and
     amount it opened on, null where the flag carries none) and WHOSE line
     it is (the billing owner or the seat), which the recording keeps and
-    the wire does not publish (#569 B13).
+    the wire does not publish (#569, ADR-0019 §4).
 
     There is no second, replay-time read beside this one: a replay answers
     from what the original acknowledgement kept (#569), so the live verdict

@@ -128,7 +128,7 @@ class TestLiveCounterPostpaid:
         LiveCounter.debit(c.id, t, 5_000_000, now=now)
         prior = now.replace(day=1) - datetime.timedelta(days=2)
         out = LiveCounter.debit(c.id, t, 9_000_000, effective_at=prior, now=now)
-        # It moves no counter, and since #569 (B8) it still READS the
+        # It moves no counter, and since #569 (ADR-0019 §7) it still READS the
         # standing stop rather than answering None — here, nothing stands.
         assert out == LiveCounter.read(c.id, t, customer_id=c.id)
         assert out["stop"] is False

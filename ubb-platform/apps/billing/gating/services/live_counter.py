@@ -81,7 +81,7 @@ from core.crossing import (floor_line, month_label_bounds, past_floor,
                            past_spend_pool_stop, recovered_floor, same_month,
                            spend_pool_stop_threshold)
 from apps.billing.gating.services.stop_signal_service import (
-    NO_OPENING_FACTS, OPENING_FACTS, opening_facts)
+    NO_OPENING_FACTS, OPENING_FACTS, StopSignalService, opening_facts)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
@@ -241,9 +241,11 @@ def _flag_value(word, opening) -> str:
 
 def _read_flag(raw):
     """``(word, opening)`` for a flag's raw value; ``(None, None)`` for no
-    flag. A BARE WORD still reads — a flag set before #569, or one planted by
-    the test door — as that word with no opening facts: every figure null,
-    which is what an acknowledgement says of a figure it does not have."""
+    flag. A BARE WORD still reads — the shape ``Door.plant_stop`` writes, the
+    orphaned or hand-planted flag the gating tests fabricate (UBB is not
+    deployed, so no production flag predates #569) — as that word with no
+    opening facts: every figure null, which is what an acknowledgement says
+    of a figure it does not have."""
     if raw is None:
         return None, None
     text = raw.decode() if isinstance(raw, bytes) else str(raw)
@@ -292,7 +294,7 @@ class LiveCounter:
         is keyed by line.
 
         ⚠ A REPORT THIS DEBIT DOES NOT COUNT STILL HEARS THE STANDING STOP
-        (#569 B8). A posting with no resolved price or a zero one, and a
+        (#569, ADR-0019 §7). A posting with no resolved price or a zero one, and a
         postpaid report back-dated into an earlier month, move no counter —
         but the acknowledgement it gets is kept, unchanged, for every replay
         of its key, so answering "not stopped" for a customer who IS stopped
@@ -324,7 +326,7 @@ class LiveCounter:
         # under-counting is the direction that under-fires, and the lines
         # that read this (the hard floor's and the pool's, #459) fire on the
         # known figure and never on an invented one. It still READS the
-        # standing stop (#569 B8, the docstring), as a zero amount does.
+        # standing stop (ADR-0019 §7, the docstring), as a zero amount does.
         if not enforcing(tenant):
             return None
         if (billed_cost_micros is None or billed_cost_micros <= 0
@@ -337,7 +339,7 @@ class LiveCounter:
             # I9: a prior-month backdated event must not inflate THIS month's
             # spend counter (mirrors handlers.py's spend-pool tail). Postpaid
             # has no wallet to lower, so there is nothing else to apply —
-            # and the standing stop is still read (B8).
+            # and the standing stop is still read (ADR-0019 §7).
             in_this_month = same_month(effective_at, now)
             if postpaid and not in_this_month:
                 return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
@@ -412,7 +414,7 @@ class LiveCounter:
         except Exception:
             logger.warning("live_counter.debit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
-            # The standing stop is still read (B8): a debit that failed
+            # The standing stop is still read (ADR-0019 §7): a debit that failed
             # part-way says what the flags say, and a blind read says
             # not-stopped exactly as before.
             return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
@@ -573,8 +575,6 @@ class LiveCounter:
     def _open_episode(owner_id, line):
         """The open ledger row on ``line`` for ``owner_id`` — its word and
         opening facts — or None where that line holds no episode."""
-        from apps.billing.gating.services.stop_signal_service import (
-            StopSignalService)
         return next((row for row in StopSignalService.open_stop_lines(owner_id)
                      if row["reason"] == line), None)
 
@@ -597,16 +597,30 @@ class LiveCounter:
         holds open on that line (#569) — read from the ledger, whichever lane
         opened it — so a re-aligned flag says how the stop opened, never how
         it was later found. A line the ledger does not hold open sets the
-        word with no facts."""
+        word with no facts.
+
+        ⚠ AND THE FACTS FOLLOW THE LEDGER WHERE THE WORD ALREADY DOES. A
+        flag that names this line but carries other facts than the ledger's
+        open episode was written on a failure path — a lane whose drive
+        RAISED set the flag with its own crossing's facts, or with none — and
+        the next durable-lane pass that finds the episode open (the drawdown,
+        or the hourly reconcile at the latest) re-aligns them to the ledger's,
+        which owns how the episode opened. A flag naming the OTHER line is
+        left alone: the ack keeps naming the stop that opened the flag."""
         try:
             episode = LiveCounter._open_episode(owner_id, reason)
             client = _client()
-            was_absent = client.set(
-                _stop_key(owner_id),
-                _flag_value(reason, episode or NO_OPENING_FACTS),
-                ex=COUNTER_TTL_SECONDS, nx=True)
+            value = _flag_value(reason, episode or NO_OPENING_FACTS)
+            was_absent = client.set(_stop_key(owner_id), value,
+                                    ex=COUNTER_TTL_SECONDS, nx=True)
             if not was_absent:
-                client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
+                held, opening = _read_flag(client.get(_stop_key(owner_id)))
+                if (episode is not None and held == reason
+                        and opening != {f: episode[f] for f in OPENING_FACTS}):
+                    client.set(_stop_key(owner_id), value,
+                               ex=COUNTER_TTL_SECONDS)
+                else:
+                    client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
             return bool(was_absent)
         except Exception:
             logger.warning("live_counter.ensure_stop_flag_failed",
@@ -742,7 +756,7 @@ class LiveCounter:
         null for a flag that carries none. ``stop_customer_id`` says WHOSE
         flag was named — the billing owner, or the seat whose own line it
         is — which the wire does not show (a Pool stop reads alike at either
-        level) and the recording's snapshot keeps (#569 B13); null when
+        level) and the recording's snapshot keeps (#569, ADR-0019 §4); null when
         nothing stopped.
 
         counter=True additionally reads the raw counter the upward repair

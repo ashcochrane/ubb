@@ -125,7 +125,10 @@ recording that reads another recording's flag before that transaction commits al
 the episode opened, and a reader can never see a word without its facts. `ensure_stop_flag` and
 the re-point after a line lifts set the flag from the ledger's open row; a live debit that sets an
 absent flag but loses the drive to an episode already open re-aligns the flag to that episode's
-facts. A bare word (planted, or set before this ADR) reads with no facts.
+facts. And where a flag names a line but carries other facts than the ledger's open episode on it
+— written on a failure path, by a lane whose drive raised — `ensure_stop_flag` re-aligns them the
+next time a durable lane finds the episode open: the ledger owns how an episode opened. A bare
+word (planted by the test door) reads with no facts.
 
 ### 7. Every report hears the standing stop
 
@@ -154,7 +157,8 @@ original answer even if the customer or Task became stopped afterwards"* and *"A
 event that originally returned a stop returns the original trigger/reason/scope/line/measured
 values even if all of those live facts have since changed."*
 
-1. **The Tier-2 real-time spend-control design** (`docs/plans/`, 2026-06-19), §2: *"Every
+1. **The Tier-2 real-time spend-control design**
+   (`docs/plans/2026-06-19-tier2-realtime-spend-control-design.md`), §2: *"Every
    `record_usage` response — *including the idempotent-replay paths* — carries a `stop` verdict
    read from that flag."* And its invariant **I4**: *"`_result()` populates the stop fields on the
    happy path **and both idempotent-replay returns** … A replayed event for a stopped owner must
@@ -181,7 +185,9 @@ values even if all of those live facts have since changed."*
   counter's own pin test now freezes.
 - **#609's "Before #569" pins are inverted, not preserved**: the tipping report replays
   unstopped, and a stopped report replays stopped with its figures after the stop clears.
-- **Known limitation.** A live debit that sets the flag and whose ledger drive then RAISES (not
-  loses) leaves the flag carrying that debit's facts while the reconcile later opens the episode
-  as the patrol; the acknowledgement names the debit's crossing, which did happen. Both are
-  failure paths the reconcile already exists to repair.
+- **Known limitation.** When a lane's ledger drive RAISES (not loses), the flag it set carries
+  that lane's own crossing facts — or none, where the flag was set by `ensure_stop_flag` with no
+  episode open — until the next durable-lane pass opens the episode and re-aligns the flag to
+  the ledger (§6; the hourly reconcile at the latest). Acknowledgements recorded in that window
+  keep what they said, because a replay never re-reads: on that failure path a kept record can
+  name the crossing that set the flag, or name the stop with null facts.

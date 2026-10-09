@@ -257,7 +257,7 @@ def stop_fields(verdicts, *, is_subtask):
 
 
 class CeilingCrossing(NamedTuple):
-    """The figures one unit's ceiling was crossed on (#569 B7): the unit, the
+    """The figures one unit's ceiling was crossed on (#569, ADR-0019 §2): the unit, the
     ceiling it pinned at start, and its supplier cost (COGS) total at the
     crossing. The accumulate verdict carries one beside each crossing flag
     that fired, so an acknowledgement's bound and measured amount come off

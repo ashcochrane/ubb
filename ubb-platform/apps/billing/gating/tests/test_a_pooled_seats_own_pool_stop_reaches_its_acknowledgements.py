@@ -42,7 +42,7 @@ from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     STATE_STOPPED, StopSignalService)
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
-    DOORBELL, PoolTestBase)
+    DOORBELL, PoolTestBase, ThroughABatchItem, ThroughTheSingleRoute)
 from apps.billing.wallets.models import Wallet
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
@@ -339,17 +339,12 @@ class APooledSeatsOwnPoolStopReachesItsAcknowledgements:
 
 
 class APooledSeatsOwnPoolStopOnTheSingleRouteTest(
-        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
-
-    def _through_the_route(self, customer, **fields):
-        return self._record(customer, **fields)
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements,
+        ThroughTheSingleRoute, PoolTestBase):
+    pass
 
 
 class APooledSeatsOwnPoolStopOnABatchItemTest(
-        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
-    """The other route, owed by name: one batch item is one single report."""
-
-    def _through_the_route(self, customer, **fields):
-        result = self._one_batch_item(customer, **fields)
-        self.assertTrue(result["accepted"], result)
-        return result
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements,
+        ThroughABatchItem, PoolTestBase):
+    pass

@@ -787,7 +787,7 @@ class TaskService:
         - ``task_not_active``: the named unit was already in one of the five
           terminal states. The event still landed, billed, and counted into
           both totals (and the parent's).
-        - ``task_crossing`` / ``subtask_crossing`` (#569 B7): beside each of
+        - ``task_crossing`` / ``subtask_crossing`` (#569, ADR-0019 §2): beside each of
           the two crossing flags, the figures it fired on — a
           ``reasons.CeilingCrossing`` of the governing unit (``top`` for the
           task flag, the subtask for its own) with its pinned ceiling and
