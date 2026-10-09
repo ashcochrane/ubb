@@ -9,8 +9,11 @@
 //   - statuses are shown as given, beside the amounts — so #473's confident
 //     price over an unresolved cost is shown as the response states it, not
 //     reconciled here;
-//   - the Pricing Receipt, `uncosted_measurement_keys` and the shipped stop
-//     fields (`event_id`, `stop_scope`, `stop_reason`) render as returned.
+//   - the Pricing Receipt, `uncosted_measurement_keys` and the stop fields
+//     (`event_id`, `stop_scope`, `stop_reason`, and #569's `trigger_source`,
+//     `stop_bound_micros` and `stop_measured_micros`, #585) render as
+//     returned: the mechanism through the open-set rule, each figure signed
+//     at an event's precision, and one that does not apply as no figure.
 //
 // On a replay of the same request the task totals are null BY DESIGN — a
 // replay adds nothing to the work — and the card says so rather than reading
@@ -22,6 +25,7 @@ import { AlertTriangle, OctagonAlert } from "lucide-react";
 import { CodeBlock } from "@/components/shared/code-block";
 import { CopyButton } from "@/components/shared/copy-button";
 import { OpenSetValue } from "@/components/shared/open-set-value";
+import { Absent } from "@/components/shared/reading";
 import { Badge } from "@/components/ui/badge";
 import {
   notApplicableReasonLabel,
@@ -33,7 +37,7 @@ import { formatEventMicros, formatMicros } from "@/lib/format";
 import { stopScopeLabel } from "@/lib/labels";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 import { describeTotal, readTotal, type TotalReading } from "@/lib/total-reading";
-import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
+import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import type { RecordUsageResponse } from "../api/types";
 
@@ -171,6 +175,26 @@ export function AcknowledgementCard({
               }
             />
             <ResponseStat label="Scope" value={stopScopeLabel(response.stop_scope)} />
+            {/* How the stop was applied and what it was measured on (#569,
+                #585), exactly as the acknowledgement carries them: the
+                mechanism through the same open-set rule as the reason, and
+                each figure at an event's precision with its sign — a hard
+                floor's are negative. Nothing here is worked out, and a field
+                that does not apply to this stop is NO FIGURE, never `0`. */}
+            <ResponseStat
+              label="Applied by"
+              value={
+                <OpenSetValue labelKeys={TRIGGER_SOURCE_LABEL_KEYS} value={response.trigger_source} />
+              }
+            />
+            <ResponseStat
+              label="Bound"
+              value={<StopFigure micros={response.stop_bound_micros} currency={currency} />}
+            />
+            <ResponseStat
+              label="Measured"
+              value={<StopFigure micros={response.stop_measured_micros} currency={currency} />}
+            />
           </dl>
           <p className="text-[11px] leading-relaxed text-text-secondary">
             The HTTP status was still 200 — by design. The stop instruction
@@ -178,7 +202,11 @@ export function AcknowledgementCard({
             integration should read <span className="font-mono">stop</span>,{" "}
             <span className="font-mono">stop_reason</span>, and{" "}
             <span className="font-mono">stop_scope</span> and halt the named
-            scope.
+            scope. <span className="font-mono">trigger_source</span>,{" "}
+            <span className="font-mono">stop_bound_micros</span> and{" "}
+            <span className="font-mono">stop_measured_micros</span> say how the
+            stop was applied and what it was measured against; a dash is a
+            field that does not apply to this stop, never a zero.
           </p>
         </div>
       )}
@@ -227,6 +255,15 @@ function TaskTotals({
       )}
     </>
   );
+}
+
+/**
+ * One of a stop's figures — its bound, or the amount measured against it — as
+ * the acknowledgement carries it: the amount at an event's precision, signed,
+ * or, where the figure does not apply to this stop, no figure at all.
+ */
+function StopFigure({ micros, currency }: { micros: number | null | undefined; currency: string }) {
+  return micros == null ? <Absent /> : <>{formatEventMicros(micros, currency)}</>;
 }
 
 /** A total and the count of what it left out, read together or not at all. */

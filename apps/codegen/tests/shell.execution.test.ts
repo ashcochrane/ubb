@@ -617,11 +617,16 @@ printf 'status=%s\\n' "$?"
     expect(asked(only(rendered("shell-scaffold"), "verify_script").contents).probe.functions).not.toContain(
       "fromjson",
     );
-    // And the forms only a read of a response as written asks for (#583).
+    // And the forms a read as written asks for. The `try` is the read of a
+    // supplier's response's alone (#583). Every runnable file reads a stop's
+    // figures as written (#585), so every one asks for `foreach`; a verify
+    // script, which reads no acknowledgement, does not.
     const reading = asked(only(rendered("shell-response-cost"), "module").contents);
     expect([reading.probe.forms.foreach, reading.probe.forms.tryCatch]).toEqual([true, true]);
     const scaffold = asked(only(rendered("shell-scaffold"), "module").contents);
-    expect([scaffold.probe.forms.foreach, scaffold.probe.forms.tryCatch]).toEqual([false, false]);
+    expect([scaffold.probe.forms.foreach, scaffold.probe.forms.tryCatch]).toEqual([true, false]);
+    const checking = asked(only(rendered("shell-scaffold"), "verify_script").contents);
+    expect(checking.probe.forms.foreach).toBe(false);
   });
 
   it("refuses to render a program that asks jq for what no probe knows", () => {
@@ -668,9 +673,27 @@ printf 'still=here\\n'
 });
 
 describe("the stop", () => {
-  const stop = (scope: string, reason: string) => ({
+  /** How a stop was applied and what it was measured on, as #569 publishes
+   * it: a unit's ceiling crossed by this report, and a customer's Pool whose
+   * episode the periodic reconcile opened. */
+  const CEILING = { trigger_source: "usage_ingest", stop_bound_micros: 5_000_000, stop_measured_micros: 6_000_000 };
+  const POOL = { trigger_source: "enforcement_patrol", stop_bound_micros: 4_000_000, stop_measured_micros: 4_500_000 };
+  const stop = (scope: string, reason: string, applied: Record<string, unknown>) => ({
     path: "/api/v1/metering/usage",
-    answer: { stop: true, stop_scope: scope, stop_reason: reason },
+    answer: { stop: true, stop_scope: scope, stop_reason: reason, ...applied },
+  });
+  /** A stop acknowledgement as UBB writes it, as TEXT: a figure past what a
+   * JavaScript number holds is only exact as the digits the server wrote. A
+   * grouping value that spells a stop field is a string, and is never read
+   * for one. */
+  const written = (reason: string, scope: string, applied: string) => ({
+    path: "/api/v1/metering/usage",
+    answer: {
+      raw_body:
+        `{"event_id": "event_9", "stop": true, "stop_scope": "${scope}", "stop_reason": "${reason}", ` +
+        `${applied}, "grouping_fields": {"note": "\\"stop_bound_micros\\": 1, \\\\\\" ,"}, ` +
+        `"provider_cost_micros": 3000000}`,
+    },
   });
 
   it.each(["sh", "bash"] as const)(
@@ -683,21 +706,104 @@ ${SOURCE}
 ubb_record_search_run customer_id=c idempotency_key=call-7 task_id=t searches=1 && recorded=0 || recorded=$?
 printf 'status=%s\\nreserved=%s\\nmetadata=%s\\n' "$recorded" "$${SHELL.stopExitStatusName}" "$${SHELL_FILE.stopRequested}"
 `,
-        { shell, answers: [stop("task", "task_cogs_ceiling")] },
+        { shell, answers: [stop("task", "task_cogs_ceiling", CEILING)] },
       );
       const answers = said(ran);
 
       expect(answers.status).toBe(String(SHELL.stopExitStatus));
       expect(answers.reserved).toBe("20");
-      // The four fields the acknowledgement and the request publish today,
-      // by their own names; the key is the one the event was sent under.
+      // The fields the acknowledgement and the request publish, by their own
+      // names; the key is the one the event was sent under (ADR-0017 §4).
       expect(JSON.parse(answers.metadata!)).toEqual({
         event_id: "event_1",
         idempotency_key: "call-7",
         stop_scope: "task",
         stop_reason: "task_cogs_ceiling",
+        trigger_source: "usage_ingest",
+        stop_bound_micros: 5_000_000,
+        stop_measured_micros: 6_000_000,
       });
       expect(ran.requests).toHaveLength(1);
+    },
+  );
+
+  // #585: a figure is carried as the digits and the sign UBB wrote, never as
+  // the number jq makes of it (ADR-0017 §6): jq 1.5 and 1.6 make the first of
+  // these -9223372036854776000. A hard floor's figures are negative, a zero
+  // floor is a real 0, and what does not apply stays null.
+  it.each([
+    [
+      "a hard floor at the extremes of a signed 64-bit amount",
+      "hard_floor",
+      "customer",
+      `"trigger_source": "usage_ingest", "stop_bound_micros": -9223372036854775807, "stop_measured_micros": -9223372036854775808`,
+      `"trigger_source":"usage_ingest","stop_bound_micros":-9223372036854775807,"stop_measured_micros":-9223372036854775808`,
+    ],
+    [
+      "a zero floor, opened by the reconcile",
+      "hard_floor",
+      "customer",
+      `"trigger_source": "enforcement_patrol", "stop_bound_micros": 0, "stop_measured_micros": -1`,
+      `"trigger_source":"enforcement_patrol","stop_bound_micros":0,"stop_measured_micros":-1`,
+    ],
+    [
+      "work that had already ended, where nothing applies",
+      "task_not_active",
+      "task",
+      `"trigger_source": null, "stop_bound_micros": null, "stop_measured_micros": null`,
+      `"trigger_source":null,"stop_bound_micros":null,"stop_measured_micros":null`,
+    ],
+    [
+      "a mechanism this file has never heard of",
+      "customer_spend_pool",
+      "customer",
+      `"trigger_source": "a_new_mechanism", "stop_bound_micros": 9007199254740993, "stop_measured_micros": 9223372036854775807`,
+      `"trigger_source":"a_new_mechanism","stop_bound_micros":9007199254740993,"stop_measured_micros":9223372036854775807`,
+    ],
+  ] as const)("carries %s exactly as UBB wrote it", (_what, reason, scope, applied, carried) => {
+    for (const shell of ["sh", "bash"] as const) {
+      const ran = runShell(
+        rendered("shell-direct-task-events"),
+        `${SOURCE}
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
+printf 'status=%s\\nmetadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
+`,
+        { shell, answers: [written(reason, scope, applied)] },
+      );
+
+      expect(said(ran).status, shell).toBe("20");
+      // Compared as TEXT: JSON.parse would round the figure here too.
+      expect(said(ran).metadata, shell).toBe(
+        `{"event_id":"event_9","idempotency_key":"e1","stop_scope":"${scope}","stop_reason":"${reason}",${carried}}`,
+      );
+    }
+  });
+
+  it.each([
+    ["holds a figure written with a fraction", `"trigger_source": "usage_ingest", "stop_bound_micros": 5000000.0, "stop_measured_micros": 1`, SHELL_MESSAGES.stopFigure, "stop_bound_micros"],
+    ["holds a figure written with an exponent", `"trigger_source": "usage_ingest", "stop_bound_micros": 1, "stop_measured_micros": 6e6`, SHELL_MESSAGES.stopFigure, "stop_measured_micros"],
+    ["holds a figure as text", `"trigger_source": "usage_ingest", "stop_bound_micros": "5000000", "stop_measured_micros": 1`, SHELL_MESSAGES.stopFigure, "stop_bound_micros"],
+    ["leaves a figure out", `"trigger_source": "usage_ingest", "stop_bound_micros": 1`, SHELL_MESSAGES.stopFigure, "stop_measured_micros"],
+    ["leaves out what applied it", `"stop_bound_micros": 1, "stop_measured_micros": 2`, SHELL_MESSAGES.stopText, "trigger_source"],
+    ["holds what applied it as a number", `"trigger_source": 7, "stop_bound_micros": 1, "stop_measured_micros": 2`, SHELL_MESSAGES.stopText, "trigger_source"],
+  ] as const)(
+    "refuses a stop whose acknowledgement %s, rather than fill it or round it",
+    (_what, applied, message, field) => {
+      const ran = runShell(
+        rendered("shell-direct-task-events"),
+        `${SOURCE}
+ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
+printf 'status=%s\\nmetadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
+`,
+        { answers: [written("task_cogs_ceiling", "task", applied)] },
+      );
+
+      expect(said(ran)).toEqual({
+        status: String(SHELL_EXIT.responseUnreadable.status),
+        metadata: "",
+      });
+      expect(ran.stderr).toContain(`${message} ${field}`);
+      expect(ran.stderr).toContain(SHELL_MESSAGES.responseUnreadable);
     },
   );
 
@@ -710,7 +816,7 @@ printf 'first=%s\\nfirst_metadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 ubb_record_search_run customer_id=c idempotency_key=e2 task_id=t searches=1
 printf 'second=%s\\nsecond_metadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
-      { answers: [stop("task", "task_cogs_ceiling"), stop("customer", "customer_spend_pool")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING), stop("customer", "customer_spend_pool", POOL)] },
     );
     const answers = said(ran);
 
@@ -737,7 +843,7 @@ work() {
 ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
 `,
-      { answers: [{ path: "/api/v1/metering/usage", answer: {} }, stop("customer", "customer_spend_pool")] },
+      { answers: [{ path: "/api/v1/metering/usage", answer: {} }, stop("customer", "customer_spend_pool", POOL)] },
     );
 
     expect(said(ran)).toEqual({ status: "20" });
@@ -750,11 +856,16 @@ printf 'status=%s\\n' "$?"
     expect(logged).toHaveLength(2);
     expect(logged[0]).toBe(SHELL_MESSAGES.stop);
     expect(logged[1]!.startsWith(`${SHELL.stopMetadata} `)).toBe(true);
+    // The boundary's log names how the stop was applied and what it was
+    // measured on, beside its scope and reason.
     expect(JSON.parse(logged[1]!.slice(SHELL.stopMetadata.length + 1))).toEqual({
       event_id: "event_3",
       idempotency_key: "e2",
       stop_scope: "customer",
       stop_reason: "customer_spend_pool",
+      trigger_source: "enforcement_patrol",
+      stop_bound_micros: 4_000_000,
+      stop_measured_micros: 4_500_000,
     });
   });
 
@@ -771,7 +882,7 @@ work() {
 ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\n' "$?"
 `,
-      { answers: [stop("task", "task_cogs_ceiling")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING)] },
     );
 
     expect(said(ran)).toEqual({ status: "20" });
@@ -805,7 +916,7 @@ printf 'status=%s\\n' "$?"
           ),
           `printf 'status=%s\\n' "$work_status"`,
         ].join("\n"),
-        { shell, answers: [stop("customer", "customer_spend_pool")] },
+        { shell, answers: [stop("customer", "customer_spend_pool", POOL)] },
       );
       const answers = said(ran);
 
@@ -833,9 +944,9 @@ printf 'refused=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
       {
         answers: [
-          stop("task", "task_cogs_ceiling"),
+          stop("task", "task_cogs_ceiling", CEILING),
           { path: "/api/v1/metering/usage", answer: {} },
-          stop("customer", "customer_spend_pool"),
+          stop("customer", "customer_spend_pool", POOL),
         ],
       },
     );
@@ -861,7 +972,7 @@ work() {
 ubb_run_task work customer_id=c idempotency_key=w
 printf 'status=%s\\nafter=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
-      { answers: [stop("task", "task_cogs_ceiling")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING)] },
     );
     const answers = said(ran);
 
@@ -879,7 +990,7 @@ ubb_record_search_run customer_id=c idempotency_key=e1 task_id="$UBB_TASK_ID" se
 printf 'here=%s\\n' "\${UBB_TASK_ID:+set} \${UBB_RESPONSE:+set} \${UBB_STOP_REQUESTED:+set}"
 sh -c 'printf "child=%s\\n" "\${UBB_TASK_ID-unset} \${UBB_RESPONSE-unset} \${UBB_STOP_REQUESTED-unset}"'
 `,
-      { answers: [stop("task", "task_cogs_ceiling")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING)] },
     );
 
     expect(said(ran)).toEqual({ here: "set set set", child: "unset unset unset" });
@@ -919,7 +1030,7 @@ printf 'stopped_again=%s\\n' "$?"
 ubb_run_task work customer_id=c
 printf 'start_refused=%s [%s]\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
-      { answers: [stop("task", "task_cogs_ceiling"), stop("task", "task_cogs_ceiling")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING), stop("task", "task_cogs_ceiling", CEILING)] },
     );
 
     expect(said(ran)).toEqual({
@@ -939,7 +1050,7 @@ printf 'stopped=%s\\n' "$UBB_STOP_REQUESTED"
 ubb_start_task customer_id=c idempotency_key=w2
 printf 'after=%s\\n' "$UBB_STOP_REQUESTED"
 `,
-      { answers: [stop("task", "task_cogs_ceiling")] },
+      { answers: [stop("task", "task_cogs_ceiling", CEILING)] },
     );
 
     expect(said(ran).stopped).toContain('"stop_scope":"task"');

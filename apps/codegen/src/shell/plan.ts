@@ -52,7 +52,9 @@ import {
   keyOf,
   OPERATION_IDS,
   readLifecycle,
+  STOP_FIELDS,
   type Header,
+  type StopField,
 } from "../lifecycle.ts";
 import { nameTails, type Wanted } from "../names.ts";
 import {
@@ -103,6 +105,36 @@ const CLOSE_MAY_CARRY: readonly (keyof components["schemas"]["CloseTaskRequest"]
 
 /** The field a stop is reported with: the key its event was sent under. */
 const IDEMPOTENCY_KEY: keyof components["schemas"]["RecordUsageRequest"] = "idempotency_key";
+
+/** A field of the acknowledgement a record is answered with. */
+type Acknowledged = keyof components["schemas"]["RecordUsageResponse"];
+
+/** How a field of the stop's metadata is read off the acknowledgement: as
+ * the acknowledgement gives it; as text or null; or as the digits UBB wrote,
+ * or null (ADR-0017 §6). */
+export type StopRead = "given" | "text" | "figure";
+
+/**
+ * How each field a stop is explained by is read into its metadata, which
+ * carries them by their own names, in the acknowledgement's order, after the
+ * event's id and the key it was sent under (ADR-0017 §4). The scope and the
+ * reason keep the posture they had before #569; what applied the stop is
+ * text or null, and the bound and the amount measured against it are the
+ * digits UBB wrote, or null (#585). Nothing is worked out from any of them.
+ */
+const STOP_READ: Readonly<Record<StopField, StopRead>> = {
+  stop_scope: "given",
+  stop_reason: "given",
+  trigger_source: "text",
+  stop_bound_micros: "figure",
+  stop_measured_micros: "figure",
+};
+
+export const STOP_METADATA: readonly { readonly name: StopField; readonly read: StopRead }[] =
+  STOP_FIELDS.map((name) => ({ name, read: STOP_READ[name] }));
+
+/** The acknowledgement's id for the event, which heads the stop's metadata. */
+export const EVENT_ID: Acknowledged = "event_id";
 
 export type Use = "text" | "number" | "file" | "cost" | "place" | "unread";
 

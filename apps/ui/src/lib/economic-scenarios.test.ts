@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   availableMeasurements,
   ceilingAssessment,
+  ceilingStop,
   chargeReceipt,
   completePriceTotal,
   completeTotal,
   costNotApplicable,
+  endedWorkStop,
+  hardFloorStop,
   incompleteMeasures,
   incompletePriceTotal,
   incompleteTotal,
@@ -18,6 +21,7 @@ import {
   measuresFor,
   measuresOutsideRetentionHorizon,
   measuresWithNoRevenueResolved,
+  poolStop,
   priceNotApplicable,
   prunedMeasurements,
   revenueSuppliedOverUnpricedUsage,
@@ -562,6 +566,40 @@ describe("the ceiling assessment", () => {
         "unresolved_event_count",
       ]);
     }
+  });
+});
+
+describe("a stop, as an acknowledgement states it (#569, #585)", () => {
+  // One row of ADR-0019 §2's table each, refused where that row's rule would
+  // not stop on the terms it is handed.
+  it("refuses figures their own reason would not stop on", () => {
+    expect(() => ceilingStop({ scope: "task", ceiling_micros: 5_000_000, cost_micros: 4_999_999 })).toThrow(
+      /no crossing/,
+    );
+    expect(() =>
+      poolStop({ opened_by: "usage_ingest", stop_line_micros: 4_000_000, charges_micros: 3_999_999 }),
+    ).toThrow(/no stop/);
+    expect(() =>
+      hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_000_000 }),
+    ).toThrow(/no stop/);
+  });
+
+  it("states a hard floor's bound as a balance: negative, and a real zero as +0", () => {
+    const below = hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_500_000 });
+    expect([below.stop_bound_micros, below.stop_measured_micros]).toEqual([-1_000_000, -1_500_000]);
+    const zero = hardFloorStop({ opened_by: "enforcement_patrol", min_balance_micros: 0, balance_micros: -1 });
+    expect(Object.is(zero.stop_bound_micros, 0)).toBe(true);
+  });
+
+  it("names no bound, no amount and no mechanism for work that had already ended", () => {
+    expect(endedWorkStop("task")).toEqual({
+      stop: true,
+      stop_scope: "task",
+      stop_reason: "task_not_active",
+      trigger_source: null,
+      stop_bound_micros: null,
+      stop_measured_micros: null,
+    });
   });
 });
 

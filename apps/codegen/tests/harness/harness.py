@@ -75,18 +75,31 @@ def _constants(tree):
 
 
 def _handlers(tree):
-    """Every `except`, with what it catches and the function it sits in."""
+    """Every `except`, with what it catches and the function it sits in; the
+    name it binds; every call in its body, with each positional argument as
+    Python writes it back; and the kind of every node its body holds, so a
+    test can see an operation without matching a pattern against text."""
     found = []
 
     def walk(node, function):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             function = node.name
         if isinstance(node, ast.ExceptHandler):
+            body = [inner for statement in node.body
+                    for inner in ast.walk(statement)]
             found.append({
                 "function": function,
                 "catches": None if node.type is None else ast.unparse(node.type),
                 "reraises": any(isinstance(inner, ast.Raise) and inner.exc is None
                                 for inner in ast.walk(node)),
+                "binds": node.name,
+                "calls": [{"callee": ast.unparse(inner.func),
+                           "positional": [ast.unparse(argument)
+                                          for argument in inner.args],
+                           "keywords": [keyword.arg
+                                        for keyword in inner.keywords]}
+                          for inner in body if isinstance(inner, ast.Call)],
+                "nodes": sorted({type(inner).__name__ for inner in body}),
             })
         for child in ast.iter_child_nodes(node):
             walk(child, function)

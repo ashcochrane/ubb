@@ -61,12 +61,15 @@ import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
 import { factOfField, said, SAID_OF } from "../tokens.ts";
 import {
+  EVENT_ID,
   routeWith,
+  STOP_METADATA,
   type BodyField,
   type CallPlan,
   type Member,
   type Parameter,
   type Plan,
+  type StopRead,
   type Value,
 } from "./plan.ts";
 import { jqNeedsOf, jqProbe, type JqNeeds } from "./probe.ts";
@@ -79,7 +82,7 @@ import {
   shWord,
   wireName,
 } from "./syntax.ts";
-import { readHelpers, writtenProgram } from "./written.ts";
+import { asWrittenDefinitions, readHelpers, wholeDefinition, writtenProgram } from "./written.ts";
 
 const I1 = INDENT;
 const I2 = INDENT.repeat(2);
@@ -434,12 +437,40 @@ function started(): string[] {
   ];
 }
 
+/** The jq functions the stop's program reads a field of the stop with. */
+const STOP_JQ = { text: "ubb_text", figure: "ubb_figure" } as const;
+
+/** A field of the stop's metadata, as the jq expression that writes its
+ * value as JSON text. */
+function stopValue(name: string, read: StopRead): string {
+  switch (read) {
+    case "given":
+      return `($acknowledgement.${name} | tojson)`;
+    case "text":
+      return `${STOP_JQ.text}($acknowledgement; ${jqString(name)})`;
+    case "figure":
+      return `${STOP_JQ.figure}($acknowledgement; $written; ${jqString(name)})`;
+  }
+}
+
 /**
- * Reading an acknowledgement. The stop's metadata carries the four fields the
- * acknowledgement and the request publish today, by their own names; what is
- * logged is exactly this, and nothing is worked out from it.
+ * Reading an acknowledgement. The stop's metadata carries, by their own
+ * names, the fields the acknowledgement and the request publish (ADR-0017
+ * §4); what is logged is exactly this, and nothing is worked out from it.
+ *
+ * IT IS WRITTEN AS TEXT, AND NEVER BUILT AS A JQ OBJECT (#585). The bound
+ * and the amount measured against it are signed 64-bit amounts of micros,
+ * and jq 1.5 and 1.6 hold a number as a double: -9223372036854775807 built
+ * into an object comes back -9223372036854776000. So a figure is the token
+ * the acknowledgement wrote, found by its path in a copy of the text in
+ * which every number is a string of its own characters (ADR-0017 §6, the
+ * read #583 wrote for a supplier's response), and is accepted only as a JSON
+ * integer. A null is null. A field that is not there, or not what the
+ * contract says it is, refuses the acknowledgement: nothing is filled in,
+ * defaulted or rounded.
  */
 function acknowledgement(): string[] {
+  const refusal = (message: string) => `error(${jqString(`${message} `)} + $name)`;
   return [
     ...asComments(SHELL_COMMENTS.acknowledgement),
     ...program(
@@ -447,17 +478,33 @@ function acknowledgement(): string[] {
       ["--raw-output", "--null-input"],
       [`--arg response "$${SHELL_FILE.response}"`, `--arg idempotency_key "$1"`],
       [
+        ...asWrittenDefinitions(),
+        ...wholeDefinition(),
+        `def ${STOP_JQ.text}($acknowledgement; $name):`,
+        `${I1}if ($acknowledgement | has($name))`,
+        `${I1}   and ($acknowledgement[$name] == null or ($acknowledgement[$name] | type) == "string")`,
+        `${I1}then $acknowledgement[$name] | tojson`,
+        `${I1}else ${refusal(SHELL_MESSAGES.stopText)} end;`,
+        `def ${STOP_JQ.figure}($acknowledgement; $written; $name):`,
+        `${I1}if ($acknowledgement | has($name)) and $acknowledgement[$name] == null then "null"`,
+        `${I1}elif ($acknowledgement | has($name)) and ($acknowledgement[$name] | type) == "number"`,
+        `${I1}     and ($written[$name] | type) == "string" and ($written[$name] | ubb_whole)`,
+        `${I1}then $written[$name]`,
+        `${I1}else ${refusal(SHELL_MESSAGES.stopFigure)} end;`,
         "($response | fromjson) as $acknowledgement",
         `| if ($acknowledgement | type) != "object"`,
-        `${I1}   or ($acknowledgement.event_id | type) != "string"`,
+        `${I1}   or ($acknowledgement.${EVENT_ID} | type) != "string"`,
         `${I1}then error(${jqString(SHELL_MESSAGES.noEventId)})`,
         `${I1}elif $acknowledgement.stop == true`,
-        `${I1}then {`,
-        `${I2}"event_id": $acknowledgement.event_id,`,
-        `${I2}"idempotency_key": $idempotency_key,`,
-        `${I2}"stop_scope": $acknowledgement.stop_scope,`,
-        `${I2}"stop_reason": $acknowledgement.stop_reason`,
-        `${I1}} | tojson`,
+        `${I1}then ($response | split(${jqString('"')})) as $parts`,
+        `${I1}| ($parts | ubb_inside_flags) as $inside`,
+        `${I1}| (ubb_as_written($parts; $inside) | fromjson) as $written`,
+        `${I1}| ${jqString(`{"${EVENT_ID}":`)} + ($acknowledgement.${EVENT_ID} | tojson)`,
+        `${I2}+ ${jqString(',"idempotency_key":')} + ($idempotency_key | tojson)`,
+        ...STOP_METADATA.map(
+          ({ name, read }) => `${I2}+ ${jqString(`,${JSON.stringify(name)}:`)} + ${stopValue(name, read)}`,
+        ),
+        `${I2}+ ${jqString("}")}`,
         `${I1}else "null" end`,
       ],
     ),

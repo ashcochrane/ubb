@@ -13,6 +13,7 @@ import {
   type ResolvedIntegrationBlueprint,
 } from "./blueprint.ts";
 import { ENVIRONMENT } from "./catalogue.ts";
+import type { components } from "./generated/v1";
 import {
   literalOf,
   parameters,
@@ -42,6 +43,24 @@ export const FIELD = {
   currency: "currency",
   measurements: "measurements",
 } as const;
+
+/**
+ * What a stop is explained by, as the acknowledgement publishes it and in its
+ * order: the scope and the reason, and how the stop was applied and what it
+ * was measured on (#569; ADR-0019 §1). Every target states each one by name
+ * and works none of them out (#585): a field that does not apply is null,
+ * and the two figures are signed. Typed against the contract, so a field it
+ * stops publishing stops compiling.
+ */
+export const STOP_FIELDS = [
+  "stop_scope",
+  "stop_reason",
+  "trigger_source",
+  "stop_bound_micros",
+  "stop_measured_micros",
+] as const satisfies readonly (keyof components["schemas"]["RecordUsageResponse"])[];
+
+export type StopField = (typeof STOP_FIELDS)[number];
 
 /** The declared facts a target may act on, by the last segment of their name. */
 export const FACT = {

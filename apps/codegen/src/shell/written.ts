@@ -120,14 +120,18 @@ export const KIND = {
   unreadable: "unreadable",
 } as const;
 
-/** The jq program that reads the value at `path` off a response file. */
-export function writtenProgram(path: readonly string[]): string[] {
-  const at = jqLiteral([...path]);
-  const parts = (inside: boolean) =>
-    `[range(0; $parts | length) as $at | if $inside[$at] then ${inside ? "$parts[$at]" : "empty"} ` +
-    `else ${inside ? "empty" : "$parts[$at]"} end] | add // ""`;
+/**
+ * The jq functions that make a copy of a JSON text in which every scalar
+ * outside a string is a JSON string of its own characters: split the text at
+ * its quotes (`$parts`), tell which parts are inside a string
+ * (`ubb_inside_flags`), and write the copy (`ubb_as_written($parts;
+ * $inside)`). The copy has the text's structure, so a path that finds a
+ * number in the text finds the number as written in the copy. Shared by the
+ * read off a supplier's response and by the read of a stop's figures off an
+ * acknowledgement (#585), which is UBB's own response.
+ */
+export function asWrittenDefinitions(): string[] {
   return [
-    ...SHELL_COMMENTS.writtenProgram.map((line) => `# ${line}`),
     "def ubb_escapes_next:",
     `${I1}if endswith(${q("\\")}) then`,
     `${I2}explode as $c`,
@@ -156,6 +160,30 @@ export function writtenProgram(path: readonly string[]): string[] {
     `${I2}| (if $at > 0 then ${q('"')} else empty end),`,
     `${I2}  (if $inside[$at] then $parts[$at] else ($parts[$at] | ubb_scalars_quoted) end)]`,
     `${I1}| add;`,
+  ];
+}
+
+/** The jq function that says whether a token, as written, is a JSON
+ * integer: `-?(0|[1-9][0-9]*)`. */
+export function wholeDefinition(): string[] {
+  return [
+    "def ubb_whole:",
+    `${I1}explode`,
+    `${I1}| (if .[0] == 45 then .[1:] else . end)`,
+    `${I1}| length > 0 and (map(select(. < 48 or . > 57)) | length) == 0`,
+    `${I1}  and (length == 1 or .[0] != 48);`,
+  ];
+}
+
+/** The jq program that reads the value at `path` off a response file. */
+export function writtenProgram(path: readonly string[]): string[] {
+  const at = jqLiteral([...path]);
+  const parts = (inside: boolean) =>
+    `[range(0; $parts | length) as $at | if $inside[$at] then ${inside ? "$parts[$at]" : "empty"} ` +
+    `else ${inside ? "empty" : "$parts[$at]"} end] | add // ""`;
+  return [
+    ...SHELL_COMMENTS.writtenProgram.map((line) => `# ${line}`),
+    ...asWrittenDefinitions(),
     "def ubb_python_reads($parts; $inside):",
     `${I1}(${parts(false)}`,
     `${I2}| ${WHITESPACE.map((space) => `ubb_without(${q(space)})`).join(" | ")}`,
@@ -171,11 +199,7 @@ export function writtenProgram(path: readonly string[]): string[] {
     `${I2}if .found and (.value | type) == "object" and (.value | has($segment))`,
     `${I2}then {"found": true, "value": .value[$segment]}`,
     `${I2}else {"found": false, "value": null} end);`,
-    "def ubb_whole:",
-    `${I1}explode`,
-    `${I1}| (if .[0] == 45 then .[1:] else . end)`,
-    `${I1}| length > 0 and (map(select(. < 48 or . > 57)) | length) == 0`,
-    `${I1}  and (length == 1 or .[0] != 48);`,
+    ...wholeDefinition(),
     ". as $text",
     "| (try [fromjson] catch null) as $parsed",
     `| if $parsed == null then ${q(KIND.unreadable)}`,
