@@ -161,8 +161,11 @@ disagree with the shipped bytes.
   the stop (`usage_ingest`, `enforcement_patrol`, `charge_projection`; never
   the cause, which is `stop_reason`), the bound `stop_reason` names as it
   stood when the stop was established, and the amount measured against it
-  then. Each is `None` where it does not apply — never `0` for that; a zero
-  floor is a real `0`. A replay of an `idempotency_key` now answers exactly
+  then. Each is a required key whose value may be `None` — always on the
+  wire, so the generated models refuse a body that omits one — and is `None`
+  where it does not apply, never `0` for that; a zero floor is a real `0`.
+  Both figures are signed: a hard floor's bound and the balance below it are
+  negative. A replay of an `idempotency_key` now answers exactly
   what the original acknowledgement said, its stop included, rather than the
   customer's stop as it stands at the retry.
 

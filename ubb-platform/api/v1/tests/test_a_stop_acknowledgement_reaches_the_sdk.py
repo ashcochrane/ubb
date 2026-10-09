@@ -24,7 +24,7 @@ from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
     DOORBELL)
 from apps.billing.handlers import handle_usage_recorded_billing
-from apps.billing.wallets.models import Wallet
+from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.platform.customers.models import Customer
@@ -192,6 +192,29 @@ def test_a_customer_stop_replays_its_facts_after_its_pool_moves_and_clears(billi
         _bill(client, customer, "k-pool", 9_000_000)
     assert replayed.value.event_id == original.value.event_id
     assert _facts(replayed.value) == (TRIGGER_SOURCE_USAGE_INGEST, 8_000_000, 9_000_000)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_hard_floor_reaches_the_sdk_as_signed_figures(billing_sdk):
+    """The owner's review of #612: the figures are signed. A floor is
+    published as a balance (the negated minimum, -1,000,000) and the wallet
+    sits below it (-1,500,000); both reach the generated client as negative
+    integers — on the raised signal and on a typed batch item alike."""
+    client, _, customer = billing_sdk
+    Wallet.objects.filter(customer=customer).update(balance_micros=3_000_000)
+    CustomerBillingProfile.objects.create(customer=customer,
+                                          min_balance_micros=1_000_000)
+
+    with pytest.raises(UBBStopRequested) as floor:
+        _bill(client, customer, "k-floor", 4_500_000)
+    assert floor.value.stop_reason == reasons.HARD_FLOOR
+    assert _facts(floor.value) == (TRIGGER_SOURCE_USAGE_INGEST, -1_000_000, -1_500_000)
+
+    [item] = client.record_batch([{
+        "customer_id": str(customer.id), "idempotency_key": "k-floor",
+        "event_type": DECLARED, "provider_cost_micros": 1_000,
+        "measurements": priced_at(4_500_000)}]).results
+    assert (item.stop_bound_micros, item.stop_measured_micros) == (-1_000_000, -1_500_000)
 
 
 @pytest.mark.django_db(transaction=True)

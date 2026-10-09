@@ -50,6 +50,10 @@ def _stopped_ack(**overrides) -> dict:
         "event_id": "e1", "suspended": False,
         "costing_status": "known", "pricing_status": "known",
         "stop": True, "stop_reason": REASON_CODE_HARD_FLOOR, "stop_scope": "customer",
+        # The three are required keys (the owner's review of #612): a hard
+        # floor names its mechanism, a zero floor and the balance below it.
+        "trigger_source": "usage_ingest", "stop_bound_micros": 0,
+        "stop_measured_micros": -250_000,
     }
     body.update(overrides)
     return body
@@ -59,6 +63,7 @@ def _ok_ack(**overrides) -> dict:
     body = {
         "event_id": "e1", "suspended": False,
         "costing_status": "known", "pricing_status": "known", "stop": False,
+        "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
     }
     body.update(overrides)
     return body
@@ -423,7 +428,9 @@ class ABatchReportNeverRaisesTest(_ClientCase):
     def _accepted(event_id: str, **verdict) -> dict:
         item = {"accepted": True, "event_id": event_id, "suspended": False,
                 "costing_status": "known", "pricing_status": "known",
-                "stop": False, "stop_reason": None, "stop_scope": None}
+                "stop": False, "stop_reason": None, "stop_scope": None,
+                "trigger_source": None, "stop_bound_micros": None,
+                "stop_measured_micros": None}
         item.update(verdict)
         return item
 

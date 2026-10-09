@@ -757,18 +757,28 @@ class RecordUsageResponse(Schema):
     # was established, and the amount measured against it then — so a
     # handler can log what happened without a follow-up read. `stop_reason`
     # says what the two figures mean economically, so there is no field
-    # saying which kind of amount they are. ALWAYS PRESENT, null where they
-    # do not apply, never 0 for that. They sit after the stop trio and
+    # saying which kind of amount they are. They sit after the stop trio and
     # before the assessment, whose order the shell target reads (#180 §11).
     # The customer whose line a customer-wide stop is (a pooled seat's own,
     # or its billing owner's) is kept by UBB and not published here (#569,
     # ADR-0019 §4); `stop_context` itemises every standing line.
+    #
+    # ⚠ REQUIRED AND NULLABLE — NO DEFAULT, ON PURPOSE (the owner's review of
+    # #612). Null means "this fact does not apply"; a MISSING key would be a
+    # third state — "the server did not send what it promised" — and the
+    # whole point of these fields is that nothing is left to reconstruct. So
+    # the key is always there, the value may be null, and it is never 0 for
+    # "does not apply" (a zero floor is a real 0). The two figures are SIGNED:
+    # a wallet balance below its floor is negative, and so is the floor as a
+    # balance — no `ge=0` money constraint belongs on either. The stop trio
+    # beside them keeps its own older posture; this ruling is about these
+    # three. A rejected batch item carries them too, null.
     trigger_source: Optional[TriggerSource] = Field(
-        default=None, description=TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT)
+        description=TRIGGER_SOURCE_ON_AN_ACKNOWLEDGEMENT)
     stop_bound_micros: Optional[int] = Field(
-        default=None, description=STOP_BOUND_ON_AN_ACKNOWLEDGEMENT)
+        description=STOP_BOUND_ON_AN_ACKNOWLEDGEMENT)
     stop_measured_micros: Optional[int] = Field(
-        default=None, description=STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT)
+        description=STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT)
     # WHAT THE NAMED UNIT'S CEILING ASSESSMENT CONCLUDED, and the utilisation
     # beside it (#452, slice 6 §3). The stop above is the verdict; this is
     # where the unit stands, in the registry's word, whether or not anything

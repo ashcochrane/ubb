@@ -7078,7 +7078,10 @@
           "event_id",
           "suspended",
           "costing_status",
-          "pricing_status"
+          "pricing_status",
+          "trigger_source",
+          "stop_bound_micros",
+          "stop_measured_micros"
         ],
         "title": "RecordUsageResponse",
         "type": "object"
@@ -10378,6 +10381,9 @@
           }
         },
         "required": [
+          "trigger_source",
+          "stop_bound_micros",
+          "stop_measured_micros",
           "accepted"
         ],
         "title": "UsageBatchItemResponse",

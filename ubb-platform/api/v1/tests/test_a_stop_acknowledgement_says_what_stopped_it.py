@@ -30,11 +30,15 @@ and each binding says how its route records one report (#609's pattern).
 """
 import datetime
 import json
+from pathlib import Path
 from unittest import mock
 
 from django.db import DatabaseError
+from django.test import SimpleTestCase
 from django.utils import timezone
+from pydantic import ValidationError
 
+from api.v1.schemas import RecordUsageResponse, UsageBatchItemResponse
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import Door
 from apps.billing.gating.services.stop_signal_service import StopSignalService
@@ -57,6 +61,12 @@ from core.vocabulary import (
 #: them. Each is ALWAYS present, so an assertion reads the key, never `.get`.
 STOP_FACTS = ("stop", "stop_reason", "stop_scope", "trigger_source",
               "stop_bound_micros", "stop_measured_micros")
+
+#: The three #569 adds: how the stop was applied, and on what figures.
+HOW_IT_WAS_APPLIED = STOP_FACTS[3:]
+
+#: The committed contract, at the git root — `ubb/openapi/v1.json`.
+CONTRACT = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
 
 
 class ReadsAStopAcknowledgement:
@@ -456,3 +466,63 @@ class AStopAcknowledgementOnTheSingleRouteTest(
 class AStopAcknowledgementOnABatchItemTest(
         AStopAcknowledgementSaysWhatStoppedIt, ThroughABatchItem, PoolTestBase):
     pass
+
+
+class TheThreeAreRequiredKeysWhoseValuesMayBeNullTest(SimpleTestCase):
+    """The owner's review of #612: `trigger_source`, `stop_bound_micros` and
+    `stop_measured_micros` are REQUIRED AND NULLABLE on both recording
+    responses — in the class and in the committed contract the SDK is
+    generated from. Null says "does not apply"; a missing key would be a
+    third state, the server not sending what it promised, and the contract
+    leaves none. The two figures are SIGNED: a hard floor's bound and measure
+    sit below zero (`test_a_floor_this_report_crosses_names_the_floor_as_a_balance`
+    sends -1,000,000 and -1,500,000 through both routes), so no minimum
+    belongs on either."""
+
+    RESPONSES = (RecordUsageResponse, UsageBatchItemResponse)
+
+    def test_each_is_required_in_the_class(self):
+        for model in self.RESPONSES:
+            for field in HOW_IT_WAS_APPLIED:
+                with self.subTest(model=model.__name__, field=field):
+                    self.assertTrue(model.model_fields[field].is_required())
+
+    def test_each_is_required_and_nullable_in_the_contract_with_no_minimum(self):
+        schemas = json.loads(CONTRACT.read_text(encoding="utf-8"))[
+            "components"]["schemas"]
+        for model in self.RESPONSES:
+            schema = schemas[model.__name__]
+            for field in HOW_IT_WAS_APPLIED:
+                with self.subTest(model=model.__name__, field=field):
+                    self.assertIn(field, schema["required"])
+                    branches = schema["properties"][field]["anyOf"]
+                    self.assertIn({"type": "null"}, branches)
+                    self.assertNotIn("default", schema["properties"][field])
+                    for branch in branches:
+                        self.assertFalse(
+                            {"minimum", "exclusiveMinimum"} & branch.keys(),
+                            branch)
+
+    def test_a_body_without_one_is_refused_and_a_negative_figure_is_kept(self):
+        bodies = {
+            RecordUsageResponse: {"event_id": "e1", "suspended": False,
+                                  "costing_status": "known",
+                                  "pricing_status": "known"},
+            # A rejected item recorded nothing; it carries the three as null.
+            UsageBatchItemResponse: {"accepted": False, "code": "refused"},
+        }
+        nothing = dict.fromkeys(HOW_IT_WAS_APPLIED)
+        for model, body in bodies.items():
+            for missing in HOW_IT_WAS_APPLIED:
+                with self.subTest(model=model.__name__, missing=missing):
+                    without = {**body, **nothing}
+                    del without[missing]
+                    with self.assertRaises(ValidationError):
+                        model.model_validate(without)
+            below = model.model_validate({
+                **body, "trigger_source": TRIGGER_SOURCE_USAGE_INGEST,
+                "stop_bound_micros": -1_000_000,
+                "stop_measured_micros": -1_500_000})
+            self.assertEqual(
+                (below.stop_bound_micros, below.stop_measured_micros),
+                (-1_000_000, -1_500_000))

@@ -42,11 +42,17 @@ carry, after `stop_scope` and before the ceiling assessment:
 | Field | Type | Meaning |
 |---|---|---|
 | `trigger_source` | string, nullable | The mechanism that applied the stop — the registry's open `trigger_source`, with its concept marker. Never the cause, which is `stop_reason`. |
-| `stop_bound_micros` | integer, nullable | The monetary bound `stop_reason` names, as it stood when the stop was established. |
-| `stop_measured_micros` | integer, nullable | The amount measured against that bound at that moment. |
+| `stop_bound_micros` | signed integer, nullable | The monetary bound `stop_reason` names, as it stood when the stop was established. |
+| `stop_measured_micros` | signed integer, nullable | The amount measured against that bound at that moment. |
 
-All three are always present. A figure that does not apply is **null, never 0**; a real zero
-floor is `0`. `stop_reason` says what the figures mean economically, so there is no "amount kind"
+All three are **required keys whose values may be null** — in the schema's `required` list, in
+the contract and in the generated SDK model, with no default (the owner's review of #612). Null
+means "this fact does not apply"; a missing key would be a third state, the server not sending
+what it promised, and the contract leaves none. A rejected batch item recorded nothing and carries
+all three as null. The older stop trio beside them keeps its own posture; this ruling is about
+these three. A figure that does not apply is **null, never 0**; a real zero floor is `0`. Both
+figures are **signed**: a hard floor's bound and the balance measured against it sit at or below
+zero, so no minimum constrains either anywhere. `stop_reason` says what the figures mean economically, so there is no "amount kind"
 field. The names are the confirmed ones (§A of the rulings): *bound* is the glossary's word across
 all three families ("which bound was reached"), and "stop line" was not broadened to cover a unit
 ceiling to make a name fit.

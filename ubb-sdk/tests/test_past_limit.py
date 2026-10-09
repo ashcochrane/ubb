@@ -30,6 +30,8 @@ class StopContextAckTest(unittest.TestCase):
         on the signal's ``result`` — the same acknowledgement, nothing lost."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known",
+            "trigger_source": "usage_ingest", "stop_bound_micros": 5_000_000,
+            "stop_measured_micros": 5_500_000,
             "stop": True, "stop_reason": REASON_CODE_TASK_COGS_CEILING,
             "stop_scope": "task", "stop_context": _CTX})
         with self.assertRaises(UBBStopRequested) as cm:
@@ -42,7 +44,8 @@ class StopContextAckTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_stop_context_defaults_none(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known"})
+            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known",
+            "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None})
         result = self.client.record_usage(customer_id="c1",
                                           idempotency_key="i1")
         self.assertIsNone(result.stop_context)

@@ -44,6 +44,26 @@ class UsageBatchItemResponse:
 
         Attributes:
             accepted (bool):
+            stop_bound_micros (int | None): The monetary bound the stop named in `stop_reason` was measured against, as it
+                stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling
+                — the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For
+                `customer_spend_pool`: the Pool's stop line (its cap times its hard-stop percentage, over 100), for the customer
+                whose Pool it is. For `hard_floor`: the wallet's floor as a balance — the negated minimum balance, 0 or below,
+                where 0 is a real floor. Null when nothing stopped and for `task_not_active`, and never 0 for 'does not apply'.
+                Later configuration does not move it, and on an idempotent replay it is the original acknowledgement's.
+            stop_measured_micros (int | None): The monetary amount assessed against `stop_bound_micros` when the stop was
+                established. For `task_cogs_ceiling`: the governing unit of work's supplier cost (COGS) total, at or above the
+                bound. For `customer_spend_pool`: that customer's month-to-date billed charges, at or above it. For
+                `hard_floor`: the wallet balance, below it. For a customer-wide stop already standing when this report arrived,
+                it is the figure the stop opened on, not where the counter stands now. Null when nothing stopped and for
+                `task_not_active`. On an idempotent replay, the original acknowledgement's.
+            trigger_source (None | str): The mechanism that applied the stop this acknowledgement names — never its cause,
+                which is `stop_reason`. A unit of work's ceiling (`task_cogs_ceiling`) is crossed by this report:
+                `usage_ingest`. A customer-wide stop (`customer_spend_pool`, `hard_floor`) names the mechanism that OPENED the
+                stop episode this report fell in: `usage_ingest` (a usage report's recording or its drawdown),
+                `enforcement_patrol` (the periodic reconcile) or `charge_projection` (the drawdown of a delivered fixed-price
+                unit's Charge). Null when nothing stopped, and for `task_not_active`, where no mechanism applied a stop on this
+                report. On an idempotent replay, the original acknowledgement's.
             billed_cost_micros (int | None | Unset):
             ceiling_remaining_micros (int | None | Unset):
             ceiling_status (None | Unset | UsageBatchItemResponseCeilingStatusType0):
@@ -79,20 +99,7 @@ class UsageBatchItemResponse:
                 that projects a Charge, which has no supplier behind it. `costing_status` beside it says whether it is settled:
                 the amount is null wherever that status is not `known`.
             stop (bool | Unset):  Default: False.
-            stop_bound_micros (int | None | Unset): The monetary bound the stop named in `stop_reason` was measured against,
-                as it stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS
-                ceiling — the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For
-                `customer_spend_pool`: the Pool's stop line (its cap times its hard-stop percentage, over 100), for the customer
-                whose Pool it is. For `hard_floor`: the wallet's floor as a balance — the negated minimum balance, 0 or below,
-                where 0 is a real floor. Null when nothing stopped and for `task_not_active`, and never 0 for 'does not apply'.
-                Later configuration does not move it, and on an idempotent replay it is the original acknowledgement's.
             stop_context (list[Any] | None | Unset):
-            stop_measured_micros (int | None | Unset): The monetary amount assessed against `stop_bound_micros` when the
-                stop was established. For `task_cogs_ceiling`: the governing unit of work's supplier cost (COGS) total, at or
-                above the bound. For `customer_spend_pool`: that customer's month-to-date billed charges, at or above it. For
-                `hard_floor`: the wallet balance, below it. For a customer-wide stop already standing when this report arrived,
-                it is the figure the stop opened on, not where the counter stands now. Null when nothing stopped and for
-                `task_not_active`. On an idempotent replay, the original acknowledgement's.
             stop_reason (None | str | Unset): Why UBB is asking you to stop: which bound was reached, in the registry's
                 words (the values under `x-ubb-known-values`), or `task_not_active` — the one verdict that is not a bound, which
                 UBB produces and the registry deliberately does not list: this report landed on a unit of work that had already
@@ -104,18 +111,14 @@ class UsageBatchItemResponse:
             task_total_provider_cost_micros (int | None | Unset):
             task_total_unpriced_event_count (int | None | Unset):
             task_total_unresolved_event_count (int | None | Unset):
-            trigger_source (None | str | Unset): The mechanism that applied the stop this acknowledgement names — never its
-                cause, which is `stop_reason`. A unit of work's ceiling (`task_cogs_ceiling`) is crossed by this report:
-                `usage_ingest`. A customer-wide stop (`customer_spend_pool`, `hard_floor`) names the mechanism that OPENED the
-                stop episode this report fell in: `usage_ingest` (a usage report's recording or its drawdown),
-                `enforcement_patrol` (the periodic reconcile) or `charge_projection` (the drawdown of a delivered fixed-price
-                unit's Charge). Null when nothing stopped, and for `task_not_active`, where no mechanism applied a stop on this
-                report. On an idempotent replay, the original acknowledgement's.
             uncosted_measurement_keys (list[str] | Unset):
             unresolved_reason (None | Unset | UsageBatchItemResponseUnresolvedReasonType0):
      """
 
     accepted: bool
+    stop_bound_micros: int | None
+    stop_measured_micros: int | None
+    trigger_source: None | str
     billed_cost_micros: int | None | Unset = UNSET
     ceiling_remaining_micros: int | None | Unset = UNSET
     ceiling_status: None | Unset | UsageBatchItemResponseCeilingStatusType0 = UNSET
@@ -136,9 +139,7 @@ class UsageBatchItemResponse:
     pricing_status: None | Unset | UsageBatchItemResponsePricingStatusType0 = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     stop: bool | Unset = False
-    stop_bound_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
-    stop_measured_micros: int | None | Unset = UNSET
     stop_reason: None | str | Unset = UNSET
     stop_scope: None | str | Unset = UNSET
     suspended: bool | None | Unset = UNSET
@@ -147,7 +148,6 @@ class UsageBatchItemResponse:
     task_total_provider_cost_micros: int | None | Unset = UNSET
     task_total_unpriced_event_count: int | None | Unset = UNSET
     task_total_unresolved_event_count: int | None | Unset = UNSET
-    trigger_source: None | str | Unset = UNSET
     uncosted_measurement_keys: list[str] | Unset = UNSET
     unresolved_reason: None | Unset | UsageBatchItemResponseUnresolvedReasonType0 = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -161,6 +161,15 @@ class UsageBatchItemResponse:
         from ..models.usage_batch_item_response_measurements_type_0 import UsageBatchItemResponseMeasurementsType0
         from ..models.usage_batch_item_response_pricing_receipt_type_0 import UsageBatchItemResponsePricingReceiptType0
         accepted = self.accepted
+
+        stop_bound_micros: int | None
+        stop_bound_micros = self.stop_bound_micros
+
+        stop_measured_micros: int | None
+        stop_measured_micros = self.stop_measured_micros
+
+        trigger_source: None | str
+        trigger_source = self.trigger_source
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -292,12 +301,6 @@ class UsageBatchItemResponse:
 
         stop = self.stop
 
-        stop_bound_micros: int | None | Unset
-        if isinstance(self.stop_bound_micros, Unset):
-            stop_bound_micros = UNSET
-        else:
-            stop_bound_micros = self.stop_bound_micros
-
         stop_context: list[Any] | None | Unset
         if isinstance(self.stop_context, Unset):
             stop_context = UNSET
@@ -307,12 +310,6 @@ class UsageBatchItemResponse:
 
         else:
             stop_context = self.stop_context
-
-        stop_measured_micros: int | None | Unset
-        if isinstance(self.stop_measured_micros, Unset):
-            stop_measured_micros = UNSET
-        else:
-            stop_measured_micros = self.stop_measured_micros
 
         stop_reason: None | str | Unset
         if isinstance(self.stop_reason, Unset):
@@ -362,12 +359,6 @@ class UsageBatchItemResponse:
         else:
             task_total_unresolved_event_count = self.task_total_unresolved_event_count
 
-        trigger_source: None | str | Unset
-        if isinstance(self.trigger_source, Unset):
-            trigger_source = UNSET
-        else:
-            trigger_source = self.trigger_source
-
         uncosted_measurement_keys: list[str] | Unset = UNSET
         if not isinstance(self.uncosted_measurement_keys, Unset):
             uncosted_measurement_keys = self.uncosted_measurement_keys
@@ -387,6 +378,9 @@ class UsageBatchItemResponse:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "accepted": accepted,
+            "stop_bound_micros": stop_bound_micros,
+            "stop_measured_micros": stop_measured_micros,
+            "trigger_source": trigger_source,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -428,12 +422,8 @@ class UsageBatchItemResponse:
             field_dict["provider_cost_micros"] = provider_cost_micros
         if stop is not UNSET:
             field_dict["stop"] = stop
-        if stop_bound_micros is not UNSET:
-            field_dict["stop_bound_micros"] = stop_bound_micros
         if stop_context is not UNSET:
             field_dict["stop_context"] = stop_context
-        if stop_measured_micros is not UNSET:
-            field_dict["stop_measured_micros"] = stop_measured_micros
         if stop_reason is not UNSET:
             field_dict["stop_reason"] = stop_reason
         if stop_scope is not UNSET:
@@ -450,8 +440,6 @@ class UsageBatchItemResponse:
             field_dict["task_total_unpriced_event_count"] = task_total_unpriced_event_count
         if task_total_unresolved_event_count is not UNSET:
             field_dict["task_total_unresolved_event_count"] = task_total_unresolved_event_count
-        if trigger_source is not UNSET:
-            field_dict["trigger_source"] = trigger_source
         if uncosted_measurement_keys is not UNSET:
             field_dict["uncosted_measurement_keys"] = uncosted_measurement_keys
         if unresolved_reason is not UNSET:
@@ -468,6 +456,30 @@ class UsageBatchItemResponse:
         from ..models.usage_batch_item_response_pricing_receipt_type_0 import UsageBatchItemResponsePricingReceiptType0
         d = dict(src_dict)
         accepted = d.pop("accepted")
+
+        def _parse_stop_bound_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        stop_bound_micros = _parse_stop_bound_micros(d.pop("stop_bound_micros"))
+
+
+        def _parse_stop_measured_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        stop_measured_micros = _parse_stop_measured_micros(d.pop("stop_measured_micros"))
+
+
+        def _parse_trigger_source(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        trigger_source = _parse_trigger_source(d.pop("trigger_source"))
+
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -741,16 +753,6 @@ class UsageBatchItemResponse:
 
         stop = d.pop("stop", UNSET)
 
-        def _parse_stop_bound_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        stop_bound_micros = _parse_stop_bound_micros(d.pop("stop_bound_micros", UNSET))
-
-
         def _parse_stop_context(data: object) -> list[Any] | None | Unset:
             if data is None:
                 return data
@@ -767,16 +769,6 @@ class UsageBatchItemResponse:
             return cast(list[Any] | None | Unset, data)
 
         stop_context = _parse_stop_context(d.pop("stop_context", UNSET))
-
-
-        def _parse_stop_measured_micros(data: object) -> int | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(int | None | Unset, data)
-
-        stop_measured_micros = _parse_stop_measured_micros(d.pop("stop_measured_micros", UNSET))
 
 
         def _parse_stop_reason(data: object) -> None | str | Unset:
@@ -859,16 +851,6 @@ class UsageBatchItemResponse:
         task_total_unresolved_event_count = _parse_task_total_unresolved_event_count(d.pop("task_total_unresolved_event_count", UNSET))
 
 
-        def _parse_trigger_source(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        trigger_source = _parse_trigger_source(d.pop("trigger_source", UNSET))
-
-
         uncosted_measurement_keys = cast(list[str], d.pop("uncosted_measurement_keys", UNSET))
 
 
@@ -894,6 +876,9 @@ class UsageBatchItemResponse:
 
         usage_batch_item_response = cls(
             accepted=accepted,
+            stop_bound_micros=stop_bound_micros,
+            stop_measured_micros=stop_measured_micros,
+            trigger_source=trigger_source,
             billed_cost_micros=billed_cost_micros,
             ceiling_remaining_micros=ceiling_remaining_micros,
             ceiling_status=ceiling_status,
@@ -914,9 +899,7 @@ class UsageBatchItemResponse:
             pricing_status=pricing_status,
             provider_cost_micros=provider_cost_micros,
             stop=stop,
-            stop_bound_micros=stop_bound_micros,
             stop_context=stop_context,
-            stop_measured_micros=stop_measured_micros,
             stop_reason=stop_reason,
             stop_scope=stop_scope,
             suspended=suspended,
@@ -925,7 +908,6 @@ class UsageBatchItemResponse:
             task_total_provider_cost_micros=task_total_provider_cost_micros,
             task_total_unpriced_event_count=task_total_unpriced_event_count,
             task_total_unresolved_event_count=task_total_unresolved_event_count,
-            trigger_source=trigger_source,
             uncosted_measurement_keys=uncosted_measurement_keys,
             unresolved_reason=unresolved_reason,
         )
