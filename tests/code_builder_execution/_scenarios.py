@@ -388,9 +388,10 @@ def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
 
     The metadata is the fields the acknowledgement and the request publish:
     the event, the key, the scope and the reason, and how the stop was
-    applied and what it was measured on (#569; #585). Every expected value
-    is the caller's, worked out from its scenario's own configuration, and
-    never read back from the server."""
+    applied and what it was measured on (#569; #585). The event's id is the
+    recorded posting's; every other expected value is the caller's, worked
+    out from its scenario's own configuration and never read back from the
+    server."""
     tipping = outcome.postings()[key]
     assert "stop_requested" in ran.said, ran
     stop = json.loads(ran.said["stop_requested"])
@@ -530,7 +531,9 @@ def _stopped_by_the_customer_pool(outcome: Outcome) -> None:
     assert sorted(outcome.postings()) == ["chat-1"], stopped
     # Opened by this report: the bound is the pool's stop line, its cap at
     # the stated share, and the amount measured is the month's billed
-    # charges at the crossing — this one record, marked up.
+    # charges at the crossing — this one record, marked up. The line is
+    # worked out here and not by the kernel's own function for it, so the
+    # expectation is not the code under test asked again.
     _the_stop(outcome, stopped, key="chat-1", scope="customer",
               reason=reasons.CUSTOMER_SPEND_POOL,
               trigger_source=TRIGGER_SOURCE_USAGE_INGEST,

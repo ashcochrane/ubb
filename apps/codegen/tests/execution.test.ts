@@ -364,7 +364,7 @@ result = {"swallowed": swallowed, "outcome": outcome, "logged": logged,
     expect(logged[0]).not.toContain("costing_status");
   });
 
-  it("states a null as absent and a figure with its sign, never as 0", () => {
+  it("states a null as None and a figure with its sign, never as 0", () => {
     // Work that had already ended, where nothing applied a stop; a hard
     // floor, whose bound and balance are negative; and a zero floor, whose
     // bound is a real 0.

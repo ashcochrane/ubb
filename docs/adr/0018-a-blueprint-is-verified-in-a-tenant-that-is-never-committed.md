@@ -201,8 +201,9 @@ the Blueprint verified, says `verified` is about recording and costing rather th
 acknowledgement's null amount is no figure, and every id in it names a record that no longer
 exists. Where an acknowledgement is a stop it also renders, since #585, how the stop was applied
 and what it was measured on (ADR-0019 §1): the mechanism through the console's one open-set rule,
-the bound and the amount measured at an event's precision with their sign, and a field that does
-not apply to the stop as no figure, never `0`. A run's own tenant enforces nothing, so no
+the bound and the amount measured to the micro with their sign — rounded to a cent, a balance one
+micro under its floor would read as the floor — and a field that does not apply to the stop as no
+figure, never `0`. A run's own tenant enforces nothing, so no
 committed Verify answer is a stop; the card's stopped states are proved on composed
 acknowledgements. A future need to verify against something the snapshot does not hold — an agreed price,
 a constant's value — is met by the ticket that adds it to the snapshot's configuration, in a

@@ -163,11 +163,30 @@ export function asWrittenDefinitions(): string[] {
   ];
 }
 
+/**
+ * The copy of the JSON text `text` evaluates to, bound to `into`, for a
+ * program that holds `asWrittenDefinitions`: the text split at its quotes,
+ * which of its parts are inside a string, and the copy, parsed. A text that
+ * parsed as JSON always gives a copy that parses, so there is no `try`: on jq
+ * 1.5 and 1.6 a `try` here would also catch every error raised later in the
+ * program, and the program's own refusal would be lost.
+ */
+export function asWrittenCopy(text: string, into: string): string[] {
+  return [
+    `(${text} | split(${q('"')})) as $parts`,
+    "| ($parts | ubb_inside_flags) as $inside",
+    `| (ubb_as_written($parts; $inside) | fromjson) as ${into}`,
+  ];
+}
+
+/** The jq function `wholeDefinition` defines. */
+export const WHOLE = "ubb_whole";
+
 /** The jq function that says whether a token, as written, is a JSON
  * integer: `-?(0|[1-9][0-9]*)`. */
 export function wholeDefinition(): string[] {
   return [
-    "def ubb_whole:",
+    `def ${WHOLE}:`,
     `${I1}explode`,
     `${I1}| (if .[0] == 45 then .[1:] else . end)`,
     `${I1}| length > 0 and (map(select(. < 48 or . > 57)) | length) == 0`,
@@ -218,7 +237,7 @@ export function writtenProgram(path: readonly string[]): string[] {
     `${I2}elif $type == "number" then`,
     `${I3}(try [ubb_as_written($parts; $inside) | fromjson] catch null) as $copy`,
     `${I3}| (if $copy == null then null else ($copy[0] | ubb_at(${at})).value end) as $token`,
-    `${I3}| if ($token | type) == "string" and ($token | ubb_whole)`,
+    `${I3}| if ($token | type) == "string" and ($token | ${WHOLE})`,
     `${I3}  then ${q(`${KIND.integer}:`)} + $token else ${q(KIND.float)} end`,
     `${I2}else ${q(KIND.other)} end`,
     `${I1}end`,

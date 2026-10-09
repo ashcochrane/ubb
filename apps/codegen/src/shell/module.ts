@@ -60,10 +60,12 @@ import { headerText } from "../header.ts";
 import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
 import { factOfField, said, SAID_OF } from "../tokens.ts";
+import type { StopField } from "../lifecycle.ts";
 import {
   EVENT_ID,
+  IDEMPOTENCY_KEY,
   routeWith,
-  STOP_METADATA,
+  STOP_READS,
   type BodyField,
   type CallPlan,
   type Member,
@@ -82,7 +84,14 @@ import {
   shWord,
   wireName,
 } from "./syntax.ts";
-import { asWrittenDefinitions, readHelpers, wholeDefinition, writtenProgram } from "./written.ts";
+import {
+  asWrittenCopy,
+  asWrittenDefinitions,
+  readHelpers,
+  WHOLE,
+  wholeDefinition,
+  writtenProgram,
+} from "./written.ts";
 
 const I1 = INDENT;
 const I2 = INDENT.repeat(2);
@@ -442,9 +451,9 @@ const STOP_JQ = { text: "ubb_text", figure: "ubb_figure" } as const;
 
 /** A field of the stop's metadata, as the jq expression that writes its
  * value as JSON text. */
-function stopValue(name: string, read: StopRead): string {
+function stopValue(name: StopField, read: StopRead): string {
   switch (read) {
-    case "given":
+    case "as_given":
       return `($acknowledgement.${name} | tojson)`;
     case "text":
       return `${STOP_JQ.text}($acknowledgement; ${jqString(name)})`;
@@ -471,6 +480,7 @@ function stopValue(name: string, read: StopRead): string {
  */
 function acknowledgement(): string[] {
   const refusal = (message: string) => `error(${jqString(`${message} `)} + $name)`;
+  const [copied, ...copying] = asWrittenCopy("$response", "$written");
   return [
     ...asComments(SHELL_COMMENTS.acknowledgement),
     ...program(
@@ -488,7 +498,7 @@ function acknowledgement(): string[] {
         `def ${STOP_JQ.figure}($acknowledgement; $written; $name):`,
         `${I1}if ($acknowledgement | has($name)) and $acknowledgement[$name] == null then "null"`,
         `${I1}elif ($acknowledgement | has($name)) and ($acknowledgement[$name] | type) == "number"`,
-        `${I1}     and ($written[$name] | type) == "string" and ($written[$name] | ubb_whole)`,
+        `${I1}     and ($written[$name] | type) == "string" and ($written[$name] | ${WHOLE})`,
         `${I1}then $written[$name]`,
         `${I1}else ${refusal(SHELL_MESSAGES.stopFigure)} end;`,
         "($response | fromjson) as $acknowledgement",
@@ -496,12 +506,11 @@ function acknowledgement(): string[] {
         `${I1}   or ($acknowledgement.${EVENT_ID} | type) != "string"`,
         `${I1}then error(${jqString(SHELL_MESSAGES.noEventId)})`,
         `${I1}elif $acknowledgement.stop == true`,
-        `${I1}then ($response | split(${jqString('"')})) as $parts`,
-        `${I1}| ($parts | ubb_inside_flags) as $inside`,
-        `${I1}| (ubb_as_written($parts; $inside) | fromjson) as $written`,
+        `${I1}then ${copied!}`,
+        ...copying.map((line) => `${I1}${line}`),
         `${I1}| ${jqString(`{"${EVENT_ID}":`)} + ($acknowledgement.${EVENT_ID} | tojson)`,
-        `${I2}+ ${jqString(',"idempotency_key":')} + ($idempotency_key | tojson)`,
-        ...STOP_METADATA.map(
+        `${I2}+ ${jqString(`,"${IDEMPOTENCY_KEY}":`)} + ($idempotency_key | tojson)`,
+        ...STOP_READS.map(
           ({ name, read }) => `${I2}+ ${jqString(`,${JSON.stringify(name)}:`)} + ${stopValue(name, read)}`,
         ),
         `${I2}+ ${jqString("}")}`,

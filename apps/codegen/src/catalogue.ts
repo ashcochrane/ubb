@@ -669,8 +669,8 @@ export const MESSAGES = {
     "see the blocking diagnostic in this file's header",
   environmentNotSet: "is not set. Set it in the environment this code runs in.",
   /** The stop, as the Python boundary logs it: the key, then each field the
-   * stop is explained by, by its own name and in the acknowledgement's order
-   * (`STOP_FIELDS`), as the SDK holds it (#585). */
+   * stop is explained by, by its own name and in `STOP_FIELDS`' order (a test
+   * holds the two equal), as the SDK holds it (#585). */
   stop:
     "UBB requested a stop. The event sent as %r was recorded and must not be sent again. " +
     "stop_scope=%r, stop_reason=%r, trigger_source=%r, stop_bound_micros=%r, stop_measured_micros=%r",

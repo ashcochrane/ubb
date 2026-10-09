@@ -499,8 +499,11 @@ describe("the stop's fields in a shell file (#585)", () => {
 
   it.each(SHELL_BRANCH_NAMES)("are carried as the acknowledgement holds them, and never worked out (%s)", (branch) => {
     const program = stopProgram(branch);
-    // Each is named, and only ever as text: no field is read off the parsed
-    // acknowledgement as a value of jq's own, where a figure is a double.
+    // Each is named only as text, handed by name to a function of the
+    // program: never reached by a path the renderer spelled
+    // (`$acknowledgement.stop_bound_micros`), which would make the figure the
+    // value jq holds for it, a double. What those functions do with a field
+    // is held below.
     expect(jqCode(program)).not.toMatch(new RegExp(FIELDS.join("|")));
     for (const field of FIELDS) {
       const carrying = program.filter((line) => line.includes(field));

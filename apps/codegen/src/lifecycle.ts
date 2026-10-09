@@ -45,12 +45,13 @@ export const FIELD = {
 } as const;
 
 /**
- * What a stop is explained by, as the acknowledgement publishes it and in its
- * order: the scope and the reason, and how the stop was applied and what it
- * was measured on (#569; ADR-0019 §1). Every target states each one by name
- * and works none of them out (#585): a field that does not apply is null,
- * and the two figures are signed. Typed against the contract, so a field it
- * stops publishing stops compiling.
+ * What a stop is explained by, in the order every target states it: the
+ * scope and the reason, in the order a shell file's stop metadata has always
+ * carried them, then how the stop was applied and what it was measured on,
+ * in the order the acknowledgement publishes them (#569; ADR-0019 §1). Every
+ * target states each one by name and works none of them out (#585): a field
+ * that does not apply is null, and the two figures are signed. Typed against
+ * the contract, so a field it stops publishing stops compiling.
  */
 export const STOP_FIELDS = [
   "stop_scope",

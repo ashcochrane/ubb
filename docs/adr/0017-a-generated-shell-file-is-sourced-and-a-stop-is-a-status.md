@@ -220,14 +220,17 @@ added by #585 (2026-10-09). Nothing is derived or filled in: a field that does n
 signed 64-bit amounts of micros, and jq 1.5 and 1.6 hold a number as a double: built into an
 object and printed, -9223372036854775807 comes back -9223372036854776000. So the program finds
 each figure's token as UBB wrote it, by §6's read as written, and writes the line by joining JSON
-text: a figure is accepted only as a JSON integer and written as its token, and every string goes
-through jq's own encoder. An acknowledgement whose stop does not hold one of the three as the
+text: a figure is accepted only as a JSON integer and written as its token, every value that is a
+string goes through jq's own encoder (`tojson`), and every key is a JSON string the renderer
+wrote (§3). An acknowledgement whose stop does not hold one of the three as the
 contract says — the key missing, a figure written with a fraction or an exponent or as a string,
 the mechanism as anything but text — is refused as unreadable (`UBB_EXIT_RESPONSE_UNREADABLE`),
 in the catalogue's words, rather than filled in or rounded. The scope and the reason keep the
-posture they had: written as the acknowledgement gives them. Run with real binaries, the read
-carried ±(2⁶³−1), −2⁶³ and ±(2⁵³+1) byte for byte on jq 1.5, 1.6 and 1.7.1 and on gojq 0.12.17,
-where the object built in jq rounded all three on jq 1.4, 1.5 and 1.6.
+posture they had: written as the acknowledgement gives them. Measured once with real binaries
+before it was built (the evidence is on #585's pull request), the read carried ±(2⁶³−1), −2⁶³ and
+±(2⁵³+1) byte for byte on jq 1.5, 1.6 and 1.7.1 and on gojq 0.12.17, where the object built in jq
+rounded all three on jq 1.4, 1.5 and 1.6. What stays pinned: Seam C's standing matrix on jq 1.5
+and 1.7.1, and the renderer's suite on its own jq — 1.6 in its image, 1.7 on CI's runner.
 
 **`ubb_run_task` is the boundary.** It starts the Task, runs the one command it is given with
 the Task's id as its argument, and then reads three things: the status that command returned,

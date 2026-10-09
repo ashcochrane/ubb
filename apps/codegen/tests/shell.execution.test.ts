@@ -686,7 +686,7 @@ describe("the stop", () => {
    * JavaScript number holds is only exact as the digits the server wrote. A
    * grouping value that spells a stop field is a string, and is never read
    * for one. */
-  const written = (reason: string, scope: string, applied: string) => ({
+  const written = (scope: string, reason: string, applied: string) => ({
     path: "/api/v1/metering/usage",
     answer: {
       raw_body:
@@ -730,7 +730,11 @@ printf 'status=%s\\nreserved=%s\\nmetadata=%s\\n' "$recorded" "$${SHELL.stopExit
   // #585: a figure is carried as the digits and the sign UBB wrote, never as
   // the number jq makes of it (ADR-0017 §6): jq 1.5 and 1.6 make the first of
   // these -9223372036854776000. A hard floor's figures are negative, a zero
-  // floor is a real 0, and what does not apply stays null.
+  // floor is a real 0, and what does not apply stays null. ⚠ The digits are at
+  // risk only on a jq that holds a number as a double: this suite's image
+  // carries jq 1.6, where these bite, and CI's runner 1.7, where a jq number
+  // would have kept them too — Seam C pins the same on jq 1.5, in the
+  // standing matrix (`test_a_stop_figure_is_carried_as_written_on_every_jq`).
   it.each([
     [
       "a hard floor at the extremes of a signed 64-bit amount",
@@ -768,7 +772,7 @@ printf 'status=%s\\nreserved=%s\\nmetadata=%s\\n' "$recorded" "$${SHELL.stopExit
 ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
 printf 'status=%s\\nmetadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
-        { shell, answers: [written(reason, scope, applied)] },
+        { shell, answers: [written(scope, reason, applied)] },
       );
 
       expect(said(ran).status, shell).toBe("20");
@@ -795,7 +799,7 @@ printf 'status=%s\\nmetadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 ubb_record_search_run customer_id=c idempotency_key=e1 task_id=t searches=1
 printf 'status=%s\\nmetadata=%s\\n' "$?" "$UBB_STOP_REQUESTED"
 `,
-        { answers: [written("task_cogs_ceiling", "task", applied)] },
+        { answers: [written("task", "task_cogs_ceiling", applied)] },
       );
 
       expect(said(ran)).toEqual({

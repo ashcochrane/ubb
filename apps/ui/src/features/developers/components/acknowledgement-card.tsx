@@ -13,7 +13,7 @@
 //     (`event_id`, `stop_scope`, `stop_reason`, and #569's `trigger_source`,
 //     `stop_bound_micros` and `stop_measured_micros`, #585) render as
 //     returned: the mechanism through the open-set rule, each figure signed
-//     at an event's precision, and one that does not apply as no figure.
+//     to the micro, and one that does not apply as no figure.
 //
 // On a replay of the same request the task totals are null BY DESIGN — a
 // replay adds nothing to the work — and the card says so rather than reading
@@ -33,7 +33,7 @@ import {
   pricingStatusLabel,
   settledPriceMicros,
 } from "@/lib/customer-price";
-import { formatEventMicros, formatMicros } from "@/lib/format";
+import { formatEventMicros, formatExactMicros, formatMicros } from "@/lib/format";
 import { stopScopeLabel } from "@/lib/labels";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 import { describeTotal, readTotal, type TotalReading } from "@/lib/total-reading";
@@ -178,9 +178,9 @@ export function AcknowledgementCard({
             {/* How the stop was applied and what it was measured on (#569,
                 #585), exactly as the acknowledgement carries them: the
                 mechanism through the same open-set rule as the reason, and
-                each figure at an event's precision with its sign — a hard
-                floor's are negative. Nothing here is worked out, and a field
-                that does not apply to this stop is NO FIGURE, never `0`. */}
+                each figure to the micro with its sign — a hard floor's are
+                negative. Nothing here is worked out, and a field that does
+                not apply to this stop is NO FIGURE, never `0`. */}
             <ResponseStat
               label="Applied by"
               value={
@@ -259,11 +259,19 @@ function TaskTotals({
 
 /**
  * One of a stop's figures — its bound, or the amount measured against it — as
- * the acknowledgement carries it: the amount at an event's precision, signed,
- * or, where the figure does not apply to this stop, no figure at all.
+ * the acknowledgement carries it: the amount to the micro, signed, or, where
+ * the figure does not apply to this stop, no figure at all. To the micro and
+ * not to a cent, because the two are read against each other: a balance one
+ * micro under its floor is what stopped the work, and at a cent's precision
+ * it would read as the floor itself.
+ *
+ * In the card's one currency, the tenant's, because each figure is measured
+ * on money this card already renders in it (ADR-0019 §2): a unit's COGS
+ * beside the provider cost, a customer's billed charges beside the billed
+ * cost, and the wallet's balance beside the balance after.
  */
 function StopFigure({ micros, currency }: { micros: number | null | undefined; currency: string }) {
-  return micros == null ? <Absent /> : <>{formatEventMicros(micros, currency)}</>;
+  return micros == null ? <Absent /> : <>{formatExactMicros(micros, currency)}</>;
 }
 
 /** A total and the count of what it left out, read together or not at all. */

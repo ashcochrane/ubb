@@ -332,12 +332,25 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
     expect(shown("Measured")).toBe("$6.00");
   });
 
-  // At an event's precision: a cent-rounded figure would write both as $0.00.
-  it("renders a small bound and amount at an event's precision", () => {
+  // To the micro: a cent-rounded figure would write both as $0.00, and an
+  // event's four places would round the amount.
+  it("renders a small bound and amount to the micro", () => {
     renderCard(stoppedBy(ceilingStop({ scope: "subtask", ceiling_micros: 300, cost_micros: 471 })));
 
     expect(shown("Bound")).toBe("$0.0003");
-    expect(shown("Measured")).toBe("$0.0005");
+    expect(shown("Measured")).toBe("$0.000471");
+  });
+
+  // ⚠ The two are read against each other. A balance one micro under its
+  // floor is what stopped the work; rounded to a cent, the two would read as
+  // one amount.
+  it("never renders a bound and the amount measured against it as one when they differ", () => {
+    renderCard(
+      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_000_001 })),
+    );
+
+    expect(shown("Bound")).toBe("-$1.00");
+    expect(shown("Measured")).toBe("-$1.000001");
   });
 
   // ⚠ A hard floor's figures are negative: the floor as a balance, and the

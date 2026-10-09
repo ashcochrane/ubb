@@ -21,7 +21,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from _harness import REPO_ROOT, Ran, Server, in_image, render
+from _harness import REPO_ROOT, Ran, Server, in_image, run_shell, write
 from _scenarios import MATRIX
 
 EVIDENCE = REPO_ROOT / "apps" / "codegen" / "tests" / "harness"
@@ -113,7 +113,9 @@ CARRIED_STOP = (
 @pytest.fixture
 def stand_in():
     """A local server standing where UBB would, answering every POST with
-    `ACKNOWLEDGEMENT` exactly as written."""
+    `ACKNOWLEDGEMENT` exactly as written. It is not the application: it
+    borrows the harness's `Server` only for how a container reaches a server
+    on this machine."""
 
     class Answers(BaseHTTPRequestHandler):
         def do_POST(self):
@@ -139,24 +141,19 @@ def stand_in():
 @pytest.mark.parametrize("shell", MATRIX, ids=[shell.name for shell in MATRIX])
 def test_a_stop_figure_is_carried_as_written_on_every_jq(
         shell, stand_in, tmp_path):
-    for file in render(json.loads(BLUEPRINT.read_text(encoding="utf-8"))):
-        target = tmp_path / "artifact" / file["path"]
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(file["contents"].encode("utf-8"))
-    (tmp_path / "main.sh").write_bytes(
-        b". ./artifact/ubb_integration.sh\n"
-        b"ubb_record_search_run customer_id=c idempotency_key=call-1"
-        b" task_id=t searches=1 && status=0 || status=$?\n"
-        b"printf 'status=%s\\n' \"$status\"\n"
-        b"printf 'stop_requested=%s\\n' \"$UBB_STOP_REQUESTED\"\n")
-    ran = subprocess.run(
-        in_image(shell.image, shell.command, "main.sh", work=tmp_path,
-                 environment={"UBB_BASE_URL": stand_in.url_from_a_container,
-                              "UBB_API_KEY": "not-a-key"},
-                 network=stand_in.network),
-        capture_output=True)
-    ran = Ran(status=ran.returncode, stdout=ran.stdout.decode("utf-8"),
-              stderr=ran.stderr.decode("utf-8", "replace"))
+    # Written and run as every scenario's artifact is: a checksum of every
+    # file as it is written, held before and after the run.
+    artifact = write(json.loads(BLUEPRINT.read_text(encoding="utf-8")),
+                     tmp_path)
+    ran = run_shell(
+        artifact,
+        ". ./artifact/ubb_integration.sh\n"
+        "ubb_record_search_run customer_id=c idempotency_key=call-1"
+        " task_id=t searches=1 && status=0 || status=$?\n"
+        "printf 'status=%s\\n' \"$status\"\n"
+        "printf 'stop_requested=%s\\n' \"$UBB_STOP_REQUESTED\"\n",
+        server=stand_in, api_key="not-a-key", image_name=shell.image,
+        shell=shell.command)
 
     assert ran.said == {"status": "20", "stop_requested": CARRIED_STOP}, ran
 
