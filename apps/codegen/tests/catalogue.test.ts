@@ -33,6 +33,7 @@ import {
   SHELL_MESSAGES,
   SHELL_READINESS_COMMENTS,
 } from "../src/index.ts";
+import { STOP_FIELDS } from "../src/lifecycle.ts";
 import { FIXTURE_NAMES, fixture, FIXTURES, PACKAGE_ROOT, REPO_ROOT } from "./support/fixtures.ts";
 import { registry } from "./support/python.ts";
 
@@ -287,6 +288,15 @@ describe("the catalogue's text", () => {
     // An apostrophe is allowed, and one message has one: in a shell file a
     // message is a quoted word, which the renderer escapes it into.
     expect(messages.filter((message) => message.includes("'"))).not.toEqual([]);
+  });
+
+  // The Python boundary hands the log the key and then `STOP_FIELDS`, in
+  // order (ADR-0016 §4): the sentence must name the same fields in the same
+  // order, or a figure would be logged under another field's name.
+  it("names each field of the stop in the Python log as the boundary passes them (#585)", () => {
+    const named = [...MESSAGES.stop.matchAll(/(\w+)=%r/g)].map((match) => match[1]);
+    expect(named).toEqual([...STOP_FIELDS]);
+    expect(MESSAGES.stop.split("%r")).toHaveLength(STOP_FIELDS.length + 2);
   });
 
   it("names its own version in the line that says what generated a file", () => {

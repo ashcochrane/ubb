@@ -113,16 +113,22 @@ value, and is still written beneath the guard so the file shows the lifecycle's 
 
 ### 4. The stop is caught once, and the conversion is the platform's
 
-`UBBStopRequested` is caught in exactly one place, `unit_of_work`, which logs the acknowledgement
-as it stands and raises again. No function that records has a handler. The path for work that has
-already happened passes `stop_behavior="return"`; the live path passes `"raise"`.
+`UBBStopRequested` is caught in exactly one place, `unit_of_work`, which logs the stop and raises
+again. No function that records has a handler. The path for work that has already happened passes
+`stop_behavior="return"`; the live path passes `"raise"`.
 
-What is logged today is the key the event was sent under and the acknowledgement's own `repr`.
-**That is a fallback and is temporary (§9).** The SDK's models cannot be turned back into a
-dictionary yet (#596), and the stop's contracted explanation — the reason, the mechanism that
-applied it, the scope, the limit and the spend measured against it — is not all published yet
-(#569). When that lands, the boundary states those fields by name. It never relies on an SDK
-object's `repr` as its structured account of a stop.
+**What is logged is the key the event was sent under and each field the stop is explained by, by
+its own name** (#585, 2026-10-09): `stop_scope`, `stop_reason`, `trigger_source`,
+`stop_bound_micros` and `stop_measured_micros` — the scope and the reason as a shell file's stop
+metadata orders them, then #569's three as the acknowledgement does (ADR-0019 §1), one list for
+both targets — each read as an attribute of what was caught. Each is stated as the SDK holds it — text quoted, a
+figure as its digits and its sign, a field that does not apply as `None` — and nothing is worked
+out from any of them: no default, no conversion, no arithmetic and no fallback to another field.
+The sentence is the catalogue's (`MESSAGES.stop`). The boundary never calls the SDK's `to_dict()`
+(#596 is open) and never logs an object's `repr` as its account of a stop.
+
+Until then the log was the key and the acknowledgement's own `repr`, a fallback the owner accepted
+only until #569 published the stop's contracted explanation (§9).
 
 A cost a supplier reports is converted to whole micros in the tenant's process, by a helper written
 into the module. Its definition is the platform's `to_micros` and `pin_currency`, and it is held to
@@ -227,7 +233,9 @@ five rulings:
    the generated-artifact case (§4). *2026-10-08:* #583 met it as the owner ruled there (D1): the
    refusal is the server's, and the integration surfaces it (§4).
 4. **The default host is removed** (§8). This is the one thing the review changed.
-5. **#596 does not block this, and `repr` is temporary** (§4).
+5. **#596 does not block this, and `repr` is temporary** (§4). *2026-10-09:* #585 ended the
+   fallback once #569's fields existed: the boundary states the contracted fields by name and
+   derives none of them (§4; the owner's carry-forward on #585).
 
 ### 10. What this ADR does not decide
 
@@ -249,6 +257,7 @@ each arrives as tokens under §3 and needs no new rule. A cost read off a suppli
 | §3 — declared names reach the wire as declared, and cannot end a line | `apps/codegen/tests/execution.test.ts` — "reach the wire exactly as they were declared", "cannot end a line or start a statement, whatever they hold" |
 | §3 — a call that is not ready raises, naming what is missing | same module — "raises from every call that is not ready, naming what is missing" |
 | §4 — one catch, by name, raised again | same module — "is caught in exactly one place, by name, and raised again", "passes through a tenant's own except Exception and out of the boundary" |
+| §4 — the stop is logged as each of its fields by name, read off what was caught, never `repr` and never worked out; a null as `None`, a figure with its sign (#585) | same module — "is logged as each of its fields, by name, read straight off what was caught and worked out nowhere (#585)", "passes through a tenant's own except Exception and out of the boundary", "states a null as None and a figure with its sign, never as 0"; `apps/codegen/tests/catalogue.test.ts` — "names each field of the stop in the Python log as the boundary passes them (#585)"; against the real application, `tests/code_builder_execution/test_every_scenario_runs_unmodified.py::test_a_scenario_runs_unmodified` (`ceiling`, `customer-pool`) |
 | §4 — the conversion is the platform's, case for case | same module — "is converted exactly as the platform converts it, case for case"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_the_reported_cost_cases_carry_this_platforms_answers`, `test_the_currency_table_is_this_platforms` |
 | §4 — a cost read off the response is read as the platform answers it, row for row, on its own field; a currency UBB holds and the tenant does not is the server's refusal, surfaced (#583) | `apps/codegen/tests/execution.test.ts` — "is read and converted exactly as the platform answers, row for row", "goes on the wire as provider_response_cost_micros, never as provider_cost_micros", "surfaces UBB's refusal of a currency it holds and the tenant does not, as the SDK's error"; `ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py` — `test_a_cost_read_off_a_response_is_answered_as_ruled` |
 | §5 — every committed Blueprint is what the route answers, and none is added by hand | same platform module — `test_a_committed_blueprint_is_what_the_route_answers`, `test_every_committed_blueprint_is_one_this_module_produces`; `tests/contracts/test_the_renderer_suite_is_enforced.py` — `test_every_blueprint_the_suite_renders_is_one_the_platform_holds` |

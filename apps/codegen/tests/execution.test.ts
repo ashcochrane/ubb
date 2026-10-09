@@ -52,6 +52,14 @@ function published(operationId: string): { method: string; path: string } {
   throw new Error(`${operationId} is not an operation of the committed contract`);
 }
 
+/** The catalogue's stop message as the boundary logs it, each `%r` given the
+ * Python repr of what the test queued, in order. */
+function stated(values: readonly string[]): string {
+  const parts = MESSAGES.stop.split("%r");
+  expect(parts).toHaveLength(values.length + 1);
+  return parts.map((part, index) => (index === 0 ? part : `${values[index - 1]!}${part}`)).join("");
+}
+
 /** A response object of a Python library: its fields read as attributes. */
 const AN_OBJECT = `
 class Shaped:
@@ -230,9 +238,11 @@ describe("the stop", () => {
     for (const branch of PYTHON_BRANCH_NAMES) {
       const module = factsOf(branch)["ubb_integration.py"]!;
 
-      expect(module.handlers.filter((handler) => handler.catches === "UBBStopRequested")).toEqual([
-        { function: "unit_of_work", catches: "UBBStopRequested", reraises: true },
-      ]);
+      expect(
+        module.handlers
+          .filter((handler) => handler.catches === "UBBStopRequested")
+          .map(({ function: inside, catches, reraises }) => ({ function: inside, catches, reraises })),
+      ).toEqual([{ function: "unit_of_work", catches: "UBBStopRequested", reraises: true }]);
       // Nothing else in the file can catch it: no bare handler, and none
       // wide enough to reach outside Exception.
       const wide = module.handlers.filter(
@@ -241,6 +251,44 @@ describe("the stop", () => {
           /\b(BaseException|Exception)\b/.test(handler.catches),
       );
       expect(wide, branch).toEqual([]);
+    }
+  });
+
+  it("is logged as each of its fields, by name, read straight off what was caught and worked out nowhere (#585)", () => {
+    // Named here, and not read off the renderer: the key the event was sent
+    // under, and what the acknowledgement publishes about a stop (#569), in
+    // its order.
+    const STATED = [
+      "idempotency_key",
+      "stop_scope",
+      "stop_reason",
+      "trigger_source",
+      "stop_bound_micros",
+      "stop_measured_micros",
+    ];
+    // What would compute, default, convert or fill a value, or reach past
+    // the fields to the acknowledgement whole.
+    const WORKS_SOMETHING_OUT = [
+      "BinOp", "BoolOp", "IfExp", "Compare", "UnaryOp", "Subscript", "JoinedStr",
+      "FormattedValue", "Lambda", "Dict", "List", "Tuple", "Starred", "NamedExpr",
+    ];
+    for (const branch of PYTHON_BRANCH_NAMES) {
+      const [boundary] = factsOf(branch)["ubb_integration.py"]!.handlers.filter(
+        (handler) => handler.catches === "UBBStopRequested",
+      );
+      const caught = boundary!.binds!;
+
+      // One call, the log: the catalogue's sentence, then each field as an
+      // attribute of what was caught. Not its repr, and not to_dict().
+      expect(boundary!.calls, branch).toHaveLength(1);
+      const [log] = boundary!.calls;
+      expect(log!.callee, branch).toMatch(/\.warning$/);
+      expect(log!.positional, branch).toEqual([
+        `'${MESSAGES.stop}'`,
+        ...STATED.map((name) => `${caught}.${name}`),
+      ]);
+      expect(log!.keywords, branch).toEqual([]);
+      expect(boundary!.nodes.filter((node) => WORKS_SOMETHING_OUT.includes(node)), branch).toEqual([]);
     }
   });
 
@@ -304,11 +352,61 @@ result = {"swallowed": swallowed, "outcome": outcome, "logged": logged,
     expect(answer.paths).toEqual(["/api/v1/tasks", "/api/v1/metering/usage"]);
     const logged = answer.logged as string[];
     expect(logged).toHaveLength(1);
-    // What was logged is the key the stopped event was sent under and what
-    // the acknowledgement carried.
-    expect(logged[0]).toContain("The event sent as 'e0' was recorded");
-    expect(logged[0]).toContain("customer_spend_pool");
-    expect(logged[0]).toContain("stop_scope='customer'");
+    // What was logged is the key the stopped event was sent under and the
+    // stop's fields BY NAME, each as the acknowledgement held it (#585; the
+    // owner's ruling on #577, ADR-0016 §4).
+    expect(logged[0]).toBe(
+      stated(["'e0'", "'customer'", "'customer_spend_pool'", "'usage_ingest'", "4000000", "4500000"]),
+    );
+    // Never the acknowledgement's own description of itself, which carried
+    // every field it holds under its class's name.
+    expect(logged[0]).not.toContain("RecordUsageResponse(");
+    expect(logged[0]).not.toContain("costing_status");
+  });
+
+  it("states a null as None and a figure with its sign, never as 0", () => {
+    // Work that had already ended, where nothing applied a stop; a hard
+    // floor, whose bound and balance are negative; and a zero floor, whose
+    // bound is a real 0.
+    const answer = run<Record<string, unknown>>(
+      rendered("calculated-cost"),
+      `
+import logging
+${AN_OBJECT}
+from ubb import UBBStopRequested
+integration = load()
+logged = []
+handler = logging.Handler()
+handler.emit = lambda record: logged.append(record.getMessage())
+logging.getLogger("ubb_integration").addHandler(handler)
+server.queue("/api/v1/metering/usage", stop=True, stop_scope="task",
+             stop_reason="task_not_active", trigger_source=None,
+             stop_bound_micros=None, stop_measured_micros=None)
+server.queue("/api/v1/metering/usage", stop=True, stop_scope="customer",
+             stop_reason="hard_floor", trigger_source="enforcement_patrol",
+             stop_bound_micros=-1_000_000, stop_measured_micros=-1_500_000)
+server.queue("/api/v1/metering/usage", stop=True, stop_scope="customer",
+             stop_reason="hard_floor", trigger_source="usage_ingest",
+             stop_bound_micros=0, stop_measured_micros=-1)
+response = Shaped(usage=Shaped(input_tokens=1, output_tokens=1))
+for key in ("e0", "e1", "e2"):
+    try:
+        with integration.unit_of_work(customer_id="c", idempotency_key="w" + key,
+                                      environment="production") as task:
+            integration.record_chat_completion(
+                customer_id="c", idempotency_key=key,
+                task_id=task.task_id, response=response, searches=1)
+    except UBBStopRequested:
+        pass
+result = {"logged": logged}
+`,
+    );
+
+    expect(answer.logged).toEqual([
+      stated(["'e0'", "'task'", "'task_not_active'", "None", "None", "None"]),
+      stated(["'e1'", "'customer'", "'hard_floor'", "'enforcement_patrol'", "-1000000", "-1500000"]),
+      stated(["'e2'", "'customer'", "'hard_floor'", "'usage_ingest'", "0", "-1"]),
+    ]);
   });
 
   it("is returned and not raised on the backfill path, which sends when it happened", () => {

@@ -52,7 +52,9 @@ import {
   keyOf,
   OPERATION_IDS,
   readLifecycle,
+  STOP_FIELDS,
   type Header,
+  type StopField,
 } from "../lifecycle.ts";
 import { nameTails, type Wanted } from "../names.ts";
 import {
@@ -102,7 +104,40 @@ const CLOSE_MAY_CARRY: readonly (keyof components["schemas"]["CloseTaskRequest"]
 ];
 
 /** The field a stop is reported with: the key its event was sent under. */
-const IDEMPOTENCY_KEY: keyof components["schemas"]["RecordUsageRequest"] = "idempotency_key";
+export const IDEMPOTENCY_KEY: keyof components["schemas"]["RecordUsageRequest"] = "idempotency_key";
+
+/** A field of the acknowledgement a record is answered with. */
+type Acknowledged = keyof components["schemas"]["RecordUsageResponse"];
+
+/** How a field of the stop's metadata is read off the acknowledgement: as
+ * the acknowledgement gives it, the posture the scope and the reason had
+ * before #569; as text or null; or as the digits UBB wrote, or null
+ * (ADR-0017 §6). */
+export type StopRead = "as_given" | "text" | "figure";
+
+/**
+ * How each field a stop is explained by is read into its metadata, which
+ * carries them by their own names, in `STOP_FIELDS`' order, after the
+ * event's id and the key it was sent under (ADR-0017 §4): what applied the
+ * stop is text or null, and the bound and the amount measured against it are
+ * the digits UBB wrote, or null (#585). Nothing is worked out from any of
+ * them.
+ */
+const READ: Readonly<Record<StopField, StopRead>> = {
+  stop_scope: "as_given",
+  stop_reason: "as_given",
+  trigger_source: "text",
+  stop_bound_micros: "figure",
+  stop_measured_micros: "figure",
+};
+
+/** Each field of the stop's metadata after the event's id and the key, in
+ * order, with how it is read. */
+export const STOP_READS: readonly { readonly name: StopField; readonly read: StopRead }[] =
+  STOP_FIELDS.map((name) => ({ name, read: READ[name] }));
+
+/** The acknowledgement's id for the event, which heads the stop's metadata. */
+export const EVENT_ID: Acknowledged = "event_id";
 
 export type Use = "text" | "number" | "file" | "cost" | "place" | "unread";
 

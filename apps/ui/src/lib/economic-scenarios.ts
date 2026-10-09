@@ -105,7 +105,9 @@ import {
   type PricingMode,
   type PricingReceiptSubjectType,
   type PricingStatus,
+  type ReasonCode,
   type SpendPoolEnforceMode,
+  type TriggerSource,
   type UnresolvedReason,
 } from "@/lib/vocabulary";
 
@@ -469,6 +471,138 @@ export function ceilingAssessment(
     ceiling_used_percentage:
       ceiling === null || ceiling <= 0 ? null : Math.floor((known * 100) / ceiling),
     ceiling_remaining_micros: ceiling === null ? null : Math.max(ceiling - known, 0),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// How a stop was applied, and what it was measured on (#569; ADR-0019 §1–§2),
+// which a recording's acknowledgement carries and the Verify card renders
+// (#585).
+
+/**
+ * A stop as one acknowledgement states it: its reason and scope, the
+ * mechanism that applied it, and the bound it was measured against with the
+ * amount measured.
+ *
+ * SIX FIELDS TRAVEL TOGETHER because the platform writes them from one
+ * verdict (ADR-0019 §2): the reason is what says what the two figures MEAN,
+ * so a figure without its reason is a number nobody can read, and a reason
+ * beside figures its own rule would not stop on is an acknowledgement the
+ * platform cannot write. Each composer below is one row of that table and
+ * refuses the terms its row would not stop on.
+ *
+ * ⚠ TWO STATES A READER GETS WRONG. A figure that does not apply is NULL —
+ * the one verdict that is not a bound (`task_not_active`) names neither
+ * figure, and no mechanism — and a reader that renders it `$0.00` tells an
+ * integrator the bound was zero. And a hard floor's figures are NEGATIVE: the
+ * floor as a balance and the balance below it, so a reader that drops the
+ * sign reports an overdrawn wallet as one in credit.
+ */
+export interface StopScenario {
+  readonly stop: true;
+  readonly stop_scope: string;
+  readonly stop_reason: ReasonCode;
+  readonly trigger_source: TriggerSource | null;
+  readonly stop_bound_micros: number | null;
+  readonly stop_measured_micros: number | null;
+}
+
+/**
+ * A unit of work's COGS ceiling, crossed by this report: the pinned ceiling
+ * and the unit's supplier total at the crossing, at or above it. A ceiling is
+ * only ever crossed by a report, so the mechanism is always `usage_ingest`.
+ */
+export function ceilingStop(terms: {
+  readonly scope: "task" | "subtask";
+  readonly ceiling_micros: number;
+  readonly cost_micros: number;
+}): StopScenario {
+  if (terms.cost_micros < terms.ceiling_micros) {
+    throw new Error(
+      `ceilingStop was handed a supplier total of ${terms.cost_micros} under its ceiling of ` +
+        `${terms.ceiling_micros}: no crossing, so no stop the platform would write`,
+    );
+  }
+  return {
+    stop: true,
+    stop_scope: terms.scope,
+    stop_reason: "task_cogs_ceiling",
+    trigger_source: "usage_ingest",
+    stop_bound_micros: terms.ceiling_micros,
+    stop_measured_micros: terms.cost_micros,
+  };
+}
+
+/**
+ * A customer's spend Pool, reached: the Pool's stop line and the month's
+ * billed charges at the crossing, at or above it, with the mechanism that
+ * opened the episode. Open by type, so a mechanism this console has no words
+ * for is composable too.
+ */
+export function poolStop(terms: {
+  readonly opened_by: TriggerSource;
+  readonly stop_line_micros: number;
+  readonly charges_micros: number;
+}): StopScenario {
+  if (terms.charges_micros < terms.stop_line_micros) {
+    throw new Error(
+      `poolStop was handed charges of ${terms.charges_micros} under the stop line of ` +
+        `${terms.stop_line_micros}: no stop the platform would write`,
+    );
+  }
+  return {
+    stop: true,
+    stop_scope: "customer",
+    stop_reason: "customer_spend_pool",
+    trigger_source: terms.opened_by,
+    stop_bound_micros: terms.stop_line_micros,
+    stop_measured_micros: terms.charges_micros,
+  };
+}
+
+/**
+ * A wallet's hard floor, crossed: the floor AS A BALANCE — the negated
+ * minimum balance, so 0 or below, and 0 is a real floor — and the balance
+ * measured below it. The bound is derived here as the platform derives it,
+ * so no fixture can state a positive floor.
+ */
+export function hardFloorStop(terms: {
+  readonly opened_by: TriggerSource;
+  readonly min_balance_micros: number;
+  readonly balance_micros: number;
+}): StopScenario {
+  // `0 - x` and not `-x`: a zero floor is +0, which JSON and every reader
+  // write as 0, where `-0` would be a sign nobody sent.
+  const floor = 0 - terms.min_balance_micros;
+  if (terms.balance_micros >= floor) {
+    throw new Error(
+      `hardFloorStop was handed a balance of ${terms.balance_micros}, not below the floor of ` +
+        `${floor}: no stop the platform would write`,
+    );
+  }
+  return {
+    stop: true,
+    stop_scope: "customer",
+    stop_reason: "hard_floor",
+    trigger_source: terms.opened_by,
+    stop_bound_micros: floor,
+    stop_measured_micros: terms.balance_micros,
+  };
+}
+
+/**
+ * A report that landed on a unit of work that had already ended: the one
+ * stop verdict that is not a bound, so it names no bound, no amount and no
+ * mechanism — all three are null, and none of them is zero.
+ */
+export function endedWorkStop(scope: "task" | "subtask"): StopScenario {
+  return {
+    stop: true,
+    stop_scope: scope,
+    stop_reason: "task_not_active",
+    trigger_source: null,
+    stop_bound_micros: null,
+    stop_measured_micros: null,
   };
 }
 

@@ -1072,8 +1072,11 @@ gates:
       its three — a supplier cost read off the response and recorded as COGS
       with its source on the receipt, a currency read off it that the server
       refuses, and a cost written as a float that neither target sends —
-      across the standing matrix; #584, #585 and #586 each add theirs;
-      #184's flip installs this row over it.
+      across the standing matrix. #585 added no scenario: both stop
+      scenarios now assert how each stop was applied and what it was
+      measured on, on both targets, and a stop's figures are carried as UBB
+      wrote them on every jq of the standing matrix. #584 and #586 each add
+      theirs; #184's flip installs this row over it.
 
   G26:
     statement: >-

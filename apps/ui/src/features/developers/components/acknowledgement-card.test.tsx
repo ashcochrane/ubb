@@ -16,7 +16,7 @@
 // statuses null that column and they do not mean the same thing, so the dash
 // was the ambiguity the cost half had already fixed.
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
@@ -25,20 +25,33 @@ import {
   pricingStatusLabel,
 } from "@/lib/customer-price";
 import {
+  ceilingStop,
   completeTotal,
+  endedWorkStop,
+  hardFloorStop,
   incompletePriceTotal,
   incompleteTotal,
   knownCost,
   knownPrice,
+  poolStop,
   priceNotApplicable,
   unknownCost,
   unknownPrice,
   waivedPrice,
   type CustomerPriceScenario,
+  type StopScenario,
 } from "@/lib/economic-scenarios";
+import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
 import { costingStatusLabel } from "@/lib/supplier-cost";
 import { UNKNOWN_TOTAL } from "@/lib/total-reading";
-import { REASON_CODE_KNOWN_VALUES } from "@/lib/vocabulary";
+import {
+  REASON_CODE_KNOWN_VALUES,
+  TRIGGER_SOURCE_KNOWN_VALUES,
+  TRIGGER_SOURCE_LABEL_KEYS,
+} from "@/lib/vocabulary";
+
+/** The catalogue's word for a mechanism, read through the console's own lookup. */
+const triggerSourceLabel = labelMap(TRIGGER_SOURCE_LABEL_KEYS);
 
 import type { RecordUsageResponse } from "../api/types";
 import { AcknowledgementCard, REPLAY_TASK_TOTALS } from "./acknowledgement-card";
@@ -248,5 +261,126 @@ describe("AcknowledgementCard — the stop verdict's word", () => {
     expect(reasonStat()).toHaveTextContent(UNRECOGNISED_STOP);
     expect(reasonStat()).toHaveTextContent(UNRECOGNISED_MARK);
     expect(reasonStat()).not.toHaveTextContent("A stop from next year");
+  });
+});
+
+/** A mechanism no registry entry names, as a later platform could send one. */
+const UNRECOGNISED_MECHANISM = "a_mechanism_from_next_year";
+
+/** One recorded response that is a stop, composed from one row of ADR-0019's
+ * table: only the stop varies. */
+function stoppedBy(stop: StopScenario): RecordUsageResponse {
+  return { ...responseWith(knownPrice(187_500)), ...stop };
+}
+
+/** The Stop verdict block, so a figure elsewhere on the card is never found. */
+function verdict(): HTMLElement {
+  const block = screen.getByText("Stop verdict").closest("div.space-y-2");
+  if (!(block instanceof HTMLElement)) throw new Error("no Stop verdict block");
+  return block;
+}
+
+function verdictStat(label: string): HTMLElement {
+  const cell = within(verdict()).getByText(label).closest("div");
+  if (!cell) throw new Error(`no ${label} stat in the Stop verdict`);
+  return cell;
+}
+
+/** What a Stop verdict stat shows as its value, exactly. */
+function shown(label: string): string | undefined {
+  return verdictStat(label).querySelector("dd")?.textContent ?? undefined;
+}
+
+/** Any amount of money written as a figure, a zero among them. */
+const A_FIGURE = /[$£€]\s*-?[\d,]|^\s*-?0\s*$/;
+
+// #569 published how a stop was applied and what it was measured on, and the
+// card renders exactly what the acknowledgement carries (#585): nothing is
+// computed, estimated, defaulted or filled. The platform-written Verify
+// answers are never stops (the run's tenant enforces nothing), so every state
+// here is composed (`@/lib/economic-scenarios`), on a response this file
+// assembles.
+describe("AcknowledgementCard — how the stop was applied (#585)", () => {
+  it("names the mechanism a value the registry knows in the catalogue's words", () => {
+    expect(TRIGGER_SOURCE_KNOWN_VALUES).toContain("enforcement_patrol");
+    renderCard(
+      stoppedBy(poolStop({ opened_by: "enforcement_patrol", stop_line_micros: 4_000_000, charges_micros: 4_500_000 })),
+    );
+
+    const rendered = verdictStat("Applied by").querySelector("[data-label]");
+    expect(rendered).toHaveAttribute("data-label", "labelled");
+    expect(rendered?.textContent).toBe(triggerSourceLabel("enforcement_patrol"));
+    expect(verdictStat("Applied by")).not.toHaveTextContent(UNRECOGNISED_MARK);
+  });
+
+  it("renders a mechanism the registry has never seen as the token, marked, never humanised", () => {
+    renderCard(
+      stoppedBy(poolStop({ opened_by: UNRECOGNISED_MECHANISM, stop_line_micros: 4_000_000, charges_micros: 4_500_000 })),
+    );
+
+    const rendered = verdictStat("Applied by").querySelector("[data-label]");
+    expect(rendered).toHaveAttribute("data-label", "unfamiliar");
+    expect(verdictStat("Applied by")).toHaveTextContent(UNRECOGNISED_MECHANISM);
+    expect(verdictStat("Applied by")).toHaveTextContent(UNRECOGNISED_MARK);
+    expect(verdictStat("Applied by")).not.toHaveTextContent("A mechanism from next year");
+  });
+
+  it("renders the bound and the amount measured against it as their figures", () => {
+    renderCard(stoppedBy(ceilingStop({ scope: "task", ceiling_micros: 5_000_000, cost_micros: 6_000_000 })));
+
+    expect(shown("Bound")).toBe("$5.00");
+    expect(shown("Measured")).toBe("$6.00");
+  });
+
+  // To the micro: a cent-rounded figure would write both as $0.00, and an
+  // event's four places would round the amount.
+  it("renders a small bound and amount to the micro", () => {
+    renderCard(stoppedBy(ceilingStop({ scope: "subtask", ceiling_micros: 300, cost_micros: 471 })));
+
+    expect(shown("Bound")).toBe("$0.0003");
+    expect(shown("Measured")).toBe("$0.000471");
+  });
+
+  // ⚠ The two are read against each other. A balance one micro under its
+  // floor is what stopped the work; rounded to a cent, the two would read as
+  // one amount.
+  it("never renders a bound and the amount measured against it as one when they differ", () => {
+    renderCard(
+      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_000_001 })),
+    );
+
+    expect(shown("Bound")).toBe("-$1.00");
+    expect(shown("Measured")).toBe("-$1.000001");
+  });
+
+  // ⚠ A hard floor's figures are negative: the floor as a balance, and the
+  // balance below it. The sign is the fact.
+  it("renders a hard floor's negative figures as negative", () => {
+    renderCard(
+      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_500_000 })),
+    );
+
+    expect(shown("Bound")).toBe("-$1.00");
+    expect(shown("Measured")).toBe("-$1.50");
+  });
+
+  // A zero floor is a real bound: it renders as the zero it is.
+  it("renders a zero floor as a zero, beside the balance below it", () => {
+    renderCard(stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 0, balance_micros: -400 })));
+
+    expect(shown("Bound")).toBe("$0.00");
+    expect(shown("Measured")).toBe("-$0.0004");
+  });
+
+  // ⚠ THE ASSERTION THIS SECTION EXISTS FOR. Work that had already ended names
+  // no bound, no amount and no mechanism: each is NO FIGURE, never 0 and never
+  // $0.00.
+  it("renders what does not apply as no figure, never as a zero", () => {
+    renderCard(stoppedBy(endedWorkStop("task")));
+
+    for (const label of ["Applied by", "Bound", "Measured"]) {
+      expect(shown(label), label).toBe(ABSENT_LABEL);
+      expect(shown(label) ?? "", label).not.toMatch(A_FIGURE);
+    }
   });
 });

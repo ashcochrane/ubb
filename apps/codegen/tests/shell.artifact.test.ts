@@ -456,6 +456,87 @@ describe.each(SHELL_BRANCH_NAMES)("the %s artifact", (branch) => {
   });
 });
 
+describe("the stop's fields in a shell file (#585)", () => {
+  // Named here, and not read off the renderer: what the acknowledgement
+  // publishes about how a stop was applied and what it was measured on (#569).
+  const TEXT = ["trigger_source"];
+  const FIGURES = ["stop_bound_micros", "stop_measured_micros"];
+  const FIELDS = [...TEXT, ...FIGURES];
+  /** What would work a value out, default it, or make it a number: jq's
+   * alternative, its conversions, arithmetic, and a number added on. */
+  const WORKS_SOMETHING_OUT =
+    /\/\/|\btonumber\b|\btostring\b|\bfloor\b|\bround\b|\bceil\b|\bfabs\b|\bmin\b|\bmax\b|\badd\b|\blength\b|[-*%]|\/|\+\s*-?\d/;
+
+  /** The program that reads an acknowledgement: the one heredoc of the
+   * function the file runs it as. */
+  function stopProgram(branch: string): string[] {
+    const reader = functionsOf(moduleOf(branch).contents).find((each) => each.name === "_ubb_jq_stop");
+    expect(reader, branch).toBeDefined();
+    const [program] = heredocs(reader!.lines.join("\n"));
+    return program!.body;
+  }
+
+  /** The lines of the jq function `name` the program defines, after its
+   * `def`: every one indented past it. */
+  function definition(program: readonly string[], name: string): string[] {
+    const at = program.findIndex((line) => line.trimStart().startsWith(`def ${name}(`));
+    expect(at, name).toBeGreaterThanOrEqual(0);
+    const depth = program[at]!.length - program[at]!.trimStart().length;
+    const body: string[] = [];
+    for (const line of program.slice(at + 1)) {
+      if (line.length - line.trimStart().length <= depth) break;
+      body.push(line);
+    }
+    return body;
+  }
+
+  /** A line as jq reads it, with its strings and its refusal left out. */
+  const code = (line: string) => jqCode([line]).replace(/\berror\([^)]*\)/g, "");
+
+  it("are read by one program, the same in every branch", () => {
+    expect(new Set(SHELL_BRANCH_NAMES.map((branch) => stopProgram(branch).join("\n"))).size).toBe(1);
+  });
+
+  it.each(SHELL_BRANCH_NAMES)("are carried as the acknowledgement holds them, and never worked out (%s)", (branch) => {
+    const program = stopProgram(branch);
+    // Each is named only as text, handed by name to a function of the
+    // program: never reached by a path the renderer spelled
+    // (`$acknowledgement.stop_bound_micros`), which would make the figure the
+    // value jq holds for it, a double. What those functions do with a field
+    // is held below.
+    expect(jqCode(program)).not.toMatch(new RegExp(FIELDS.join("|")));
+    for (const field of FIELDS) {
+      const carrying = program.filter((line) => line.includes(field));
+      expect(carrying, field).not.toEqual([]);
+      for (const line of carrying) {
+        expect(code(line), `${field}: ${line}`).not.toMatch(WORKS_SOMETHING_OUT);
+        // ...and handed whole to a function of the program, which does
+        // nothing to it either.
+        const called = [...code(line).matchAll(/\b(ubb_[a-z_]+)\(/g)].map((match) => match[1]!);
+        expect(called, `${field}: ${line}`).toHaveLength(1);
+        const body = definition(program, called[0]!);
+        for (const inner of body) {
+          expect(code(inner), `${called[0]}: ${inner}`).not.toMatch(WORKS_SOMETHING_OUT);
+        }
+        if (FIGURES.includes(field)) {
+          // A figure is the token as written, read off the copy, and is
+          // never serialised from a number.
+          expect(body.join("\n"), field).toContain("$written[");
+          expect(body.join("\n"), field).not.toContain("tojson");
+        }
+      }
+    }
+    // What leaves the program in UBB_STOP_REQUESTED is set, kept and logged
+    // whole: no shell function names a field.
+    const shell = functionsOf(moduleOf(branch).contents).filter((each) => !each.name.startsWith("_ubb_jq_"));
+    for (const each of shell) {
+      for (const field of FIELDS) {
+        expect(each.lines.join("\n"), `${each.name}: ${field}`).not.toContain(field);
+      }
+    }
+  });
+});
+
 describe("the header of a shell file", () => {
   function header(branch: string): string[] {
     const lines = moduleOf(branch).contents.split("\n");
