@@ -83,7 +83,9 @@ class TaskServiceAccumulateTest(TestCase):
         self.assertIsNotNone(result.last_event_at)
         self.assertEqual(verdicts, {"crossed_task_limit": False,
                                     "crossed_subtask_limit": False,
-                                    "task_not_active": False})
+                                    "task_not_active": False,
+                                    "task_crossing": None,
+                                    "subtask_crossing": None})
 
         result, verdicts = TaskService.accumulate_cost(
             task.id, billed_cost_micros=2_000_000, provider_cost_micros=1_000_000)

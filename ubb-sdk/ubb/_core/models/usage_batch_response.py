@@ -11,7 +11,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.usage_batch_response_results_item import UsageBatchResponseResultsItem
+  from ..models.usage_batch_item_response import UsageBatchItemResponse
 
 
 
@@ -27,15 +27,15 @@ class UsageBatchResponse:
         Attributes:
             accepted (int):
             rejected (int):
-            results (list[UsageBatchResponseResultsItem]): One verdict per submitted event, in the order submitted. An
-                accepted item (`accepted: true`) carries the single route's acknowledgement fields (`RecordUsageResponse`), each
-                with the meaning that schema publishes for it — `provider_cost_micros` included. A rejected item carries
-                `accepted: false`, a registry `code` and a `detail`, with `stop` false and `stop_reason` and `stop_scope` null.
+            results (list[UsageBatchItemResponse]): One verdict per submitted event, in the order submitted. An accepted
+                item (`accepted: true`) carries the single route's acknowledgement fields, each with the meaning
+                `RecordUsageResponse` publishes for it. A rejected item carries `accepted: false`, a registry `code` and a
+                `detail`, with `stop` false and every stop fact null.
      """
 
     accepted: int
     rejected: int
-    results: list[UsageBatchResponseResultsItem]
+    results: list[UsageBatchItemResponse]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -43,7 +43,7 @@ class UsageBatchResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.usage_batch_response_results_item import UsageBatchResponseResultsItem
+        from ..models.usage_batch_item_response import UsageBatchItemResponse
         accepted = self.accepted
 
         rejected = self.rejected
@@ -70,7 +70,7 @@ class UsageBatchResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.usage_batch_response_results_item import UsageBatchResponseResultsItem
+        from ..models.usage_batch_item_response import UsageBatchItemResponse
         d = dict(src_dict)
         accepted = d.pop("accepted")
 
@@ -79,7 +79,7 @@ class UsageBatchResponse:
         results = []
         _results = d.pop("results")
         for results_item_data in (_results):
-            results_item = UsageBatchResponseResultsItem.from_dict(results_item_data)
+            results_item = UsageBatchItemResponse.from_dict(results_item_data)
 
 
 

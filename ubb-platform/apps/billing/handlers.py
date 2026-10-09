@@ -39,6 +39,7 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros is not None and billed_cost_micros > 0:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
+        mechanism = _the_mechanism_of(evt.event_id)
         # Postpaid has no wallet to draw down. The pool's stop/suspension —
         # in every mode since #459 — rides the StopSignalState transition
         # guard from the fast lane at the crossing, the seat-level compare in
@@ -57,7 +58,8 @@ def handle_usage_recorded_billing(event_id, payload):
             wallet_ops.draw_down_usage(
                 customer_id=owner_id, tenant=tenant,
                 usage_event_id=usage_event_id,
-                billed_cost_micros=billed_cost_micros)
+                billed_cost_micros=billed_cost_micros,
+                trigger_source=mechanism)
 
         # Shared tail — control + attribution stay on the SEAT:
         TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
@@ -88,7 +90,26 @@ def handle_usage_recorded_billing(event_id, payload):
                 count_in_live = same_month(eff, _tz.now())
         if count_in_live:
             from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
-            CustomerSpendPoolService.record_usage_spend(seat, billed_cost_micros)
+            CustomerSpendPoolService.record_usage_spend(
+                seat, billed_cost_micros, trigger_source=mechanism)
+
+
+def _the_mechanism_of(posting_id):
+    """The mechanism a stop this drawdown opens records (#569), read off the
+    posting's kind because the payload deliberately carries none: a
+    delivered fixed-price unit's Charge is the projection's
+    (`charge_projection` — closing work as delivered, not a usage report),
+    and every other posting is a usage report's (`usage_ingest`, whichever
+    lane — the live debit or this drawdown — finds its crossing). One
+    mechanism value for the projection, never a cause: the cause stays the
+    floor's or the Pool's word."""
+    from apps.metering.queries import get_posting_kind
+    from core.vocabulary import (TRIGGER_SOURCE_CHARGE_PROJECTION,
+                                 TRIGGER_SOURCE_USAGE_INGEST,
+                                 USAGE_EVENT_KIND_TASK_CHARGE)
+    if get_posting_kind(posting_id) == USAGE_EVENT_KIND_TASK_CHARGE:
+        return TRIGGER_SOURCE_CHARGE_PROJECTION
+    return TRIGGER_SOURCE_USAGE_INGEST
 
 
 def handle_customer_deleted_billing(event_id, payload):

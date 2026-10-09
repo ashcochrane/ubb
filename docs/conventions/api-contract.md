@@ -146,15 +146,19 @@ The 200-always doctrine stands: on the usage-recording surface a non-200 always
 means "not recorded"; per-event verdicts ride the body as **data**, never
 problem+json. #78 unified one verdict field set across three routes; slice 1
 deleted the third (#236), so what follows is the surviving shape — the batch
-route's items, against the single-call body they mirror:
+route's items, against the single-call body they mirror. Since #569 the item
+is TYPED (`UsageBatchItemResponse`, which inherits `RecordUsageResponse` and
+adds the verdict's three keys), so every field is on every item:
 
 - A **rejected** item is `accepted: false` with `code` (the rejection word,
-  from the registry) and `detail` (prose), and the stop trio
-  `stop`/`stop_reason`/`stop_scope` constant: nothing was recorded, so nothing
-  can have stopped.
+  from the registry) and `detail` (prose), and the stop facts constant —
+  `stop` false and `stop_reason`/`stop_scope`/`trigger_source`/
+  `stop_bound_micros`/`stop_measured_micros` null: nothing was recorded, so
+  nothing can have stopped. Every acknowledgement field is unset (null, or
+  its empty default).
 - An **accepted** item is `accepted: true` plus the single-call success body
-  verbatim, its stop verdict included. It carries no `code` and no `detail` —
-  there is nothing to report.
+  verbatim, its stop verdict and stop facts included; its `code` and `detail`
+  are null — there is nothing to report.
 - Envelope counters: `accepted`/`rejected`.
 
 Verdict words come from the same published document as the problem codes —
@@ -236,11 +240,12 @@ Each field's meaning is its published description, and **every
 `provider_cost_micros` a schema declares carries one**: one event's cost the
 canonical wording (`core.amount_status_pairs.RESOLVED_SUPPLIER_COST_MEANING`),
 a total the aggregate wording naming the `unresolved_event_count` beside it
-(`supplier_cost_total_meaning`), webhook payloads included. The two untyped
-containers that can hold one say what theirs means on the container: the
-batch route's `results` (an accepted item carries `RecordUsageResponse`'s
-fields and meanings) and the Pricing Receipt's `totals`. A schema that gains
-the field is a red test until its meaning is chosen. Pinned by
+(`supplier_cost_total_meaning`), webhook payloads included. The one untyped
+container that can hold one says what its amount means on the container: the
+Pricing Receipt's `totals`. (The batch route's `results` was the second until
+#569 typed its items; an accepted item's cost is now a node carrying the
+canonical wording, which the same walk reads.) A schema that gains the field
+is a red test until its meaning is chosen. Pinned by
 `api/v1/tests/test_two_request_fields_each_with_one_meaning.py`.
 
 ## Vocabulary: the values a field may carry (#208)

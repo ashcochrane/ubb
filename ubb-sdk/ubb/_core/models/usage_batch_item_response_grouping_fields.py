@@ -14,16 +14,16 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="UsageBatchResponseResultsItem")
+T = TypeVar("T", bound="UsageBatchItemResponseGroupingFields")
 
 
 
 @_attrs_define
-class UsageBatchResponseResultsItem:
+class UsageBatchItemResponseGroupingFields:
     """ 
      """
 
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -41,21 +41,21 @@ class UsageBatchResponseResultsItem:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        usage_batch_response_results_item = cls(
+        usage_batch_item_response_grouping_fields = cls(
         )
 
 
-        usage_batch_response_results_item.additional_properties = d
-        return usage_batch_response_results_item
+        usage_batch_item_response_grouping_fields.additional_properties = d
+        return usage_batch_item_response_grouping_fields
 
     @property
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

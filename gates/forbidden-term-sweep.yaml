@@ -406,7 +406,12 @@ exclusions:
     # refuses (and never invents a value for) any constant already declared
     # without one. It names no retired word, so the number moved for the file
     # existing, and the sites and terms held at 1 in 5.
-    files: 269
+    # 269 → 271 in #569: two migrations — the stop acknowledgement a recording
+    # keeps with its posting, with the trigger that holds it insert-only, and
+    # the three columns on which the signal ledger records how a stop episode
+    # opened. Neither names a retired word, so the number moved for the files
+    # existing, and the sites and terms held at 1 in 5.
+    files: 271
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

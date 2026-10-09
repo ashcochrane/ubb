@@ -99,6 +99,7 @@ trigger_source:
     - parent_cascade
     - pool_crossing
     - stale_reaper
+    - charge_projection
   allow_unknown: true
   label_key_prefix: trigger_source
   consumers:

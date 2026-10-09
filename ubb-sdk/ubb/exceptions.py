@@ -129,7 +129,8 @@ class UBBStopRequested(BaseException):
 
     ``result`` is the whole acknowledgement (a ``RecordUsageResponse``, the
     exact object ``stop_behavior="return"`` would have returned), so nothing is
-    lost by catching this; ``event_id``, ``stop_scope``, ``stop_reason`` and
+    lost by catching this; ``event_id``, ``stop_scope``, ``stop_reason``,
+    ``trigger_source``, ``stop_bound_micros``, ``stop_measured_micros`` and
     ``task_id`` read straight off it, and ``idempotency_key`` is the one you
     sent, so a handler can log what happened and reconcile without a second
     request. ``record_batch`` never raises this — it reports the stop per
@@ -153,6 +154,33 @@ class UBBStopRequested(BaseException):
     @property
     def stop_reason(self) -> str | None:
         return self.result.stop_reason
+
+    @property
+    def trigger_source(self) -> str | None:
+        """The mechanism that applied this stop — never its cause, which is
+        ``stop_reason``: ``usage_ingest`` for a ceiling this event crossed;
+        for a customer-wide stop, the mechanism that opened its episode
+        (``usage_ingest``, ``enforcement_patrol`` or ``charge_projection``).
+        None for ``task_not_active``, where nothing applied a stop on this
+        event. The set is open (``vocabulary.TRIGGER_SOURCE_KNOWN_VALUES``):
+        keep a default branch."""
+        return self.result.trigger_source
+
+    @property
+    def stop_bound_micros(self) -> int | None:
+        """The bound ``stop_reason`` names, as it stood when the stop was
+        established: the governing unit of work's COGS ceiling, the Pool's
+        stop line, or the wallet floor as a balance (0 is a real floor).
+        None where no monetary bound applies — never 0 for that."""
+        return self.result.stop_bound_micros
+
+    @property
+    def stop_measured_micros(self) -> int | None:
+        """The amount measured against ``stop_bound_micros`` when the stop was
+        established: the unit of work's COGS total, the customer's
+        month-to-date charges, or the wallet balance. None where no monetary
+        bound applies."""
+        return self.result.stop_measured_micros
 
     @property
     def task_id(self) -> str | None:

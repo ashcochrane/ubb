@@ -478,18 +478,23 @@ def void_grant(*, customer_id, tenant, grant_id):
 
 
 def draw_down_usage(*, customer_id, tenant, usage_event_id, billed_cost_micros,
-                    repair=False):
+                    trigger_source, repair=False):
     """Deduct one usage event from the owner's wallet, exactly-once via
     ``usage_deduction:{usage_event_id}``.
 
     ``repair=False`` (the live outbox handler) runs the winning-branch tail:
     ``BalanceOverage`` on zero-cross, the #39 durable floor-stop lane (or the
     Tier-1 suspension when enforcement is off), the #40 soft-floor crossing,
-    and ``BalanceLow`` under the auto-top-up trigger.
+    and ``BalanceLow`` under the auto-top-up trigger. A floor episode the
+    tail opens records ``trigger_source`` (#569) — the mechanism whose
+    posting this is: ``usage_ingest`` for a usage report's,
+    ``charge_projection`` for a delivered fixed-price unit's Charge.
 
     ``repair=True`` (the reconcile beat) is the SAME path with the tail
     suppressed (I12: a back-correction never re-fires signals) and the
     reconciled description — repair twin ≡ live drawdown by construction.
+    It opens nothing, so it passes ``trigger_source=None``: required all the
+    same, so the live caller cannot forget to say what it is.
     """
     key = f"usage_deduction:{usage_event_id}"
 
@@ -517,7 +522,7 @@ def draw_down_usage(*, customer_id, tenant, usage_event_id, billed_cost_micros,
                          else f"Usage: {usage_event_id}"),
             reference_id=str(usage_event_id), usage_event_id=usage_event_id,
             settle=settle,
-            events=None if repair else _drawdown_tail(tenant))
+            events=None if repair else _drawdown_tail(tenant, trigger_source))
 
     return _execute(customer_id=customer_id, tenant=tenant, key=key,
                     run_expiry=True,  # F4.3: due lots expire BEFORE the
@@ -525,11 +530,11 @@ def draw_down_usage(*, customer_id, tenant, usage_event_id, billed_cost_micros,
                     prepare=prepare, on_replay=on_replay)
 
 
-def _drawdown_tail(tenant):
+def _drawdown_tail(tenant, trigger_source):
     """The live drawdown's winning-branch signal tail (see draw_down_usage)."""
     def events(wallet, owner, old_balance, new_balance, txn):
         from apps.billing.queries import get_customer_min_balance
-        from core.crossing import crossed_floor, past_floor
+        from core.crossing import crossed_floor, floor_line, past_floor
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import (
@@ -558,6 +563,8 @@ def _drawdown_tail(tenant):
                 # else, so the line it drives is the hard floor's (slice 6
                 # §7, the split of the one customer-wide word) and the
                 # control it names is the row that carried the floor (§15).
+                # An episode it opens opened as this posting's mechanism, on
+                # the floor as a balance and the balance drawn down to (#569).
                 from apps.billing.queries import get_customer_floor_control_id
                 from apps.billing.gating.services.stop_signal_service import (
                     StopSignalService)
@@ -568,7 +575,10 @@ def _drawdown_tail(tenant):
                         owner.id, tenant, line=reasons.HARD_FLOOR,
                         control_id=get_customer_floor_control_id(
                             owner.id, tenant.id),
-                        balance_micros=new_balance)
+                        balance_micros=new_balance,
+                        trigger_source=trigger_source,
+                        stop_bound_micros=floor_line(limit),
+                        stop_measured_micros=new_balance)
                 except Exception:
                     logger.warning("billing.floor_stop_transition_failed",
                                    extra={"data": {"owner_id": str(owner.id)}})

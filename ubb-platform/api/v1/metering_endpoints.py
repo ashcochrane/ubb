@@ -372,9 +372,12 @@ def with_receipt_reads(result):
 
 def _rejected(code, detail):
     """A batch-item rejection verdict: the typed code plus the constant stop
-    trio — a rejected item was never recorded, so nothing can have stopped."""
+    facts — a rejected item was never recorded, so nothing can have stopped,
+    and nothing applied, bounded or measured a stop (#569: null, never 0)."""
     return {"accepted": False, "code": code, "detail": detail,
-            "stop": False, "stop_reason": None, "stop_scope": None}
+            "stop": False, "stop_reason": None, "stop_scope": None,
+            "trigger_source": None, "stop_bound_micros": None,
+            "stop_measured_micros": None}
 
 
 def replay_or_record(tenant, customer, item):

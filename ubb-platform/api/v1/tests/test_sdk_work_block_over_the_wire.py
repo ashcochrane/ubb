@@ -17,15 +17,13 @@ vacuous.
 """
 import pytest
 
-from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from api.v1.tests._helpers import a_live_client
 from apps.platform.work.models import Task
 from core.vocabulary import (
     OUTCOME_REASON_EXECUTION_FAILED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_STATUS_FAILED,
 )
 from ubb.exceptions import TaskOutcomeRequired
-from ubb.metering import MeteringClient
 
 #: The caller's own identifier for the unit of work, stable across retries.
 THE_KEY = "nightly-42"
@@ -36,11 +34,7 @@ def sdk(live_server):
     """A metering-only tenant with one customer, and the real client pointed
     at the live server. Metering-only, because the start is ungated and this
     module is about the record, not the wallet."""
-    tenant = Tenant.objects.create(name="T", products=["metering"])
-    _, raw_key = TenantApiKey.create_key(tenant)
-    customer = Customer.objects.create(tenant=tenant, external_id="acme")
-    client = MeteringClient(api_key=raw_key, base_url=live_server.url,
-                            max_retries=0)
+    client, _, customer = a_live_client(live_server)
     try:
         yield client, str(customer.id)
     finally:

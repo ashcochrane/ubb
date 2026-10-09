@@ -22,6 +22,7 @@ from apps.billing import queries
 from apps.billing.gating.models import CustomerSpendPool, StopSignalState
 from apps.billing.gating.services.stop_signal_service import (
     CLEAR_BALANCE_RECOVERED, StopSignalService, control_id_of)
+from apps.billing.gating.tests._helpers import FIXTURE_OPENING
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
@@ -54,7 +55,7 @@ class SignalEpisodesTestBase(TestCase):
         return StopSignalService.drive_stop(
             owner.id, self.tenant, line=line,
             control_id=control_id_of(line, owner.id, self.tenant),
-            balance_micros=balance_micros)
+            balance_micros=balance_micros, **FIXTURE_OPENING)
 
     def _clear(self, line, *, owner=None):
         owner = owner or self.owner
@@ -158,7 +159,7 @@ class TheTwoStopLinesTest(SignalEpisodesTestBase):
         theirs = Customer.objects.create(tenant=elsewhere, external_id="e1")
         StopSignalService.drive_stop(
             theirs.id, elsewhere, line=reasons.HARD_FLOOR,
-            control_id=control_id_of(reasons.HARD_FLOOR, theirs.id, elsewhere))
+            control_id=control_id_of(reasons.HARD_FLOOR, theirs.id, elsewhere), **FIXTURE_OPENING)
         self.assertEqual(self._rows(), [])
 
 

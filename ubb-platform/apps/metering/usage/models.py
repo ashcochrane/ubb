@@ -792,6 +792,117 @@ class PostingMeasurement(BaseModel):
         return f"PostingMeasurement({self.posting_id})"
 
 
+class StopAcknowledgement(BaseModel):
+    """What one recorded result's acknowledgement said about stopping — kept
+    once, with its posting, and answered from on every replay (#569;
+    ADR-0019).
+
+    **One per posting the recording path writes, `stop` true OR false.** The
+    single route and every batch item alike; a delivered fixed-price unit's
+    Charge posting is written by the projection, acknowledges nothing, and
+    has none. It holds exactly what the acknowledgement returned:
+
+    * the stop — ``stop``, ``stop_reason``, ``stop_scope`` — and how it was
+      applied and measured: ``trigger_source``, ``stop_bound_micros``,
+      ``stop_measured_micros``, null wherever they do not apply and never 0
+      for that (a real zero floor IS 0);
+    * the named unit's ceiling assessment beside it — ``ceiling_status``,
+      ``ceiling_used_percentage``, ``ceiling_remaining_micros`` — and the
+      named unit's parent, so a replay reads no unit of work at all;
+    * WHICH unit the stop is about (``stop_task_id`` — for a `task`-scoped
+      stop on contained work, the parent), or WHOSE customer-wide line it is
+      (``stop_customer_id`` — the billing owner, or a pooled seat whose own
+      Pool line was named). The acknowledgement does not publish either
+      (#569, ADR-0019 §4): two Pool stops read alike at both levels, and
+      this is what says which one an acknowledgement's figures were frozen
+      from.
+
+    **Why a record of its own** (the owner's and consultant's ruling,
+    2026-10-08): nothing that existed was an immutable authority for every
+    mechanism. The posting is not one for where a stop came from, the signal
+    ledger holds one row per line and overwrites it per episode, a unit's
+    stop metadata is mutable, and the kill announcements are deleted after
+    thirty days. So this is written from the verdict that decided the
+    acknowledgement, in the recording's own savepoint, and a replay reads it
+    and NOTHING ELSE for these fields — never the live flag, the unit of
+    work, a Pool, configuration, a counter or ``Posting.stop_context``. A
+    recording-path posting without one is an invariant violation, raised by
+    name (``usage_service.StopAcknowledgementMissing``), never reconstructed.
+
+    **The record rule**::
+
+        INSERT   once, in the recording's savepoint, with its posting
+        UPDATE   never
+        DELETE   never — except as a SANDBOX's postings are discarded
+
+    held at the database by a ``BEFORE UPDATE OR DELETE`` trigger
+    (``migrations/0045_a_recording_keeps_what_its_acknowledgement_said.py``)
+    across ``save()``, ``QuerySet.update()``/``delete()`` and raw SQL alike.
+    The sandbox carve-out is the measurement record's own (#354): a reset
+    discards a sandbox's postings wholesale, and a discard is not an edit.
+    The model's ``save()`` and ``delete()`` guards below shut the ORM's
+    doors too, as the posting's do — NOT the enforcement, which is the
+    trigger. Every column declares ``RECORD_RULE``: none has a lifecycle of
+    its own to declare, and the rule above is the whole of what may happen.
+    """
+    posting = models.OneToOneField(
+        Posting, on_delete=models.CASCADE, related_name="stop_acknowledgement")
+    stop = models.BooleanField()
+    stop_reason = models.CharField(max_length=64, null=True, blank=True)
+    stop_scope = models.CharField(max_length=16, null=True, blank=True)
+    trigger_source = models.CharField(max_length=64, null=True, blank=True)
+    stop_bound_micros = models.BigIntegerField(null=True, blank=True)
+    stop_measured_micros = models.BigIntegerField(null=True, blank=True)
+    ceiling_status = models.CharField(max_length=32, null=True, blank=True)
+    ceiling_used_percentage = models.BigIntegerField(null=True, blank=True)
+    ceiling_remaining_micros = models.BigIntegerField(null=True, blank=True)
+    parent_task_id = models.UUIDField(null=True, blank=True)
+    stop_task_id = models.UUIDField(null=True, blank=True)
+    stop_customer_id = models.UUIDField(null=True, blank=True)
+
+    #: Every column of this record and the class it is declared into (ADR-0007
+    #: §2): all of them the record rule in the docstring above.
+    transition_classes = {
+        "id": RECORD_RULE,
+        "created_at": RECORD_RULE,
+        "updated_at": RECORD_RULE,
+        "posting": RECORD_RULE,
+        "stop": RECORD_RULE,
+        "stop_reason": RECORD_RULE,
+        "stop_scope": RECORD_RULE,
+        "trigger_source": RECORD_RULE,
+        "stop_bound_micros": RECORD_RULE,
+        "stop_measured_micros": RECORD_RULE,
+        "ceiling_status": RECORD_RULE,
+        "ceiling_used_percentage": RECORD_RULE,
+        "ceiling_remaining_micros": RECORD_RULE,
+        "parent_task_id": RECORD_RULE,
+        "stop_task_id": RECORD_RULE,
+        "stop_customer_id": RECORD_RULE,
+    }
+
+    class Meta:
+        db_table = "ubb_stop_acknowledgement"
+
+    def __str__(self):
+        return f"StopAcknowledgement({self.posting_id}: stop={self.stop})"
+
+    def save(self, *args, **kwargs):
+        # NOT THE ENFORCEMENT — the trigger is (see the docstring). This door
+        # is shut because nothing has any business rewriting what an
+        # acknowledgement said.
+        if not self._state.adding:
+            raise ValueError(
+                "A stop acknowledgement is insert-only: what an "
+                "acknowledgement said is kept as it was said.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError(
+            "A stop acknowledgement is insert-only and leaves only with its "
+            "posting, when a sandbox is discarded.")
+
+
 class BackfillDirtyPeriod(BaseModel):
     """Marker: a CLOSED calendar month's cached economics are stale for this
     (tenant, customer). Written through ``apps.metering.queries``

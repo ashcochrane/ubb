@@ -51,6 +51,30 @@ def _item(c, n, **extra):
             "event_type": DECLARED, **extra}
 
 
+#: The keys only a batch VERDICT has; an accepted item is the single route's
+#: acknowledgement plus these, with `code` and `detail` null.
+VERDICT_ONLY = ("accepted", "code", "detail")
+
+
+def _rejected(code, detail):
+    """What a rejected item says (#569, ADR-0019 §8): nothing was recorded, so nothing
+    stopped — and nothing applied, bounded or measured a stop."""
+    return {"accepted": False, "code": code, "detail": detail,
+            "stop": False, "stop_reason": None, "stop_scope": None,
+            "trigger_source": None, "stop_bound_micros": None,
+            "stop_measured_micros": None}
+
+
+def _the_verdict(item):
+    """A rejected item's verdict. The item is TYPED since #569, so it also
+    carries every acknowledgement field — each unset (null, or the field's
+    empty default), because nothing was recorded to set it from."""
+    verdict = {key: item[key] for key in _rejected(None, None)}
+    unset = {key: value for key, value in item.items() if key not in verdict}
+    assert all(value in (None, [], {}) for value in unset.values()), unset
+    return verdict
+
+
 @pytest.mark.django_db
 class TestBatchBasics:
     def test_middle_item_invalid_others_commit(self):
@@ -62,10 +86,8 @@ class TestBatchBasics:
         body = resp.json()
         assert body["accepted"] == 2 and body["rejected"] == 1
         assert body["results"][0]["accepted"] is True
-        assert body["results"][1] == {
-            "accepted": False, "code": "effective_at_too_old",
-            "detail": body["results"][1]["detail"],
-            "stop": False, "stop_reason": None, "stop_scope": None}
+        assert _the_verdict(body["results"][1]) == _rejected(
+            "effective_at_too_old", body["results"][1]["detail"])
         assert body["results"][2]["accepted"] is True
         # Items 1 + 3 are durably committed: event rows AND outbox rows exist.
         assert Posting.objects.filter(tenant=t).count() == 2
@@ -122,20 +144,16 @@ class TestBatchBasics:
              "provider_cost_micros": 10},
             _item(c, 2),
         ]}).json()
-        assert resp["results"][0] == {
-            "accepted": False, "code": "not_found",
-            "detail": "Customer not found",
-            "stop": False, "stop_reason": None, "stop_scope": None}
+        assert _the_verdict(resp["results"][0]) == _rejected(
+            "not_found", "Customer not found")
         assert resp["results"][1]["accepted"] is True
 
     def test_unknown_task_not_found(self):
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
             _item(c, 1, task_id=str(uuid.uuid4()))]}).json()
-        assert resp["results"][0] == {
-            "accepted": False, "code": "not_found",
-            "detail": "Task not found",
-            "stop": False, "stop_reason": None, "stop_scope": None}
+        assert _the_verdict(resp["results"][0]) == _rejected(
+            "not_found", "Task not found")
 
     def test_mixed_effective_at_errors_isolated(self):
         t, c, http, auth = _setup()
@@ -163,7 +181,9 @@ class TestBatchBasics:
         assert resp["rejected"] == 1
 
     def test_success_body_mirrors_single_call(self):
-        """A batch success item carries the single-call success body + accepted."""
+        """A batch success item carries the single-call success body + the
+        verdict's keys: `accepted` true, and the rejection's `code` and
+        `detail` null (the item is typed since #569, so it carries both)."""
         t, c, http, auth = _setup()
         single = _post(http, auth, SINGLE_URL,
                        {"customer_id": str(c.id),
@@ -172,6 +192,7 @@ class TestBatchBasics:
         batch = _post(http, auth, BATCH_URL, {"events": [_item(c, 1)]}).json()
         item = dict(batch["results"][0])
         assert item.pop("accepted") is True
+        assert (item.pop("code"), item.pop("detail")) == (None, None)
         # Same keys as the single-call response (values differ only where ids do).
         assert set(single.keys()) == set(item.keys())
 
@@ -283,7 +304,7 @@ class TestBatchOneRuleParity:
             single_bodies.append(_post(http, auth, SINGLE_URL, item).json())
 
         def normalize(d):
-            d = {k: v for k, v in d.items() if k not in ("accepted",)}
+            d = {k: v for k, v in d.items() if k not in VERDICT_ONLY}
             if d.get("task_id"):
                 d["task_id"] = "TASK"
             if d.get("event_id"):

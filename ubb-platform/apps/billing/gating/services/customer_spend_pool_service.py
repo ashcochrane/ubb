@@ -91,7 +91,8 @@ from core.crossing import (spend_pool_stop_threshold, month_label_bounds,
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
-    TASK_STATUS_ACTIVE, TRIGGER_SOURCE_POOL_CROSSING)
+    TASK_STATUS_ACTIVE, TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+    TRIGGER_SOURCE_POOL_CROSSING)
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.platform.customers.models import ACCOUNT_TYPE_BUSINESS
 from apps.platform.tenants.flags import enforcing
@@ -226,7 +227,7 @@ class CustomerSpendPoolService:
                         enforce_mode=cfg.enforce_mode))
 
     @staticmethod
-    def signal_if_past(customer, cfg, spend_micros):
+    def signal_if_past(customer, cfg, spend_micros, *, trigger_source):
         """The DURABLE lane's stop for one declared level (#459): the
         customer's known period charges at or over the pool's stop line
         drive the pool's line on the signal ledger — the winner announces
@@ -237,18 +238,26 @@ class CustomerSpendPoolService:
         predicate and the line is the pool's own (``alert_only`` = no line).
         Returns ``(past, won)``: whether the customer is past the line, and
         whether THIS call won the transition (the winner's commit registers
-        the kill; a caller that finds the line already open re-sweeps)."""
+        the kill; a caller that finds the line already open re-sweeps).
+
+        ``trigger_source`` is the calling lane's mechanism (#569): the
+        drawdown of a usage report's posting (``usage_ingest``) or of a
+        delivered fixed-price unit's Charge (``charge_projection``), or the
+        seat-level beat (``enforcement_patrol``). An episode this call opens
+        records it, the stop line it compared and the charges it measured."""
         tenant = customer.tenant
         if not enforcing(tenant):
             return False, False
-        if not past_spend_pool_stop(spend_micros, spend_pool_stop_threshold(cfg)):
+        line = spend_pool_stop_threshold(cfg)
+        if not past_spend_pool_stop(spend_micros, line):
             return False, False
         from apps.billing.gating.services.stop_signal_service import StopSignalService
         won = None
         try:
             won = StopSignalService.drive_stop(
                 customer.id, tenant, line=reasons.CUSTOMER_SPEND_POOL,
-                control_id=cfg.id)
+                control_id=cfg.id, trigger_source=trigger_source,
+                stop_bound_micros=line, stop_measured_micros=spend_micros)
         except Exception:
             logger.warning("customer_spend_pool.stop_transition_failed",
                            extra={"data": {"customer_id": str(customer.id)}})
@@ -321,7 +330,10 @@ class CustomerSpendPoolService:
         CustomerSpendPoolService.emit_threshold_alerts(customer, cfg, 0, total, label)  # fires only not-yet-sent levels
         if a_business:
             return
-        past, won = CustomerSpendPoolService.signal_if_past(customer, cfg, total)
+        # The seat-level beat is the patrol's backstop at this level (#569):
+        # the same periodic enforcement as the owner-level pass.
+        past, won = CustomerSpendPoolService.signal_if_past(
+            customer, cfg, total, trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         if past and not won:
             # The line was already open: a kill that crashed between the
             # transition and its commit is retried here (the winner's own
@@ -344,10 +356,11 @@ class CustomerSpendPoolService:
                            extra={"data": {"customer_id": str(customer.id)}})
 
     @staticmethod
-    def record_usage_spend(customer, amount_micros):
+    def record_usage_spend(customer, amount_micros, *, trigger_source):
         """Post-drawdown hook: increment the seat's counter, emit threshold
         alerts, and — the durable lane of the pool's stop (#459) — signal a
-        crossing. Fully fail-open.
+        crossing, as ``trigger_source`` (#569: the drawdown's own mechanism,
+        which the handler reads off the posting's kind). Fully fail-open.
 
         Runs after the wallet is already charged, so it must NEVER raise into the
         drawdown handler (that would dead-letter an already-charged event). Every
@@ -377,7 +390,8 @@ class CustomerSpendPoolService:
             old, new, label = LiveCounter.spend_pool_incr(
                 customer.tenant_id, customer.id, amount_micros)
             CustomerSpendPoolService.emit_threshold_alerts(customer, cfg, old, new, label)
-            CustomerSpendPoolService.signal_if_past(customer, cfg, new)
+            CustomerSpendPoolService.signal_if_past(
+                customer, cfg, new, trigger_source=trigger_source)
         except Exception:
             logger.warning("customer_spend_pool.record_usage_spend_failed",
                            extra={"data": {"customer_id": str(customer.id)}})

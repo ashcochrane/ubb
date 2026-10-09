@@ -264,6 +264,18 @@ and suspension stand as they are, and `stop_context` itemises every standing lin
 first. Durable truth owns it: the hourly
 patrol re-aligns an orphaned or missing flag to the ledger's stop lines' durable state within one
 interval.
+**The flag carries its episode's opening facts beside its word (#569)**: one value holding the
+stop's word, the mechanism that opened the episode, and the bound and amount it opened on — the
+flag's COMPANION facts, read with the word in the same MGET, so a recording that sees another
+recording's flag before that transaction commits already hears how the episode opened, and can
+never see a word without its facts. Every write of a flag carries them: the live debit's crossing
+writes its own; `ensure_stop_flag` and the re-point after a line lifts copy the ledger's open row;
+a debit that sets an absent flag but loses the drive to an episode the ledger already holds
+re-aligns the flag to that episode's facts; and a flag carrying other facts than the ledger's open
+episode on its line (a lane's drive raised) is re-aligned by `ensure_stop_flag` the next time a
+durable lane finds that episode open — the ledger owns how an episode opened. A bare word —
+planted by the test door — reads with none (null, never 0). The read also says WHOSE flag was named (the billing owner, or the seat),
+which metering keeps on the recording's stop acknowledgement and never publishes.
 
 **Signal ledger (`StopSignalState`)**:
 The durable per-owner-per-line state row every stop/resume emission routes through — keyed by
@@ -282,6 +294,16 @@ line and suspension can never disagree or double-fire. Each winning transition a
 `announce_outbox_id` (the row's last announcement) inside the same atomic unit — see Announcement.
 Until #458 the two stop lines were one row under a local family word, told apart by the owner's
 tenant billing mode.
+**An episode records how it opened (#569)**: the winning stop transition stamps, beside
+`control_id`, the episode's OPENING FACTS — `trigger_source` (the lane's mechanism: `usage_ingest`
+for the live debit or a usage report's drawdown, `enforcement_patrol` for the reconcile passes and
+the seat-level beat, `charge_projection` for the drawdown of a delivered fixed-price unit's
+Charge, read off the posting's kind), `stop_bound_micros` (the line as that lane resolved it at
+the crossing: the Pool's stop line, or the floor as a balance) and `stop_measured_micros` (what the
+lane measured against it then). Every `drive_stop` caller states all three, and a lane that loses
+the transition leaves the opener's standing; the next episode overwrites them as it overwrites
+`control_id`. Every recording acknowledgement that names the episode carries them — never today's
+counter or configuration.
 _Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
 the ledger is the truth.
 (`apps/billing/gating/services/stop_signal_service.py`)

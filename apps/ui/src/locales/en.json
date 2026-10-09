@@ -235,6 +235,7 @@
   "tenant_product.billing": "Billing",
   "tenant_product.metering": "Metering",
   "tenant_product.referrals": "Referrals",
+  "trigger_source.charge_projection": "Charge projection",
   "trigger_source.enforcement_patrol": "Enforcement patrol",
   "trigger_source.parent_cascade": "Parent cascade",
   "trigger_source.pool_crossing": "Spend pool crossing",

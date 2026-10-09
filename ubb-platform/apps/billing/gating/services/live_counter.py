@@ -72,17 +72,22 @@ monkeypatch seam for Redis-down tests (D4).
 Tests fabricate counter/flag state ONLY through ``Door`` (the D4 test door,
 below) — never by importing key helpers or the raw client.
 """
+import json
 import logging
 
 from django.conf import settings
 
-from core.crossing import (month_label_bounds, past_floor,
+from core.crossing import (floor_line, month_label_bounds, past_floor,
                            past_spend_pool_stop, recovered_floor, same_month,
                            spend_pool_stop_threshold)
+from apps.billing.gating.services.stop_signal_service import (
+    NO_OPENING_FACTS, OPENING_FACTS, StopSignalService, opening_facts)
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
-from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
+from core.vocabulary import (CUSTOMER_BILLING_MODE_POSTPAID,
+                             TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+                             TRIGGER_SOURCE_USAGE_INGEST)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -200,11 +205,11 @@ def _stop_key(customer_id) -> str:
     return f"ubb:stop:{customer_id}"
 
 
-def _stop_keys(owner_id, customer_id=None) -> list:
-    """The flag keys that can stop a recording of ``customer_id``, in the
-    order an acknowledgement names them (#609): the billing owner's, then,
+def _flagged_customers(owner_id, customer_id=None) -> list:
+    """The customers whose flag can stop a recording of ``customer_id``, in
+    the order an acknowledgement names them (#609): the billing owner, then,
     for a pooled seat (a customer that is not its own billing owner), the
-    seat's own, where its own Pool level is flagged.
+    seat itself, whose own Pool level is flagged on its own key.
 
     THE ORDER IS THE PRECEDENCE, CONFIRMED BY THE OWNER AND CONSULTANT
     (2026-10-08): the billing owner's stop is the broader constraint — it
@@ -212,10 +217,42 @@ def _stop_keys(owner_id, customer_id=None) -> list:
     over the seat's, and the seat's is named only when the owner stands
     unstopped. Acknowledgement precedence only: nothing here writes either
     flag, so the seat's own stop stands as the seat's ledger left it."""
-    keys = [_stop_key(owner_id)]
+    customers = [owner_id]
     if customer_id is not None and str(customer_id) != str(owner_id):
-        keys.append(_stop_key(customer_id))
-    return keys
+        customers.append(customer_id)
+    return customers
+
+
+def _stop_keys(owner_id, customer_id=None) -> list:
+    """The flag keys of ``_flagged_customers``, in its order."""
+    return [_stop_key(c) for c in _flagged_customers(owner_id, customer_id)]
+
+
+def _flag_value(word, opening) -> str:
+    """What a stop flag holds: the stop's word AND its episode's opening facts
+    (``OPENING_FACTS``, #569), as ONE value. One value rather than a companion
+    key, so a reader can never see the word without its facts, or one line's
+    word with the other line's facts — the flag is written NX, re-pointed and
+    deleted as a unit."""
+    return json.dumps({"reason": word,
+                       **{fact: opening.get(fact) for fact in OPENING_FACTS}},
+                      separators=(",", ":"))
+
+
+def _read_flag(raw):
+    """``(word, opening)`` for a flag's raw value; ``(None, None)`` for no
+    flag. A BARE WORD still reads — the shape ``Door.plant_stop`` writes, the
+    orphaned or hand-planted flag the gating tests fabricate (UBB is not
+    deployed, so no production flag predates #569) — as that word with no
+    opening facts: every figure null, which is what an acknowledgement says
+    of a figure it does not have."""
+    if raw is None:
+        return None, None
+    text = raw.decode() if isinstance(raw, bytes) else str(raw)
+    if not text.startswith("{"):
+        return text, dict(NO_OPENING_FACTS)
+    held = json.loads(text)
+    return held["reason"], {fact: held.get(fact) for fact in OPENING_FACTS}
 
 
 def _spend_pool_key(customer_id, label) -> str:
@@ -243,18 +280,30 @@ class LiveCounter:
         P3: if this event drives a counter across its line — the wallet
         below the hard floor, or the owner's month spend at or over the
         owner's pool's stop line — the owner-keyed stop flag is SET
-        (cooperative — never rolls back this event; I3). The returned dict
-        carries {mode, balance_micros, spend_micros, stop, stop_reason,
-        stop_scope} (the stop fields reflect the flags AFTER this event, so a
-        flag a sibling run set is surfaced too, and so is a pooled seat's own
-        flag, which only the drawdown and the seat-level beat set), plus
-        ``stop_episodes_opened`` — ``{line: episode_seq}`` for every stop
-        line THIS debit won the transition on, the #41 tipping-event
-        attribution; two lines number their episodes independently (#458)
-        and one report can tip both (#459), so the map is keyed by line.
-        Returns None when disabled / zero-cost / (postpaid) backdated to a
-        prior month. NEVER raises — a Redis failure logs and returns None
-        (fail-open; the durable start-gate remains the backstop).
+        (cooperative — never rolls back this event; I3), carrying the
+        crossing's opening facts (#569): `usage_ingest`, the line as
+        resolved now, and the balance or month spend this debit reached.
+        The returned dict carries {mode, balance_micros, spend_micros} and
+        ``read``'s stop verdict (the stop fields reflect the flags AFTER this
+        event, so a flag a sibling run set is surfaced too, and so is a
+        pooled seat's own flag, which only the drawdown and the seat-level
+        beat set), plus ``stop_episodes_opened`` — ``{line: episode_seq}``
+        for every stop line THIS debit won the transition on, the #41
+        tipping-event attribution; two lines number their episodes
+        independently (#458) and one report can tip both (#459), so the map
+        is keyed by line.
+
+        ⚠ A REPORT THIS DEBIT DOES NOT COUNT STILL HEARS THE STANDING STOP
+        (#569, ADR-0019 §7). A posting with no resolved price or a zero one, and a
+        postpaid report back-dated into an earlier month, move no counter —
+        but the acknowledgement it gets is kept, unchanged, for every replay
+        of its key, so answering "not stopped" for a customer who IS stopped
+        would make that answer permanent. Each of those exits answers
+        ``read`` — the owner's flag and, for a pooled seat, its own, in the
+        one MGET — and so does a debit that failed part-way. Returns None
+        only when the tenant does not enforce. NEVER raises — a Redis
+        failure logs and reads, and a blind read is not-stopped (fail-open;
+        the durable start-gate remains the backstop).
 
         THE POOL LEG RUNS IN EVERY MODE (slice 6 §4, #459 — payment mode
         decides who invoices, nothing else): the owner's month spend counter
@@ -276,12 +325,12 @@ class LiveCounter:
         # never do is invent a figure for a posting whose price is unknown —
         # under-counting is the direction that under-fires, and the lines
         # that read this (the hard floor's and the pool's, #459) fire on the
-        # known figure and never on an invented one.
-        if billed_cost_micros is None:
+        # known figure and never on an invented one. It still READS the
+        # standing stop (ADR-0019 §7, the docstring), as a zero amount does.
+        if not enforcing(tenant):
             return None
-        if not enforcing(tenant) or billed_cost_micros <= 0:
-            return None
-        if not live_counter_maintenance_on(tenant):
+        if (billed_cost_micros is None or billed_cost_micros <= 0
+                or not live_counter_maintenance_on(tenant)):
             return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
         try:
             from django.utils import timezone
@@ -289,10 +338,11 @@ class LiveCounter:
             postpaid = tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID
             # I9: a prior-month backdated event must not inflate THIS month's
             # spend counter (mirrors handlers.py's spend-pool tail). Postpaid
-            # has no wallet to lower, so there is nothing else to apply.
+            # has no wallet to lower, so there is nothing else to apply —
+            # and the standing stop is still read (ADR-0019 §7).
             in_this_month = same_month(effective_at, now)
             if postpaid and not in_this_month:
-                return None
+                return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
             base = {"mode": "postpaid" if postpaid else "prepaid",
                     "balance_micros": None, "spend_micros": None}
             opened = {}
@@ -308,16 +358,23 @@ class LiveCounter:
                 # Set (never clear) the cooperative stop flag on a crossing;
                 # a non-crossing event must not clear a flag a sibling run
                 # set — the flag lifts only on recovery (credit / reconcile).
-                if LiveCounter._floor_crossed(balance, owner_id, tenant):
+                minimum = LiveCounter._floor(owner_id, tenant)
+                if past_floor(balance, minimum):
                     # This leg crosses the wallet's floor and nothing else,
                     # so the line is the hard floor's (slice 6 §7, §9) and
-                    # the control is the row that carried the floor.
+                    # the control is the row that carried the floor. The
+                    # bound is the floor AS A BALANCE, so a zero floor is a
+                    # real bound of 0, and the measure is the balance this
+                    # debit reached (#569).
                     from apps.billing.gating.services.stop_signal_service import (
                         control_id_of)
                     won = LiveCounter._set_stop(
                         owner_id, reasons.HARD_FLOOR, tenant=tenant,
                         control_id=control_id_of(reasons.HARD_FLOOR, owner_id, tenant),
-                        balance_micros=balance)
+                        balance_micros=balance, opening=opening_facts(
+                            trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                            stop_bound_micros=floor_line(minimum),
+                            stop_measured_micros=balance))
                     if won is not None:
                         opened[reasons.HARD_FLOOR] = won
             if in_this_month:
@@ -331,13 +388,20 @@ class LiveCounter:
                 LiveCounter._alert_owner_level(
                     owner_id, tenant, pool, spend - int(billed_cost_micros),
                     spend, label)
-                if past_spend_pool_stop(spend, spend_pool_stop_threshold(pool)):
+                line = spend_pool_stop_threshold(pool)
+                if past_spend_pool_stop(spend, line):
                     # The line is the pool's and the control is the pool row
-                    # the line was resolved from — no second lookup.
+                    # the line was resolved from — no second lookup. The
+                    # bound is that line as resolved now, and the measure
+                    # the month spend this debit reached (#569).
                     won = LiveCounter._set_stop(
                         owner_id, reasons.CUSTOMER_SPEND_POOL, tenant=tenant,
                         control_id=pool.id,
-                        balance_micros=balance if balance is not None else 0)
+                        balance_micros=balance if balance is not None else 0,
+                        opening=opening_facts(
+                            trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                            stop_bound_micros=line,
+                            stop_measured_micros=spend))
                     if won is not None:
                         opened[reasons.CUSTOMER_SPEND_POOL] = won
             if opened:
@@ -350,21 +414,26 @@ class LiveCounter:
         except Exception:
             logger.warning("live_counter.debit_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
-            return None
+            # The standing stop is still read (ADR-0019 §7): a debit that failed
+            # part-way says what the flags say, and a blind read says
+            # not-stopped exactly as before.
+            return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
 
     # ---- the two lines an owner can cross (P3; two levels since #459) ----
     @staticmethod
-    def _floor_crossed(balance_micros, owner_id, tenant) -> bool:
-        """True when the owner's live balance is past the wallet policy's
-        hard floor — strictly below the negated floor magnitude, the one
-        orientation ``core.crossing.past_floor`` owns. ONE ORM lookup
-        (CustomerBillingProfile / BillingTenantConfig via
-        ``get_customer_min_balance``). Until #459 this and the pool's compare
-        were one mode-keyed pair (``_threshold`` / ``_crossed``); the pool
+    def _floor(owner_id, tenant):
+        """The owner's wallet-policy hard floor magnitude — compared by
+        ``core.crossing.past_floor`` (strictly below its negation) and
+        published as a bound by ``floor_line``, the one orientation that
+        module owns. ONE ORM lookup (CustomerBillingProfile /
+        BillingTenantConfig via ``get_customer_min_balance``). Resolved here
+        rather than inside a compare since #569, because a crossing now
+        records the bound it crossed as well as the fact that it did. Until
+        #459 this and the pool's compare were one mode-keyed pair; the pool
         runs in every mode now, so each line resolves and compares as
         itself."""
         from apps.billing.queries import get_customer_min_balance
-        return past_floor(balance_micros, get_customer_min_balance(owner_id, tenant.id))
+        return get_customer_min_balance(owner_id, tenant.id)
 
     @staticmethod
     def _owner_pool(owner_id, tenant):
@@ -397,7 +466,7 @@ class LiveCounter:
 
     @staticmethod
     def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
-                  control_id=None):
+                  control_id=None, *, opening):
         """Set the customer-wide cooperative stop flag and fan out two
         best-effort side effects: on the flag's unset->set TRANSITION (SET
         ... NX on the flag key itself — no companion key needed) a
@@ -451,13 +520,22 @@ class LiveCounter:
 
         Returns the episode_seq drive_stop opened when THIS call won the
         ledger transition (#41 tipping-event attribution), else None.
+
+        ``opening`` is this crossing's opening facts (#569). They go onto
+        the flag with the word, in one NX write, and onto the ledger with
+        the transition — so a recording that reads the flag before this
+        transaction commits already hears how the episode opened. Where the
+        flag was absent but the ledger already held this line's episode (a
+        Redis flush, a blind window), the drive loses and the flag is
+        re-aligned to the facts the EPISODE opened with, never left
+        carrying this later crossing's.
         """
         client = _client()
-        was_new = client.set(_stop_key(owner_id), reason, ex=COUNTER_TTL_SECONDS, nx=True)
+        was_new = client.set(_stop_key(owner_id), _flag_value(reason, opening),
+                             ex=COUNTER_TTL_SECONDS, nx=True)
         if not was_new:
             client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
-            held = client.get(_stop_key(owner_id))
-            held = held.decode() if isinstance(held, bytes) else held
+            held, _ = _read_flag(client.get(_stop_key(owner_id)))
             if held == reason:
                 return None
             if tenant is not None:
@@ -479,13 +557,26 @@ class LiveCounter:
                 # ledger transition (#41: the caller's event is the tipping
                 # event), else None — a crossing the durable lane already
                 # signaled loses silently.
-                return StopSignalService.drive_stop(
+                won = StopSignalService.drive_stop(
                     owner_id, tenant, line=reason, control_id=control_id,
-                    balance_micros=balance_micros)
+                    balance_micros=balance_micros, **opening)
             except Exception:
                 logger.warning("live_counter.stop_event_failed",
                                extra={"data": {"owner_id": str(owner_id)}})
+                return None
+            if was_new and won is None:
+                episode = LiveCounter._open_episode(owner_id, reason)
+                if episode is not None:
+                    LiveCounter._repoint_stop_flag(owner_id, episode)
+            return won
         return None
+
+    @staticmethod
+    def _open_episode(owner_id, line):
+        """The open ledger row on ``line`` for ``owner_id`` — its word and
+        opening facts — or None where that line holds no episode."""
+        return next((row for row in StopSignalService.open_stop_lines(owner_id)
+                     if row["reason"] == line), None)
 
     @staticmethod
     def ensure_stop_flag(owner_id, reason):
@@ -500,13 +591,36 @@ class LiveCounter:
         the flag, and ``resume`` re-points it (``_repoint_stop_flag``) when
         that line lifts while the other still holds. Returns True when a
         missing flag was re-set — the patrol's flag-realignment outcome; a
-        Redis failure only delays flag visibility, never the signal."""
+        Redis failure only delays flag visibility, never the signal.
+
+        A flag it sets carries the opening facts of the EPISODE the ledger
+        holds open on that line (#569) — read from the ledger, whichever lane
+        opened it — so a re-aligned flag says how the stop opened, never how
+        it was later found. A line the ledger does not hold open sets the
+        word with no facts.
+
+        ⚠ AND THE FACTS FOLLOW THE LEDGER WHERE THE WORD ALREADY DOES. A
+        flag that names this line but carries other facts than the ledger's
+        open episode was written on a failure path — a lane whose drive
+        RAISED set the flag with its own crossing's facts, or with none — and
+        the next durable-lane pass that finds the episode open (the drawdown,
+        or the hourly reconcile at the latest) re-aligns them to the ledger's,
+        which owns how the episode opened. A flag naming the OTHER line is
+        left alone: the ack keeps naming the stop that opened the flag."""
         try:
+            episode = LiveCounter._open_episode(owner_id, reason)
             client = _client()
-            was_absent = client.set(_stop_key(owner_id), reason,
+            value = _flag_value(reason, episode or NO_OPENING_FACTS)
+            was_absent = client.set(_stop_key(owner_id), value,
                                     ex=COUNTER_TTL_SECONDS, nx=True)
             if not was_absent:
-                client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
+                held, opening = _read_flag(client.get(_stop_key(owner_id)))
+                if (episode is not None and held == reason
+                        and opening != {f: episode[f] for f in OPENING_FACTS}):
+                    client.set(_stop_key(owner_id), value,
+                               ex=COUNTER_TTL_SECONDS)
+                else:
+                    client.expire(_stop_key(owner_id), COUNTER_TTL_SECONDS)
             return bool(was_absent)
         except Exception:
             logger.warning("live_counter.ensure_stop_flag_failed",
@@ -514,14 +628,17 @@ class LiveCounter:
             return False
 
     @staticmethod
-    def _repoint_stop_flag(owner_id, reason):
-        """Make the fast-lane flag name ``reason`` — a plain SET, so an owner
+    def _repoint_stop_flag(owner_id, episode):
+        """Make the fast-lane flag name ``episode`` — an open ledger row's
+        word and its opening facts (#569) — with a plain SET, so an owner
         one stop line just released and another still holds never has a
         flagless instant between a delete and a re-set (#458): the ack's
         verdict keeps saying stopped, and names the stop that still holds.
         Best-effort, like every flag write."""
         try:
-            _client().set(_stop_key(owner_id), reason, ex=COUNTER_TTL_SECONDS)
+            _client().set(_stop_key(owner_id),
+                          _flag_value(episode["reason"], episode),
+                          ex=COUNTER_TTL_SECONDS)
         except Exception:
             logger.warning("live_counter.repoint_stop_flag_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
@@ -605,7 +722,7 @@ class LiveCounter:
                                       balance_micros=balance_micros)
         surviving = StopSignalService.open_stop_lines(owner_id)
         if surviving:
-            LiveCounter._repoint_stop_flag(owner_id, surviving[0]["reason"])
+            LiveCounter._repoint_stop_flag(owner_id, surviving[0])
             return False
         realigned = LiveCounter._clear_stop(owner_id)
         if tenant.billing_mode == "postpaid":
@@ -621,10 +738,11 @@ class LiveCounter:
     @staticmethod
     def read(owner_id, tenant, *, customer_id=None, counter=False, now=None) -> dict:
         """The owner's live position. Default: the customer-wide stop verdict
-        {stop, stop_reason, stop_scope} — fail-open (a Redis failure reads as
-        not-stopped) and short-circuiting to not-stopped when enforcement is
-        off, BEFORE touching Redis (D17). This is the money-path read (ack
-        verdicts, the start-gate, the queries.py port).
+        {stop, stop_reason, stop_scope, trigger_source, stop_bound_micros,
+        stop_measured_micros, stop_customer_id} — fail-open (a Redis failure
+        reads as not-stopped) and short-circuiting to not-stopped when
+        enforcement is off, BEFORE touching Redis (D17). This is the
+        money-path read (ack verdicts, the start-gate, the queries.py port).
 
         ``customer_id`` is the recording's customer, for an acknowledgement
         (#609). Where it is a pooled seat, the seat's own Pool level is
@@ -632,6 +750,14 @@ class LiveCounter:
         stop that recording — the owner's, then the seat's (``_stop_keys``:
         one round trip, and the first standing flag in that order is the
         stop named). Every flag carries the scope ``customer``.
+
+        The named flag's opening facts come with it (#569): the mechanism
+        that opened its episode and the bound and amount it opened on —
+        null for a flag that carries none. ``stop_customer_id`` says WHOSE
+        flag was named — the billing owner, or the seat whose own line it
+        is — which the wire does not show (a Pool stop reads alike at either
+        level) and the recording's snapshot keeps (#569, ADR-0019 §4); null when
+        nothing stopped.
 
         counter=True additionally reads the raw counter the upward repair
         measures — the wallet balance for a wallet-holding mode, the owner's
@@ -642,20 +768,25 @@ class LiveCounter:
         use, nothing to measure" while blind means "cannot measure at all").
         The upward repair keys its candidate lifecycle on that distinction.
         ``now`` scopes the pool's month (defaults to wall clock)."""
-        verdict = {"stop": False, "stop_reason": None, "stop_scope": None}
+        verdict = {"stop": False, "stop_reason": None, "stop_scope": None,
+                   **NO_OPENING_FACTS, "stop_customer_id": None}
         if not enforcing(tenant):
             if counter:
                 verdict.update({"counter_micros": None, "counter_blind": False})
             return verdict
+        flagged = _flagged_customers(owner_id, customer_id)
         try:
-            words = _client().mget(_stop_keys(owner_id, customer_id))
+            words = _client().mget([_stop_key(c) for c in flagged])
         except Exception:
             words = []
-        v = next((word for word in words if word is not None), None)
-        if v is not None:
-            reason = v.decode() if isinstance(v, bytes) else str(v)
+        named = next(((whose, raw) for whose, raw in zip(flagged, words)
+                      if raw is not None), None)
+        if named is not None:
+            whose, raw = named
+            reason, opening = _read_flag(raw)
             verdict = {"stop": True, "stop_reason": reason,
-                       "stop_scope": "customer"}
+                       "stop_scope": "customer", **opening,
+                       "stop_customer_id": whose}
         if counter:
             try:
                 if tenant.billing_mode == "postpaid":
@@ -764,7 +895,8 @@ class LiveCounter:
 
     # ---- reconcile (hourly beat) ----
     @staticmethod
-    def _reconcile_transitions(owner_id, tenant, crossed, basis_micros, *, line):
+    def _reconcile_transitions(owner_id, tenant, crossed, basis_micros, *, line,
+                               bound_micros, measured_micros):
         """The bottom-line catch-up both reconcile paths share (#39 §D/§E):
         drive the signal-ledger transition the reconciled position demands on
         ``line`` — the line the calling pass reconciles: the floor's for the
@@ -778,14 +910,23 @@ class LiveCounter:
         the flag actually changed — the #44 flag-realignment outcome — beside
         whether THIS pass won a stop transition (``(realigned, won)``), so a
         caller re-sweeping work under a line that was already open can tell
-        that apart from a win whose own commit registers the sweep."""
+        that apart from a win whose own commit registers the sweep.
+
+        An episode this pass opens opened as the patrol (#569:
+        ``enforcement_patrol`` — "this pass IS the hourly patrol", and the
+        reconcile a maintenance-switch flip enqueues is the same pass), on
+        ``bound_micros`` — the line as the calling pass resolved it — and
+        ``measured_micros``, the reconciled position it compared."""
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_RECONCILED, StopSignalService, control_id_of)
         if crossed:
             won = StopSignalService.drive_stop(
                 owner_id, tenant, line=line,
                 control_id=control_id_of(line, owner_id, tenant),
-                balance_micros=basis_micros)
+                balance_micros=basis_micros,
+                trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+                stop_bound_micros=bound_micros,
+                stop_measured_micros=measured_micros)
             return LiveCounter.ensure_stop_flag(owner_id, line), won is not None
         return LiveCounter.resume(owner_id, tenant, line=line,
                                   clear_reason=CLEAR_RECONCILED,
@@ -866,10 +1007,11 @@ class LiveCounter:
                                        extra={"data": {"owner_id": str(owner_id),
                                                        "mode": "prepaid"}})
                 basis = v if v is not None else durable
+                minimum = LiveCounter._floor(owner_id, tenant)
                 realigned, _ = LiveCounter._reconcile_transitions(
-                    owner_id, tenant,
-                    LiveCounter._floor_crossed(basis, owner_id, tenant),
-                    basis, line=reasons.HARD_FLOOR)
+                    owner_id, tenant, past_floor(basis, minimum),
+                    basis, line=reasons.HARD_FLOOR,
+                    bound_micros=floor_line(minimum), measured_micros=basis)
                 from apps.billing.gating.services.stop_signal_service import (
                     CLEAR_RECONCILED, StopSignalService)
                 soft = get_customer_soft_min_balance(owner_id, tenant.id)
@@ -956,11 +1098,13 @@ class LiveCounter:
             basis = v if v is not None else durable
             pool = LiveCounter._owner_pool(owner_id, tenant)
             LiveCounter._alert_owner_level(owner_id, tenant, pool, 0, basis, label)
-            crossed = past_spend_pool_stop(basis, spend_pool_stop_threshold(pool))
+            line = spend_pool_stop_threshold(pool)
+            crossed = past_spend_pool_stop(basis, line)
             realigned, won = LiveCounter._reconcile_transitions(
                 owner_id, tenant, crossed,
                 0,  # spend never rides balance fields
-                line=reasons.CUSTOMER_SPEND_POOL)
+                line=reasons.CUSTOMER_SPEND_POOL,
+                bound_micros=line, measured_micros=basis)
             if crossed and not won:
                 # The line was already open: a kill that crashed between the
                 # transition and its commit is retried here (a win's own
@@ -1137,7 +1281,8 @@ class Door:
     def plant_stop(owner_id, reason, *, ttl=True):
         """Plant the cooperative stop flag directly — an orphan (ambient
         rollback survivor, Redis-flush leftover) when ttl=False, or a
-        normally-planted flag when ttl=True."""
+        normally-planted flag when ttl=True. A planted flag is a bare word:
+        it says how no episode opened, so it reads with no opening facts."""
         if ttl:
             _client().set(_stop_key(owner_id), reason, ex=COUNTER_TTL_SECONDS)
         else:
@@ -1145,12 +1290,15 @@ class Door:
 
     @staticmethod
     def stop_reason(owner_id):
-        """The raw flag value (None = no flag) — presence/absence checks
+        """The flag's word (None = no flag) — presence/absence checks
         without the verdict dressing of ``LiveCounter.read``."""
-        v = _client().get(_stop_key(owner_id))
-        if v is None:
-            return None
-        return v.decode() if isinstance(v, bytes) else str(v)
+        return _read_flag(_client().get(_stop_key(owner_id)))[0]
+
+    @staticmethod
+    def stop_opening(owner_id):
+        """The opening facts the flag carries beside its word (#569), or None
+        when there is no flag."""
+        return _read_flag(_client().get(_stop_key(owner_id)))[1]
 
     @staticmethod
     def delete_stop(owner_id):

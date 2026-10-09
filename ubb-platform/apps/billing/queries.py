@@ -105,37 +105,36 @@ def record_live_usage_debit(owner_id, tenant, billed_cost_micros, *,
     record_usage time so the response can carry a real stop verdict (P3 reads
     it). Exposed here (the sanctioned billing read/port contract) so metering
     need not import a billing internal — mirrors is_usage_period_closed().
-    No-op unless the tenant has enforcement enabled. Returns the live verdict
-    dict ({mode, balance_micros|spend_micros, stop fields}) or None.
+    Returns None unless the tenant enforces; otherwise the live verdict dict
+    ({mode, balance_micros|spend_micros} where the counters moved, and the
+    stop fields) — and the stop fields come back for EVERY report, a zero,
+    unpriced or (postpaid) back-dated one included, which moves no counter
+    but still hears the standing stop (#569, ADR-0019 §7).
 
     The counters debited are the billing owner's; the stop fields are those
     of the recording's customer, ``customer_id`` — every customer-wide stop
-    that applies to it, named as :func:`read_live_stop` names one (#609).
-    Required, as it is there: an acknowledgement that left it out would
-    fall back to the owner's stops alone and say nothing about it.
+    that applies to it: the billing owner's lines and, for a pooled seat,
+    the seat's own Pool level (#609). The owner's stop is named over the
+    seat's — the precedence the owner and consultant confirmed (2026-10-08)
+    — and the seat's when the owner stands unstopped; both carry the scope
+    ``customer``. Required: an acknowledgement that left it out would fall
+    back to the owner's stops alone and say nothing about it.
+
+    The stop fields are {stop, stop_reason, stop_scope, trigger_source,
+    stop_bound_micros, stop_measured_micros, stop_customer_id}: the named
+    stop, how its episode opened (#569 — the mechanism, and the bound and
+    amount it opened on, null where the flag carries none) and WHOSE line
+    it is (the billing owner or the seat), which the recording keeps and
+    the wire does not publish (#569, ADR-0019 §4).
+
+    There is no second, replay-time read beside this one: a replay answers
+    from what the original acknowledgement kept (#569), so the live verdict
+    is read once, by the recording that is acknowledged.
     """
     from apps.billing.gating.services.live_counter import LiveCounter
     return LiveCounter.debit(
         owner_id, tenant, billed_cost_micros, customer_id=customer_id,
         effective_at=effective_at, now=now)
-
-
-def read_live_stop(owner_id, tenant, *, customer_id) -> dict:
-    """Read the customer-wide stop verdict for a recording of
-    ``customer_id`` funded by the billing owner ``owner_id`` — the
-    cross-product port for the metering replay paths. Returns
-    {stop, stop_reason, stop_scope}; {stop: False, ...} when enforcement is off
-    (short-circuits before touching Redis).
-
-    EVERY CUSTOMER-WIDE STOP THAT APPLIES IS READ, AND ONE IS NAMED (#609):
-    the billing owner's lines and, for a pooled seat, the seat's own Pool
-    level. The owner's stop is named over the seat's — the precedence the
-    owner and consultant confirmed (2026-10-08) — and the seat's when the
-    owner stands unstopped; both carry the scope ``customer``. ``customer_id``
-    is REQUIRED: a read that omitted it would silently drop the seat's own
-    stop, which is the defect #609 closed."""
-    from apps.billing.gating.services.live_counter import LiveCounter
-    return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
 
 
 def get_negative_balance_stats(tenant_id=None):
@@ -402,7 +401,9 @@ def customer_spend_pool_utilisation(tenant_id, customer_id) -> dict:
 def get_open_customer_stops(owner_id, tenant_id):
     """Every STOP line currently holding the owner, as plain data, in line
     order — ``[{episode_seq, reason, control_family, control_id,
-    transitioned_at}, ...]``, empty when no stop is open (#458, slice 6 §9).
+    transitioned_at, trigger_source, stop_bound_micros,
+    stop_measured_micros}, ...]`` (the last three how the episode opened,
+    #569), empty when no stop is open (#458, slice 6 §9).
     A customer stopped by its pool and by its floor at once answers two
     rows, one per episode; the stop-context tagging marks each. The read is
     the ledger service's own (`open_stop_lines`), the one the lifting paths

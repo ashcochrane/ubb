@@ -27,12 +27,13 @@ Pool-and-Pool case pins what the wire can show (the stop, and both lines
 itemised).
 
 Every case runs on both recording routes: the shape is a mixin, bound twice,
-and each binding says how its route records one report. The replay is pinned
-as it stands before #569: it reads the stops standing NOW. #569's snapshot
-will freeze what the original acknowledgement named, and inverts the two
-pins here that say otherwise (each marked "Before #569").
+and each binding says how its route records one report. A replay answers
+from what the original acknowledgement kept (#569) — never from the stops
+standing now — so the two pins #609 wrote against the earlier replay
+("Before #569") are inverted here, deliberately and without a compatibility
+path: the tipping report's replay stays unstopped, and a stopped report's
+replay stays stopped, with its figures, after the seat's stop clears.
 """
-import json
 import uuid
 from unittest import mock
 
@@ -41,12 +42,12 @@ from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.gating.services.stop_signal_service import (
     STATE_STOPPED, StopSignalService)
 from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_stops_postpaid import (
-    DOORBELL, PoolTestBase)
+    DOORBELL, PoolTestBase, ThroughABatchItem, ThroughTheSingleRoute)
 from apps.billing.wallets.models import Wallet
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from core.vocabulary import TASK_STATUS_KILLED
+from core.vocabulary import TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST
 
 #: The seat level's line: the tenant default, which reaches every seat and
 #: never a business, so each seat has a Pool of its own at this figure.
@@ -283,23 +284,30 @@ class APooledSeatsOwnPoolStopReachesItsAcknowledgements:
 
         for ack in self._fresh_and_replayed(self.seat1):
             self._assert_not_stopped(ack)
-        # Before #569 a replay reads the stops standing now.
-        self.assertFalse(self._report(self.seat1, key=stopped_key)["stop"])
+        # INVERTED BY #569: the key was first acknowledged stopped, and its
+        # replay says so still — with the seat's line's figures — though the
+        # stop has cleared since. (Before #569 this said `stop: false`.)
+        replayed = self._report(self.seat1, key=stopped_key)
+        self._assert_stopped(replayed, reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(
+            (replayed["trigger_source"], replayed["stop_bound_micros"],
+             replayed["stop_measured_micros"]),
+            (TRIGGER_SOURCE_USAGE_INGEST, SEAT_LINE, SEAT_LINE))
 
-    # -- the replay, as it stands before #569 -------------------------------
+    # -- the replay answers the original ------------------------------------
 
-    def test_before_569_a_replay_reads_the_seats_stop_standing_now(self):
-        """The report that reached the seat's level was acknowledged
-        un-stopped; replayed after the drawdown drove the seat's line, it
-        carries the seat's stop, because a replay reads the stops standing
-        now. #569's snapshot answers the original instead, and inverts this
-        pin."""
+    def test_a_replay_of_the_tipping_report_stays_unstopped(self):
+        """INVERTED BY #569 (it was `test_before_569_a_replay_reads_the_seats_
+        stop_standing_now`). The report that reached the seat's level was
+        acknowledged un-stopped, and its replay after the drawdown drove the
+        seat's line still says so: a replay answers what the original said,
+        not the stops standing now."""
         self._default_pool(SEAT_LINE)
         tipping_key = self._stop_the_seat_at_its_own_level(self.seat1)
 
         replayed = self._report(self.seat1, key=tipping_key)
 
-        self._assert_stopped(replayed, reasons.CUSTOMER_SPEND_POOL)
+        self._assert_not_stopped(replayed)
 
     # -- fail-open, and a tenant that does not enforce ----------------------
 
@@ -331,22 +339,12 @@ class APooledSeatsOwnPoolStopReachesItsAcknowledgements:
 
 
 class APooledSeatsOwnPoolStopOnTheSingleRouteTest(
-        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
-
-    def _through_the_route(self, customer, **fields):
-        return self._record(customer, **fields)
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements,
+        ThroughTheSingleRoute, PoolTestBase):
+    pass
 
 
 class APooledSeatsOwnPoolStopOnABatchItemTest(
-        APooledSeatsOwnPoolStopReachesItsAcknowledgements, PoolTestBase):
-    """The other route, owed by name: one batch item is one single report."""
-
-    def _through_the_route(self, customer, **fields):
-        body = {"events": [self._usage(customer, **fields)]}
-        with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
-            response = self.http.post("/api/v1/metering/usage/batch",
-                                      data=json.dumps(body), **self._headers())
-        self.assertEqual(response.status_code, 200, response.content)
-        [result] = response.json()["results"]
-        self.assertTrue(result["accepted"], result)
-        return result
+        APooledSeatsOwnPoolStopReachesItsAcknowledgements,
+        ThroughABatchItem, PoolTestBase):
+    pass

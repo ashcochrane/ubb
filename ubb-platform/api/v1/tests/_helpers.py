@@ -97,6 +97,27 @@ def a_tenant(name="T", *, fields=()):
     return tenant, raw_key
 
 
+def a_live_client(live_server, **tenant_fields):
+    """A tenant with one customer, `acme`, and the real SDK client pointed at
+    the live server — what a module driving the SDK over HTTP starts from.
+    `max_retries=0`, so a retry can never hide the one answer under test.
+    ``tenant_fields`` sets the tenant's posture; metering-only by default.
+    Returns ``(client, tenant, customer)``; the caller closes the client.
+
+    ⚠ SHARED SINCE #569, the second module to drive the SDK against the live
+    server (`test_sdk_work_block_over_the_wire.py` was the first). The SDK is
+    imported here rather than at the top, so a module that never drives it
+    does not come to depend on its install."""
+    from ubb.metering import MeteringClient
+    tenant = Tenant.objects.create(
+        name="T", **{"products": ["metering"], **tenant_fields})
+    _, raw_key = TenantApiKey.create_key(tenant)
+    customer = Customer.objects.create(tenant=tenant, external_id="acme")
+    client = MeteringClient(api_key=raw_key, base_url=live_server.url,
+                            max_retries=0)
+    return client, tenant, customer
+
+
 def ask(raw_key, **params):
     """One economic question, with the measures and axes repeated properly.
 

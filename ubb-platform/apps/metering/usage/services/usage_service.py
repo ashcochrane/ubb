@@ -11,10 +11,10 @@ from core.crossing import ceiling_fields
 from core.time_windows import closed_months, month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
-    TRIGGER_SOURCE_USAGE_INGEST)
+    TRIGGER_SOURCE_USAGE_INGEST, USAGE_EVENT_KIND_METERED_USAGE)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
-    Posting, PostingMeasurement)
+    Posting, PostingMeasurement, StopAcknowledgement)
 from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
@@ -194,43 +194,75 @@ def _inherit_dimensions(task_id, dimension_slots):
     return out
 
 
-_UNRESOLVED = object()  # sentinel: _result should look the parent up itself
+class StopAcknowledgementMissing(RuntimeError):
+    """A posting the recording path wrote has no stop acknowledgement (#569).
+
+    AN INVARIANT VIOLATION, NOT A STATE TO ANSWER. The record is written in
+    the recording's own savepoint, with its posting, so one without the
+    other means something wrote a metered posting around the recording
+    path. A replay answers ONLY from what the original acknowledgement kept,
+    and reconstructing that from today's flag, unit, Pool or counter is
+    exactly what the owner's ruling forbids — so it refuses, loudly, rather
+    than answer something the original never said. Not a ``ValueError``: it
+    is not the caller's request that is wrong, and no route turns it into a
+    422."""
+
+    def __init__(self, posting):
+        super().__init__(
+            f"posting {posting.id} was recorded under idempotency_key "
+            f"{posting.idempotency_key!r} with no stop acknowledgement kept "
+            "for it; a replay answers only from what the original "
+            "acknowledgement said and never reconstructs it")
 
 
-def _result(event, *, task=None,
-            task_total_billed=None, task_total_provider=None,
-            task_total_unresolved=None, task_total_unpriced=None,
-            stop=False, stop_reason=None, stop_scope=None,
-            suspended=False, new_balance_micros=None,
-            parent_task_id=_UNRESOLVED):
-    """Build the recording response — a new event's, or a replay's.
+class KeyHeldByACharge(ValueError):
+    """A recording sent under the key a delivered fixed-price unit's Charge
+    posting holds (#569).
+
+    The Charge's posting is written by the projection under a key UBB
+    derives (``task:<id>``, ``charge_service.derived_key``), shares the
+    posting table's per-customer key space, and acknowledges nothing — so it
+    has no stop acknowledgement and is never the original of a usage report.
+    A report sent under that key is refused before anything is admitted or
+    recorded: answering it with the Charge's posting would hand the caller
+    someone else's record, and recording it would collide with the key. A
+    ``ValueError``, so both routes refuse it as every other validation
+    failure is refused — a 422, or a rejected batch item."""
+
+    def __init__(self, idempotency_key):
+        super().__init__(
+            f"idempotency_key {idempotency_key!r} already identifies the "
+            "Charge UBB recorded when a unit of work sold at one agreed price "
+            "was delivered, not a usage report; send this report under a key "
+            "of its own")
+
+
+def _result(event, acknowledged, *, task=None):
+    """Build the recording response — a new event's, or a replay's — from
+    the posting row and the stop acknowledgement it keeps.
 
     One-rule (#37): every recorded event answers success; the stop
     instruction rides these fields. The named unit's BOTH running totals
-    travel, denominationally explicit; ``parent_task_id`` names the unit's
-    parent when the unit is a subtask (#38) — the happy path passes it from
-    the accumulated row, replay paths leave it to the fallback lookup here
-    (parent is immutable, so a replay can never read it stale).
+    travel, denominationally explicit.
 
-    Tier-2 (D5/I4): the customer-wide spend-stop verdict travels on EVERY
-    return path of the recording path — the happy path AND every replay, all
-    of which `UsageService.replay` answers — so a replayed event for an
-    already-stopped owner never reports "all clear".
+    ⚠ BOTH PATHS BUILD IT FROM THE SAME RECORD (#569, ADR-0019). Every stop
+    fact, the ceiling assessment beside them and the named unit's parent
+    are read off ``acknowledged`` — the ``StopAcknowledgement`` the
+    recording wrote in its own savepoint — on the fresh path and on every
+    replay alike, so the two cannot disagree. A replay reads nothing else
+    for them: not the live flag, the unit of work, a Pool, configuration, a
+    counter or ``Posting.stop_context``. That retires two older rules, by
+    the owner's and consultant's ruling of 2026-10-08: Tier-2's "every
+    replay reads the stop flag NOW" (D5/I4) and #452's "the ceiling
+    assessment on a replay is the unit's standing NOW". A replay of a
+    report first acknowledged unstopped stays unstopped; a replay of a stop
+    names the original mechanism, bound and amount.
 
-    ``task`` is the accumulated row on the happy path; a replay passes none
-    and the unit is read back here (#452) — the same one lookup the parent
-    fallback already made — so the ceiling assessment on a replayed ack is
-    the unit's standing NOW, on `stop`'s own footing (the durable flag is
-    read at replay time too), while the totals stay null because they say
-    what THIS recording did.
+    ``task`` is the accumulated row on the fresh path, for the totals; a
+    replay passes none, and the totals stay null because they say what THIS
+    recording did.
     """
-    if task is None and event.task_id:
-        from apps.platform.work.models import Task
-        task = Task.objects.filter(id=event.task_id).only(
-            "id", "parent_id", "task_cogs_ceiling_micros",
-            "total_provider_cost_micros", "unresolved_event_count").first()
-    if parent_task_id is _UNRESOLVED:
-        parent_task_id = task.parent_id if task is not None else None
+    parent_task_id = acknowledged.parent_task_id
     return {
         "event_id": str(event.id),
         "provider_cost_micros": event.provider_cost_micros,
@@ -247,28 +279,40 @@ def _result(event, *, task=None,
         # idempotent replay answers what the original recording concluded.
         "pricing_status": event.pricing_status,
         "not_applicable_reason": event.not_applicable_reason,
-        "new_balance_micros": new_balance_micros, "suspended": suspended,
+        "new_balance_micros": None, "suspended": False,
         "task_id": str(event.task_id) if event.task_id else None,
         "parent_task_id": str(parent_task_id) if parent_task_id else None,
-        "task_total_billed_cost_micros": task_total_billed,
-        "task_total_provider_cost_micros": task_total_provider,
+        "task_total_billed_cost_micros":
+            task.total_billed_cost_micros if task is not None else None,
+        "task_total_provider_cost_micros":
+            task.total_provider_cost_micros if task is not None else None,
         # The unit total above is a FLOOR wherever this is non-zero (#328) — a
         # caller watching its own spend against a COGS limit is watching a
         # lower bound, and the limit has therefore not been shown to be safe.
-        "task_total_unresolved_event_count": task_total_unresolved,
+        "task_total_unresolved_event_count":
+            task.unresolved_event_count if task is not None else None,
         # And the unit's BILLED total is a floor wherever THIS is non-zero
         # (#351). Two counts, because a caller watching spend against a limit is
         # watching the provider total, while a caller reconciling what it will
         # be charged is watching the billed one — and the same event need not be
         # missing from both.
-        "task_total_unpriced_event_count": task_total_unpriced,
-        "stop": stop, "stop_reason": stop_reason, "stop_scope": stop_scope,
-        # WHERE THE NAMED UNIT STANDS AGAINST ITS CEILING (#452): the row's
-        # own derived assessment and the utilisation beside it, as one value
-        # spelled once for every response that carries it. Null exactly when
-        # no unit is named; on a replay it is the unit's standing now (see
-        # the docstring).
-        **ceiling_fields(task.ceiling_assessment if task is not None else None),
+        "task_total_unpriced_event_count":
+            task.unpriced_event_count if task is not None else None,
+        "stop": acknowledged.stop, "stop_reason": acknowledged.stop_reason,
+        "stop_scope": acknowledged.stop_scope,
+        # HOW THE STOP WAS APPLIED AND MEASURED (#569): the mechanism, the
+        # bound `stop_reason` names as it stood when the stop was established,
+        # and the amount measured against it then — null where none applies.
+        "trigger_source": acknowledged.trigger_source,
+        "stop_bound_micros": acknowledged.stop_bound_micros,
+        "stop_measured_micros": acknowledged.stop_measured_micros,
+        # WHERE THE NAMED UNIT STOOD AGAINST ITS CEILING (#452): the row's
+        # own derived assessment and the utilisation beside it, as this
+        # recording assessed it — and so the ORIGINAL's on a replay (#569).
+        # Null exactly when no unit is named.
+        "ceiling_status": acknowledged.ceiling_status,
+        "ceiling_used_percentage": acknowledged.ceiling_used_percentage,
+        "ceiling_remaining_micros": acknowledged.ceiling_remaining_micros,
         # The itemized past-limit array (#41, spec §H) — read from the event
         # row, so idempotent replays return the ORIGINAL context unchanged.
         "stop_context": event.stop_context,
@@ -301,19 +345,59 @@ def _tag_stop_context(event, **builder_kwargs):
         event.stop_context = ctx
 
 
-def _replay_stop(customer, tenant):
-    """Customer-wide stop verdict for the idempotent-replay return paths —
-    every customer-wide stop that applies to ``customer``, its billing
-    owner's and, for a pooled seat, its own Pool level's, named by the port's
-    precedence (#609). Skips the owner resolve + Redis read entirely when
-    enforcement is off, so the common replay path stays fast for un-enrolled
-    tenants."""
-    from apps.platform.tenants.flags import enforcing
-    if not enforcing(tenant):
-        return {}
-    from apps.billing.queries import read_live_stop
-    return read_live_stop(customer.resolve_billing_owner().id, tenant,
-                          customer_id=customer.id)
+def _the_stop_it_acknowledges(task, verdicts, live):
+    """What this recording's acknowledgement says about stopping — every
+    field its ``StopAcknowledgement`` keeps (#569).
+
+    THE SCALAR SLOT CARRIES ONE VERDICT, by the precedence that stands: a
+    unit-scoped verdict wins over the customer-wide one (which still
+    surfaces on the next acknowledgement and via ``customer.stopped``), and
+    among unit verdicts the WIDEST tripped scope wins — ``reasons.unit_stop``
+    owns that, and its figures follow the scope. The itemised multi-line
+    story is the posting's ``stop_context`` array.
+
+    * A unit's ceiling crossed by THIS recording was applied by this lane —
+      ``usage_ingest``, the mechanism ``_execute_kills`` names on the kill —
+      on the governing unit's pinned ceiling and its supplier cost total at
+      the crossing, off the accumulate verdict (ADR-0019 §2).
+    * ``task_not_active`` names no bound and no mechanism applied anything
+      on this report: null, null, null.
+    * A customer-wide stop is the live verdict's: the stop the flags name
+      (#609's precedence — the business's line over a pooled seat's own),
+      the mechanism that OPENED its episode and the figures it opened on,
+      which ride the flag (ADR-0019 §2, §6), and WHOSE line it is (ADR-0019 §4), kept here
+      and never published.
+    * Nothing stopped: every fact null.
+
+    The named unit's ceiling assessment and parent are kept beside them, as
+    this recording saw them, so a replay reads no unit of work at all."""
+    acknowledged = {
+        "stop": False, "stop_reason": None, "stop_scope": None,
+        "trigger_source": None, "stop_bound_micros": None,
+        "stop_measured_micros": None, "stop_task_id": None,
+        "stop_customer_id": None,
+        **ceiling_fields(task.ceiling_assessment if task is not None else None),
+        "parent_task_id": task.parent_id if task is not None else None,
+    }
+    if verdicts is not None:
+        from apps.platform.work import reasons
+        unit = reasons.unit_stop(verdicts, unit_id=task.id,
+                                 is_subtask=task.parent_id is not None)
+        if unit is not None:
+            crossed = unit["stop_reason"] in reasons.CROSSING_REASONS
+            acknowledged.update(
+                stop=True, **unit,
+                trigger_source=TRIGGER_SOURCE_USAGE_INGEST if crossed else None)
+            return acknowledged
+    if live.get("stop"):
+        acknowledged.update(
+            stop=True, stop_reason=live["stop_reason"],
+            stop_scope=live["stop_scope"],
+            trigger_source=live["trigger_source"],
+            stop_bound_micros=live["stop_bound_micros"],
+            stop_measured_micros=live["stop_measured_micros"],
+            stop_customer_id=live["stop_customer_id"])
+    return acknowledged
 
 
 @dataclass(frozen=True)
@@ -423,9 +507,10 @@ class RecordingInput:
 
 
 # What the recording core hands back: the created event row, the accumulate
-# primitive's outputs (both None for an unattributed event), and the
-# live-debit verdict dict.
-RecordingOutcome = namedtuple("RecordingOutcome", "event task verdicts live")
+# primitive's outputs (both None for an unattributed event), the live-debit
+# verdict dict, and the stop acknowledgement kept with the event (#569).
+RecordingOutcome = namedtuple("RecordingOutcome",
+                              "event task verdicts live acknowledged")
 
 
 class RecordingConflict(IntegrityError):
@@ -482,16 +567,18 @@ def _execute_kills(kills, *, tenant_id, customer_id):
 class UsageService:
     @staticmethod
     def _record_core(inp):
-        """The recording body (#112): price → create → accumulate inside a
-        savepoint, then live-debit → stop-context tag → backfill-dirty marker
-        → UsageRecorded emission → kill registration. ``record_new_usage``
-        is a thin input adapter over this core.
+        """The recording body (#112): price → create → accumulate → live-debit
+        → stop acknowledgement inside a savepoint, then stop-context tag →
+        backfill-dirty marker → UsageRecorded emission → kill registration.
+        ``record_new_usage`` is a thin input adapter over this core.
 
         Must run inside the caller's transaction (write_event asserts it). The
-        savepoint around price/create/accumulate is the idempotency boundary:
-        its IntegrityError propagates as RecordingConflict, with everything
-        after it unentered, and ``record_new_usage`` answers it with the
-        replay result.
+        savepoint is the idempotency boundary: its IntegrityError propagates
+        as RecordingConflict, with everything after it unentered, and
+        ``record_new_usage`` answers it with the replay result. The live
+        debit and the stop acknowledgement joined it in #569 — the
+        acknowledgement is written with its posting or not at all, and the
+        debit before it decides what it says.
 
         Kill execution (#112): the core computes reasons.kill_plan inside the
         recording transaction and registers execution on its own
@@ -639,22 +726,35 @@ class UsageService:
                         # would make one of the unit's two totals lie.
                         pricing_status=costing.pricing_status,
                         tenant_id=tenant.id, customer_id=customer.id)
+                # Tier-2 (P2/WS1): maintain the synchronous live counter on the
+                # SAME billing owner the async drawdown will debit. Reached only
+                # once the posting's insert has succeeded — a duplicate key is
+                # refused above, before this line, so a replay race never
+                # double-decrements — and it raises nothing (every failure
+                # inside it logs and reads). Returns None unless the tenant
+                # enforces. Routed through the sanctioned billing read/port
+                # contract (apps.billing.queries) — metering must not import a
+                # billing internal directly (product-boundary ADR-001). The
+                # stop it answers is the RECORDING CUSTOMER's (#609): the
+                # owner's lines and, for a pooled seat, the seat's own Pool
+                # level — and it answers for a report it does not count, too
+                # (#569, ADR-0019 §7).
+                from apps.billing.queries import record_live_usage_debit
+                live = record_live_usage_debit(
+                    inp.billing_owner_id, tenant, billed_cost_micros,
+                    customer_id=customer.id,
+                    effective_at=inp.effective_at, now=inp.now) or {}
+                # WHAT THIS RECORDING'S ACKNOWLEDGEMENT SAYS ABOUT STOPPING,
+                # KEPT IN THE SAME SAVEPOINT AS ITS POSTING (#569). Every
+                # recorded result keeps one, stopped or not, and every replay
+                # of this key answers from it — so it is decided once, here,
+                # from the verdicts that decide the acknowledgement, and the
+                # posting and it commit or roll back together.
+                acknowledged = StopAcknowledgement.objects.create(
+                    posting=event,
+                    **_the_stop_it_acknowledges(task, verdicts, live))
         except IntegrityError as exc:
             raise RecordingConflict(str(exc)) from exc
-        # Tier-2 (P2/WS1): maintain the synchronous live counter on the SAME
-        # billing owner the async drawdown will debit. Reached only once the
-        # event has committed to the savepoint (the IntegrityError replay race
-        # propagates above, so a duplicate never double-decrements). No-op when
-        # enforcement_mode is off. Routed through the sanctioned billing
-        # read/port contract (apps.billing.queries) — metering must not import
-        # a billing internal directly (product-boundary ADR-001). The stop it
-        # answers is the RECORDING CUSTOMER's (#609): the owner's lines and,
-        # for a pooled seat, the seat's own Pool level.
-        from apps.billing.queries import record_live_usage_debit
-        live = record_live_usage_debit(
-            inp.billing_owner_id, tenant, billed_cost_micros,
-            customer_id=customer.id,
-            effective_at=inp.effective_at, now=inp.now) or {}
         # Stop-context tagging (#41): runs AFTER the live debit so a fresh
         # crossing (stop_episodes_opened — one entry per line this debit
         # tipped) marks THIS event as each episode's tipping event; still
@@ -709,7 +809,7 @@ class UsageService:
                 transaction.on_commit(
                     lambda: _execute_kills(kills, tenant_id=tenant.id,
                                            customer_id=customer.id))
-        return RecordingOutcome(event, task, verdicts, live)
+        return RecordingOutcome(event, task, verdicts, live, acknowledged)
 
     @staticmethod
     def replay(tenant, customer, idempotency_key):
@@ -731,17 +831,35 @@ class UsageService:
         (`_result`) — so configuration changed since, a publication included,
         cannot alter it, and an admission it would now fail cannot refuse it.
 
-        `select_related` on the measurement child (#270): a replay's response
-        carries the ORIGINAL quantities, which the posting reads through the
-        child — and the replay path is the hot one, so it pays for that read
-        here rather than a second query per retry.
+        AND EVERY STOP FACT IS READ OFF WHAT THE ORIGINAL ACKNOWLEDGEMENT KEPT
+        (#569): its ``StopAcknowledgement`` and NOTHING ELSE — never the live
+        stop flag, the unit of work, a Pool, configuration, a counter or the
+        posting's stop context. A metered posting with none raises
+        ``StopAcknowledgementMissing``; nothing is reconstructed. A posting
+        of another kind under this key — a delivered fixed-price unit's
+        Charge, written under a key UBB derived — acknowledged nothing and
+        is never a report's original: the report is refused first
+        (``KeyHeldByACharge``).
+
+        `select_related` on the measurement child (#270) and on the stop
+        acknowledgement (#569): a replay's response carries the ORIGINAL
+        quantities and the ORIGINAL stop, and the replay path is the hot
+        one, so both ride the one query rather than costing a read each per
+        retry.
         """
-        existing = Posting.objects.select_related("measurement").filter(
+        existing = Posting.objects.select_related(
+            "measurement", "stop_acknowledgement").filter(
             tenant=tenant, customer=customer,
             idempotency_key=idempotency_key).first()
         if existing is None:
             return None
-        return _result(existing, **_replay_stop(customer, tenant))
+        if existing.kind != USAGE_EVENT_KIND_METERED_USAGE:
+            raise KeyHeldByACharge(idempotency_key)
+        try:
+            acknowledged = existing.stop_acknowledgement
+        except StopAcknowledgement.DoesNotExist:
+            raise StopAcknowledgementMissing(existing) from None
+        return _result(existing, acknowledged)
 
     @staticmethod
     def record_usage(tenant, customer, idempotency_key, **recording):
@@ -867,26 +985,8 @@ class UsageService:
                 # (or as an unexplained DoesNotExist).
                 raise exc
             return replayed
-        task, live = outcome.task, outcome.live
-        # Stop-verdict fields: a task/subtask-scoped verdict wins the scalar
-        # slot over the customer-wide verdict (which still surfaces on the
-        # next ack and via customer.stopped); among unit verdicts the WIDEST
-        # tripped scope wins — reasons.stop_fields owns that priority. The
-        # itemized multi-limit story is the past-limit ticket's stop_context
-        # array.
-        stop = live.get("stop", False)
-        stop_reason = live.get("stop_reason")
-        stop_scope = live.get("stop_scope")
-        if outcome.verdicts is not None:
-            from apps.platform.work import reasons
-            unit_reason, unit_scope = reasons.stop_fields(
-                outcome.verdicts, is_subtask=task.parent_id is not None)
-            if unit_reason is not None:
-                stop, stop_reason, stop_scope = True, unit_reason, unit_scope
-        return _result(outcome.event, task=task,
-                       task_total_billed=task.total_billed_cost_micros if task else None,
-                       task_total_provider=task.total_provider_cost_micros if task else None,
-                       task_total_unresolved=task.unresolved_event_count if task else None,
-                       task_total_unpriced=task.unpriced_event_count if task else None,
-                       parent_task_id=task.parent_id if task else None,
-                       stop=stop, stop_reason=stop_reason, stop_scope=stop_scope)
+        # The stop the acknowledgement names was decided inside the
+        # recording's savepoint and kept there (`_the_stop_it_acknowledges`);
+        # the fresh answer is built from that record exactly as every replay
+        # of this key will be.
+        return _result(outcome.event, outcome.acknowledged, task=outcome.task)

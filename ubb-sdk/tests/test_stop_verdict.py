@@ -50,6 +50,10 @@ def _stopped_ack(**overrides) -> dict:
         "event_id": "e1", "suspended": False,
         "costing_status": "known", "pricing_status": "known",
         "stop": True, "stop_reason": REASON_CODE_HARD_FLOOR, "stop_scope": "customer",
+        # The three are required keys (the owner's review of #612): a hard
+        # floor names its mechanism, a zero floor and the balance below it.
+        "trigger_source": "usage_ingest", "stop_bound_micros": 0,
+        "stop_measured_micros": -250_000,
     }
     body.update(overrides)
     return body
@@ -59,6 +63,7 @@ def _ok_ack(**overrides) -> dict:
     body = {
         "event_id": "e1", "suspended": False,
         "costing_status": "known", "pricing_status": "known", "stop": False,
+        "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
     }
     body.update(overrides)
     return body
@@ -128,6 +133,47 @@ class TheStopRaisesByDefaultTest(_ClientCase):
                                      task_id="task_1")
         self.assertEqual(cm.exception.stop_reason, "task_not_active")
         self.assertEqual(cm.exception.task_id, "task_1")
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_signal_says_how_the_stop_was_applied_and_measured(self, mock_post):
+        """#569: the mechanism, the bound and the amount measured read
+        straight off the acknowledgement the signal carries — properties
+        over ``result``, so the two cannot disagree."""
+        _responding(mock_post, _stopped_ack(
+            stop_reason=REASON_CODE_TASK_COGS_CEILING, stop_scope="task",
+            task_id="task_1", trigger_source="usage_ingest",
+            stop_bound_micros=5_000_000, stop_measured_micros=5_500_000))
+        with self.assertRaises(UBBStopRequested) as cm:
+            self.client.record_usage(customer_id="c1", idempotency_key="i1",
+                                     task_id="task_1")
+        stop = cm.exception
+        self.assertEqual(stop.trigger_source, "usage_ingest")
+        self.assertEqual(stop.stop_bound_micros, 5_000_000)
+        self.assertEqual(stop.stop_measured_micros, 5_500_000)
+        self.assertEqual(
+            (stop.trigger_source, stop.stop_bound_micros, stop.stop_measured_micros),
+            (stop.result.trigger_source, stop.result.stop_bound_micros,
+             stop.result.stop_measured_micros))
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_a_real_zero_floor_is_zero_and_a_verdict_with_no_bound_is_none(self, mock_post):
+        _responding(mock_post, _stopped_ack(
+            trigger_source="enforcement_patrol", stop_bound_micros=0,
+            stop_measured_micros=-1))
+        with self.assertRaises(UBBStopRequested) as floor:
+            self.client.record_usage(customer_id="c1", idempotency_key="i1")
+        self.assertEqual(floor.exception.stop_bound_micros, 0)
+        self.assertIsNotNone(floor.exception.stop_bound_micros)
+
+        _responding(mock_post, _stopped_ack(
+            stop_reason="task_not_active", stop_scope="task",
+            trigger_source=None, stop_bound_micros=None,
+            stop_measured_micros=None))
+        with self.assertRaises(UBBStopRequested) as ended:
+            self.client.record_usage(customer_id="c1", idempotency_key="i2")
+        self.assertIsNone(ended.exception.trigger_source)
+        self.assertIsNone(ended.exception.stop_bound_micros)
+        self.assertIsNone(ended.exception.stop_measured_micros)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_no_stop_means_no_signal(self, mock_post):
@@ -382,7 +428,9 @@ class ABatchReportNeverRaisesTest(_ClientCase):
     def _accepted(event_id: str, **verdict) -> dict:
         item = {"accepted": True, "event_id": event_id, "suspended": False,
                 "costing_status": "known", "pricing_status": "known",
-                "stop": False, "stop_reason": None, "stop_scope": None}
+                "stop": False, "stop_reason": None, "stop_scope": None,
+                "trigger_source": None, "stop_bound_micros": None,
+                "stop_measured_micros": None}
         item.update(verdict)
         return item
 
@@ -390,9 +438,40 @@ class ABatchReportNeverRaisesTest(_ClientCase):
     def _rejected(code: str) -> dict:
         """The server's constant verdict for a rejected item: nothing was
         recorded, so nothing can have stopped (`api/v1/metering_endpoints.py`,
-        `_rejected`)."""
+        `_rejected`) — and nothing applied, bounded or measured a stop."""
         return {"accepted": False, "code": code, "detail": "refused",
-                "stop": False, "stop_reason": None, "stop_scope": None}
+                "stop": False, "stop_reason": None, "stop_scope": None,
+                "trigger_source": None, "stop_bound_micros": None,
+                "stop_measured_micros": None}
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_each_item_carries_how_its_stop_was_applied_typed(self, mock_post):
+        """#569: the three facts ride every item, read off its typed model —
+        a ceiling's mechanism and figures, a Pool stop's, a real zero floor
+        as 0, and None on an unstopped or rejected item."""
+        self._batch_of(mock_post, [
+            self._accepted("evt_0", stop=True,
+                           stop_reason=REASON_CODE_TASK_COGS_CEILING,
+                           stop_scope="task", trigger_source="usage_ingest",
+                           stop_bound_micros=5_000_000,
+                           stop_measured_micros=5_500_000),
+            self._accepted("evt_1", stop=True, stop_reason=REASON_CODE_HARD_FLOOR,
+                           stop_scope="customer",
+                           trigger_source="charge_projection",
+                           stop_bound_micros=0, stop_measured_micros=-3_000_000),
+            self._accepted("evt_2", trigger_source=None, stop_bound_micros=None,
+                           stop_measured_micros=None),
+            self._rejected("validation_error"),
+        ])
+        result = self.client.record_batch([
+            {"customer_id": "c1", "idempotency_key": f"k{i}"} for i in range(4)
+        ])
+        facts = [(r.trigger_source, r.stop_bound_micros, r.stop_measured_micros)
+                 for r in result.results]
+        self.assertEqual(facts, [("usage_ingest", 5_000_000, 5_500_000),
+                                 ("charge_projection", 0, -3_000_000),
+                                 (None, None, None), (None, None, None)])
+        self.assertIs(type(result.results[1].stop_bound_micros), int)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_a_stopped_item_among_unstopped_ones_is_reported_not_raised(self, mock_post):

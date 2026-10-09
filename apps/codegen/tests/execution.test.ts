@@ -276,7 +276,8 @@ handler = logging.Handler()
 handler.emit = lambda record: logged.append(record.getMessage())
 logging.getLogger("ubb_integration").addHandler(handler)
 server.queue("/api/v1/metering/usage", stop=True, stop_scope="customer",
-             stop_reason="customer_spend_pool")
+             stop_reason="customer_spend_pool", trigger_source="usage_ingest",
+             stop_bound_micros=4_000_000, stop_measured_micros=4_500_000)
 response = Shaped(usage=Shaped(input_tokens=1, output_tokens=1))
 swallowed, outcome = False, "nothing was raised"
 try:
@@ -317,7 +318,8 @@ result = {"swallowed": swallowed, "outcome": outcome, "logged": logged,
 from datetime import datetime, timezone
 integration = load()
 server.queue("/api/v1/metering/usage", stop=True, stop_scope="task",
-             stop_reason="task_cogs_ceiling")
+             stop_reason="task_cogs_ceiling", trigger_source="usage_ingest",
+             stop_bound_micros=5_000_000, stop_measured_micros=5_500_000)
 acknowledgement = integration.backfill_search_run(
     customer_id="c", idempotency_key="e", task_id="t", searches=3,
     recorded_at=datetime(2026, 8, 1, 9, 30, tzinfo=timezone.utc))
@@ -434,6 +436,9 @@ result = {
       costing_status: "known",
       pricing_status: "known",
       stop: false,
+      trigger_source: null,
+      stop_bound_micros: null,
+      stop_measured_micros: null,
       task_id: "task_1",
     };
     const answer = answered(`raw_body=${JSON.stringify(JSON.stringify(acknowledgement))}`);

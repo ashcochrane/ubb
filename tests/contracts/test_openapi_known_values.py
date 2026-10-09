@@ -742,7 +742,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # says whether the cost is missing or does not exist — the same rule, on
     # the one report whose events are, by construction, the ones that landed
     # after a stop.
-    "costing_status": Published(6, ENUM),  # + the queue's row + the itemised event
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "costing_status": Published(7, ENUM),  # + the queue's row + the itemised event
     # #323 (slice 3) — the other half of the sentence above, and the first
     # nullable marker on a RESPONSE. Nullable markers are not new:
     # `EventTypeUpdateIn` has carried two since #262, and they are the
@@ -767,7 +769,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # what they have misconfigured, and the recorded cause is the whole of that
     # answer: `cost_rate_missing` says write a rate, `reported_cost_missing`
     # says you are waiting on a supplier.
-    "unresolved_reason": Published(4, ENUM),  # + the unresolved queue's row
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "unresolved_reason": Published(5, ENUM),  # + the unresolved queue's row
     # #351 (slice 4) — the price half of both entries above, and the same four
     # nodes for the same reasons. The customer price column went nullable with
     # a status beside it, so every response that publishes a price says whether
@@ -794,7 +798,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # spelling of "the tenant has supplied nothing covering this window" is
     # this concept's own `unknown`, on this concept's own marker, rather than a
     # new status meaning the same thing one scope up.
-    "pricing_status": Published(7, ENUM),  # + the queue's row + the itemised event
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "pricing_status": Published(8, ENUM),  # + the queue's row + the itemised event
     # #351 — the second nullable marker on a response, following exactly the
     # placement `unresolved_reason` above established: in the STRING MEMBER of
     # the union, never on the union node, because `enum` and `anyOf` at one node
@@ -805,7 +811,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # could not include; neither asks which of the two causes produced a
     # `not_applicable`, and a field nothing reads is a field that goes stale.
     # The same ruling #328 made for `unresolved_reason` on the same payload.
-    "not_applicable_reason": Published(3, ENUM),  # record + list row + detail
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "not_applicable_reason": Published(4, ENUM),  # record + list row + detail
     # #355 (slice 4) — HOW a price was derived, beside the status that says
     # WHETHER it is settled. The third nullable marker on a response, in the
     # string member for the reason the two above give.
@@ -833,7 +841,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # exactly the one that has to be advertised. The other two are the reads
     # that shadow them: the diff row a tenant checks before committing, and the
     # inherited rule a client copies a starting point from.
-    "pricing_method": Published(6, ENUM),
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "pricing_method": Published(7, ENUM),
     # WHICH ARITHMETIC A RULE RUNS (#366) — seven nodes, which is every schema
     # that carries a rule in either direction rather than a subset of them.
     # Three are the immediate rate routes: the body that opens a rule, the body
@@ -902,7 +912,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # backend consumer this concept declares. The posture is recorded rather
     # than deleted because it is the argument for shipping a complete set, not a
     # note about an outstanding task.
-    "pricing_receipt_subject_type": Published(2, ENUM),
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "pricing_receipt_subject_type": Published(3, ENUM),
     # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407) — two nodes,
     # the declaration going in and the declaration coming back, which is the
     # whole surface the concept has. It is on the DECLARATION and on nothing
@@ -1016,7 +1028,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # the four events already knew. Nullable there (a row stamped before the
     # mechanism was recorded says nothing), so the marker sits on the string
     # member.
-    "trigger_source": Published(5, KNOWN_VALUES),
+    #
+    # #569 — a SIXTH and SEVENTH node: the recording acknowledgement names
+    # the mechanism that applied the stop it carries (#179 §1.3's trigger
+    # source), and the typed batch item inherits it. Nullable on both —
+    # nothing stopped, or `task_not_active` — so the marker sits on the
+    # string member.
+    "trigger_source": Published(7, KNOWN_VALUES),
     # WHICH KIND OF POSTING A ROW IS (#417) — two nodes, the usage list row and
     # the detail, which are the two responses that serve a STORED posting back
     # to a reader who did not create it. That is the rule rather than the count:
@@ -1074,7 +1092,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # #465 (slice 6 §14) — a FOURTH node: Utilisation and headroom's per-unit
     # row publishes the status as it stood at completion, the reading rule
     # for its two figures beside it.
-    "ceiling_status": Published(4, ENUM),
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "ceiling_status": Published(5, ENUM),
     # HOW A CUSTOMER SPEND POOL IS ENFORCED (#456, slice 6 §13): the three pool
     # schemas — the declaration in and out, and the status read — plus the
     # threshold event's payload in the `webhooks` section, because a value
@@ -1102,7 +1122,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # breaches each carry the word the control stopped work under — a
     # ceiling's, the pool's, the hard floor's — and the wallet row's is
     # nullable because a soft-floor marker stopped nothing.
-    "reason_code": Published(10, KNOWN_VALUES),
+    # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
+    # inherits the acknowledgement's field and its marker.
+    "reason_code": Published(11, KNOWN_VALUES),
     # WHICH CONTROL A STOP CAME FROM (#458, slice 6 §1, §15) — SIX nodes: the
     # four terminal stop events and the customer stop pair, all in the
     # `webhooks` section, because a control's family is a fact about a stop
@@ -1480,7 +1502,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # queue of unresolved amounts that did not say which of them were
     # unresolved would be the one place the ambiguity really bites.
     # ⚠ SIX SINCE #465: the event a spend-control episode itemises.
-    placed("costing_status", {"RecordUsageResponse", "UsageEventOut",
+    # ⚠ SEVEN SINCE #569: the typed batch item, which IS the acknowledgement —
+    # it inherits every field and marker of `RecordUsageResponse`, so it is on
+    # every line below that names the acknowledgement, and for the same reason.
+    placed("costing_status", {"RecordUsageResponse", "UsageBatchItemResponse",
+                              "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
                               "ItemisedEventRow", "usage.recorded"})
     # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
@@ -1503,7 +1529,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # through a list of unresolved costs is looking for what to configure, and
     # a column of `unresolved` with no reason is a column of shrugs. A queue
     # publishing the status and not the cause would be the finding.
-    placed("unresolved_reason", {"RecordUsageResponse", "UsageEventOut",
+    # ⚠ AND THE TYPED BATCH ITEM (#569) KEEPS IT TOO: it carries both, as the
+    # acknowledgement it is.
+    placed("unresolved_reason", {"RecordUsageResponse", "UsageBatchItemResponse",
+                                 "UsageEventOut",
                                  "UsageEventDetailOut", "UnresolvedQueueRow"})
     # THE PRICE HALF OF BOTH SETS ABOVE, on the same rule and the same
     # asymmetry: the status rides the payload because two products accumulate
@@ -1525,11 +1554,14 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # revenue for this window settled, and if not, why not — and `unknown`
     # there is a tenant that has supplied no figure covering it. It is the
     # placement that keeps the four revenue states from gaining a fifth.
-    placed("pricing_status", {"RecordUsageResponse", "UsageEventOut",
+    # ⚠ EIGHT SINCE #569: the typed batch item, the acknowledgement itself.
+    placed("pricing_status", {"RecordUsageResponse", "UsageBatchItemResponse",
+                              "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
                               "ItemisedEventRow", "usage.recorded",
                               "SuppliedRevenueWindowOut"})
-    placed("not_applicable_reason", {"RecordUsageResponse", "UsageEventOut",
+    placed("not_applicable_reason", {"RecordUsageResponse",
+                                     "UsageBatchItemResponse", "UsageEventOut",
                                      "UsageEventDetailOut"})
     # HOW a price was derived, beside the status saying WHETHER it is settled
     # (#355). The rule is "wherever the receipt goes", and it is asserted here
@@ -1543,7 +1575,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # schema that carries the method in either direction — the two responses
     # publishing the receipt, the two bodies that state a rule, the diff row
     # that shows one changing, and the inherited rule a client copies from.
-    placed("pricing_method", {"RecordUsageResponse", "UsageEventDetailOut",
+    # ⚠ SEVEN SINCE #569: the receipt now goes on the typed batch item too (it
+    # inherits the acknowledgement), so by the rule the method does.
+    placed("pricing_method", {"RecordUsageResponse", "UsageBatchItemResponse",
+                              "UsageEventDetailOut",
                               "BookChangeIn", "CustomerOverrideIn",
                               "RuleTermsOut", "InheritedPricingRule"})
     # The rate's arithmetic shape (#366), on every schema carrying a rule in
@@ -1573,7 +1608,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # so there is nothing on that payload for a subject type to be about. Said
     # here rather than left silent, because a marker missing from a payload and
     # a marker that was never due there are indistinguishable from the count.
+    # ⚠ THREE SINCE #569: the typed batch item publishes the receipt (it
+    # inherits the acknowledgement), so by the rule above it carries this too —
+    # the "third response gaining the record" arrived WITH the marker.
     placed("pricing_receipt_subject_type", {"RecordUsageResponse",
+                                            "UsageBatchItemResponse",
                                             "UsageEventDetailOut"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
@@ -1662,8 +1701,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # makes this line hold the published document to the producer rather than
     # to a literal that would agree with both until one moved.
     # AND, SINCE #465, ON ONE READ: the Ceiling row of Stops and breaches.
+    # AND, SINCE #569, ON THE RECORDING ACKNOWLEDGEMENT AND ITS TYPED BATCH
+    # ITEM: the mechanism that applied the stop the acknowledgement names.
     placed("trigger_source",
-           events_whose_payload_declares("trigger_source") | {"CeilingEpisodeRow"})
+           events_whose_payload_declares("trigger_source")
+           | {"CeilingEpisodeRow", "RecordUsageResponse", "UsageBatchItemResponse"})
 
     # OUT ONLY, AND ON THE TWO RESPONSES THAT SERVE A STORED POSTING BACK
     # (#417). The rule is *where a reader meets a row it did not create* — the
@@ -1695,7 +1737,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # ceiling field beside it already states. The unit read is one call away
     # for the reader who wants it later, when it can be something else.
     # AND, SINCE #465, ON UTILISATION AND HEADROOM'S PER-UNIT ROW.
-    placed("ceiling_status", {"RecordUsageResponse", "TaskOut", "TaskDetailOut",
+    # AND, SINCE #569, ON THE TYPED BATCH ITEM, which is the acknowledgement.
+    placed("ceiling_status", {"RecordUsageResponse", "UsageBatchItemResponse",
+                              "TaskOut", "TaskDetailOut",
                               "CeilingUtilisationRow"})
     # HOW A POOL IS ENFORCED (#456): on the declaration both ways, on the
     # status read, and on the one event whose payload carries it — derived off
@@ -1712,8 +1756,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # #454 named that gap as nobody's).
     # AND, SINCE #465, ON THE THREE EPISODE ROWS OF STOPS AND BREACHES — the
     # first read surface to publish a stop.
+    # AND, SINCE #569, ON THE TYPED BATCH ITEM, which is the acknowledgement.
     placed("reason_code",
-           {"RecordUsageResponse", "CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
+           {"RecordUsageResponse", "UsageBatchItemResponse",
+            "CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
             "WalletPolicyEpisodeRow"} | events_whose_payload_declares("reason_code"))
     # WHICH CONTROL FIRED (#458): on every stop event — the same six the
     # cause rides, derived the same way — and, since #465, on the read

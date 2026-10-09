@@ -63,6 +63,9 @@ function responseWith(price: CustomerPriceScenario): RecordUsageResponse {
     stop_reason: null,
     stop_scope: null,
     stop_context: null,
+    trigger_source: null,
+    stop_bound_micros: null,
+    stop_measured_micros: null,
     task_id: null,
     parent_task_id: null,
   };

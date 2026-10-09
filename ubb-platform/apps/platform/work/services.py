@@ -787,6 +787,13 @@ class TaskService:
         - ``task_not_active``: the named unit was already in one of the five
           terminal states. The event still landed, billed, and counted into
           both totals (and the parent's).
+        - ``task_crossing`` / ``subtask_crossing`` (#569, ADR-0019 §2): beside each of
+          the two crossing flags, the figures it fired on — a
+          ``reasons.CeilingCrossing`` of the governing unit (``top`` for the
+          task flag, the subtask for its own) with its pinned ceiling and
+          its provider total after this event — or None where that flag did
+          not fire. The acknowledgement's bound and measured amount are
+          these, so they are the crossing's own figures and never a re-read.
 
         A non-active unit keeps accumulating with no limit verdicts (the
         signal already fired; re-announcing every late event would be spam);
@@ -906,14 +913,25 @@ class TaskService:
         if parent is not None:
             _add(parent)
 
+        def _crossing(unit, crossed):
+            if not crossed:
+                return None
+            return reasons.CeilingCrossing(
+                task_id=unit.id, ceiling_micros=unit.task_cogs_ceiling_micros,
+                provider_cost_micros=unit.total_provider_cost_micros)
+
         # The governing top-level task: the unit itself, or its parent.
         top = parent if parent is not None else task
         top_was_active = parent_was_active if parent is not None else was_active
+        crossed_task = top_was_active and _crossed_limit(top)
+        crossed_subtask = (parent is not None and was_active
+                           and _crossed_limit(task))
         verdicts = {
-            "crossed_task_limit": top_was_active and _crossed_limit(top),
-            "crossed_subtask_limit": (parent is not None and was_active
-                                      and _crossed_limit(task)),
+            "crossed_task_limit": crossed_task,
+            "crossed_subtask_limit": crossed_subtask,
             "task_not_active": not was_active,
+            "task_crossing": _crossing(top, crossed_task),
+            "subtask_crossing": _crossing(task, crossed_subtask),
         }
         return task, verdicts
 

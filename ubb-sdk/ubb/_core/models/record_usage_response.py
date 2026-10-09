@@ -38,7 +38,27 @@ class RecordUsageResponse:
             costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
             pricing_status (RecordUsageResponsePricingStatus):
+            stop_bound_micros (int | None): The monetary bound the stop named in `stop_reason` was measured against, as it
+                stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling
+                — the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For
+                `customer_spend_pool`: the Pool's stop line (its cap times its hard-stop percentage, over 100), for the customer
+                whose Pool it is. For `hard_floor`: the wallet's floor as a balance — the negated minimum balance, 0 or below,
+                where 0 is a real floor. Null when nothing stopped and for `task_not_active`, and never 0 for 'does not apply'.
+                Later configuration does not move it, and on an idempotent replay it is the original acknowledgement's.
+            stop_measured_micros (int | None): The monetary amount assessed against `stop_bound_micros` when the stop was
+                established. For `task_cogs_ceiling`: the governing unit of work's supplier cost (COGS) total, at or above the
+                bound. For `customer_spend_pool`: that customer's month-to-date billed charges, at or above it. For
+                `hard_floor`: the wallet balance, below it. For a customer-wide stop already standing when this report arrived,
+                it is the figure the stop opened on, not where the counter stands now. Null when nothing stopped and for
+                `task_not_active`. On an idempotent replay, the original acknowledgement's.
             suspended (bool):
+            trigger_source (None | str): The mechanism that applied the stop this acknowledgement names — never its cause,
+                which is `stop_reason`. A unit of work's ceiling (`task_cogs_ceiling`) is crossed by this report:
+                `usage_ingest`. A customer-wide stop (`customer_spend_pool`, `hard_floor`) names the mechanism that OPENED the
+                stop episode this report fell in: `usage_ingest` (a usage report's recording or its drawdown),
+                `enforcement_patrol` (the periodic reconcile) or `charge_projection` (the drawdown of a delivered fixed-price
+                unit's Charge). Null when nothing stopped, and for `task_not_active`, where no mechanism applied a stop on this
+                report. On an idempotent replay, the original acknowledgement's.
             billed_cost_micros (int | None | Unset):
             ceiling_remaining_micros (int | None | Unset):
             ceiling_status (None | RecordUsageResponseCeilingStatusType0 | Unset):
@@ -70,7 +90,10 @@ class RecordUsageResponse:
                 the amount is null wherever that status is not `known`.
             stop (bool | Unset):  Default: False.
             stop_context (list[Any] | None | Unset):
-            stop_reason (None | str | Unset):
+            stop_reason (None | str | Unset): Why UBB is asking you to stop: which bound was reached, in the registry's
+                words (the values under `x-ubb-known-values`), or `task_not_active` — the one verdict that is not a bound, which
+                UBB produces and the registry deliberately does not list: this report landed on a unit of work that had already
+                ended, and it was still recorded and charged. Null when `stop` is false. Open: accept a reason not listed here.
             stop_scope (None | str | Unset):
             task_id (None | str | Unset):
             task_total_billed_cost_micros (int | None | Unset):
@@ -84,7 +107,10 @@ class RecordUsageResponse:
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
     pricing_status: RecordUsageResponsePricingStatus
+    stop_bound_micros: int | None
+    stop_measured_micros: int | None
     suspended: bool
+    trigger_source: None | str
     billed_cost_micros: int | None | Unset = UNSET
     ceiling_remaining_micros: int | None | Unset = UNSET
     ceiling_status: None | RecordUsageResponseCeilingStatusType0 | Unset = UNSET
@@ -126,7 +152,16 @@ class RecordUsageResponse:
 
         pricing_status = self.pricing_status.value
 
+        stop_bound_micros: int | None
+        stop_bound_micros = self.stop_bound_micros
+
+        stop_measured_micros: int | None
+        stop_measured_micros = self.stop_measured_micros
+
         suspended = self.suspended
+
+        trigger_source: None | str
+        trigger_source = self.trigger_source
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -297,7 +332,10 @@ class RecordUsageResponse:
             "costing_status": costing_status,
             "event_id": event_id,
             "pricing_status": pricing_status,
+            "stop_bound_micros": stop_bound_micros,
+            "stop_measured_micros": stop_measured_micros,
             "suspended": suspended,
+            "trigger_source": trigger_source,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -372,7 +410,31 @@ class RecordUsageResponse:
 
 
 
+        def _parse_stop_bound_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        stop_bound_micros = _parse_stop_bound_micros(d.pop("stop_bound_micros"))
+
+
+        def _parse_stop_measured_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        stop_measured_micros = _parse_stop_measured_micros(d.pop("stop_measured_micros"))
+
+
         suspended = d.pop("suspended")
+
+        def _parse_trigger_source(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        trigger_source = _parse_trigger_source(d.pop("trigger_source"))
+
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -691,7 +753,10 @@ class RecordUsageResponse:
             costing_status=costing_status,
             event_id=event_id,
             pricing_status=pricing_status,
+            stop_bound_micros=stop_bound_micros,
+            stop_measured_micros=stop_measured_micros,
             suspended=suspended,
+            trigger_source=trigger_source,
             billed_cost_micros=billed_cost_micros,
             ceiling_remaining_micros=ceiling_remaining_micros,
             ceiling_status=ceiling_status,

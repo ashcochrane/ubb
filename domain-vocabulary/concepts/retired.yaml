@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,376 of 2,814 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,390 of 2,830 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2773,6 +2773,18 @@ measurement_key:
     # that pins the acknowledgement's precedence on both recording routes. The
     # ticket adds no migration and no generated file. (Taken twice, the second
     # after the review pass, which added and removed no file.)
+    #
+    # 2026-10-09, #569 (a stop acknowledgement says what stopped it and
+    # against what; a replay answers from what it said): 2,376 of 2,814 ->
+    # 2,390 of 2,830 tracked files (`units` 42 files / 119 occurrences,
+    # UNMOVED). 17 files arrived and 1 left. Two are migrations, excluded under
+    # `historical-migrations` (269 -> 271), so the exclusions stand at 440.
+    # The 15 swept arrivals are ADR-0019, three platform test modules (the
+    # acknowledgement's stop facts on both routes, the replay that answers
+    # from what was kept, and the SDK driven against the live server) and the
+    # eleven generated SDK models of the now-typed batch item; the one that
+    # left is the generated model of the untyped item it replaced. (Taken
+    # twice: 2,389 of 2,829 before the ADR was written.)
 
     - term: units
       retired_as: >-

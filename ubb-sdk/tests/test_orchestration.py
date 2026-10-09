@@ -104,6 +104,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             status_code=200, json=lambda: {
                 "event_id": "evt_1", "new_balance_micros": 8_500_000,
                 "suspended": False, "costing_status": "known", "pricing_status": "known",
+                "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 1_500_000,
             }
         )
@@ -132,6 +133,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             status_code=200, json=lambda: {
                 "event_id": "evt_2", "new_balance_micros": 10_000_000,
                 "suspended": False, "costing_status": "known", "pricing_status": "known",
+                "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 1_500_000,
             }
         )
@@ -152,6 +154,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             status_code=200, json=lambda: {
                 "event_id": "evt_3", "new_balance_micros": 10_000_000,
                 "suspended": False, "costing_status": "known", "pricing_status": "known",
+                "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 0,
             }
         )
@@ -171,6 +174,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
             status_code=200, json=lambda: {
                 "event_id": "evt_4", "new_balance_micros": 10_000_000,
                 "suspended": False, "costing_status": "known", "pricing_status": "known",
+                "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             }
         )
         result = self.client.record_usage(

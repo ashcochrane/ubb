@@ -89,7 +89,8 @@ class AnUnknownReasonStillTravelsTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "e1", "suspended": False, "costing_status": "known",
             "pricing_status": "known", "stop": True, "stop_reason": unseen,
-            "stop_scope": "task"})
+            "stop_scope": "task",
+            "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None})
         with self.assertRaises(UBBStopRequested) as cm:
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertEqual(cm.exception.stop_reason, unseen)
@@ -100,7 +101,8 @@ class AnUnknownReasonStillTravelsTest(unittest.TestCase):
             "event_id": "e1", "suspended": False, "costing_status": "known",
             "pricing_status": "known", "stop": True,
             "stop_reason": vocabulary.REASON_CODE_TASK_COGS_CEILING,
-            "stop_scope": "subtask"})
+            "stop_scope": "subtask", "trigger_source": "usage_ingest",
+            "stop_bound_micros": 2_000_000, "stop_measured_micros": 2_100_000})
         with self.assertRaises(UBBStopRequested) as cm:
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         self.assertEqual(cm.exception.stop_reason,

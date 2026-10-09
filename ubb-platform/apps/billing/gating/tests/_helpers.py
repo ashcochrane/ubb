@@ -14,8 +14,18 @@ The expectation lives here, in the tests' own words; a case about the OTHER
 line on a mode names it outright rather than asking this.
 """
 from apps.billing.gating.services.stop_signal_service import (
-    StopSignalService, control_id_of)
+    StopSignalService, control_id_of, opening_facts)
 from apps.platform.work import reasons
+from core.vocabulary import TRIGGER_SOURCE_USAGE_INGEST
+
+#: HOW A FIXTURE'S EPISODE OPENED, WHERE THE CASE IS NOT ABOUT IT (#569).
+#: Every lane that opens an episode states its mechanism, bound and measured
+#: amount, so a test driving the ledger directly states them too: a usage
+#: report's lane, with figures the fixture does not claim — null, which is
+#: what an episode says of a figure nobody stamped.
+FIXTURE_OPENING = opening_facts(trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                                stop_bound_micros=None,
+                                stop_measured_micros=None)
 
 
 def stop_line(tenant):
@@ -29,8 +39,10 @@ def drive_a_stop(owner_id, tenant, **kwargs):
     """Open the episode a crossing on this tenant's lane would open, with the
     control the lane would name — the resolved pool row or the row carrying
     the floor — so a case says only WHO crossed and lets the seam say what
-    that stop carries."""
+    that stop carries. It opened as ``FIXTURE_OPENING`` unless the case says
+    otherwise."""
     line = stop_line(tenant)
     return StopSignalService.drive_stop(
         owner_id, tenant, line=line,
-        control_id=control_id_of(line, owner_id, tenant), **kwargs)
+        control_id=control_id_of(line, owner_id, tenant),
+        **{**FIXTURE_OPENING, **kwargs})

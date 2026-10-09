@@ -362,6 +362,8 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {"event_id": "evt_1", "suspended": False,
                                          "costing_status": "known", "pricing_status": "known",
+                                         "trigger_source": None, "stop_bound_micros": None,
+                                         "stop_measured_micros": None,
                                          "new_balance_micros": 100}
             mock_post.side_effect = [resp_fail, resp_ok]
             result = client.record_usage(customer_id="c1",

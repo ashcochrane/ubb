@@ -31,9 +31,10 @@ GOVERNED by `enforcing` — the customer-wide family, all of it:
     `gating/patrol.py` leg 2);
   - the start gate's money-shaped refusals: the stop flag and the soft floor
     (`gating/services/risk_service.py`);
-  - the customer-scope entries of an event's stop context, and the replayed
-    acknowledgement's customer-wide verdict
-    (`usage/services/stop_context.py`, `usage_service._replay_stop`);
+  - the customer-scope entries of an event's stop context, and the fresh
+    acknowledgement's customer-wide verdict — which its replays repeat from
+    what that acknowledgement kept, never by reading the switch again
+    (`usage/services/stop_context.py`, `usage_service.record_new_usage`);
   - the ANNOUNCING expiry sweeper (`work/tasks.py::reap_stale_tasks`): under
     `off` a unit past its silence window or absolute deadline is still
     expired, by `close_abandoned_tasks`, but silently.
