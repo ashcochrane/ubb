@@ -248,13 +248,20 @@ lane" — both name an ingest lane deleted in slice 1, and this switch never was
 (`apps/platform/tenants/flags.py:live_counter_maintenance_on`)
 
 **Customer-wide stop flag**:
-The cooperative, owner-keyed Redis flag set when a live counter reaches a stop line — the wallet's
+The cooperative Redis flag set when a live counter reaches a stop line — the wallet's
 hard floor, or the pool's stop line at either level; it blocks new task starts until recovery —
-usage reports keep landing and billing.
+usage reports keep landing and billing. It is keyed by the customer whose line it is: the billing
+owner for the owner's lines, a pooled seat for the seat's own Pool level.
 Paired with resume: the moment every open stop line has cleared, the flag lifts and
 `customer.stop_cleared` fires, closing the last episode (a customer held by its pool and by its
 floor at once stays flagged until both clear, #458). The flag is the fast READ surface (ack
-verdicts) only — emission dedup lives on the signal ledger. Durable truth owns it: the hourly
+verdicts) only — emission dedup lives on the signal ledger. An acknowledgement reads every flag
+that applies to the recording's customer — its billing owner's and, for a pooled seat, the seat's
+own — and names ONE: the billing owner's stop over the seat's, because it would block the report
+whatever the seat's own state, and the seat's only when the owner stands unstopped (#609, confirmed
+by the owner and consultant). That is acknowledgement precedence only: the seat's own line, flag
+and suspension stand as they are, and `stop_context` itemises every standing line, the owner's
+first. Durable truth owns it: the hourly
 patrol re-aligns an orphaned or missing flag to the ledger's stop lines' durable state within one
 interval.
 

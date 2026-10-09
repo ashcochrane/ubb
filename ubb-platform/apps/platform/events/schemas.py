@@ -780,7 +780,9 @@ class StopFired(EventSchema):
     caller's rollback takes both, and the durable lane / reconcile re-drives
     the missed transition (late, never lost).
 
-    owner_id    = the billing owner the stop is keyed on (resolve_billing_owner).
+    owner_id    = the customer whose stop line it is: the billing owner
+                  (resolve_billing_owner) for the owner's lines, or a pooled
+                  seat for the seat's own Pool level (#459, #609).
     reason_code = WHICH customer-wide stop opened the episode — the wallet's
                   hard floor or the customer spend pool (#458, slice 6 §9):
                   the ledger line's own word, one of the stop reasons the

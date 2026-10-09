@@ -96,7 +96,8 @@ The immutable, system-owned array a posting carries when it landed past a stop �
 control that held the work, each naming the **Stop reason** under the array's `limit` key (the
 unit's own ceiling, `task_cogs_ceiling`, at either altitude — `stop_scope` carries which; the
 customer-wide stop that opened an episode, in the ledger line's own word, `customer_spend_pool` or
-`hard_floor`, one entry per open line since #458; `suspended` for an owner suspended with no open
+`hard_floor`, one entry per open line since #458 — the billing owner's lines, then a pooled seat's
+own Pool level, always late, since #609; `suspended` for an owner suspended with no open
 episode; `task_not_active` for a late event on terminal work), the scope, the trip time, the stop
 episode (customer scope), and whether the event *tipped* the line (`arrived_after: false`) or
 arrived after it. Written once at record, inside the recording transaction; never from the

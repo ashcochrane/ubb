@@ -120,6 +120,16 @@ class PoolTestBase(TestCase):
             tenant=self.tenant, customer=customer, cap_micros=cap,
             enforce_mode=mode)
 
+    def _default_pool(self, cap, mode=SPEND_POOL_ENFORCE_MODE_BLOCKING):
+        """The tenant default: it reaches every seat and never a business."""
+        return self._pool(None, cap, mode)
+
+    def _a_pooled_business_with_two_seats(self):
+        self.biz = self._customer("biz", wallet=self.WALLET,
+                                  account_type="business", billing_topology="pooled")
+        self.seat1 = self._customer("s1", account_type="seat", parent=self.biz)
+        self.seat2 = self._customer("s2", account_type="seat", parent=self.biz)
+
     def _headers(self):
         return {"content_type": "application/json",
                 "HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -137,16 +147,21 @@ class PoolTestBase(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return response.json()["task_id"]
 
-    def _record(self, customer=None, *, bills, task_id=None, **extra):
-        """One usage report through the recording route. The pool's kill is
-        registered on the recording transaction's commit; a `TestCase` never
-        commits, so the callbacks are run here with the doorbell silenced."""
+    def _usage(self, customer=None, *, bills, task_id=None, **extra):
+        """One usage report's body, as both recording routes take it."""
         data = {"customer_id": str((customer or self.customer).id),
                 "idempotency_key": f"idem-{uuid.uuid4()}",
                 "event_type": DECLARED, "provider_cost_micros": 1_000,
                 "task_id": task_id}
         data.update(what_it_bills({"bills": bills}))
         data.update(extra)
+        return data
+
+    def _record(self, customer=None, *, bills, task_id=None, **extra):
+        """One usage report through the recording route. The pool's kill is
+        registered on the recording transaction's commit; a `TestCase` never
+        commits, so the callbacks are run here with the doorbell silenced."""
+        data = self._usage(customer, bills=bills, task_id=task_id, **extra)
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             response = self.http.post("/api/v1/metering/usage",
                                       data=json.dumps(data), **self._headers())
@@ -283,14 +298,7 @@ class TwoDeclaredLevelsTest(PoolTestBase):
 
     def setUp(self):
         super().setUp()
-        self.biz = self._customer("biz", wallet=self.WALLET,
-                                  account_type="business", billing_topology="pooled")
-        self.seat1 = self._customer("s1", account_type="seat", parent=self.biz)
-        self.seat2 = self._customer("s2", account_type="seat", parent=self.biz)
-
-    def _default_pool(self, cap, mode=SPEND_POOL_ENFORCE_MODE_BLOCKING):
-        return CustomerSpendPool.objects.create(
-            tenant=self.tenant, customer=None, cap_micros=cap, enforce_mode=mode)
+        self._a_pooled_business_with_two_seats()
 
     def test_one_seats_charge_counts_toward_its_own_pool_and_its_businesss(self):
         self._default_pool(10_000_000)

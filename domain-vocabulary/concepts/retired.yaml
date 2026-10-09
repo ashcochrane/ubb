@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,375 of 2,813 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,376 of 2,814 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2765,6 +2765,14 @@ measurement_key:
     # One retired word came within a docstring of moving the count: a test
     # fixture's "minor units" of a currency, the money sense, was reworded to
     # the singular before staging rather than recorded here.
+    #
+    # 2026-10-08, #609 (a pooled seat's own Pool stop reaches its recording
+    # acknowledgements): 2,375 of 2,813 -> 2,376 of 2,814 tracked files
+    # (`units` 42 files / 119 occurrences, UNMOVED). 1 file arrived and none
+    # left, and it is swept: the exclusions stand at 438. It is the test module
+    # that pins the acknowledgement's precedence on both recording routes. The
+    # ticket adds no migration and no generated file. (Taken twice, the second
+    # after the review pass, which added and removed no file.)
 
     - term: units
       retired_as: >-
