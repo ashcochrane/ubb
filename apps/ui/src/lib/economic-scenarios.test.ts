@@ -573,22 +573,33 @@ describe("a stop, as an acknowledgement states it (#569, #585)", () => {
   // One row of ADR-0019 §2's table each, refused where that row's rule would
   // not stop on the terms it is handed.
   it("refuses figures their own reason would not stop on", () => {
-    expect(() => ceilingStop({ scope: "task", ceiling_micros: 5_000_000, cost_micros: 4_999_999 })).toThrow(
+    expect(() => ceilingStop({ scope: "task", ceiling_micros: 5_000_000n, cost_micros: 4_999_999n })).toThrow(
       /no crossing/,
     );
     expect(() =>
-      poolStop({ opened_by: "usage_ingest", stop_line_micros: 4_000_000, charges_micros: 3_999_999 }),
+      poolStop({ opened_by: "usage_ingest", stop_line_micros: 4_000_000n, charges_micros: 3_999_999n }),
     ).toThrow(/no stop/);
     expect(() =>
-      hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_000_000 }),
+      hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000n, balance_micros: -1_000_000n }),
     ).toThrow(/no stop/);
   });
 
-  it("states a hard floor's bound as a balance: negative, and a real zero as +0", () => {
-    const below = hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_500_000 });
-    expect([below.stop_bound_micros, below.stop_measured_micros]).toEqual([-1_000_000, -1_500_000]);
-    const zero = hardFloorStop({ opened_by: "enforcement_patrol", min_balance_micros: 0, balance_micros: -1 });
-    expect(Object.is(zero.stop_bound_micros, 0)).toBe(true);
+  it("states a hard floor's bound as a balance: negative, and a real zero as 0", () => {
+    const below = hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000n, balance_micros: -1_500_000n });
+    expect([below.stop_bound_micros, below.stop_measured_micros]).toEqual(["-1000000", "-1500000"]);
+    const zero = hardFloorStop({ opened_by: "enforcement_patrol", min_balance_micros: 0n, balance_micros: -1n });
+    expect(zero.stop_bound_micros).toBe("0");
+  });
+
+  // Past 2^53 a number cannot hold a figure the platform may legally publish;
+  // the scenario's terms are bigint and its figures are digits, so nothing
+  // rounds one on the way to the page.
+  it("states a figure past what a number holds, to its last digit", () => {
+    const ceiling = ceilingStop({ scope: "task", ceiling_micros: 9_007_199_254_740_993n, cost_micros: 9_223_372_036_854_775_807n });
+    expect([ceiling.stop_bound_micros, ceiling.stop_measured_micros]).toEqual([
+      "9007199254740993",
+      "9223372036854775807",
+    ]);
   });
 
   it("names no bound, no amount and no mechanism for work that had already ended", () => {

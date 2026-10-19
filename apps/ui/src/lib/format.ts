@@ -167,19 +167,40 @@ export function formatEventMicros(micros: number, currency: string): string {
 }
 
 /**
+ * A whole number of micros as the digits it was written with: a signed
+ * decimal integer, held as text.
+ *
+ * A JavaScript number holds an integer exactly only up to 2^53, and money the
+ * platform keeps in a signed 64-bit column can legally be larger, so a figure
+ * that must not round is never a number here (#585: a stop's bound and the
+ * amount measured against it). It is read off the response's text by the one
+ * surface that needs it, and formatted from its digits.
+ */
+export type ExactMicros = `${bigint}`;
+
+const WHOLE_NUMBER = /^-?(?:0|[1-9]\d*)$/;
+
+/** Whether `value` is a whole number of micros written as JSON writes one. */
+export function isExactMicros(value: unknown): value is ExactMicros {
+  return typeof value === "string" && WHOLE_NUMBER.test(value);
+}
+
+/**
  * An amount to the MICRO: every place it was written with, and never fewer
  * than two — "$5.00", "$5.000001", "-$0.000471".
  *
  * For a figure a reader holds against another (#585: a stop's bound and the
  * amount measured against it), where rounding both to a cent can show two
  * different amounts as one — a balance of -$1.000001 under a floor of -$1.00
- * reads as a tie, though it is what stopped the work. The decimal is built
- * from the integer's own digits and handed to `Intl` as text, so no division
- * can round it.
+ * reads as a tie, though it is what stopped the work. It takes the figure's
+ * digits, never a number, and hands `Intl` the decimal as text (an exact
+ * decimal since ES2023), so no step can round it at any size.
  */
-export function formatExactMicros(micros: number, currency: string): string {
-  const digits = String(Math.abs(micros)).padStart(7, "0");
-  const decimal = `${micros < 0 ? "-" : ""}${digits.slice(0, -6)}.${digits.slice(-6)}` as `${number}`;
+export function formatExactMicros(micros: ExactMicros, currency: string): string {
+  if (!isExactMicros(micros)) throw new Error(`${String(micros)} is not a whole number of micros`);
+  const negative = micros.startsWith("-");
+  const digits = (negative ? micros.slice(1) : micros).padStart(7, "0");
+  const decimal = `${negative ? "-" : ""}${digits.slice(0, -6)}.${digits.slice(-6)}` as `${number}`;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency.toUpperCase(),

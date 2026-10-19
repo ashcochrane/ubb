@@ -33,13 +33,13 @@ import {
   pricingStatusLabel,
   settledPriceMicros,
 } from "@/lib/customer-price";
-import { formatEventMicros, formatExactMicros, formatMicros } from "@/lib/format";
+import { formatEventMicros, formatExactMicros, formatMicros, type ExactMicros } from "@/lib/format";
 import { stopScopeLabel } from "@/lib/labels";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 import { describeTotal, readTotal, type TotalReading } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
-import type { RecordUsageResponse } from "../api/types";
+import type { VerifiedAcknowledgement } from "../api/types";
 
 /** What a replay's empty task totals mean, said where they would be. */
 export const REPLAY_TASK_TOTALS = "Not reported on a replay — expected: a replay adds nothing to the work.";
@@ -51,7 +51,7 @@ export function AcknowledgementCard({
   replay = false,
 }: {
   title: string;
-  response: RecordUsageResponse;
+  response: VerifiedAcknowledgement;
   currency: string;
   /** The same request sent again: its task totals are null by design. */
   replay?: boolean;
@@ -236,7 +236,7 @@ function TaskTotals({
   currency,
   replay,
 }: {
-  response: RecordUsageResponse;
+  response: VerifiedAcknowledgement;
   currency: string;
   replay: boolean;
 }) {
@@ -265,12 +265,16 @@ function TaskTotals({
  * micro under its floor is what stopped the work, and at a cent's precision
  * it would read as the floor itself.
  *
+ * It arrives as the digits UBB wrote, never as a number (`../api/exact-figures.ts`):
+ * the platform's figures run to a signed 64-bit money column, and a number
+ * would already have rounded any past 2^53 before this could format it.
+ *
  * In the card's one currency, the tenant's, because each figure is measured
  * on money this card already renders in it (ADR-0019 §2): a unit's COGS
  * beside the provider cost, a customer's billed charges beside the billed
  * cost, and the wallet's balance beside the balance after.
  */
-function StopFigure({ micros, currency }: { micros: number | null | undefined; currency: string }) {
+function StopFigure({ micros, currency }: { micros: ExactMicros | null; currency: string }) {
   return micros == null ? <Absent /> : <>{formatExactMicros(micros, currency)}</>;
 }
 

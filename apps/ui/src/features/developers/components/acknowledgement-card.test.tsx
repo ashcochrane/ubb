@@ -53,7 +53,8 @@ import {
 /** The catalogue's word for a mechanism, read through the console's own lookup. */
 const triggerSourceLabel = labelMap(TRIGGER_SOURCE_LABEL_KEYS);
 
-import type { RecordUsageResponse } from "../api/types";
+import { verificationFromText } from "../api/exact-figures";
+import type { VerifiedAcknowledgement } from "../api/types";
 import { AcknowledgementCard, REPLAY_TASK_TOTALS } from "./acknowledgement-card";
 
 /**
@@ -61,7 +62,7 @@ import { AcknowledgementCard, REPLAY_TASK_TOTALS } from "./acknowledgement-card"
  *
  * Only the price varies, so a failure below can only be about the price.
  */
-function responseWith(price: CustomerPriceScenario): RecordUsageResponse {
+function responseWith(price: CustomerPriceScenario): VerifiedAcknowledgement {
   return {
     event_id: "b1c2d3e4-5f60-4718-a92b-3c4d5e6f7081",
     suspended: false,
@@ -84,7 +85,7 @@ function responseWith(price: CustomerPriceScenario): RecordUsageResponse {
   };
 }
 
-function renderCard(response: RecordUsageResponse, replay = false) {
+function renderCard(response: VerifiedAcknowledgement, replay = false) {
   render(
     <AcknowledgementCard title="Acknowledgement" response={response} currency="usd" replay={replay} />,
   );
@@ -227,7 +228,7 @@ describe("AcknowledgementCard — the Pricing Receipt", () => {
 /** A stop word no registry entry names — a control UBB has not met, or not yet. */
 const UNRECOGNISED_STOP = "a_stop_from_next_year";
 
-function stopped(reason: string): RecordUsageResponse {
+function stopped(reason: string): VerifiedAcknowledgement {
   return { ...responseWith(knownPrice(187_500)), stop: true, stop_reason: reason, stop_scope: "task" };
 }
 
@@ -269,7 +270,7 @@ const UNRECOGNISED_MECHANISM = "a_mechanism_from_next_year";
 
 /** One recorded response that is a stop, composed from one row of ADR-0019's
  * table: only the stop varies. */
-function stoppedBy(stop: StopScenario): RecordUsageResponse {
+function stoppedBy(stop: StopScenario): VerifiedAcknowledgement {
   return { ...responseWith(knownPrice(187_500)), ...stop };
 }
 
@@ -304,7 +305,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
   it("names the mechanism a value the registry knows in the catalogue's words", () => {
     expect(TRIGGER_SOURCE_KNOWN_VALUES).toContain("enforcement_patrol");
     renderCard(
-      stoppedBy(poolStop({ opened_by: "enforcement_patrol", stop_line_micros: 4_000_000, charges_micros: 4_500_000 })),
+      stoppedBy(poolStop({ opened_by: "enforcement_patrol", stop_line_micros: 4_000_000n, charges_micros: 4_500_000n })),
     );
 
     const rendered = verdictStat("Applied by").querySelector("[data-label]");
@@ -315,7 +316,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
 
   it("renders a mechanism the registry has never seen as the token, marked, never humanised", () => {
     renderCard(
-      stoppedBy(poolStop({ opened_by: UNRECOGNISED_MECHANISM, stop_line_micros: 4_000_000, charges_micros: 4_500_000 })),
+      stoppedBy(poolStop({ opened_by: UNRECOGNISED_MECHANISM, stop_line_micros: 4_000_000n, charges_micros: 4_500_000n })),
     );
 
     const rendered = verdictStat("Applied by").querySelector("[data-label]");
@@ -326,7 +327,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
   });
 
   it("renders the bound and the amount measured against it as their figures", () => {
-    renderCard(stoppedBy(ceilingStop({ scope: "task", ceiling_micros: 5_000_000, cost_micros: 6_000_000 })));
+    renderCard(stoppedBy(ceilingStop({ scope: "task", ceiling_micros: 5_000_000n, cost_micros: 6_000_000n })));
 
     expect(shown("Bound")).toBe("$5.00");
     expect(shown("Measured")).toBe("$6.00");
@@ -335,7 +336,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
   // To the micro: a cent-rounded figure would write both as $0.00, and an
   // event's four places would round the amount.
   it("renders a small bound and amount to the micro", () => {
-    renderCard(stoppedBy(ceilingStop({ scope: "subtask", ceiling_micros: 300, cost_micros: 471 })));
+    renderCard(stoppedBy(ceilingStop({ scope: "subtask", ceiling_micros: 300n, cost_micros: 471n })));
 
     expect(shown("Bound")).toBe("$0.0003");
     expect(shown("Measured")).toBe("$0.000471");
@@ -346,7 +347,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
   // one amount.
   it("never renders a bound and the amount measured against it as one when they differ", () => {
     renderCard(
-      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_000_001 })),
+      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000n, balance_micros: -1_000_001n })),
     );
 
     expect(shown("Bound")).toBe("-$1.00");
@@ -357,7 +358,7 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
   // balance below it. The sign is the fact.
   it("renders a hard floor's negative figures as negative", () => {
     renderCard(
-      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000, balance_micros: -1_500_000 })),
+      stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 1_000_000n, balance_micros: -1_500_000n })),
     );
 
     expect(shown("Bound")).toBe("-$1.00");
@@ -366,10 +367,46 @@ describe("AcknowledgementCard — how the stop was applied (#585)", () => {
 
   // A zero floor is a real bound: it renders as the zero it is.
   it("renders a zero floor as a zero, beside the balance below it", () => {
-    renderCard(stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 0, balance_micros: -400 })));
+    renderCard(stoppedBy(hardFloorStop({ opened_by: "usage_ingest", min_balance_micros: 0n, balance_micros: -400n })));
 
     expect(shown("Bound")).toBe("$0.00");
     expect(shown("Measured")).toBe("-$0.0004");
+  });
+
+  // ⚠ The figures run to the platform's signed 64-bit money column, past what
+  // a number holds (2^53), and `JSON.parse` would round them before this card
+  // saw them. So a Verify answer is read off its TEXT — by the one function
+  // the API client and the mock both read it with — and every digit reaches
+  // the card. The answer here is text, as the platform sends it.
+  it.each([
+    ["a hard floor at the most negative amounts a money column holds", "hard_floor", "customer",
+      "-9223372036854775807", "-9223372036854775808",
+      "-$9,223,372,036,854.775807", "-$9,223,372,036,854.775808"],
+    ["a ceiling past 2^53, crossed at the largest", "task_cogs_ceiling", "task",
+      "9007199254740993", "9223372036854775807",
+      "$9,007,199,254.740993", "$9,223,372,036,854.775807"],
+  ] as const)("renders %s to its last digit, read off the answer's text", (_what, reason, scope, bound, measured, boundShown, measuredShown) => {
+    const acknowledgement = {
+      ...responseWith(knownPrice(187_500)),
+      stop: true,
+      stop_reason: reason,
+      stop_scope: scope,
+      trigger_source: "usage_ingest",
+      stop_bound_micros: "@bound",
+      stop_measured_micros: "@measured",
+    };
+    const text = JSON.stringify({ records: [{ acknowledgement }] })
+      .replace('"@bound"', bound)
+      .replace('"@measured"', measured);
+    // Not vacuous: the number `JSON.parse` makes of the text has lost digits.
+    expect(String(JSON.parse(text).records[0].acknowledgement.stop_measured_micros)).not.toBe(measured);
+
+    const read = verificationFromText(text).records[0]?.acknowledgement;
+    expect(read).toBeDefined();
+    renderCard(read!);
+
+    expect(shown("Bound")).toBe(boundShown);
+    expect(shown("Measured")).toBe(measuredShown);
   });
 
   // ⚠ THE ASSERTION THIS SECTION EXISTS FOR. Work that had already ended names

@@ -9,6 +9,7 @@
 // a drifted backend degrades to empty strings instead of crashing the UI.
 
 import type { MeteringSchemas, RootSchemas, TenantSchemas } from "@/api/types";
+import type { ExactMicros } from "@/lib/format";
 
 export type ApiKey = TenantSchemas["ApiKeyOut"];
 
@@ -37,12 +38,30 @@ export type RecordUsageResponse = MeteringSchemas["RecordUsageResponse"];
 // Verifying a stored Blueprint (#581). Typed whole by the contract, like the
 // Blueprint itself; the one untyped part of an answer is a refusal's
 // extension members, which `lib/verification.ts` narrows.
+//
+// ⚠ BUT FOR A STOP'S TWO FIGURES (#585), which the contract types `integer`
+// with no bound narrower than a signed 64-bit money column, where a number
+// holds 2^53 exactly and no more. An answer is read off its text with them as
+// the digits UBB wrote (`./exact-figures.ts`), and these types say so.
 export type BlueprintVerificationRequest = RootSchemas["IntegrationBlueprintVerificationIn"];
 export type BlueprintVerificationRecordRequest =
   RootSchemas["IntegrationBlueprintVerificationRecordIn"];
-export type BlueprintVerification = RootSchemas["IntegrationBlueprintVerification"];
+type StopFigure = "stop_bound_micros" | "stop_measured_micros";
+/** A recording's acknowledgement as Verify reads it: the contract's, with its
+ * two stop figures held as their digits, or null where they do not apply. */
+export type VerifiedAcknowledgement = Omit<RecordUsageResponse, StopFigure> &
+  Record<StopFigure, ExactMicros | null>;
+export type VerificationRecord = Omit<
+  RootSchemas["IntegrationBlueprintVerificationRecord"],
+  "acknowledgement" | "replay"
+> & {
+  acknowledgement?: VerifiedAcknowledgement | null;
+  replay?: VerifiedAcknowledgement | null;
+};
+export type BlueprintVerification = Omit<RootSchemas["IntegrationBlueprintVerification"], "records"> & {
+  records: VerificationRecord[];
+};
 export type VerificationUnit = RootSchemas["IntegrationBlueprintVerificationUnit"];
-export type VerificationRecord = RootSchemas["IntegrationBlueprintVerificationRecord"];
 export type StartTaskResponse = RootSchemas["StartTaskResponse"];
 export type CloseTaskResponse = RootSchemas["CloseTaskResponse"];
 

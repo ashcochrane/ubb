@@ -135,28 +135,38 @@ describe("formatEventMicros", () => {
 });
 
 describe("formatExactMicros", () => {
-  it("keeps every micro, at any size, and never fewer than two places", () => {
-    expect(formatExactMicros(5_000_000, "usd")).toBe("$5.00");
-    expect(formatExactMicros(5_000_001, "usd")).toBe("$5.000001");
-    expect(formatExactMicros(471, "usd")).toBe("$0.000471");
-    expect(formatExactMicros(1_234_567_890_123, "usd")).toBe("$1,234,567.890123");
+  it("keeps every micro, and never fewer than two places", () => {
+    expect(formatExactMicros("5000000", "usd")).toBe("$5.00");
+    expect(formatExactMicros("5000001", "usd")).toBe("$5.000001");
+    expect(formatExactMicros("471", "usd")).toBe("$0.000471");
+    expect(formatExactMicros("1234567890123", "usd")).toBe("$1,234,567.890123");
   });
 
   // The sign is the fact for a hard floor's figures.
-  it("keeps the sign, and a zero is an unsigned zero", () => {
-    expect(formatExactMicros(-1_000_001, "usd")).toBe("-$1.000001");
-    expect(formatExactMicros(-400, "usd")).toBe("-$0.0004");
-    expect(formatExactMicros(0, "usd")).toBe("$0.00");
-    expect(formatExactMicros(-0, "usd")).toBe("$0.00");
+  it("keeps the sign, and a zero is a zero", () => {
+    expect(formatExactMicros("-1000001", "usd")).toBe("-$1.000001");
+    expect(formatExactMicros("-400", "usd")).toBe("-$0.0004");
+    expect(formatExactMicros("0", "usd")).toBe("$0.00");
   });
 
-  it("does no division that could round it: a safe integer's every digit survives", () => {
-    expect(formatExactMicros(Number.MAX_SAFE_INTEGER, "usd")).toBe("$9,007,199,254.740991");
-    expect(formatExactMicros(-Number.MAX_SAFE_INTEGER, "usd")).toBe("-$9,007,199,254.740991");
+  // ⚠ THE DOMAIN IS A SIGNED 64-BIT MONEY COLUMN, NOT A JAVASCRIPT NUMBER. Past
+  // 2^53 a number cannot hold these at all: they are digits all the way.
+  it("carries every digit of the signed 64-bit extremes and past 2^53", () => {
+    expect(formatExactMicros("9223372036854775807", "usd")).toBe("$9,223,372,036,854.775807");
+    expect(formatExactMicros("-9223372036854775808", "usd")).toBe("-$9,223,372,036,854.775808");
+    expect(formatExactMicros("9007199254740993", "usd")).toBe("$9,007,199,254.740993");
+  });
+
+  it("refuses anything but a whole number of micros, rather than round it", () => {
+    for (const written of ["1.5", "1e3", "", "+1", "01", "-", "12a"]) {
+      expect(() => formatExactMicros(written as `${bigint}`, "usd"), written).toThrow(
+        /not a whole number of micros/,
+      );
+    }
   });
 
   it("respects the tenant currency", () => {
-    expect(formatExactMicros(4_900, "eur")).toBe("€0.0049");
+    expect(formatExactMicros("4900", "eur")).toBe("€0.0049");
   });
 });
 

@@ -94,6 +94,7 @@
 // merge them on the strength of both mentioning a clock.
 
 import { MEASURE_STATES_WORST_LAST } from "@/lib/economic-query";
+import type { ExactMicros } from "@/lib/format";
 import {
   ANALYTICS_MEASURE_VALUES,
   type AnalyticsMeasure,
@@ -497,14 +498,19 @@ export function ceilingAssessment(
  * integrator the bound was zero. And a hard floor's figures are NEGATIVE: the
  * floor as a balance and the balance below it, so a reader that drops the
  * sign reports an overdrawn wallet as one in credit.
+ *
+ * ⚠ AND THE FIGURES ARE DIGITS, NEVER NUMBERS. The platform's run to a signed
+ * 64-bit money column, past what a number holds exactly, so Verify reads them
+ * off the answer's text (`ExactMicros`), and the terms here are `bigint`: a
+ * fixture can state any figure the platform can, and nothing rounds it.
  */
 export interface StopScenario {
   readonly stop: true;
   readonly stop_scope: string;
   readonly stop_reason: ReasonCode;
   readonly trigger_source: TriggerSource | null;
-  readonly stop_bound_micros: number | null;
-  readonly stop_measured_micros: number | null;
+  readonly stop_bound_micros: ExactMicros | null;
+  readonly stop_measured_micros: ExactMicros | null;
 }
 
 /**
@@ -514,8 +520,8 @@ export interface StopScenario {
  */
 export function ceilingStop(terms: {
   readonly scope: "task" | "subtask";
-  readonly ceiling_micros: number;
-  readonly cost_micros: number;
+  readonly ceiling_micros: bigint;
+  readonly cost_micros: bigint;
 }): StopScenario {
   if (terms.cost_micros < terms.ceiling_micros) {
     throw new Error(
@@ -528,8 +534,8 @@ export function ceilingStop(terms: {
     stop_scope: terms.scope,
     stop_reason: "task_cogs_ceiling",
     trigger_source: "usage_ingest",
-    stop_bound_micros: terms.ceiling_micros,
-    stop_measured_micros: terms.cost_micros,
+    stop_bound_micros: `${terms.ceiling_micros}`,
+    stop_measured_micros: `${terms.cost_micros}`,
   };
 }
 
@@ -541,8 +547,8 @@ export function ceilingStop(terms: {
  */
 export function poolStop(terms: {
   readonly opened_by: TriggerSource;
-  readonly stop_line_micros: number;
-  readonly charges_micros: number;
+  readonly stop_line_micros: bigint;
+  readonly charges_micros: bigint;
 }): StopScenario {
   if (terms.charges_micros < terms.stop_line_micros) {
     throw new Error(
@@ -555,8 +561,8 @@ export function poolStop(terms: {
     stop_scope: "customer",
     stop_reason: "customer_spend_pool",
     trigger_source: terms.opened_by,
-    stop_bound_micros: terms.stop_line_micros,
-    stop_measured_micros: terms.charges_micros,
+    stop_bound_micros: `${terms.stop_line_micros}`,
+    stop_measured_micros: `${terms.charges_micros}`,
   };
 }
 
@@ -568,12 +574,10 @@ export function poolStop(terms: {
  */
 export function hardFloorStop(terms: {
   readonly opened_by: TriggerSource;
-  readonly min_balance_micros: number;
-  readonly balance_micros: number;
+  readonly min_balance_micros: bigint;
+  readonly balance_micros: bigint;
 }): StopScenario {
-  // `0 - x` and not `-x`: a zero floor is +0, which JSON and every reader
-  // write as 0, where `-0` would be a sign nobody sent.
-  const floor = 0 - terms.min_balance_micros;
+  const floor = -terms.min_balance_micros;
   if (terms.balance_micros >= floor) {
     throw new Error(
       `hardFloorStop was handed a balance of ${terms.balance_micros}, not below the floor of ` +
@@ -585,8 +589,8 @@ export function hardFloorStop(terms: {
     stop_scope: "customer",
     stop_reason: "hard_floor",
     trigger_source: terms.opened_by,
-    stop_bound_micros: floor,
-    stop_measured_micros: terms.balance_micros,
+    stop_bound_micros: `${floor}`,
+    stop_measured_micros: `${terms.balance_micros}`,
   };
 }
 
