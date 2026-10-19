@@ -14,16 +14,20 @@
 // platform never answered, and the mock says so rather than inventing an
 // answer — a Verify answer built by hand is a verdict nobody reached.
 //
-// Loaded lazily: only mock mode ever reads them.
+// Loaded lazily: only mock mode ever reads them. Each is read as TEXT and with
+// a stop's figures as the digits written there, exactly as the real API's
+// answer is (`./exact-figures.ts`, #585).
 
+import { isExactMicros } from "@/lib/format";
 import { COSTING_STATUS_VALUES, PRICING_STATUS_VALUES } from "@/lib/vocabulary";
 
 import { verificationKey } from "../lib/verification";
+import { readWithExactFigures } from "./exact-figures";
 import { field, isOneOf, isRecord, loadersByName } from "./fixture-files";
 import type { BlueprintVerification, BlueprintVerificationRequest } from "./types";
 
 const LOADER_BY_NAME = loadersByName(
-  import.meta.glob<unknown>("./verifications/*.json", { import: "default" }),
+  import.meta.glob<string>("./verifications/*.json", { query: "?raw", import: "default" }),
 );
 
 /** Every platform-written Verify answer, by its file's name. */
@@ -32,14 +36,20 @@ export const VERIFICATION_FIXTURE_NAMES: readonly string[] = [...LOADER_BY_NAME.
 const isString = (value: unknown): value is string => typeof value === "string";
 const isStringList = (value: unknown) => Array.isArray(value) && value.every(isString);
 
-/** A recording's acknowledgement: an event id and the two statuses of their closed sets. */
+/** A stop's figure as Verify holds it: the digits written, or null. */
+const isFigure = (value: unknown) => value === null || isExactMicros(value);
+
+/** A recording's acknowledgement: an event id, the two statuses of their
+ * closed sets, and a stop's two figures as digits or null (#585). */
 function isAcknowledgement(value: unknown): boolean {
   return (
     value === null ||
     (isRecord(value) &&
       isString(field(value, "event_id")) &&
       isOneOf(COSTING_STATUS_VALUES, field(value, "costing_status")) &&
-      isOneOf(PRICING_STATUS_VALUES, field(value, "pricing_status")))
+      isOneOf(PRICING_STATUS_VALUES, field(value, "pricing_status")) &&
+      isFigure(field(value, "stop_bound_micros")) &&
+      isFigure(field(value, "stop_measured_micros")))
   );
 }
 
@@ -67,9 +77,9 @@ function isVerificationRecord(value: unknown): boolean {
 /**
  * An answer's shape, checked at the one place a file becomes one — down to
  * each unit and each record, and each acknowledgement's statuses against the
- * closed sets the contract types them by. A JSON import is typed by its
- * contents, so this is what lets the mock hand the page a typed answer without
- * a cast, and what says so if a file ever stops being one. A Pricing Receipt is
+ * closed sets the contract types them by. A document read off its text is
+ * `unknown`, so this is what lets the mock hand the page a typed answer
+ * without a cast, and what says so if a file ever stops being one. A Pricing Receipt is
  * untyped in the contract too, and is not checked.
  */
 export function isVerification(value: unknown): value is BlueprintVerification {
@@ -140,7 +150,7 @@ export type CommittedVerification = CommittedRequest &
 export async function loadVerificationFixture(name: string): Promise<CommittedVerification> {
   const load = LOADER_BY_NAME.get(name);
   if (load === undefined) throw new Error(`no platform-written Verify answer named ${name}`);
-  const document = await load();
+  const document = readWithExactFigures(await load());
   if (!isRecord(document)) throw new Error(`${name} is not a Verify answer`);
   const blueprint = field(document, "blueprint") ?? null;
   const fingerprint = field(document, "configuration_fingerprint");

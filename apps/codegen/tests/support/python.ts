@@ -25,6 +25,12 @@ export interface Handler {
   function: string | null;
   catches: string | null;
   reraises: boolean;
+  /** The name the handler binds what it caught to, if any. */
+  binds: string | null;
+  /** Every call in its body, each positional argument as Python writes it. */
+  calls: { callee: string; positional: string[]; keywords: (string | null)[] }[];
+  /** The kind of every node its body holds (`BinOp`, `IfExp`, …). */
+  nodes: string[];
 }
 
 export interface FunctionFacts {

@@ -6,6 +6,7 @@ import { rootApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
 
+import { verificationFromText } from "./exact-figures";
 import {
   toApiKeyCreated,
   toApiKeyRevoked,
@@ -104,11 +105,17 @@ export async function verifyBlueprint(
   fingerprint: string,
   body: BlueprintVerificationRequest,
 ): Promise<BlueprintVerification> {
-  return unwrap(
-    await rootApi.POST("/code-builder/blueprints/{configuration_fingerprint}/verify", {
-      params: { path: { configuration_fingerprint: fingerprint } },
-      body,
-    }),
+  // Read as TEXT, so a stop's figures are the digits UBB wrote and never the
+  // number `JSON.parse` would round them to (#585, `./exact-figures.ts`). A
+  // refusal is still read as a problem.
+  return verificationFromText(
+    unwrap(
+      await rootApi.POST("/code-builder/blueprints/{configuration_fingerprint}/verify", {
+        params: { path: { configuration_fingerprint: fingerprint } },
+        body,
+        parseAs: "text",
+      }),
+    ),
   );
 }
 

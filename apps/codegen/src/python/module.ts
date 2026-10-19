@@ -68,7 +68,15 @@ import {
   type Token,
   type Unconfigured,
 } from "../tokens.ts";
-import { FACT, FIELD, OPERATIONS, type Plan, type RecordPlan, type StartPlan } from "./plan.ts";
+import {
+  FACT,
+  FIELD,
+  OPERATIONS,
+  STOP_FIELDS,
+  type Plan,
+  type RecordPlan,
+  type StartPlan,
+} from "./plan.ts";
 import { INDENT, isIdentifier, pyLiteral, pyString, unshadowed } from "./syntax.ts";
 
 /** What the module turned out to need, found while writing its calls. */
@@ -373,13 +381,14 @@ function unitOfWork(plan: Plan): string[] {
     `${INDENT.repeat(2)}) as ${task}:`,
     `${inner}yield ${task}`,
     `${INDENT}except UBBStopRequested as ${stop}:`,
-    // The key the event was sent under, and the acknowledgement as it
-    // stands, by its own description of itself: whatever it carries is
-    // logged, and nothing is worked out from it.
+    // The key the event was sent under, and each field the stop is
+    // explained by, BY ITS OWN NAME, read straight off what was caught
+    // (ADR-0016 §4; the owner's ruling on #577): never the acknowledgement's
+    // own description of itself, and nothing worked out from any field.
     `${INDENT.repeat(2)}${plan.internal.logger}.warning(`,
     `${inner}${pyString(MESSAGES.stop)},`,
     `${inner}${stop}.idempotency_key,`,
-    `${inner}${stop}.result,`,
+    ...STOP_FIELDS.map((name) => `${inner}${stop}.${name},`),
     `${INDENT.repeat(2)})`,
     `${INDENT.repeat(2)}raise`,
   ];

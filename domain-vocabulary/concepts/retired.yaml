@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,390 of 2,830 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,392 of 2,832 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2785,6 +2785,15 @@ measurement_key:
     # eleven generated SDK models of the now-typed batch item; the one that
     # left is the generated model of the untyped item it replaced. (Taken
     # twice: 2,389 of 2,829 before the ADR was written.)
+    #
+    # 2026-10-19, #585 (the Code Builder carries a stop's three fields on both
+    # targets and the Verify card; the owner's check on #613 that the card's
+    # figures are exact over the platform's whole legal domain): 2,390 of
+    # 2,830 -> 2,392 of 2,832 tracked files (`units` 42 files / 119
+    # occurrences, UNMOVED). 2 files arrived and none left — the renderer
+    # catalogue's version-6 pin was renamed to its version-7 one — and both are
+    # swept: the exclusions stand at 440. They are the console's read of a
+    # Verify answer's stop figures off its text, and its tests.
 
     - term: units
       retired_as: >-

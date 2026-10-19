@@ -193,10 +193,12 @@ def main():
 
 #: What the customer's process reports of a stop, read by name off the
 #: acknowledgement `UBBStopRequested` carries, beside the key the event was
-#: sent under. The fields the acknowledgement publishes today: #585 adds
-#: #569's names here, and their values to `_scenarios._the_stop`. A shell
-#: file's metadata is the variable it sets, whole, so it needs no list.
-STOP_METADATA = ("event_id", "stop_scope", "stop_reason")
+#: sent under: the event, the scope and the reason, and how the stop was
+#: applied and what it was measured on (#569, carried by #585), whose values
+#: `_scenarios._the_stop` asserts. A shell file's metadata is the variable it
+#: sets, whole, so it needs no list.
+STOP_METADATA = ("event_id", "stop_scope", "stop_reason", "trigger_source",
+                 "stop_bound_micros", "stop_measured_micros")
 
 _PYTHON_TAIL = f'''
 

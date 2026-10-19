@@ -36,7 +36,7 @@ import {
 } from "../tokens.ts";
 import { parameterName, unshadowed } from "./syntax.ts";
 
-export { FACT, FIELD, type Header } from "../lifecycle.ts";
+export { FACT, FIELD, STOP_FIELDS, type Header } from "../lifecycle.ts";
 
 /** The operations this target has a call for, and the SDK method of each. */
 export const OPERATIONS = {

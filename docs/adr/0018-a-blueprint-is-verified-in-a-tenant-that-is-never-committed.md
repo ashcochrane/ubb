@@ -199,6 +199,16 @@ running the generated files tests the read) and a sample for every required Grou
 shows `unexercised_event_types` / `unexercised_subtask_types` and never presents a partial run as
 the Blueprint verified, says `verified` is about recording and costing rather than price, and renders the answer as given: an
 acknowledgement's null amount is no figure, and every id in it names a record that no longer
-exists. A future need to verify against something the snapshot does not hold — an agreed price,
+exists. Where an acknowledgement is a stop it also renders, since #585, how the stop was applied
+and what it was measured on (ADR-0019 §1): the mechanism through the console's one open-set rule,
+the bound and the amount measured to the micro with their sign — rounded to a cent, a balance one
+micro under its floor would read as the floor — and a field that does not apply to the stop as no
+figure, never `0`. Those two figures are read off the answer's TEXT as the digits UBB wrote, on the
+API client's path and the mock's alike, and are never a JavaScript number: the platform keeps them
+in a signed 64-bit money column and publishes them as integers with no narrower bound, past the
+2^53 a number holds exactly (the owner's check on #613). A figure written as anything but a JSON
+integer is refused, as the generated shell file refuses one (ADR-0017 §4). A run's own tenant enforces nothing, so no
+committed Verify answer is a stop; the card's stopped states are proved on composed
+acknowledgements. A future need to verify against something the snapshot does not hold — an agreed price,
 a constant's value — is met by the ticket that adds it to the snapshot's configuration, in a
 canonical order, moving every fingerprint once.

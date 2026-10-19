@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 6;
+export const CATALOGUE_VERSION = 7;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -385,6 +385,9 @@ export const COMMENTS = {
     "This is the one place a stop is caught. The event that carried it was",
     "recorded and charged: never send it again. The stop is logged and",
     "raised again, so whatever runs this work can honour its scope.",
+    "What is logged is the key the event was sent under and each field of",
+    "the stop by its own name, as UBB stated it: what does not apply is",
+    "None, and nothing is worked out.",
   ],
   subtask: [
     "A Subtask is started only where you say so. UBB never infers one.",
@@ -519,6 +522,10 @@ export const SHELL_COMMENTS = {
     "acknowledgement and never off the HTTP status. The event that carried",
     "it was recorded and charged: never send it again. Its metadata is left",
     "in UBB_STOP_REQUESTED and the reserved status is returned.",
+    "The metadata carries the stop's fields as the acknowledgement holds",
+    "them, and works nothing out: what does not apply stays null, and the",
+    "bound and the amount measured against it keep the digits and the sign",
+    "UBB wrote, never the number jq would make of them.",
   ],
   notReady: [
     "What a call prints, before returning UBB_EXIT_NOT_CONFIGURED, while it",
@@ -640,8 +647,9 @@ export const SHELL_COMMENTS = {
   callSiteStop: [
     "Where the work is run, if you act on a stop's scope yourself. This is",
     "not error handling: the event was recorded and charged.",
-    "UBB_STOP_REQUESTED holds the stop's scope and reason, as JSON. Pass the",
-    "status on to whatever runs this code.",
+    "UBB_STOP_REQUESTED holds the stop as JSON: its scope and reason, what",
+    "applied it, and the bound and the amount measured against it, each null",
+    "where it does not apply. Pass the status on to whatever runs this code.",
   ],
   preview: [
     "A preview of one request, for reading: the method, the URL, the headers",
@@ -660,7 +668,12 @@ export const MESSAGES = {
     "is valid platform configuration that this Code Builder version cannot yet generate: " +
     "see the blocking diagnostic in this file's header",
   environmentNotSet: "is not set. Set it in the environment this code runs in.",
-  stop: "UBB requested a stop. The event sent as %r was recorded and must not be sent again: %r",
+  /** The stop, as the Python boundary logs it: the key, then each field the
+   * stop is explained by, by its own name and in `STOP_FIELDS`' order (a test
+   * holds the two equal), as the SDK holds it (#585). */
+  stop:
+    "UBB requested a stop. The event sent as %r was recorded and must not be sent again. " +
+    "stop_scope=%r, stop_reason=%r, trigger_source=%r, stop_bound_micros=%r, stop_measured_micros=%r",
   float: "is a binary float, and a reported cost is money: pass its decimal text or an integer",
   /** The same refusal of a cost read off a response, which says what to read
    * rather than what to pass (#583). */
@@ -718,6 +731,11 @@ export const SHELL_MESSAGES = {
   responseUnreadable: "the response is not the acknowledgement this call expects.",
   noTaskId: "the response carries no task_id",
   noEventId: "the acknowledgement carries no event_id",
+  /** Why a stop's acknowledgement was refused rather than carried, said
+   * before the field's name (#585): what is not there is never filled in,
+   * and a figure is never rounded. */
+  stopFigure: "the acknowledgement holds no whole number or null at",
+  stopText: "the acknowledgement holds no text or null at",
   noValue: "the response holds no value at",
   notWhole: "the response holds a value that is not a whole number at",
   /** Why a value read off the response as written was refused, said after

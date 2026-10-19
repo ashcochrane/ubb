@@ -16,10 +16,12 @@ the whole matrix exactly one of these runs fails, and it is that one.
 """
 import json
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from _harness import REPO_ROOT, Ran, in_image
+from _harness import REPO_ROOT, Ran, Server, in_image, run_shell, write
 from _scenarios import MATRIX
 
 EVIDENCE = REPO_ROOT / "apps" / "codegen" / "tests" / "harness"
@@ -76,3 +78,87 @@ def test_the_matrix_holds_the_shell_that_decided_it():
     """Vacuity guard: without bash 3.2 in the matrix the case above that
     must fail is never run."""
     assert BASH_3_2 in [shell.name for shell in MATRIX]
+
+
+# ---------------------------------------------------------------------------
+# A stop's figures, on every jq the matrix carries (#585; ADR-0017 §6)
+# ---------------------------------------------------------------------------
+#
+# The bound and the amount measured against it are signed 64-bit amounts of
+# micros, and jq 1.5 and 1.6 hold a number as a double, so the file carries
+# each one as the digits UBB wrote. The real application never writes figures
+# at these extremes, so here a stand-in answers the record with them, as
+# text: a hard floor at the most negative amounts a money column holds, and a
+# grouping value that spells a stop field inside a string, which must never
+# be read for one. The record is the file's own public call, as rendered from
+# a committed Blueprint, and the stop is what it leaves in UBB_STOP_REQUESTED.
+
+#: The committed shell Blueprint whose record call is run.
+BLUEPRINT = (REPO_ROOT / "apps" / "codegen" / "fixtures" / "blueprints"
+             / "shell-direct-task-events.json")
+ACKNOWLEDGEMENT = (
+    '{"event_id": "e9", "stop": true, "stop_scope": "customer", '
+    '"stop_reason": "hard_floor", "trigger_source": "usage_ingest", '
+    '"stop_bound_micros": -9223372036854775807, '
+    '"stop_measured_micros": -9223372036854775808, '
+    '"grouping_fields": {"note": "\\"stop_bound_micros\\": 1, \\\\\\" ,"}}')
+#: The metadata, byte for byte: the figures as written, never rounded.
+CARRIED_STOP = (
+    '{"event_id":"e9","idempotency_key":"call-1","stop_scope":"customer",'
+    '"stop_reason":"hard_floor","trigger_source":"usage_ingest",'
+    '"stop_bound_micros":-9223372036854775807,'
+    '"stop_measured_micros":-9223372036854775808}')
+
+
+@pytest.fixture
+def stand_in():
+    """A local server standing where UBB would, answering every POST with
+    `ACKNOWLEDGEMENT` exactly as written. It is not the application: it
+    borrows the harness's `Server` only for how a container reaches a server
+    on this machine."""
+
+    class Answers(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            body = ACKNOWLEDGEMENT.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *arguments):
+            pass
+
+    http = HTTPServer(("127.0.0.1", 0), Answers)
+    threading.Thread(target=http.serve_forever, daemon=True).start()
+    try:
+        yield Server(url=f"http://127.0.0.1:{http.server_port}")
+    finally:
+        http.shutdown()
+
+
+@pytest.mark.parametrize("shell", MATRIX, ids=[shell.name for shell in MATRIX])
+def test_a_stop_figure_is_carried_as_written_on_every_jq(
+        shell, stand_in, tmp_path):
+    # Written and run as every scenario's artifact is: a checksum of every
+    # file as it is written, held before and after the run.
+    artifact = write(json.loads(BLUEPRINT.read_text(encoding="utf-8")),
+                     tmp_path)
+    ran = run_shell(
+        artifact,
+        ". ./artifact/ubb_integration.sh\n"
+        "ubb_record_search_run customer_id=c idempotency_key=call-1"
+        " task_id=t searches=1 && status=0 || status=$?\n"
+        "printf 'status=%s\\n' \"$status\"\n"
+        "printf 'stop_requested=%s\\n' \"$UBB_STOP_REQUESTED\"\n",
+        server=stand_in, api_key="not-a-key", image_name=shell.image,
+        shell=shell.command)
+
+    assert ran.said == {"status": "20", "stop_requested": CARRIED_STOP}, ran
+
+
+def test_the_matrix_holds_the_oldest_jq():
+    """Vacuity guard: the figure above is only at risk on a jq that holds a
+    number as a double, which the matrix carries as its oldest jq."""
+    assert "oldest-jq" in [shell.image for shell in MATRIX]

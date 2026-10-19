@@ -44,13 +44,18 @@ class ScenarioTenant(BlueprintRoutes):
         self.customers[external_id] = created["id"]
         return created["id"]
 
-    def spend_pool(self, external_id: str, cap_micros: int) -> None:
-        """A blocking spend pool on one customer."""
+    def spend_pool(self, external_id: str, cap_micros: int, *,
+                   hard_stop_pct: int) -> None:
+        """A blocking spend pool on one customer, stopping at
+        `hard_stop_pct` per cent of its cap: stated, never left to a
+        default, so a scenario derives the stop line from its own
+        configuration."""
         self._call(
             "put",
             f"/api/v1/billing/customers/{self.customers[external_id]}"
             f"/customer-spend-pool",
-            {"cap_micros": cap_micros, "enforce_mode": "blocking"})
+            {"cap_micros": cap_micros, "enforce_mode": "blocking",
+             "hard_stop_pct": hard_stop_pct})
 
     def blueprint(self, target: str, **selection) -> dict:
         """The Blueprint, resolved through its route for `target`."""

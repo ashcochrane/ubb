@@ -27,6 +27,11 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
 - **`/api/v1/me/**` is the END-CUSTOMER widget portal** (different auth) — never call it here.
 - **Money**: integer micros everywhere (1e6 = 1 unit); `markup_percentage_micros` is micros of a
   PERCENT. Use `src/lib/format.ts`; convert inputs with `Math.round(x * 1e6)`; no float math.
+  ⚠ The platform keeps money in signed 64-bit columns, and a JS number holds an integer exactly
+  only to 2^53, so `JSON.parse` rounds a legal figure past it. Where a page's point is exactness
+  (Verify's stop figures, #585), the API layer reads the figure off the body's TEXT as
+  `ExactMicros` digits (`features/developers/api/exact-figures.ts`) and `formatExactMicros`
+  formats the digits; it is never a number on the way.
 - **Pagination**: one cursor envelope `{data, has_more, next_cursor}` (limit ≤ 100, newest first,
   no totals) → `useCursorList` + `LoadMore`.
 - **Errors**: RFC 9457 problem+json on ANY non-2xx (declared or not) → wrap every call in

@@ -19,10 +19,11 @@ nothing in the harness:
 against fixtures in `provider_responses/`, a currency read beside it that the
 server refuses, and a cost written as a float that neither target sends
 (scenarios 6 to 8); #584 adds a constant Measurement;
-#585 extends two declarations rather than adding a scenario: #569's names in
+#585 extended two declarations rather than adding a scenario: #569's names in
 `_customer.STOP_METADATA` (what a Python process reports of a stop) and
-their values in `_the_stop`, which both stop scenarios assert through; #586
-a fixed-price kind against a price declared through #553's publish act.
+their values in `_the_stop`, which both stop scenarios assert through, each
+worked out from the scenario's own configuration; #586 a fixed-price kind
+against a price declared through #553's publish act.
 
 **Costs are known on purpose.** An unresolved cost adds nothing to a unit of
 work's total (`work/services.py`), so a configuration without Cost Rates can
@@ -48,7 +49,7 @@ from core.vocabulary import (
     OUTCOME_REASON_EXECUTION_FAILED, PRICING_STATUS_KNOWN,
     SOURCE_KIND_CALLER_SUPPLIED, SOURCE_KIND_PROVIDER_RESPONSE,
     TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED, TASK_STATUS_KILLED)
+    TASK_STATUS_FAILED, TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
 
 from _customer import CustomerId, Record, Response, Subtask, Work
 from _harness import COMPLETE, PROVIDER_RESPONSES, Artifact, Ran, catalogue
@@ -377,20 +378,28 @@ def declared_status(artifact: Artifact, name: str) -> int:
 
 
 def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
-              reason: str) -> None:
+              reason: str, trigger_source: str, bound: int,
+              measured: int) -> None:
     """The stop arrived inside a 200 and was acted on: the event that
     carried it is recorded, its metadata names that event, and each target
     hands it over its own way — a status of 20 from shell, logged and passed
     on, never 0; `UBBStopRequested` from Python, logged by the generated
     module and raised to the process's own boundary.
 
-    The metadata is the four fields the acknowledgement and the request
-    publish today. #585 adds #569's here and in `_customer.STOP_METADATA`."""
+    The metadata is the fields the acknowledgement and the request publish:
+    the event, the key, the scope and the reason, and how the stop was
+    applied and what it was measured on (#569; #585). The event's id is the
+    recorded posting's; every other expected value is the caller's, worked
+    out from its scenario's own configuration and never read back from the
+    server."""
     tipping = outcome.postings()[key]
     assert "stop_requested" in ran.said, ran
     stop = json.loads(ran.said["stop_requested"])
     assert stop == {"event_id": str(tipping.id), "idempotency_key": key,
-                    "stop_scope": scope, "stop_reason": reason}, ran
+                    "stop_scope": scope, "stop_reason": reason,
+                    "trigger_source": trigger_source,
+                    "stop_bound_micros": bound,
+                    "stop_measured_micros": measured}, ran
     if outcome.target == SHELL:
         assert declared_status(outcome.artifact,
                                 "UBB_EXIT_STOP_REQUESTED") == STOP_STATUS
@@ -402,12 +411,13 @@ def _the_stop(outcome: Outcome, ran: Ran, *, key: str, scope: str,
         return
     assert ran.status == UNCAUGHT, ran
     assert "UBBStopRequested" in ran.stderr, ran
-    # The module's one handler logs the key the event was sent under, in
-    # the catalogue's words, which the rendered file holds.
+    # The module's one handler logs the key the event was sent under and
+    # each field of the stop by its own name, in the catalogue's words,
+    # which the rendered file holds — the whole line, every value in it.
     logged = catalogue()["MESSAGES"]["stop"]
     assert logged in outcome.artifact.files["ubb_integration.py"]
-    assert logged.split("%r")[0] + repr(key) + logged.split("%r")[1] in (
-        ran.stderr), ran
+    assert logged % (key, scope, reason, trigger_source, bound,
+                     measured) in ran.stderr, ran
 
 
 def _refused(outcome: Outcome, ran: Ran, *, status: int, code: str,
@@ -465,8 +475,12 @@ def _stopped_by_its_ceiling(outcome: Outcome) -> None:
     (ran,) = outcome.runs
     assert STOP_RATES.cost(searches=2) < CEILING <= 2 * STOP_RATES.cost(2)
     assert sorted(outcome.postings()) == ["chat-1", "chat-2"], ran
+    # Crossed by this report: the bound is the unit's pinned ceiling, and the
+    # amount measured is its supplier total at the crossing — both records.
     _the_stop(outcome, ran, key="chat-2", scope="task",
-              reason=reasons.TASK_COGS_CEILING)
+              reason=reasons.TASK_COGS_CEILING,
+              trigger_source=TRIGGER_SOURCE_USAGE_INGEST, bound=CEILING,
+              measured=2 * STOP_RATES.cost(searches=2))
     # Nothing was declared after the stop: the platform stopped the work,
     # and neither target turns a stop into an outcome.
     assert ran.requests == [TASK_START, RECORD_USAGE, RECORD_USAGE], ran
@@ -497,6 +511,8 @@ CEILING_CROSSED = Scenario(
 # holds: the customer's next unit of work is refused at its start.
 
 POOL = 4_000_000
+#: Where the pool stops, per cent of its cap: its whole cap.
+POOL_HARD_STOP_PCT = 100
 
 
 def _pool_configuration(tenant: ScenarioTenant, target: str) -> dict:
@@ -505,7 +521,7 @@ def _pool_configuration(tenant: ScenarioTenant, target: str) -> dict:
     tenant._cost_rules(*STOP_RATES.rules(), provider=GEMINI.provider)
     tenant._markup(HALF_AGAIN)
     tenant.customer("acme")
-    tenant.spend_pool("acme", POOL)
+    tenant.spend_pool("acme", POOL, hard_stop_pct=POOL_HARD_STOP_PCT)
     return {"task_type": "support_reply", "event_types": ["chat.completion"]}
 
 
@@ -513,8 +529,16 @@ def _stopped_by_the_customer_pool(outcome: Outcome) -> None:
     stopped, refused = outcome.runs
     assert _marked_up(STOP_RATES.cost(searches=2)) >= POOL
     assert sorted(outcome.postings()) == ["chat-1"], stopped
+    # Opened by this report: the bound is the pool's stop line, its cap at
+    # the stated share, and the amount measured is the month's billed
+    # charges at the crossing — this one record, marked up. The line is
+    # worked out here and not by the kernel's own function for it, so the
+    # expectation is not the code under test asked again.
     _the_stop(outcome, stopped, key="chat-1", scope="customer",
-              reason=reasons.CUSTOMER_SPEND_POOL)
+              reason=reasons.CUSTOMER_SPEND_POOL,
+              trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+              bound=POOL * POOL_HARD_STOP_PCT // 100,
+              measured=_marked_up(STOP_RATES.cost(searches=2)))
     assert stopped.requests == [TASK_START, RECORD_USAGE], stopped
     task = outcome.tenant.task(stopped.said["task_id"])
     assert task["status"] == TASK_STATUS_KILLED, task

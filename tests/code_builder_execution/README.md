@@ -38,10 +38,14 @@ refuses (`response-currency-refused`) and a cost written as a float that
 neither target sends (`response-cost-written-as-a-float`), against the three
 billed responses in `provider_responses/`, which a scenario names with
 `Response("<name>")`;
-#584 adds a constant Measurement, #586 a fixed-price kind. #585 adds no
-scenario: it extends two declarations, #569's names in
+#584 adds a constant Measurement, #586 a fixed-price kind. #585 added no
+scenario: it extended two declarations, #569's names in
 `_customer.STOP_METADATA` and their values in `_scenarios._the_stop`, which
-both stop scenarios assert through.
+both stop scenarios assert through. It also pins, in
+`test_the_shell_matrix.py`, that a stop's figures reach `UBB_STOP_REQUESTED`
+as the digits UBB wrote on every jq of the standing matrix: there a local
+stand-in answers the record, because the real application never writes
+figures at the extremes of a signed 64-bit amount.
 
 ## What runs where
 

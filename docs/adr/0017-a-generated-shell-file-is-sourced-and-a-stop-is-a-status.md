@@ -208,10 +208,29 @@ metadata in `UBB_STOP_REQUESTED` and returns `UBB_EXIT_STOP_REQUESTED`, which is
 is written once, as the value of that constant.
 
 **The metadata is one line of JSON**, an object of the fields the acknowledgement and the request
-publish today under their own names: `event_id`, `idempotency_key`, `stop_scope`, `stop_reason`.
-The key is the one the event was sent under, which the acknowledgement does not repeat. A
-task-scoped and a customer-scoped stop share the status and differ here. The fields #569 will
-publish are added to that object by #585; nothing is derived or filled in.
+publish, under their own names and in this order: `event_id`, `idempotency_key`, `stop_scope`,
+`stop_reason`, `trigger_source`, `stop_bound_micros`, `stop_measured_micros`. The key is the one
+the event was sent under, which the acknowledgement does not repeat. A task-scoped and a
+customer-scoped stop share the status and differ here. The last three are #569's (ADR-0019 §1):
+the mechanism that applied the stop, the bound it was measured against and the amount measured,
+added by #585 (2026-10-09). Nothing is derived or filled in: a field that does not apply is
+`null`, a real zero floor is `0`, and a hard floor's figures are negative.
+
+**The object is written as text, and is never built as a jq object** (#585). The two figures are
+signed 64-bit amounts of micros, and jq 1.5 and 1.6 hold a number as a double: built into an
+object and printed, -9223372036854775807 comes back -9223372036854776000. So the program finds
+each figure's token as UBB wrote it, by §6's read as written, and writes the line by joining JSON
+text: a figure is accepted only as a JSON integer and written as its token, every value that is a
+string goes through jq's own encoder (`tojson`), and every key is a JSON string the renderer
+wrote (§3). An acknowledgement whose stop does not hold one of the three as the
+contract says — the key missing, a figure written with a fraction or an exponent or as a string,
+the mechanism as anything but text — is refused as unreadable (`UBB_EXIT_RESPONSE_UNREADABLE`),
+in the catalogue's words, rather than filled in or rounded. The scope and the reason keep the
+posture they had: written as the acknowledgement gives them. Measured once with real binaries
+before it was built (the evidence is on #585's pull request), the read carried ±(2⁶³−1), −2⁶³ and
+±(2⁵³+1) byte for byte on jq 1.5, 1.6 and 1.7.1 and on gojq 0.12.17, where the object built in jq
+rounded all three on jq 1.4, 1.5 and 1.6. What stays pinned: Seam C's standing matrix on jq 1.5
+and 1.7.1, and the renderer's suite on its own jq — 1.6 in its image, 1.7 on CI's runner.
 
 **`ubb_run_task` is the boundary.** It starts the Task, runs the one command it is given with
 the Task's id as its argument, and then reads three things: the status that command returned,
@@ -381,6 +400,16 @@ differences are the first of the limitations below. The shell no longer imposes 
 fifteen-digit limit on a cost's input: exact conversion and the platform's economic bounds remain
 authoritative. (Fifteen digits stay a quantity's limit, §2.)
 
+**A stop's figures are read the same way** (#585, 2026-10-09). The acknowledgement is UBB's own
+response, but its two figures are money a jq number cannot hold (§4), so the program that reads
+it builds the same copy with the same functions, finds each figure's token at its key, and
+accepts it if and only if it is a JSON integer. The check for numbers Python's `json` does not
+read is not run there: it exists so that a supplier's response reads alike on both targets, and
+an acknowledgement is UBB's, parsed on the other target by the SDK. The read runs only when the
+acknowledgement is a stop. Every runnable file therefore asks jq for `foreach`, which jq 1.4
+lacks; no file this renderer writes passed preflight on jq 1.4 before this either (all fourteen
+committed branches, measured), and every one passes it on jq 1.5, before and after.
+
 **Limitation: the read's cost.** One read of a cost took 55–100 ms on a 60 KB response, 0.4–1.3 s
 on 0.77 MB of text and 1.5–5.3 s on 4.4 MB of embeddings, across jq 1.5 to 1.8.1 (jq 1.5 the
 slowest, and an integer slower than a decimal string, since only a number is re-read). The check
@@ -494,7 +523,10 @@ built, the boundary declared work that returned a failure `failed`, and the oute
    renderer made up, and catalogue version 2 (version 3 since #582, which reworded the refusal of
    an old jq — see the amendment to §1; version 4 since #571, which replaced one diagnostic code's
    remediation with another's, and 5 since #570, which did the same; version 6 since #583, which
-   removed that code's remediation and added the words for a cost read off the response — §6).
+   removed that code's remediation and added the words for a cost read off the response — §6;
+   version 7 since #585, which states a stop's fields by name in the Python boundary's log, says
+   what the stop's metadata carries, and adds the words for refusing a stop it cannot carry as
+   written — §4).
 
 **A path for work that has already happened is not rendered, and that is a stated limitation of
 this target in v1** (ruling 6), not something a shell file is implied to do. The Python target has
@@ -504,7 +536,8 @@ has ruled: the parameter that says when the work happened, and what a stop does 
 a call that must not interrupt a backlog. **A tenant with a backlog to record uses the Python
 target.** A shell path can be added without breaking a file already generated.
 
-The fields #569 will publish in a stop's metadata (#585). Execution against the real application,
+The fields #569 published were added to a stop's metadata by #585, under §4's and §6's rules and
+no new one. Execution against the real application,
 and images that really lack a tool or carry an old one, are #582's and are in
 `tests/code_builder_execution/`, with the standing matrix of shells. A constant's value and a
 missing agreed price (#584, #586): each arrives as tokens and needs no new rule here. A cost read
@@ -528,6 +561,8 @@ written of §6.
 | §3 — a name cannot end a heredoc, a string or a line, or run anything | `apps/codegen/tests/shell.execution.test.ts` — "cannot end a heredoc, a string or a line, or run anything: %s", "reach the wire exactly as they were declared" |
 | §4 — a stop returns the reserved status with its metadata; two scopes share it | `apps/codegen/tests/shell.execution.test.ts` — "returns the reserved status with its metadata set, the event recorded once (%s)", "shares one status between a task-scoped and a customer-scoped stop, told apart by metadata" |
 | §4 — the boundary logs and returns it, never as success, whether or not the work returned it | same module — "is observed by the boundary, logged, and returned — never as success", "is still a stop where the work never looked at the status that carried it" |
+| §4, §6 — the metadata carries #569's three as the acknowledgement holds them: a figure as UBB wrote it, signed, a null as null, a real zero as 0; a stop it cannot carry so is refused, never filled in or rounded (#585) | `apps/codegen/tests/shell.execution.test.ts` — "carries %s exactly as UBB wrote it", "refuses a stop whose acknowledgement %s, rather than fill it or round it"; `apps/codegen/tests/shell.artifact.test.ts` — "are read by one program, the same in every branch", "are carried as the acknowledgement holds them, and never worked out (%s)"; on every jq of the standing matrix, `tests/code_builder_execution/test_the_shell_matrix.py::test_a_stop_figure_is_carried_as_written_on_every_jq` |
+| §4 — against the real application, both stops carry how they were applied and what they were measured on (#585) | `tests/code_builder_execution/test_every_scenario_runs_unmodified.py::test_a_scenario_runs_unmodified` (`ceiling`, `customer-pool`) |
 | §4, §10 — no outcome is declared from a status: the status is passed on, the Task left open and said to be; a declared failure is still sent | same module — "declares nothing for work that returned %s: the status is passed on and the Task left open, said so", "does not take a work function's last test coming out false for a failed Task", "still sends the failure a tenant declares, as the tenant declared it", "leaves work that ended cleanly without an outcome open, and says so", "declares nothing more for work that declared its own outcome"; `apps/codegen/tests/shell.artifact.test.ts` — "declares no outcome of its own: the only close is the one a tenant calls"; `apps/codegen/tests/catalogue.test.ts` — "names every outcome a close may declare as the registry does, and holds none to declare itself" |
 | §2, §10 — the result variables: a stop is never a stale one, the runner's is its Task's, the response is the last call's, none is exported | `apps/codegen/tests/shell.execution.test.ts` — "clears an earlier call's stop before a record does anything, so a stop is never a stale one", "clears an earlier stop before ubb_run_task does anything, a run that is refused among them", "answers ubb_run_task with the stop its Task met, whatever a later record left behind", "starts a new piece of work with no stop of an earlier one's", "overwrites the response with each call's own", "sets its results in the shell and exports none of them to a child process"; `apps/codegen/tests/shell.artifact.test.ts` — "exports none of what it sets: the result variables are the shell's, not the environment's" |
 | §2, §10 — the three fixed functions are named for the Task | `apps/codegen/tests/catalogue.test.ts` — "name the three fixed functions for the Task, the domain's own noun, and no other" |
