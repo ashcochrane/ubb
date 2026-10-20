@@ -135,7 +135,7 @@ VALUE_SETS = {
     # above each re-sourced a list that was already there — so it is also the
     # first entry here that would have been a NEW undeclared set if the concept
     # had not been declared first.
-    "ubb-platform/apps/metering/usage/models.py": 5,
+    "ubb-platform/apps/metering/usage/models.py": 6,
     "ubb-platform/apps/platform/customers/models.py": 3,
     # 3, RE-TAKEN FROM THE CENSUS IN #575 AND FOUND UNMOVED — which is worth a
     # line, because that ticket's own criterion expected it to move. The

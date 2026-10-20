@@ -19,7 +19,6 @@ Measurement carries no amount and no currency, and no grouping axis — are
 properties of the tree and live in
 ``apps/platform/tests/test_event_type_declaration_invariants.py``.
 """
-from decimal import Decimal
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -208,20 +207,22 @@ class TestOnlyADeclaredQuantityReachesACost:
 
 @pytest.mark.django_db
 class TestTheValueTypeIsEnforced:
-    """A count that must be whole cannot arrive as a fraction."""
+    """A count that must be whole cannot arrive as a fraction — and the reader
+    answers the quantity's canonical exact TEXT, the one form #603 records it
+    in (`quantity_under`)."""
 
     def test_a_whole_declaration_refuses_a_fraction(self):
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
         with pytest.raises(ValueTypeMismatch):
-            declared.validate_value(Decimal("2.5"))
+            declared.validate_value("2.5")
 
     def test_a_whole_declaration_refuses_a_fraction_however_it_is_spelled(self):
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
-        for value in ("2.5", 2.5, Decimal("0.0001")):
+        for value in ("2.5", "02.50", "-0.0001"):
             with pytest.raises(ValueTypeMismatch):
                 declared.validate_value(value)
 
@@ -243,20 +244,30 @@ class TestTheValueTypeIsEnforced:
     def test_a_whole_declaration_accepts_a_whole_number_in_any_spelling(self):
         """The positive control, including the trailing zero.
 
-        `Decimal("2.0")` is a whole number written by somebody being careful,
-        and a check that read the string instead of the value would refuse it.
+        `"2.0"` is a whole number written by somebody being careful: it is
+        canonicalised before whole-ness is asked, so it is `"2"`.
         """
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
 
-        for value in (2, "2", Decimal("2"), Decimal("2.0"), 2.0):
-            assert declared.validate_value(value) == Decimal("2")
+        for value in (2, "2", "2.0", "002", "2.000"):
+            assert declared.validate_value(value) == "2"
 
     def test_a_decimal_declaration_accepts_a_fraction(self):
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
-        assert declared.validate_value("2.5") == Decimal("2.5")
+        assert declared.validate_value("2.5") == "2.5"
+        assert declared.validate_value("-0.250") == "-0.25"
+
+    def test_a_negative_and_zero_are_quantities(self):
+        """No sign rule governs a Measurement (#603 ruling 2)."""
+        declared = _measurement(_event_type(_tenant()),
+                                value_type=MEASUREMENT_VALUE_TYPE_INTEGER)
+
+        assert declared.validate_value("-3") == "-3"
+        assert declared.validate_value("-0") == "0"
+        assert declared.validate_value(0) == "0"
 
     def test_a_flag_is_not_the_number_one(self):
         """`bool` subclasses `int`, so `True` passes every numeric test there is."""
@@ -266,24 +277,28 @@ class TestTheValueTypeIsEnforced:
         with pytest.raises(ValueTypeMismatch):
             declared.validate_value(True)
 
-    def test_something_that_is_not_a_number_is_refused(self):
+    def test_something_that_is_not_an_exact_decimal_is_refused(self):
+        """Read by the one grammar, never by `Decimal(text)`, which accepts
+        every one of the strings below."""
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
-        for value in ("plenty", None, [1], float("nan"), float("inf")):
+        for value in ("plenty", None, [1], " 1", "1 ", "1e3", "1_0", "+1",
+                      "NaN", "Infinity", chr(0x0661)):
             with pytest.raises(ValueTypeMismatch):
                 declared.validate_value(value)
 
-    def test_a_float_is_read_as_the_number_that_was_sent(self):
-        """A supplier's `0.1` means a tenth.
-
-        Reading it through its exact binary expansion would be UBB inventing
-        seventeen digits of precision nobody sent.
-        """
+    def test_a_binary_float_is_refused_and_never_read(self):
+        """No binary float anywhere on the path (#603): `0.1` has already
+        rounded by the time it is a float, and the shortest text it reads back
+        as is a guess about what was sent — exact to fifteen digits and no
+        further, with no way to tell where that bound was crossed."""
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 
-        assert declared.validate_value(0.1) == Decimal("0.1")
+        for value in (0.1, 2.0, float("nan"), float("inf")):
+            with pytest.raises(ValueTypeMismatch):
+                declared.validate_value(value)
 
     def test_a_value_type_ubb_does_not_own_is_refused(self):
         declared = _measurement(_event_type(_tenant()))

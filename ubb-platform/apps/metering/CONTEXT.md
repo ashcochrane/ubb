@@ -227,11 +227,14 @@ it. That is why this rule needs no ADR: the proposal cannot land quietly.
 **pricing_status**:
 Whether the customer price for a subject is settled, and if not, why not — the four ratified values
 sitting beside the amount, so a `NULL` is never read as a zero. `known` is resolved. **`waived` is a
-decision somebody made** — a margin rule with no supplier cost to take a margin over. **`unknown` is
-information UBB does not have** — nothing matched and there is no markup rung. `not_applicable` is a
+decision somebody made** — a margin rule with no supplier cost to take a margin over. **`unknown`
+says no authoritative customer price is recorded for this event**, and its reason says why
+(`pricing_status_reason`, #603, ADR-0020 §4 — required and nullable wherever the status is
+published): `null` when nothing matched and there is no markup rung, `negative_price_unsupported`
+when UBB calculated a negative price the money rails cannot carry in v1. `not_applicable` is a
 subject that generates no customer revenue at this level at all. The distinction between the middle
 two is what a Resolution Run is built on: it repairs what UBB is missing and never touches what
-somebody decided.
+somebody decided — nor a negative price, which re-resolving would only compute again.
 **What produces `not_applicable` is the whole-work pricing regime** (#418): every posting under a
 piece of work sold at ONE AGREED PRICE carries it, because the customer revenue for those events is
 the agreed price and none of it is theirs. The price ladder is not consulted for such an event at
@@ -608,8 +611,10 @@ arithmetic with the writing taken out. **It is a projection and not an instructi
 credit note, charge or refund follows from reading it, and UBB will not bill anybody for it: Stripe
 owns the billing engine and a UBB-owned adjustment surface would be reimplementing it. The response
 carries that sentence itself (`queries.PROJECTED_ADJUSTMENT_BASIS`) rather than leaving it to a
-comment, because a projection read as a receivable is the failure mode. The figure is a floor and
-says so — what it could not value, and what one pass did not reach, are counted beside it.
+comment, because a projection read as a receivable is the failure mode. The figure is the sum of
+what a run would settle, and says what it leaves out — what it could not value, and what one pass
+did not reach, are counted beside it; it is complete when both counts are zero (no direction is
+promised for the rest, #603).
 (#364, **ADR-0010**; `apps/metering/queries.py:get_projected_adjustment`)
 _Avoid_: adding the supplier-cost half into the figure — learning what a call cost is not money a
 tenant can go back to a customer for; and reporting waived charges here — what waiving has cost is

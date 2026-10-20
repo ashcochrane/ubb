@@ -107,10 +107,13 @@ describe("the catalogue's symbols", () => {
 
   it("hold the largest amount a money column takes, to the digit", () => {
     expect(SHELL_FILE.microsLimit).toBe((2n ** 63n - 1n).toString());
-    // A whole number of this many digits is exact in a double, which is what
-    // the oldest jq a file may meet holds a number in.
-    expect(Number.isSafeInteger(Number("9".repeat(SHELL_FILE.exactDigits)))).toBe(true);
-    expect(Number.isSafeInteger(Number("9".repeat(SHELL_FILE.exactDigits + 1)))).toBe(false);
+  });
+
+  it("hold no digit bound for a quantity: it is text, never a jq number (#603)", () => {
+    // The 15-digit bound was what a double holds exactly, which a quantity
+    // passed through jq as a number was bound by. A quantity is text now.
+    expect(Object.keys(SHELL_FILE)).not.toContain("exactDigits");
+    expect(JSON.stringify([SHELL_COMMENTS, SHELL_MESSAGES])).not.toMatch(/15 digits/);
   });
 
   it("hold no host: where the API is, is not the renderer's to say", () => {
@@ -162,16 +165,18 @@ describe("what the catalogue says about a registry concept", () => {
     expect(Object.keys(REMEDIATION).sort()).toEqual(REGISTRY.values.diagnostic_code);
   });
 
-  it("says a valid constant waits only on this version, never that its value is missing", () => {
-    // #571: a constant is declared with its value, so the declaration is
-    // complete and only the Code Builder lacks something. Nothing may read as
-    // a fault in the declaration, or as constants not being supported.
-    const words = REMEDIATION.constant_measurement_not_renderable.join(" ");
+  it("says nothing of a constant this version cannot generate: #584 renders it", () => {
+    expect(Object.keys(REMEDIATION)).not.toContain("constant_measurement_not_renderable");
+    expect(JSON.stringify(catalogue)).not.toMatch(/cannot yet generate/);
+  });
 
-    expect(words).toContain("valid platform configuration");
-    expect(words).toContain("This Code Builder version cannot yet generate code that uses");
-    expect(words).toContain("Nothing in the declaration needs to change.");
-    expect(words).not.toMatch(/missing|not declared|unsupported|request below/i);
+  it("tells a quantity read off the response what to read, and promises it exactly or not at all", () => {
+    // #603 A4: a float read off a response is refused in words that say what
+    // to READ, and the limitation is said plainly beside the read.
+    expect(MESSAGES.quantityFloatRead).toMatch(/read the response's integer or its decimal string/);
+    for (const words of [COMMENTS.responseQuantity, SHELL_COMMENTS.responseQuantity]) {
+      expect(words.join(" ")).toMatch(/recordable only from a supplier that writes it as text or as a whole number/);
+    }
   });
 
   it("tells a cost read off the response what to read, where a caller is told what to pass", () => {

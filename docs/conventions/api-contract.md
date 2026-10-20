@@ -346,9 +346,12 @@ its meaning (owner ruling on #571, comment 6024142285):
 - **The string is not evidence that the value is a string.** A generated
   integration emits a correctly typed exact literal for its target.
 
-This is the precedent the exact recording representation of a Measurement
-quantity (#603) weighs. It is **not** a decision for recording: the recording
-request still carries whole numbers, and #603 decides what it carries.
+Since #603 (ADR-0020 §1) this is also how a RECORDED quantity travels: the
+recording request, the batch item and Verify's record take the same grammar as
+a string member, a JSON number is refused even when it is whole, the declared
+`value_type` decides whether a fraction is admitted, and every surface that
+answers a quantity (the acknowledgement, the detail read, the receipt) answers
+its canonical text.
 
 ## Adding a surface
 

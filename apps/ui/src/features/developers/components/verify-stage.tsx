@@ -50,8 +50,9 @@ import {
 } from "../lib/code-builder-words";
 import {
   blankSamples,
-  DECIMAL_SENT_WHOLE,
   groupingFieldsAsked,
+  QUANTITY_HINT,
+  QUANTITY_HINT_UNDECLARED,
   refusalOf,
   sampleFormSchema,
   standingOf,
@@ -353,15 +354,11 @@ function SampleForm({
                 <>
                   {measurement.facts.map(({ argument, place }) => (
                     <span key={argument.name}>
-                      {/* A declared fact: never a value this version
-                          cannot generate, which only a value token is. */}
-                      <ShownValue shown={shownValue(argument, place, false)} />
+                      <ShownValue shown={shownValue(argument, place)} />
                     </span>
                   ))}
                   <span>
-                    {measurement.valueType === "decimal"
-                      ? DECIMAL_SENT_WHOLE
-                      : "A whole number; leave it blank to send none."}
+                    {measurement.valueType === null ? QUANTITY_HINT_UNDECLARED : QUANTITY_HINT[measurement.valueType]}
                   </span>
                 </>
               }
@@ -371,7 +368,8 @@ function SampleForm({
                 <input
                   id={id}
                   type="text"
-                  inputMode="numeric"
+                  // Not "numeric": a quantity may carry a minus and a point.
+                  inputMode="text"
                   className={CONTROL}
                   {...form.register(`records.${index}.measurements.${position}`)}
                 />

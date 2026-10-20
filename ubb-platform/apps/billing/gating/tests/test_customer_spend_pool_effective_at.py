@@ -36,6 +36,7 @@ def _draw(t, c, billed, n, effective_at=None):
     if effective_at is not None:
         Posting.objects.filter(id=e.id).update(effective_at=effective_at)
     payload = asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id, customer_id=c.id, event_id=e.id, cost_micros=billed,
         effective_at=effective_at.isoformat() if effective_at is not None else ""))
     handle_usage_recorded_billing(str(uuid.uuid4()), payload)
@@ -73,9 +74,12 @@ class TestSpendPoolEffectiveMonthBasis:
         # Deliberate literal dict (#114 testing.md exception): the point is a
         # LEGACY queued payload with no effective_at key at all — asdict()
         # always emits the key, so the typed constructor cannot express this.
+        # (`pricing_status_reason` is in it: `events/0010` stamped every
+        # queued payload with the one required field #603 added.)
         handle_usage_recorded_billing(str(uuid.uuid4()), {
             "tenant_id": str(t.id), "customer_id": str(c.id),
-            "event_id": str(e.id), "cost_micros": 70_000})  # no effective_at key
+            "event_id": str(e.id), "cost_micros": 70_000,
+            "pricing_status_reason": None})  # no effective_at key
         assert Door.spend_pool(c.id) == 70_000
 
     def test_rebuild_equals_effective_filtered_total(self):

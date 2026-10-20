@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { ABSENT_LABEL } from "./localisation";
 import {
-  AT_LEAST,
-  AT_MOST,
+  amountOver,
   COSTING_STATUS_EXPLANATIONS,
   costingStatusLabel,
+  incompleteFigure,
   isPartial,
-  marginBound,
-  marginPercentBound,
+  marginOver,
+  marginPercentOver,
   partialTotalNote,
+  shareOver,
   supplierCostTotal,
   unresolvedReasonLabel,
 } from "./supplier-cost";
@@ -23,10 +24,15 @@ describe("supplierCostTotal", () => {
     expect(supplierCostTotal(4_200_000, WHOLE, "usd")).toBe("$4.20");
   });
 
-  it("renders a partial total as a floor, never as a figure", () => {
-    expect(supplierCostTotal(4_200_000, PARTIAL, "usd")).toBe(
-      `${AT_LEAST} $4.20`,
-    );
+  // ⚠ MARKED, AND NEVER AS A BOUND (#603, ADR-0020 §6): a cost left out may
+  // be negative, so the complete figure may be higher or lower than this.
+  it("renders a partial total marked incomplete, never as a figure and never as a bound", () => {
+    expect(supplierCostTotal(4_200_000, PARTIAL, "usd")).toBe("$4.20 (Incomplete)");
+    expect(supplierCostTotal(4_200_000, PARTIAL, "usd")).not.toMatch(/at least|at most/);
+  });
+
+  it("renders a partial total whose resolved sum is negative, marked the same way", () => {
+    expect(supplierCostTotal(-1_500_000, PARTIAL, "usd")).toBe("-$1.50 (Incomplete)");
   });
 
   // A resolved zero is a real amount (ADR-0007 §2) and says so.
@@ -34,46 +40,50 @@ describe("supplierCostTotal", () => {
     expect(supplierCostTotal(0, WHOLE, "usd")).toBe("$0.00");
   });
 
-  // THE SHARPEST CASE, and the one "at least" alone gets wrong. A window whose
-  // every resolved cost sums to nothing, with events still uncosted, has a
-  // floor of zero — true, and unreadable: "at least $0.00" is read as "this was
-  // free", which is exactly the misreading this module exists to make
-  // impossible. Nothing is known, so nothing is stated as a number.
-  it("renders NO amount when the floor is zero and costs are still missing", () => {
+  // THE SHARPEST CASE, and the one a mark alone gets wrong. A window whose
+  // every resolved cost sums to nothing, with events still uncosted: "$0.00",
+  // marked or not, is read as "this was free", which is exactly the misreading
+  // this module exists to make impossible. No total is known, so nothing is
+  // stated as a number.
+  it("renders NO amount when the resolved sum is zero and costs are still missing", () => {
     expect(supplierCostTotal(0, PARTIAL, "usd")).toBe(ABSENT_LABEL);
     expect(supplierCostTotal(0, PARTIAL, "usd")).not.toContain("0.00");
   });
 
   it("formats in the tenant's currency", () => {
-    expect(supplierCostTotal(4_200_000, PARTIAL, "gbp")).toBe(
-      `${AT_LEAST} £4.20`,
-    );
+    expect(supplierCostTotal(4_200_000, PARTIAL, "gbp")).toBe("£4.20 (Incomplete)");
   });
 });
 
-describe("marginBound", () => {
+describe("marginOver", () => {
   // The backend states this rather than the console inferring it: a markup is
   // billed minus the RESOLVED supplier cost, and the contract says so on the
-  // measure itself: `EconomicMeasureOut.status` reads `incomplete` when "the
-  // figure is a bound rather than a total" (#501 — it used to be
-  // `get_revenue_analytics`, one of the five definitions that collapsed).
+  // measure itself: `EconomicMeasureOut.status` reads `incomplete` when the
+  // figure is the sum of the inputs that resolved (#501; #603 retired the
+  // bound it used to promise).
   it("renders a margin beside a whole cost as the plain amount", () => {
-    expect(marginBound(9_000_000, WHOLE, "usd")).toBe("$9.00");
+    expect(marginOver(9_000_000, WHOLE, "usd")).toBe("$9.00");
   });
 
-  it("renders a margin beside a partial cost as a ceiling", () => {
-    expect(marginBound(9_000_000, PARTIAL, "usd")).toBe(`${AT_MOST} $9.00`);
+  it("marks a margin beside a partial cost, and promises no direction", () => {
+    expect(marginOver(9_000_000, PARTIAL, "usd")).toBe("$9.00 (Incomplete)");
+    expect(marginOver(-1_500_000, PARTIAL, "usd")).toBe("-$1.50 (Incomplete)");
   });
 
-  // A margin bounded from above is still bounded from above when it is already
-  // negative: the unlearned costs can only make it worse.
-  it("bounds a negative margin from above too", () => {
-    expect(marginBound(-1_500_000, PARTIAL, "usd")).toBe(`${AT_MOST} -$1.50`);
+  it("marks the percentage the same way", () => {
+    expect(marginPercentOver(62.5, WHOLE)).toBe("62.5%");
+    expect(marginPercentOver(62.5, PARTIAL)).toBe("62.5% (Incomplete)");
   });
+});
 
-  it("bounds the percentage the same way", () => {
-    expect(marginPercentBound(62.5, WHOLE)).toBe("62.5%");
-    expect(marginPercentBound(62.5, PARTIAL)).toBe(`${AT_MOST} 62.5%`);
+describe("the one mark", () => {
+  it("is the catalogue's word for an incomplete measure, and only where asked", () => {
+    expect(incompleteFigure("$1.00", true)).toBe("$1.00 (Incomplete)");
+    expect(incompleteFigure("$1.00", false)).toBe("$1.00");
+    expect(shareOver(41, true)).toBe("41% (Incomplete)");
+    expect(shareOver(41, false)).toBe("41%");
+    expect(amountOver(1_760_000, "usd", true)).toBe("$1.76 (Incomplete)");
+    expect(amountOver(1_760_000, "usd", false)).toBe("$1.76");
   });
 });
 
@@ -93,11 +103,12 @@ describe("isPartial", () => {
 });
 
 describe("partialTotalNote", () => {
-  it("says how many events are missing, and which way the total is wrong", () => {
+  it("says how many events are missing, and that the total is the sum of what resolved", () => {
     const note = partialTotalNote(3);
 
     expect(note).toContain("3");
-    expect(note).toContain("higher");
+    expect(note).toContain("not included");
+    expect(note).not.toMatch(/higher|lower|at least|floor/);
   });
 
   it("says nothing at all when nothing is missing", () => {

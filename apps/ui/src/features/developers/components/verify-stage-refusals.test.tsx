@@ -22,7 +22,7 @@ import { loadBlueprintFixture } from "../api/mock-blueprints";
 import type { Blueprint } from "../api/types";
 import { loadVerificationFixture } from "../api/mock-verifications";
 import { taskOutcomeLabel } from "../lib/code-builder-words";
-import { DECIMAL_SENT_WHOLE } from "../lib/verification";
+import { QUANTITY_HINT } from "../lib/verification";
 import { renderInRouter } from "../test-utils";
 import { VerifyStage } from "./verify-stage";
 
@@ -130,10 +130,10 @@ describe("a refusal before anything ran", () => {
 describe("a Measurement declared decimal", () => {
   // ⚠ ASSEMBLED, AND SAYS SO: no committed complete Blueprint declares one, so
   // the platform's calculated-cost Blueprint has input_tokens' declared type
-  // changed. The recording request carries whole numbers only whatever the
-  // type, and the form says so beside it rather than looking like it ignored
-  // the declaration it shows.
-  it("says it is still sent as a whole number, and only beside that Measurement", async () => {
+  // changed. The form asks each Measurement as its declared type (#603): an
+  // exact decimal beside the one declared decimal, a whole number beside the
+  // others.
+  it("asks for an exact decimal beside that Measurement only", async () => {
     const load = async (): Promise<Blueprint> => {
       const blueprint = await loadBlueprintFixture("calculated-cost");
       return {
@@ -149,9 +149,10 @@ describe("a Measurement declared decimal", () => {
     renderInRouter(<Harness load={load} />);
     const record = await screen.findByRole("group", { name: "Record usage · chat.completion" });
 
-    expect(within(record).getAllByText(DECIMAL_SENT_WHOLE)).toHaveLength(1);
+    expect(within(record).getAllByText(QUANTITY_HINT.decimal)).toHaveLength(1);
+    expect(within(record).getAllByText(QUANTITY_HINT.integer)).toHaveLength(2);
     const field = within(record).getByLabelText("input_tokens").closest("div");
-    expect(field).toHaveTextContent(DECIMAL_SENT_WHOLE);
+    expect(field).toHaveTextContent(QUANTITY_HINT.decimal);
   });
 });
 

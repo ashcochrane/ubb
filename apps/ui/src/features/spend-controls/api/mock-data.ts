@@ -10,7 +10,7 @@
 //
 // COMPOSED, NEVER STATED FIELD BY FIELD (#155 §9.4; apps/ui/CLAUDE.md). Every
 // amount on these rows is an economic STATE — a price or cost that may be
-// unresolved, a total that may be a floor, a ceiling assessment concluded
+// unresolved, a total that may be partial, a ceiling assessment concluded
 // from its terms — so each is composed from `@/lib/economic-scenarios` and the
 // itemised totals are ADDED UP from the composed events by the backend's own
 // rule (add what is resolved, count what is not), never typed beside them.
@@ -101,6 +101,7 @@ function event(seed: EventSeed): ItemisedEventRow {
     effective_at: seed.at,
     billed_cost_micros: seed.price.billed_cost_micros,
     pricing_status: seed.price.pricing_status,
+    pricing_status_reason: seed.price.pricing_status_reason,
     provider_cost_micros: seed.cost.provider_cost_micros,
     costing_status: seed.cost.costing_status,
     charge_id: seed.chargeId ?? null,
@@ -173,15 +174,17 @@ export function totalsOf(rows: readonly EpisodeRow[]): FamilyTotalsRow[] {
  * events landing after the stop — one of them at a cost UBB never learned,
  * which is exactly the row a zeroed absence would misreport as a free overrun
  * (#330). The pair the unit ended on is composed as a ceiling assessment so
- * the fixture cannot state a "reached" row the registry's rule would not
- * conclude; the pair it fired on is a floor beside the one event it could not
- * include.
+ * the fixture cannot state a row the registry's rule would not conclude — and
+ * with a cost still unresolved that rule concludes `indeterminate`, though the
+ * stop fired and stands (#603, ADR-0020 §7: the enforcement trigger is the
+ * resolved total; the assessment is not). The pair it fired on is the sum of
+ * what had resolved, beside the one event it could not include.
  */
 /** The ceiling the story's video renders pin at start — the tasks feature's `VIDEO_RENDER_CEILING_MICROS`. */
 const VIDEO_RENDER_CEILING = 3_000_000;
 
 const CEILING_VIDEO_RENDER: CeilingEpisodeRow = (() => {
-  const ended = ceilingAssessment("ceiling_reached", {
+  const ended = ceilingAssessment("indeterminate", {
     ceiling_micros: VIDEO_RENDER_CEILING,
     cost: incompleteTotal(3_420_000, 1),
   });
@@ -219,7 +222,7 @@ const CEILING_VIDEO_RENDER: CeilingEpisodeRow = (() => {
         // THE ONE ITEMISED EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED (#330).
         // It landed past the stop and it is still billed, so its row must not
         // read as a free overrun: the amount is absent and the block's total
-        // says "at least".
+        // is marked incomplete.
         price: knownPrice(41_000),
         cost: unknownCost("cost_rate_missing"),
         arrivedAfter: true,
@@ -266,7 +269,7 @@ const CEILING_ANNOUNCEMENT_GONE: CeilingEpisodeRow = (() => {
  * the pool through its projection and the durable drawdown rather than the
  * live lane, so the recording route marked no tipping event (#465, ruling 2).
  * Three events landed after it, one at a price UBB could not resolve, so the
- * spend after the crossing is a floor.
+ * spend after the crossing is the sum of what resolved, marked incomplete.
  */
 const POOL_ACME: CustomerSpendPoolEpisodeRow = (() => {
   const events = [
@@ -328,8 +331,9 @@ const POOL_ACME: CustomerSpendPoolEpisodeRow = (() => {
 /**
  * luna-labs crossed its hard floor on 2 July and recovered on the 4th: three
  * events past the stop, two costs known and one never learned, so the
- * episode's supplier total is a floor — the customers feature's story, and the
- * numbers its old report showed (`$1.87` at least).
+ * episode's supplier total is partial — the customers feature's story, and the
+ * numbers its old report showed (`$1.87`, then said "at least", a wording #603
+ * retired).
  */
 const FLOOR_LUNA: WalletPolicyEpisodeRow = {
   control_family: "wallet_policy",
@@ -498,7 +502,8 @@ export const MOCK_UTILISATION_ROWS: readonly CeilingUtilisationRow[] = [
     customer: CUSTOMER_ACME,
     kind: "video-render",
     completedAt: "2026-07-21T09:15:33Z",
-    assessment: ceilingAssessment("ceiling_reached", {
+    // Stopped at its ceiling, and indeterminate: see `CEILING_VIDEO_RENDER`.
+    assessment: ceilingAssessment("indeterminate", {
       ceiling_micros: VIDEO_RENDER_CEILING,
       cost: incompleteTotal(3_420_000, 1),
     }),
@@ -561,7 +566,7 @@ export function utilisationReport(
 /**
  * acme-corp's pool for July as the crossing above left it: the known period
  * charges past the pool, with the one posting whose price UBB could not
- * resolve making the pair a floor, and new starts refused.
+ * resolve making the pair partial (marked incomplete), and new starts refused.
  *
  * THE CUSTOMERS FEATURE'S MOCK TELLS THIS POOL THE SAME WAY since #468: its
  * `MOCK_POOL_CHARGES` restates these terms for acme-corp — blocking, the

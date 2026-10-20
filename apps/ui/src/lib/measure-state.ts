@@ -5,10 +5,11 @@
 // and they are five different facts — not five decorations on one number:
 //
 //   known                                 the amount
-//   incomplete                            a BOUND, with the count that bounds it —
-//                                         or, where no piece of a revenue
-//                                         resolved, NO amount and no direction
-//                                         (#537)
+//   incomplete                            the SUM OF WHAT RESOLVED, marked, with
+//                                         the count of what it leaves out — no
+//                                         bound in either direction (#603) — or,
+//                                         where no piece of a revenue resolved,
+//                                         NO amount (#537)
 //   unavailable_at_requested_grain        the state, never an amount: the money
 //                                         exists and is stated as context, at the
 //                                         grain it can be placed
@@ -19,9 +20,9 @@
 //
 // and a sixth the server may one day send renders as the token it is, marked,
 // through `components/shared/open-set-value.tsx` (slice 6 §18). ⚠ **UNKNOWN IS
-// NEVER A ZERO, ANYWHERE.** A chart that drops what it cannot resolve does not
-// draw a lower bound; it draws a number wrong in an unknown direction, and that
-// number gets used to set a price.
+// NEVER A ZERO, ANYWHERE.** A chart that drops what it cannot resolve draws a
+// number wrong in an unknown direction, and that number gets used to set a
+// price.
 //
 // Identity is the registry's (`@/lib/vocabulary`), the words the catalogue's
 // (`@/locales`), and the rules below console copy — the split `@/lib/products`,
@@ -33,9 +34,9 @@
 // derives its state from BOTH sides (§15, `queries.py::_margin`), and a revenue
 // side reading `known` over a cost nobody resolved is the honest rendering of a
 // dishonest input that #473 owns — so nothing here reads the revenue side's
-// state as evidence about the margin. What decides which way an incomplete
-// margin is a bound is which side is short, and the figure carries both counts
-// for exactly that reason (`MeasureFigure` in `@/lib/economic-query`).
+// state as evidence about the margin. What the sentence beside an incomplete
+// margin names is which side is short, and the figure carries both counts for
+// exactly that reason (`MeasureFigure` in `@/lib/economic-query`).
 
 import {
   CUSTOMER_REVENUE,
@@ -56,7 +57,7 @@ import {
 } from "@/lib/format";
 import { isUbbAxis, ubbAxisTitle } from "@/lib/grouping-axis";
 import { ABSENT_LABEL, labelMap, tenantDefinedLabel } from "@/lib/localisation";
-import { AT_LEAST, AT_MOST, partialTotalNote } from "@/lib/supplier-cost";
+import { incompleteFigure, partialTotalNote } from "@/lib/supplier-cost";
 import { eventsHave } from "@/lib/total-reading";
 import {
   ANALYTICS_MEASURE_LABEL_KEYS,
@@ -86,7 +87,7 @@ export const measureLabel = labelMap(ANALYTICS_MEASURE_LABEL_KEYS);
 export const MEASURE_STATUS_EXPLANATIONS = {
   known: "Every input to this figure is resolved, and this is the amount.",
   incomplete:
-    "Some inputs to this figure are still unresolved, so it is a bound rather than a total.",
+    "Some inputs to this figure are still unresolved, so it is the sum of the inputs that have resolved rather than a total. An input still unresolved may move it either way.",
   unavailable_at_requested_grain:
     "UBB has this money and cannot place it this finely — a subscription or a figure you supplied names no supplier, event type or day. Ask a coarser question to see it.",
   unavailable_outside_retention_horizon:
@@ -99,8 +100,9 @@ export const MEASURE_STATUS_EXPLANATIONS = {
  * One measure, as it may be said.
  *
  * The kinds are what a renderer branches on, and they are the five facts in
- * the header less the two the text alone can carry: a known figure and a bound
- * are both TEXT (the bound says so in its own words), a state that states no
+ * the header less the two the text alone can carry: a known figure and a
+ * partial one are both TEXT (the partial one is marked in its own words), a
+ * state that states no
  * figure is its NAME plus the sentence that explains it, and a state the build
  * cannot read is its TOKEN, which a component marks. `absent` is the row not
  * carrying the measure at all — nobody asked, so nobody is told anything.
@@ -108,7 +110,7 @@ export const MEASURE_STATUS_EXPLANATIONS = {
 export type MeasureReading =
   | { readonly kind: "absent" }
   | { readonly kind: "figure"; readonly text: string }
-  | { readonly kind: "bound"; readonly text: string; readonly note: string | null }
+  | { readonly kind: "partial"; readonly text: string; readonly note: string | null }
   | {
       readonly kind: "state";
       readonly status: MeasureStatus;
@@ -118,24 +120,12 @@ export type MeasureReading =
   | { readonly kind: "unfamiliar"; readonly status: string };
 
 /**
- * Which way an incomplete figure can be wrong — or `null` where it can be wrong
- * either way.
- *
- * A cost, a revenue and a count are FLOORS: what they left out can only add.
- * A margin is bounded by whichever side is short — from above by an uncosted
- * event, from below by an unpriced one — and by neither when both are.
+ * The sentence beside an incomplete figure, naming the count of what it leaves
+ * out — and, on a margin, which side is short. It names no direction: an
+ * amount left out may be negative (#603, ADR-0020 §6), so the complete figure
+ * may be higher or lower than the one stated, on any measure.
  */
-function boundOf(figure: MeasureFigure): typeof AT_LEAST | typeof AT_MOST | null {
-  if (figure.measure !== GROSS_MARGIN) return AT_LEAST;
-  const costShort = figure.unresolved_event_count > 0;
-  const priceShort = figure.unpriced_event_count > 0;
-  if (costShort && !priceShort) return AT_MOST;
-  if (priceShort && !costShort) return AT_LEAST;
-  return null;
-}
-
-/** The sentence beside a bound, naming the count that makes it one. */
-function boundNote(figure: MeasureFigure): string | null {
+function partialNote(figure: MeasureFigure): string | null {
   const uncosted = figure.unresolved_event_count;
   const unpriced = figure.unpriced_event_count;
   if (figure.measure === CUSTOMER_REVENUE) return unpricedTotalNote(unpriced);
@@ -143,15 +133,15 @@ function boundNote(figure: MeasureFigure): string | null {
   if (uncosted > 0 && unpriced > 0) {
     return (
       `${eventsHave(uncosted)} a supplier cost UBB has not learned and ` +
-      `${eventsHave(unpriced)} a customer price it could not resolve, so the ` +
-      `true margin could be higher or lower.`
+      `${eventsHave(unpriced)} a customer price it has not resolved. They are ` +
+      `not included in this margin.`
     );
   }
   if (uncosted > 0) {
-    return `${eventsHave(uncosted)} a supplier cost UBB has not learned, so the true margin is lower.`;
+    return `${eventsHave(uncosted)} a supplier cost UBB has not learned. They are not included in this margin.`;
   }
   if (unpriced > 0) {
-    return `${eventsHave(unpriced)} a customer price UBB could not resolve, so the true margin is higher.`;
+    return `${eventsHave(unpriced)} a customer price UBB has not resolved. They are not included in this margin.`;
   }
   return null;
 }
@@ -163,8 +153,8 @@ function boundNote(figure: MeasureFigure): string | null {
  * null amount where no piece of a row's revenue resolved — usage nobody priced,
  * and no subscription or supplied figure beside it — on the revenue and on the
  * margin over it. There is no total for a sentence to say events were "left
- * out of", and no figure for "the true margin is higher" to be higher than;
- * `boundNote` says both, and was right only while every bound had an amount.
+ * out of", and no figure for a margin to be stated beside; `partialNote` says
+ * both, and is right only where there is an amount.
  * The count is still worth saying: it is why nothing can be stated.
  *
  * ⚠ **IT DOES NOT SAY "NONE OF IT RESOLVED"**, because the same figure reaches
@@ -193,8 +183,8 @@ function noAmountNote(figure: MeasureFigure): string {
 export function unpricedTotalNote(unpricedEventCount: number): string | null {
   if (unpricedEventCount <= 0) return null;
   return (
-    `${eventsHave(unpricedEventCount)} a customer price UBB could not resolve. ` +
-    `They are left out of this total, so the true figure is higher.`
+    `${eventsHave(unpricedEventCount)} a customer price UBB has not resolved. ` +
+    `They are not included in this total, which is the sum of the prices UBB has.`
   );
 }
 
@@ -215,9 +205,11 @@ function amountText(figure: MeasureFigure, value: number, currency: string): str
  * neither is it the figure, and under a state this build cannot read no number
  * is vouched for at all.
  *
- * A floor of ZERO states no amount — the `supplierCostTotal` rule, for the
- * reason it gives: "at least $0.00" is the string this surface exists to
- * delete, with a prefix in front of it.
+ * A partial cost, revenue or count summing to ZERO states no amount — the
+ * `supplierCostTotal` rule, for the reason it gives: "$0.00" beside events
+ * left out is the string this surface exists to delete, whatever mark rides
+ * with it. A margin keeps its figure, marked: a margin of nothing does not
+ * read as "free".
  */
 export function readMeasure(
   figure: MeasureFigure | null,
@@ -240,17 +232,15 @@ export function readMeasure(
   }
   if (figure.status === "incomplete") {
     if (value === null) {
-      return { kind: "bound", text: ABSENT_LABEL, note: noAmountNote(figure) };
+      return { kind: "partial", text: ABSENT_LABEL, note: noAmountNote(figure) };
     }
-    const bound = boundOf(figure);
-    const note = boundNote(figure);
-    if (value === 0 && bound === AT_LEAST) {
-      return { kind: "bound", text: ABSENT_LABEL, note };
+    const note = partialNote(figure);
+    if (value === 0 && figure.measure !== GROSS_MARGIN) {
+      return { kind: "partial", text: ABSENT_LABEL, note };
     }
-    const amount = amountText(figure, value, currency);
     return {
-      kind: "bound",
-      text: bound === null ? `${amount} (${measureStatusLabel("incomplete")})` : `${bound} ${amount}`,
+      kind: "partial",
+      text: incompleteFigure(amountText(figure, value, currency), true),
       note,
     };
   }
@@ -287,7 +277,7 @@ export function readingText(reading: MeasureReading): string {
 
 /** The sentence that goes beside a reading, where it has one. */
 export function readingNote(reading: MeasureReading): string | null {
-  return reading.kind === "bound" || reading.kind === "state" ? reading.note : null;
+  return reading.kind === "partial" || reading.kind === "state" ? reading.note : null;
 }
 
 /**
@@ -304,13 +294,13 @@ export function figureNote(
 
 /**
  * The sentence a figure owes where it states NO figure — and `undefined` where
- * it states one, bound or whole.
+ * it states one, partial or whole.
  *
- * For a card whose bound is already explained beside it: a margin's bound comes
- * from the same uncosted events the cost card's note counts, and saying it on
- * both would make a caveat out of one fact. The bound's own reason still rides
- * on the value's hover (`MeasureValue`); what a card cannot leave unsaid is
- * why there is no figure at all.
+ * For a card whose partial figure is already explained beside it: a margin's
+ * missing inputs are the same uncosted events the cost card's note counts, and
+ * saying it on both would make a caveat out of one fact. The partial figure's
+ * own reason still rides on the value's hover (`MeasureValue`); what a card
+ * cannot leave unsaid is why there is no figure at all.
  */
 export function noFigureNote(
   figure: MeasureFigure | null,
@@ -351,9 +341,9 @@ export function isNegative(figure: MeasureFigure | null): boolean {
  * margin's own state; where the revenue states none or states nothing, there is
  * no share of it to state.
  *
- * The bound follows the MARGIN's: an uncosted event lowers the numerator alone,
- * and an unpriced one raises numerator and denominator by the same amount,
- * which can only move a share of at most 100% upward.
+ * Where either side is incomplete the share is over the sums that resolved,
+ * and it is marked so, with the margin's sentence beside it — no direction,
+ * because an amount left out may be negative (#603).
  */
 export function readShare(
   margin: MeasureFigure | null,
@@ -367,11 +357,10 @@ export function readShare(
   if (margin.status === "known" && revenue?.status === "known") {
     return { kind: "figure", text: share };
   }
-  const bound = boundOf(margin);
   return {
-    kind: "bound",
-    text: bound === null ? `${share} (${measureStatusLabel("incomplete")})` : `${bound} ${share}`,
-    note: boundNote(margin),
+    kind: "partial",
+    text: incompleteFigure(share, true),
+    note: partialNote(margin),
   };
 }
 

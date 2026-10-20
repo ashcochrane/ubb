@@ -16,9 +16,7 @@ import {
   BlueprintNotRenderable,
   COMMENTS,
   ENVIRONMENT,
-  isNotRenderableValue,
   MESSAGES,
-  notRenderableAddresses,
   PRICING_MODE_COMMENTS,
   READINESS_COMMENTS,
   REMEDIATION,
@@ -300,7 +298,7 @@ describe("the header", () => {
     expect(header("calculated-cost")).toEqual(
       expect.arrayContaining([
         "schema_version = 1",
-        "renderer_contract_version = 2",
+        "renderer_contract_version = 3",
         "sdk_major_version = 3",
         'target = "python_sdk"',
         `configuration_fingerprint = "${blueprint.configuration_fingerprint}"`,
@@ -336,7 +334,7 @@ describe("the header", () => {
     const blueprint = fixture("blocked");
     const lines = header("blocked");
 
-    expect(blueprint.diagnostics.length).toBeGreaterThan(2);
+    expect(blueprint.diagnostics.length).toBeGreaterThan(1);
     for (const diagnostic of blueprint.diagnostics) {
       const at = lines.indexOf(
         `diagnostic = "${diagnostic.code}" · severity "${diagnostic.severity}"` +
@@ -353,9 +351,8 @@ describe("the header", () => {
       if (request === null) expect(lines).not.toContain(stated);
       else expect(lines).toContain(stated);
     }
-    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
-      "constant_measurement_not_renderable",
-    ]);
+    // Every code names its fix since #584 rendered the last one that did not.
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([]);
   });
 
   it("lists a diagnostic that names no declaration, and offers no request for it", () => {
@@ -451,53 +448,73 @@ describe("the shapes a value takes", () => {
     expect(moduleOf("response-cost").contents).not.toContain("_read_currency");
   });
 
-  it("writes a valued constant as one this version cannot generate: no file of either target calls it missing", () => {
-    // #571: the constant is declared with its value, so no file may say it
-    // is missing — not the call that raises in its place, not the helper,
-    // not the preview — while this Code Builder version cannot write it.
-    for (const branch of ["constant", "shell-constant"]) {
+  // ⚠ #584: a constant is a TYPED EXACT LITERAL in the module, with the
+  // statement of where it was declared beside it: an `int` where it is
+  // declared an integer and a `Decimal` of its exact text where it is a
+  // decimal in Python, and the canonical text — the wire form — in shell.
+  // A negative one keeps its sign, and one longer than a binary float holds
+  // keeps every digit. The fixture is the platform's (`CONSTANTS` in the
+  // platform's fixture module).
+  const CONSTANTS = {
+    flat_fee: { python: 'Decimal("2.5")', shell: '"2.5"', text: "2.5" },
+    seats: { python: "3", shell: '"3"', text: "3" },
+    credit: { python: 'Decimal("-0.75")', shell: '"-0.75"', text: "-0.75" },
+    ledger_lines: {
+      python: "123456789012345678901234567890",
+      shell: '"123456789012345678901234567890"',
+      text: "123456789012345678901234567890",
+    },
+  } as const;
+
+  it("writes each constant as a typed exact literal in the module, with where it was declared", () => {
+    for (const [branch, target] of [
+      ["constant", "python"],
+      ["shell-constant", "shell"],
+    ] as const) {
       const files = rendered(branch);
+      const module = only(files, "module").contents;
+      for (const [code, written] of Object.entries(CONSTANTS)) {
+        expect(module, `${branch}/${code}`).toContain(`"${code}": ${written[target]}`);
+        expect(module, `${branch}/${code}`).toContain(`measurements.${code} = "${written.text}"`);
+      }
+      // Complete, so nothing is said to be missing, and no file raises.
       for (const file of files) {
         expect(file.contents, `${branch}/${file.path}`).not.toContain(MESSAGES.notConfigured);
-        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/not_configured\(/);
+        expect(file.contents, `${branch}/${file.path}`).not.toMatch(/not_configured\(|not_renderable/);
       }
-      const module = only(files, "module").contents;
-      expect(module, branch).toMatch(/not_renderable\("measurements\.flat_fee"\)/);
-      expect(module, branch).toContain(MESSAGES.notRenderable);
+    }
+    const python = moduleOf("constant").contents;
+    expect(python).toContain("from decimal import Decimal\n");
+    // Never a float: no fraction outside the text a Decimal is built from.
+    expect(python).not.toMatch(/: -?\d+\.\d+,/);
+  });
+
+  it("keeps every constant's value out of the lines a tenant maintains", () => {
+    for (const branch of ["constant", "shell-constant"]) {
+      for (const file of rendered(branch).filter((file) => file.kind === "call_site")) {
+        for (const written of Object.values(CONSTANTS)) {
+          expect(file.contents, `${branch}/${file.path}`).not.toContain(written.text);
+        }
+      }
     }
   });
 
-  it("reads the diagnostic back only onto the quantity of the Event Type it names", () => {
-    // NOT a Blueprint the routes answered: the constant fixture with its
-    // diagnostic addressed to another Event Type's quantity of the same
-    // code. The value is then an ordinary unconfigured one, as it was before
-    // #571 — so the match needs the Event Type as well as the code.
+  // A document no platform writes, refused rather than written into a file
+  // that would send something else: a constant is carried as the canonical
+  // text of an exact decimal, and whole where it is declared an integer.
+  it.each([
+    ["a JSON number", "flat_fee", 2.5],
+    ["text with a trailing zero", "flat_fee", "2.50"],
+    ["an exponent", "flat_fee", "25e-1"],
+    ["a fraction declared whole", "seats", "3.5"],
+  ])("refuses a constant carried as %s", (_why, code, value) => {
     const blueprint = fixture("constant");
-    for (const diagnostic of blueprint.diagnostics) diagnostic.key = "another.call:flat_fee";
-
-    const module = only(render(blueprint), "module").contents;
-
-    expect(module).toContain('"flat_fee": _not_configured("measurements.flat_fee"),');
-    expect(module).not.toContain("_not_renderable(");
-  });
-
-  it("reads only a quantity's diagnostic, and only onto a quantity", () => {
-    const constant = fixture("constant");
-    const addresses = notRenderableAddresses(constant);
-
-    expect([...addresses]).toEqual(["flat.call:flat_fee"]);
-    expect(isNotRenderableValue(addresses, "flat.call", "measurements", "flat_fee")).toBe(true);
-    // A Grouping Field keyed like the quantity is not its value.
-    expect(isNotRenderableValue(addresses, "flat.call", "grouping_fields", "flat_fee")).toBe(false);
-    expect(isNotRenderableValue(addresses, null, "measurements", "flat_fee")).toBe(false);
-    // The code reported about anything but a quantity addresses no value.
-    const aboutAnEventType = {
-      diagnostics: constant.diagnostics.map((diagnostic) => ({
-        ...diagnostic,
-        object_kind: "event_type" as const,
-      })),
-    };
-    expect([...notRenderableAddresses(aboutAnEventType)]).toEqual([]);
+    for (const call of blueprint.calls) {
+      for (const argument of call.arguments) {
+        if (argument.name === `measurements.${code}`) argument.value = value;
+      }
+    }
+    expect(() => render(blueprint)).toThrow(BlueprintNotRenderable);
   });
 
   it("writes an unconfigured literal as a call that raises, naming the token", () => {
@@ -519,15 +536,17 @@ describe("the shapes a value takes", () => {
   });
 
   it("reads a path off a Python object by attribute and off JSON by subscript", () => {
+    // Each read through the one helper that takes it exactly or refuses it
+    // (#603): never the float a parser made of a fraction or an exponent.
     expect(moduleOf("calculated-cost").contents).toContain(
-      '"input_tokens": response.usage.input_tokens,',
+      '"input_tokens": _read_quantity(response.usage.input_tokens),',
     );
     expect(moduleOf("explicit-subtasks").contents).toContain(
-      '"prompt_tokens": response["usageMetadata"]["promptTokenCount"],',
+      '"prompt_tokens": _read_quantity(response["usageMetadata"]["promptTokenCount"]),',
     );
     // A path spelled against its shape's convention is emitted as declared.
     expect(moduleOf("explicit-subtasks").contents).toContain(
-      '"candidate_tokens": response["usage_metadata"]["candidates_token_count"],',
+      '"candidate_tokens": _read_quantity(response["usage_metadata"]["candidates_token_count"]),',
     );
   });
 
@@ -542,7 +561,7 @@ describe("the shapes a value takes", () => {
     const module = only(render(blueprint), "module").contents;
 
     expect(module).toContain(
-      '"input_tokens": _attribute(_attribute(_attribute(response, "usage-data"), "class"), "input tokens"),',
+      '"input_tokens": _read_quantity(_attribute(_attribute(_attribute(response, "usage-data"), "class"), "input tokens")),',
     );
     expect(Object.values(compiled(render(blueprint))).every((refusal) => refusal === null)).toBe(
       true,
@@ -627,9 +646,9 @@ describe("what the renderer refuses", () => {
     ],
     [
       "a renderer contract it does not know",
-      /written to renderer contract 2, and the Blueprint was resolved for 3/,
+      /written to renderer contract 3, and the Blueprint was resolved for 4/,
       (b) => {
-        b.renderer_contract_version = 3;
+        b.renderer_contract_version = 4;
       },
     ],
     [
@@ -637,9 +656,19 @@ describe("what the renderer refuses", () => {
       // resolved for it is read by nothing here, so a renderer of either
       // contract never meets the other's document.
       "a document resolved for the contract before a value of its own could be read off a response",
-      /written to renderer contract 2, and the Blueprint was resolved for 1/,
+      /written to renderer contract 3, and the Blueprint was resolved for 1/,
       (b) => {
         b.renderer_contract_version = 1;
+      },
+    ],
+    [
+      // #603/#584: contract 2 promised a quantity as a number and a
+      // constant's token unconfigured. Read as contract 3, such a document
+      // would send text the server it came from types as an integer.
+      "a document resolved for the contract before a quantity was exact text",
+      /written to renderer contract 3, and the Blueprint was resolved for 2/,
+      (b) => {
+        b.renderer_contract_version = 2;
       },
     ],
     [

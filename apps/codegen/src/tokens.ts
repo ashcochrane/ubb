@@ -62,17 +62,6 @@ export interface Unconfigured {
   readonly kind: "unconfigured";
 }
 
-/**
- * A literal the tenant HAS configured, which this Code Builder version cannot
- * yet generate (#571): a constant quantity's declared value. The Blueprint
- * carries it unconfigured and reports why, and `readLifecycle` reads that
- * diagnostic back onto the value, so no file calls a valued constant
- * missing. The ticket that renders a constant (#584) removes it.
- */
-export interface NotRenderable {
-  readonly kind: "not_renderable";
-}
-
 /** A value only the tenant's code holds: the parameter it must pass. */
 export interface Parameter {
   readonly kind: "parameter";
@@ -86,7 +75,7 @@ export interface SecretReference {
   readonly [secretReferenceBrand]: true;
 }
 
-export type Binding = Literal | Unconfigured | NotRenderable | Parameter | SecretReference;
+export type Binding = Literal | Unconfigured | Parameter | SecretReference;
 
 export interface Token<B extends Binding = Binding> {
   /** The name as the document gives it. Never rebuilt and never decoded. */
@@ -114,9 +103,9 @@ export interface Entry {
   readonly key: Token<Literal>;
   /** The declared key itself, exactly as declared. */
   readonly keyText: string;
-  /** `null` where the document carries no value for this key. Only an
-   * entry's value can be one this renderer cannot yet write. */
-  readonly value: Token<Literal | Unconfigured | NotRenderable | Parameter> | null;
+  /** `null` where the document carries no value for this key. A constant
+   * quantity's value is a literal: the exact text it is declared as (#584). */
+  readonly value: Token<Literal | Unconfigured | Parameter> | null;
   readonly facts: Fact[];
 }
 
@@ -315,46 +304,37 @@ export function readCall(call: BlueprintCall): Call {
   };
 }
 
-/** A value a call cannot be sent without, and why it has none here. */
+/** A value a call cannot be sent without, because nothing configures it. */
 export interface NotWritten {
   readonly name: string;
-  readonly why: (Unconfigured | NotRenderable)["kind"];
 }
 
 /** Every value the Blueprint leaves a call without, by name and in the
- * order the call names them: one nothing configures, or one this Code
- * Builder version cannot yet generate. A target may write further values as
- * calls that raise — a shell file cannot read a Python object off a
- * response — and its own plan says what it says of those. */
+ * order the call names them: one nothing configures. A target may write
+ * further values as calls that raise — a shell file cannot read a Python
+ * object off a response — and its own plan says what it says of those. */
 export function notWritten(call: Call): NotWritten[] {
   const found: NotWritten[] = [];
   for (const field of call.fields) {
     if (field.shape === "scalar") {
       if (field.token.binding.kind === "unconfigured") {
-        found.push({ name: field.name, why: "unconfigured" });
+        found.push({ name: field.name });
       }
       continue;
     }
     for (const entry of field.entries) {
-      const kind = entry.value?.binding.kind;
-      if (kind === "unconfigured" || kind === "not_renderable") {
-        found.push({ name: entry.value!.name, why: kind });
+      if (entry.value?.binding.kind === "unconfigured") {
+        found.push({ name: entry.value.name });
       }
     }
   }
   return found;
 }
 
-/** What a not-ready call says of a value it is written without, by why: the
- * catalogue's sentence, owned here once for both targets. */
-export const SAID_OF: Readonly<Record<NotWritten["why"], string>> = {
-  unconfigured: MESSAGES.notConfigured,
-  not_renderable: MESSAGES.notRenderable,
-};
-
-/** The sentence a not-ready call says of one value it is written without. */
-export function said({ name, why }: NotWritten): string {
-  return `${name} ${SAID_OF[why]}.`;
+/** The sentence a not-ready call says of one value it is written without:
+ * the catalogue's, owned here once for both targets. */
+export function said({ name }: NotWritten): string {
+  return `${name} ${MESSAGES.notConfigured}.`;
 }
 
 /** The parameters a call asks for, each once, in the order first named. */

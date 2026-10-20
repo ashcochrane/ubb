@@ -11,10 +11,11 @@ _CEILING_BASIS_WORDING = dict(CEILING_BASIS_CHOICES)
 class TaskAdmin(admin.ModelAdmin):
     # The provider total is listed with its completeness beside it (#328): an
     # operator scanning this list for the unit that burned the money is reading
-    # a floor wherever the count is non-zero, and a column that only appears on
-    # the detail page is a column nobody reads. The ceiling assessment sits
-    # beside them for the same reason (#452): it is what the total and the
-    # count say about the unit's ceiling, in the registry's word.
+    # a partial sum wherever the count is non-zero, and a column that only
+    # appears on the detail page is a column nobody reads. The ceiling
+    # assessment sits beside them for the same reason (#452): it is what the
+    # total and the count say about the unit's ceiling, in the registry's
+    # word.
     # And beside the assessment, which basis a stopped unit's ceiling fired
     # on (#458) — blank for a unit that is running or was not stopped by a
     # ceiling, so an operator reading the list sees a window that ran out

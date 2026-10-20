@@ -123,7 +123,7 @@ class TheChildRecordTest(TestCase):
         posting = Posting.objects.create(
             tenant=tenant, customer=customer, idempotency_key="i")
         PostingMeasurement.objects.create(
-            posting=posting, measurements={"input_tokens": 12},
+            posting=posting, measurements={"input_tokens": "12"},
             recorded_at=posting.created_at)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
@@ -140,7 +140,7 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "i1", measurements={"input_tokens": 900})
+            tenant, customer, "i1", measurements={"input_tokens": "900"})
         measurement = PostingMeasurement.objects.get(
             posting_id=result["event_id"])
         posting = Posting.objects.get(id=result["event_id"])
@@ -157,12 +157,12 @@ class TheChildRecordTest(TestCase):
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "i1", measurements={"input_tokens": 1200})
+            tenant, customer, "i1", measurements={"input_tokens": "1200"})
         posting = Posting.objects.get(id=result["event_id"])
 
-        self.assertEqual(posting.measurements, {"input_tokens": 1200})
+        self.assertEqual(posting.measurements, {"input_tokens": "1200"})
         with self.assertRaises(AttributeError):
-            posting.measurements = {"input_tokens": 0}
+            posting.measurements = {"input_tokens": "0"}
         self.assertNotIn("measurements",
                          {f.name for f in Posting._meta.fields})
 
@@ -184,7 +184,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         self.measured = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "i1",
-                measurements={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": "1200"})["event_id"])
         # The subject: a posting standing in for the synthetic charge — a Task
         # sold at one agreed price, projected as a posting with revenue and no
         # provider operation behind it. The `kind` column that will name it
@@ -198,7 +198,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
 
     def test_the_control_has_a_child(self):
         self.assertEqual(self.measured.measurement.measurements,
-                         {"input_tokens": 1200})
+                         {"input_tokens": "1200"})
 
     def test_the_synthetic_charge_posting_has_none(self):
         self.assertFalse(
@@ -248,7 +248,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.posting = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "i1",
-                measurements={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": "1200"})["event_id"])
 
     def _fresh(self):
         """Re-read, so a cached reverse relation cannot answer for the table."""
@@ -475,7 +475,7 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
     def test_the_recording_path_leaves_it_null(self):
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
-            tenant, customer, "i1", measurements={"input_tokens": 5})
+            tenant, customer, "i1", measurements={"input_tokens": "5"})
         self.assertIsNone(
             PostingMeasurement.objects.get(
                 posting_id=result["event_id"]).prunable_at)
@@ -653,13 +653,13 @@ class TheReverseIsExercisedTest(TestCase):
         posting = self.Posting.objects.create(
             tenant_id=tenant.id, customer_id=customer.id,
             idempotency_key="i",
-            **{HISTORICAL_BAG: {"input_tokens": 1200, "searches": 2}})
+            **{HISTORICAL_BAG: {"input_tokens": "1200", "searches": "2"}})
 
         self._run(self.run_python.code)
 
         measurement = self.Measurement.objects.get(posting_id=posting.id)
         self.assertEqual(getattr(measurement, HISTORICAL_BAG),
-                         {"input_tokens": 1200, "searches": 2})
+                         {"input_tokens": "1200", "searches": "2"})
         self.assertEqual(measurement.recorded_at, posting.created_at)
         self.assertIsNone(measurement.prunable_at)
 
@@ -672,7 +672,7 @@ class TheReverseIsExercisedTest(TestCase):
         self.assertEqual(
             self.Posting.objects.values_list(HISTORICAL_BAG, flat=True).get(
                 pk=posting.pk),
-            {"input_tokens": 1200, "searches": 2})
+            {"input_tokens": "1200", "searches": "2"})
         self.assertEqual(self.Measurement.objects.count(), 0)
 
     def test_a_posting_with_no_bag_folds_to_an_empty_one_rather_than_null(self):

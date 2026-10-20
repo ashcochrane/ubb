@@ -56,7 +56,7 @@ _STOP_KEYS = {"stop", "stop_reason", "stop_scope"}
 _RESULT_KEYS = {
     "event_id", "provider_cost_micros", "costing_status",
     "unresolved_reason", "claimed_provider_cost_micros", "billed_cost_micros",
-    "pricing_status", "not_applicable_reason",
+    "pricing_status", "not_applicable_reason", "pricing_status_reason",
     "new_balance_micros", "suspended",
     "task_id", "parent_task_id",
     "task_total_billed_cost_micros", "task_total_provider_cost_micros",

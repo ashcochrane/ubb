@@ -95,15 +95,15 @@ export const EVENT_PRUNED_ID = "3d8c1e47-6f52-4a93-b70e-2c9a5f8d1b06";
 export const EVENT_TASK_CHARGE_ID = "7a4e9d15-3b60-4c28-8f91-0d6b3e7a2c58";
 /** July traffic whose supplier cost matched no Cost Rate, so was never learned
  * (#330). It is the only unresolved posting in this story, and the reason the
- * July totals over it are floors. */
+ * July totals over it are partial — the sum of what resolved, marked. */
 export const EVENT_UNRESOLVED_ID = "6b2f8c30-4d71-4e59-9c18-5a3e7d0f4b92";
 /** June traffic whose CUSTOMER PRICE UBB could not resolve, with a settled
  * supplier cost beside it (#351). The crossed case: the two completeness counts
  * are about different postings, and this is the row that proves it. */
 export const EVENT_UNPRICED_ID = "1e7d4b09-8a36-4c52-b0f7-9d2c6e5a3f81";
 /** A charge somebody decided not to pursue (#351). Same column shape as the
- * row above and a different meaning: reported as a loss, so no total is a floor
- * because of it. */
+ * row above and a different meaning: reported as a loss, so no total is
+ * incomplete because of it. */
 export const EVENT_WAIVED_ID = "9f3a5c28-7b14-4e60-8d29-4c1e6b0a7d53";
 /** An event inside a Task sold for one agreed price, so it generates no
  * customer revenue at this level at all (#351). */
@@ -166,7 +166,7 @@ interface DetailSeed {
    * the same rule, and the same reason, as `measurements_status` below.
    */
   cost: SupplierCostScenario;
-  measurements?: Record<string, number>;
+  measurements?: Record<string, string>;
   metadata?: Record<string, unknown>;
   task_id?: string | null;
   stop_context?: Array<Record<string, unknown>> | null;
@@ -311,6 +311,7 @@ function makeDetail(seed: DetailSeed): UsageEventDetail {
     // nobody knows why. The two causes are different answers to the reader.
     billed_cost_micros: seed.price.billed_cost_micros,
     pricing_status: seed.price.pricing_status,
+    pricing_status_reason: seed.price.pricing_status_reason,
     not_applicable_reason: seed.price.not_applicable_reason,
     // All three from the seed's one scenario object. There is no default here
     // any more: the file now HAS an unresolved row to render, and a constant
@@ -500,7 +501,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       // receipt distinguishes come from the same module. The payload is
       // unchanged; what changes is that the status is stated here instead of
       // being supplied by the default below.
-      ...availableMeasurements({ input_tokens: 4200, output_tokens: 1730 }),
+      ...availableMeasurements({ input_tokens: "4200", output_tokens: "1730" }),
       metadata: {
         env: "prod",
         team: "search",
@@ -530,14 +531,14 @@ const FEATURE_EVENTS: MockEvent[] = [
       price_components: [
         receiptComponent({
           measurement_key: "input_tokens",
-          quantity: 4200,
+          quantity: "4200",
           rate_per_unit_micros: 30_000,
           unit_quantity: 1000,
           micros: 126_000,
         }),
         receiptComponent({
           measurement_key: "output_tokens",
-          quantity: 1730,
+          quantity: "1730",
           rate_per_unit_micros: 35_500,
           unit_quantity: 1000,
           micros: 61_500,
@@ -546,14 +547,14 @@ const FEATURE_EVENTS: MockEvent[] = [
       cost_components: [
         receiptComponent({
           measurement_key: "input_tokens",
-          quantity: 4200,
+          quantity: "4200",
           rate_per_unit_micros: 22_000,
           unit_quantity: 1000,
           micros: 92_400,
         }),
         receiptComponent({
           measurement_key: "output_tokens",
-          quantity: 1730,
+          quantity: "1730",
           rate_per_unit_micros: 28_800,
           unit_quantity: 1000,
           micros: 49_900,
@@ -573,7 +574,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:02:12Z",
       price: knownPrice(96_000),
       cost: knownCost(75_000),
-      measurements: { input_tokens: 2100, output_tokens: 940 },
+      measurements: { input_tokens: "2100", output_tokens: "940" },
       metadata: { env: "prod", team: "assist", region: "us-east-1" },
       markup_micro_percent: 28_000_000,
       stop_context: [
@@ -597,7 +598,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       created_at: "2026-07-18T14:03:28Z",
       price: knownPrice(54_000),
       cost: knownCost(42_000),
-      measurements: { input_tokens: 1200, output_tokens: 480 },
+      measurements: { input_tokens: "1200", output_tokens: "480" },
       metadata: { env: "prod", team: "assist" },
       markup_micro_percent: 28_000_000,
       stop_context: [
@@ -623,7 +624,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       event_type: "messages.create",
       price: knownPrice(31_000),
       cost: knownCost(24_000),
-      measurements: { input_tokens: 800, output_tokens: 260 },
+      measurements: { input_tokens: "800", output_tokens: "260" },
       metadata: { env: "prod", team: "assist" },
       markup_micro_percent: 28_000_000,
       stop_context: [
@@ -649,7 +650,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       deployment: "batch-worker",
       price: knownPrice(64_000),
       cost: knownCost(50_000),
-      measurements: { input_tokens: 1500, output_tokens: 620 },
+      measurements: { input_tokens: "1500", output_tokens: "620" },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
       markup_micro_percent: 28_000_000,
@@ -685,7 +686,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       deployment: "batch-worker",
       price: knownPrice(38_400),
       cost: knownCost(30_000),
-      measurements: { embedding_tokens: 7400 },
+      measurements: { embedding_tokens: "7400" },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_KILLED_ID,
       markup_micro_percent: 28_000_000,
@@ -701,7 +702,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "search-api",
       price: knownPrice(22_400),
       cost: knownCost(17_500),
-      measurements: { embedding_tokens: 5200 },
+      measurements: { embedding_tokens: "5200" },
       metadata: {
         env: "prod",
         team: "search",
@@ -715,7 +716,7 @@ const FEATURE_EVENTS: MockEvent[] = [
     detail: makeDetail({
       // THE ONE EVENT WHOSE SUPPLIER COST UBB NEVER LEARNED — #155 §9.2's owed
       // fixture for the state slice 3 introduces, and the reason every total
-      // over the July window is now a floor rather than a figure.
+      // over the July window is now partial rather than a figure.
       //
       // IN the July window on purpose, unlike the two measurement fixtures
       // below. Those had to stay outside it so the story's totals kept their
@@ -738,7 +739,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       // is nothing to record and the receipt says which input is missing —
       // never a zero, which would state that the supplier charged nothing.
       cost: unknownCost("cost_rate_missing"),
-      measurements: { audio_seconds: 412 },
+      measurements: { audio_seconds: "412" },
       metadata: { env: "prod", team: "assist" },
       task_id: TASK_OPEN_ID,
       // A billed amount with no supplier cost under it: the engine priced this
@@ -771,7 +772,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "search-api",
       price: unknownPrice(),
       cost: knownCost(19_000),
-      measurements: { rerank_documents: 240 },
+      measurements: { rerank_documents: "240" },
       metadata: { env: "prod", team: "search" },
     }),
   },
@@ -784,7 +785,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       // whole reason the console cannot read the amount and guess.
       //
       // A charge somebody decided not to pursue. Reported as a loss, so the
-      // revenue really is nothing and no total is a floor because of it.
+      // revenue really is nothing and no total is incomplete because of it.
       id: EVENT_WAIVED_ID,
       effective_at: "2026-06-12T09:41:55Z",
       created_at: "2026-06-12T09:41:56Z",
@@ -793,7 +794,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "support-bot",
       price: waivedPrice(),
       cost: knownCost(12_500),
-      measurements: { input_tokens: 900, output_tokens: 140 },
+      measurements: { input_tokens: "900", output_tokens: "140" },
       metadata: { env: "prod", team: "support" },
     }),
   },
@@ -821,7 +822,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "onboarding",
       price: priceNotApplicable("fixed_task_pricing"),
       cost: knownCost(8_400),
-      measurements: { input_tokens: 610, output_tokens: 95 },
+      measurements: { input_tokens: "610", output_tokens: "95" },
       metadata: { env: "prod", team: "onboarding" },
       task_id: TASK_FIXED_PRICE_ID,
     }),
@@ -835,8 +836,8 @@ const FEATURE_EVENTS: MockEvent[] = [
       //
       // Its absence is the OPPOSITE fact to `EVENT_UNRESOLVED_ID`'s above.
       // That one is a cost UBB tried to learn and could not, so a total over it
-      // is a floor and a recovery run will revisit it. This one was never going
-      // to have a supplier cost: nothing is missing, no total is a floor, and
+      // is partial and a recovery run will revisit it. This one was never going
+      // to have a supplier cost: nothing is missing, no total is partial, and
       // there is nothing to recover. The two carry the SAME null column, which
       // is the whole reason a fixture nothing renders cannot catch a reader
       // that guesses between them.
@@ -854,7 +855,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "search-api",
       price: knownPrice(15_000),
       cost: costNotApplicable(),
-      measurements: { documents_scanned: 1840 },
+      measurements: { documents_scanned: "1840" },
       metadata: { env: "prod", team: "search" },
     }),
   },
@@ -935,7 +936,7 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "copilot",
       price: knownPrice(38_400),
       cost: knownCost(30_000),
-      measurements: { embedding_tokens: 7400 },
+      measurements: { embedding_tokens: "7400" },
       metadata: { env: "prod", team: "search" },
       markup_micro_percent: 28_000_000,
     }),
@@ -951,13 +952,13 @@ const FEATURE_EVENTS: MockEvent[] = [
       workflow: "copilot",
       price: knownPrice(74_000),
       cost: knownCost(30_000),
-      measurements: { embedding_tokens: 7400 },
+      measurements: { embedding_tokens: "7400" },
       metadata: { env: "prod", team: "search" },
       pricing_method: "direct_event_price",
       price_components: [
         receiptComponent({
           measurement_key: "embedding_tokens",
-          quantity: 7400,
+          quantity: "7400",
           rate_per_unit_micros: 10_000,
           unit_quantity: 1000,
           micros: 74_000,
@@ -1001,8 +1002,8 @@ function fillerEvent(index: number, customerId: string, idPrefix: string): MockE
       price: knownPrice(billed),
       cost: knownCost(providerCost),
       measurements: {
-        input_tokens: 900 + (index % 23) * 240,
-        output_tokens: 260 + (index % 11) * 145,
+        input_tokens: String(900 + (index % 23) * 240),
+        output_tokens: String(260 + (index % 11) * 145),
       },
       metadata: {
         env: index % 4 === 0 ? "staging" : "prod",

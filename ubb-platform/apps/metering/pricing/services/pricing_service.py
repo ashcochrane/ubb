@@ -9,11 +9,13 @@ from apps.metering.pricing.applicability import (
 )
 from apps.metering.pricing.models import CostBook, PricingBook, Rate, TaskPrice
 from apps.metering.pricing.receipts import (
-    MARKUP_TERMS_KEY, PRICING_REGIME_KEY, REPORTED_COST_SOURCE_KIND_KEY,
-    ReceiptSubject, Resolution, build_receipt,
+    MARKUP_TERMS_KEY, PRICING_REGIME_KEY, PRICING_STATUS_REASON_KEY,
+    REPORTED_COST_SOURCE_KIND_KEY, ReceiptSubject, Resolution, build_receipt,
 )
 from apps.platform.event_types.costing import cost_declaration
+from apps.platform.event_types.exact_decimals import canonical_quantities
 from apps.platform.plans.queries import get_pricing_book_for_customer
+from core.money import MONEY_COLUMN_MAX, MONEY_COLUMN_MIN, fits_a_money_column
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
@@ -26,6 +28,7 @@ from core.vocabulary import (
     PRICING_MODE_FIXED,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
     TASK_TYPE_KIND_SUBTASK,
@@ -35,7 +38,21 @@ from core.vocabulary import (
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 
-PRICING_ENGINE_VERSION = "2.1.0"
+#: WHAT COMPUTED THE AMOUNTS ON A RECEIPT — the half of the receipt's version
+#: pair that moves when an amount would come out differently
+#: (`receipts.RECEIPT_SCHEMA_VERSION` is the other half, for its shape).
+#:
+#: 2.1.0 → 2.2.0 IN #603 (ADR-0020), and a MINOR version for a stated reason. The
+#: engine now prices quantities it could not be given before — a fraction, a
+#: negative, any length — exactly; an exact negative half-micro tie now rounds
+#: away from zero rather than toward +∞; a fixed per-event component is added
+#: to a negative quantity's line as declared; a negative final customer price
+#: is `unknown` with its reason; and an amount past the money columns is
+#: refused. Every input that was legal under 2.1.0 — a whole, non-negative
+#: quantity — computes exactly the amount it did, so no recorded amount would
+#: come out differently and nothing about the earlier receipts is disowned: a
+#: major version would claim otherwise.
+PRICING_ENGINE_VERSION = "2.2.0"
 
 #: WHERE A RULE CAME FROM — the ladder's MINOR key (#356, #147 §5.1).
 #:
@@ -199,7 +216,37 @@ def _priced_by_markup(markup, basis_micros, costing_status):
             PRICING_METHOD_MARGIN_OVER_COST, PRICING_STATUS_KNOWN)
 
 
-def _component(measurement_key, quantity, card):
+class AmountPastTheMoneyBound(ValueError):
+    """An amount costing computed that no money column can hold (#603 ruling
+    7, ADR-0020).
+
+    A quantity carries no precision or scale cap, so the only bound is the
+    money columns' own: a signed 64-bit integer of micros. Past it the amount
+    is not a rounding question — it has nowhere to go — and it is refused here,
+    by name, rather than reaching the insert as a generic database error. A
+    ``ValueError``, so both recording routes refuse it as they refuse every
+    other validation failure: a 422 on the single route, and that one item's
+    rejection in a batch, the rest of which records.
+
+    The message names the quantity as written and never prints the amount:
+    an amount this far past a column can be longer than CPython will turn into
+    text, and the quantity and the rule are what a caller can act on.
+    """
+
+
+def _within_the_money_bound(amount, *, what):
+    """``amount``, or the refusal naming ``what`` produced it."""
+    if fits_a_money_column(amount):
+        return amount
+    raise AmountPastTheMoneyBound(
+        f"{what} comes to an amount past the range a money column holds: a "
+        f"whole number of micros from {MONEY_COLUMN_MIN:,} to "
+        f"{MONEY_COLUMN_MAX:,}. UBB refuses an amount it cannot hold rather "
+        f"than rounding it into range, so nothing was recorded; the quantity "
+        f"is recorded exactly or not at all.")
+
+
+def _component(measurement_key, quantity, card, *, section):
     """ONE LINE OF AN EXPLANATION: the quantity, the rule's terms, the amount.
 
     **THE RECEIPT HAS TO OUTLIVE THE MEASUREMENTS IT EXPLAINS (#350, #153
@@ -250,6 +297,14 @@ def _component(measurement_key, quantity, card):
     no ticket behind it, in a commit whose subject is a different column — and
     it would move the sense's own evidence block for a word this slice does not
     own. It stays, and the ratchet's list is where it is claimed.
+
+    **SINCE RECEIPT SCHEMA 2 THAT KEY HOLDS THE QUANTITY'S CANONICAL TEXT
+    (#603).** Schema 1 held a whole number there; the version is what says
+    which a record holds, and `receipts.recorded_quantities` reads both.
+
+    ``section`` names the side for the refusal a line past the money bound
+    raises — the line's own amount is the first computed amount, so it is
+    asked here rather than once the section is summed.
     """
     return {
         "measurement_key": measurement_key,
@@ -262,7 +317,10 @@ def _component(measurement_key, quantity, card):
         "rate_per_unit_micros": card.rate_per_unit_micros,
         "unit_quantity": card.unit_quantity,
         "fixed_micros": card.fixed_micros,
-        "micros": card.compute(quantity),
+        "micros": _within_the_money_bound(
+            card.compute(quantity),
+            what=(f"measurements.{measurement_key} = {quantity}, at the "
+                  f"{section} rule {card.id}'s terms")),
     }
 
 
@@ -327,6 +385,11 @@ class Costing(NamedTuple):
     #: is read back off the receipt's price section rather than decided again
     #: here — the same terms `unresolved_reason` above is read on.
     not_applicable_reason: Optional[str] = None
+    #: WHY THE PRICE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603) —
+    #: `negative_price_unsupported` beside an `unknown` price UBB calculated
+    #: and the money rails cannot carry, `None` everywhere else. Read back off
+    #: the receipt's price section on the same terms as the reason above.
+    pricing_status_reason: Optional[str] = None
 
 
 class PricingService:
@@ -797,7 +860,7 @@ class PricingService:
 
         **A partly resolved cost is not a resolved cost.** Where any quantity
         matched no rate the amount is `None` and the resolved lines stay in the
-        receipt below, which is where the floor lives. Storing the partial sum
+        receipt below, which is where the resolved lines live. Storing the partial sum
         is the ambiguity #317's column exists to remove, one layer up.
 
         **The name is read on the fourth branch and only there (#428).** It is
@@ -1021,10 +1084,16 @@ class PricingService:
                 if card is None:
                     uncosted[measurement_key] = units_val
                     continue
-                component = _component(measurement_key, units_val, card)
+                component = _component(measurement_key, units_val, card,
+                                       section="cost")
                 computed_micros += component["micros"]
                 cost_components.append(component)
                 cost_rate_ids[measurement_key] = str(card.id)
+            # THE SECTION'S TOTAL IS A COMPUTED AMOUNT TOO: lines each within
+            # the bound can sum past it, and the posting holds the sum.
+            _within_the_money_bound(
+                computed_micros, what="this event's supplier cost, summed "
+                                      "over its lines")
             if undeclared or uncosted:
                 uncosted_quantities = uncosted
                 undeclared_quantities = undeclared
@@ -1056,6 +1125,7 @@ class PricingService:
         resolved_markup, markup_basis = None, None
         price_total, matched = 0, []
         not_applicable_reason = None
+        pricing_status_reason = None
         if sold_for_one_agreed_price:
             # ⚠ THE LADDER IS NOT CONSULTED AT ALL, WHICH IS THE WHOLE OF THE
             # RULE (#418, spec §14). This event belongs to a piece of work sold
@@ -1098,10 +1168,14 @@ class PricingService:
                 if card is None:
                     continue
                 matched.append(card)
-                component = _component(measurement_key, units_val, card)
+                component = _component(measurement_key, units_val, card,
+                                       section="price")
                 price_total += component["micros"]
                 price_components.append(component)
                 price_rate_ids[measurement_key] = str(card.id)
+            _within_the_money_bound(
+                price_total, what="this event's customer price, summed over "
+                                  "its lines")
             if matched:
                 billed, pricing_method, pricing_status = _priced_by_rules(
                     matched, price_total, costing_status)
@@ -1120,6 +1194,34 @@ class PricingService:
                                                  computed_micros)
                 billed, pricing_method, pricing_status = _priced_by_markup(
                     resolved_markup, markup_basis, costing_status)
+                if billed is not None:
+                    _within_the_money_bound(
+                        billed, what=(
+                            f"a margin of {resolved_markup.markup_micro_percent}"
+                            f" micro-percent over this event's supplier cost "
+                            f"of {markup_basis} micros"))
+
+            # A NEGATIVE FINAL CUSTOMER PRICE IS UNRESOLVED, WITH ITS REASON
+            # (#603 ruling 8; the owner's Q1 ruling; ADR-0020). Decided on the
+            # WHOLE — the rule rungs' sum or the markup's answer — never per
+            # component: components can cancel, and a fixed per-event part
+            # can carry a negative quantity's line above zero on its own.
+            #
+            # The calculation was exact and is kept only long enough to decide
+            # this. The money rails cannot carry a negative customer price —
+            # the drawdown, the live counter, the Pool and postpaid lines all
+            # act on a known price — so a known one would be a figure the
+            # rails drop without a count: `known` must mean faithfully carried
+            # and reportable. So the price is `unknown`, the reason says it is
+            # a result the rails cannot represent rather than missing input,
+            # no method is named (none arrived at an amount UBB holds), and
+            # the number goes nowhere a price is read from. Never clamped to
+            # zero, never dropped, never marked `known`.
+            if pricing_status == PRICING_STATUS_KNOWN and billed < 0:
+                billed, pricing_method = None, None
+                pricing_status = PRICING_STATUS_UNKNOWN
+                pricing_status_reason = (
+                    PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED)
 
         # WHAT THE MARKUP RUNG PUT ON THE RECORD, AND THE TWO PLACES IT GOES
         # (#357). The percentage and the basis are TERMS and ride in the price
@@ -1232,6 +1334,12 @@ class PricingService:
                     # and the column cannot come to disagree, because there is
                     # one of them.
                     "not_applicable_reason": not_applicable_reason,
+                    # AND WHY AN `unknown` PRICE IS UNKNOWN, WHERE A PUBLISHED
+                    # REASON SAYS (#603) — the authoritative economic
+                    # provenance of `negative_price_unsupported`, and `None`
+                    # for every other answer. An additive key in an open
+                    # container, so it moves no schema version on its own.
+                    PRICING_STATUS_REASON_KEY: pricing_status_reason,
                     **price_detail}),
             provenance={"cost_rate_ids": cost_rate_ids,
                         "price_rate_ids": price_rate_ids,
@@ -1559,7 +1667,12 @@ def resolve_price(subject, as_of):
     return PricingService._compute(
         subject=subject.receipt_subject, currency=currency,
         effective_at=as_of.isoformat(),
-        measurements=subject.measurements,
+        # EVERY QUANTITY IN ITS CANONICAL TEXT BEFORE ANY RULE READS IT
+        # (#603). The recording path and a recovery run already hand it so;
+        # this is the same rule at the resolver's own door, so the receipt
+        # holds one spelling whoever asked — idempotent on canonical text,
+        # and a float or a flag is refused here rather than costed.
+        measurements=canonical_quantities(subject.measurements),
         caller_provider_cost=subject.caller_provider_cost,
         reported_cost_source_kind=subject.reported_cost_source_kind,
         pricing_mode=subject.pricing_mode,
@@ -1599,4 +1712,7 @@ def costing_of(receipt):
         # THE PRICE HALF OF THE LINE ABOVE (#418). Read off the record on
         # exactly the terms the cost side's reason is, so the posting's column
         # and the receipt beside it are one statement rather than two.
-        not_applicable_reason=pricing["detail"]["not_applicable_reason"])
+        not_applicable_reason=pricing["detail"]["not_applicable_reason"],
+        # And the price status's own reason (#603), off the same section on
+        # the same terms.
+        pricing_status_reason=pricing["detail"][PRICING_STATUS_REASON_KEY])

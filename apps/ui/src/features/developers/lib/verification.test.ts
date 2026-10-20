@@ -15,10 +15,13 @@ import {
 import type { BlueprintVerification, BlueprintVerificationRequest } from "../api/types";
 import {
   blankSamples,
+  canonicalQuantity,
   CURRENCY_REQUIRED,
+  EXACT_DECIMAL,
+  EXACT_DECIMAL_REQUIRED,
   GROUPING_FIELD_REQUIRED,
   groupingFieldsAsked,
-  isWholeNumber,
+  isWholeMicros,
   NOTHING_TO_RUN,
   presentedAsVerified,
   refusalOf,
@@ -28,7 +31,8 @@ import {
   verificationKey,
   verificationRequestOf,
   verifyOfferOf,
-  WHOLE_NUMBER_REQUIRED,
+  WHOLE_MICROS_REQUIRED,
+  WHOLE_QUANTITY_REQUIRED,
   type SamplePlan,
   type SampleValues,
 } from "./verification";
@@ -65,7 +69,7 @@ function samplesFor(plan: SamplePlan, request: BlueprintVerificationRequest): Sa
         subtaskType: sent?.subtask_type ?? "",
         measurements: record.measurements.map((measurement) => {
           const sample = sent?.measurements?.[measurement.code];
-          return sample === undefined ? "" : String(sample);
+          return sample ?? "";
         }),
         providerCost: String(sent?.provider_cost_micros ?? sent?.provider_response_cost_micros ?? ""),
         currency: sent?.currency ?? "",
@@ -222,6 +226,7 @@ describe("the request the samples make", () => {
     expect(rebuilt.sort()).toEqual([
       "calculated-cost",
       "calculated-cost-without-required-measurements",
+      "constant",
       "direct-task-events-partial",
       "explicit-subtasks",
       "reported-cost",
@@ -270,7 +275,7 @@ describe("the request the samples make", () => {
     samples.records = samples.records.map((record) => ({ ...record, measurements: [" 12 ", "", ""] }));
 
     expect(verificationRequestOf(plan, samples)).toEqual({
-      records: [{ event_type: "chat.completion", measurements: { input_tokens: 12 } }],
+      records: [{ event_type: "chat.completion", measurements: { input_tokens: "12" } }],
       grouping_fields: { environment: "staging" },
     });
   });
@@ -340,30 +345,84 @@ describe("what the form refuses to send", () => {
     ]);
   });
 
-  it.each(["1.5", "-1", "1e3", "12 tokens", "9007199254740993"])(
-    "refuses %j as a sample the request types as an integer",
+  it.each(["1e3", "12 tokens", "+1", ".5", "1.", "1_000", "1,000", "0x10", "--1", "1 000"])(
+    "refuses %j as a Measurement sample: it is not an exact decimal",
     async (sample) => {
       const plan = await planOf("reported-cost");
       const samples = blankSamples(plan);
-      samples.records = samples.records.map((record) => ({
-        ...record,
-        measurements: [sample],
-        providerCost: sample,
-      }));
+      samples.records = samples.records.map((record) => ({ ...record, measurements: [sample] }));
 
       expect(sampleProblems(plan, samples)).toEqual([
-        { path: ["records", 0, "measurements", 0], message: WHOLE_NUMBER_REQUIRED },
-        { path: ["records", 0, "providerCost"], message: WHOLE_NUMBER_REQUIRED },
+        { path: ["records", 0, "measurements", 0], message: EXACT_DECIMAL_REQUIRED },
       ]);
     },
   );
 
-  it("takes a blank sample, a zero and a large whole number", async () => {
-    expect(isWholeNumber("0")).toBe(true);
-    expect(isWholeNumber("9007199254740991")).toBe(true);
+  it.each(["1.5", "-1", "1e3", "12 tokens", "9007199254740993"])(
+    "refuses %j as a supplier cost sample: the cost fields are whole micros",
+    async (sample) => {
+      const plan = await planOf("reported-cost");
+      const samples = blankSamples(plan);
+      samples.records = samples.records.map((record) => ({ ...record, providerCost: sample }));
+
+      expect(sampleProblems(plan, samples)).toEqual([
+        { path: ["records", 0, "providerCost"], message: WHOLE_MICROS_REQUIRED },
+      ]);
+    },
+  );
+
+  // ⚠ A NEGATIVE, A ZERO AND A WHOLE NUMBER PAST 2^53 ARE ALL QUANTITIES
+  // (#603): a negative records a reversal, a zero is a recorded value, and
+  // the request carries text, so no digit is lost on the way.
+  it.each([
+    ["0", "0"],
+    ["-1", "-1"],
+    ["007", "7"],
+    ["1.0", "1"],
+    ["-0", "0"],
+    ["9007199254740993", "9007199254740993"],
+    ["1" + "0".repeat(60), "1" + "0".repeat(60)],
+  ])("takes %j for a Measurement declared integer, and sends %j", async (sample, sent) => {
+    const plan = await planOf("reported-cost");
+    expect(plan.records[0]?.measurements[0]?.valueType).toBe("integer");
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, measurements: [sample] }));
+
+    expect(sampleProblems(plan, samples)).toEqual([]);
+    const [record] = verificationRequestOf(plan, samples).records;
+    expect(Object.values(record?.measurements ?? {})).toEqual([sent]);
+  });
+
+  it("refuses a fraction for a Measurement declared integer, and never rounds it", async () => {
+    const plan = await planOf("reported-cost");
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["1.5"] }));
+
+    expect(sampleProblems(plan, samples)).toEqual([
+      { path: ["records", 0, "measurements", 0], message: WHOLE_QUANTITY_REQUIRED },
+    ]);
+  });
+
+  it("takes a blank sample, a zero cost and a large whole cost", async () => {
+    expect(isWholeMicros("0")).toBe(true);
+    expect(isWholeMicros("9007199254740991")).toBe(true);
     const plan = await planOf("reported-cost");
 
     expect(sampleProblems(plan, blankSamples(plan))).toEqual([]);
+  });
+
+  it.each([
+    ["0", "0"],
+    ["12", "12"],
+    ["-3", "-3"],
+    ["0012.500", "12.5"],
+    ["-0.000", "0"],
+    ["-0.050", "-0.05"],
+    ["0.000000000000000000000000000001", "0.000000000000000000000000000001"],
+    ["123456789012345678901234567890.123456789012345678901234567890", "123456789012345678901234567890.12345678901234567890123456789"],
+  ])("canonicalises %j as %j, the platform's own form", (text, canonical) => {
+    expect(EXACT_DECIMAL.test(text)).toBe(true);
+    expect(canonicalQuantity(text)).toBe(canonical);
   });
 
   it("requires a currency sample where the call reads one, and judges nothing else of it", async () => {
@@ -400,15 +459,14 @@ describe("what the form refuses to send", () => {
   });
 });
 
-// ⚠ THE WHOLE-NUMBER RULE IS THE PUBLISHED CONTRACT'S (owner review of #601).
-// The form shows each Measurement's declared value type, and asks every sample
-// as a whole number; this is what makes that the contract's rule rather than
-// the form's. A contract that widens a Measurement value, or a value type the
-// registry adds, turns these red — and is the day the form starts validating
-// by the declared type.
-describe("the whole-number rule follows the published contract, for every declared value type", () => {
-  /** The type the committed contract gives one Measurement value on a request schema. */
-  function measurementValueType(schemaName: string): unknown {
+// ⚠ THE QUANTITY RULE IS THE PUBLISHED CONTRACT'S (#603, ADR-0020). The form
+// asks every sample in the grammar both requests publish, and holds a
+// Measurement declared integer to a whole number; this is what makes that the
+// contract's rule rather than the form's. A contract that changes the grammar,
+// or a value type the registry adds, turns these red.
+describe("the quantity rule follows the published contract, for every declared value type", () => {
+  /** What the committed contract gives one Measurement value on a request schema. */
+  function measurementValue(schemaName: string): unknown {
     const [document] = Object.values(
       import.meta.glob("/src/api/schema.json", { eager: true, import: "default" }),
     );
@@ -419,12 +477,15 @@ describe("the whole-number rule follows the published contract, for every declar
     // The recording request publishes the map nullable: the map is the member that is an object.
     const members = at(node, "anyOf");
     const map = Array.isArray(members) ? members.find((member) => at(member, "type") === "object") : node;
-    return at(at(map, "additionalProperties"), "type");
+    return at(map, "additionalProperties");
   }
 
-  it("is what both requests publish: every Measurement value is an integer", () => {
-    expect(measurementValueType("RecordUsageRequest")).toBe("integer");
-    expect(measurementValueType("IntegrationBlueprintVerificationRecordIn")).toBe("integer");
+  it("is what both requests publish: every Measurement value is exact decimal text", () => {
+    // The form's grammar, anchored as the contract publishes it.
+    const published = `^(${EXACT_DECIMAL.source.slice(1, -1)})$`;
+    for (const schema of ["RecordUsageRequest", "IntegrationBlueprintVerificationRecordIn"]) {
+      expect(measurementValue(schema), schema).toEqual(expect.objectContaining({ type: "string", pattern: published }));
+    }
   });
 
   it("has been decided for every value type the registry declares", () => {
@@ -434,7 +495,7 @@ describe("the whole-number rule follows the published contract, for every declar
   // ⚠ ASSEMBLED, AND SAYS SO: no committed complete Blueprint declares a
   // decimal Measurement, so the platform's calculated-cost Blueprint has one
   // Measurement's declared type changed. Everything else is the platform's.
-  it("asks a Measurement declared decimal for a whole number too", async () => {
+  it("takes a fraction and a negative for a Measurement declared decimal, and holds integer to whole", async () => {
     const blueprint = await loadBlueprintFixture("calculated-cost");
     const offer = verifyOfferOf({
       ...blueprint,
@@ -455,12 +516,30 @@ describe("the whole-number rule follows the published contract, for every declar
 
     const samples = blankSamples(plan);
     samples.groupingFields = ["staging"];
-    samples.records = samples.records.map((record) => ({ ...record, measurements: ["1.5", "", ""] }));
-    expect(sampleProblems(plan, samples)).toEqual([
-      { path: ["records", 0, "measurements", 0], message: WHOLE_NUMBER_REQUIRED },
-    ]);
-    samples.records = samples.records.map((record) => ({ ...record, measurements: ["2", "", ""] }));
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["-1.50", "2", ""] }));
     expect(sampleProblems(plan, samples)).toEqual([]);
+    expect(verificationRequestOf(plan, samples).records[0]?.measurements).toEqual({
+      input_tokens: "-1.5",
+      output_tokens: "2",
+    });
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["1.5", "2.5", ""] }));
+    expect(sampleProblems(plan, samples)).toEqual([
+      { path: ["records", 0, "measurements", 1], message: WHOLE_QUANTITY_REQUIRED },
+    ]);
+  });
+});
+
+// ⚠ #584: a constant is sent as its declared value by generated code, which
+// asks the tenant's code for nothing — so Verify asks no sample of it either,
+// and sends none; the server adds it, and refuses a sample for one.
+describe("a constant", () => {
+  it("is asked no sample, and none is sent for it", async () => {
+    const plan = await planOf("constant");
+
+    expect(plan.records[0]?.measurements.map((measurement) => measurement.code)).toEqual(["searches"]);
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["3"] }));
+    expect(verificationRequestOf(plan, samples).records[0]?.measurements).toEqual({ searches: "3" });
   });
 });
 
@@ -535,7 +614,7 @@ describe("which Blueprint and which request an answer belongs to", () => {
       "a Measurement sample",
       (request) => ({
         ...request,
-        records: request.records.map((record) => ({ ...record, measurements: { ...record.measurements, input_tokens: 1201 } })),
+        records: request.records.map((record) => ({ ...record, measurements: { ...record.measurements, input_tokens: "1201" } })),
       }),
     ],
     ["an Event Type left out", (request) => ({ ...request, records: request.records.slice(0, 0) })],
@@ -565,7 +644,7 @@ describe("which Blueprint and which request an answer belongs to", () => {
       grouping_fields: { phase: "draft", environment: "staging" },
       records: sent.body.records.map((record) => ({
         subtask_type: record.subtask_type,
-        measurements: { candidate_tokens: 250, prompt_tokens: 900 },
+        measurements: { candidate_tokens: "250", prompt_tokens: "900" },
         event_type: record.event_type,
       })),
     };

@@ -45,7 +45,7 @@ function Reading({
       return <span data-measure-state={status}>{ABSENT_LABEL}</span>;
     case "figure":
       return <span data-measure-state={status}>{reading.text}</span>;
-    case "bound":
+    case "partial":
       return (
         <span data-measure-state={status} title={reading.note ?? undefined}>
           {reading.text}
@@ -160,9 +160,10 @@ interface TooltipEntry {
 /**
  * A chart tooltip that says each series as its state allows.
  *
- * ⚠ **A LINE CANNOT SAY "AT LEAST", AND IT CANNOT SAY "OUT OF HORIZON" EITHER.**
- * A plotted position is a position; where a figure is a bound, the tooltip is
- * where the bound appears (#330's rule), and where there is no figure the line
+ * ⚠ **A LINE CANNOT SAY "INCOMPLETE", AND IT CANNOT SAY "OUT OF HORIZON"
+ * EITHER.** A plotted position is a position; where a figure is the sum of what
+ * resolved, the tooltip is where that is said (#330's rule), and where there is
+ * no figure the line
  * has a GAP — `statedValue` plots null, never zero — and the tooltip is where
  * the gap is named. So each row reads its series off the FIGURES the narrowing
  * stored beside the numbers, not off the numbers: a series with no figure on

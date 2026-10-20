@@ -33,6 +33,7 @@ class TestCustomerSpendPoolEndToEnd:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id=str(uuid.uuid4()), cost_micros=billed)))
         handle_usage_recorded_billing(str(event.id), event.payload)

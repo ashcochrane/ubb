@@ -56,16 +56,18 @@ export function StatRow({ window, currency }: StatRowProps) {
           narrowing used to coalesce each amount to zero, so a window reaching
           back past the economic horizon read "$0.00" on the cost and revenue
           cards; `MeasureValue` draws the state instead, and the subtitle says
-          why — a bound's count, or the sentence a state with no figure owes. */}
+          why — the count a partial figure leaves out, or the sentence a state
+          with no figure owes. */}
       <StatCard
         variant="raised"
         label="Total revenue"
         value={<MeasureValue figure={totals.revenue} currency={currency} />}
         subtitle={figureNote(totals.revenue, currency)}
       />
-      {/* The window's supplier cost is a FLOOR wherever the summary counts
-          events it could not cost, and the margin beside it is then a ceiling
-          — the same count, read from its other side. */}
+      {/* The window's supplier cost is the SUM OF WHAT RESOLVED, marked
+          incomplete, wherever the summary counts events it could not cost, and
+          the margin beside it is then incomplete too — the same count, read
+          from its other side. Neither is a bound since #603. */}
       <StatCard
         variant="raised"
         label="Provider cost (COGS)"
@@ -74,7 +76,7 @@ export function StatRow({ window, currency }: StatRowProps) {
       />
       {/* ⚠ A MARGIN UBB CANNOT STATE RENDERS AS ITS STATE, NEVER AS ZERO — and
           its state is the query's, derived from BOTH sides (§15), so an
-          uncosted event makes it a bound even where the revenue reads known. */}
+          uncosted event makes it incomplete even where the revenue reads known. */}
       <StatCard
         variant="raised"
         label="Gross margin"

@@ -18,7 +18,9 @@ nothing in the harness:
 #583 added a supplier cost read off the response (`provider_response`)
 against fixtures in `provider_responses/`, a currency read beside it that the
 server refuses, and a cost written as a float that neither target sends
-(scenarios 6 to 8); #584 adds a constant Measurement;
+(scenarios 6 to 8); #603 a quantity with a fraction and one past a binary
+float's digits (scenario 9) and #584 constants of both value types, one
+negative and one longer than a float holds (scenario 10);
 #585 extended two declarations rather than adding a scenario: #569's names in
 `_customer.STOP_METADATA` (what a Python process reports of a stop) and
 their values in `_the_stop`, which both stop scenarios assert through, each
@@ -305,9 +307,10 @@ def _a_delivered_lifecycle(outcome: Outcome) -> None:
     assert str(search.task_id) == said["subtask_id"]
     assert (chat.event_type, chat.provider) == (
         "chat.completion", LIFECYCLE_SUPPLIER[outcome.target].provider)
-    assert outcome.measured(chat) == {"input_tokens": INPUT_TOKENS,
-                                      "output_tokens": OUTPUT_TOKENS,
-                                      "searches": 2}
+    # Every quantity is kept as the exact text it was recorded as (#603).
+    assert outcome.measured(chat) == {"input_tokens": str(INPUT_TOKENS),
+                                      "output_tokens": str(OUTPUT_TOKENS),
+                                      "searches": "2"}
     assert (chat.costing_status, chat.provider_cost_micros) == (
         COSTING_STATUS_KNOWN, chat_cost)
     assert (chat.pricing_status, chat.billed_cost_micros) == (
@@ -640,8 +643,8 @@ def _says_what_is_missing(outcome: Outcome, ran: Ran,
                if call["operation_id"] == operation
                and call["readiness"] != COMPLETE][:1]
     # "<operation> (<readiness>) is not ready to run. The generated file's
-    # header says why." No scenario declares a constant before #584, so every
-    # unconfigured value here is one the configuration lacks.
+    # header says why." A constant is a configured literal since #584, so
+    # every unconfigured value here is one the configuration lacks.
     assert (f"{operation} ({call['readiness']}) {said['notReady']}"
             in ran.stderr), ran
     missing = [argument["name"] for argument in call["arguments"]
@@ -830,7 +833,7 @@ def _the_cost_read_off_the_response(outcome: Outcome) -> None:
     assert search.idempotency_key == "event-1"
     assert (search.costing_status, search.provider_cost_micros) == (
         COSTING_STATUS_KNOWN, expected), ran
-    assert outcome.measured(search) == {"input_tokens": INPUT_TOKENS}
+    assert outcome.measured(search) == {"input_tokens": str(INPUT_TOKENS)}
     # The immutable record says the figure was read off the response, which
     # is the transport it arrived on and no other (#570).
     receipt = getattr(search, Posting.RECEIPT_COLUMN)
@@ -941,6 +944,118 @@ COST_WRITTEN_AS_A_FLOAT = Scenario(
 )
 
 
+# ---------------------------------------------------------------------------
+# 9. A quantity with a fraction, and one past a binary float's digits (#603)
+# ---------------------------------------------------------------------------
+#
+# The tenant's code passes a quantity as the text it holds — a decimal where
+# one is declared, and a whole number longer than a binary float carries —
+# and each target sends it as that text, never through a number. What is
+# stored is the canonical text, and the cost is the exact product, at the
+# rate, of the decimal. Every quantity present is costed or the cost is
+# unresolved, so the long count carries a rate of nothing: it is costed
+# exactly, at zero, where a rate of one micro would overflow by name.
+
+#: A decimal quantity, and the whole number of more digits than a float holds.
+SECONDS = "12.5"
+LONG_COUNT = "123456789012345678901"
+SECONDS_RATE = 1_000
+
+
+def _decimal_quantity_configuration(tenant: ScenarioTenant,
+                                    target: str) -> dict:
+    tenant._a_kind("transcription")
+    tenant._event_type(
+        "audio.transcribe", provider="whisper",
+        measurements={
+            "audio_seconds": {**_quantity("caller_supplied", unit="second"),
+                              "value_type": "decimal"},
+            "frames": _quantity("caller_supplied", unit="frame",
+                                required=False)})
+    tenant._cost_rules(("add", "audio_seconds", SECONDS_RATE),
+                       ("add", "frames", 0), provider="whisper")
+    tenant.customer("acme")
+    return {"task_type": "transcription",
+            "event_types": ["audio.transcribe"]}
+
+
+def _the_decimal_recorded_exactly(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert ran.status == 0, ran
+    (event,) = outcome.postings().values()
+    assert outcome.measured(event) == {"audio_seconds": SECONDS,
+                                       "frames": LONG_COUNT}, ran
+    # 12.5 seconds at 1,000 micros a second: exact, nothing rounded.
+    assert (event.costing_status, event.provider_cost_micros) == (
+        COSTING_STATUS_KNOWN, 12_500), ran
+
+
+DECIMAL_QUANTITY = Scenario(
+    name="decimal-quantity",
+    configure=_decimal_quantity_configuration,
+    works=lambda target: (_a_lone_record(
+        "acme", "audio.transcribe", audio_seconds=SECONDS,
+        frames=LONG_COUNT),),
+    expect=_the_decimal_recorded_exactly,
+)
+
+
+# ---------------------------------------------------------------------------
+# 10. Constants, sent as declared (#584)
+# ---------------------------------------------------------------------------
+#
+# Four constants beside one quantity the caller supplies: a whole number, a
+# decimal, a negative decimal and a whole number longer than a binary float
+# holds. The tenant's code passes none of them; each target writes each as a
+# typed exact literal in its module and sends it on every call, and what is
+# recorded is exactly what was declared. Each is costed, the negative one
+# among them, so the cost shows the sign kept through the arithmetic; the
+# long one at a rate of nothing, as in scenario 9.
+
+CONSTANTS = {"seats": ("integer", "3"), "flat_fee": ("decimal", "2.5"),
+             "credit": ("decimal", "-0.75"),
+             "ledger_lines": ("integer", "123456789012345678901234567890")}
+CONSTANT_RATE = 1_000
+
+
+def _constants_configuration(tenant: ScenarioTenant, target: str) -> dict:
+    tenant._a_kind("flat_rate_call")
+    tenant._event_type(
+        "flat.call", provider="flatco",
+        measurements={
+            "searches": _searches(),
+            **{code: {**_quantity("constant", unit="call", required=False),
+                      "value_type": value_type, "constant_value": value}
+               for code, (value_type, value) in CONSTANTS.items()}})
+    tenant._cost_rules(("add", "searches", 7), ("add", "seats", 100),
+                       ("add", "flat_fee", CONSTANT_RATE),
+                       ("add", "credit", CONSTANT_RATE),
+                       ("add", "ledger_lines", 0), provider="flatco")
+    tenant.customer("acme")
+    return {"task_type": "flat_rate_call", "event_types": ["flat.call"]}
+
+
+def _each_constant_recorded_as_declared(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert ran.status == 0, ran
+    (event,) = outcome.postings().values()
+    assert outcome.measured(event) == {
+        "searches": "2",
+        **{code: value for code, (_, value) in CONSTANTS.items()}}, ran
+    # 2 searches at 7, 3 seats at 100, 2.5 at 1,000 and -0.75 at 1,000:
+    # 14 + 300 + 2,500 - 750.
+    assert (event.costing_status, event.provider_cost_micros) == (
+        COSTING_STATUS_KNOWN, 2_064), ran
+
+
+CONSTANT_QUANTITIES = Scenario(
+    name="constants",
+    configure=_constants_configuration,
+    works=lambda target: (_a_lone_record("acme", "flat.call", searches=2),),
+    expect=_each_constant_recorded_as_declared,
+)
+
+
 SCENARIOS: tuple[Scenario, ...] = (
     REPRESENTATIVE_LIFECYCLE,
     CEILING_CROSSED,
@@ -952,4 +1067,6 @@ SCENARIOS: tuple[Scenario, ...] = (
     RESPONSE_COST,
     CURRENCY_REFUSED_BY_THE_SERVER,
     COST_WRITTEN_AS_A_FLOAT,
+    DECIMAL_QUANTITY,
+    CONSTANT_QUANTITIES,
 )

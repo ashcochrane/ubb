@@ -14,9 +14,9 @@ from core.vocabulary import REVENUE_BASIS_RECOGNISED
 #: window may be any span up to a year — and `recorded` lands each supplied
 #: amount whole on the day its record opens. On the third of June that would
 #: put a whole month's revenue against three days of cost and call the result
-#: a margin: a flattering figure, which is the direction this codebase already
-#: refuses to be wrong in (#328's floors and ceilings are the same argument
-#: about the cost half).
+#: a margin: a flattering figure, and this codebase already refuses to state a
+#: margin that is not what it says (#328's completeness counts are the same
+#: argument about the cost half).
 #:
 #: **AND IT IS NOT THE UNLABELLED PRORATION THE PROFILE WAS RETIRED FOR.** The
 #: retired accrual divided one amount by day because it had no other choice and
@@ -121,7 +121,8 @@ def _compose(subscription_revenue, supplied_revenue, usage_revenue, provider_cos
     **The figure is therefore only as complete as the postings are**, which is
     the honest form of the answer the branch was faking. Usage a tenant has
     declared no price for resolves `unknown`, contributes nothing, and travels
-    with `unpriced_event_count` saying the total is a floor; work that was
+    with `unpriced_event_count` saying how many prices the total leaves out
+    (complete when it is zero); work that was
     never going to carry customer revenue is `not_applicable` and contributes
     nothing either, with no caveat, because nothing is missing from it. None of
     that is a fact about a billing mode, and none of it is decided here.
@@ -145,9 +146,9 @@ class MarginService:
         """Live margin for any window from Posting + revenue. No persistence.
 
         The margin CARRIES the cost total's completeness rather than growing one
-        of its own (#328): subtracting a floor from a revenue figure produces a
-        ceiling on the margin, and there is one fact underneath both — which
-        postings the cost excluded. A derived figure that minted a second
+        of its own (#328): subtracting an incomplete cost from a revenue figure
+        produces an incomplete margin, and there is one fact underneath both —
+        which postings the cost excluded. A derived figure that minted a second
         counter would be counting the same events twice.
         """
         from apps.metering.queries import get_customer_cost_totals
@@ -220,9 +221,9 @@ class MarginService:
         unresolved = acc.unresolved_event_count if acc else 0
         usage_billed = acc.total_billed_cost_micros if acc else 0
         # And what the BILLED total excluded (#351), frozen on the same terms.
-        # Two counts because they bound the derived figures in opposite
-        # directions: an excluded cost makes the margin below a ceiling, an
-        # excluded price makes it a floor, and a snapshot can be both.
+        # Two counts because they count different halves: an excluded cost or
+        # an excluded price leaves the margin below incomplete, in a direction
+        # nobody can state (#603), and a snapshot can be missing both.
         unpriced = acc.unpriced_event_count if acc else 0
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, period_start, period_end)
@@ -336,19 +337,21 @@ class MarginService:
         # AN UNRESOLVED PREVIOUS COST IS NOT A SPIKE OF ANY SIZE (#328).
         #
         # The comparison is a RATIO and the previous period is its denominator.
-        # A previous total that excluded costs is too small, so every rise
-        # computed against it is too big — and the failure direction is a false
-        # alarm about somebody's money, which is worse than silence. There is no
-        # substitute figure to divide by either: the true previous cost is
-        # unknown, not zero, and answering "no spike" is the only claim the data
-        # supports. The window still says it is incomplete — the count is on the
-        # snapshot both readings come from, so nothing is hidden by declining to
-        # compare.
+        # A previous total that excluded costs is not the previous cost, so no
+        # rise computed against it is the rise — and one way that fails is a
+        # false alarm about somebody's money, which is worse than silence.
+        # There is no substitute figure to divide by either: the true previous
+        # cost is unknown, not zero, and answering "no spike" is the only claim
+        # the data supports. The window still says it is incomplete — the count
+        # is on the snapshot both readings come from, so nothing is hidden by
+        # declining to compare.
         #
-        # The CURRENT period being partial is the opposite case and still fires:
-        # a floor understates the rise, so a threshold crossed on one has really
-        # been crossed. What the consumer gets told is that the number under the
-        # alarm is a lower bound — see the count on the payload below.
+        # The CURRENT period being partial is the opposite case and still fires,
+        # on the resolved figure — an alert, like every control, reads what has
+        # resolved. Since #603 an omitted cost may be negative, so that figure
+        # is no bound on the eventual rise in either direction, and what the
+        # consumer gets told is how many costs it leaves out — the count on the
+        # payload below.
         if (prev and prev["provider_cost_micros"] > 0
                 and not prev[UNRESOLVED_EVENT_COUNT_KEY]):
             rise = (Decimal(this_period["provider_cost_micros"]

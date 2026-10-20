@@ -344,13 +344,13 @@ class TestTheAlertingReadsRemain:
         there would be a `TypeError` in the evaluator rather than a wrong
         number. The column is `NOT NULL` with a count beside it saying what the
         frozen total left out — and the evaluator declines to compare at all
-        when that count is non-zero, because too small a denominator invents a
-        spike rather than understating one.
+        when that count is non-zero, because a denominator that left something
+        out is not the previous cost, and a ratio over it can invent a spike.
 
         This claim used to sit beside the tenant-wide margin total, as the
-        reason that total could sum the column without reporting a floor. That
-        total is severed; the property is still load-bearing, so it moves here
-        rather than leaving with its old reason.
+        reason that total could sum the column without silently leaving
+        something out. That total is severed; the property is still
+        load-bearing, so it moves here rather than leaving with its old reason.
         """
         for column in ("provider_cost_micros", "unresolved_event_count"):
             assert CustomerEconomics._meta.get_field(column).null is False
@@ -479,10 +479,10 @@ class TestTheCacheIsInvalidatableAtAnyAge:
         raised on. Instrumenting the cost door alone leaves a cache repairable
         in one direction only.
 
-        ⚠ AND THIS IS THE DIRECTION THAT CAN CLEAR AN ALARM. An excluded cost
-        makes a margin a ceiling, an excluded price makes it a FLOOR — so the
-        customer named unprofitable while a price was missing is the one who may
-        have been fine all along.
+        ⚠ AND THIS DOOR CAN CLEAR AN ALARM. An excluded cost or an excluded
+        price leaves a margin incomplete, in a direction nobody can state
+        (#603) — so the customer named unprofitable while a price was missing
+        may have been fine all along.
         """
         posting = Posting.objects.create(
             tenant=self.tenant, customer=self.customer, idempotency_key="k2",

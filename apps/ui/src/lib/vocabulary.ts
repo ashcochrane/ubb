@@ -422,11 +422,15 @@ export const CEILING_BASIS_LABEL_KEYS = {
 // Decision rule, declared as registry data and proved total and unambiguous by
 // the compiler:
 //
-//   The lower-bound rule (#158 §12.3). Once the KNOWN portion of accumulated
-//   COGS has reached the ceiling, costs still unresolved cannot argue the Task
-//   back under it — this is a spend-control safety invariant rather than a
-//   naming detail, which is why it is carried beside the values as data. `>=`
-//   is the comparison, so a ceiling is reached rather than exceeded.
+//   The assessment's rule, as #603 amended #158 §12.3 (ADR-0020; the owner's
+//   confirmation `6279966961`). It answers where a Task stands, and it is not
+//   the enforcement trigger: the stop fires when the RESOLVED COGS total
+//   reaches the ceiling, whatever remains unresolved, and stays terminal. What
+//   changed is the assessment's lower-bound reading — once a quantity may be
+//   negative, a cost still unresolved can move the total either way, so a
+//   resolved subtotal bounds nothing and `ceiling_reached` or `within_ceiling`
+//   is never inferred from one while a cost is unresolved. `>=` is the
+//   comparison, so a ceiling is reached rather than exceeded.
 //
 //   a_ceiling_applies=false, known_cogs_at_or_above_ceiling=any,
 //   unresolved_costs_remain=any
@@ -435,20 +439,22 @@ export const CEILING_BASIS_LABEL_KEYS = {
 //        means UBB tried and could not tell, never that there was nothing to
 //        try (#158 §12.4).
 //
-//   a_ceiling_applies=true, known_cogs_at_or_above_ceiling=true,
-//   unresolved_costs_remain=any
-//     -> ceiling_reached
-//        The known accumulated COGS is already at or above the ceiling. Costs
-//        that are still unresolved can only add to it, so no later resolution
-//        can reverse this answer — reporting anything softer here would let an
-//        unresolved cost buy a Task more spending.
-//
-//   a_ceiling_applies=true, known_cogs_at_or_above_ceiling=false,
+//   a_ceiling_applies=true, known_cogs_at_or_above_ceiling=any,
 //   unresolved_costs_remain=true
 //     -> indeterminate
-//        The known lower bound is still below the ceiling and at least one
-//        applicable cost is unresolved, so UBB cannot prove the Task is inside
-//        it. This is the only case the word covers.
+//        One or more applicable costs are unresolved, and each may be negative
+//        as well as positive, so the resolved total says nothing about the
+//        eventual one in either direction. This holds whatever the resolved
+//        total is — at or above the ceiling included, where the enforcement
+//        trigger may already have stopped the Task: that stop is a safety
+//        action on the resolved total, never proof of where the eventual total
+//        lands, and a later resolution moves this answer without reversing it.
+//
+//   a_ceiling_applies=true, known_cogs_at_or_above_ceiling=true,
+//   unresolved_costs_remain=false
+//     -> ceiling_reached
+//        Every applicable cost is resolved and the total is at or above the
+//        ceiling.
 //
 //   a_ceiling_applies=true, known_cogs_at_or_above_ceiling=false,
 //   unresolved_costs_remain=false
@@ -676,9 +682,9 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // selected, or one selected that is not declared. The rest either block a call
 // — a retired kind, a required Grouping Field that cannot be supplied, an
 // Event Type with nothing published, a reported cost with nowhere to read it
-// from, a quantity generated code cannot yet carry, a response shape the
-// target cannot read — or advise without blocking: a declaration revised since
-// it was published, or a path that looks inconsistent with its declared shape.
+// from, a quantity generated code cannot carry, a response shape the target
+// cannot read — or advise without blocking: a declaration revised since it was
+// published, or a path that looks inconsistent with its declared shape.
 //
 // Declared in concepts/code-builder.yaml.
 
@@ -694,7 +700,6 @@ export const DIAGNOSTIC_CODE_VALUES = [
   "event_type_not_published",
   "event_type_revised_since_publication",
   "reported_cost_mapping_missing",
-  "constant_measurement_not_renderable",
   "derived_measurement_unsupported",
   "response_shape_not_declared",
   "response_shape_not_readable_by_target",
@@ -715,7 +720,6 @@ export const DIAGNOSTIC_CODE_LABEL_KEYS = {
   "event_type_not_published": "diagnostic_code.event_type_not_published",
   "event_type_revised_since_publication": "diagnostic_code.event_type_revised_since_publication",
   "reported_cost_mapping_missing": "diagnostic_code.reported_cost_mapping_missing",
-  "constant_measurement_not_renderable": "diagnostic_code.constant_measurement_not_renderable",
   "derived_measurement_unsupported": "diagnostic_code.derived_measurement_unsupported",
   "response_shape_not_declared": "diagnostic_code.response_shape_not_declared",
   "response_shape_not_readable_by_target": "diagnostic_code.response_shape_not_readable_by_target",
@@ -928,8 +932,9 @@ export const INTEGRATION_READINESS_LABEL_KEYS = {
 // `unavailable_outside_retention_horizon` and `not_applicable`, for a margin
 // under `unavailable_at_requested_grain` (a revenue there carries the part
 // that could be placed), and under `incomplete` where no piece of a row's
-// revenue has resolved (#537). An amount under `incomplete` is a bound, never
-// a total.
+// revenue has resolved (#537). An amount under `incomplete` is the sum of the
+// inputs that have resolved, never a total, and no bound on one either: an
+// input still unresolved may move the total in either direction (#603).
 //
 // Declared in concepts/economics.yaml.
 
@@ -1315,9 +1320,12 @@ export const PRICING_RECEIPT_SUBJECT_TYPE_LABEL_KEYS = {
 // closed — UBB owns the whole value set — exactly these values, no more.
 //
 // Whether customer price for a subject is settled, and if not, why not.
-// `waived` is a decision somebody made; `unknown` is information UBB does not
-// have; `not_applicable` is a subject that generates no customer revenue at
-// this level, such as an event inside a Task sold for one agreed price.
+// `waived` is a decision somebody made; `unknown` says no authoritative
+// customer price is recorded for this event, and `pricing_status_reason`
+// beside it tells missing input apart from a price UBB calculated and the
+// money rails cannot carry; `not_applicable` is a subject that generates no
+// customer revenue at this level, such as an event inside a Task sold for one
+// agreed price.
 //
 // Declared in concepts/economics.yaml.
 
@@ -1336,6 +1344,29 @@ export const PRICING_STATUS_LABEL_KEYS = {
   "unknown": "pricing_status.unknown",
   "not_applicable": "pricing_status.not_applicable",
 } as const satisfies Record<PricingStatus, string>;
+
+
+// --- pricing_status_reason --------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Why a subject's pricing status applies, where a specific published reason
+// does. Null where none applies. Read beside `pricing_status`, never on its
+// own: an `unknown` price with no reason is one UBB had no input to resolve,
+// while an `unknown` price carrying a reason is one UBB calculated and cannot
+// authoritatively carry.
+//
+// Declared in concepts/economics.yaml.
+
+export const PRICING_STATUS_REASON_VALUES = [
+  "negative_price_unsupported",
+] as const;
+
+export type PricingStatusReason = (typeof PRICING_STATUS_REASON_VALUES)[number];
+
+export const PRICING_STATUS_REASON_LABEL_KEYS = {
+  "negative_price_unsupported": "pricing_status_reason.negative_price_unsupported",
+} as const satisfies Record<PricingStatusReason, string>;
 
 
 // --- rate_structure ---------------------------------------------------------

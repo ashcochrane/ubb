@@ -28,6 +28,8 @@ const BLOCKED: CodeBuilderSearch = {
   event_types: ["chat.completion", "draft.only", "web.search"],
 };
 const COMPLETE: CodeBuilderSearch = { task_type: "report_generation", event_types: ["chat.completion"] };
+/** The platform's `constant` fixture: constants declared with their values (#584). */
+const CONSTANT: CodeBuilderSearch = { task_type: "flat_rate_call", event_types: ["flat.call"] };
 const SHELL_COMPLETE: CodeBuilderSearch = {
   target: "shell_http",
   task_type: "support_reply",
@@ -231,14 +233,10 @@ describe("the Blueprint stage", () => {
     const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
     const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
 
-    // The one diagnostic reported over a valid declaration this Code Builder
-    // version cannot yet render offers nothing to change, so it renders its
-    // words and no request (#571).
+    // Every diagnostic carries its request since #584 rendered the last one
+    // reported over a valid declaration (a constant's value).
     const withARequest = blocked.diagnostics.filter((d) => d.remediation_request != null);
-    expect(blocked.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
-      "constant_measurement_not_renderable",
-    ]);
-    expect(within(diagnostics).getByText(diagnosticCodeLabel("constant_measurement_not_renderable"))).toBeInTheDocument();
+    expect(withARequest).toHaveLength(blocked.diagnostics.length);
     expect(blocks).toHaveLength(withARequest.length);
     for (const diagnostic of withARequest) {
       const request = diagnostic.remediation_request;
@@ -268,19 +266,22 @@ describe("the Blueprint stage", () => {
     expect(writeText.mock.calls[0]?.[0]).toMatch(/^# operation_id = "api_v1_[a-z_]+"\n(PUT|POST|PATCH) \/api\/v1\//);
   });
 
-  it("shows a valued constant's token as declared and not yet generable, never as not declared", async () => {
-    // #571: the Blueprint carries the constant unconfigured; its diagnostic
-    // says the tenant declared it and only this Code Builder version lacks
-    // something, and the token's own row says the same.
-    renderCodeBuilder(BLOCKED);
-    await resolved(/^Blocked$/);
-    const row = stage("Blueprint").querySelector<HTMLElement>('[data-token="measurements.flat_fee"]');
-    if (row === null) throw new Error("the constant's token is not shown");
-
-    expect(
-      within(row).getByText("Valid platform configuration. This Code Builder version cannot yet generate its use."),
-    ).toBeInTheDocument();
-    expect(within(row).queryByText("Not declared yet")).toBeNull();
+  it("shows each constant's token as the exact value it is declared as, and the Blueprint complete", async () => {
+    // #584: a constant is a configured literal of its declared value, shown
+    // as the exact text it is — a negative one keeps its sign, and one longer
+    // than a binary float holds keeps every digit.
+    renderCodeBuilder(CONSTANT);
+    await resolved(/^Complete$/);
+    for (const [code, text] of [
+      ["flat_fee", "2.5"],
+      ["credit", "-0.75"],
+      ["ledger_lines", "123456789012345678901234567890"],
+    ] as const) {
+      const row = stage("Blueprint").querySelector<HTMLElement>(`[data-token="measurements.${code}"]`);
+      if (row === null) throw new Error(`the constant ${code}'s token is not shown`);
+      expect(within(row).getByText(text)).toBeInTheDocument();
+      expect(within(row).queryByText("Not declared yet")).toBeNull();
+    }
   });
 
   it("names what each kind's limits can announce, and where to subscribe", async () => {

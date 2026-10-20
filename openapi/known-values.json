@@ -176,7 +176,7 @@
     },
     "diagnostic_code": {
       "advertised": true,
-      "backend_serves": "16 of 16 values",
+      "backend_serves": "15 of 15 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
@@ -191,7 +191,6 @@
         "event_type_not_published",
         "event_type_revised_since_publication",
         "reported_cost_mapping_missing",
-        "constant_measurement_not_renderable",
         "derived_measurement_unsupported",
         "response_shape_not_declared",
         "response_shape_not_readable_by_target",
@@ -397,6 +396,15 @@
         "waived",
         "unknown",
         "not_applicable"
+      ]
+    },
+    "pricing_status_reason": {
+      "advertised": true,
+      "backend_serves": "1 of 1 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "negative_price_unsupported"
       ]
     },
     "rate_structure": {

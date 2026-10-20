@@ -19,8 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  PRICING_STATUS_EXPLANATIONS,
-  pricingStatusLabel,
+  customerPriceExplanation,
+  pricingStatusWords,
   settledPriceMicros,
 } from "@/lib/customer-price";
 import { formatDate, formatEventMicros, shortId } from "@/lib/format";
@@ -97,9 +97,9 @@ export function ItemisedEventsTable({
                   {settled === null ? (
                     <span
                       className="text-text-muted"
-                      title={PRICING_STATUS_EXPLANATIONS[row.pricing_status]}
+                      title={customerPriceExplanation(row)}
                     >
-                      {pricingStatusLabel(row.pricing_status)}
+                      {pricingStatusWords(row)}
                     </span>
                   ) : (
                     formatEventMicros(settled, currency)

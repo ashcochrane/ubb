@@ -507,9 +507,12 @@ class TheThreeAreRequiredKeysWhoseValuesMayBeNullTest(SimpleTestCase):
         bodies = {
             RecordUsageResponse: {"event_id": "e1", "suspended": False,
                                   "costing_status": "known",
-                                  "pricing_status": "known"},
-            # A rejected item recorded nothing; it carries the three as null.
-            UsageBatchItemResponse: {"accepted": False, "code": "refused"},
+                                  "pricing_status": "known",
+                                  "pricing_status_reason": None},
+            # A rejected item recorded nothing; it carries the three as null
+            # (and the price status's reason, required and nullable, #603).
+            UsageBatchItemResponse: {"accepted": False, "code": "refused",
+                                     "pricing_status_reason": None},
         }
         nothing = dict.fromkeys(HOW_IT_WAS_APPLIED)
         for model, body in bodies.items():

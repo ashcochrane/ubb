@@ -12,7 +12,7 @@
 // $852.90 total revenue ($199 subscriptions + $653.90 usage revenue),
 // $563.60 provider cost, and two unprofitable customers (luna-labs runs at a
 // loss; nova-ai sits at break-even against an INCOMPLETE supplier cost, so even
-// that figure is a ceiling). Every breakdown below sums exactly to those totals
+// that figure is marked incomplete). Every breakdown below sums exactly to those totals
 // so the page reads as one consistent business — ⚠ with ONE exception the
 // server imposes, below: grouped by a supplier, an event type or a kind of
 // work, the $199 subscription cannot be placed on any row, so those answers
@@ -160,7 +160,8 @@ export const CUSTOMER_IDS = {
 // is not.
 //
 // nova-ai is the one incomplete customer in this story: its provider total
-// renders as "at least $88.00" and its margin as a bound.
+// renders as "$88.00 (Incomplete)" and its margin marked incomplete beside it
+// (#603 retired the "at least" and the bound).
 const ACME_PROVIDER_COST = completeTotal(274_000_000);
 const LUNA_PROVIDER_COST = completeTotal(55_900_000);
 const NOVA_PROVIDER_COST = incompleteTotal(88_000_000, 4);
@@ -171,10 +172,10 @@ const SEAT_RES_PROVIDER_COST = completeTotal(49_400_000);
  * The whole workspace's supplier cost for the window.
  *
  * SUMMED FROM THE ROSTER rather than typed out, which is what the comments on
- * the totals below already promised and nothing enforced. It is a floor by
- * nova-ai's four events and by no others, so the count comes from that row
- * rather than from a second literal — the overview's "at least $563.60" is
- * this object rendered.
+ * the totals below already promised and nothing enforced. It leaves out
+ * nova-ai's four events and no others, so the count comes from that row
+ * rather than from a second literal — the overview's "$563.60 (Incomplete)"
+ * is this object rendered.
  */
 const WINDOW_PROVIDER_COST = incompleteTotal(
   ACME_PROVIDER_COST.micros +
@@ -204,9 +205,11 @@ const CUSTOMER_ROWS: [string, number, number, number, number][] = [
   [CUSTOMER_IDS.luna, 41_200_000, LUNA_PROVIDER_COST.micros, -14_700_000, 6_054],
   // nova-ai — THE ONE CUSTOMER IN THIS STORY WHOSE COGS IS INCOMPLETE (#330).
   // Four of its events carry a supplier cost UBB never learned, so its provider
-  // total is a floor and its margin a ceiling, and the console has to say so
-  // rather than print both as figures. At break-even that is the sharpest form
-  // of it: the displayed margin is the best case.
+  // total is the sum of what resolved and its margin is incomplete with it,
+  // and the console has to say so rather than print both as figures. At
+  // break-even that is the sharpest form of it: since #603 a cost left out may
+  // move the margin either way, so the displayed zero says nothing about which
+  // side of break-even the customer is on.
   [CUSTOMER_IDS.nova, 88_000_000, NOVA_PROVIDER_COST.micros, 0, 12_882],
   [CUSTOMER_IDS.seatEng, 120_400_000, SEAT_ENG_PROVIDER_COST.micros, 24_100_000, 17_502],
   [CUSTOMER_IDS.seatRes, 61_800_000, SEAT_RES_PROVIDER_COST.micros, 12_400_000, 8_907],
@@ -248,7 +251,7 @@ export function mockTenantEconomics(window: Window): Economics {
         // 12.4, in millions). The events are the window's recorded work —
         // ungrouped, so the count compares with nothing and the server
         // answers it. The cost is the exact sum over the roster: only nova-ai
-        // holds uncosted events, so the window's total is a floor by the same
+        // holds uncosted events, so the window's total leaves out the same
         // four, and the margin is INCOMPLETE with it whatever the revenue
         // reads (§15).
         measures: measuresOf(WINDOW_PROVIDER_COST, 852_900_000, 93_558),
@@ -271,7 +274,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       gross_margin_micros: 0,
       // The count is the ROSTER ROW's, not a second literal: this is the same
       // customer over the same window, and a margin beside a non-zero count is
-      // a CEILING for exactly those events (#371).
+      // INCOMPLETE by exactly those events (#371; no bound since #603).
       unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
       margin_percentage: 0,

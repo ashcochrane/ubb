@@ -162,10 +162,10 @@ class MarginServiceTest(TestCase):
 
         What IS asserted is the half this ticket owns: no revenue figure was
         invented, the cost side still flows, the total travels with the count
-        saying it is a floor, and **the surface that answers the revenue
-        question answers `unknown`** rather than nil. The margin value is read
-        only to show the cost reached it — it is named `cost_only` rather than
-        `margin` so nobody quotes it as one.
+        saying how many amounts it leaves out, and **the surface that answers
+        the revenue question answers `unknown`** rather than nil. The margin
+        value is read only to show the cost reached it — it is named
+        `cost_only` rather than `margin` so nobody quotes it as one.
         """
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
@@ -177,8 +177,9 @@ class MarginServiceTest(TestCase):
         assert econ.supplied_revenue_micros == 0
         assert econ.total_revenue_micros == 0
         # And the zero says so: two events UBB could not price, carried onto
-        # the snapshot, which is what makes the total above a floor rather than
-        # a figure. A zero with no count beside it would be the silent zero.
+        # the snapshot, which is what marks the total above as the sum of what
+        # resolved rather than a complete figure. A zero with no count beside
+        # it would be the silent zero.
         assert econ.unpriced_event_count == 2
         cost_only = econ.gross_margin_micros
         assert cost_only == -econ.provider_cost_micros == -800_000

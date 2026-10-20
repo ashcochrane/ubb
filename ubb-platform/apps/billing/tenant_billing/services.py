@@ -337,8 +337,8 @@ class TenantBillingService:
         # WHAT THE MONTH COULD NOT ACCOUNT FOR, SAID RATHER THAN INFERRED.
         # Both keys, always, including the zero: a count written only when it is
         # non-zero cannot be told apart from a count nobody wrote, and the pair
-        # exists to remove exactly that ambiguity. The supplier total is a floor
-        # wherever the count is above zero.
+        # exists to remove exactly that ambiguity. The supplier total is the
+        # sum of the resolved costs, complete when the count is zero.
         #
         # OUTSIDE the transaction, and after it, so this states a close that
         # committed rather than one that was attempted. A period that was

@@ -21,8 +21,8 @@ import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 import { formatEventCount, formatMicros } from "@/lib/format";
 import {
-  marginBound,
-  marginPercentBound,
+  marginOver,
+  marginPercentOver,
   supplierCostTotal,
 } from "@/lib/supplier-cost";
 import { cn } from "@/lib/utils";
@@ -113,10 +113,10 @@ export function BusinessRollup({
                       seat.gross_margin_micros < 0 && "text-danger-dark",
                     )}
                   >
-                    {marginBound(seat.gross_margin_micros, seat, currency)}
+                    {marginOver(seat.gross_margin_micros, seat, currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {marginPercentBound(seat.margin_percentage, seat)}
+                    {marginPercentOver(seat.margin_percentage, seat)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -142,7 +142,7 @@ export function BusinessRollup({
                     totals.gross_margin_micros < 0 && "text-danger-dark",
                   )}
                 >
-                  {marginBound(totals.gross_margin_micros, totals, currency)}
+                  {marginOver(totals.gross_margin_micros, totals, currency)}
                 </TableCell>
                 {/* The totals shape carries no margin_percentage. */}
                 <TableCell className="text-right text-text-muted">—</TableCell>

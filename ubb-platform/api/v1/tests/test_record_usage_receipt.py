@@ -51,7 +51,7 @@ class RecordUsageReceiptTest(TestCase):
                 "idempotency_key": "idem_provenance_1",
                 "provider": "openai",
                 "event_type": "chat",
-                "measurements": {"input_tokens": 1000},
+                "measurements": {"input_tokens": "1000"},
                 # no provider_cost_micros — should be derived from rate card
             }),
             content_type="application/json",
@@ -62,4 +62,4 @@ class RecordUsageReceiptTest(TestCase):
         self.assertEqual(body["provider_cost_micros"], 5)
         self.assertEqual(body["pricing_receipt"]["costing"]["method"],
                          COSTING_METHOD_CALCULATED)
-        self.assertEqual(body["measurements"], {"input_tokens": 1000})
+        self.assertEqual(body["measurements"], {"input_tokens": "1000"})

@@ -4,9 +4,12 @@ Frozen dataclass contracts for outbox events.
 Rules:
 - All event schemas are frozen dataclasses inheriting ``EventSchema``.
 - New fields MUST have defaults (additive-only evolution). The one admitted
-  exception is a CLOSED vocabulary field with no honest default, added only
-  once a data migration has stamped every stored row and queued payload
-  (`_TerminalStop.control_family`, #458).
+  exception is a CLOSED vocabulary field, added only once a data migration
+  has stamped every stored row and queued payload, on one of two grounds:
+  it has no honest default (`_TerminalStop.control_family`, #458), or the
+  owner has ruled the concept required wherever it is published
+  (`UsageRecorded.pricing_status_reason`, #603: required AND nullable, its
+  null a value rather than an absence, `events/migrations/0010`).
 - Breaking changes (renames, removals, type changes) require a new class —
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
@@ -29,7 +32,8 @@ from typing import Annotated, ClassVar, Optional
 
 from pydantic import Field
 
-from core.amount_status_pairs import RESOLVED_SUPPLIER_COST_MEANING
+from core.amount_status_pairs import (
+    PRICING_STATUS_REASON_MEANING, RESOLVED_SUPPLIER_COST_MEANING)
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     PRICING_STATUS_KNOWN,
@@ -95,6 +99,13 @@ CostingStatus = Annotated[
 #: `unknown` is a status, not the absence of one.
 PricingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
+
+#: WHY THAT PRICE STATUS APPLIES, where a published reason does (#603) — the
+#: registry's closed, nullable `pricing_status_reason`. Nullable, so the marker
+#: sits on the string member of `Optional[...]`, the placement the response
+#: schemas' reasons take.
+PricingStatusReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status_reason"})]
 
 #: A payload field naming the MECHANISM that applied a stop (#412), which is a
 #: different question from the business cause beside it: *what stopped this*
@@ -235,6 +246,22 @@ class UsageRecorded(EventSchema):
     # number and has been nullable since it was added; retiring one of the two
     # is not this ticket's.
     cost_micros: int | None
+    # WHICH KIND OF `unknown` THE PRICE STATUS BELOW IS (#603, ADR-0020): null
+    # where no published reason applies, `negative_price_unsupported` where UBB
+    # calculated a negative customer price the money rails cannot carry. An
+    # accumulator counts both as an amount it could not include; a subscriber
+    # deciding what to DO about one needs to know which, because only the
+    # first waits on configuration.
+    #
+    # ⚠ REQUIRED AND NULLABLE, the owner's rule for this concept wherever
+    # `pricing_status` is published (`6279966961`) — the second ground of the
+    # module's admitted exception to "new fields have defaults": every queued
+    # payload was stamped with null by `events/migrations/0010` before this
+    # field could ask for it. It sits here, among the required fields, because a
+    # dataclass field without a default may not follow one with.
+    pricing_status_reason: Annotated[
+        Optional[PricingStatusReason],
+        Field(description=PRICING_STATUS_REASON_MEANING)]
     # A NULL HERE IS DISAMBIGUATED BY THE FIELD BELOW IT (#328). This field has
     # always been nullable, but until #320 a null only ever meant "the recording
     # path supplied nothing"; #320 taught the compute spine to leave the column
@@ -443,9 +470,9 @@ class ProviderCostSpike(EventSchema):
     prev_provider_cost_micros: int = 0
     current_provider_cost_micros: int = 0
     #: How many of THIS period's events its cost total could not include
-    #: (#328). Non-zero means the rise announced here was computed from a
-    #: floor and is itself a lower bound — the real spike is at least this
-    #: steep, which is why the alarm fires anyway.
+    #: (#328). Non-zero means the rise announced here was computed from the
+    #: resolved costs alone, and what they leave out may move it either way
+    #: (#603) — the alarm fires on the resolved figure, as every control does.
     #:
     #: The PREVIOUS period never carries one, because a previous cost that
     #: excluded anything is not compared at all: it is the denominator, and too
@@ -655,9 +682,9 @@ class _TerminalStop:
     total_billed_cost_micros: int = 0
     total_provider_cost_micros: int = 0
     #: How many of this unit's events the provider total could not include
-    #: (#328). Non-zero means the crossing was measured against a FLOOR — the
-    #: unit spent at least the total above, so the stop is sound and the figure
-    #: understates it.
+    #: (#328). Non-zero means the crossing was measured on the resolved costs
+    #: alone: the stop is an enforcement trigger on what resolved, never proof
+    #: of where the eventual total lands (#603).
     unresolved_event_count: int = 0
     task_cogs_ceiling_micros: int = 0
     #: Delivery spec §B (#43): True only on a patrol re-mint — a repaired

@@ -23,6 +23,7 @@ import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
 import {
   notApplicableReasonLabel,
   pricingStatusLabel,
+  pricingStatusReasonLabel,
 } from "@/lib/customer-price";
 import {
   ceilingStop,
@@ -33,6 +34,7 @@ import {
   incompleteTotal,
   knownCost,
   knownPrice,
+  negativePriceUnsupported,
   poolStop,
   priceNotApplicable,
   unknownCost,
@@ -70,7 +72,7 @@ function responseWith(price: CustomerPriceScenario): VerifiedAcknowledgement {
     ...price,
     ...knownCost(61_000),
     new_balance_micros: 4_000_000,
-    measurements: { input_tokens: 900 },
+    measurements: { input_tokens: "900" },
     uncosted_measurement_keys: [],
     pricing_receipt: {},
     stop: false,
@@ -141,6 +143,24 @@ describe("AcknowledgementCard — the customer price", () => {
     renderCard(responseWith(waivedPrice()));
 
     expect(screen.queryByText("Why")).not.toBeInTheDocument();
+  });
+
+  // ⚠ #603 A2: a negative calculated price arrives `unknown` WITH ITS REASON,
+  // and the card says both — in the status and in the cell — never the
+  // calculated number and never a zero. A plain `unknown` says no reason.
+  it("names an unknown price's reason beside its status, and states no amount", () => {
+    renderCard(responseWith(negativePriceUnsupported()));
+
+    const said = `${pricingStatusLabel("unknown")} · ${pricingStatusReasonLabel("negative_price_unsupported")}`;
+    expect(stat("Price status")).toContain(said);
+    expect(priceStat()).toContain(said);
+    expect(priceStat()).not.toMatch(/[$£€]\s*-?[\d,]/);
+  });
+
+  it("names no reason beside an unknown price that carries none", () => {
+    renderCard(responseWith(unknownPrice()));
+
+    expect(stat("Price status")).not.toContain(pricingStatusReasonLabel("negative_price_unsupported"));
   });
 });
 

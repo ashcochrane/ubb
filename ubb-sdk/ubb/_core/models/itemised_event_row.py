@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.itemised_event_row_costing_status import ItemisedEventRowCostingStatus
 from ..models.itemised_event_row_pricing_status import ItemisedEventRowPricingStatus
+from ..models.itemised_event_row_pricing_status_reason_type_0 import ItemisedEventRowPricingStatusReasonType0
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -39,6 +40,10 @@ class ItemisedEventRow:
             effective_at (datetime.datetime):
             event_id (UUID):
             pricing_status (ItemisedEventRowPricingStatus):
+            pricing_status_reason (ItemisedEventRowPricingStatusReasonType0 | None): Why `pricing_status` applies, where a
+                specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             billed_cost_micros (int | None | Unset):
             charge_id (None | Unset | UUID):
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
@@ -55,6 +60,7 @@ class ItemisedEventRow:
     effective_at: datetime.datetime
     event_id: UUID
     pricing_status: ItemisedEventRowPricingStatus
+    pricing_status_reason: ItemisedEventRowPricingStatusReasonType0 | None
     billed_cost_micros: int | None | Unset = UNSET
     charge_id: None | Unset | UUID = UNSET
     provider_cost_micros: int | None | Unset = UNSET
@@ -76,6 +82,12 @@ class ItemisedEventRow:
         event_id = str(self.event_id)
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, ItemisedEventRowPricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -107,6 +119,7 @@ class ItemisedEventRow:
             "effective_at": effective_at,
             "event_id": event_id,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -147,6 +160,24 @@ class ItemisedEventRow:
         pricing_status = ItemisedEventRowPricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> ItemisedEventRowPricingStatusReasonType0 | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = ItemisedEventRowPricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(ItemisedEventRowPricingStatusReasonType0 | None, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
@@ -196,6 +227,7 @@ class ItemisedEventRow:
             effective_at=effective_at,
             event_id=event_id,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             billed_cost_micros=billed_cost_micros,
             charge_id=charge_id,
             provider_cost_micros=provider_cost_micros,

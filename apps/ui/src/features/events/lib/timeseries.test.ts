@@ -59,7 +59,8 @@ describe("pivotTimeseries", () => {
     expect(pivot.data[0]).toMatchObject({ revenue: 100, provider: 80 });
   });
 
-  // The provider series is a FLOOR wherever its bucket holds uncosted events,
+  // The provider series is INCOMPLETE — the sum of what resolved — wherever
+  // its bucket holds uncosted events,
   // and the tooltip is the only place a line chart can say so — so the figure,
   // with its count, has to survive the pivot rather than being dropped with the
   // rest of the row. Carried, never plotted: no series names the key.

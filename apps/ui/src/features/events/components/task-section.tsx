@@ -24,7 +24,8 @@ import { Section } from "./section";
  * What a closed task cost, once it is closed.
  *
  * THE TASK'S OWN COGS, and the one total this console shows for a whole unit of
- * work. It is a FLOOR whenever the task holds events UBB could not cost — and
+ * work. It is the SUM OF WHAT RESOLVED, marked incomplete, whenever the task
+ * holds events UBB could not cost (no bound in either direction, #603) — and
  * how the ones it COULD cost were derived never enters that: a task mixing
  * calculated and reported events is complete, because nothing is missing from
  * it. The count is the only thing asked.

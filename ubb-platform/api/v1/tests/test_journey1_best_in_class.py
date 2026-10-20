@@ -185,7 +185,7 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         for i, (product, service, agent, day) in enumerate(matrix):
             res = client.record_usage(
                 customer_id=str(c1.id), idempotency_key=f"i{i}",
-                measurements={"tokens": 100},
+                measurements={"tokens": "100"},
                 # "product"/"service"/"agent" are all DECLARED grouping fields
                 # (dim1/dim2/dim3) — what the cost card selects on and the
                 # breakdown below groups by. The open bag (`metadata` —
@@ -404,11 +404,11 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # the amount is absent, which is the whole point of the column.
         recorded = client.record_usage(
             customer_id=str(c1.id),
-            idempotency_key="i_uncosted", measurements={"unmatched_metric": 5},
+            idempotency_key="i_uncosted", measurements={"unmatched_quantity": "5"},
             grouping_fields={"service": "alpha"})
         assert recorded.costing_status == "unresolved"
         assert recorded.provider_cost_micros is None
-        assert recorded.uncosted_measurement_keys == ["unmatched_metric"]
+        assert recorded.uncosted_measurement_keys == ["unmatched_quantity"]
     finally:
         client.close()
         api.close()

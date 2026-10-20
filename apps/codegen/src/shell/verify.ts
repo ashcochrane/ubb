@@ -8,9 +8,15 @@
  * only the tenant can run it. It reads a captured response from a file and
  * calls nothing — no supplier, and no UBB — so it needs jq and not curl.
  *
- * It catches the three signatures of a wrong path: a path that resolves to
- * nothing, a quantity that reads a constant zero, and two quantities reading
- * one field.
+ * It catches the two signatures of a wrong path — a path that resolves to
+ * nothing, and two quantities reading one field — and checks that what each
+ * quantity's path reads is what a quantity may be (#603): an integer as the
+ * response wrote it, or a string that is an exact decimal, whole where the
+ * quantity is declared an integer. It is read by the runnable file's own
+ * program and checked by its own `_ubb_exact`, so a number written with a
+ * fraction or an exponent fails here as it is refused there. A ZERO IS A
+ * QUANTITY (#603 ruling 6), so it is no sign of a wrong path and is not
+ * checked as one.
  *
  * A SUPPLIER'S COST READ OFF THE RESPONSE (#583) is checked by STRUCTURE and
  * never by its size, because a cost of zero is a cost (owner's ruling 5 on
@@ -34,7 +40,16 @@ import { COMMENTS, MESSAGES, SHELL_COMMENTS, SHELL_EXIT, SHELL_FILE, SHELL_MESSA
 import { asComments, statement } from "../comments.ts";
 import { FIELD } from "../lifecycle.ts";
 import { literalOf } from "../tokens.ts";
-import { callTail, readFunctions, readPrograms, reportedCostHelpers, scalarOf } from "./module.ts";
+import {
+  callTail,
+  exactHelper,
+  quantityFunction,
+  quantityReads,
+  readFunctions,
+  readPrograms,
+  reportedCostHelpers,
+  scalarOf,
+} from "./module.ts";
 import type { CallPlan, Member, Plan, Value } from "./plan.ts";
 import { jqNeedsOf, jqProbe } from "./probe.ts";
 import { INDENT, jqLiteral, jqString, shWord } from "./syntax.ts";
@@ -76,23 +91,23 @@ function declaredPaths(plan: Plan): string[] {
   return lines;
 }
 
-/** Every record whose supplier's cost is read off the response, with the
- * Event Type it records and the name of the function that checks it. */
-function costReads(plan: Plan): { record: CallPlan; eventType: string; check: string }[] {
+/** Every record that reads a quantity or a supplier's cost off the response,
+ * with the Event Type it records and the name of the function that checks
+ * what it reads. */
+function checkedReads(plan: Plan): { record: CallPlan; eventType: string; check: string }[] {
   return plan.records.flatMap((record) => {
     const eventType = literalOf(record.call, FIELD.eventType);
-    const readsACost = record.body.some(
-      (field) => field.shape === "scalar" && field.value.kind === "response_cost",
-    );
-    return typeof eventType === "string" && readsACost
+    const readsACost = scalarOf(record, "response_cost") !== undefined;
+    return typeof eventType === "string" && (readsACost || quantityReads(record).length > 0)
       ? [{ record, eventType, check: `_ubb_check_${callTail(record)}` }]
       : [];
   });
 }
 
-/** Which check function each Event Type's cost is checked by, as one jq
- * object: the names are the renderer's, and identifier-safe. */
-function declaredCosts(found: ReturnType<typeof costReads>): string[] {
+/** Which check function each Event Type's reads — a cost, a quantity, or
+ * both — are checked by, as one jq object: the names are the renderer's, and
+ * identifier-safe. */
+function declaredChecks(found: ReturnType<typeof checkedReads>): string[] {
   return [
     ...COMMENTS.verifyCosts.map((line) => `# ${line}`),
     "| {",
@@ -120,12 +135,40 @@ function checkHelper(): string[] {
 }
 
 /**
- * The checks of one record's cost. The value is read as the runnable file
- * reads it, then checked: there, admissible, and — with the currency pinned
- * as the runnable file pins it — converted exactly. Nothing is checked by
- * size: zero is a cost.
+ * The checks of what one record reads off the response. Each quantity is
+ * read as the runnable file reads it and checked as a quantity of its
+ * declared type (#603) — whether it is there at all is the program's check
+ * above, so a value that is not there is not checked again. The cost is
+ * read the same way, then checked: there, admissible, and — with the
+ * currency pinned as the runnable file pins it — converted exactly. Nothing
+ * is checked by size: zero is a cost, and a quantity.
  */
-function costCheck(record: CallPlan, check: string): string[] {
+function readsCheck(record: CallPlan, check: string): string[] {
+  const quantities = quantityReads(record).flatMap(({ key, value }) => [
+    `${I1}_ubb_read=$(${quantityFunction(record, value.index)} "$1") || _ubb_read=${KIND.unreadable}`,
+    `${I1}case $_ubb_read in`,
+    `${I2}${KIND.missing} | ${KIND.unreadable}) ;;`,
+    `${I2}*)`,
+    `${I3}_ubb_exactly=1`,
+    `${I3}case $_ubb_read in`,
+    `${I3}${I1}${KIND.string}:* | ${KIND.integer}:*)`,
+    `${I3}${I2}_ubb_exact "\${_ubb_read#*:}" ${value.valueType} && _ubb_exactly=0 ;;`,
+    `${I3}esac`,
+    // The key as the program above prints it: as JSON, inside the quotes the
+    // report puts round every name.
+    `${I3}_ubb_check "$_ubb_exactly" ${shWord(JSON.stringify(key).slice(1, -1))} ${shWord(MESSAGES.verifyQuantity)}`,
+    `${I3};;`,
+    `${I1}esac`,
+  ]);
+  return [
+    `${check}() {`,
+    ...quantities,
+    ...(scalarOf(record, "response_cost") === undefined ? [] : costCheck(record)),
+    "}",
+  ];
+}
+
+function costCheck(record: CallPlan): string[] {
   const { field: cost, value } = scalarOf(record, "response_cost")!;
   const currency = scalarOf(record, "response_currency")?.field;
   const reads = readFunctions(record);
@@ -136,7 +179,6 @@ function costCheck(record: CallPlan, check: string): string[] {
     `${I1}esac`,
   ];
   return [
-    `${check}() {`,
     `${I1}_ubb_read=$(${reads.cost} "$1") || _ubb_read=${KIND.unreadable}`,
     ...found("_ubb_found"),
     `${I1}_ubb_check "$_ubb_found" ${cost.name} ${shWord(MESSAGES.verifyResolves)}`,
@@ -167,7 +209,6 @@ function costCheck(record: CallPlan, check: string): string[] {
     `${I1}_ubb_converts=1`,
     `${I1}_ubb_to_micros "$_ubb_amount" ${shWord(value.representation)} "$_ubb_currency" 2>/dev/null && _ubb_converts=0`,
     `${I1}_ubb_check "$_ubb_converts" ${cost.name} ${shWord(MESSAGES.verifyConverts)}`,
-    "}",
   ];
 }
 
@@ -175,11 +216,13 @@ export function renderVerifyScript(plan: Plan): string {
   // A line the program prints, as the jq string that is it.
   const say = jqString;
   const unavailable = SHELL_EXIT.toolUnavailable.status;
-  const costs = costReads(plan);
+  const reads = checkedReads(plan);
+  const readsAQuantity = plan.records.some((record) => quantityReads(record).length > 0);
+  const readsACost = plan.records.some((record) => scalarOf(record, "response_cost") !== undefined);
   const program = [
     ...COMMENTS.verifyPaths.map((line) => `# ${line}`),
     ...declaredPaths(plan),
-    ...declaredCosts(costs),
+    ...declaredChecks(reads),
     "| def resolve($path):",
     `${I2}reduce $path[] as $segment ({"found": true, "at": .};`,
     `${I3}if .found and (.at | type) == "object" and (.at | has($segment))`,
@@ -202,11 +245,7 @@ export function renderVerifyScript(plan: Plan): string {
     `${I3}| ($captured[0] | resolve($path)) as $resolved`,
     `${I3}| check($resolved.found; $quantity; ${say(MESSAGES.verifyResolves)}),`,
     `${I3}  ( select($resolved.found)`,
-    `${I3}    | (($resolved.at | type) == "number") as $number`,
-    `${I3}    | check($number; $quantity; ${say(MESSAGES.verifyNumber)}),`,
-    `${I3}      ( select($number)`,
-    `${I3}        | check($resolved.at != 0; $quantity; ${say(MESSAGES.verifyNotZero)}) ),`,
-    `${I3}      check(`,
+    `${I3}    | check(`,
     `${I3}        ([ $paths | to_entries[] | select(.key != $quantity and .value == $path) ]`,
     `${I3}         | length) == 0;`,
     `${I3}        $quantity; ${say(MESSAGES.verifyDistinct)}) ) ] as $lines`,
@@ -235,22 +274,22 @@ export function renderVerifyScript(plan: Plan): string {
     SHELL_FILE.heredoc,
     "}",
   ];
-  // What checks a cost: the runnable file's own programs and functions, and
-  // one function per record that reads a cost.
-  const costing = costs.length === 0
+  // What checks a read value: the runnable file's own programs and functions,
+  // and one function per record that reads a cost or a quantity.
+  const checking = reads.length === 0
     ? []
     : [
         ...asComments(SHELL_COMMENTS.verifyCosts),
         `${SHELL_EXIT.valueRefused.name}=${SHELL_EXIT.valueRefused.status}`,
         "",
-        ...costs.flatMap(({ record }) => readPrograms(record)),
-        ...reportedCostHelpers(false),
-        "",
+        ...reads.flatMap(({ record }) => readPrograms(record)),
+        ...(readsAQuantity ? [...exactHelper(), ""] : []),
+        ...(readsACost ? [...reportedCostHelpers(false), ""] : []),
         ...checkHelper(),
-        ...costs.flatMap(({ record, check }) => ["", ...costCheck(record, check)]),
+        ...reads.flatMap(({ record, check }) => ["", ...readsCheck(record, check)]),
         "",
       ];
-  const programs = [...checked, ...costing].join("\n");
+  const programs = [...checked, ...checking].join("\n");
   const lines = [
     ...asComments(SHELL_COMMENTS.verify),
     ...asComments([statement("configuration_fingerprint", plan.header.configuration_fingerprint ?? null)]),
@@ -268,7 +307,7 @@ export function renderVerifyScript(plan: Plan): string {
     "",
     ...checked,
     "",
-    ...costing,
+    ...checking,
     'ubb_report=$(ubb_checked "$@") || exit $?',
     "",
     "{",
@@ -285,7 +324,7 @@ export function renderVerifyScript(plan: Plan): string {
     `${I1}usage) exit 2 ;;`,
     "esac",
     "ubb_failures=$ubb_verdict",
-    ...(costs.length === 0 ? [] : ['[ "$ubb_then" = - ] || "$ubb_then" "$2"']),
+    ...(reads.length === 0 ? [] : ['[ "$ubb_then" = - ] || "$ubb_then" "$2"']),
     'if [ "$ubb_failures" -gt 0 ]; then',
     `${I1}printf '%s %s\\n' "$ubb_failures" ${shWord(MESSAGES.verifyFailed)}`,
     `${I1}exit 1`,

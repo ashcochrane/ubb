@@ -2,10 +2,10 @@
   "major_units_decimal usd": {
     "python_sdk": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:87c45daa9bee833320bbdd75414e52a46c4f11fbfc5afbe9231f38cfb2ec527b",
+      "configuration_fingerprint": "sha256:329e3bdc495695e8c4075a9ad939d09a1a853920e6acd998a9eae2d53c20df9c",
       "readiness": "complete",
       "calls": [
         {
@@ -292,10 +292,10 @@
     },
     "shell_http": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:273d1badbb6fbabc963f5db4ae956e109d6e029b28a3f4a19a19f386f20ee420",
+      "configuration_fingerprint": "sha256:6705149b0932c8ff1ea7bcadae873bd8e6b314b4369fe578ab416726b206e029",
       "readiness": "complete",
       "calls": [
         {
@@ -584,10 +584,10 @@
   "micros usd": {
     "python_sdk": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:12f8f990f2c1f2553855e0e067ec1aa7236d7fcbf952767eac0dcc4b349fe28a",
+      "configuration_fingerprint": "sha256:32bcba9a9d448bca8380004564b5753e0e7e3dc22c56b60e2d78bffdcc09156c",
       "readiness": "complete",
       "calls": [
         {
@@ -874,10 +874,10 @@
     },
     "shell_http": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:ca888da8f431aa430f96d7f166c30d00274d7a8408744056000312302c419a5d",
+      "configuration_fingerprint": "sha256:ccd1e3ea62f17dd97b2d3296d688aa4defa22bb023c95cb6617b8435ab3a5efc",
       "readiness": "complete",
       "calls": [
         {
@@ -1166,10 +1166,10 @@
   "minor_units usd": {
     "python_sdk": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:e0e561e0b2a54b0f87e119aa6d8a3dc4a7cdd1e1adbeaec1bed314db4bc7c20c",
+      "configuration_fingerprint": "sha256:27ec666e1c69ec128079661b92c9124262fb93af325405535a03cc13dc9578f2",
       "readiness": "complete",
       "calls": [
         {
@@ -1456,10 +1456,10 @@
     },
     "shell_http": {
       "schema_version": 1,
-      "renderer_contract_version": 2,
+      "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:ae2e5e90a06aac36a9918939d2fb1eb12797f1c2a4cbeb6d3bba32bb00fd2ab1",
+      "configuration_fingerprint": "sha256:ba0a1f4748ff76889c1f1dfb364a1d2385ff80562e7f799a39db206ad863a3d2",
       "readiness": "complete",
       "calls": [
         {

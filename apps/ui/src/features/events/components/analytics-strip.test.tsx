@@ -92,7 +92,7 @@ describe("AnalyticsStrip", () => {
   // ⚠ §15 — the margin is incomplete wherever the cost side is, whatever the
   // revenue beside it reads. A `known` revenue is not evidence the cost
   // resolved; #473 owns why it can read known at all.
-  it("draws the margin as a bound while the revenue beside it reads known", async () => {
+  it("draws the margin marked incomplete while the revenue beside it reads known", async () => {
     measures = incompleteMeasures({
       cost: incompleteTotal(3_000_000, 2),
       revenue: completePriceTotal(8_000_000),
@@ -101,8 +101,8 @@ describe("AnalyticsStrip", () => {
     renderStrip(<AnalyticsStrip params={PARAMS} metadataFilterActive={false} />);
 
     expect(await screen.findByText("$8.00")).toBeInTheDocument();
-    expect(within(card("Provider cost")).getByText("at least $3.00")).toBeInTheDocument();
-    expect(within(card("Gross margin")).getByText("at most $5.00")).toBeInTheDocument();
+    expect(within(card("Provider cost")).getByText("$3.00 (Incomplete)")).toBeInTheDocument();
+    expect(within(card("Gross margin")).getByText("$5.00 (Incomplete)")).toBeInTheDocument();
     expect(screen.queryByText("$5.00")).not.toBeInTheDocument();
   });
 });

@@ -53,10 +53,10 @@ def state_of(record) -> dict:
     """One period's alerting state, as plain data.
 
     The two counts travel with the figures rather than being fetched beside
-    them, because every one of these numbers is a bound rather than a total: an
-    excluded supplier cost makes the margin a CEILING and an excluded price
-    makes it a FLOOR, and a consumer handed the margin without them cannot tell
-    which way the real answer lies (#328, #351).
+    them, because every one of these numbers is the sum of what resolved rather
+    than a total: an excluded supplier cost or an excluded price leaves the
+    margin incomplete in a direction nobody can state, and a consumer handed
+    the margin without them cannot tell it is incomplete (#328, #351, #603).
     """
     return {
         "customer_id": str(record.customer_id),

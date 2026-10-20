@@ -423,18 +423,19 @@ class TestUsageNobodyPricedIsNeverAKnownFigure:
     retention and neither applies, and the owner ruled out a sixth (#537), so
     both measures read `incomplete` with `amount_micros` null — which on this
     surface means *no figure can be stated* — beside the count of postings
-    nobody priced. Until #537 the revenue was a zero floor and the margin its
+    nobody priced. Until #537 the revenue was a stand-in zero and the margin its
     negative, and the console drew "at least −£…": #153 §17.1's defect with a
     prefix.
 
-    **An amount under `incomplete` is a BOUND, and there is one only where some
-    piece of the row's revenue DID resolve.** That is a COUNT of resolved
-    pieces and never a test of the sum, because a deliberate £0 price is
-    resolved and a sum cannot tell a free service from one nobody priced — the
-    two cases on the zero below are what hold the count to that.
+    **An amount under `incomplete` is the SUM OF WHAT RESOLVED (#603), and
+    there is one only where some piece of the row's revenue DID resolve.** That
+    is a COUNT of resolved pieces and never a test of the sum, because a
+    deliberate £0 price is resolved and a sum cannot tell a free service from
+    one nobody priced — the two cases on the zero below are what hold the count
+    to that.
 
-    **The rule is per row**, so one grouped answer can carry a bound on one row
-    and no amount on the next.
+    **The rule is per row**, so one grouped answer can carry the sum of what
+    resolved on one row and no amount on the next.
     """
 
     @pytest.fixture(autouse=True)
@@ -470,7 +471,7 @@ class TestUsageNobodyPricedIsNeverAKnownFigure:
     def test_with_some_revenue_resolved_the_priced_part_is_a_bound(self):
         """AC 2 — the behaviour before #537, pinned beside the case it must
         not be confused with: one priced posting beside the unpriced one, and
-        the priced subtotal is stated as the bound it is."""
+        the priced subtotal is stated as the sum of what resolved."""
         a_posting(self.tenant, self.customer, "i2")
         body = ask(self.key, measures=MONEY, **self.window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
@@ -497,11 +498,11 @@ class TestUsageNobodyPricedIsNeverAKnownFigure:
         assert (margin["amount_micros"], margin["status"]) == (
             -800_000, MEASURE_STATUS_KNOWN)
 
-    def test_a_free_service_beside_an_unpriced_one_is_a_bound_of_zero(self):
+    def test_a_free_service_beside_an_unpriced_one_is_an_incomplete_zero(self):
         """The same count, in the other branch. A £0 posting beside the
-        unpriced one IS a resolved piece, so the row states a bound — of zero —
-        where a rule reading the SUM would have stated no amount and called the
-        free service unpriced."""
+        unpriced one IS a resolved piece, so the row states the sum of what
+        resolved — zero — where a rule reading the SUM would have stated no
+        amount and called the free service unpriced."""
         a_posting(self.tenant, self.customer, "i2", billed_cost_micros=0)
         body = ask(self.key, measures=MONEY, **self.window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
@@ -513,9 +514,9 @@ class TestUsageNobodyPricedIsNeverAKnownFigure:
 
     def test_a_subscription_is_a_resolved_piece_and_excuses_nothing(self):
         """A Stripe subscription beside the unpriced posting: a piece of the
-        revenue that resolved, so the row states a bound — and, being outside
-        #537's ruling, it supersedes and excuses nothing, so a bound is what
-        it stays."""
+        revenue that resolved, so the row states the sum of what resolved —
+        and, being outside #537's ruling, it supersedes and excuses nothing, so
+        incomplete is what it stays."""
         a_monthly_subscription(self.tenant, self.customer)
         body = ask(self.key, measures=MONEY, **self.window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
@@ -670,8 +671,8 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
     def test_only_the_month_it_covers_is_superseded_or_excused(self):
         """AC 7 — one month's figure inside a longer window supersedes that
         month's priced usage and excuses that month's unpriced posting, and
-        nothing else: January's unpriced posting still makes the whole window
-        a bound."""
+        nothing else: January's unpriced posting still leaves the whole window
+        incomplete."""
         window = self._around_a_february_figure()
         body = ask(self.key, measures=MONEY, **window).json()
         revenue = measure_of(body, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
@@ -792,9 +793,9 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
         unpriced usage on either side of the 15th. The covered part is a
         RESOLVED piece of April's revenue under either basis — under
         `recorded` it resolved to nothing here, because the whole figure
-        landed on 15 March, exactly as a £0 price is resolved — so the row is a
-        bound, from the uncovered unpriced posting, and never "no figure". Under
-        `recognised` the same bound carries April's 14 days of the figure."""
+        landed on 15 March, exactly as a £0 price is resolved — so the row is
+        incomplete, from the uncovered unpriced posting, and never "no figure".
+        Under `recognised` the same sum carries April's 14 days of the figure."""
         self.unpriced("covered", effective_at=datetime(
             2026, 4, 5, 9, 30, tzinfo=dt_timezone.utc))
         self.unpriced("uncovered", effective_at=datetime(

@@ -47,15 +47,18 @@ describe("reading a ceiling assessment", () => {
     expect(describeCeilingFigures({ kind: "not_applicable" }, "usd")).toBeNull();
   });
 
-  it("carries the three figures and the count the known total left out", () => {
+  // ⚠ #603 (ADR-0020 §7): under `indeterminate` the wire nulls both figures —
+  // a cost still unresolved may move the total either way — and the reading
+  // carries the nulls rather than inventing a share.
+  it("carries the ceiling and the count the known total left out, and no figure UBB could not state", () => {
     const reading = readCeiling(
       ceilingAssessment("indeterminate", { ceiling_micros: 3_000_000, cost: incompleteTotal(1_240_000, 1) }),
     );
     expect(reading).toEqual({
       kind: "indeterminate",
       ceilingMicros: 3_000_000,
-      usedPercentage: 41,
-      remainingMicros: 1_760_000,
+      usedPercentage: null,
+      remainingMicros: null,
       eventsLeftOut: 1,
     });
   });
@@ -69,18 +72,34 @@ describe("the figures beside a ceiling status", () => {
     expect(describeCeilingFigures(within, "usd")).toBe("$3.00 ceiling · 95% used · $0.13 headroom");
 
     const reached = readCeiling(
-      ceilingAssessment("ceiling_reached", { ceiling_micros: 800_000, cost: incompleteTotal(900_000, 2) }),
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 800_000, cost: completeTotal(900_000) }),
     );
     expect(describeCeilingFigures(reached, "usd")).toBe("$0.80 ceiling · 112% used · $0.00 headroom");
   });
 
-  it("are a floor and a most where UBB could not tell", () => {
+  it("are the ceiling alone where UBB could not tell — no share, no headroom, and no bound", () => {
     const reading = readCeiling(
       ceilingAssessment("indeterminate", { ceiling_micros: 3_000_000, cost: incompleteTotal(1_240_000, 1) }),
     );
-    expect(describeCeilingFigures(reading, "usd")).toBe(
-      "$3.00 ceiling · at least 41% used · at most $1.76 headroom",
-    );
+    expect(describeCeilingFigures(reading, "usd")).toBe("$3.00 ceiling");
+  });
+
+  // The owner's case (6279966961): a unit STOPPED at its ceiling on the known
+  // total, with a cost still unresolved. Assembled here rather than read off a
+  // mock, as the wire carries it: the stop is the enforcement trigger, and the
+  // assessment beside it is indeterminate with no figures — never "reached".
+  it("read a unit stopped on its known total while a cost is unresolved as indeterminate", () => {
+    const reading = readCeiling({
+      task_cogs_ceiling_micros: 800_000,
+      ceiling_status: "indeterminate",
+      ceiling_used_percentage: null,
+      ceiling_remaining_micros: null,
+      unresolved_event_count: 2,
+    });
+    expect(reading.kind).toBe("indeterminate");
+    expect(describeCeilingFigures(reading, "usd")).toBe("$0.80 ceiling");
+    expect(explainCeiling(reading)).toMatch(/fired on the costs already known and stands/);
+    expect(explainCeiling(reading)).not.toMatch(/reached|at least|at most|higher|lower/i);
   });
 
   it("leave out a share of a zero ceiling rather than writing one", () => {
@@ -102,8 +121,8 @@ describe("the figures beside a ceiling status", () => {
     const indeterminate = readCeiling(
       ceilingAssessment("indeterminate", { ceiling_micros: 3_000_000, cost: incompleteTotal(1_240_000, 1) }),
     );
-    expect(describeUtilisation(indeterminate)).toBe("at least 41%");
-    expect(describeHeadroom(indeterminate, "usd")).toBe("at most $1.76");
+    expect(describeUtilisation(indeterminate)).toBeNull();
+    expect(describeHeadroom(indeterminate, "usd")).toBeNull();
 
     // Nothing evaluated: neither figure, and never a zero of either.
     expect(describeUtilisation({ kind: "not_applicable" })).toBeNull();
@@ -152,11 +171,17 @@ describe("the sentence beside a ceiling status", () => {
       `1 event has a supplier cost UBB has not learned. ${CEILING_STATUS_EXPLANATIONS.indeterminate}`,
     );
 
+    // Reached is concluded only once every cost resolved, so it never has a
+    // count to name.
     const reached = readCeiling(
-      ceilingAssessment("ceiling_reached", { ceiling_micros: 10, cost: incompleteTotal(10, 3) }),
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 10, cost: completeTotal(10) }),
     );
-    expect(explainCeiling(reached)).toBe(
-      `3 events have a supplier cost UBB has not learned. ${CEILING_STATUS_EXPLANATIONS.ceiling_reached}`,
-    );
+    expect(explainCeiling(reached)).toBe(CEILING_STATUS_EXPLANATIONS.ceiling_reached);
+  });
+
+  it("promises no direction in any sentence", () => {
+    for (const sentence of Object.values(CEILING_STATUS_EXPLANATIONS)) {
+      expect(sentence).not.toMatch(/at least|at most|can only|floor|softens/i);
+    }
   });
 });

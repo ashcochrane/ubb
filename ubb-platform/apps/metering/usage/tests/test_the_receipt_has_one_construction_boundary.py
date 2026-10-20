@@ -344,7 +344,7 @@ class TestWhatReachesTheColumn:
 
         result = UsageService.record_usage(
             tenant, customer, "k1",
-            measurements={"input_tokens": 1_000})
+            measurements={"input_tokens": "1000"})
         stored = getattr(Posting.objects.get(id=result["event_id"]),
                          Posting.RECEIPT_COLUMN)
 
@@ -416,7 +416,7 @@ class TestTheValuesAreTheAuthority:
             rate_per_unit_micros=10_000, unit_quantity=1_000_000)
         result = UsageService.record_usage(
             tenant, customer, "k1",
-            measurements={"input_tokens": 1_000_000})
+            measurements={"input_tokens": "1000000"})
         return result, rate
 
     def test_a_receipt_still_explains_its_amount_after_the_rule_is_edited(self):

@@ -444,8 +444,10 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
                                        (for_shell, "shell_http", None)):
             assert blueprint["schema_version"] == 1
             # 2 since #583: a runtime value may carry a `source_path` fact on a
-            # field of its own, which a contract-1 renderer would misread.
-            assert blueprint["renderer_contract_version"] == 2
+            # field of its own, which a contract-1 renderer would misread. 3
+            # since #603/#584: a quantity is exact text, never a JSON number,
+            # and a constant's token carries its declared value.
+            assert blueprint["renderer_contract_version"] == 3
             assert blueprint["target"] == target
             assert blueprint["sdk_major_version"] == sdk
 
@@ -1190,38 +1192,75 @@ class TestAShapeTheTargetCannotReadIsBlocked(_Routes):
 
 @pytest.mark.django_db
 class TestNoValueIsInvented(_Routes):
-    def test_a_constant_with_its_value_is_blocked_only_until_it_can_render(
-            self):
-        """The declaration is complete — a constant is declared with its
-        value (#571) — and this Code Builder version cannot yet generate code
-        that uses it. So the call is blocked by the code that says exactly
-        that and by nothing else of the quantity's own, the value reaches
-        neither the Blueprint nor the snapshot it is stored as (#584 carries
-        it), and no request is offered: there is nothing in the declaration
-        to change."""
+    @pytest.mark.parametrize("value_type, value", [
+        ("integer", "12"),
+        ("decimal", "271828.5"),
+        ("integer", "-3"),
+        ("decimal", "-0.25"),
+        # More digits than a binary float holds, whole and fractional.
+        ("integer", "1234567890" * 6),
+        ("decimal", "3." + "1415926535" * 4),
+    ])
+    def test_a_constant_resolves_to_its_declared_value(self, value_type,
+                                                       value):
+        """#584: a constant is declared with its value (#571), and generated
+        code now uses it. Its value token is `platform_known` and configured,
+        carries the declared value as the canonical exact TEXT it is kept as
+        — for both value types and at any length, never a JSON number — and
+        names the publication it was declared in. Nothing blocks the call on
+        the quantity's account, and the snapshot the Blueprint is kept as
+        holds the value too."""
         self._a_kind()
         self._event_type(measurements={"calls": {
-            **SEARCHES, "value_type": "decimal", "unit": "call",
-            "source_kind": "constant", "constant_value": "271828.5"}})
+            **SEARCHES, "value_type": value_type, "unit": "call",
+            "source_kind": "constant", "constant_value": value}})
 
         blueprint = self._complete()
         record = _the_record(blueprint)
 
         constant = _one(record, "measurements.calls")
         assert constant["binding_class"] == "platform_known"
-        assert constant["configured"] is False
-        assert constant["value"] is None
-        assert record["readiness"] == "blocked"
-        about_the_constant = [d for d in blueprint["diagnostics"]
-                              if d["key"] == f"{EVENT}:calls"]
-        assert about_the_constant == [{
-            "severity": "blocking",
-            "code": "constant_measurement_not_renderable",
-            "object_kind": "measurement", "key": f"{EVENT}:calls",
-            "field": "source_kind", "remediation_request": None}]
-        assert "271828" not in json.dumps(blueprint)
+        assert constant["configured"] is True
+        assert constant["value"] == value
+        assert isinstance(constant["value"], str)
+        assert constant["provenance"] == _one(record, "event_type")[
+            "provenance"]
+        assert _one(record, "measurements.calls.value_type")[
+            "value"] == value_type
+        assert record["readiness"] == "complete"
+        assert [d for d in blueprint["diagnostics"]
+                if d["key"] == f"{EVENT}:calls"] == []
         (stored,) = BlueprintSnapshot.objects.filter(tenant=self.tenant)
-        assert "271828" not in json.dumps(stored.content)
+        kept = [quantity
+                for event_type in stored.content["identity"]["configuration"][
+                    "event_types"]
+                for quantity in event_type["measurements"]
+                if quantity["code"] == "calls"]
+        assert [quantity["constant_value"] for quantity in kept] == [value]
+
+    def test_a_changed_constant_is_a_new_fingerprint_and_the_same_one_is_not(
+            self):
+        """The value is part of what a fingerprint hashes now (#584): the same
+        constant resolves to the same document, and a changed one — published
+        — to a new fingerprint carrying the new value."""
+        self._a_kind()
+        calls = {**SEARCHES, "value_type": "integer", "unit": "call",
+                 "source_kind": "constant", "constant_value": "12"}
+        self._event_type(measurements={"calls": calls})
+        before = self._complete()
+        again = self._complete()
+
+        self._call("put", f"/api/v1/event-types/{EVENT}/measurements/calls",
+                   {**calls, "constant_value": "13"})
+        self._publish()
+        after = self._complete()
+
+        assert (again["configuration_fingerprint"]
+                == before["configuration_fingerprint"])
+        assert (after["configuration_fingerprint"]
+                != before["configuration_fingerprint"])
+        assert _one(_the_record(after), "measurements.calls")[
+            "value"] == "13"
 
     def test_a_derived_quantity_is_always_blocked(self):
         self._a_kind()
@@ -1991,8 +2030,9 @@ class TestTheBuilderChangesNoConfiguration(_Routes):
 
     def test_an_admin_resolving_a_blueprint_full_of_fixes_applies_none_of_them(
             self):
-        """Every diagnostic here but the valid constant's carries a request
-        that would change configuration. An admin key asks, in both modes,
+        """Every diagnostic here carries a request that would change
+        configuration (the valid constant beside them reports none, #584).
+        An admin key asks, in both modes,
         and every configuration table is exactly as it was: nothing is
         declared, edited or published, and no request is executed."""
         self._a_kind()
@@ -2035,12 +2075,13 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
     #: The codes reported over a declaration that is complete, where nothing in
-    #: the configuration is the thing to change (#571): valid configuration
-    #: this Code Builder version cannot yet render. No request is offered for
-    #: one: the console words a request as the change an admin makes. (#570's
-    #: member for a cost read off the response left with #583, which renders
-    #: the read.)
-    NOTHING_TO_CHANGE = {"constant_measurement_not_renderable"}
+    #: the configuration is the thing to change: valid configuration this Code
+    #: Builder version cannot yet render. No request is offered for one: the
+    #: console words a request as the change an admin makes. NONE is left:
+    #: #570's member for a cost read off the response left with #583, which
+    #: renders the read, and #571's for a valued constant with #584, which
+    #: renders the constant. Kept, empty, so a later one has a home.
+    NOTHING_TO_CHANGE: frozenset = frozenset()
 
     def _every_remediation(self):
         """One Blueprint per situation, between them offering a request for
@@ -2095,12 +2136,12 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                       if d["code"] in self.NOTHING_TO_CHANGE) == sorted(
             [*self.NOTHING_TO_CHANGE] * 2)
         assert [d["remediation_request"] for d in diagnostics
-                if d["code"] in self.NOTHING_TO_CHANGE] == [None] * 2
+                if d["code"] in self.NOTHING_TO_CHANGE] == [None] * (
+            2 * len(self.NOTHING_TO_CHANGE))
         assert {d["code"] for d in diagnostics} >= {
             "event_type_not_declared", "event_type_not_published",
             "event_type_revised_since_publication",
             "reported_cost_mapping_missing",
-            "constant_measurement_not_renderable",
             "derived_measurement_unsupported",
             "response_shape_not_declared",
             "response_shape_not_readable_by_target",

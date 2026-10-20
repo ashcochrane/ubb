@@ -13,8 +13,10 @@
 // of its own:
 //
 //     known           a figure, and the only one there is
-//     unknown         information UBB does not have — the one a total is a
-//                     floor because of, and the one a recovery run revisits
+//     unknown         information UBB does not have — left out of every total
+//                     and counted among the amounts not included; a recovery
+//                     run revisits it, unless a `pricing_status_reason` says
+//                     why UBB cannot carry the price it calculated (#603)
 //     waived          a charge somebody decided not to pursue: a loss that was
 //                     decided rather than a question still open
 //     not_applicable  a subject that generates no customer revenue at this
@@ -45,8 +47,8 @@
 // reader.
 //
 // `domain-vocabulary/concepts/economics.yaml` NAMES THIS FILE as the console's
-// consumer of `not_applicable_reason`, which is what makes the import below a
-// declared fact rather than a convenience. The concept's other two consumers
+// consumer of `not_applicable_reason` and of `pricing_status_reason`, which is
+// what makes the imports below a declared fact rather than a convenience. The concept's other two consumers
 // are the backend model that writes the value and the published contract that
 // advertises it.
 
@@ -55,8 +57,10 @@ import {
   NOT_APPLICABLE_REASON_LABEL_KEYS,
   PRICING_METHOD_LABEL_KEYS,
   PRICING_STATUS_LABEL_KEYS,
+  PRICING_STATUS_REASON_LABEL_KEYS,
   type NotApplicableReason,
   type PricingStatus,
+  type PricingStatusReason,
 } from "@/lib/vocabulary";
 
 /** The catalogue's name for whether a customer price is settled. */
@@ -64,6 +68,29 @@ export const pricingStatusLabel = labelMap(PRICING_STATUS_LABEL_KEYS);
 
 /** The catalogue's name for WHY a subject generates no customer revenue. */
 export const notApplicableReasonLabel = labelMap(NOT_APPLICABLE_REASON_LABEL_KEYS);
+
+/**
+ * The catalogue's name for WHY a pricing status applies, where a published
+ * reason does (#603): today, only why an `unknown` price is one UBB
+ * calculated and cannot carry.
+ */
+export const pricingStatusReasonLabel = labelMap(PRICING_STATUS_REASON_LABEL_KEYS);
+
+/**
+ * A price's status in the catalogue's words, WITH its own reason where one
+ * was published (#603): "Unknown · Negative price not carried", or the
+ * status's word alone. The one spelling for every surface that shows a
+ * pricing status, so no surface shows an `unknown` and drops the reason that
+ * says it will never resolve.
+ */
+export function pricingStatusWords(
+  price: Pick<CustomerPrice, "pricing_status" | "pricing_status_reason">,
+): string {
+  const status = pricingStatusLabel(price.pricing_status);
+  return price.pricing_status_reason == null
+    ? status
+    : `${status} · ${pricingStatusReasonLabel(price.pricing_status_reason)}`;
+}
 
 /**
  * The catalogue's name for HOW a customer price was derived.
@@ -112,10 +139,16 @@ export const pricingMethodLabel = labelMap(PRICING_METHOD_LABEL_KEYS);
  * One type rather than a base and an "explained" extension — with the field
  * optional, the extension enforced nothing at either call site and was three
  * shapes for one clump.
+ *
+ * ⚠ THE STATUS'S OWN REASON IS REQUIRED, because the wire makes it required:
+ * `pricing_status_reason` is published REQUIRED AND NULLABLE wherever
+ * `pricing_status` is (#603), so a row that dropped it would be a row the
+ * server never sent.
  */
 export interface CustomerPrice {
   readonly billed_cost_micros?: number | null;
   readonly pricing_status: PricingStatus;
+  readonly pricing_status_reason: PricingStatusReason | null;
   readonly not_applicable_reason?: NotApplicableReason | null;
 }
 
@@ -178,10 +211,15 @@ export function customerPriceAmount(
  */
 export const PRICING_STATUS_EXPLANATIONS = {
   known: "UBB resolved what to charge for this, and this is the amount.",
+  // REASON-NEUTRAL, ON PURPOSE (#603; the owner's review of #614): an
+  // `unknown` price may be one UBB could not determine OR one it calculated
+  // exactly and will not publish (`negative_price_unsupported`), and the
+  // second is not "missing". What separates the two is the reason's own
+  // sentence, which `customerPriceExplanation` adds after this one.
   unknown:
-    "UBB has not resolved a customer price for this. The amount is missing rather than zero, and it is left out of every revenue total until it arrives.",
+    "No authoritative customer price is recorded for this event. It is not treated as zero and is not included in revenue totals.",
   waived:
-    "Somebody decided not to pursue this charge. The revenue really is nothing — this is a decided loss rather than a question still open, so no total is a floor because of it.",
+    "Somebody decided not to pursue this charge. The revenue really is nothing — this is a decided loss rather than a question still open, so no total is missing it.",
   not_applicable:
     "This subject generates no customer revenue at this level, so there is no price to resolve and nothing is missing from any total.",
 } as const satisfies Record<PricingStatus, string>;
@@ -210,7 +248,26 @@ export const NOT_APPLICABLE_REASON_EXPLANATIONS = {
 } as const satisfies Record<NotApplicableReason, string>;
 
 /**
- * The one sentence to show beside a price, whichever of the five answers it is.
+ * Why an `unknown` price is unknown, where the server published a reason, in
+ * the sentence that follows the status's own (#603). Total over the generated
+ * type, as the two maps above are.
+ */
+export const PRICING_STATUS_REASON_EXPLANATIONS = {
+  negative_price_unsupported:
+    "UBB calculated a negative price, but the current money rails cannot carry it authoritatively. Nothing was clamped to zero or charged, and no recovery run will resolve it.",
+} as const satisfies Record<PricingStatusReason, string>;
+
+/**
+ * The same sentence where the server published NO reason — the ordinary
+ * `unknown`, for want of input. The reason is nullable on every schema that
+ * publishes it, and null means no specific published reason applies, which
+ * for this status is a price that could not be determined.
+ */
+export const UNKNOWN_PRICE_WITHOUT_A_REASON =
+  "The price could not be determined from the configuration and inputs UBB had; a resolution run can complete it once they are in place.";
+
+/**
+ * The one sentence to show beside a price, whichever of the answers it is.
  *
  * The reason's sentence WINS where there is one, because the reason is the more
  * specific true thing: the registry reads `not_applicable_reason` only under
@@ -222,11 +279,25 @@ export const NOT_APPLICABLE_REASON_EXPLANATIONS = {
  * schema that publishes it, so a payload may legitimately arrive with the
  * status and no cause. Rendering nothing there would put the receipt back to a
  * dash with no explanation.
+ *
+ * ⚠ `unknown` IS THE EXCEPTION: ITS SENTENCE IS TWO, AND NEITHER WINS (#603;
+ * the owner's review of #614). The status's own sentence is reason-neutral —
+ * no authoritative price is recorded, it is not zero, it is not in revenue —
+ * and the reason's sentence follows it: a negative price UBB calculated and
+ * the rails cannot carry, or, where the server published no reason, a price
+ * that could not be determined. Collapsing the two meanings into one sentence
+ * is what `pricing_status_reason` exists to prevent.
  */
 export function customerPriceExplanation(price: CustomerPrice): string {
   const reason = price.not_applicable_reason;
   if (price.pricing_status === "not_applicable" && reason != null) {
     return NOT_APPLICABLE_REASON_EXPLANATIONS[reason];
+  }
+  if (price.pricing_status === "unknown") {
+    const why = price.pricing_status_reason === null
+      ? UNKNOWN_PRICE_WITHOUT_A_REASON
+      : PRICING_STATUS_REASON_EXPLANATIONS[price.pricing_status_reason];
+    return `${PRICING_STATUS_EXPLANATIONS.unknown} ${why}`;
   }
   return PRICING_STATUS_EXPLANATIONS[price.pricing_status];
 }

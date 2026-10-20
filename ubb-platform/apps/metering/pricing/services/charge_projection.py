@@ -277,6 +277,7 @@ def project_the_charge(charge):
         costing_status=posting.costing_status,
         billed_cost_micros=posting.billed_cost_micros,
         pricing_status=posting.pricing_status,
+        pricing_status_reason=posting.pricing_status_reason,
         task_id=str(charge.task_id),
         billing_owner_id=str(posting.billing_owner_id),
         effective_at=posting.effective_at.isoformat()))

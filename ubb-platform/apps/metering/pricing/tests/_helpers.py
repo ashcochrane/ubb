@@ -351,7 +351,9 @@ def priced_at(micros):
             f"{micros} is not a whole number of anything this rule can charge "
             f"for: it prices each one measured at "
             f"{WHAT_A_UNIT_COSTS_THE_CUSTOMER} micros")
-    return {PRICED_QUANTITY: quantity}
+    # As TEXT (#603): the bag crosses the wire as exact decimal strings, and
+    # one fixture spelling serves a body and a service-level call alike.
+    return {PRICED_QUANTITY: str(quantity)}
 
 
 def what_it_bills(extra):

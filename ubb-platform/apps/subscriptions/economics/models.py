@@ -34,7 +34,7 @@ class CustomerCostAccumulator(BaseModel):
     #
     # The handler adds each event's supplier cost as it arrives, and a cost UBB
     # has not resolved (#317) contributes nothing — so without this the running
-    # total would be a floor that reads like a figure. Written in the same
+    # total would be a partial sum that reads like a figure. Written in the same
     # atomic increment as the amount, because a total and its completeness that
     # can be updated separately will eventually disagree.
     #
@@ -117,21 +117,24 @@ class CustomerEconomics(BaseModel):
     # WHAT THE FROZEN COST TOTAL LEFT OUT, copied from the accumulator this
     # snapshot is taken from (#328).
     #
-    # It makes `provider_cost_micros` above a floor and every figure derived
-    # from it a bound: `gross_margin_micros` is a CEILING on the margin, and
-    # `margin_percentage` a ceiling on the percentage. The column stays NOT
-    # NULL — SQL's null-skipping never reaches a snapshot, so `Sum` over it is
-    # complete by construction and what travels is this count, not a null.
+    # Where it is non-zero, `provider_cost_micros` above is the sum of what
+    # resolved and every figure derived from it is incomplete:
+    # `gross_margin_micros` and `margin_percentage` leave out amounts that may
+    # move them either way (#603). The column stays NOT NULL — SQL's
+    # null-skipping never reaches a snapshot, so `Sum` over it is complete by
+    # construction and what travels is this count, not a null.
     #
     # It is also what the cost-spike comparison consults: a previous period
-    # whose cost excluded something is too small a denominator, so the rise
-    # computed against it would be too big. See MarginService.evaluate_and_emit.
+    # whose cost excluded something is an incomplete denominator, so the rise
+    # computed against it would not be the rise. See
+    # MarginService.evaluate_and_emit.
     unresolved_event_count = models.IntegerField(default=0)
     # WHAT THE FROZEN REVENUE TOTAL LEFT OUT, copied from the same accumulator
-    # (#351). It makes `usage_billed_micros` a floor, which bounds the derived
-    # figures in the OPPOSITE direction from the count above: an excluded cost
-    # makes the margin a ceiling, an excluded price makes it a floor, and a
-    # snapshot can be both at once.
+    # (#351). Where it is non-zero, `usage_billed_micros` is the sum of what
+    # resolved, and the derived figures are incomplete on the revenue side as
+    # the count above leaves them incomplete on the cost side: an excluded cost
+    # and an excluded price each leave the margin incomplete in a direction
+    # nobody can state, and a snapshot can be missing both at once.
     #
     # NOT NULL for the same reason its sibling is — a snapshot is never
     # null-skipped, so what travels is the count rather than a null.

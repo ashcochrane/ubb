@@ -246,6 +246,53 @@ export function writtenProgram(path: readonly string[]): string[] {
 }
 
 /**
+ * The shell function that acts on what a program answered for a QUANTITY
+ * (#603), left in `_ubb_read`: an integer as its digits or a string as its
+ * text, checked by `_ubb_exact` against the exact-decimal grammar and, where
+ * the quantity is declared an integer, for whole-ness; left in
+ * `_ubb_quantity` and 0 returned. Anything else — a number written with a
+ * fraction or an exponent, a flag, a null, a value not there — is refused in
+ * the catalogue's words with UBB_EXIT_VALUE_REFUSED. Called with the call,
+ * the key, the declared path as JSON, and the declared value type.
+ */
+/** Why `_ubb_exact` refused a quantity, by its status: whole where it is
+ * declared an integer (2), or no exact decimal at all. The one switch both
+ * the passed and the read quantity say it with, at their own indents. */
+export function exactRefusalWhy(outer: string, inner: string): string[] {
+  return [
+    `${outer}case $? in`,
+    `${inner}2) _ubb_why=${shWord(SHELL_MESSAGES.wholeQuantity)} ;;`,
+    `${inner}*) _ubb_why=${shWord(SHELL_MESSAGES.quantity)} ;;`,
+    `${outer}esac`,
+  ];
+}
+
+export function readQuantityHelper(): string[] {
+  const refused = `"$${SHELL_EXIT.valueRefused.name}"`;
+  const why = (kind: string, message: string) => `${I2}${kind}) _ubb_why=${shWord(message)} ;;`;
+  return [
+    ...asComments(SHELL_COMMENTS.responseQuantity),
+    "_ubb_read_quantity() {",
+    `${I1}case $_ubb_read in`,
+    `${I2}${KIND.string}:* | ${KIND.integer}:*)`,
+    `${I3}_ubb_quantity=\${_ubb_read#*:}`,
+    `${I3}_ubb_exact "$_ubb_quantity" "$4" && return 0`,
+    ...exactRefusalWhy(I3, `${I3}${I1}`),
+    `${I3};;`,
+    why(KIND.missing, SHELL_MESSAGES.readMissing),
+    why(KIND.unreadable, SHELL_MESSAGES.readUnreadable),
+    why(KIND.null, SHELL_MESSAGES.readQuantityNull),
+    why(KIND.flag, MESSAGES.quantityFlag),
+    why(KIND.float, MESSAGES.quantityFloatRead),
+    why("*", MESSAGES.notANumber),
+    `${I1}esac`,
+    `${I1}printf '%s: %s read at %s %s\\n' "$1" "$2" "$3" "$_ubb_why" >&2`,
+    `${I1}return ${refused}`,
+    "}",
+  ];
+}
+
+/**
  * The two shell functions that act on what a program answered, left in
  * `_ubb_read`: each sets its value and returns 0, or says why it refused and
  * returns UBB_EXIT_VALUE_REFUSED. Called with the call, the field and the

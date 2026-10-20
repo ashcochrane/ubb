@@ -4,7 +4,7 @@
 // console's imports only flow down, so a cell two features share sits here).
 //
 // `data-reading` is the reading's kind, so a test asserts WHICH reading a
-// cell holds — a figure, a floor, or unknown — rather than matching prose
+// cell holds — a figure, a partial sum, or unknown — rather than matching prose
 // that the wrong one could satisfy.
 
 import { ABSENT_LABEL } from "@/lib/localisation";

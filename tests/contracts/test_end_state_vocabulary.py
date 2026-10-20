@@ -104,29 +104,35 @@ def ceiling_rule(registry):
     return rule
 
 
-def test_the_lower_bound_rule_is_registry_data(ceiling_rule):
-    """AC: the ceiling statuses carry their lower-bound rule as data.
+def test_the_assessment_rule_is_registry_data(ceiling_rule):
+    """AC: the ceiling statuses carry their assessment rule as data.
 
-    The rule is *evaluated* here, not pattern-matched against prose. #158 §12.3:
-    once the known portion of accumulated COGS has reached the ceiling, costs
-    still unresolved cannot reverse the answer — unresolved cost may never
-    argue a Task back under a ceiling it has already reached.
+    The rule is *evaluated* here, not pattern-matched against prose. #158 §12.3
+    as #603 amended it (ADR-0020 §7; the owner's confirmation `6279966961`):
+    with every applicable cost resolved, at or above the line is
+    `ceiling_reached`; with ANY cost unresolved the answer is `indeterminate`
+    whatever the resolved total — an omitted amount may be negative, so the
+    resolved total is no lower bound. The enforcement trigger is a different
+    question and is not this rule's: it fires on the resolved total.
     """
     reached = dict(a_ceiling_applies=True, known_cogs_at_or_above_ceiling=True)
     assert ceiling_rule.answer(**reached, unresolved_costs_remain=False) \
         == "ceiling_reached"
     assert ceiling_rule.answer(**reached, unresolved_costs_remain=True) \
-        == "ceiling_reached", (
-        "an unresolved cost bought the Task its way back under the ceiling"
+        == "indeterminate", (
+        "a resolved subtotal was read as a lower bound on the eventual total"
     )
 
 
-def test_indeterminate_covers_only_the_case_it_names(ceiling_rule):
+def test_indeterminate_covers_exactly_an_unresolved_cost(ceiling_rule):
     """#158 §12.2: `indeterminate` is the inability to evaluate the ceiling —
-    reachable only while the known lower bound is still below it."""
+    since #603, whenever an applicable cost is unresolved, on either side of
+    the line; with everything resolved the answer is a figure's."""
+    for at_or_above in (True, False):
+        assert ceiling_rule.answer(
+            a_ceiling_applies=True, known_cogs_at_or_above_ceiling=at_or_above,
+            unresolved_costs_remain=True) == "indeterminate"
     below = dict(a_ceiling_applies=True, known_cogs_at_or_above_ceiling=False)
-    assert ceiling_rule.answer(**below, unresolved_costs_remain=True) \
-        == "indeterminate"
     assert ceiling_rule.answer(**below, unresolved_costs_remain=False) \
         == "within_ceiling"
 

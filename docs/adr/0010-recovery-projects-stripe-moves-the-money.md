@@ -152,6 +152,9 @@ control. It is the reason the money claim is evidence rather than an empty query
 - **The projection is a floor, and says so.** Postings it cannot value and postings beyond one pass
   are counted beside the figure rather than folded into it, so a reader is never shown a total that
   quietly excludes what it could not reach.
+  > **Amended by ADR-0020 §6 (#603, 2026-10-20):** the counting stands; the "floor" reading does
+  > not. An amount left out may be negative, so the figure is the sum of what a run would settle,
+  > complete when both counts are zero, and no direction is promised for the rest.
 - **The ADMIN floor cannot be lowered without re-arguing irreversibility.** If a future change makes
   a completion reversible, the floor's argument changes and the floor may too. Until then it is the
   highest UBB has, on purpose.

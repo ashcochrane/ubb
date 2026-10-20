@@ -30,6 +30,10 @@
  *   With no representation there is no way to read the path, and the value
  *   is written as a call that raises. The fields read this way are a
  *   supplier's cost and its currency; any other is refused.
+ * - `value_type` under a measurement: a constant quantity's declared value
+ *   (#584) is written as a typed exact literal — an `int` for `integer`, a
+ *   `Decimal("…")` of its exact text for `decimal` — never a float; and a
+ *   quantity read off the response is read exactly or refused (#603).
  * - `amount_representation` on a field: the value is a supplier's cost —
  *   the caller's own, or one read off the response — converted to whole
  *   micros once, in the currency the call's `currency` field pins or reads.
@@ -56,13 +60,11 @@ import {
   literalOf,
   notWritten,
   said,
-  SAID_OF,
   type Call,
   type Entry,
   type Field,
   type KeyedField,
   type Literal,
-  type NotRenderable,
   type Parameter,
   type ScalarField,
   type Token,
@@ -82,11 +84,13 @@ import { INDENT, isIdentifier, pyLiteral, pyString, unshadowed } from "./syntax.
 /** What the module turned out to need, found while writing its calls. */
 interface Uses {
   notReady: boolean;
-  /** Each of the two values a call can be written without, which decides
-   * which of their helpers the module carries. */
+  /** A value a call is written without, which needs its helper. */
   notConfigured: boolean;
-  notRenderable: boolean;
   reportedCost: boolean;
+  /** A constant declared a decimal, written as a `Decimal` (#584). */
+  decimal: boolean;
+  /** A quantity read off the response, read exactly or refused (#603). */
+  quantityRead: boolean;
   /** A cost the caller passes, which the comments speak to (#577). */
   callerCost: boolean;
   /** A supplier's cost, or its currency, read off the response (#583). */
@@ -117,7 +121,7 @@ function header(plan: Plan): string[] {
 // Values
 // ---------------------------------------------------------------------------
 
-type Valued = Token<Literal | Unconfigured | NotRenderable | Parameter>;
+type Valued = Token<Literal | Unconfigured | Parameter>;
 
 function notConfigured(plan: Plan, uses: Uses, name: string): string {
   uses.notReady = true;
@@ -125,13 +129,43 @@ function notConfigured(plan: Plan, uses: Uses, name: string): string {
   return `${plan.internal.notConfigured}(${pyString(name)})`;
 }
 
-/** A declared value this Code Builder version cannot yet generate (#571), in
- * its place as a call that raises saying so — never as one that calls it
- * missing. */
-function notRenderable(plan: Plan, uses: Uses, name: string): string {
-  uses.notReady = true;
-  uses.notRenderable = true;
-  return `${plan.internal.notRenderable}(${pyString(name)})`;
+/** The one form a constant quantity's value arrives in: the canonical text
+ * of an exact decimal, as the platform keeps it (ADR-0020). */
+const CANONICAL_QUANTITY = /^(0|-?(0\.[0-9]*[1-9]|[1-9][0-9]*(\.[0-9]*[1-9])?))$/;
+
+/** The most digits CPython compiles in an integer literal
+ * (`sys.get_int_max_str_digits()`'s default since 3.11). */
+const PYTHON_LITERAL_DIGITS = 4300;
+
+/**
+ * A constant quantity's declared value as a typed exact literal (#584): an
+ * `int` where it is declared an integer — Python's int holds any length — and
+ * a `Decimal` of its exact text where it is declared a decimal. Never a
+ * float. Anything but the canonical text, or a fraction declared whole, is
+ * refused rather than written. An integer longer than CPython compiles as a
+ * literal is written `int(Decimal("…"))`: still an int, built from its exact
+ * text by a conversion with no digit cap, because a quantity has none (#603).
+ */
+function quantityLiteral(uses: Uses, entry: Entry, value: Json): string {
+  if (typeof value !== "string" || !CANONICAL_QUANTITY.test(value)) {
+    return refuse(`the constant ${entry.keyText} is not carried as an exact decimal's canonical text`);
+  }
+  const valueType = factNamed(entry.facts, FACT.valueType);
+  if (valueType === "integer") {
+    if (value.includes(".")) {
+      return refuse(`the constant ${entry.keyText} is declared an integer and is not a whole number`);
+    }
+    if (value.replace("-", "").length > PYTHON_LITERAL_DIGITS) {
+      uses.decimal = true;
+      return `int(Decimal(${pyString(value)}))`;
+    }
+    return value;
+  }
+  if (valueType === "decimal") {
+    uses.decimal = true;
+    return `Decimal(${pyString(value)})`;
+  }
+  return refuse(`the constant ${entry.keyText} declares no value type this target writes`);
 }
 
 function plain(plan: Plan, uses: Uses, token: Valued): string {
@@ -142,8 +176,6 @@ function plain(plan: Plan, uses: Uses, token: Valued): string {
       return token.binding.name;
     case "unconfigured":
       return notConfigured(plan, uses, token.name);
-    case "not_renderable":
-      return notRenderable(plan, uses, token.name);
   }
 }
 
@@ -173,8 +205,15 @@ function traversal(
   return null;
 }
 
-function entryValue(plan: Plan, uses: Uses, call: Call, entry: Entry): string | null {
+function entryValue(
+  plan: Plan,
+  uses: Uses,
+  call: Call,
+  field: KeyedField,
+  entry: Entry,
+): string | null {
   if (entry.value === null) return null;
+  const quantity = field.name === FIELD.measurements;
   const path = factNamed(entry.facts, FACT.sourcePath);
   if (path !== undefined && entry.value.binding.kind === "parameter") {
     const read = traversal(
@@ -184,7 +223,15 @@ function entryValue(plan: Plan, uses: Uses, call: Call, entry: Entry): string | 
       path,
       factOfField(call, FIELD.eventType, FACT.responseRepresentation),
     );
-    return read ?? notConfigured(plan, uses, entry.value.name);
+    if (read === null) return notConfigured(plan, uses, entry.value.name);
+    if (!quantity) return read;
+    // Read exactly or refused in words (#603): never the float a parser
+    // made of a number written with a fraction or an exponent.
+    uses.quantityRead = true;
+    return `${plan.internal.readQuantity}(${read})`;
+  }
+  if (quantity && entry.value.binding.kind === "literal") {
+    return quantityLiteral(uses, entry, entry.value.binding.value);
   }
   return plain(plan, uses, entry.value);
 }
@@ -293,10 +340,12 @@ function argumentLines(plan: Plan, uses: Uses, call: Call, field: Field): string
 function entryLines(plan: Plan, uses: Uses, call: Call, field: KeyedField): string[] {
   const indent = INDENT.repeat(3);
   return field.entries.flatMap((entry) => {
-    const value = entryValue(plan, uses, call, entry);
+    const value = entryValue(plan, uses, call, field, entry);
     return [
+      // A constant's own value is a literal too, and states where it was
+      // declared beside the key's and the facts' (#584).
       ...provenanceComments(
-        [entry.key, ...entry.facts.map((declared) => declared.token)],
+        [entry.key, ...(entry.value === null ? [] : [entry.value]), ...entry.facts.map((declared) => declared.token)],
         indent,
       ),
       // A key no token gives a value to is stated and not sent.
@@ -405,6 +454,17 @@ function recordFunctions(plan: Plan, uses: Uses, record: RecordPlan): string[] {
       ? field.entries.some((entry) => factNamed(entry.facts, FACT.sourcePath) !== undefined)
       : factNamed(field.facts, FACT.sourcePath) !== undefined,
   );
+  // A quantity the tenant's code passes, which the comments speak to (#603).
+  const passesAQuantity = record.call.fields.some(
+    (field) =>
+      field.shape === "keyed" &&
+      field.name === FIELD.measurements &&
+      field.entries.some(
+        (entry) =>
+          entry.value?.binding.kind === "parameter" &&
+          factNamed(entry.facts, FACT.sourcePath) === undefined,
+      ),
+  );
   const forward = (recordedAt: string, stopBehaviour: string) => [
     `${INDENT}return ${send}(`,
     ...passing(record.parameters).map((line) => `${INDENT.repeat(2)}${line}`),
@@ -425,7 +485,11 @@ function recordFunctions(plan: Plan, uses: Uses, record: RecordPlan): string[] {
     ]),
     "",
     "",
-    ...asComments([...COMMENTS.record, ...(readsAResponse ? COMMENTS.response : [])]),
+    ...asComments([
+      ...COMMENTS.record,
+      ...(passesAQuantity ? COMMENTS.quantity : []),
+      ...(readsAResponse ? COMMENTS.response : []),
+    ]),
     ...signature(record.name, record.parameters, "RecordUsageResponse"),
     ...forward("None", PYTHON.stopBehaviorRaise),
     "",
@@ -479,7 +543,7 @@ function client(plan: Plan): string[] {
 }
 
 function notReadyHelpers(plan: Plan, uses: Uses): string[] {
-  const { notReady, notConfigured: unset, notRenderable: unrenderable } = plan.internal;
+  const { notReady, notConfigured: unset } = plan.internal;
   const error = PYTHON.notReadyError;
   return [
     ...asComments(COMMENTS.notReady),
@@ -493,11 +557,41 @@ function notReadyHelpers(plan: Plan, uses: Uses): string[] {
     `${INDENT.repeat(2)}f"{operation} ({readiness}) ${MESSAGES.notReady}{detail}"`,
     `${INDENT})`,
     ...(uses.notConfigured
-      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.unconfigured}.")`]
+      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${MESSAGES.notConfigured}.")`]
       : []),
-    ...(uses.notRenderable
-      ? ["", "", `def ${unrenderable}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.not_renderable}.")`]
-      : []),
+  ];
+}
+
+/**
+ * What a quantity read off the response passes through before it is sent
+ * (#603): a float or a flag is refused in words that say what to read
+ * instead, and a null as the missing quantity it is. An int, a decimal
+ * string or a Decimal goes on as it is, and the SDK sends its exact text.
+ */
+export function responseQuantityHelpers(plan: Plan): string[] {
+  const refused = PYTHON.quantityRefused;
+  const i2 = INDENT.repeat(2);
+  const i3 = INDENT.repeat(3);
+  return [
+    ...asComments(COMMENTS.responseQuantity),
+    `class ${refused}(ValueError):`,
+    `${INDENT}pass`,
+    "",
+    "",
+    `def ${plan.internal.readQuantity}(quantity):`,
+    `${INDENT}if isinstance(quantity, bool):`,
+    `${i2}raise ${refused}(`,
+    `${i3}f"{quantity!r} ${MESSAGES.quantityFlag}"`,
+    `${i2})`,
+    `${INDENT}if isinstance(quantity, float):`,
+    `${i2}raise ${refused}(`,
+    `${i3}f"{quantity!r} ${MESSAGES.quantityFloatRead}"`,
+    `${i2})`,
+    `${INDENT}if quantity is None:`,
+    `${i2}raise ${refused}(`,
+    `${i3}${pyString(MESSAGES.quantityNull)}`,
+    `${i2})`,
+    `${INDENT}return quantity`,
   ];
 }
 
@@ -662,8 +756,9 @@ export function renderModule(plan: Plan): string {
   const uses: Uses = {
     notReady: false,
     notConfigured: false,
-    notRenderable: false,
     reportedCost: false,
+    decimal: false,
+    quantityRead: false,
     callerCost: false,
     responseRead: false,
     currencyRead: false,
@@ -681,6 +776,7 @@ export function renderModule(plan: Plan): string {
   const exported = [
     PYTHON.environmentError,
     ...(uses.reportedCost ? [PYTHON.amountRefused, PYTHON.currencyRefused] : []),
+    ...(uses.quantityRead ? [PYTHON.quantityRefused] : []),
     ...(uses.notReady ? [PYTHON.notReadyError] : []),
     PYTHON.startTask,
     PYTHON.unitOfWork,
@@ -697,7 +793,11 @@ export function renderModule(plan: Plan): string {
     "import logging",
     "import os",
     "from contextlib import contextmanager",
-    ...(uses.reportedCost ? ["from decimal import Decimal, InvalidOperation"] : []),
+    ...(uses.reportedCost
+      ? ["from decimal import Decimal, InvalidOperation"]
+      : uses.decimal
+        ? ["from decimal import Decimal"]
+        : []),
     `from typing import ${typing.join(", ")}`,
     "",
     "from ubb import RecordUsageResponse, StartedTask, UBBClient, UBBStopRequested",
@@ -712,6 +812,7 @@ export function renderModule(plan: Plan): string {
       uses.notReady ? notReadyHelpers(plan, uses) : [],
       uses.reportedCost ? reportedCostHelpers(plan, uses) : [],
       uses.responseRead ? responseReadHelpers(plan, uses) : [],
+      uses.quantityRead ? responseQuantityHelpers(plan) : [],
       start,
       [`${plan.internal.startTask} = ${PYTHON.startTask}`],
       unitOfWork(plan),

@@ -7,13 +7,14 @@ from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
 from apps.platform.event_types.exact_decimals import (
-    ACCEPTED, CANONICAL, anchored)
+    ACCEPTED, CANONICAL, anchored, canonical_quantities)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
 from apps.platform.work import services as work_services
 from core.amount_status_pairs import (
-    RESOLVED_SUPPLIER_COST_MEANING, supplier_cost_total_meaning)
+    PRICING_STATUS_REASON_MEANING, RESOLVED_SUPPLIER_COST_MEANING,
+    supplier_cost_total_meaning)
 from core.crossing import ceiling_fields
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
@@ -47,6 +48,38 @@ RECEIPT_DESCRIPTION = (
     "section of cross-reference ids that nothing reads to reconstruct an "
     "amount."
 )
+
+#: THE ONE DECIMAL GRAMMAR, stated on the contract rather than left as an
+#: unspecified string — a constant's declared value (#571) and every recorded
+#: quantity (#603) are the same concept and are written the same way. A
+#: SCHEMA-ONLY `pattern`, deliberately: pydantic's own `pattern=` would refuse
+#: first with its wording, and the refusal UBB answers states the rule and its
+#: reason (`exact_decimals.py` owns both grammars and the one function between
+#: them). `DeclaredDecimal` is what a caller may write; `CanonicalDecimal` is
+#: the one form UBB stores and answers.
+DeclaredDecimal = Annotated[str, Field(
+    json_schema_extra={"pattern": anchored(ACCEPTED)})]
+CanonicalDecimal = Annotated[str, Field(
+    json_schema_extra={"pattern": anchored(CANONICAL)})]
+
+#: WHAT A RECORDED QUANTITY IS ON THE WIRE (#603, ADR-0020), published on the
+#: request that sends one and on every response that answers one.
+RECORDED_QUANTITY_MEANING = (
+    "Each quantity is an exact decimal written as a STRING — `\"12\"`, "
+    "`\"2.5\"`, `\"-3\"`, `\"0\"` — never a JSON number, which most clients "
+    "have already carried as a binary float. Base-10 digits with an optional "
+    "leading `-` and an optional fractional part, a digit on each side of "
+    "the point: no exponent, no `+`, and no spaces, separators or locale "
+    "formatting. No precision or scale is imposed. A quantity may be "
+    "negative, and zero is a recorded value. Where the event's Event Type "
+    "declares the key, its `value_type` decides whether a fraction is "
+    "allowed (`integer` refuses one); a key no publication declares is "
+    "accepted whatever its fraction. Any such spelling may be sent — "
+    "`\"01.50\"` is admitted. UBB canonicalises an admitted value before "
+    "persistence, and every stored value, receipt and read answers the "
+    "canonical text: no unnecessary leading zero, no trailing fractional "
+    "zero or point, and `0` for every spelling of zero (`\"01.50\"` is "
+    "`\"1.5\"`). No binary floating-point conversion occurs.")
 
 # Envelope + serializer conventions (#115): every list endpoint answers a
 # concrete ``Paginated[T]`` subclass — the subclass pins the OpenAPI component
@@ -287,32 +320,36 @@ class RecordUsageRequest(Schema):
     # The measured quantities, keyed by the codes declared beneath this event's
     # Event Type (#274). The name is the declarations' own: a quantity is
     # costable exactly when a declaration matches its key, and one that matches
-    # nothing is still accepted here and still contributes nothing to the
-    # amounts below — slice 3 owns making that visible rather than silent.
-    measurements: Optional[dict[str, int]] = None
+    # nothing is still accepted here and held for the tenant's decision.
+    #
+    # EACH VALUE IS EXACT TEXT (#603, ADR-0020): the canonical exact signed
+    # decimal #571's constant is written in, one grammar for both. A JSON
+    # number is refused even when it is whole — `9007199254740993` sent as one
+    # has already lost its last digit in most clients, and the server cannot
+    # tell the two apart — and pydantic's `str` refuses every number, flag and
+    # null on its own. The sign rule this bag carried (the door's "Fix 1", the
+    # money-model decision's §6.2(2)) is retired: a negative quantity and zero
+    # are recorded values.
+    measurements: Optional[dict[str, DeclaredDecimal]] = Field(
+        default=None, description=RECORDED_QUANTITY_MEANING)
 
     @field_validator("measurements")
     @classmethod
-    def measurement_values_nonnegative(cls, v):
-        """The only validation this bag has ever carried, moved unchanged.
+    def every_quantity_in_its_canonical_text(cls, v):
+        """Canonicalise every quantity before anything holds it, or refuse the
+        first one that is not an exact decimal — naming its key.
 
-        Not tightened, deliberately: refusing a key no declaration matches is
-        slice 3's, which owns every behaviour a declaration selects. Anything
-        this refused before it was renamed it still refuses, and nothing more —
-        `usage/tests/test_negative_quantity_rejection.py` states both halves.
-
-        The PREDICATE is what moved unchanged. The message had to be rewritten
-        because it names the field, and its second noun moved with it rather
-        than being left spelling the retired word for the one ticket between
-        this rename and the one that clears that word from the backend.
+        The grammar is the full match `exact_decimals.canonical` asks, never
+        `Decimal(text)`, which would read surrounding whitespace, `_`, an
+        exponent and any script's digits. Whether a fraction is admissible is
+        not decided here: it is the declaration's `value_type`, asked of the
+        Event Type's last publication by `metering_endpoints.admit_quantities`
+        — a request does not know an Event Type until it is looked up, and a
+        key nobody declared has no value type at all.
         """
         if v is None:
             return v
-        negative = [k for k, val in v.items() if val < 0]
-        if negative:
-            raise ValueError(
-                f"measurements values must be >= 0; negative quantities: {negative}")
-        return v
+        return canonical_quantities(v)
     currency: Optional[str] = Field(default=None, max_length=3)
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
@@ -468,6 +505,20 @@ PricingStatus = Annotated[
 #: sentence restating either here would be a second copy no gate reads.
 NotApplicableReason = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "not_applicable_reason"})]
+
+
+#: WHY A PRICE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603, ADR-0020) —
+#: the registry's closed `pricing_status_reason`, whose one value today is
+#: `negative_price_unsupported` beside an `unknown` price.
+#:
+#: ⚠ REQUIRED AND NULLABLE ON EVERY SURFACE THAT PUBLISHES `pricing_status`
+#: (the owner's amendment, `6279966961`): each carrier declares it
+#: `Optional[PricingStatusReason] = Field(description=...)` with NO default, so
+#: the key is always present and null means no specific published reason
+#: applies. There is no third "the server did not send it" state. The marker
+#: sits on the string member, the `NotApplicableReason` argument above.
+PricingStatusReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status_reason"})]
 
 
 #: HOW A CUSTOMER PRICE WAS DERIVED (#355, #147 §2). `closed` — UBB owns both
@@ -711,6 +762,11 @@ class RecordUsageResponse(Schema):
     # WHICH OF TWO MUTUALLY EXCLUSIVE CAUSES produced `not_applicable`. Null
     # otherwise — the other three statuses have no cause to name.
     not_applicable_reason: Optional[NotApplicableReason] = None
+    # WHY THE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603). Required
+    # and nullable — see `PricingStatusReason`. A rejected batch item carries
+    # it null, as it carries every stop fact null.
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     task_id: Optional[str] = None
     # Set when the named unit is a subtask — its parent task (#38).
     parent_task_id: Optional[str] = None
@@ -782,13 +838,16 @@ class RecordUsageResponse(Schema):
     # WHAT THE NAMED UNIT'S CEILING ASSESSMENT CONCLUDED, and the utilisation
     # beside it (#452, slice 6 §3). The stop above is the verdict; this is
     # where the unit stands, in the registry's word, whether or not anything
-    # stopped: `indeterminate` never stops anything and is never a breach,
-    # and a reader of the two figures must read the status first — under
-    # `indeterminate` the percentage is a floor and the headroom a ceiling,
-    # because both are computed over the KNOWN total, which is the total the
-    # ceiling is compared against (`task_total_unresolved_event_count` above
-    # says how much that total leaves out). No warning event, no threshold,
-    # no amber state: enforcement stays binary and this is information.
+    # stopped. The stop is the ENFORCEMENT TRIGGER, fired on the unit's
+    # RESOLVED COGS total; the status is the ASSESSMENT, and since #603 it is
+    # `indeterminate` whenever the unit carries an unresolved cost, whatever
+    # the resolved total — a stop and `indeterminate` can stand together, and
+    # the stop is never proof that the eventual total is past the line. Under
+    # `indeterminate` the two figures are null: an unresolved amount may be
+    # negative as well as positive, so a share of the resolved total bounds
+    # nothing (`task_total_unresolved_event_count` above says how many amounts
+    # are left out). No warning event, no threshold, no amber state:
+    # enforcement stays binary and this is information.
     #
     # Null exactly when no unit is named — nothing to assess — which is why
     # the marker sits on the string member and not on the union (the
@@ -809,8 +868,12 @@ class RecordUsageResponse(Schema):
     # {limit, stop_scope, tripped_at, episode_seq, task_id, subtask_id,
     # arrived_after} — arrived_after=false marks the tipping event.
     stop_context: Optional[list] = None
-    # The quantities as recorded — see `RecordUsageRequest.measurements` (#274).
-    measurements: Optional[dict] = None
+    # The quantities as recorded — see `RecordUsageRequest.measurements`
+    # (#274) — each in its canonical exact text (#603).
+    measurements: Optional[dict[str, CanonicalDecimal]] = Field(
+        default=None, description=(
+            "The quantities as recorded, keyed as sent. "
+            "Each is the canonical exact decimal text UBB stored."))
     pricing_receipt: Optional[dict] = Field(
         None, description=RECEIPT_DESCRIPTION)
     # WHAT THAT RECEIPT EXPLAINS — one usage row, or one canonical Charge
@@ -964,6 +1027,9 @@ class UsageEventOut(Schema):
     # a price UBB could not resolve reading as zero would be believed (#351).
     pricing_status: PricingStatus
     not_applicable_reason: Optional[NotApplicableReason] = None
+    # Required and nullable, beside the status it qualifies (#603).
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     metadata: dict
     effective_at: str
     # #41: the immutable past-limit context array (see RecordUsageResponse).
@@ -985,6 +1051,7 @@ def usage_event_out(e):
         "billed_cost_micros": e.billed_cost_micros,
         "pricing_status": e.pricing_status,
         "not_applicable_reason": e.not_applicable_reason,
+        "pricing_status_reason": e.pricing_status_reason,
         "metadata": e.metadata,
         "effective_at": e.effective_at.isoformat(),
         "stop_context": e.stop_context,
@@ -1091,6 +1158,10 @@ class UsageEventDetailOut(Schema):
     # The audit lookup is where a price that does not apply gets investigated,
     # so the cause belongs on it. Null on any other status.
     not_applicable_reason: Optional[NotApplicableReason] = None
+    # And why an `unknown` price is unknown, where a published reason says
+    # (#603). Required and nullable — see `PricingStatusReason`.
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     # HOW THE PRICE ABOVE WAS DERIVED, read off the receipt and published beside
     # the status that qualifies it (#355). Null means it was NOT derived, and
     # the status says which of the two reasons applied.
@@ -1118,8 +1189,14 @@ class UsageEventDetailOut(Schema):
     # which is the whole of what the receipt is for.
     pricing_method: Optional[PricingMethod] = None
     # The quantities this posting was measured by, keyed by declared code
-    # (#274) — the field the status below has always been about.
-    measurements: dict = {}
+    # (#274) — the field the status below has always been about — each in its
+    # canonical exact text (#603). A published `default` (not a factory, which
+    # publishes none): the read always carries the bag, and a client generator
+    # reads a defaulted key as always present.
+    measurements: dict[str, CanonicalDecimal] = Field(
+        default={}, description=(
+            "The quantities this posting was measured by, keyed as sent. "
+            "Each is the canonical exact decimal text UBB stored."))
     # What the bag above MEANS when it is empty — pruned, never applicable, or
     # genuinely there and empty. Without it an expired payload and a synthetic
     # charge are one indistinguishable `{}`, and a reader that defaults on an
@@ -1506,12 +1583,12 @@ class CloseTaskResponse(Schema):
     charge_created: bool
     total_billed_cost_micros: int
     total_provider_cost_micros: int
-    #: See `TaskOut.unresolved_event_count` — a closed unit's total is a floor
-    #: on exactly the same terms as a running one's, and closing it settles
+    #: See `TaskOut.unresolved_event_count` — a closed unit's total is read on
+    #: exactly the same terms as a running one's, and closing it settles
     #: nothing that was never learned.
     unresolved_event_count: int
-    #: And the price half (#351) — a closed unit's billed total is a floor on
-    #: the same terms, and closing it prices nothing that was never resolved.
+    #: And the price half (#351), on the same terms; closing a unit prices
+    #: nothing that was never resolved.
     unpriced_event_count: int
     event_count: int
 
@@ -1544,11 +1621,16 @@ class TaskOut(Schema):
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
     #:
-    #: Non-zero means the unit cost AT LEAST that much: the accumulate primitive
-    #: adds a supplier cost only where UBB has resolved one, and counts the rest
-    #: here rather than adding a zero that would read as a settled figure. It is
-    #: also what the unit's COGS limit raced, so a limit that has not fired has
-    #: not been shown to be safe.
+    #: The total is the sum of the supplier costs UBB has resolved; this says
+    #: how many amounts it does not include, and when it is zero the total is
+    #: complete. The accumulate primitive adds a supplier cost only where UBB
+    #: has resolved one and counts the rest here rather than adding a zero
+    #: that would read as a settled figure. ⚠ It says nothing about which way
+    #: the missing amounts would move the total: since #603 one may be
+    #: negative, so the reading this note used to give — that the unit cost
+    #: no less than the total — is retired. The unit's ceiling is enforced on
+    #: the resolved total, and its
+    #: assessment reads `indeterminate` while this is above zero.
     #:
     #: An event whose Event Type declares no supplier cost is not counted: there
     #: is nothing missing about a cost that does not exist.
@@ -1556,10 +1638,12 @@ class TaskOut(Schema):
     total_billed_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
     #:
-    #: The mirror of the count above, and it bounds the unit in the other
-    #: direction: non-zero means the unit will be charged AT LEAST that much.
-    #: The accumulate primitive adds a customer price only where UBB resolved
-    #: one and counts the rest here rather than adding a zero.
+    #: The mirror of the count above: the billed total is the sum of the
+    #: customer prices UBB has resolved, this says how many it does not
+    #: include, and zero means it is complete — with no direction promised for
+    #: the rest (#603). The accumulate primitive adds a customer price only
+    #: where UBB resolved one and counts the rest here rather than adding a
+    #: zero.
     #:
     #: A `waived` price and a `not_applicable` one are not counted: neither is
     #: missing information, and a caveat that is always on is one nobody reads.
@@ -1861,9 +1945,9 @@ class TaskAnalyticsRow(Schema):
     task_type: str
     run_count: int
     total_provider_cost_micros: int
-    #: How many events this KIND of work could not cost (#328). Non-zero makes
-    #: every figure in the row a floor — the total, the mean and the p95 — since
-    #: each unit they are built from is one.
+    #: How many events this KIND of work could not cost (#328). Non-zero means
+    #: every figure in the row — the total, the mean and the p95 — is built
+    #: from resolved amounts only and is not complete; zero means it is.
     unresolved_event_count: int
     total_billed_cost_micros: int
     #: And how many this KIND of work could not PRICE (#351), bounding the
@@ -1960,11 +2044,11 @@ class CustomerSpendPoolStatusOut(Schema):
     """Where a customer's known period charges stand against the pool that
     applies to them — their own row, else the tenant default; no row is no
     pool (`cap_micros` 0, every assessed figure null). The basis is the
-    durable pair: `known_period_charges_micros` is the resolved period
-    charges and a LOWER BOUND wherever `unresolved_posting_count` is not
-    zero, and every figure beside it is computed over that known figure —
-    the percentage a floor and the headroom a ceiling until the count is
-    zero. `highest_threshold_reached` is the largest of the pool's
+    durable pair: `known_period_charges_micros` is the sum of the period's
+    resolved charges, `unresolved_posting_count` says how many charges it
+    does not include, and when that count is zero the figure is complete.
+    Every figure beside it is computed over that resolved figure.
+    `highest_threshold_reached` is the largest of the pool's
     `alert_levels` (a percent of `cap_micros`) the known figure has reached;
     `blocking_occurred` is the start gate's own compare — true only under a
     blocking pool whose stop line the known figure is at or over. The pool
@@ -2919,15 +3003,16 @@ class UnresolvedQueueRow(Schema):
     billed_cost_micros: Optional[int] = None
     #: Whether the customer price above is settled. `unknown` is the other
     #: reason a row is here.
-    #:
-    #: ⚠ THE PRICE SIDE RECORDS NO REASON OF ITS OWN, AND THIS SURFACE REPORTS
-    #: WHAT THE RECORD HOLDS RATHER THAN DERIVING ONE. The engine writes a
-    #: reason for an unresolved COST and none for an unresolved price, so a
-    #: finer answer here would be a second copy of the engine's branch logic
-    #: living in a read surface, going stale silently. Coining a price-side
-    #: reason is a value-set decision with a registry entry behind it, and it
-    #: belongs to whoever changes what the recording path writes.
     pricing_status: PricingStatus
+    #: ⚠ THE PRICE SIDE RECORDS A REASON OF ITS OWN SINCE #603, AND THIS
+    #: SURFACE REPORTS WHAT THE RECORD HOLDS RATHER THAN DERIVING ONE — the
+    #: rule the note that stood here set for whoever changed what the
+    #: recording path writes. Required and nullable, as everywhere
+    #: `pricing_status` is published. A price carrying
+    #: `negative_price_unsupported` is not a run's to retry, so a row is here
+    #: for that price only when its COST is the unresolved half.
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
 
 
 class UnresolvedQueueTotals(Schema):
@@ -2940,8 +3025,8 @@ class UnresolvedQueueTotals(Schema):
         "the queued postings in this currency, across the whole filter "
         "rather than one page"))
     #: How many queued postings that total could NOT include, because their own
-    #: supplier cost is one UBB has not learned either. The total is a floor and
-    #: this is how far short it may fall.
+    #: supplier cost is one UBB has not learned either. The total is the sum of
+    #: what has resolved; when this is zero it is complete.
     unresolved_event_count: int
     #: How many postings the filter matched in this currency. Not a caveat —
     #: the size of the working list.
@@ -2993,9 +3078,9 @@ class ProjectedAdjustmentOut(Schema):
     #: are what a run over the same filter would complete.
     postings_examined: int
     #: HOW MANY THE FILTER MATCHED BEYOND THAT BOUND — the second reason these
-    #: figures are a floor, and a count rather than a flag for the reason every
-    #: total on these surfaces carries one: "there is more" does not say how
-    #: much more. Zero means the pass reached everything the filter matched.
+    #: figures may not be complete, and a count rather than a flag for the
+    #: reason every total on these surfaces carries one: "there is more" does
+    #: not say how much more. Zero means the pass reached everything the filter matched.
     #: It cannot be attributed per customer, because working out whose postings
     #: they are is exactly the examination the bound refused. Narrow the date
     #: range to reach them.
@@ -3013,8 +3098,8 @@ class WaivedLossRow(Schema):
         "the postings in this currency whose price was waived",
         can_hold_a_no_cost_event=False))
     #: How many waived postings that figure could NOT include, because their
-    #: own supplier cost is also one UBB never learned. The figure is a floor
-    #: and this says how far short.
+    #: own supplier cost is also one UBB never learned. The figure is the sum
+    #: of what has resolved; when this is zero it is complete.
     unresolved_event_count: int
     #: How many postings in this currency were waived.
     waived_event_count: int
@@ -3299,8 +3384,9 @@ ECONOMIC_AMOUNT_MEANING = (
     "be stated: under 'unavailable_outside_retention_horizon', under "
     "'not_applicable', on a margin under 'unavailable_at_requested_grain', and "
     "under 'incomplete' where no piece of the row's revenue resolved — on the "
-    "revenue and on the margin over it. An amount under 'incomplete' is a "
-    "bound, never a total; under 'unavailable_at_requested_grain' a revenue "
+    "revenue and on the margin over it. An amount under 'incomplete' is the "
+    "sum of what resolved, never the whole: what it leaves out may move it "
+    "either way; under 'unavailable_at_requested_grain' a revenue "
     "amount is the part that could be placed, with the rest in the answer's "
     "context. A revenue figure the tenant supplied is the revenue for the "
     "customer and period it covers and supersedes the revenue derived from "
@@ -3326,16 +3412,17 @@ class EconomicMeasureOut(Schema):
     so in `status`; a measure that could not be attributed at the requested
     grain carries whatever part of itself could be placed — or, for a margin,
     nothing at all — and says so there too. A reader that took the figure and
-    dropped that field would publish a floor as a total, which is the defect the
-    whole surface exists to end.
+    dropped that field would publish a partial sum as a total, which is the
+    defect the whole surface exists to end.
 
     **What each state says about the fields beside it**, which is what the state
     is for:
 
     * `known` — every input resolved. Inside a period a tenant-supplied revenue
       figure covers, that figure is the revenue and resolves it whole.
-    * `incomplete` — some input is still unresolved, so the figure is a bound
-      rather than a total, and the count beside it says how far off it can be.
+    * `incomplete` — some input is still unresolved, so the figure is the sum
+      of what resolved rather than a total, and the count beside it says how
+      many amounts it leaves out; no direction is promised for them (#603).
       Where no piece of a row's revenue resolved at all there is nothing to
       bound, and the revenue and the margin over it carry no figure.
     * `unavailable_at_requested_grain` — a figure exists and cannot be
@@ -4026,16 +4113,6 @@ CONSTANT_VALUE_MEANING = (
     "evidence that the value is a string. Present exactly when `source_kind` "
     "is `constant`.")
 
-#: The grammars, stated on the contract rather than left as an unspecified
-#: string. A SCHEMA-ONLY `pattern`, deliberately: pydantic's own `pattern=`
-#: would refuse first with its wording, and the model's refusal states the
-#: rule and its reason (`exact_decimals.py` owns both grammars and the one
-#: function between them).
-DeclaredDecimal = Annotated[str, Field(
-    json_schema_extra={"pattern": anchored(ACCEPTED)})]
-CanonicalDecimal = Annotated[str, Field(
-    json_schema_extra={"pattern": anchored(CANONICAL)})]
-
 
 class MeasurementIn(Schema):
     """One measurable quantity an Event Type produces.
@@ -4300,6 +4377,9 @@ class ItemisedEventRow(Schema):
     effective_at: datetime
     billed_cost_micros: Optional[int] = None
     pricing_status: PricingStatus
+    #: Required and nullable, beside the status it qualifies (#603).
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     provider_cost_micros: Optional[int] = Field(
         default=None, description=RESOLVED_SUPPLIER_COST_MEANING)
     costing_status: CostingStatus
@@ -4434,11 +4514,12 @@ class StopsAndBreachesResponse(Schema):
 
 class CeilingUtilisationRow(Schema):
     """One completed unit's ceiling as it stands at completion: the status
-    (the reading rule is written once, on `RecordUsageResponse.ceiling_status`
-    — under `indeterminate` the percentage is a floor and the headroom a
-    ceiling), the final utilisation over the known total, the headroom, and
-    the pair the figures are computed over. Under `not_applicable` both
-    figures are null, never zero."""
+    (the reading rule is written once, on `RecordUsageResponse.ceiling_status`),
+    the final utilisation over the resolved total, the headroom, and the pair
+    the figures are computed over. Under `not_applicable` and under
+    `indeterminate` both figures are null, never zero: an unresolved amount
+    may move the total either way, so a share of the resolved part bounds
+    nothing."""
     task_id: UUID
     parent_task_id: Optional[UUID] = None
     customer_id: UUID
@@ -4456,15 +4537,11 @@ class UtilisationAndHeadroomResponse(Schema):
     """How much of each ceiling was used, and how often it could not be
     evaluated (#150 §9.3). The average utilisation is computed per unit and
     then across every unit that had a ceiling, so one chatty unit never
-    dominates; peak utilisation equals the final figure by construction (the
-    pinned ceiling never moves and the known total never falls) and is not
-    published twice. Shares are whole percentages of `unit_count`, rounded
-    down; every average is null where no unit contributes — never zero. An
-    `indeterminate` unit contributes its own floor, so the average
-    utilisation is itself a floor and the average headroom a ceiling
-    wherever `indeterminate_count` is not zero — the same reading rule each
-    row's status states for its own figures, and the count beside the
-    average is what says so. `customer_spend_pool` is the status pair for
+    dominates. Shares are whole percentages of `unit_count`, rounded down;
+    every average is null where no unit contributes — never zero. An
+    `indeterminate` unit has no figures (its row's are null), so it
+    contributes nothing to either average, and `indeterminate_count` says
+    how many the averages leave out. `customer_spend_pool` is the status pair for
     the customer the filter names, null tenant-wide or where no pool
     applies."""
     since: datetime
@@ -4628,9 +4705,7 @@ class IntegrationBlueprintDiagnostic(Schema):
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
     Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work — and null for `constant_measurement_not_renderable`, where
-    the declaration is valid and complete and nothing in it is the thing to
-    change: this Code Builder version cannot yet generate what it declares.
+    kind of work.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4671,13 +4746,21 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
     the sample values a tenant's code would send for it.
 
     `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
-    are the same fields, with the same rules, as on a recording.
+    are the same fields, with the same rules, as on a recording — except that
+    a `constant` quantity takes no sample: the run sends its declared value,
+    as generated code does, and refuses a sample for one.
     `subtask_type` records this event under a Subtask of that kind, which must
     be one the Blueprint selected; left out, the event is recorded under the
     Task itself.
     """
     event_type: str = Field(max_length=100)
-    measurements: dict[str, int] = Field(default_factory=dict)
+    # The same wire as a recording's (#603): each sample quantity is exact
+    # text in the one decimal grammar, canonicalised here exactly as the
+    # recording request canonicalises it — so a sample a recording would
+    # refuse never reaches the run, and the text the run records is the text
+    # a tenant's own code would send.
+    measurements: dict[str, DeclaredDecimal] = Field(
+        default_factory=dict, description=RECORDED_QUANTITY_MEANING)
     provider_cost_micros: Optional[int] = Field(
         default=None, ge=0, le=999_999_999_999,
         description=CALLER_SUPPLIED_COST_MEANING)
@@ -4691,15 +4774,10 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
 
     @field_validator("measurements")
     @classmethod
-    def measurement_values_nonnegative(cls, v):
-        """Refused here as a recording refuses it, so a sample a recording
-        would refuse never reaches the run."""
-        negative = [k for k, val in v.items() if val < 0]
-        if negative:
-            raise ValueError(
-                f"measurements values must be >= 0; negative quantities: "
-                f"{negative}")
-        return v
+    def every_quantity_in_its_canonical_text(cls, v):
+        """Canonicalised as a recording canonicalises it, or refused naming
+        the key — `RecordUsageRequest`'s validator, the one rule."""
+        return canonical_quantities(v)
 
 
 class IntegrationBlueprintVerificationIn(Schema):

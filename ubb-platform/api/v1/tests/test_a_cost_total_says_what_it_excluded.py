@@ -145,8 +145,8 @@ class TestACostTotalSaysWhatItExcluded:
     def test_the_tenant_wide_total_reports_what_it_excluded(self):
         """⚠ AND IT SAYS SO TWICE NOW. The rollup this replaced published the
         count and left a reader to notice it; the measure carries a STATE as
-        well, so a figure that is a floor says it is one in the field beside
-        itself."""
+        well, so a figure that is only the sum of what resolved says so in the
+        field beside itself."""
         cost = self._measure(self._ask(measures=[ANALYTICS_MEASURE_SUPPLIER_COGS]),
                              ANALYTICS_MEASURE_SUPPLIER_COGS)
         assert cost["amount_micros"] == 1_500_000
@@ -245,7 +245,7 @@ class TestACostTotalSaysWhatItExcluded:
         assert cost_whole[UNRESOLVED_EVENT_COUNT_KEY] == 0
         assert cost_whole["amount_micros"] == 7_000
         assert price_short[UNPRICED_EVENT_COUNT_KEY] == 1
-        # No amount, not a zero floor (#537): the row's one posting is its
+        # No amount, not a stand-in zero (#537): the row's one posting is its
         # only piece of revenue and nobody priced it, so nothing resolved.
         assert price_short["amount_micros"] is None
 
@@ -319,11 +319,12 @@ class TestACostTotalSaysWhatItExcluded:
     def test_the_margin_a_partial_cost_produces_is_partial_too(self):
         """Everything derived from the resolved sum inherits its completeness.
 
-        The margin over a cost total missing an event is not a margin — it is a
-        ceiling on one. ⚠ **AND IT NOW SAYS SO IN ITS OWN STATE** rather than
-        leaving a reader to find the count on the measure beside it: a margin is
-        no better than its worst input, so an incomplete cost makes the margin
-        incomplete whatever the revenue side reads.
+        The margin over a cost total missing an event is not a margin — it is
+        incomplete, in a direction nobody can state (#603). ⚠ **AND IT NOW SAYS
+        SO IN ITS OWN STATE** rather than leaving a reader to find the count on
+        the measure beside it: a margin is no better than its worst input, so an
+        incomplete cost makes the margin incomplete whatever the revenue side
+        reads.
         """
         body = self._ask(measures=MONEY, group_by=["field:provider"])
         openai = next(index for index, row in enumerate(body["rows"])

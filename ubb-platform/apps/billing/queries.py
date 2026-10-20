@@ -374,8 +374,9 @@ def customer_spend_pool_utilisation(tenant_id, customer_id) -> dict:
     #465 §14), composed ONCE here for both readers.
 
     The basis is the durable pair (`CustomerSpendPoolService.period_basis` —
-    the resolved period charges, a lower bound wherever the count beside
-    them is not zero) and the assessment is the kernel's crossing module's,
+    the sum of the resolved period charges, and the count of those it does
+    not include; complete when that count is zero) and the assessment is the
+    kernel's crossing module's,
     over the resolved pool row: the customer's own, else the tenant default
     where that reaches them (a seat, never a business). No pool is
     `cap_micros` 0 with every assessed figure null and `blocking_occurred`

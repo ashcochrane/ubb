@@ -150,7 +150,7 @@ describe("the two sentences that keep the pool apart from the wallet", () => {
 });
 
 describe("the status pair", () => {
-  it("renders a crossed pool's pair as a floor with the unknown revenue excluded, never as zero", async () => {
+  it("renders a crossed pool's pair marked incomplete with the unknown revenue excluded, never as zero", async () => {
     serve(
       ACME_DECLARED,
       spendPoolAssessment({
@@ -161,14 +161,16 @@ describe("the status pair", () => {
     );
     const region = await standing();
 
-    expect(within(region).getByText("at least $517.50")).toHaveAttribute("data-reading", "floor");
+    expect(within(region).getByText("$517.50 (Incomplete)")).toHaveAttribute("data-reading", "partial");
     expect(within(region).getByText(/of \$500\.00/)).toBeInTheDocument();
     expect(region.querySelector("[data-pool-excluded]")).toHaveTextContent(
       "1 posting whose revenue UBB has not resolved is excluded from the known figure, not counted as zero.",
     );
-    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 103%");
-    // Past the line the headroom is a settled zero, even under a floor pair.
-    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$0.00");
+    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("103% (Incomplete)");
+    // Past the line the kernel clamps the headroom at zero; under an
+    // incomplete pair it is marked too — reading it as settled would take for
+    // granted which way the unpriced posting moves the charges (#603).
+    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$0.00 (Incomplete)");
     expect(region.querySelector('[data-pool-figure="headroom"]')).not.toHaveTextContent(/at most/);
     // The mode as the catalogue's word, and the posture in a sentence.
     expect(region.querySelector('[data-pool-mode="blocking"]')).toHaveTextContent("Blocking");
@@ -230,10 +232,10 @@ describe("the status pair", () => {
     const region = await standing();
     expect(within(region).getByText("Unknown")).toHaveAttribute("data-reading", "unknown");
     expect(region.querySelector("[data-pool-excluded]")).toHaveTextContent(/^2 postings whose revenue/);
-    // The two figures beside an unknown are the kernel's bounds over nothing
-    // known: both true, neither settled, and neither a bare `0%` or figure.
-    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 0%");
-    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("at most $500.00");
+    // The two figures beside an unknown are the kernel's arithmetic over
+    // nothing known: marked incomplete, and neither a bare `0%` nor a figure.
+    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("0% (Incomplete)");
+    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$500.00 (Incomplete)");
     expect(within(region).queryByText("$0.00")).not.toBeInTheDocument();
     expect(within(region).queryByText("0%")).not.toBeInTheDocument();
   });

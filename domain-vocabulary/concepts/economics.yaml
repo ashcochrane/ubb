@@ -306,9 +306,12 @@ pricing_status:
   kind: closed
   summary: >-
     Whether customer price for a subject is settled, and if not, why not.
-    `waived` is a decision somebody made; `unknown` is information UBB does not
-    have; `not_applicable` is a subject that generates no customer revenue at
-    this level, such as an event inside a Task sold for one agreed price.
+    `waived` is a decision somebody made; `unknown` says no authoritative
+    customer price is recorded for this event, and `pricing_status_reason`
+    beside it tells missing input apart from a price UBB calculated and the
+    money rails cannot carry; `not_applicable` is a subject that generates no
+    customer revenue at this level, such as an event inside a Task sold for
+    one agreed price.
   values:
     - known
     - waived
@@ -469,6 +472,55 @@ not_applicable_reason:
     # `unresolved_reason` next door has no console consumer at all and this one
     # does, which is the difference between a cause a screen names and one it
     # only passes through.
+    - surface: console
+      path: apps/ui/src/lib/customer-price.ts
+    - surface: openapi
+      path: openapi/v1.json
+
+# WHY A PRICING STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603; the
+# owner's Q1 ruling `6279554922` and its amendment `6279966961`; ADR-0020).
+#
+# A REASON AND NOT A FIFTH `pricing_status`, by the rule `not_applicable_reason`
+# above was coined under (#151 §8.3): a negative final customer price is one UBB
+# calculated exactly and the authoritative money rails cannot carry — the
+# drawdown, the live counter, the Pool and postpaid lines all act on a known
+# price — so it is economically unresolved, which `unknown` already says. What
+# was missing is which kind of unresolved. Named for "why this pricing status
+# applies" rather than for one status, because that is the durable question:
+# `unknown_reason` would be awkward exactly where UBB does know the computed
+# number.
+#
+# NULLABLE, AND REQUIRED WHEREVER `pricing_status` IS PUBLISHED. Null means no
+# specific published reason applies — the ordinary `unknown` for want of input,
+# and every other status. There is no third "absent" state: only a receipt
+# written before the concept existed may lack it.
+#
+# NOT RETRIED. A Resolution Run does not select a posting carrying
+# `negative_price_unsupported` (configuration has not gone missing); the
+# unpriced count still counts it, because it is an amount the totals leave out.
+# A later capability that carries negative money selects these records
+# explicitly — that is the v1 boundary, and no ticket for it is open.
+pricing_status_reason:
+  kind: closed
+  summary: >-
+    Why a subject's pricing status applies, where a specific published reason
+    does. Null where none applies. Read beside `pricing_status`, never on its
+    own: an `unknown` price with no reason is one UBB had no input to resolve,
+    while an `unknown` price carrying a reason is one UBB calculated and cannot
+    authoritatively carry.
+  values:
+    # UBB calculated a negative customer price but cannot authoritatively carry
+    # it: the money rails act on a known price, and a negative one would be
+    # dropped, so it is recorded `unknown` — never clamped to zero, dropped or
+    # marked `known` — and the computed number is published nowhere as a price.
+    - negative_price_unsupported
+  label_key_prefix: pricing_status_reason
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/models.py
+    # The same module that names `not_applicable_reason`: what the console may
+    # say about a price it does not have, and every surface showing a pricing
+    # status reads it from there.
     - surface: console
       path: apps/ui/src/lib/customer-price.ts
     - surface: openapi
@@ -729,8 +781,9 @@ measure_status:
     `unavailable_outside_retention_horizon` and `not_applicable`, for a margin
     under `unavailable_at_requested_grain` (a revenue there carries the part
     that could be placed), and under `incomplete` where no piece of a row's
-    revenue has resolved (#537). An amount under `incomplete` is a bound,
-    never a total.
+    revenue has resolved (#537). An amount under `incomplete` is the sum of
+    the inputs that have resolved, never a total, and no bound on one either:
+    an input still unresolved may move the total in either direction (#603).
   values:
     - known
     - incomplete

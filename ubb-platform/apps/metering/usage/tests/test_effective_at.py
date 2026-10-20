@@ -194,7 +194,7 @@ class TestHistoricalPricing:
             valid_from=now - timedelta(days=10))
 
         r_old = UsageService.record_usage(
-            t, c, "k1", measurements={"tok": 100},
+            t, c, "k1", measurements={"tok": "100"},
             effective_at=now - timedelta(days=20))
         assert r_old["billed_cost_micros"] == 1_000  # 100 @ v1's 10
         # The rule this resolved against, read out of the receipt's own
@@ -207,7 +207,7 @@ class TestHistoricalPricing:
                 == {"tok": str(v1.id)})
 
         r_new = UsageService.record_usage(
-            t, c, "k2", measurements={"tok": 100})
+            t, c, "k2", measurements={"tok": "100"})
         assert r_new["billed_cost_micros"] == 5_000  # 100 @ v2's 50
 
 
@@ -391,5 +391,5 @@ class TestUsageRecordedPayload:
     def test_schema_default_keeps_legacy_payloads_valid(self):
         from apps.platform.events.schemas import UsageRecorded
         legacy = UsageRecorded(tenant_id="t", customer_id="c", event_id="e",
-                               cost_micros=5)
+                               cost_micros=5, pricing_status_reason=None)
         assert legacy.effective_at == ""

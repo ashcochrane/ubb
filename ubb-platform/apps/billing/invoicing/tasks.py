@@ -101,7 +101,8 @@ def reconcile_postpaid_usage():
     PostpaidUsageService.push_customer_period and flips a row past the cap to the
     terminal 'failed_permanent' for ALL callers. Also recovers 'skipped' rows whose
     precondition now holds (tenant became charge-ready / owner gained a Stripe
-    customer); 'no_usage' and 'seat_superseded' skips stay terminal.
+    customer); 'no_usage', 'nothing_to_bill' (usage all priced at zero, #603)
+    and 'seat_superseded' skips stay terminal.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService

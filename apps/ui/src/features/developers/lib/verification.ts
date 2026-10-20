@@ -144,6 +144,23 @@ function keysUnder(call: BlueprintCall, field: string): string[] {
   );
 }
 
+/**
+ * Whether a call's value under a Measurement's `code` is one UBB holds: a
+ * constant (#584), a configured literal of its declared value. Generated code
+ * sends it as declared and asks the tenant's code for nothing, so Verify asks
+ * no sample of it either — and the server refuses one.
+ */
+function isDeclaredConstant(call: BlueprintCall, code: string): boolean {
+  return tokens(call).some(
+    ({ argument, place }) =>
+      place.kind === "keyed_value" &&
+      place.field === "measurements" &&
+      place.key === code &&
+      argument.binding_class === "platform_known" &&
+      argument.configured,
+  );
+}
+
 function startedKind(call: BlueprintCall, altitude: "task" | "subtask"): StartedKind | null {
   const kind = subjectOf(call);
   return kind === null ? null : { altitude, kind, groupingFields: keysUnder(call, "grouping_fields") };
@@ -155,7 +172,9 @@ function recordSample(call: BlueprintCall): RecordSample | null {
   const facts = tokens(call);
   return {
     eventType,
-    measurements: keysUnder(call, "measurements").map((code) => {
+    measurements: keysUnder(call, "measurements")
+      .filter((code) => !isDeclaredConstant(call, code))
+      .map((code) => {
       const declared = facts.filter(
         ({ place }) =>
           place.kind === "fact" &&
@@ -295,28 +314,61 @@ export function groupingFieldsAsked(plan: SamplePlan, values: SampleValues): num
   );
 }
 
-const WHOLE_NUMBER = /^\d+$/;
+/**
+ * ⚠ A MEASUREMENT SAMPLE IS AN EXACT DECIMAL, WRITTEN AS TEXT AND SENT AS
+ * TEXT (#603, ADR-0020) — the grammar the published recording request
+ * (`RecordUsageRequest`) and Verify's record
+ * (`IntegrationBlueprintVerificationRecordIn`) both type every quantity with:
+ * base-10 digits, an optional leading minus and an optional fraction with a
+ * digit on each side of the point. No exponent, no `+`, no separators, and no
+ * precision cap, so a sample is never a JS number on the way: a number
+ * holds an integer exactly only to 2^53. A Measurement declared `integer`
+ * takes a whole number; one declared `decimal` takes a fraction too; both take
+ * a negative and a zero. `verification.test.ts` holds this grammar to the
+ * pattern the committed contract publishes, and the value types to the
+ * registry's set.
+ */
+export const EXACT_DECIMAL = /^-?[0-9]+(\.[0-9]+)?$/;
 
 /**
- * ⚠ EVERY MEASUREMENT SAMPLE IS A WHOLE NUMBER, WHATEVER ITS DECLARED VALUE
- * TYPE — because the call accepts nothing else, not because this form decided
- * it (owner review of #601). The registry's `measurement_value_type` has two
- * values, and a `decimal` Measurement may hold a fraction in the platform's
- * model; but the published recording request (`RecordUsageRequest`) and
- * Verify's record (`IntegrationBlueprintVerificationRecordIn`) both type every
- * Measurement value as an integer, and the generated Shell file refuses a
- * quantity that is not whole. What the wire may carry for a `decimal`
- * Measurement is the platform's to widen, and `verification.test.ts` holds
- * this rule to the committed contract and to the registry's value set: a
- * contract that widens the value, or a value type the registry adds, is a red
- * test there rather than a form that drifted from either.
+ * A sample's canonical text — the one form the platform stores and answers
+ * with: no leading zero before a digit, no trailing zero after the point, no
+ * point with nothing after it, and no negative zero. Called only on text
+ * `EXACT_DECIMAL` accepts.
  */
-export const DECIMAL_SENT_WHOLE =
-  "Declared decimal, but the recording request carries whole numbers only; leave it blank to send none.";
+export function canonicalQuantity(text: string): string {
+  const negative = text.startsWith("-");
+  const [whole = "", fraction = ""] = (negative ? text.slice(1) : text).split(".");
+  const digits = whole.replace(/^0+(?=[0-9])/, "");
+  const places = fraction.replace(/0+$/, "");
+  const magnitude = places === "" ? digits : `${digits}.${places}`;
+  return magnitude === "0" || !negative ? magnitude : `-${magnitude}`;
+}
 
-/** A whole number the request can carry: digits only, and exactly representable. */
-export function isWholeNumber(text: string): boolean {
-  return WHOLE_NUMBER.test(text) && Number.isSafeInteger(Number(text));
+/** What a Measurement sample is asked as, by its declared value type. Console
+ * copy, total over the generated type: a value type the registry adds is a
+ * `tsc` failure here. */
+export const QUANTITY_HINT: Readonly<Record<MeasurementValueType, string>> = {
+  integer: "A whole number, such as 12 or -3; leave it blank to send none.",
+  decimal: "An exact decimal, such as 2.5 or -3; leave it blank to send none.",
+};
+
+/** Where the declared value type could not be read: the grammar only, and the
+ * server judges the rest. */
+export const QUANTITY_HINT_UNDECLARED = "An exact decimal; leave it blank to send none.";
+
+const WHOLE_MICROS = /^\d+$/;
+
+/** A supplier cost the request can carry: whole micros, digits only, and
+ * exactly representable — the cost fields are integers on the contract. */
+export function isWholeMicros(text: string): boolean {
+  return WHOLE_MICROS.test(text) && Number.isSafeInteger(Number(text));
+}
+
+/** The sample sent: its canonical text where it is an exact decimal, and as
+ * typed otherwise (the form refuses it before it is sent). */
+function sentQuantity(sample: string): string {
+  return EXACT_DECIMAL.test(sample) ? canonicalQuantity(sample) : sample;
 }
 
 /**
@@ -332,10 +384,10 @@ export function verificationRequestOf(
   const records = plan.records.flatMap((record, index): BlueprintVerificationRecordRequest[] => {
     const typed = values.records[index];
     if (typed === undefined || !typed.included) return [];
-    const measurements: Record<string, number> = {};
+    const measurements: Record<string, string> = {};
     record.measurements.forEach((measurement, position) => {
       const sample = (typed.measurements[position] ?? "").trim();
-      if (sample !== "") measurements[measurement.code] = Number(sample);
+      if (sample !== "") measurements[measurement.code] = sentQuantity(sample);
     });
     const cost = typed.providerCost.trim();
     const currency = typed.currency.trim();
@@ -366,7 +418,11 @@ export interface SampleProblem {
 
 export const GROUPING_FIELD_REQUIRED =
   "A sample value is required: the kind of work this run starts requires it, and Verify never makes one up.";
-export const WHOLE_NUMBER_REQUIRED = "A whole number: the request carries whole numbers only.";
+export const EXACT_DECIMAL_REQUIRED =
+  "An exact decimal, such as 12, 2.5 or -3: digits with an optional leading minus and fraction, and no exponent, spaces or separators.";
+export const WHOLE_QUANTITY_REQUIRED =
+  "A whole number: this Measurement is declared integer, and UBB does not round a quantity.";
+export const WHOLE_MICROS_REQUIRED = "Whole micros: the request carries a supplier cost as a whole number.";
 export const CURRENCY_REQUIRED =
   "A sample currency is required: the call reads its currency off the provider's response at run time, and Verify never makes one up.";
 export const NOTHING_TO_RUN = "Include at least one Event Type.";
@@ -382,15 +438,19 @@ export function sampleProblems(plan: SamplePlan, values: SampleValues): SamplePr
   plan.records.forEach((record, index) => {
     const typed = values.records[index];
     if (typed === undefined || !typed.included) return;
-    record.measurements.forEach((_, position) => {
+    record.measurements.forEach((measurement, position) => {
       const sample = (typed.measurements[position] ?? "").trim();
-      if (sample !== "" && !isWholeNumber(sample)) {
-        problems.push({ path: ["records", index, "measurements", position], message: WHOLE_NUMBER_REQUIRED });
+      const path = ["records", index, "measurements", position];
+      if (sample === "") return;
+      if (!EXACT_DECIMAL.test(sample)) {
+        problems.push({ path, message: EXACT_DECIMAL_REQUIRED });
+      } else if (measurement.valueType === "integer" && canonicalQuantity(sample).includes(".")) {
+        problems.push({ path, message: WHOLE_QUANTITY_REQUIRED });
       }
     });
     const cost = typed.providerCost.trim();
-    if (record.costField !== null && cost !== "" && !isWholeNumber(cost)) {
-      problems.push({ path: ["records", index, "providerCost"], message: WHOLE_NUMBER_REQUIRED });
+    if (record.costField !== null && cost !== "" && !isWholeMicros(cost)) {
+      problems.push({ path: ["records", index, "providerCost"], message: WHOLE_MICROS_REQUIRED });
     }
     // Only that there is one: whether UBB admits it is the recording's own
     // rule, run on the server (#583 D1), and never copied here.

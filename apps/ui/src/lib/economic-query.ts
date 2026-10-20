@@ -127,11 +127,11 @@ function measureOn(
  * MEASURE.** `unresolved_event_count` rides the SUPPLIER COST and says how many
  * postings carry a cost UBB has not learned; `unpriced_event_count` rides the
  * CUSTOMER REVENUE and says how many carry a price it could not resolve. They
- * are different sets of rows, and they bound the margin in opposite directions
+ * are different sets of rows, each leaving the margin short on its own side
  * — so reading one off the other's measure would caveat a figure against the
  * wrong fact.
  *
- * Zero where a measure states none, because these counts have a floor of zero
+ * Zero where a measure states none, because these counts are never negative
  * by construction and their absence means what their zero means: nothing was
  * left out. That is NOT true of an AMOUNT, which is why this coerces and
  * `figureOn` keeps an absent amount null.
@@ -139,8 +139,8 @@ function measureOn(
  * ⚠ **THE UNPRICED COUNT IS LEFT OUT ONLY WHERE THE REVENUE SAYS SO (#537).**
  * Inside a period a tenant-supplied figure covers, that figure IS the revenue,
  * and the query publishes the count of usage nobody priced there beside a
- * `known` revenue, as information. Read as "left out", it would bound the
- * margin in both directions where only the cost is short, and caption a
+ * `known` revenue, as information. Read as "left out", it would mark the
+ * margin short on the revenue side too where only the cost is short, and caption a
  * revenue the tenant stated whole with events it did not need. So the count is
  * taken off the revenue's STATE — `incomplete` is the one state under which it
  * is what the figure left out — and a surface wanting the diagnostic number
@@ -178,9 +178,10 @@ function completenessOn(row: EconomicRow | undefined): {
  * the renderer is the one place that turns either into text.
  *
  * ⚠ **THE MARGIN CARRIES BOTH SIDES' COUNTS.** Its own entry publishes none,
- * and it needs both: an uncosted event can only lower it and an unpriced one
- * can only raise it, so which way an incomplete margin is a bound depends on
- * which side is short — and when both are, it is a bound in neither direction.
+ * and it needs both: an uncosted event and an unpriced one each leave it
+ * incomplete from their own side. Neither says which way — since #603 an
+ * amount left out may be negative — so an incomplete margin is no bound in
+ * either direction, whichever side is short.
  */
 export interface MeasureFigure {
   readonly measure: AnalyticsMeasure;
@@ -192,7 +193,7 @@ export interface MeasureFigure {
 }
 
 /** The states under which a measure CAN state a figure — whole under the
- *  first, a bound under the second, and under the second none at all where no
+ *  first, the sum of what resolved under the second, and under the second none at all where no
  *  piece of a revenue resolved (#537), so the value is still read, never
  *  assumed. Under every other state the wire's number, where it carries one,
  *  is not the answer. */
@@ -304,7 +305,7 @@ export function figuresOn(row: EconomicRow | undefined): EconomicFigures {
  * A SUBSCRIPTION HAS NO REVENUE TO DRAW.** Neither a subscription nor a figure
  * the tenant supplied names one, so the query reads every row's revenue as
  * `unavailable_at_requested_grain` and states the money as context. A line or a
- * bar through the placed PART of that revenue is a floor drawn as a total; the
+ * bar through the placed PART of that revenue is a part drawn as a total; the
  * cost is known at every grain, so it is what a chart can still draw, beside a
  * caption naming the revenue's state. The count is the measurement-concept
  * rollup's case, which answers no money. One rule, read by the dashboard's
@@ -331,7 +332,7 @@ export function drawableMeasure(
  * COALESCE.** A null here is a GAP: a line breaks at it and a sort files it
  * last (`descendingWithAbsencesLast`). It is never a zero, and it is never the
  * part of a revenue that could be placed at a grain where the rest could not —
- * a line drawn through that part is a floor drawn as a total.
+ * a line drawn through that part is a part drawn as a total.
  */
 export function statedValue(figure: MeasureFigure | null): number | null {
   if (figure === null || !statesAFigure(figure.status)) return null;

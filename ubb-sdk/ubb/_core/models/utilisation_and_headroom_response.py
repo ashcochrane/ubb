@@ -29,15 +29,11 @@ class UtilisationAndHeadroomResponse:
     """ How much of each ceiling was used, and how often it could not be
     evaluated (#150 §9.3). The average utilisation is computed per unit and
     then across every unit that had a ceiling, so one chatty unit never
-    dominates; peak utilisation equals the final figure by construction (the
-    pinned ceiling never moves and the known total never falls) and is not
-    published twice. Shares are whole percentages of `unit_count`, rounded
-    down; every average is null where no unit contributes — never zero. An
-    `indeterminate` unit contributes its own floor, so the average
-    utilisation is itself a floor and the average headroom a ceiling
-    wherever `indeterminate_count` is not zero — the same reading rule each
-    row's status states for its own figures, and the count beside the
-    average is what says so. `customer_spend_pool` is the status pair for
+    dominates. Shares are whole percentages of `unit_count`, rounded down;
+    every average is null where no unit contributes — never zero. An
+    `indeterminate` unit has no figures (its row's are null), so it
+    contributes nothing to either average, and `indeterminate_count` says
+    how many the averages leave out. `customer_spend_pool` is the status pair for
     the customer the filter names, null tenant-wide or where no pool
     applies.
 

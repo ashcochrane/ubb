@@ -106,7 +106,9 @@ nothing.
 **A MEASURE of the one economic query is a figure with a state, never an amount** (#510). Read it
 with `figureOn` (`src/lib/economic-query.ts`), draw it with `MeasureValue` / `MarginShare`
 (`components/shared/measure-value.tsx`), and let `@/lib/measure-state` say it: `known` is the
-amount, `incomplete` a bound with its count — **or NO amount at all, where no piece of a row's
+amount, `incomplete` the sum of what resolved, drawn as `"$4.20 (Incomplete)"` with its count and
+**never as a bound** — no "at least"/"at most": since #603 a quantity may be negative, so an amount
+left out may move a total either way (ADR-0020 §6) — **or NO amount at all, where no piece of a row's
 revenue resolved (#537): that is a legitimate state, drawn as "—" with a note naming no total and no
 direction, and never "fixed" back into a zero floor** — and `unavailable_at_requested_grain`,
 `unavailable_outside_retention_horizon` and `not_applicable` render as the state — never a currency

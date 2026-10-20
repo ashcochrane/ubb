@@ -87,6 +87,7 @@ from core.vocabulary import (
     NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
@@ -95,6 +96,8 @@ from core.vocabulary import (
 PRICE = "billed_cost_micros"
 STATUS = "pricing_status"
 REASON = "not_applicable_reason"
+WHY = "pricing_status_reason"
+NEGATIVE_PRICE = PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED
 
 TABLE = Posting._meta.db_table
 
@@ -115,6 +118,11 @@ def _unknown(**columns):
     """A price UBB could not resolve — the one state a resolution may start in."""
     return _posting(**{PRICE: None, STATUS: PRICING_STATUS_UNKNOWN,
                        REASON: None, **columns})
+
+
+def _unknown_and_negative(**columns):
+    """A price UBB calculated as negative and could not carry (#603)."""
+    return _unknown(**{WHY: NEGATIVE_PRICE, **columns})
 
 
 def _resolved(amount=100, **columns):
@@ -266,7 +274,7 @@ class OnlyAnUnknownPriceResolvesTest(TransitionRefusalMixin, TestCase):
     The spec's ruling 12c decides the sharpest of these: a run's membership is
     *"the status itself, not a separate flag"*, so a `waived` posting is outside
     it **by construction**. `waived` is a decision somebody made; `unknown` is
-    information UBB does not have. If the table admitted the first as a
+    a price UBB has not recorded. If the table admitted the first as a
     resolution source, the difference would survive only as long as everyone
     remembered the selector.
     """
@@ -358,6 +366,56 @@ class TheAmountAndTheStatusNeverSeparateTest(TransitionRefusalMixin, TestCase):
     def test_the_amount_alone_cannot_move_on_a_resolved_row(self):
         """The same rule from the other side, where the `CHECK` is content."""
         self._refused_by_the_trigger(_resolved, RESOLVE_ONCE, **{PRICE: 51})
+
+
+class TheStatusReasonMovesOnlyWithTheResolutionTest(TransitionRefusalMixin,
+                                                     TestCase):
+    """`pricing_status_reason` is held as the status beside it is (#603).
+
+    It says which kind of `unknown` a price is — `negative_price_unsupported`
+    where UBB calculated a price the money rails cannot carry — and migration
+    `0046` widened this trigger to it. A reason written onto a row after the
+    fact, or cleared in place, would rewrite why the system said a price was
+    unknown, on a row a tenant may already have been shown; and a known price
+    carrying one would say both that it has a price and why it has none.
+    """
+
+    REFUSAL_NAMES = PRICE
+
+    def test_a_reason_cannot_be_written_onto_an_unknown_price_later(self):
+        self._refused_by_the_trigger(
+            _unknown, RESOLVE_ONCE, **{WHY: NEGATIVE_PRICE})
+
+    def test_a_reason_cannot_be_cleared_in_place(self):
+        self._refused_by_the_trigger(
+            _unknown_and_negative, RESOLVE_ONCE, **{WHY: None})
+
+    def test_a_resolution_that_keeps_the_reason_is_refused(self):
+        self._refused_by_the_trigger(
+            _unknown_and_negative, RESOLVE_ONCE,
+            **{PRICE: 50, STATUS: PRICING_STATUS_KNOWN})
+
+    def test_a_known_price_cannot_take_a_reason(self):
+        self._refused_by_the_trigger(
+            _resolved, RESOLVE_ONCE, **{WHY: NEGATIVE_PRICE})
+
+    def test_the_resolution_that_clears_it_is_admitted(self):
+        """The control: the one move out of it stays open, through every door.
+
+        No resolution run selects such a price (`resolution_run.NOT_RETRIED`);
+        the capability that one day carries negative money selects it
+        explicitly, and settles it here as any `unknown` price settles.
+        """
+        for name, door in DOORS:
+            with self.subTest(door=name):
+                posting = _unknown_and_negative()
+                door(posting, **{PRICE: 4_200, STATUS: PRICING_STATUS_KNOWN,
+                                 WHY: None})
+                posting.refresh_from_db()
+                self.assertEqual(
+                    (getattr(posting, PRICE), getattr(posting, STATUS),
+                     getattr(posting, WHY)),
+                    (4_200, PRICING_STATUS_KNOWN, None))
 
 
 class TheModelGuardIsNotTheEnforcementTest(TestCase):

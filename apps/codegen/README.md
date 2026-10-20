@@ -22,11 +22,12 @@ It renders a Blueprint that is not ready, as files that say what is missing and 
 throws `BlueprintNotRenderable` for a document it cannot read — an unknown `schema_version` or
 `renderer_contract_version`, a target with no renderer, an SDK major or an operation it is not
 written for, or a token that breaks what the contract promises. ADR-0016 §7 and ADR-0017 §8 have
-the lists. It reads renderer contract 2 and no other. Contract 2 (#583) lets a runtime value of a
-field of its own carry a `source_path`, which a renderer written to contract 1 would misread — that
-is why the version moved. This renderer reads the one contract it is written and tested against:
-the platform resolves contract 2 alone, so a contract-1 document is refused like any version
-outside the set.
+the lists. It reads renderer contract 3 and no other. Contract 2 (#583) let a runtime value of a
+field of its own carry a `source_path`; contract 3 (#603, #584) makes a quantity exact text on the
+wire — never a JSON number, with no digit bound — and a constant's token a configured literal of
+its declared value. A renderer written to an older contract would misread either, which is why the
+version moved. This renderer reads the one contract it is written and tested against: the platform
+resolves contract 3 alone, so an older document is refused like any version outside the set.
 
 ## What an artifact is
 
@@ -128,7 +129,10 @@ on a field of its own: a supplier's cost and its currency), `response_shape_repr
 JSON, by attribute for a Python object; a shell file reads JSON and nothing else), and
 `amount_representation` (the value is a supplier's cost, converted to whole micros once).
 `pricing_mode` chooses one sentence of comment. The shell target acts on one more, because a shell
-argument is always text: `value_type` on a keyed entry says its value is a number.
+argument is always text: `value_type` on a keyed entry says its value is a quantity, checked as an
+exact decimal (whole where it is declared an integer) and sent as text. Both targets write a
+constant's declared value by its `value_type`: an `int` or a `Decimal("…")` in Python, the
+canonical text in shell (#584).
 
 On the shell target a one-segment token named for a place in the operation's route (`task_id` in
 `/api/v1/tasks/{task_id}/close`) fills that place and is not a key of the body. The routes are
@@ -139,10 +143,7 @@ The three binding classes are shapes. A `platform_known` token is a literal. A `
 token is a required parameter named exactly as the Blueprint names it: a keyword parameter in
 Python, a `name=value` argument in shell. A `secret_reference` is read from the environment:
 `os.environ[...]` in Python, `$UBB_API_KEY` handed to curl on standard input in shell. A literal
-with no configured value is written as a call that raises, naming the token. One the tenant
-declared that this Code Builder version cannot yet generate — a constant's value, which the
-Blueprint reports as `constant_measurement_not_renderable` until #584 renders it — is written as a
-call that raises saying exactly that, and never as one with no configured value.
+with no configured value is written as a call that raises, naming the token.
 
 ## Comments
 

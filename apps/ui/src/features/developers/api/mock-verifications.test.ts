@@ -72,7 +72,7 @@ describe("the platform-written Verify answers", () => {
 
 describe("one spelling of a request", () => {
   const request: BlueprintVerificationRequest = {
-    records: [{ event_type: "a.event", measurements: { b: 2, a: 1 } }, { event_type: "b.event" }],
+    records: [{ event_type: "a.event", measurements: { b: "2", a: "1" } }, { event_type: "b.event" }],
     grouping_fields: { phase: "draft", environment: "staging" },
   };
 
@@ -82,7 +82,7 @@ describe("one spelling of a request", () => {
       records: [
         {
           event_type: "a.event",
-          measurements: { a: 1, b: 2 },
+          measurements: { a: "1", b: "2" },
           provider_cost_micros: null,
           provider_response_cost_micros: null,
           subtask_type: null,
@@ -151,7 +151,7 @@ describe("the mock's Verify", () => {
   it("answers any other request as one the platform never answered", async () => {
     const fixture = await loadVerificationFixture("reported-cost");
     const [record] = fixture.request.records;
-    const other = { ...fixture.request, records: [{ ...record, event_type: "web.search", measurements: { searches: 4 } }] };
+    const other = { ...fixture.request, records: [{ ...record, event_type: "web.search", measurements: { searches: "4" } }] };
 
     const refused = await rejection(verifyBlueprint(fixture.fingerprint, other));
     expect(refused.code).toBe("mock_has_no_verification");

@@ -42,10 +42,11 @@ The three orientations:
   is payment-mode independent (slice 6 §4), so each lane now names the line
   it compares and the dispatcher is gone.
 
-  CEILING (a unit of work's COGS bound — the known total RISES). Reached =
-  known total AT/OVER the pinned ceiling, and the four-way assessment
-  (``ceiling_status``) is the registry's own decision rule. See the section
-  at the foot of the module for why the boundary is the whole subject.
+  CEILING (a unit of work's COGS bound). The ENFORCEMENT TRIGGER =
+  resolved COGS total AT/OVER the pinned ceiling; the four-way ASSESSMENT
+  (``ceiling_status``) is the registry's own decision rule, and since #603 it
+  is a different question from the trigger. See the section further down for
+  why the boundary is the whole subject and why the two now differ.
 
 Month math rides along because the pool's crossing is month-scoped: the
 ``YYYY-MM`` label/bounds and the effective-month guard were re-derived in
@@ -131,8 +132,8 @@ class SpendPoolAssessment(NamedTuple):
     §13): how the KNOWN period charges stand against the configured amount.
     One value rather than four a caller could take half of — the percentage
     and the headroom are only readable together with the unresolved count
-    that travels beside them on the wire (a floor and a ceiling until it is
-    zero)."""
+    that travels beside them on the wire (computed over the resolved charges,
+    complete when it is zero)."""
     used_percentage: int | None
     remaining_micros: int | None
     highest_threshold_reached: int | None
@@ -191,7 +192,7 @@ def same_month(effective_at, now) -> bool:
     return (eff.year, eff.month) == (now.year, now.month)
 
 
-# --- the Ceiling (a unit of work's COGS bound; the known total RISES) -------
+# --- the Ceiling (a unit of work's COGS bound) -------------------------------
 #
 # AT OR ABOVE THE LINE STOPS, EVERYWHERE (#150 §10, slice 6 §3). Before #452
 # this compare was spelled three times and two of them disagreed: the live
@@ -202,17 +203,35 @@ def same_month(effective_at, now) -> bool:
 # no tipping event to attribute the stop to. `>=` is the comparison, so a
 # ceiling is REACHED rather than exceeded — the registry's word.
 #
-# The known total is a FLOOR wherever the unit has unresolved costs, and the
-# compare is against that floor deliberately: firing on the floor plus the
-# unresolved count would kill work on a number nobody has stated, so the
-# ceiling under-fires rather than over-fires and nothing is stopped for spend
-# UBB cannot demonstrate. The four-way assessment below is what makes that
-# silence readable — a ceiling that has not fired is visibly not the same as
-# one shown to be safe.
+# ⚠ THE TRIGGER AND THE ASSESSMENT ARE TWO QUESTIONS SINCE #603 (the owner's
+# confirmation, `6279966961`; ADR-0020). A unit's resolved COGS total is the
+# sum of the amounts UBB has resolved, and an unresolved one is no longer an
+# amount that can only ADD: a quantity may be negative, so an omitted cost may
+# move the total either way. Two consequences, kept apart on purpose:
+#
+#   * ENFORCEMENT is unchanged. `ceiling_reached` compares the RESOLVED total
+#     and the stop it drives is a one-way safety action: it fires when the
+#     resolved COGS reaches the pinned ceiling, even while something is
+#     unresolved, and it is terminal. It is an ENFORCEMENT TRIGGER — never
+#     proof that the eventual resolved total is above the ceiling. Firing on
+#     the resolved total plus a guess would kill work on a number nobody
+#     stated, and refusing to fire until everything resolves would let one
+#     missing Cost Rate switch a unit's ceiling off.
+#   * The ASSESSMENT (`ceiling_status` and its two figures) is what a reader
+#     is told about where the unit stands, and it no longer infers anything
+#     from the resolved subtotal while an amount is unresolved: the answer is
+#     `indeterminate`, whatever that subtotal is, until the inputs resolve.
+#     A later resolution — a negative adjustment included — moves this
+#     derived answer, even back below the ceiling; it never reverses a stop.
 
 def ceiling_reached(known_micros, ceiling_micros) -> bool:
-    """Level form: the known total AT/OVER the ceiling. A None ceiling means
-    no ceiling applies — never reached."""
+    """The ENFORCEMENT TRIGGER, level form: the resolved COGS total AT/OVER
+    the ceiling. A None ceiling means no ceiling applies — never reached.
+
+    It is what stops a unit (the recording lane's crossing and the patrol's
+    sweep), and it reads the resolved total only, whatever remains
+    unresolved — so it is evidence that the resolved COGS reached the line,
+    never proof that the eventual total is above it (#603, ADR-0020)."""
     if ceiling_micros is None:
         return False
     return known_micros >= ceiling_micros
@@ -236,51 +255,62 @@ def ceiling_reached_q(known_column, ceiling_column):
 
 
 def ceiling_status(*, ceiling_micros, known_micros, unresolved_count) -> str:
-    """The four-way assessment, exactly the registry's decision rule
-    (`spend-controls.yaml`, `ceiling_status.value_semantics`; #158 §12.3):
+    """The four-way ASSESSMENT, exactly the registry's decision rule
+    (`spend-controls.yaml`, `ceiling_status.value_semantics`; #158 §12.3, as
+    #603 amended it — ADR-0020):
 
       no ceiling applies                       -> not_applicable
-      known at/over the ceiling, whatever
-        remains unresolved                     -> ceiling_reached
-      known below, something still unresolved  -> indeterminate
-      known below, everything resolved         -> within_ceiling
+      something still unresolved, whatever
+        the resolved total                     -> indeterminate
+      everything resolved, at/over the ceiling -> ceiling_reached
+      everything resolved, below it            -> within_ceiling
 
-    Known-over always fires (#150 §4.2): an unresolved cost can only ADD to
-    a total that has already reached the line, so no later resolution can
-    soften `ceiling_reached`. `indeterminate` is UBB having tried and been
-    unable to tell — never that there was nothing to try (#158 §12.4) —
-    which is why a missing ceiling answers first and answers the same
-    whatever the cost."""
+    ⚠ An unresolved cost is asked BEFORE the line, and that order is the
+    amendment (the owner's confirmation, `6279966961`). It used to be the
+    other way — "known-over always fires, an unresolved cost can only ADD" —
+    and once a quantity may be negative an omitted amount can move the total
+    either way, so a resolved subtotal is no bound on the eventual one in
+    either direction. `within_ceiling` and `ceiling_reached` are therefore
+    never inferred from it while something is unresolved. The enforcement
+    trigger (`ceiling_reached`) is a different question and still fires on
+    the resolved total; a unit it stopped stays stopped while this says
+    `indeterminate`, and after a later resolution moves it anywhere.
+    `indeterminate` is UBB having tried and been unable to tell — never that
+    there was nothing to try (#158 §12.4) — which is why a missing ceiling
+    answers first and answers the same whatever the cost."""
     from core.vocabulary import (
         CEILING_STATUS_CEILING_REACHED, CEILING_STATUS_INDETERMINATE,
         CEILING_STATUS_NOT_APPLICABLE, CEILING_STATUS_WITHIN_CEILING)
     if ceiling_micros is None:
         return CEILING_STATUS_NOT_APPLICABLE
-    if ceiling_reached(known_micros, ceiling_micros):
-        return CEILING_STATUS_CEILING_REACHED
     if unresolved_count > 0:
         return CEILING_STATUS_INDETERMINATE
+    if ceiling_reached(known_micros, ceiling_micros):
+        return CEILING_STATUS_CEILING_REACHED
     return CEILING_STATUS_WITHIN_CEILING
 
 
 def ceiling_used_percentage(known_micros, ceiling_micros):
-    """Whole percent of the ceiling the KNOWN total has used, rounded down so
-    it never overstates; past the line it runs over 100. None where no
-    ceiling applies, and None for a ceiling of zero — a share of nothing is
-    not a share (the compare still says such a ceiling is reached).
+    """Whole percent of the ceiling a total has used, rounded down so it
+    never overstates; past the line it runs over 100, and a negative total
+    (a resolved credit) uses a negative share. None where no ceiling
+    applies, and None for a ceiling of zero — a share of nothing is not a
+    share (the compare still says such a ceiling is reached).
 
-    It is computed over the known total in EVERY evaluated state (#150 §9),
-    so under `indeterminate` a reader must treat it as a floor: the status
-    beside it is what says so, and this number never pretends otherwise."""
+    The arithmetic only. Whether there is a share to publish is the
+    assessment's question: under `indeterminate` there is none
+    (:func:`ceiling_assessment`), because a resolved subtotal is no bound on
+    the eventual total once an omitted amount can be negative (#603)."""
     if ceiling_micros is None or ceiling_micros <= 0:
         return None
     return known_micros * 100 // ceiling_micros
 
 
 def ceiling_remaining_micros(known_micros, ceiling_micros):
-    """The headroom left under the ceiling for the KNOWN total, never below
-    zero: past the line there is none, and the percentage beside it is what
-    says by how much. None where no ceiling applies."""
+    """The headroom left under the ceiling for a total, never below zero:
+    past the line there is none, and the percentage beside it is what says
+    by how much. None where no ceiling applies. The arithmetic only — under
+    `indeterminate` the assessment publishes no headroom at all (#603)."""
     if ceiling_micros is None:
         return None
     return max(ceiling_micros - known_micros, 0)
@@ -288,10 +318,10 @@ def ceiling_remaining_micros(known_micros, ceiling_micros):
 
 class CeilingAssessment(NamedTuple):
     """The three answers a unit's ceiling gives, travelling together: the
-    status is what tells a reader how to read the two figures beside it
-    (under `indeterminate` the percentage is a floor and the headroom a
-    ceiling), so they are one value rather than three a caller could take
-    half of."""
+    status is what tells a reader whether the two figures beside it are
+    answers at all — under `indeterminate` they are null, because nothing
+    about the eventual total is known from the resolved part of it (#603) —
+    so they are one value rather than three a caller could take half of."""
     status: str
     used_percentage: int | None
     remaining_micros: int | None
@@ -299,11 +329,25 @@ class CeilingAssessment(NamedTuple):
 
 def ceiling_assessment(*, ceiling_micros, known_micros, unresolved_count):
     """The whole assessment for one row's three columns — what the row, the
-    acknowledgement and the unit read all publish, composed once."""
+    acknowledgement and the unit read all publish, composed once.
+
+    ⚠ UNDER `indeterminate` THE TWO FIGURES ARE NULL (#603; the owner's
+    confirmation, `6279966961`: the status, its used percentage and its
+    remaining are indeterminate whenever the unit carries an unresolved cost).
+    They used to be computed over the resolved total and read as a floor and
+    a ceiling; with an omitted amount able to move the total either way they
+    are bounds on nothing, and a number a reader cannot read is not
+    published. The resolved total and the count of what it leaves out are
+    still on every surface beside them."""
+    from core.vocabulary import CEILING_STATUS_INDETERMINATE
+    status = ceiling_status(ceiling_micros=ceiling_micros,
+                            known_micros=known_micros,
+                            unresolved_count=unresolved_count)
+    if status == CEILING_STATUS_INDETERMINATE:
+        return CeilingAssessment(status=status, used_percentage=None,
+                                 remaining_micros=None)
     return CeilingAssessment(
-        status=ceiling_status(ceiling_micros=ceiling_micros,
-                              known_micros=known_micros,
-                              unresolved_count=unresolved_count),
+        status=status,
         used_percentage=ceiling_used_percentage(known_micros, ceiling_micros),
         remaining_micros=ceiling_remaining_micros(known_micros, ceiling_micros))
 

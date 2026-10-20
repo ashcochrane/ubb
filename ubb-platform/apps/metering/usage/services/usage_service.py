@@ -15,6 +15,7 @@ from core.vocabulary import (
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     Posting, PostingMeasurement, StopAcknowledgement)
+from apps.platform.event_types.exact_decimals import canonical_quantities
 from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
@@ -279,6 +280,8 @@ def _result(event, acknowledged, *, task=None):
         # idempotent replay answers what the original recording concluded.
         "pricing_status": event.pricing_status,
         "not_applicable_reason": event.not_applicable_reason,
+        # The price status's own reason (#603), off the row on the same rule.
+        "pricing_status_reason": event.pricing_status_reason,
         "new_balance_micros": None, "suspended": False,
         "task_id": str(event.task_id) if event.task_id else None,
         "parent_task_id": str(parent_task_id) if parent_task_id else None,
@@ -286,13 +289,14 @@ def _result(event, acknowledged, *, task=None):
             task.total_billed_cost_micros if task is not None else None,
         "task_total_provider_cost_micros":
             task.total_provider_cost_micros if task is not None else None,
-        # The unit total above is a FLOOR wherever this is non-zero (#328) — a
-        # caller watching its own spend against a COGS limit is watching a
-        # lower bound, and the limit has therefore not been shown to be safe.
+        # How many amounts the unit total above does not include (#328): the
+        # total is the sum of what resolved, complete when this is zero, and a
+        # caller watching its spend against a COGS ceiling is watching a
+        # resolved sum that what is left out may move either way (#603).
         "task_total_unresolved_event_count":
             task.unresolved_event_count if task is not None else None,
-        # And the unit's BILLED total is a floor wherever THIS is non-zero
-        # (#351). Two counts, because a caller watching spend against a limit is
+        # And how many the unit's BILLED total does not include (#351). Two
+        # counts, because a caller watching spend against a ceiling is
         # watching the provider total, while a caller reconciling what it will
         # be charged is watching the billed one — and the same event need not be
         # missing from both.
@@ -497,7 +501,14 @@ class RecordingInput:
             # currency, stored normalized lowercase. The sync adapter has
             # already rejected any mismatching caller currency.
             currency=_tenant_currency(tenant),
-            measurements=measurements or {},
+            # EVERY QUANTITY IN ITS ONE CANONICAL TEXT, BEFORE ANYTHING HOLDS
+            # IT (#603). The wire's validator has already canonicalised a
+            # route's bag; this is the same rule for every other caller of the
+            # recording core, so storage, the receipt and costing see one
+            # spelling of one number. A service-level Python `int` is accepted
+            # as exactly the whole number it is; a float is refused, never
+            # read.
+            measurements=canonical_quantities(measurements),
             **dims,
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
@@ -659,6 +670,7 @@ class UsageService:
                     # re-reads the amount to decide whether it is known.
                     pricing_status=costing.pricing_status,
                     not_applicable_reason=costing.not_applicable_reason,
+                    pricing_status_reason=costing.pricing_status_reason,
                     currency=inp.currency,
                     pricing_receipt=receipt,
                     task_id=inp.task_id,
@@ -796,6 +808,10 @@ class UsageService:
             # a price UBB could not resolve from one that was waived or never
             # applied, and all three arrive as null.
             pricing_status=event.pricing_status,
+            # And which kind of `unknown` (#603): a price UBB could not
+            # resolve, or one it calculated and the rails cannot carry. Off
+            # the row on the same terms.
+            pricing_status_reason=event.pricing_status_reason,
             event_type=inp.event_type, provider=inp.provider,
             task_id=str(inp.task_id) if inp.task_id else None,
             billing_owner_id=str(inp.billing_owner_id),

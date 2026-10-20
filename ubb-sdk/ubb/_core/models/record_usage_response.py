@@ -14,6 +14,7 @@ from ..models.record_usage_response_not_applicable_reason_type_0 import RecordUs
 from ..models.record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
 from ..models.record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
 from ..models.record_usage_response_pricing_status import RecordUsageResponsePricingStatus
+from ..models.record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
 from ..models.record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -38,6 +39,10 @@ class RecordUsageResponse:
             costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
             pricing_status (RecordUsageResponsePricingStatus):
+            pricing_status_reason (None | RecordUsageResponsePricingStatusReasonType0): Why `pricing_status` applies, where
+                a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             stop_bound_micros (int | None): The monetary bound the stop named in `stop_reason` was measured against, as it
                 stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling
                 — the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For
@@ -68,7 +73,8 @@ class RecordUsageResponse:
                 supplier cost beside it. The supplier cost UBB treats as COGS is the one it resolves, published as
                 `provider_cost_micros` on a response.
             grouping_fields (RecordUsageResponseGroupingFields | Unset):
-            measurements (None | RecordUsageResponseMeasurementsType0 | Unset):
+            measurements (None | RecordUsageResponseMeasurementsType0 | Unset): The quantities as recorded, keyed as sent.
+                Each is the canonical exact decimal text UBB stored.
             new_balance_micros (int | None | Unset):
             not_applicable_reason (None | RecordUsageResponseNotApplicableReasonType0 | Unset):
             parent_task_id (None | str | Unset):
@@ -107,6 +113,7 @@ class RecordUsageResponse:
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
     pricing_status: RecordUsageResponsePricingStatus
+    pricing_status_reason: None | RecordUsageResponsePricingStatusReasonType0
     stop_bound_micros: int | None
     stop_measured_micros: int | None
     suspended: bool
@@ -151,6 +158,12 @@ class RecordUsageResponse:
         event_id = self.event_id
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, RecordUsageResponsePricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         stop_bound_micros: int | None
         stop_bound_micros = self.stop_bound_micros
@@ -332,6 +345,7 @@ class RecordUsageResponse:
             "costing_status": costing_status,
             "event_id": event_id,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
             "stop_bound_micros": stop_bound_micros,
             "stop_measured_micros": stop_measured_micros,
             "suspended": suspended,
@@ -408,6 +422,24 @@ class RecordUsageResponse:
         pricing_status = RecordUsageResponsePricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> None | RecordUsageResponsePricingStatusReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = RecordUsageResponsePricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponsePricingStatusReasonType0, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         def _parse_stop_bound_micros(data: object) -> int | None:
@@ -753,6 +785,7 @@ class RecordUsageResponse:
             costing_status=costing_status,
             event_id=event_id,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             stop_bound_micros=stop_bound_micros,
             stop_measured_micros=stop_measured_micros,
             suspended=suspended,

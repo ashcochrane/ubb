@@ -19,10 +19,11 @@ from apps.metering.pricing.receipts import (
     LEGACY_SCHEMA_VERSION,
     MARKUP_TERMS_KEY,
     PRICING_REGIME_KEY,
+    QUANTITY_KEY,
     RECEIPT_SCHEMA_VERSION,
     REQUIRED_COMPONENT_KEYS,
     REQUIRED_MARKUP_KEYS,
-    SECTIONED_SCHEMA_VERSION,
+    READABLE_SCHEMA_VERSIONS,
     TOP_LEVEL_KEYS,
     ReceiptShapeError,
     ReceiptSubject,
@@ -51,6 +52,11 @@ from core.vocabulary import (
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
 )
+
+#: One past every shape this code reads — a record written by something newer.
+#: Derived from the readable set rather than spelled, so the day a shape is
+#: added it stays one this code does not know (#603 made `2` readable).
+A_VERSION_THIS_CODE_DOES_NOT_KNOW = max(READABLE_SCHEMA_VERSIONS) + 1
 
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -197,7 +203,9 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         monkeypatch.setattr(receipts, "RECEIPT_SCHEMA_VERSION",
                             RECEIPT_SCHEMA_VERSION + 1)
 
-        assert schema_version_of(written) == SECTIONED_SCHEMA_VERSION
+        # The shape it was written in — this module's import of the constant,
+        # bound before the patch — whatever the code says now.
+        assert schema_version_of(written) == RECEIPT_SCHEMA_VERSION
         assert uncosted_quantity_keys(written) == before
 
     def test_a_shape_this_code_does_not_know_is_refused_rather_than_guessed(self):
@@ -206,7 +214,7 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         code does not understand into a plausible wrong answer, or into a
         `KeyError` from the middle of a request."""
         from_the_future = dict(a_receipt(),
-                               receipt_schema_version=SECTIONED_SCHEMA_VERSION + 1)
+                               receipt_schema_version=A_VERSION_THIS_CODE_DOES_NOT_KNOW)
 
         with pytest.raises(ReceiptShapeError, match="schema version"):
             uncosted_quantity_keys(from_the_future)
@@ -240,7 +248,7 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         with pytest.raises(ReceiptShapeError, match="schema version"):
             pricing_method_of(dict(current,
                                    receipt_schema_version=
-                                   SECTIONED_SCHEMA_VERSION + 1))
+                                   A_VERSION_THIS_CODE_DOES_NOT_KNOW))
 
     def test_the_subject_reader_dispatches_the_same_three_ways(self):
         """WHAT THIS RECEIPT EXPLAINS, read out of the record (#370).
@@ -271,7 +279,7 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         with pytest.raises(ReceiptShapeError, match="schema version"):
             subject_type_of(dict(current,
                                  receipt_schema_version=
-                                 SECTIONED_SCHEMA_VERSION + 1))
+                                 A_VERSION_THIS_CODE_DOES_NOT_KNOW))
 
     def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
         """AC: null means the price was NOT DERIVED, and the status says why.
@@ -491,7 +499,10 @@ class TestProvenanceCarriesIdsAndNothingElse:
 #: rule. The values are placeholders: every assertion below is about which keys
 #: are present, and a fixture whose arithmetic had to be consistent would be
 #: asserting the engine rather than the boundary.
-A_WHOLE_COMPONENT = {key: 1 for key in REQUIRED_COMPONENT_KEYS}
+#: Every term a component carries, at 1 — and the quantity as its canonical
+#: TEXT, which is what schema 2 holds it as (#603).
+A_WHOLE_COMPONENT = {**{key: 1 for key in REQUIRED_COMPONENT_KEYS},
+                     QUANTITY_KEY: "1"}
 
 
 def _resolution_with(section, components):

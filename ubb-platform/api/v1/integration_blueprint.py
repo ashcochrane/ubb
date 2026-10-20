@@ -148,7 +148,6 @@ from core.vocabulary import (
     CONFIGURATION_OBJECT_KIND_TASK_TYPE,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_PUBLISHED,
-    DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
@@ -194,7 +193,17 @@ SCHEMA_VERSION = 1
 #: `response` parameter at that path. Contract 1 promised a path only under a
 #: keyed entry, so a renderer written to it would send the response object
 #: itself as the value. It is hashed, so every fingerprint moved with it.
-RENDERER_CONTRACT_VERSION = 2
+#:
+#: 3 since #603 and #584. A measured quantity is recorded as canonical exact
+#: TEXT (ADR-0020): a renderer sends it as text and never as a JSON number,
+#: refuses a float and a flag, and assumes no digit bound (the shell target's
+#: 15-digit `--argjson` read went with it). And a `constant` quantity's value
+#: token is now `platform_known` and configured, carrying the declared value
+#: as that same text, where contract 2 promised the token unconfigured and
+#: the call blocked. A renderer written to contract 2 would send a quantity
+#: as a number and write a constant as missing, so the contract moves, and
+#: every fingerprint with it, once.
+RENDERER_CONTRACT_VERSION = 3
 
 #: The SDK major the Python target is generated against (owner item 3,
 #: 2026-09-25). Stated only for that target: a shell file uses no SDK, and a
@@ -265,7 +274,6 @@ EFFECTS = {
     DIAGNOSTIC_CODE_REQUIRED_GROUPING_FIELD_WRONG_SCOPE: _BLOCKING,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED: _BLOCKING,
     DIAGNOSTIC_CODE_REPORTED_COST_MAPPING_MISSING: _BLOCKING,
-    DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE: _BLOCKING,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET: _BLOCKING,
@@ -900,19 +908,13 @@ def _quantities(resolution, call, declaration, declared_by):
                               call.parameters.named_for(quantity.code),
                               declared_by))
         elif quantity.source_kind == SOURCE_KIND_CONSTANT:
-            # A constant is declared with its value (#571), so the declaration
-            # is complete — and this Code Builder version cannot yet generate
-            # code that uses the value. So the value is NOT carried: the token
-            # stays unconfigured, and the call is blocked by a code naming
-            # exactly that, which the ticket that renders constants (#584)
-            # removes. No remediation request, deliberately: the console words
-            # one as the change an admin makes, and nothing in a valid
-            # declaration is the thing to change.
-            call.add(_unconfigured(member))
-            resolution.report(
-                call, DIAGNOSTIC_CODE_CONSTANT_MEASUREMENT_NOT_RENDERABLE,
-                CONFIGURATION_OBJECT_KIND_MEASUREMENT, address,
-                field="source_kind")
+            # A constant is declared with its value (#571), and generated code
+            # uses it (#584): the value token is platform-known, carrying the
+            # declared value as the canonical exact text it is published as —
+            # a string for both value types, which `value_type` beside it
+            # gives the meaning of — and naming the publication it came from.
+            # A renderer writes it as a typed literal in the module.
+            call.add(_known(member, quantity.constant_value, declared_by))
         elif quantity.source_kind == SOURCE_KIND_DERIVED:
             # Nothing designs how a derived quantity is computed, so no token
             # stands for its value at all.
@@ -1100,22 +1102,11 @@ def _event_type_content(resolved):
     }
 
 
-#: What the published declaration holds that the configuration does NOT keep
-#: yet. A constant's value is published with its declaration (#571), and this
-#: Code Builder version does not render it: the call it belongs to is blocked
-#: and its token unconfigured. So no value is kept beside the Blueprint either
-#: — the ticket that renders a constant (#584) adds it to the token and to the
-#: configuration in one commit, which is when the value itself joins what a
-#: fingerprint hashes. (A changed value moves the fingerprint already, but only
-#: by the republication it takes: the revision is hashed, the value is not.)
-_NOT_KEPT_YET = frozenset({"constant_value"})
-
-
 def _quantity_content(quantity):
-    """One published quantity, as the configuration keeps it."""
-    return {**{name: value for name, value in quantity._asdict().items()
-               if name not in _NOT_KEPT_YET},
-            "source_path": list(quantity.source_path)}
+    """One published quantity, as the configuration keeps it — a constant's
+    value included (#584), so the value itself is part of what a fingerprint
+    hashes and a verification can declare the constant again."""
+    return {**quantity._asdict(), "source_path": list(quantity.source_path)}
 
 
 def _rules(books, codes, event_type_keys, book_content):

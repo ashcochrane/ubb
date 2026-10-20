@@ -139,12 +139,12 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
                  status=PRICING_STATUS_UNKNOWN, stop_context=self.stop)
         assert self._report().status_code == 200
 
-    def test_the_total_is_a_floor_and_the_count_says_how_far_it_falls_short(self):
+    def test_the_total_is_what_resolved_and_the_count_says_what_it_leaves_out(self):
         """The AC's assertion: the completeness count the report reports.
 
         The rule is the one the cost half's docstring states and this half now
-        applies — an unresolved amount is skipped and COUNTED, so the total is a
-        floor that says how far short it falls.
+        applies — an unresolved amount is skipped and COUNTED, so the total is the
+        sum of what resolved and says how many amounts it leaves out (#603).
         """
         _posting(self.tenant, self.customer, "k1", stop_context=self.stop)
         _posting(self.tenant, self.customer, "k2",
@@ -211,6 +211,7 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
                 "customer_id": str(self.customer.id),
                 "event_id": "e1", "cost_micros": price,
                 "billed_cost_micros": price, "pricing_status": status,
+                "pricing_status_reason": None,
                 "effective_at": timezone.now().isoformat()}
 
     def test_the_handler_answers_rather_than_raising(self):

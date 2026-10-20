@@ -125,12 +125,20 @@ class AnUnresolvedCostSettlesOnceTest(TestCase):
         would have made any later work here look like the defect this case is
         about — and, worse, a read placed BEFORE the update would have satisfied
         it just as well the day somebody raised the number.
+
+        Transaction control is not a statement about the row: since #603 the
+        door opens its own transaction (a savepoint under this test's), so the
+        `SAVEPOINT` that now comes first is set aside and the claim stands —
+        no read or write of data runs before the update.
         """
         posting = _unresolved()
         with CaptureQueriesContext(connection) as queries:
             settle_provider_cost(posting_id=posting.pk,
                                  provider_cost_micros=1)
-        captured = [q["sql"] for q in queries.captured_queries]
+        captured = [q["sql"] for q in queries.captured_queries
+                    if not q["sql"].lstrip().upper().startswith(
+                        ("SAVEPOINT", "RELEASE SAVEPOINT",
+                         "ROLLBACK TO SAVEPOINT"))]
         statements = [sql for sql in captured
                       if sql.lstrip().upper().startswith("UPDATE")]
         self.assertEqual(len(statements), 1)

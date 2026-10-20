@@ -109,6 +109,7 @@ class TestGrantLedgerInvariantFuzz:
             cost = rng.randint(1, 40) * M
             ev = str(uuid.uuid4())
             payload = asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id=ev, billing_owner_id=customer.id,
                 cost_micros=cost))

@@ -317,6 +317,27 @@ class TestSkipPathsReserveNoCarry:
         assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 9_000
         assert state["invoices"] == 0
 
+    def test_usage_priced_at_zero_is_nothing_to_bill_and_not_no_usage(self):
+        """#603 ruling 9: a period whose usage was all priced at exactly
+        nothing totals zero as an empty one does, and it is not one. The row
+        is skipped — there is nothing to invoice — and says why truthfully.
+        The control is the case above, which recorded nothing."""
+        from apps.metering.usage.models import Posting
+        t = _charge_ready_tenant()
+        c = _postpaid_customer(t)
+        Posting.objects.create(
+            tenant=t, customer=c, billing_owner_id=c.id,
+            idempotency_key="priced-at-zero", billed_cost_micros=0,
+            provider_cost_micros=0,
+            effective_at=datetime.datetime(2026, 6, 15,
+                                           tzinfo=datetime.timezone.utc))
+        with _stripe() as state, _agg(0, lines=[]):
+            rec = PostpaidUsageService.push_customer_period(t, c, P_JUN, P_JUL)
+        rec.refresh_from_db()
+        assert rec.status == "skipped"
+        assert rec.skip_reason == "nothing_to_bill"
+        assert state["invoices"] == 0
+
     def test_no_stripe_customer_skip_reserves_nothing(self):
         t = _charge_ready_tenant()
         c = _postpaid_customer(t, stripe_customer_id="")

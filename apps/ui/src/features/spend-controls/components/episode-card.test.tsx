@@ -43,6 +43,7 @@ function floorRow(reason: string): WalletPolicyEpisodeRow {
         effective_at: "2026-08-02T09:14:00Z",
         billed_cost_micros: knownPrice(1_000_000).billed_cost_micros,
         pricing_status: knownPrice(1_000_000).pricing_status,
+        pricing_status_reason: knownPrice(1_000_000).pricing_status_reason,
         provider_cost_micros: knownCost(800_000).provider_cost_micros,
         costing_status: knownCost(800_000).costing_status,
         charge_id: null,

@@ -167,7 +167,7 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         result = _record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40})
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"})
 
         posting = _posting(result)
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
@@ -191,7 +191,7 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         (held,) = _held(tenant)
         assert held.unrecognised == UNRECOGNISED_MEASUREMENT_KEY
@@ -209,7 +209,7 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         _record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: AS_SENT})
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: AS_SENT})
 
         (held,) = _held(tenant)
         assert held.quantity == str(AS_SENT)
@@ -223,7 +223,7 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         rated = posting.pricing_receipt["costing"]["detail"]["components"]
         assert [line["measurement_key"] for line in rated] == [DECLARED_QUANTITY]
@@ -236,8 +236,8 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         _record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, "reasonning_tokens": 7,
-            A_NAME_NOBODY_DECLARED: 40})
+            DECLARED_QUANTITY: "1000", "reasonning_tokens": "7",
+            A_NAME_NOBODY_DECLARED: "40"})
 
         assert [row.measurement_key for row in _held(tenant)] == [
             A_NAME_NOBODY_DECLARED, "reasonning_tokens"]
@@ -255,11 +255,11 @@ class TestOneReportProducesBothHalves:
         tenant, customer = _a_declared_and_rated_tenant()
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         receipt = posting.pricing_receipt
         assert recorded_quantities(receipt) == {
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}
         # And the wire's "which quantities went uncosted" names it: the ack
         # carries no other field a reader could learn the name from.
         assert uncosted_quantity_keys(receipt) == [A_NAME_NOBODY_DECLARED]
@@ -273,10 +273,10 @@ class TestOneReportProducesBothHalves:
         """
         tenant, customer = _a_declared_and_rated_tenant()
         first = _record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40})
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"})
 
         again = _record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40})
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"})
 
         assert again["event_id"] == first["event_id"]
         assert again["unresolved_reason"] == \
@@ -302,7 +302,7 @@ class TestOneReportProducesBothHalves:
 
         with pytest.raises(RuntimeError):
             _record(tenant, customer, "k1", measurements={
-                DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40})
+                DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"})
 
         assert Posting.objects.count() == 0
         assert _held(tenant) == []
@@ -329,7 +329,7 @@ class TestWhatIsNotHeld:
         _cost_rate(tenant)
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
         assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
@@ -348,7 +348,7 @@ class TestWhatIsNotHeld:
         _cost_rate(tenant)
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, "image_pixels": 40}))
+            DECLARED_QUANTITY: "1000", "image_pixels": "40"}))
 
         assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
         assert _held(tenant) == []
@@ -359,7 +359,7 @@ class TestWhatIsNotHeld:
         tenant, customer = _a_declared_and_rated_tenant()
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000}))
+            DECLARED_QUANTITY: "1000"}))
 
         assert posting.costing_status == COSTING_STATUS_KNOWN
         assert posting.provider_cost_micros == 5_000
@@ -381,8 +381,8 @@ class TestWhatIsNotHeld:
         _cost_rate(tenant)
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, "image_pixels": 12,
-            A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", "image_pixels": "12",
+            A_NAME_NOBODY_DECLARED: "40"}))
 
         assert posting.unresolved_reason == \
             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
@@ -390,8 +390,8 @@ class TestWhatIsNotHeld:
             A_NAME_NOBODY_DECLARED]
         receipt = posting.pricing_receipt
         assert recorded_quantities(receipt) == {
-            DECLARED_QUANTITY: 1_000, "image_pixels": 12,
-            A_NAME_NOBODY_DECLARED: 40}
+            DECLARED_QUANTITY: "1000", "image_pixels": "12",
+            A_NAME_NOBODY_DECLARED: "40"}
         assert sorted(uncosted_quantity_keys(receipt)) == [
             "image_pixels", A_NAME_NOBODY_DECLARED]
 
@@ -410,7 +410,7 @@ class TestWhatIsNotHeld:
 
         posting = _posting(_record(
             tenant, customer, "k1", provider_cost_micros=777,
-            measurements={DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            measurements={DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         assert posting.costing_status == COSTING_STATUS_KNOWN
         assert posting.provider_cost_micros == 777
@@ -430,7 +430,7 @@ class TestWhatIsNotHeld:
                      quantities=(DECLARED_QUANTITY,), mapping=True)
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         assert posting.unresolved_reason == \
             UNRESOLVED_REASON_REPORTED_COST_MISSING
@@ -448,7 +448,7 @@ class TestWhatIsNotHeld:
         tenant, customer = _a_declared_and_rated_tenant()
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, "": 3}))
+            DECLARED_QUANTITY: "1000", "": "3"}))
 
         assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
         assert _held(tenant) == []
@@ -479,12 +479,12 @@ class TestTheTwoDefinitionsAgree:
         _declaration(tenant, quantities=(DECLARED_QUANTITY, "image_pixels"))
         _cost_rate(tenant)
         undeclared = _posting(_record(tenant, customer, "undeclared",
-                                      measurements={DECLARED_QUANTITY: 1_000,
-                                                    A_NAME_NOBODY_DECLARED: 40}))
+                                      measurements={DECLARED_QUANTITY: "1000",
+                                                    A_NAME_NOBODY_DECLARED: "40"}))
         unrated = _posting(_record(tenant, customer, "unrated",
-                                   measurements={"image_pixels": 12}))
+                                   measurements={"image_pixels": "12"}))
         settled = _posting(_record(tenant, customer, "settled",
-                                   measurements={DECLARED_QUANTITY: 1_000}))
+                                   measurements={DECLARED_QUANTITY: "1000"}))
         return tenant, (undeclared, unrated, settled)
 
     @staticmethod
@@ -552,7 +552,7 @@ class TestTheTwoDefinitionsAgree:
 
         posting = _posting(_record(
             tenant, customer, "backdated", effective_at=happened_at,
-            measurements={DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 40}))
+            measurements={DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
 
         (held,) = _held(tenant)
         assert held.occurred_at == posting.effective_at == happened_at
@@ -622,7 +622,7 @@ class TestWhatARecoveryDoesWithIt:
         _cost_rate(tenant, measurement_key=A_NAME_NOBODY_DECLARED, micros=7_000)
 
         posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: 1_000, A_NAME_NOBODY_DECLARED: 1_000}))
+            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "1000"}))
 
         assert posting.unresolved_reason == \
             UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED, \

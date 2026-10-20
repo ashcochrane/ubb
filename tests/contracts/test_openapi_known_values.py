@@ -814,6 +814,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
     "not_applicable_reason": Published(4, ENUM),  # record + list row + detail
+    # #603 — the price status's OWN reason, `negative_price_unsupported` beside
+    # an `unknown` price UBB calculated and the money rails cannot carry.
+    # EIGHT NODES, EXACTLY `pricing_status`'s EIGHT, and that is the owner's
+    # rule rather than a count that happened (#603 comment 6279966961): it is
+    # REQUIRED AND NULLABLE wherever the status is published — the outbox
+    # payload and the supplied revenue window included, where the cost reason
+    # and `not_applicable_reason` above deliberately do not ride. The marker
+    # sits in the string member of every nullable union, `unresolved_reason`'s
+    # placement.
+    "pricing_status_reason": Published(8, ENUM),
     # #355 (slice 4) — HOW a price was derived, beside the status that says
     # WHETHER it is settled. The third nullable marker on a response, in the
     # string member for the reason the two above give.
@@ -1563,6 +1573,13 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("not_applicable_reason", {"RecordUsageResponse",
                                      "UsageBatchItemResponse", "UsageEventOut",
                                      "UsageEventDetailOut"})
+    # Exactly where `pricing_status` is — required and nullable on every one
+    # of its eight carriers (#603).
+    placed("pricing_status_reason", {"RecordUsageResponse",
+                                     "UsageBatchItemResponse", "UsageEventOut",
+                                     "UsageEventDetailOut", "UnresolvedQueueRow",
+                                     "ItemisedEventRow", "usage.recorded",
+                                     "SuppliedRevenueWindowOut"})
     # HOW a price was derived, beside the status saying WHETHER it is settled
     # (#355). The rule is "wherever the receipt goes", and it is asserted here
     # as the schemas rather than as a count precisely because those are the two

@@ -5,15 +5,18 @@
 // with a NULL amount rather than a zero — because zero is a resolved amount and
 // means something else entirely (ADR-0007 §2). Every total built over those
 // postings sums the ones it resolved and skips the ones it did not, so a total
-// beside a non-zero count is a FLOOR rather than a figure, and the margin
-// computed from it is a CEILING.
+// beside a non-zero count is the SUM OF WHAT RESOLVED rather than the total,
+// and so is the margin computed from it.
 //
-// That is the backend's own statement rather than a console inference, and
-// since #501 it is said on the PUBLISHED CONTRACT rather than in a read
-// contract's docstring: `EconomicMeasureOut.status` reads `incomplete` when
-// "some input is still unresolved, so the figure is a bound rather than a
-// total, and the count beside it says how far off it can be". This module is
-// where the console stops rendering both of them as though they were whole.
+// ⚠ IT IS NO BOUND, IN EITHER DIRECTION (#603, ADR-0020 §6). This module used
+// to say "at least" on such a total and "at most" on the margin, because a
+// cost left out could only add. A quantity may now be negative, so an amount
+// left out may move the total either way: the retired words promised a
+// direction nothing guarantees. The published contract says it the same way —
+// `EconomicMeasureOut.status` reads `incomplete` when the figure is the sum of
+// the inputs that resolved, and the count beside it says how many are not
+// included. This module is where the console stops rendering either as though
+// it were whole.
 //
 // ⚠ IT USED TO CITE `get_revenue_analytics`, one of five backend definitions
 // of revenue and margin that each said this in their own words. All five are
@@ -21,12 +24,11 @@
 // response — which is why the roster below now names one schema where it used
 // to name six.
 //
-// A MARKER STATES ONLY THAT SOMETHING IS MISSING; "at least $4.20" STATES THE
-// ECONOMIC MEANING. A badge reading `incomplete` beside a number leaves the
-// reader to work out which way the number is wrong, and the flattering reading —
-// a cost that is lower than it really is, a margin that is higher — is the one
-// they will reach for. Saying it in the amount itself makes the worst-case
-// misreading impossible rather than unlikely.
+// THE MARK RIDES IN THE AMOUNT ITSELF — "$4.20 (Incomplete)" — so no reader
+// takes a partial figure for a whole one: a badge somewhere else on the row is
+// a badge somebody skims past. It names the STATE, the catalogue's word for
+// `measure_status.incomplete`, and no direction, because there is none to
+// name; the sentence beside it says how many amounts are not included.
 //
 // THE COMPLETENESS QUESTION READS THE COUNT AND NOTHING ELSE, and the case that
 // makes this worth writing down is mixed derivation. A Task holding both
@@ -50,10 +52,10 @@
 // ⚠ **THE ONE ECONOMIC QUERY'S SURFACES LEFT THIS LIST IN #510.** Its stat
 // cards, its tables, its breakdown and its charts read `EconomicsOut`, which carries
 // a STATE per measure per row rather than a bare count — and a count can only
-// say "floor", while that state also says "unavailable at this grain", "outside
-// the retention horizon" and "not applicable", none of which is a bound. They
-// read `@/lib/measure-state` now, which applies this module's floor rule
-// (`partialTotalNote`, the zero-floor absence) to an incomplete cost and adds
+// say "incomplete", while that state also says "unavailable at this grain",
+// "outside the retention horizon" and "not applicable". They read
+// `@/lib/measure-state` now, which applies this module's rule
+// (`partialTotalNote`, the zero-sum absence) to an incomplete cost and adds
 // the readings a count could never carry. This module keeps the surfaces
 // whose responses still publish a count and no state.
 //
@@ -77,34 +79,32 @@ import { formatMicros, formatPercent } from "@/lib/format";
 import { ABSENT_LABEL, labelMap } from "@/lib/localisation";
 import {
   COSTING_STATUS_LABEL_KEYS,
+  MEASURE_STATUS_LABEL_KEYS,
   UNRESOLVED_REASON_LABEL_KEYS,
   type CostingStatus,
 } from "@/lib/vocabulary";
 
-/** The wording for a total that can only be higher than it says. */
-export const AT_LEAST = "at least";
-
-/** The wording for a figure that can only be lower than it says. */
-export const AT_MOST = "at most";
+const stateWord = labelMap(MEASURE_STATUS_LABEL_KEYS);
 
 /**
- * A whole-number share, said as a floor where the terms it was computed over
- * can only raise it: "at least 41%" or "41%". The caller states WHEN it is a
- * floor — that is the per-surface rule — and this is the one spelling of it.
+ * A figure, marked where it is computed over a total that leaves amounts out:
+ * "$4.20 (Incomplete)" or "$4.20". The caller states WHEN it is incomplete —
+ * that is the per-surface rule — and this is the one spelling of it, for an
+ * amount, a share and a margin alike. The mark is the catalogue's word for
+ * `measure_status.incomplete` and names no direction (#603, ADR-0020 §6).
  */
-export function shareAtLeast(percentage: number, floor: boolean): string {
-  const share = `${percentage}%`;
-  return floor ? `${AT_LEAST} ${share}` : share;
+export function incompleteFigure(text: string, incomplete: boolean): string {
+  return incomplete ? `${text} (${stateWord("incomplete")})` : text;
 }
 
-/**
- * An amount, said as a most where the terms it was computed over can only
- * lower it: "at most $1.76" or "$1.76". The mirror of `shareAtLeast`, for
- * the headroom that shrinks as the share grows.
- */
-export function amountAtMost(micros: number, currency: string, most: boolean): string {
-  const amount = formatMicros(micros, currency);
-  return most ? `${AT_MOST} ${amount}` : amount;
+/** A whole-number share, marked where it is over an incomplete total. */
+export function shareOver(percentage: number, incomplete: boolean): string {
+  return incompleteFigure(`${percentage}%`, incomplete);
+}
+
+/** An amount, marked where it is over an incomplete total. */
+export function amountOver(micros: number, currency: string, incomplete: boolean): string {
+  return incompleteFigure(formatMicros(micros, currency), incomplete);
 }
 
 /**
@@ -131,17 +131,17 @@ export function isPartial(completeness: CostCompleteness): boolean {
  * A supplier-cost total, said in a way that cannot be read as whole when it is
  * not.
  *
- * Three outcomes, and the third is the one "at least" alone gets wrong:
+ * Three outcomes, and the third is the one a mark alone gets wrong:
  *
- *   nothing missing        → `$4.20`, the figure it is
- *   missing, floor above 0 → `at least $4.20`
- *   missing, floor at 0    → the absent marker
+ *   nothing missing           → `$4.20`, the figure it is
+ *   missing, resolved sum ≠ 0 → `$4.20 (Incomplete)`
+ *   missing, resolved sum = 0 → the absent marker
  *
  * The last case is a window whose resolved costs sum to nothing while events
- * remain uncosted. Its floor really is zero, and rendering `at least $0.00`
- * would put the exact string this slice exists to delete back on the page with
- * a prefix in front of it — a reader takes it for "this was free". UBB knows no
- * amount here, so it states no amount, and the count beside it says why.
+ * remain uncosted. Rendering `$0.00` there, marked or not, would put the exact
+ * string this slice exists to delete back on the page — a reader takes it for
+ * "this was free". UBB knows no total here, so it states no amount, and the
+ * count beside it says why.
  */
 export function supplierCostTotal(
   micros: number,
@@ -150,41 +150,37 @@ export function supplierCostTotal(
 ): string {
   if (!isPartial(completeness)) return formatMicros(micros, currency);
   if (micros === 0) return ABSENT_LABEL;
-  return `${AT_LEAST} ${formatMicros(micros, currency)}`;
+  return incompleteFigure(formatMicros(micros, currency), true);
 }
 
 /**
- * A margin or markup computed against a supplier cost that may be partial.
- *
- * Bounded from ABOVE, always, and that stays true when the margin is already
- * negative: the costs UBB has not learned can only take it further down. There
- * is no zero-floor case here — a margin of zero beside missing costs is an
- * honest upper bound, and unlike a cost total it does not read as "free".
+ * A margin or markup computed against a supplier cost that may be partial,
+ * marked incomplete wherever the cost is. There is no zero-sum case here — a
+ * margin of zero beside missing costs does not read as "free" the way a cost
+ * total does, so it states its figure, marked.
  */
-export function marginBound(
+export function marginOver(
   micros: number,
   completeness: CostCompleteness,
   currency: string,
   /**
    * How the amount itself is written. Defaulted rather than fixed because one
    * surface — the unprofitable-customer alert — renders margins with an
-   * explicit sign, and a bound that quietly dropped the `+` from a thin but
+   * explicit sign, and a mark that quietly dropped the `+` from a thin but
    * positive margin would change what the number says while claiming only to
    * qualify it.
    */
   format: (micros: number, currency: string) => string = formatMicros,
 ): string {
-  const amount = format(micros, currency);
-  return isPartial(completeness) ? `${AT_MOST} ${amount}` : amount;
+  return incompleteFigure(format(micros, currency), isPartial(completeness));
 }
 
-/** The same bound on a margin PERCENTAGE, which is derived from the same sum. */
-export function marginPercentBound(
+/** The same mark on a margin PERCENTAGE, which is derived from the same sum. */
+export function marginPercentOver(
   percent: number,
   completeness: CostCompleteness,
 ): string {
-  const formatted = formatPercent(percent);
-  return isPartial(completeness) ? `${AT_MOST} ${formatted}` : formatted;
+  return incompleteFigure(formatPercent(percent), isPartial(completeness));
 }
 
 /**
@@ -200,8 +196,8 @@ export function partialTotalNote(unresolvedEventCount: number): string | null {
   const events = unresolvedEventCount === 1 ? "event has" : "events have";
   return (
     `${unresolvedEventCount.toLocaleString()} ${events} a supplier cost UBB ` +
-    `has not learned. They are left out of this total, so the true figure is ` +
-    `higher.`
+    `has not learned. They are not included in this total, which is the sum of ` +
+    `the costs UBB has.`
   );
 }
 

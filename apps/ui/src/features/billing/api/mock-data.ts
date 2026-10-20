@@ -31,7 +31,7 @@ function isoDay(epochMs: number): string {
 /**
  * How many of today's events are still waiting on a supplier cost.
  *
- * Exported so a test asserting "the window's total renders as a floor" names
+ * Exported so a test asserting "the window's total renders marked incomplete" names
  * this rather than a literal, and so the provider that sums the rows and the
  * fixture that seeds them cannot disagree about the number.
  */
@@ -91,7 +91,8 @@ export function buildDailyRows(): MockDailyRow[] {
       // — is a single day, and that day is this one.
       unresolved_event_count: t === end ? UNRESOLVED_TODAY : 0,
       // Every price in this fixture resolves, so the revenue side is complete
-      // while the cost side is a floor — the asymmetry two counts exist for.
+      // while the cost side is the sum of what resolved, marked incomplete —
+      // the asymmetry two counts exist for.
       unpriced_event_count: 0,
     });
   }

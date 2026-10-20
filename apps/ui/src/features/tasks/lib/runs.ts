@@ -11,7 +11,8 @@
 // NO NUMBER NOBODY KNOWS RENDERS AS A ZERO AMOUNT (#424; #155 §9.2). A run's
 // totals arrive as a figure beside a COUNT of what the figure could not
 // include, and `@/lib/total-reading` is what says whether the figure is a
-// figure, a floor, or nothing at all — the reading was written here and moved
+// figure, partial (the sum of what resolved), or nothing at all — the reading
+// was written here and moved
 // to `lib/` in #466, the day Stops and breaches became the second surface to
 // read a total that way. What stays here is what only a run can decide:
 // whether a customer price applies to it at all, and what its agreed price is
@@ -92,7 +93,7 @@ export function explainSupplierCost(reading: SupplierCostReading): string | null
   switch (reading.kind) {
     case "figure":
       return null;
-    case "floor":
+    case "partial":
       return partialTotalNote(reading.eventsLeftOut);
     case "unknown":
       return (
@@ -228,10 +229,10 @@ export function explainCustomerPrice(reading: CustomerPriceReading): string | nu
   switch (reading.kind) {
     case "figure":
       return null;
-    case "floor":
+    case "partial":
       return (
         `${eventsHave(reading.eventsLeftOut)} a customer price UBB has not resolved. ` +
-        `They are left out of this total, so the true figure is higher.`
+        `They are not included in this total, which is the sum of the prices UBB has.`
       );
     case "unknown":
       return (

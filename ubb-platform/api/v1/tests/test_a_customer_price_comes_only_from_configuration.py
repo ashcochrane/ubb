@@ -123,7 +123,7 @@ class APriceIsSuppliedThroughConfigurationTest(_ARecordingTenant):
         self.a_direct_price_rule()
 
         ack = self.record("configured",
-                          measurements={THE_QUANTITY: HOW_MANY_CALLS})
+                          measurements={THE_QUANTITY: str(HOW_MANY_CALLS)})
 
         self.assertEqual(ack["billed_cost_micros"], WHAT_THE_RULE_CHARGES)
         self.assertEqual(ack["pricing_status"], PRICING_STATUS_KNOWN)
@@ -139,7 +139,7 @@ class APriceIsSuppliedThroughConfigurationTest(_ARecordingTenant):
         self.a_direct_price_rule()
 
         ack = self.record("stored",
-                          measurements={THE_QUANTITY: HOW_MANY_CALLS})
+                          measurements={THE_QUANTITY: str(HOW_MANY_CALLS)})
 
         self.assertEqual(
             Posting.objects.get(id=ack["event_id"]).billed_cost_micros,
@@ -172,7 +172,7 @@ class APriceIsSuppliedThroughConfigurationTest(_ARecordingTenant):
             billing_owner_id=self.customer.id)
 
         ack = self.record("four-surfaces", task_id=str(job.id),
-                          measurements={THE_QUANTITY: HOW_MANY_CALLS})
+                          measurements={THE_QUANTITY: str(HOW_MANY_CALLS)})
         listed = self.http.get(
             f"/api/v1/metering/customers/{self.customer.id}/usage",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
@@ -207,7 +207,7 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
 
         body = self.refused(
             "sent-a-price",
-            measurements={THE_QUANTITY: HOW_MANY_CALLS},
+            measurements={THE_QUANTITY: str(HOW_MANY_CALLS)},
             billed_cost_micros=WHAT_A_CALLER_WOULD_HAVE_SENT)
 
         self.assertEqual(body["type"].rsplit("/", 1)[-1], "validation_error")
@@ -227,7 +227,7 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
         self.a_direct_price_rule()
 
         ack = self.record("same-call-no-price",
-                          measurements={THE_QUANTITY: HOW_MANY_CALLS})
+                          measurements={THE_QUANTITY: str(HOW_MANY_CALLS)})
 
         self.assertEqual(ack["billed_cost_micros"], WHAT_THE_RULE_CHARGES)
 
@@ -253,7 +253,7 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
         self.a_direct_price_rule()
 
         ack = self.record("invented-a-name",
-                          measurements={THE_QUANTITY: HOW_MANY_CALLS},
+                          measurements={THE_QUANTITY: str(HOW_MANY_CALLS)},
                           suggested_price_micros=WHAT_A_CALLER_WOULD_HAVE_SENT)
 
         self.assertEqual(ack["billed_cost_micros"], WHAT_THE_RULE_CHARGES)
@@ -288,10 +288,10 @@ class ThereIsNoRequestSidePathToAPriceTest(_ARecordingTenant):
             "/api/v1/metering/usage/batch",
             data=json.dumps({"events": [
                 usage_payload(self.customer, "batch-clean",
-                              measurements={THE_QUANTITY: HOW_MANY_CALLS}),
+                              measurements={THE_QUANTITY: str(HOW_MANY_CALLS)}),
                 usage_payload(
                     self.customer, "batch-price",
-                    measurements={THE_QUANTITY: HOW_MANY_CALLS},
+                    measurements={THE_QUANTITY: str(HOW_MANY_CALLS)},
                     billed_cost_micros=WHAT_A_CALLER_WOULD_HAVE_SENT)]}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")

@@ -78,10 +78,10 @@ export const POOL_STANDING_TITLE = "Where this customer's pool stands";
  *
  * WHERE THE KNOWN FIGURE IS NOTHING AND A POSTING IS UNRESOLVED, the
  * charges read as Unknown and the two figures beside them are the kernel's
- * bounds over that nothing — "at least 0%" used and "at most" the whole
- * pool as headroom. Both are true and neither is a settled number; they
- * render as bounds, the way the report renders the same pair, and never as
- * `0%` or a figure.
+ * arithmetic over that nothing — "0% (Incomplete)" used and the whole pool
+ * as headroom, marked the same way. Neither is a settled number, and neither
+ * promises a direction (#603); they render marked, the way the report
+ * renders the same pair, and never as a bare `0%` or figure.
  */
 function PoolStanding({
   declared,

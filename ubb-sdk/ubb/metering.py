@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime
+from decimal import Decimal
 
 import httpx
 from attrs import fields as _attrs_fields
@@ -118,19 +120,19 @@ def measure_on(row: EconomicRowOut, measure: str) -> EconomicMeasureOut | None:
     ⚠ **IT HANDS BACK THE MEASURE AND NEVER THE NUMBER, AND THAT IS THE
     WHOLE POINT** (#505, slice 7 §18). Every figure on this surface comes
     with a `status` saying what it is worth: `incomplete` means the number
-    is a BOUND and the count beside it says how far off it can be — and
-    where no piece of a row's revenue resolved there is no number, on the
-    revenue or the margin (#537); `unavailable_at_requested_grain` means a
-    margin could not be attributed
+    is the sum of what resolved and the count beside it says how many
+    amounts it leaves out (#603) — and where no piece of a row's revenue
+    resolved there is no number, on the revenue or the margin (#537);
+    `unavailable_at_requested_grain` means a margin could not be attributed
     this finely and is null outright, while a revenue at that same state is
     the part that COULD be placed with the rest in the answer's `context`;
     `unavailable_outside_retention_horizon` means there is no figure at all
     and `available_from` says when the series can start.
 
     A convenience returning `amount_micros` alone would let a caller publish
-    a floor as a total in one line, which is the defect the whole surface
-    exists to end — so there is no such convenience here, deliberately, and
-    this is the shape that replaces it. Branch on `.status` against
+    an incomplete sum as a total in one line, which is the defect the whole
+    surface exists to end — so there is no such convenience here,
+    deliberately, and this is the shape that replaces it. Branch on `.status` against
     `vocabulary.MEASURE_STATUS_*`; a zero in `amount_micros` is a MEASURED
     zero and where UBB has no figure the field is null.
 
@@ -198,6 +200,78 @@ def _check_stop_behavior(value) -> None:
         f"{STOP_BEHAVIOR_RAISE!r} (the default) raises UBBStopRequested when "
         f"the acknowledgement asks for a stop; {STOP_BEHAVIOR_RETURN!r} "
         f"returns the acknowledgement with `stop` set instead.")
+
+
+#: THE ONE DECIMAL GRAMMAR A RECORDED QUANTITY IS WRITTEN IN (#603) — the
+#: platform's `exact_decimals.ACCEPTED`, restated because this package cannot
+#: import the platform; the published `RecordUsageRequest` carries the same
+#: pattern on the wire. Base-10 ASCII digits, an optional leading `-`, an
+#: optional fractional part with a digit on each side of the point.
+_EXACT_DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
+
+
+def _canonical_quantity(name, value):
+    """One quantity as the canonical exact text this SDK sends (#603). The
+    wire admits any exact spelling and the server canonicalises it; the SDK
+    sends the canonical one so that what a caller logs is what UBB keeps.
+
+    An ``int`` is exact and goes as its digits. A ``Decimal`` goes as its
+    exact fixed-point digits — never through ``float`` and never through a
+    context — and must be finite. A ``str`` must already be an exact decimal
+    in the grammar above, and is canonicalised: no unnecessary leading zero,
+    no trailing fractional zero or point, ``0`` for every zero. A ``float``
+    is refused, because it has already rounded and no exact reading of it
+    exists; so is a ``bool``, which is not the number one. Every refusal is a
+    ``UBBValidationError``, before anything is sent."""
+    if isinstance(value, bool) or isinstance(value, float):
+        raise UBBValidationError(
+            f"measurements.{name} is {value!r}, a {type(value).__name__}. "
+            f"Nothing was sent. A quantity is sent as exact text: pass an "
+            f"int, a decimal.Decimal or a string such as '2.5' — a float has "
+            f"already rounded, so UBB will not read one.")
+    if isinstance(value, int):
+        # Through `Decimal`, never `str(value)`: CPython refuses to turn an
+        # int of more than 4,300 digits into text, and a quantity has no
+        # digit bound. `Decimal(int)` is exact and its fixed-point text has
+        # no such cap.
+        text = format(Decimal(value), "f")
+    elif isinstance(value, Decimal):
+        if not value.is_finite():
+            raise UBBValidationError(
+                f"measurements.{name} is {value!r}, which is not a finite "
+                f"number. Nothing was sent.")
+        text = format(value, "f")
+    elif isinstance(value, str):
+        text = value
+    else:
+        raise UBBValidationError(
+            f"measurements.{name} is {value!r}, a {type(value).__name__}. "
+            f"Nothing was sent. Pass an int, a decimal.Decimal or a string.")
+    if not _EXACT_DECIMAL.fullmatch(text):
+        raise UBBValidationError(
+            f"measurements.{name} is {value!r}, which is not an exact decimal "
+            f"as UBB reads one: base-10 digits with an optional leading '-' "
+            f"and an optional fractional part, a digit on each side of the "
+            f"point — no exponent, no '+', no spaces or separators. Nothing "
+            f"was sent.")
+    negative = text.startswith("-")
+    whole, _, fraction = text.removeprefix("-").partition(".")
+    whole = whole.lstrip("0") or "0"
+    fraction = fraction.rstrip("0")
+    written = f"{whole}.{fraction}" if fraction else whole
+    if written == "0":
+        return "0"
+    return f"-{written}" if negative else written
+
+
+def _wire_quantities(measurements):
+    """A measured bag with every value as the canonical text the recording
+    request publishes (#603) — or the refusal of the first that is not one.
+    ``None`` stays ``None``: the bag is optional."""
+    if measurements is None:
+        return None
+    return {name: _canonical_quantity(name, value)
+            for name, value in measurements.items()}
 
 
 logger = logging.getLogger("ubb.metering")
@@ -524,6 +598,16 @@ class MeteringClient:
         effective_at_in_future, effective_at_too_old, billing_period_closed).
         Omitted = server receive time.
 
+        ``measurements``: the measured quantities, keyed by the codes your
+        Event Type declares. EACH VALUE IS EXACT (#603): pass an ``int``, a
+        ``decimal.Decimal`` or a string such as ``"2.5"``, and it is sent as
+        its canonical exact text — the only form UBB records, so no digit is
+        lost on the way however long the number is. A quantity may be
+        negative, and zero is a recorded value. A ``float`` or a ``bool``
+        raises ``UBBValidationError`` before anything is sent: a float has
+        already rounded. Whether a fraction is allowed is the declaration's
+        ``value_type`` — an ``integer`` quantity sent as ``"2.5"`` is a 422.
+
         THE SUPPLIER'S REPORTED COST HAS TWO KEYWORDS, ONE PER SOURCE (#570),
         and both are COGS. ``provider_cost_micros`` is the supplier cost YOU
         supply directly; ``provider_response_cost_micros`` is the supplier
@@ -590,6 +674,9 @@ class MeteringClient:
         not heard of.
         """
         _check_stop_behavior(stop_behavior)
+        # Before the body is built, like the stop behaviour: a quantity UBB
+        # would refuse is refused here, and nothing is sent.
+        quantities = _wire_quantities(measurements)
         body: dict = {
             "customer_id": customer_id,
             "idempotency_key": idempotency_key,
@@ -604,8 +691,8 @@ class MeteringClient:
                 provider_response_cost_micros)
         if claimed_provider_cost_micros is not None:
             body["claimed_provider_cost_micros"] = claimed_provider_cost_micros
-        if measurements is not None:
-            body["measurements"] = measurements
+        if quantities is not None:
+            body["measurements"] = quantities
         if currency is not None:
             body["currency"] = currency
         if grouping_fields is not None:
@@ -683,6 +770,14 @@ class MeteringClient:
             recorded_at = ev.pop("recorded_at", None)
             if recorded_at is not None:
                 ev["effective_at"] = _serialize_recorded_at(recorded_at)
+            # Every quantity as canonical text (#603), refused here — naming
+            # the item — before any HTTP, as `record_usage` refuses it.
+            if ev.get("measurements") is not None:
+                try:
+                    ev["measurements"] = _wire_quantities(ev["measurements"])
+                except UBBValidationError as refused:
+                    raise UBBValidationError(
+                        f"events[{index}]: {refused}") from None
             wire_events.append(ev)
         r = self._request(*ops.API_V1_METERING_ENDPOINTS_RECORD_USAGE_BATCH,
                           json={"events": wire_events})
@@ -956,8 +1051,9 @@ class MeteringClient:
         ⚠ **EVERY MEASURE CARRIES ITS OWN STATE AND THE STATE IS PART OF THE
         ANSWER.** Read a figure with `measure_on(row, name)`, which hands
         back the measure rather than the number; a figure taken without its
-        `status` can be a bound published as a total. A row's grouped values
-        are POSITIONAL, aligned with the `group_by` the response echoes.
+        `status` can be an incomplete sum published as a total. A row's
+        grouped values are POSITIONAL, aligned with the `group_by` the
+        response echoes.
 
         `basis` picks how revenue you supplied is spread over the span it
         declares — `recorded` places each amount whole on the day its record
@@ -1121,9 +1217,9 @@ class MeteringClient:
     # stop-context ones — composes with all of it exactly as it did.
     #
     # ⚠ AND EACH MEASURE COMES BACK WITH ITS OWN STATE, which is the part no
-    # wrapper should paper over: a figure that is a bound says so beside itself,
-    # and a figure UBB cannot attribute at the grain asked for is absent rather
-    # than small. The ergonomic handle for the replacement is a later ticket's,
+    # wrapper should paper over: a figure that is incomplete says so beside
+    # itself, and a figure UBB cannot attribute at the grain asked for is absent
+    # rather than small. The ergonomic handle for the replacement is a later ticket's,
     # and until it lands the operation is reachable through the generated client
     # with a `generated_only` disposition recorded for it.
 

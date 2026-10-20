@@ -3,7 +3,7 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   sh verify_integration.sh EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:6779c5c2b184b32a1f1eb67fd320aba53b0b46abe85a217e5840452717b81b6f"
+# configuration_fingerprint = "sha256:c337673f06069d2df81e28c6230d5e9450b4884d7e7c1394533c6def29c04919"
 
 # Checks that jq can do what this script asks of it. It contacts nothing
 # and creates nothing.
@@ -68,11 +68,7 @@ ubb_checked() {
         | ($captured[0] | resolve($path)) as $resolved
         | check($resolved.found; $quantity; "resolves in the captured response"),
           ( select($resolved.found)
-            | (($resolved.at | type) == "number") as $number
-            | check($number; $quantity; "is a number"),
-              ( select($number)
-                | check($resolved.at != 0; $quantity; "is not zero (a constant zero is what a path to the wrong field reads)") ),
-              check(
+            | check(
                 ([ $paths | to_entries[] | select(.key != $quantity and .value == $path) ]
                  | length) == 0;
                 $quantity; "is read from a path no other quantity is read from") ) ] as $lines

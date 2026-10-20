@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 from django.utils import timezone
 
+from apps.platform.event_types.exact_decimals import exact_parts
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 # THE ALTITUDE VOCABULARY, BY REFERENCE FROM THE MODEL THAT OWNS THE
 # DECLARATION (#415). A work-level price line names the same two altitudes a
@@ -11,6 +12,7 @@ from apps.platform.grouping_fields.models import SLOT_CHOICES
 # reason, and ADR-001 permits a product reading the kernel.
 from apps.platform.work.models import TASK_TYPE_KIND_CHOICES
 from core.models import BaseModel
+from core.money import round_charge
 from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE, SET_ONCE
 from core.vocabulary import (
     DECLARATION_STATUS_DRAFT,
@@ -661,11 +663,29 @@ class Rate(BaseModel):
         The comparison goes through the registry's own constant rather than a
         literal, so the day a value moves again this stops compiling instead of
         silently taking the other branch.
+
+        **THE QUANTITY IS CANONICAL EXACT TEXT, AND THE ARITHMETIC IS EXACT
+        (#603, ADR-0020).** ``units`` is what the recording path stored —
+        signed, of any length, possibly fractional — and it is read as the
+        integers its own digits spell (``exact_parts``), never as a float or
+        through a ``Decimal`` context: ``quantity × rate ÷ unit_quantity`` is
+        ``sign × digits × rate ÷ (unit_quantity × 10^scale)``, and the one
+        division is R1's (``core.money.round_charge``: nearest micro, a tie
+        away from zero). For a whole non-negative quantity that is the
+        ``(units × rate + unit_quantity // 2) // unit_quantity`` every receipt
+        before #603 recorded. A string is not a number here: ``"12" × rate``
+        would be repetition and ``"0"`` is truthy, which is why the old
+        falsy default to zero is gone rather than kept.
+
+        **THE FIXED COMPONENT IS APPLIED AS DECLARED** (ruling 5): it is a
+        per-event amount, added whatever the quantity's sign, so a negative
+        quantity never turns it into a credit.
         """
         if self.rate_structure == RATE_STRUCTURE_FIXED_COMPONENT:
             return self.fixed_micros
-        units = units or 0
-        return (units * self.rate_per_unit_micros + self.unit_quantity // 2) // self.unit_quantity + self.fixed_micros
+        sign, digits, scale = exact_parts(units)
+        return round_charge(sign * digits * self.rate_per_unit_micros,
+                            self.unit_quantity * 10 ** scale) + self.fixed_micros
 
 
 class TaskPrice(BaseModel):

@@ -20,8 +20,9 @@ repo-root `CLAUDE.md`.
 
 ## Money is integer micros
 
-All money is `int` **micros** (one-millionth of a currency unit), stored and computed as micros with
-half-up rounding.
+All money is `int` **micros** (one-millionth of a currency unit), stored and computed as micros,
+rounded to the nearest micro with an exact half-micro tie away from zero (`core.money.round_charge`,
+R1 as #603 amended it — ADR-0020 §2).
 
 - Never use `float`/`Decimal` for money in models or arithmetic. A Stripe cent is `10_000` micros.
 - Money fields carry the `_micros` suffix (`balance_micros`, `provider_cost_micros`,

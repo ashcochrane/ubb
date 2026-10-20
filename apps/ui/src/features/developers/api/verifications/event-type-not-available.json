@@ -1,12 +1,12 @@
 {
   "blueprint": "blocked",
-  "configuration_fingerprint": "sha256:404e7ae64c0d2b181b7326df4b334f6572e061bc1150bbc34da513690f860bad",
+  "configuration_fingerprint": "sha256:520766fc0887a3846420c72700579d3797f5bf0d96fff2aa0ced84aff9fdc508",
   "request": {
     "records": [
       {
         "event_type": "draft.only",
         "measurements": {
-          "searches": 1
+          "searches": "1"
         }
       }
     ],

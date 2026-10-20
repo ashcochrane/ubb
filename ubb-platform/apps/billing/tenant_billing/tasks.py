@@ -127,7 +127,11 @@ def generate_tenant_platform_invoices():
     ).select_related("tenant")
 
     for period in periods:
-        if period.platform_fee_micros <= 0:
+        # A fee of nothing is invoiced by recording it so: there is nothing to
+        # send Stripe. Not a sign rule (#603 ruling 9) — the fee is a share of
+        # a usage total that sums known prices, and a known price is never
+        # negative.
+        if period.platform_fee_micros == 0:
             period.status = "invoiced"
             period.save(update_fields=["status", "updated_at"])
             continue

@@ -59,8 +59,11 @@ SUPPLIER_COST = AmountStatusPair(
 #: means priced at exactly nothing.
 #:
 #: ⚠ **THREE of the four `pricing_status` values carry a NULL amount and only
-#: ONE of them is counted.** `unknown` is information UBB does not have, and it
-#: is the reason a total over this column is a floor. `waived` is a charge
+#: ONE of them is counted.** `unknown` says no authoritative price is
+#: recorded — for want of input, or because the price UBB calculated is one the
+#: money rails cannot carry (`pricing_status_reason`, #603) — and it is the
+#: reason a total over this column is not complete: the total is the sum of
+#: the resolved prices, and the count says how many it leaves out. `waived` is a charge
 #: somebody decided not to pursue — a decision, reported as a loss (#147 §7.3),
 #: so the revenue really is zero and the total really is complete. And
 #: `not_applicable` is a subject that generates no customer revenue at this
@@ -106,6 +109,19 @@ RESOLVED_SUPPLIER_COST_MEANING = (
 )
 
 
+#: WHAT `pricing_status_reason` MEANS WHERE A SURFACE PUBLISHES IT (#603) —
+#: beside every `pricing_status` on the contract: the tenant routes, a
+#: product's own API module and the kernel's webhook payload, all of which may
+#: import `core.*`. One wording, for the reason the cost meaning above has one.
+PRICING_STATUS_REASON_MEANING = (
+    "Why `pricing_status` applies, where a specific published reason does; "
+    "null where none does. `negative_price_unsupported` beside `unknown`: UBB "
+    "calculated a negative customer price exactly and cannot authoritatively "
+    "carry it, so no price is recorded — an `unknown` price with a null "
+    "reason is one UBB had no input to resolve. Always present."
+)
+
+
 def supplier_cost_total_meaning(over, *, can_hold_a_no_cost_event=True):
     """What `provider_cost_micros` means where a schema publishes a TOTAL of
     it: the same canonical amount, summed over the events `over` names, with
@@ -127,6 +143,7 @@ def supplier_cost_total_meaning(over, *, can_hold_a_no_cost_event=True):
         f"The total supplier cost (COGS) UBB resolved, summed over {over}: "
         "each event's canonical `provider_cost_micros`, whichever valid "
         "source supplied it. An event whose supplier cost is unresolved adds "
-        "nothing and is counted in `unresolved_event_count` beside it, so the "
-        f"total is a floor{no_cost}."
+        "nothing and is counted in `unresolved_event_count` beside it: the "
+        "total is the sum of the resolved costs, and when that count is zero "
+        f"it is complete{no_cost}."
     )

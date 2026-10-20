@@ -94,11 +94,13 @@ from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
+from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 
 class MembershipIsTheStatusAndNotAFilterTest(
         ATenantWithUnresolvedPostingsMixin, TestCase):
@@ -115,11 +117,24 @@ class MembershipIsTheStatusAndNotAFilterTest(
         """
         predicate = never_resolved_condition()
 
-        self.assertEqual(
-            sorted(predicate.children),
-            sorted((pair.status_column, pair.unresolved_status)
-                   for pair in PAIRS))
+        # One term per pair, joined by OR. The price pair's term carries the
+        # one answer the normal resolver does not retry (#603): a price UBB
+        # CALCULATED as negative is `unknown` with a reason, and re-resolving
+        # it would compute the same number — configuration has not gone
+        # missing. Nothing else is excluded, from either term.
         self.assertEqual(predicate.connector, "OR")
+        cost, price = predicate.children
+        self.assertEqual(cost, (SUPPLIER_COST.status_column,
+                                SUPPLIER_COST.unresolved_status))
+        self.assertEqual(price.connector, "AND")
+        status, not_retried = price.children
+        self.assertEqual(status, (CUSTOMER_PRICE.status_column,
+                                  CUSTOMER_PRICE.unresolved_status))
+        self.assertTrue(not_retried.negated)
+        self.assertEqual(not_retried.children, [(
+            "pricing_status_reason",
+            PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED)])
+        self.assertEqual(PAIRS, (SUPPLIER_COST, CUSTOMER_PRICE))
 
     def test_a_posting_that_already_has_a_price_is_out_with_every_axis_removed(self):
         """AC 3, executably: remove every filter and the property survives.
@@ -381,7 +396,7 @@ class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
             ["detail"]["uncosted_quantities"], {})
         self.assertEqual(
             getattr(recoverable, Posting.RECEIPT_COLUMN)["costing"]
-            ["detail"]["uncosted_quantities"], {SECOND_QUANTITY: ONE_CALL})
+            ["detail"]["uncosted_quantities"], {SECOND_QUANTITY: str(ONE_CALL)})
 
     def test_a_run_examines_it_completes_nothing_and_says_so(self):
         self.the_tenant_says_to_calculate_it_after_all()

@@ -115,8 +115,8 @@ class TestTheComputeSpineDecidesTheStatus:
         _cost_rate(tenant, measurement_key="prompt_tokens")
 
         costing = _price(tenant, _customer(tenant),
-                         measurements={"prompt_tokens": 1_000,
-                                       "image_pixels": 40})
+                         measurements={"prompt_tokens": "1000",
+                                       "image_pixels": "40"})
 
         assert costing.costing_status == COSTING_STATUS_UNRESOLVED
         assert (costing.pricing_receipt["costing"]["detail"]["uncosted_measurement_keys"]
@@ -126,17 +126,17 @@ class TestTheComputeSpineDecidesTheStatus:
         """A partly resolved cost is not a resolved cost.
 
         The rated half is real and stays on the receipt — that is where the
-        floor lives — but storing it as *the* supplier cost is exactly the
-        ambiguity the nullable column was introduced to remove: a number that
-        cannot be told apart from a complete one.
+        resolved part lives — but storing it as *the* supplier cost is exactly
+        the ambiguity the nullable column was introduced to remove: a number
+        that cannot be told apart from a complete one.
         """
         tenant = _tenant()
         _declaration(tenant, quantities=("prompt_tokens", "image_pixels"))
         _cost_rate(tenant, measurement_key="prompt_tokens")
 
         costing = _price(tenant, _customer(tenant),
-                         measurements={"prompt_tokens": 1_000,
-                                       "image_pixels": 40})
+                         measurements={"prompt_tokens": "1000",
+                                       "image_pixels": "40"})
 
         assert costing.provider_cost_micros is None
         # Over the WHOLE line list rather than a cost-only filter: no price rate
@@ -298,8 +298,8 @@ class TestAMarginOverACostUbbNeverLearnedIsWaived:
         _cost_rate(tenant, measurement_key="prompt_tokens")
 
         costing = _price(tenant, _customer(tenant),
-                         measurements={"prompt_tokens": 1_000,
-                                       "image_pixels": 40})
+                         measurements={"prompt_tokens": "1000",
+                                       "image_pixels": "40"})
 
         assert costing.provider_cost_micros is None
         assert costing.billed_cost_micros is None
@@ -437,7 +437,7 @@ class TestTheRecordingCallStopsRefusing:
         result = UsageService.record_usage(
             tenant, customer, "idem-1",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000})
+            measurements={"prompt_tokens": "1000"})
 
         posting = Posting.objects.get(id=result["event_id"])
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
@@ -453,7 +453,7 @@ class TestTheRecordingCallStopsRefusing:
         result = UsageService.record_usage(
             tenant, customer, "idem-2",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000})
+            measurements={"prompt_tokens": "1000"})
 
         assert result["costing_status"] == COSTING_STATUS_UNRESOLVED
         assert result["provider_cost_micros"] is None
@@ -495,7 +495,7 @@ class TestTheRecordingCallStopsRefusing:
         result = UsageService.record_usage(
             tenant, customer, "idem-5",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000, "reasoning_tokens": 40})
+            measurements={"prompt_tokens": "1000", "reasoning_tokens": "40"})
 
         posting = Posting.objects.get(id=result["event_id"])
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
@@ -512,7 +512,7 @@ class TestTheRecordingCallStopsRefusing:
         control = UsageService.record_usage(
             tenant, customer, "idem-6",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000})
+            measurements={"prompt_tokens": "1000"})
 
         assert control["costing_status"] == COSTING_STATUS_KNOWN
         assert control["provider_cost_micros"] == 5_000
@@ -524,19 +524,19 @@ class TestTheRecordingCallStopsRefusing:
         first = UsageService.record_usage(
             tenant, customer, "idem-3",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000})
+            measurements={"prompt_tokens": "1000"})
 
         replay = UsageService.record_usage(
             tenant, customer, "idem-3",
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000})
+            measurements={"prompt_tokens": "1000"})
 
         assert replay["event_id"] == first["event_id"]
         assert replay["costing_status"] == COSTING_STATUS_UNRESOLVED
         assert replay["provider_cost_micros"] is None
 
     def test_a_task_total_excludes_an_unresolved_cost_rather_than_zeroing_it(self):
-        """The unit total accumulates the KNOWN part and is a floor.
+        """The unit total accumulates the KNOWN part: the sum of what resolved.
 
         WHAT THIS CAN AND CANNOT SHOW, stated because the difference is not
         obvious: it catches an accumulator that adds the `None` this ticket now
@@ -558,7 +558,7 @@ class TestTheRecordingCallStopsRefusing:
         UsageService.record_usage(
             tenant, customer, "idem-4", task_id=task.id,
             event_type=EVENT_TYPE_KEY, provider="openai",
-            measurements={"prompt_tokens": 1_000, "image_pixels": 40})
+            measurements={"prompt_tokens": "1000", "image_pixels": "40"})
 
         task.refresh_from_db()
         assert task.total_provider_cost_micros == 0

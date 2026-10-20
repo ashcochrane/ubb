@@ -405,6 +405,8 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
         "basis": chosen,
         "window": {"start": start.isoformat(), "end": end.isoformat()},
         "pricing_status": PRICING_STATUS_KNOWN if records else PRICING_STATUS_UNKNOWN,
+        # No published reason names either answer at this scope (#603).
+        "pricing_status_reason": None,
         "totals": [{"currency": currency, "amount_micros": per_currency[currency]}
                    for currency in sorted(per_currency)],
         "records": rows,

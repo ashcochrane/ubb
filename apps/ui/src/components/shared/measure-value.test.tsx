@@ -68,16 +68,16 @@ describe("known — renders as the amount", () => {
   });
 });
 
-describe("incomplete — renders as a floor with its count, never as a total", () => {
+describe("incomplete — renders as the sum of what resolved, marked, with its count; never as a total", () => {
   const measures = incompleteMeasures({
     cost: incompleteTotal(4_000_000, 3),
     revenue: completePriceTotal(9_000_000),
     events: 10,
   });
 
-  it("draws the cost as a floor, and names the count that makes it one", () => {
+  it("draws the cost marked incomplete, and names the count it leaves out", () => {
     const node = drawn(measures, SUPPLIER_COGS);
-    expect(node.textContent).toBe("at least $4.00");
+    expect(node.textContent).toBe("$4.00 (Incomplete)");
     expect(node.querySelector("[title]")?.getAttribute("title")).toMatch(/^3 events have/);
   });
 
@@ -88,14 +88,14 @@ describe("incomplete — renders as a floor with its count, never as a total", (
     expect(drawn(measures, CUSTOMER_REVENUE).textContent).toBe("$9.00");
     const margin = drawn(measures, GROSS_MARGIN);
     expect(margin.querySelector("[data-measure-state]")?.getAttribute("data-measure-state")).toBe("incomplete");
-    expect(margin.textContent).toBe("at most $5.00");
+    expect(margin.textContent).toBe("$5.00 (Incomplete)");
   });
 });
 
 describe("incomplete with no revenue resolved — no amount, and a hover naming no total and no direction (#537)", () => {
   // #153 §17.1's "cost £2,400, revenue £0, margin −£2,400", as the query now
   // sends it: the revenue and the margin both `incomplete`, neither with an
-  // amount. It used to draw as "at least -$2,400.00".
+  // amount. It used to draw as "-$2,400.00 (Incomplete)".
   const measures = measuresWithNoRevenueResolved({
     cost: completeTotal(2_400_000_000),
     unpriced_event_count: 5,
@@ -169,8 +169,8 @@ describe("revenue supplied over unpriced usage — a plain figure (#537)", () =>
   });
 
   // The count rides beside a KNOWN revenue, so it is not what the margin is
-  // short by: an uncosted event bounds the margin from above, and only that.
-  it("bounds the margin from above alone where an event is uncosted", () => {
+  // short by: only an uncosted event leaves the margin incomplete.
+  it("marks the margin incomplete by the uncosted event alone, never by the unpriced count", () => {
     const margin = drawn(
       revenueSuppliedOverUnpricedUsage({
         cost: incompleteTotal(400_000, 1),
@@ -180,7 +180,7 @@ describe("revenue supplied over unpriced usage — a plain figure (#537)", () =>
       }),
       GROSS_MARGIN,
     );
-    expect(margin.textContent).toBe("at most $2.70");
+    expect(margin.textContent).toBe("$2.70 (Incomplete)");
     const hover = margin.querySelector("[title]")?.getAttribute("title") ?? "";
     expect(hover).toMatch(/^1 event has a supplier cost/);
     expect(hover).not.toMatch(/customer price/);
@@ -204,7 +204,7 @@ describe("unavailable at the requested grain — the state, with the coarser fig
   });
 
   // ⚠ The wire carries the PLACED part of the revenue beside this state. It
-  // is not the revenue, and drawing it would be a floor drawn as a total.
+  // is not the revenue, and drawing it would be a part drawn as a total.
   it("never draws a currency amount for the revenue or the margin", () => {
     for (const measure of [CUSTOMER_REVENUE, GROSS_MARGIN] as const) {
       const node = drawn(composed.measures, measure);

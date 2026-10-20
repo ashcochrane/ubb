@@ -358,10 +358,14 @@ class Server:
         elif path == "/api/v1/metering/usage":
             answer = {"event_id": f"event_{len(self.requests)}",
                       "suspended": False, "costing_status": "known",
-                      "pricing_status": "known", "stop": False,
+                      "pricing_status": "known",
+                      # Required and nullable beside the status (#603).
+                      "pricing_status_reason": None, "stop": False,
                       # Required keys, null where nothing stopped (#569).
                       "trigger_source": None, "stop_bound_micros": None,
                       "stop_measured_micros": None,
+                      # The quantities as recorded: exact text (#603).
+                      "measurements": body.get("measurements"),
                       "task_id": body.get("task_id")}
         elif path.endswith("/close"):
             answer = {

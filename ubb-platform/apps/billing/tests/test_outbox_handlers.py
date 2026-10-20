@@ -28,6 +28,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -57,6 +58,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=event_id,
@@ -84,6 +86,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -113,6 +116,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -144,6 +148,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=event_uuid,
@@ -177,6 +182,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -242,6 +248,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -274,6 +281,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -302,6 +310,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         with patch("apps.billing.gating.services.customer_spend_pool_service.CustomerSpendPoolService.record_usage_spend") as mock_rec:
@@ -323,6 +332,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         handle_usage_recorded_billing(str(event.id), event.payload)
@@ -338,6 +348,7 @@ class TestBillingOutboxHandler:
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
         ev_id = str(uuid.uuid4())
         payload = asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id, customer_id=c.id, event_id=ev_id,
             billing_owner_id=c.id, cost_micros=1_500_000))
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
@@ -354,6 +365,7 @@ class TestBillingOutboxHandler:
         w = Wallet.objects.create(customer=c, balance_micros=1_000_000)
         ev_id = str(uuid.uuid4())
         payload = asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id, customer_id=c.id, event_id=ev_id,
             billing_owner_id=c.id, cost_micros=1_500_000))
         e = OutboxEvent.objects.create(event_type="usage.recorded", tenant_id=tenant.id, payload=payload)
@@ -378,6 +390,7 @@ class TestBillingOutboxHandler:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded", tenant_id=tenant.id,
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=seat.id,
                 event_id=str(uuid.uuid4()), cost_micros=2_000_000)))
         handle_usage_recorded_billing(str(event.id), event.payload)
@@ -415,6 +428,7 @@ class TestBillingHandlerEmitsBalanceLow:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -456,6 +470,7 @@ class TestBillingHandlerEmitsBalanceLow:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -486,6 +501,7 @@ class TestBillingHandlerEmitsBalanceLow:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -522,6 +538,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -559,6 +576,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 event_id=str(uuid.uuid4()),
@@ -572,3 +590,70 @@ class TestBillingHandlerEmitsCustomerSuspended:
         assert not OutboxEvent.objects.filter(
             event_type="customer.suspended"
         ).exists()
+
+
+@pytest.mark.django_db
+class TestAKnownZeroPriceIsAPrice:
+    """#603 ruling 9: the handler's `> 0` gate is gone. A known zero is
+    counted in the period, and moves no money because there is none to move;
+    an unpriced posting carries nothing. A known price is never negative — a
+    negative one is `unknown` with its reason — so neither branch is a sign
+    rule."""
+
+    def _tenant_and_wallet(self):
+        tenant = Tenant.objects.create(
+            name="Zero", products=["metering", "billing"],
+            stripe_connected_account_id="acct_test")
+        customer = Customer.objects.create(tenant=tenant, external_id="z1")
+        wallet = Wallet.objects.create(customer=customer)
+        wallet.balance_micros = 10_000_000
+        wallet.save(update_fields=["balance_micros"])
+        return tenant, customer, wallet
+
+    def _handle(self, tenant, customer, **amounts):
+        from apps.billing.handlers import handle_usage_recorded_billing
+        event = OutboxEvent.objects.create(
+            event_type="usage.recorded",
+            payload=asdict(UsageRecorded(
+                pricing_status_reason=None, tenant_id=tenant.id,
+                customer_id=customer.id, event_id=str(uuid.uuid4()),
+                **amounts)),
+            tenant_id=tenant.id)
+        handle_usage_recorded_billing(str(event.id), event.payload)
+
+    def test_a_zero_price_is_counted_in_the_period_and_draws_nothing_down(self):
+        tenant, customer, wallet = self._tenant_and_wallet()
+
+        self._handle(tenant, customer, cost_micros=0, billed_cost_micros=0)
+
+        period = TenantBillingPeriod.objects.get(tenant=tenant)
+        assert period.event_count == 1
+        assert period.total_usage_cost_micros == 0
+        wallet.refresh_from_db()
+        assert wallet.balance_micros == 10_000_000
+        assert not WalletTransaction.objects.filter(wallet=wallet).exists()
+
+    def test_an_unpriced_posting_carries_nothing_and_raises_nothing(self):
+        tenant, customer, wallet = self._tenant_and_wallet()
+
+        self._handle(tenant, customer, cost_micros=None,
+                     billed_cost_micros=None, pricing_status="unknown")
+
+        assert not TenantBillingPeriod.objects.filter(tenant=tenant).exists()
+        assert not WalletTransaction.objects.filter(wallet=wallet).exists()
+
+    def test_a_negative_known_price_is_refused_by_name_and_moves_nothing(self):
+        """UBB never writes one, and the rule that would have dropped it
+        silently is gone; crediting the wallet would be negative money on the
+        rails (ADR-0020 §5). So the handler names it, and nothing moves."""
+        from core.exceptions import NegativeKnownPriceRefused
+        tenant, customer, wallet = self._tenant_and_wallet()
+
+        with pytest.raises(NegativeKnownPriceRefused, match="below zero"):
+            self._handle(tenant, customer, cost_micros=-5_000,
+                         billed_cost_micros=-5_000)
+
+        wallet.refresh_from_db()
+        assert wallet.balance_micros == 10_000_000
+        assert not WalletTransaction.objects.filter(wallet=wallet).exists()
+        assert not TenantBillingPeriod.objects.filter(tenant=tenant).exists()

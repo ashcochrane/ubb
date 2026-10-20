@@ -53,17 +53,21 @@ describe("known — the amount", () => {
   });
 });
 
-describe("incomplete — a bound with its count, never a total", () => {
-  it("renders an incomplete cost as a floor, with its count", () => {
+// ⚠ #603 (ADR-0020 §6) RETIRED THE BOUND: an amount left out may be negative,
+// so an incomplete figure is the sum of what resolved — marked, with its count,
+// and promising no direction, on every measure and on the margin's share.
+describe("incomplete — the sum of what resolved, marked, with its count; never a total and never a bound", () => {
+  it("renders an incomplete cost marked, with its count", () => {
     const reading = readMeasure(
       figure({ status: "incomplete", value: 4_200_000, unresolved_event_count: 3 }),
       "usd",
     );
-    expect(readingText(reading)).toBe("at least $4.20");
-    expect(reading.kind === "bound" && reading.note).toMatch(/^3 events have a supplier cost/);
+    expect(readingText(reading)).toBe("$4.20 (Incomplete)");
+    expect(reading.kind === "partial" && reading.note).toMatch(/^3 events have a supplier cost/);
+    expect(reading.kind === "partial" && reading.note).not.toMatch(/higher|lower|at least|floor/);
   });
 
-  it("renders an incomplete revenue as a floor, with the unpriced count", () => {
+  it("renders an incomplete revenue marked, with the unpriced count", () => {
     const reading = readMeasure(
       figure({
         measure: CUSTOMER_REVENUE,
@@ -73,12 +77,12 @@ describe("incomplete — a bound with its count, never a total", () => {
       }),
       "usd",
     );
-    expect(readingText(reading)).toBe("at least $9.00");
-    expect(reading.kind === "bound" && reading.note).toMatch(/^2 events have a customer price/);
+    expect(readingText(reading)).toBe("$9.00 (Incomplete)");
+    expect(reading.kind === "partial" && reading.note).toMatch(/^2 events have a customer price/);
   });
 
-  // A floor of nothing printed as "at least $0.00" reads as "free".
-  it("states no amount for a floor of zero", () => {
+  // A resolved sum of nothing printed as "$0.00" reads as "free".
+  it("states no amount for a resolved sum of zero", () => {
     expect(
       text(figure({ status: "incomplete", value: 0, unresolved_event_count: 1 })),
     ).toBe("—");
@@ -95,54 +99,50 @@ describe("incomplete — a bound with its count, never a total", () => {
         "usd",
       );
       expect(readingText(reading)).toBe("—");
-      const note = reading.kind === "bound" ? reading.note : null;
+      const note = reading.kind === "partial" ? reading.note : null;
       expect(note).toMatch(/^No (revenue|margin) can be stated/);
       expect(note).toContain("2 events have a customer price UBB could not resolve");
       expect(note).not.toMatch(/total|higher|lower/);
     },
   );
 
-  // The guard on the case above: a revenue floor of ZERO is an amount — a free
-  // service beside an unpriced one — and keeps the note that says what the
-  // total left out.
-  it("keeps the left-out note where a zero floor IS an amount", () => {
+  // The guard on the case above: a resolved revenue of ZERO is an amount — a
+  // free service beside an unpriced one — and keeps the note that says what
+  // the total left out.
+  it("keeps the left-out note where a resolved zero IS an amount", () => {
     const reading = readMeasure(
       figure({ measure: CUSTOMER_REVENUE, status: "incomplete", value: 0, unpriced_event_count: 1 }),
       "usd",
     );
     expect(readingText(reading)).toBe("—");
-    expect(reading.kind === "bound" && reading.note).toMatch(/left out of this total/);
+    expect(reading.kind === "partial" && reading.note).toMatch(/not included in this total/);
   });
 
   // ⚠ §15: the cost side incomplete makes the margin incomplete whatever the
-  // revenue side says, and an uncosted event can only LOWER it.
-  it("bounds a margin from above where only the cost side is short", () => {
-    expect(
-      text(
-        figure({
-          measure: GROSS_MARGIN,
-          status: "incomplete",
-          value: 5_000_000,
-          unresolved_event_count: 3,
-        }),
-      ),
-    ).toBe("at most $5.00");
+  // revenue side says. Whichever side is short, the margin is marked the same
+  // way and its sentence names the short side — never which way the truth lies.
+  it.each([
+    ["only the cost side", { unresolved_event_count: 3 }, /supplier cost/],
+    ["only the revenue side", { unpriced_event_count: 2 }, /customer price/],
+  ] as const)("marks a margin where %s is short, and names that side", (_side, counts, side) => {
+    const reading = readMeasure(
+      figure({ measure: GROSS_MARGIN, status: "incomplete", value: 5_000_000, ...counts }),
+      "usd",
+    );
+    expect(readingText(reading)).toBe("$5.00 (Incomplete)");
+    const note = reading.kind === "partial" ? reading.note : null;
+    expect(note).toMatch(side);
+    expect(note).toMatch(/not included in this margin/);
+    expect(note).not.toMatch(/higher|lower/);
   });
 
-  it("bounds a margin from below where only the revenue side is short", () => {
+  it("keeps a margin's resolved zero as a figure, marked", () => {
     expect(
-      text(
-        figure({
-          measure: GROSS_MARGIN,
-          status: "incomplete",
-          value: 5_000_000,
-          unpriced_event_count: 2,
-        }),
-      ),
-    ).toBe("at least $5.00");
+      text(figure({ measure: GROSS_MARGIN, status: "incomplete", value: 0, unpriced_event_count: 1 })),
+    ).toBe("$0.00 (Incomplete)");
   });
 
-  it("bounds a margin in neither direction where both are, and says so", () => {
+  it("marks a margin where both sides are short, the same way", () => {
     const shown = text(
       figure({
         measure: GROSS_MARGIN,
@@ -234,7 +234,7 @@ describe("readShare — the margin as a share of revenue", () => {
     expect(readingText(readShare(margin({ value: 0 }), revenue({ value: 0 })))).toBe("—");
   });
 
-  it("bounds the share the way the margin is bounded", () => {
+  it("marks the share the way the margin is marked", () => {
     expect(
       readingText(
         readShare(
@@ -242,7 +242,7 @@ describe("readShare — the margin as a share of revenue", () => {
           revenue(),
         ),
       ),
-    ).toBe("at most 25%");
+    ).toBe("25% (Incomplete)");
   });
 });
 

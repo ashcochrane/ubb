@@ -30,8 +30,8 @@ and its source still in its hand at the point the record is built.
 
 **AND A COST UBB HAS NOT RESOLVED NO LONGER REACHES HERE AT ALL.** The applier
 carried a refusal for it (#328) because a markup is not a total: there is no
-"at least" to state about a single price, so the honest answers were a real
-basis or an error. The resolver now asks the question one step earlier and in
+partial answer to state about a single price, so the honest answers were a
+real basis or an error. The resolver now asks the question one stage earlier and in
 the vocabulary the answer belongs in — a margin over a cost UBB never learned is
 a `waived` charge — so the case is decided before a percentage is even resolved,
 and the refusal has no caller left to protect.
@@ -45,6 +45,7 @@ has NO rung: resolution answers `unknown` rather than zero.
 from dataclasses import dataclass
 
 from apps.metering.pricing.models import TenantDefaultMarkup
+from core.money import round_charge
 
 #: WHICH RUNG SUPPLIED A PERCENTAGE — the value the receipt's provenance names.
 #:
@@ -91,8 +92,12 @@ class ResolvedMarkup:
     def calculate_markup_micros(self, provider_cost_micros: int) -> int:
         """The margin itself, over a basis this rung has been given.
 
-        Rounding is half-up on the micro, unchanged from the record this rung
-        replaced — changing it would silently re-price every event.
+        Rounded by R1 (``core.money.round_charge``): the nearest micro, an
+        exact tie away from zero. For every basis that is not negative that
+        is the ``(basis × pct + 50,000,000) // 100,000,000`` this rung always
+        computed, so no price recorded before #603 moves; a basis can be
+        negative since a known supplier cost can (#603, ADR-0020), and there
+        the tie mirrors its positive twin rather than drifting toward +∞.
 
         ⚠ **THERE IS NO SECOND TERM (#147 §2, #369).** A flat per-event addend
         used to be added here, because the customer-override record and the plan
@@ -100,9 +105,8 @@ class ResolvedMarkup:
         margin over cost does not also carry an addend, a floor or a cap: that
         is what makes a resolved price explicable by naming one thing.
         """
-        return (
-            provider_cost_micros * self.markup_micro_percent + 50_000_000
-        ) // 100_000_000
+        return round_charge(provider_cost_micros * self.markup_micro_percent,
+                            100_000_000)
 
     def applied_to(self, provider_cost_micros: int) -> int:
         """The customer price this rung answers over a basis it is given.

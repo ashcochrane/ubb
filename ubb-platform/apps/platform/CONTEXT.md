@@ -192,6 +192,12 @@ JSON bag and **a misspelled quantity was silently free**: it hit a `continue`, c
 and told nobody. Only a declared quantity may participate in monetary calculation. Declarations are
 **Event-Type-local** — the same code on two Event Types is two independent records that happen to
 share a spelling, which is the correctness boundary, not a duplication to be cleaned up.
+**A recorded quantity is exact text** (#603, ADR-0020 §1), never a JSON number: it travels in the
+constant value's ACCEPTED grammar, UBB canonicalises it on admission, and `PostingMeasurement`, the
+acknowledgement, the detail read and the receipt hold and answer the CANONICAL text — no binary
+float on the way. `integer` requires a whole value and `decimal` permits a fraction;
+a negative quantity is valid and zero is a real known value. Costing reads it exactly, an exact
+half-micro tie goes away from zero, and an amount past the money columns is refused by name.
 (`apps/platform/event_types/models.py:Measurement`)
 _Avoid_: giving this record an amount or a currency — a reported supplier cost is money with a
 currency and is declared as a *sibling* of these, not as one of them.
@@ -203,11 +209,13 @@ so is one on any other kind — there is no unfinished constant to come back to.
 decimal, written as text in one canonical form for both value types: `value_type` says what kind of
 number it is (a whole count, or one that may carry a fraction), so the text is never evidence that
 the value is a string. It may be negative, nothing rounds it, and no precision limit governs it.
-Publication pins it like the rest of the declaration.
+Publication pins it like the rest of the declaration. Since #584 the Code Builder resolves it
+`platform_known` and configured, and each generated target writes it in its module as a typed exact
+literal — an `int` or a `Decimal("…")` in Python, the canonical text in shell — and sends it on
+every call; what is recorded is exactly what was declared (ADR-0020 §8).
 (`apps/platform/event_types/models.py:Measurement`; `apps/platform/event_types/exact_decimals.py`)
 _Avoid_: reading it as an amount or a cost — it is a quantity in the Measurement's own unit; and
-reading a blocked Code Builder call over it as a fault in the declaration — the declaration is
-complete, and only this Code Builder version cannot yet generate code that uses it.
+sampling it in Verify — Verify sends it as generated code does and refuses a sample for it.
 
 **Reported-cost mapping**:
 Where a `reported` Event Type's supplier cost comes from — a sibling of its Measurements, because it
@@ -520,18 +528,23 @@ retry field, the pagination parameter, and the stop-context array's entry key �
 
 **Ceiling status (`ceiling_status`, the assessment)**:
 What the ceiling concluded for one unit of work, **derived on the row and never stored** (#452,
-ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running known supplier
-total and the unresolved-event count — through the same predicate the crossing uses. One of the
-registry's four: `not_applicable` (no ceiling applies — nothing was evaluated, so nothing was
-concluded), `ceiling_reached` (the **known** total is at or above the line, whatever remains
-unresolved — known-over always fires and no later resolution softens it), `indeterminate` (known
-below, at least one applicable cost unresolved — UBB tried and cannot tell; never stops anything,
-never a breach), `within_ceiling` (everything resolved and below). Travels on the recording
-acknowledgement (null where no unit is named) and the unit read, beside `ceiling_used_percentage`
-and `ceiling_remaining_micros` — information over the **known** total, null under `not_applicable`;
-under `indeterminate` the percentage is a floor and the headroom a ceiling, and the status is what
-says so — the three travel as one value (`apps/platform/work/models.py:Task.ceiling_assessment`,
-`core/crossing.py::ceiling_assessment`).
+ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running resolved supplier
+total and the unresolved-event count. One of the registry's four: `not_applicable` (no ceiling
+applies — nothing was evaluated, so nothing was concluded), `indeterminate` (an applicable cost is
+unresolved, **whatever the resolved total** — UBB tried and cannot tell; an omitted amount may be
+negative, so a resolved subtotal bounds nothing in either direction), `ceiling_reached` (everything
+resolved, at or above the line), `within_ceiling` (everything resolved and below). Since #603
+(ADR-0020) it is the **assessment** only: the **enforcement trigger** is a separate question — the
+stop fires when the resolved COGS total reaches the ceiling, even while the assessment is
+`indeterminate`, and stays terminal; it is never proof of where the eventual total lands, and a
+later resolution (a negative one included) may move the assessment, even back below the line,
+without reversing the stop. Travels on the recording acknowledgement (null where no unit is named)
+and the unit read, beside `ceiling_used_percentage` and `ceiling_remaining_micros` — information
+over the resolved total, null under `not_applicable` and under `indeterminate` — the three travel
+as one value (`apps/platform/work/models.py:Task.ceiling_assessment`,
+`core/crossing.py::ceiling_assessment`). A late resolution reaches the unit's total and count
+through the settlement door (`TaskService.take_up_a_late_resolution`), so the assessment follows
+recovery.
 _Avoid_: storing it, or re-deriving it anywhere but the row; a warning threshold or an amber state
 beside it — enforcement is binary and this is information (#150 §9, §12).
 

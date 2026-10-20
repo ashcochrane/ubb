@@ -356,7 +356,7 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
         receipt = PricingService._compute(
             subject=a_usage_event_subject(), currency="usd",
             effective_at="2026-01-01T00:00:00+00:00",
-            measurements={"input_tokens": 3},
+            measurements={"input_tokens": "3"},
             caller_provider_cost=None,
             reported_cost_source_kind=None,
             # The ordinary regime and the ordinary posture (#418): this case is

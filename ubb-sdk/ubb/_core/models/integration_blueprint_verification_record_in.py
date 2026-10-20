@@ -28,7 +28,9 @@ class IntegrationBlueprintVerificationRecordIn:
     the sample values a tenant's code would send for it.
 
     `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
-    are the same fields, with the same rules, as on a recording.
+    are the same fields, with the same rules, as on a recording — except that
+    a `constant` quantity takes no sample: the run sends its declared value,
+    as generated code does, and refuses a sample for one.
     `subtask_type` records this event under a Subtask of that kind, which must
     be one the Blueprint selected; left out, the event is recorded under the
     Task itself.
@@ -40,7 +42,16 @@ class IntegrationBlueprintVerificationRecordIn:
                 reading of a response: the read itself is the generated files' to test, by running them. Required for such an
                 Event Type and refused for any other, whose currency is the Blueprint's own or the tenant's. Recorded as the
                 event's currency under UBB's one rule, which admits the tenant's currency and refuses any other.
-            measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset):
+            measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset): Each quantity is an exact decimal
+                written as a STRING — `"12"`, `"2.5"`, `"-3"`, `"0"` — never a JSON number, which most clients have already
+                carried as a binary float. Base-10 digits with an optional leading `-` and an optional fractional part, a digit
+                on each side of the point: no exponent, no `+`, and no spaces, separators or locale formatting. No precision or
+                scale is imposed. A quantity may be negative, and zero is a recorded value. Where the event's Event Type
+                declares the key, its `value_type` decides whether a fraction is allowed (`integer` refuses one); a key no
+                publication declares is accepted whatever its fraction. Any such spelling may be sent — `"01.50"` is admitted.
+                UBB canonicalises an admitted value before persistence, and every stored value, receipt and read answers the
+                canonical text: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of
+                zero (`"01.50"` is `"1.5"`). No binary floating-point conversion occurs.
             provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
                 caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
                 reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A

@@ -20,10 +20,19 @@ T = TypeVar("T", bound="IntegrationBlueprintVerificationRecordInMeasurements")
 
 @_attrs_define
 class IntegrationBlueprintVerificationRecordInMeasurements:
-    """ 
+    """ Each quantity is an exact decimal written as a STRING — `"12"`, `"2.5"`, `"-3"`, `"0"` — never a JSON number, which
+    most clients have already carried as a binary float. Base-10 digits with an optional leading `-` and an optional
+    fractional part, a digit on each side of the point: no exponent, no `+`, and no spaces, separators or locale
+    formatting. No precision or scale is imposed. A quantity may be negative, and zero is a recorded value. Where the
+    event's Event Type declares the key, its `value_type` decides whether a fraction is allowed (`integer` refuses one);
+    a key no publication declares is accepted whatever its fraction. Any such spelling may be sent — `"01.50"` is
+    admitted. UBB canonicalises an admitted value before persistence, and every stored value, receipt and read answers
+    the canonical text: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of
+    zero (`"01.50"` is `"1.5"`). No binary floating-point conversion occurs.
+
      """
 
-    additional_properties: dict[str, int] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -52,10 +61,10 @@ class IntegrationBlueprintVerificationRecordInMeasurements:
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> int:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: int) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

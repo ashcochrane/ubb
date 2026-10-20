@@ -10,13 +10,12 @@
 // other home anywhere.
 //
 // THE AGGREGATE IS READ THE WAY EACH ROW IS READ. The route computes the
-// average per unit and then across every unit (#150 §9.3), and an
-// `indeterminate` unit contributes its own floor, so the average utilisation
-// is itself a floor and the average headroom a most wherever the
-// indeterminate count is not zero — "at least" / "at most", the same words
-// `@/lib/ceiling` puts on one row, and never "under". Every average is null
-// where no unit contributes, and a null renders as an absence, never as zero
-// (#155 §9.2).
+// average per unit and then across every unit (#150 §9.3). An
+// `indeterminate` unit has no figures — a cost still unresolved may move its
+// total either way (#603, ADR-0020 §7) — so it contributes nothing to either
+// average, and the indeterminate count beside them says how much work the
+// averages leave out. Every average is null where no unit contributes, and a
+// null renders as an absence, never as zero (#155 §9.2).
 //
 // THE POOL'S PAIR IS READ THROUGH `@/lib/spend-pool`. Its readers and the
 // sentence keeping it apart from the wallet's affordability were written
@@ -25,7 +24,7 @@
 // the Ceiling's alone.
 
 import { readCeiling, type CeilingReading } from "@/lib/ceiling";
-import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
+import { formatMicros } from "@/lib/format";
 import { readTotal, type TotalReading } from "@/lib/total-reading";
 
 import type { CeilingUtilisationRow, UtilisationAndHeadroom } from "../api/types";
@@ -62,14 +61,15 @@ export function containedUnit(row: CeilingUtilisationRow): boolean {
 // ---------------------------------------------------------------------------
 // The aggregate
 
-/** Whether any unit the aggregate is over was indeterminate — the fact that makes its averages bounds. */
+/** Whether any unit of work was indeterminate — the work both averages leave out. */
 export function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
   return report.indeterminate_count > 0;
 }
 
 /**
- * The average final utilisation, or nothing where no unit had a ceiling.
- * A floor wherever an indeterminate unit contributed its own floor to it.
+ * The average final utilisation, or nothing where no unit had a ceiling it
+ * could be assessed against. Over the assessed work only: an indeterminate
+ * unit has no figure to average.
  *
  * The four nullable aggregate fields are optional on the generated type —
  * the schema does not list them as required — so each is read with `==
@@ -77,16 +77,16 @@ export function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
  */
 export function describeAverageUtilisation(report: UtilisationAndHeadroom): string | null {
   if (report.average_final_utilisation_percentage == null) return null;
-  return shareAtLeast(report.average_final_utilisation_percentage, anyIndeterminate(report));
+  return `${report.average_final_utilisation_percentage}%`;
 }
 
-/** The average unused headroom, or nothing where no unit had a ceiling; a most on the same terms. */
+/** The average unused headroom over the assessed work, or nothing where none had a ceiling. */
 export function describeAverageHeadroom(
   report: UtilisationAndHeadroom,
   currency: string,
 ): string | null {
   if (report.average_unused_headroom_micros == null) return null;
-  return amountAtMost(report.average_unused_headroom_micros, currency, anyIndeterminate(report));
+  return formatMicros(report.average_unused_headroom_micros, currency);
 }
 
 /**
@@ -108,6 +108,10 @@ export function describeShare(
 
 export const AVERAGED_PER_UNIT =
   "Averaged per unit of work, then across every unit that had a ceiling, so one chatty unit weighs exactly one.";
+
+/** Beside the averages wherever an indeterminate unit was left out of them. */
+export const AVERAGES_LEAVE_OUT_INDETERMINATE =
+  "An indeterminate unit has no figures — a supplier cost still unresolved may move its total either way — so it is left out of both averages.";
 
 export const INDETERMINATE_HAS_NO_OTHER_HOME =
   "Work that completed with a supplier cost still unresolved, so UBB could not tell whether it stayed inside its ceiling. Nothing else counts this.";

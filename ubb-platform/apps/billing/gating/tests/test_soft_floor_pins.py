@@ -55,6 +55,7 @@ def _customer(t, balance_micros=0, hard=HARD, soft=SOFT):
 
 def _drain(t, c, billed):
     handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id, customer_id=c.id, billing_owner_id=c.id,
         event_id=str(uuid.uuid4()), cost_micros=billed)))
 

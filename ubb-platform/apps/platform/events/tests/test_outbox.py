@@ -15,6 +15,7 @@ class TestWriteEvent:
         from apps.platform.events.models import OutboxEvent
 
         schema = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=TENANT_UUID,
             customer_id="c1",
             event_id="e1",
@@ -38,6 +39,7 @@ class TestWriteEvent:
         from apps.platform.events.outbox import write_event
 
         schema = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=TENANT_UUID,
             customer_id="c1",
             event_id="e1",
@@ -63,6 +65,7 @@ class TestWriteEvent:
         from apps.platform.events.outbox import write_event
 
         schema = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=TENANT_UUID,
             customer_id="c1",
             event_id="e1",
@@ -86,6 +89,7 @@ class TestWriteEvent:
         from apps.platform.events.outbox import write_event
 
         schema = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=TENANT_UUID,
             customer_id="c1",
             event_id="e1",

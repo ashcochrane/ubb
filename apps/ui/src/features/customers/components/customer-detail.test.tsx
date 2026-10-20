@@ -174,7 +174,7 @@ describe("CustomerDetailPage — overview", () => {
     expect(screen.queryByText(/^0(\.0)?%$/)).not.toBeInTheDocument();
   });
 
-  // ⚠ §15: an uncosted event makes the margin a bound EVEN WHERE the revenue
+  // ⚠ §15: an uncosted event makes the margin incomplete EVEN WHERE the revenue
   // beside it reads known — the honest rendering of a dishonest input #473
   // owns. The revenue card is whole; the margin and its share are not.
   it("renders the margin incomplete where the cost is, while the revenue reads known", async () => {
@@ -194,10 +194,10 @@ describe("CustomerDetailPage — overview", () => {
     );
 
     expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
-    expect(screen.getByText("at least $90.00")).toBeInTheDocument();
-    expect(screen.getByText("at most $300.00")).toBeInTheDocument();
+    expect(screen.getByText("$90.00 (Incomplete)")).toBeInTheDocument();
+    expect(screen.getByText("$300.00 (Incomplete)")).toBeInTheDocument();
     expect(screen.queryByText("$300.00")).not.toBeInTheDocument();
-    expect(screen.getByText("at most 76.9%")).toBeInTheDocument();
+    expect(screen.getByText("76.9% (Incomplete)")).toBeInTheDocument();
   });
 
   it("shows the not-found state for an unknown customer", async () => {

@@ -4,7 +4,8 @@
 // THE STATUS IS READ, NEVER DERIVED. The kernel concludes one of the
 // registry's four values on the row (`core/crossing.py`, the decision rule
 // `spend-controls.yaml` carries as data) and publishes it beside two figures
-// computed over the KNOWN total; the console renders what arrived. Nothing
+// computed over the KNOWN total wherever every cost resolved; the console
+// renders what arrived. Nothing
 // here compares a total to a ceiling, and no renderer may: the compare lives
 // in the kernel, and the one console copy of its rule is the scenario
 // composer's refusal of a fixture the rule contradicts
@@ -26,13 +27,15 @@
 // claim 15): `not_applicable` is nothing evaluated — never "within", never
 // "indeterminate", and its two figures are null, so no share and no `$0.00`
 // renders for it; `indeterminate` is UBB having tried and been unable to
-// tell — its percentage is a floor and its headroom a most, said as "at
-// least" / "at most" and never as "under" anything; `ceiling_reached` was
-// concluded on the known total alone and no later resolution softens it.
+// tell — a cost still unresolved may move the total either way (#603,
+// ADR-0020 §7), so its two figures are null too and it is never said as
+// "under" anything; `ceiling_reached` is concluded only once every cost
+// resolved. The ENFORCEMENT stop is a different fact: it fires on the
+// resolved total, so a stopped unit may read `indeterminate`, and the stop
+// stands whatever a later resolution does to this assessment.
 
 import { formatMicros } from "@/lib/format";
 import { labelMap } from "@/lib/localisation";
-import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
 import { eventsHave } from "@/lib/total-reading";
 import { CEILING_STATUS_LABEL_KEYS, type CeilingStatus } from "@/lib/vocabulary";
 
@@ -91,27 +94,24 @@ export function readCeiling(row: CeilingAssessed): CeilingReading {
 
 /**
  * The share of the ceiling used, or nothing where nothing was evaluated or
- * the wire sent no share (a share of a zero ceiling is not a share).
- *
- * Under `indeterminate` it is a floor — "at least" — because it is over the
- * known total and unresolved costs can only raise it. Never "under".
+ * the wire sent no share — a share of a zero ceiling is not a share, and an
+ * `indeterminate` unit has none (a cost still unresolved may move it either
+ * way).
  */
 export function describeUtilisation(reading: CeilingReading): string | null {
   if (reading.kind === "not_applicable" || reading.usedPercentage === null) return null;
-  return shareAtLeast(reading.usedPercentage, reading.kind === "indeterminate");
+  return `${reading.usedPercentage}%`;
 }
 
 /**
  * The headroom left under the ceiling, or nothing where nothing was
- * evaluated or the wire sent none.
- *
- * Under `indeterminate` it is a most — "at most" — for the mirror of the
- * reason above: unresolved costs can only lower it. A zero past the line is
- * a SETTLED zero (the kernel clamps it), and it renders as one.
+ * evaluated or the wire sent none — as under `indeterminate`, for the reason
+ * above. A zero past the line is a SETTLED zero (the kernel clamps it), and
+ * it renders as one.
  */
 export function describeHeadroom(reading: CeilingReading, currency: string): string | null {
   if (reading.kind === "not_applicable" || reading.remainingMicros === null) return null;
-  return amountAtMost(reading.remainingMicros, currency, reading.kind === "indeterminate");
+  return formatMicros(reading.remainingMicros, currency);
 }
 
 /**
@@ -152,9 +152,9 @@ export const CEILING_STATUS_EXPLANATIONS = {
   within_ceiling:
     "Every supplier cost this unit of work has reported is known, and their total is below the ceiling.",
   indeterminate:
-    "UBB cannot prove this unit of work is inside its ceiling. The figures are over what is known: the share used can only rise and the headroom only fall as the rest settles.",
+    "UBB cannot tell whether this unit of work is inside its ceiling: a supplier cost is still unresolved, and it may move the total either way, so no share or headroom is stated until it settles. A stop at the ceiling, where there was one, fired on the costs already known and stands.",
   ceiling_reached:
-    "The known supplier cost has reached the ceiling. Costs still unresolved can only add to it, so no later resolution softens this.",
+    "Every supplier cost this unit of work has reported is known, and their total has reached the ceiling.",
 } as const satisfies Record<CeilingStatus, string>;
 
 /** The sentence beside a ceiling reading, with the count of what the known total left out where that count is what the reading turns on. */

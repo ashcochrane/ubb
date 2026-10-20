@@ -237,6 +237,7 @@ class TestPin9CrossingSignalsAtDurableLaneLatency:
         # Durable-lane latency: the drawdown lane processes the event and
         # detects the floor crossing — signal + flag, never an ack change.
         handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         assert _events(StopFired.EVENT_TYPE).count() == 1
@@ -383,6 +384,7 @@ class TestOnToOffNeedsNoDrain:
         # off. The counter written while ON must already agree with it — that
         # agreement is what "the flip needs nothing" means.
         handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=1_500_000)))
         wallet = Wallet.objects.get(customer=c)

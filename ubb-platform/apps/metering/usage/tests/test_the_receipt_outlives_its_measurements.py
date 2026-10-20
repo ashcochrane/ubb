@@ -88,6 +88,8 @@ from django.test import TestCase
 
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.receipts import uncosted_quantity_keys
+from apps.platform.event_types.exact_decimals import exact_parts
+from core.money import round_charge
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup, rate_in_default_book)
 from apps.metering.usage.measurements import measurements_status_for
@@ -157,10 +159,13 @@ def _reproduce(component):
     """
     if component[Rate.STRUCTURE_COLUMN] == "flat":
         return component["fixed_micros"]
-    quantity = component["units"]
-    return ((quantity * component["rate_per_unit_micros"]
-             + component["unit_quantity"] // 2)
-            // component["unit_quantity"]) + component["fixed_micros"]
+    # Since receipt schema 2 the quantity is its canonical exact TEXT (#603),
+    # read as the integers its digits spell and divided once by R1 — the
+    # whole of the arithmetic, from the record and nothing else.
+    sign, digits, scale = exact_parts(component["units"])
+    return round_charge(sign * digits * component["rate_per_unit_micros"],
+                        component["unit_quantity"] * 10 ** scale
+                        ) + component["fixed_micros"]
 
 
 def _prune(posting_id):
@@ -222,7 +227,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
             fixed_micros=250)
         self.result = UsageService.record_usage(
             self.tenant, self.customer, "k1",
-            measurements={"input_tokens": 4_100, "image_pixels": 2_000_000})
+            measurements={"input_tokens": "4100", "image_pixels": "2000000"})
 
     def test_every_component_reproduces_its_own_amount_after_the_prune(self):
         receipt = _prune(self.result["event_id"])
@@ -254,7 +259,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
 
         recorded = {line["measurement_key"]: line["units"]
                     for line in receipt["costing"]["detail"]["components"]}
-        assert recorded == {"input_tokens": 4_100, "image_pixels": 2_000_000}
+        assert recorded == {"input_tokens": "4100", "image_pixels": "2000000"}
 
     def test_the_price_side_explains_itself_the_same_way(self):
         """One rule, asked of both sections.
@@ -268,7 +273,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
                              rate_per_unit_micros=9_000, unit_quantity=1_000)
         result = UsageService.record_usage(
             self.tenant, self.customer, "k2",
-            measurements={"input_tokens": 4_100})
+            measurements={"input_tokens": "4100"})
 
         receipt = _prune(result["event_id"])
 
@@ -295,7 +300,7 @@ class ACalculatedCostIsReproducibleFromTheReceiptAloneTest(TestCase):
             **{Rate.STRUCTURE_COLUMN: "flat"})
         result = UsageService.record_usage(
             self.tenant, self.customer, "k-flat",
-            measurements={"api_calls": 9})
+            measurements={"api_calls": "9"})
 
         receipt = _prune(result["event_id"])
 
@@ -333,7 +338,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
             rate_per_unit_micros=3_000, unit_quantity=1_000)
         self.result = UsageService.record_usage(
             self.tenant, self.customer, "k1",
-            measurements={"input_tokens": 4_100, "image_pixels": 2_000_000})
+            measurements={"input_tokens": "4100", "image_pixels": "2000000"})
 
     def _resolved_then_pruned(self):
         """The lifecycle the rule now imposes, in the order it imposes it.
@@ -381,7 +386,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
         receipt = self._resolved_then_pruned()
 
         assert receipt["costing"]["detail"]["uncosted_quantities"] == {
-            "image_pixels": 2_000_000}
+            "image_pixels": "2000000"}
 
     def test_the_reader_and_the_remediation_input_name_the_same_quantities(self):
         """The list a reader has always got, and the mapping beside it.
@@ -424,7 +429,7 @@ class AnUnresolvedRecordKeepsItsRemediationInputsTest(TestCase):
             rate_per_unit_micros=17, unit_quantity=1_000_000, fixed_micros=250)
         live = UsageService.record_usage(
             self.tenant, self.customer, "k-late",
-            measurements={"image_pixels": 2_000_000})
+            measurements={"image_pixels": "2000000"})
         priced, = [line for line
                    in _receipt_of(live["event_id"])["costing"]["detail"][
                        "components"]
@@ -475,10 +480,10 @@ class NoPruningExemptionExistsTest(TestCase):
             rate_per_unit_micros=3_000, unit_quantity=1_000)
         self.settled = UsageService.record_usage(
             self.tenant, self.customer, "k1",
-            measurements={"input_tokens": 4_100})
+            measurements={"input_tokens": "4100"})
         self.unsettled = UsageService.record_usage(
             self.tenant, self.customer, "k2",
-            measurements={"image_pixels": 2_000_000})
+            measurements={"image_pixels": "2000000"})
 
     def _postings(self):
         settled = Posting.objects.get(id=self.settled["event_id"])
@@ -561,4 +566,4 @@ class NoPruningExemptionExistsTest(TestCase):
         _, unsettled = self._postings()
         _resolve_the_cost(unsettled.id, 12_300)
         detail = _prune(unsettled.id)["costing"]["detail"]
-        assert detail["uncosted_quantities"] == {"image_pixels": 2_000_000}
+        assert detail["uncosted_quantities"] == {"image_pixels": "2000000"}

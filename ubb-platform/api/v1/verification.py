@@ -118,7 +118,7 @@ from core.problems import PROBLEM_TYPE_BASE, Problem
 from core.vocabulary import (
     BINDING_CLASS_RUNTIME_BOUND, COSTING_METHOD_REPORTED,
     COSTING_STATUS_UNRESOLVED,
-    INTEGRATION_READINESS_COMPLETE,
+    INTEGRATION_READINESS_COMPLETE, SOURCE_KIND_CONSTANT,
     TASK_OUTCOME_CANCELLED, TASK_OUTCOME_DELIVERED)
 
 #: The external id of the customer the run records for — the one value the run
@@ -157,6 +157,7 @@ def verify(tenant, configuration_fingerprint, payload):
             f"generates code that records: resolve it again once its "
             f"diagnostics are fixed")
     _refuse_a_subtask_kind_not_selected(configuration, payload)
+    _refuse_a_sample_for_a_constant(configuration, payload)
     _refuse_grouping_values_that_do_not_match(configuration, payload)
     sampled = _currencies_read_at_run_time(
         identity[integration_blueprint.BLUEPRINT])
@@ -199,6 +200,33 @@ def _refuse_a_subtask_kind_not_selected(configuration, payload):
             "validation_error",
             f"subtask_type {', '.join(repr(key) for key in named)} is not a "
             f"Subtask kind the Blueprint selected")
+
+
+def _constants_of(declared):
+    """An Event Type's constant quantities, each with the value it is
+    declared as — what generated code sends for it on every call (#584)."""
+    return {quantity["code"]: quantity["constant_value"]
+            for quantity in declared["measurements"]
+            if quantity["source_kind"] == SOURCE_KIND_CONSTANT}
+
+
+def _refuse_a_sample_for_a_constant(configuration, payload):
+    """A constant is sent as declared, never sampled (#584): generated code
+    asks the tenant's code for no value of one, so a sample for it would be
+    a value this run used and no tenant's code ever could. It is refused by
+    name rather than taken or silently replaced."""
+    constants = {declared["key"]: _constants_of(declared)
+                 for declared in configuration["event_types"]}
+    sampled = sorted({
+        f"{claim.event_type}:{code}" for claim in payload.records
+        for code in (claim.measurements or {})
+        if code in constants.get(claim.event_type, {})})
+    if sampled:
+        raise Problem(
+            "validation_error",
+            f"measurements {', '.join(repr(each) for each in sampled)}: a "
+            f"constant is sent as its declared value, as generated code "
+            f"sends it, and takes no sample")
 
 
 def _refuse_grouping_values_that_do_not_match(configuration, payload):
@@ -490,7 +518,10 @@ def _declare_and_publish(tenant, declared, provider):
             value_type=quantity["value_type"], unit=quantity["unit"],
             required_for_costing=quantity["required_for_costing"],
             source_kind=quantity["source_kind"],
-            source_path=quantity["source_path"]))
+            source_path=quantity["source_path"],
+            # A constant is declared with its value (#571); the snapshot
+            # keeps it since #584.
+            constant_value=quantity.get("constant_value")))
     mapping = declared["reported_cost_mapping"]
     if mapping is not None:
         _saved(ReportedCostMapping(event_type=event_type, **mapping))
@@ -544,6 +575,10 @@ def _recording(customer, declared, claim, task_id, position, *, sampled):
     mapping = (declared["reported_cost_mapping"]
                if declared["costing_method"] == COSTING_METHOD_REPORTED
                else None)
+    # Each constant goes on the recording as its declared value, exactly as
+    # generated code sends it (#584); a sample for one was refused before
+    # the run began.
+    measurements = {**(claim.measurements or {}), **_constants_of(declared)}
     return RecordUsageRequest(
         customer_id=customer.id,
         idempotency_key=f"ubb-verification-record-{position}",
@@ -551,7 +586,7 @@ def _recording(customer, declared, claim, task_id, position, *, sampled):
         provider=declared["provider_key"] or None,
         currency=(claim.currency if sampled
                   else (mapping["currency"] or None) if mapping else None),
-        measurements=claim.measurements or None,
+        measurements=measurements or None,
         provider_cost_micros=claim.provider_cost_micros,
         provider_response_cost_micros=claim.provider_response_cost_micros,
         task_id=task_id)

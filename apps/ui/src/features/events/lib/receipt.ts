@@ -37,10 +37,13 @@
  * One shape for both sections, because a cost component and a price component
  * are the same fact about different rules — and two spellings of one shape is
  * how the two come to differ exactly where a reader compares them.
+ *
+ * The quantity is the canonical exact TEXT receipt schema 2 writes (#603,
+ * ADR-0020) — "4200", "2.5", "-3" — never a number a reader would round.
  */
 export interface ReceiptComponent {
   readonly measurement_key: string;
-  readonly units: number;
+  readonly units: string;
   readonly rate_structure: string;
   readonly rate_per_unit_micros: number;
   readonly unit_quantity: number;
@@ -51,7 +54,7 @@ export interface ReceiptComponent {
 /** Build one, from the terms a fixture states. */
 export function receiptComponent(terms: {
   measurement_key: string;
-  quantity: number;
+  quantity: string;
   rate_per_unit_micros: number;
   unit_quantity: number;
   micros: number;

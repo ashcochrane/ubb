@@ -227,21 +227,22 @@ class TestCeilingStatus:
                     ceiling_micros=None, known_micros=known,
                     unresolved_count=unresolved) == "not_applicable"
 
-    def test_known_at_or_above_is_reached_whatever_remains_unresolved(self):
-        # Known-over always fires (#150 §4.2): an unresolved cost can only add
-        # to a total that has already reached the line.
-        for unresolved in (0, 1):
+    def test_something_unresolved_is_indeterminate_whatever_the_resolved_total(
+            self):
+        # #603 (ADR-0020 §7): an omitted cost may be negative, so a resolved
+        # total bounds nothing in either direction — at or past the line
+        # included. The ENFORCEMENT trigger (`ceiling_reached` above) still
+        # fires on that total; the assessment no longer infers from it.
+        for known in (-CEILING, 0, CEILING - 1, CEILING, CEILING + 1):
             assert crossing.ceiling_status(
-                ceiling_micros=CEILING, known_micros=CEILING,
-                unresolved_count=unresolved) == "ceiling_reached"
-            assert crossing.ceiling_status(
-                ceiling_micros=CEILING, known_micros=CEILING + 1,
-                unresolved_count=unresolved) == "ceiling_reached"
+                ceiling_micros=CEILING, known_micros=known,
+                unresolved_count=1) == "indeterminate"
 
-    def test_known_below_with_something_unresolved_is_indeterminate(self):
-        assert crossing.ceiling_status(
-            ceiling_micros=CEILING, known_micros=CEILING - 1,
-            unresolved_count=1) == "indeterminate"
+    def test_everything_resolved_at_or_above_is_reached(self):
+        for known in (CEILING, CEILING + 1):
+            assert crossing.ceiling_status(
+                ceiling_micros=CEILING, known_micros=known,
+                unresolved_count=0) == "ceiling_reached"
 
     def test_known_below_with_nothing_unresolved_is_within(self):
         assert crossing.ceiling_status(
@@ -284,6 +285,12 @@ class TestCeilingUtilisation:
         assert crossing.ceiling_used_percentage(CEILING, None) is None
         assert crossing.ceiling_remaining_micros(CEILING, None) is None
 
+    def test_a_negative_resolved_total_uses_a_negative_share(self):
+        # A resolved credit (#603): the arithmetic says so rather than
+        # clamping; the headroom then exceeds the ceiling.
+        assert crossing.ceiling_used_percentage(-CEILING // 4, CEILING) == -25
+        assert crossing.ceiling_remaining_micros(-1, CEILING) == CEILING + 1
+
     def test_a_share_of_nothing_is_not_a_share(self):
         # A zero ceiling is `ceiling_reached` (the compare says so) and has
         # no headroom, but a percentage of zero is not a number.
@@ -292,11 +299,22 @@ class TestCeilingUtilisation:
 
     def test_the_assessment_travels_as_one_value(self):
         # The three answers composed once, so a reader cannot take the
-        # figures without the status that says how to read them.
+        # figures without the status that says whether they are answers.
+        assert crossing.ceiling_assessment(
+            ceiling_micros=CEILING, known_micros=CEILING // 4,
+            unresolved_count=0) == crossing.CeilingAssessment(
+                "within_ceiling", 25, CEILING - CEILING // 4)
+        # Under `indeterminate` there are no figures (#603): a share of a
+        # resolved total that what is left out may move either way is a
+        # bound on nothing.
         assert crossing.ceiling_assessment(
             ceiling_micros=CEILING, known_micros=CEILING // 4,
             unresolved_count=2) == crossing.CeilingAssessment(
-                "indeterminate", 25, CEILING - CEILING // 4)
+                "indeterminate", None, None)
+        assert crossing.ceiling_assessment(
+            ceiling_micros=CEILING, known_micros=CEILING * 2,
+            unresolved_count=1) == crossing.CeilingAssessment(
+                "indeterminate", None, None)
         assert crossing.ceiling_assessment(
             ceiling_micros=None, known_micros=CEILING,
             unresolved_count=0) == crossing.CeilingAssessment(

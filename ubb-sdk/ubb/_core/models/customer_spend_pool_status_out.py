@@ -25,11 +25,11 @@ class CustomerSpendPoolStatusOut:
     """ Where a customer's known period charges stand against the pool that
     applies to them — their own row, else the tenant default; no row is no
     pool (`cap_micros` 0, every assessed figure null). The basis is the
-    durable pair: `known_period_charges_micros` is the resolved period
-    charges and a LOWER BOUND wherever `unresolved_posting_count` is not
-    zero, and every figure beside it is computed over that known figure —
-    the percentage a floor and the headroom a ceiling until the count is
-    zero. `highest_threshold_reached` is the largest of the pool's
+    durable pair: `known_period_charges_micros` is the sum of the period's
+    resolved charges, `unresolved_posting_count` says how many charges it
+    does not include, and when that count is zero the figure is complete.
+    Every figure beside it is computed over that resolved figure.
+    `highest_threshold_reached` is the largest of the pool's
     `alert_levels` (a percent of `cap_micros`) the known figure has reached;
     `blocking_occurred` is the start gate's own compare — true only under a
     blocking pool whose stop line the known figure is at or over. The pool

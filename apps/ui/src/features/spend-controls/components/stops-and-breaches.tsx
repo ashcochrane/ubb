@@ -74,8 +74,9 @@ function FamilyTotalsTable({
                 {row.event_count.toLocaleString()}
               </TableCell>
               {/* Each total is over exactly the itemised events of the rows
-                  shown, each event once per family, and each is a floor
-                  wherever those events hold an amount UBB never resolved. */}
+                  shown, each event once per family, and each is the sum of
+                  what resolved, marked incomplete, wherever those events hold
+                  an amount UBB never resolved. */}
               <TableCell className="text-right text-[13px] tabular-nums">
                 {describeTotal(readItemisedPrice(row), currency)}
               </TableCell>

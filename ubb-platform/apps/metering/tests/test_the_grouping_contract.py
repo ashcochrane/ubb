@@ -306,7 +306,7 @@ class TheCostTheMeasurementAxisRefusesDoesNotExistToBeSpread(TestCase):
             event_type="chat.completion", provider_cost_micros=900_000)
         measurement = PostingMeasurement.objects.create(
             posting=posting, recorded_at=timezone.now(),
-            measurements={"prompt_tokens": 600, "completion_tokens": 300})
+            measurements={"prompt_tokens": "600", "completion_tokens": "300"})
 
         assert len(measurement.measurements) == 2
         assert posting.provider_cost_micros == 900_000

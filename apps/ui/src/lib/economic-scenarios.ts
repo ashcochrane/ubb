@@ -88,7 +88,7 @@
 // `measurements_status` is a fact about ONE posting, derived per row, saying
 // whether that posting's own measured quantities can still be read.
 // `measure_status` is a fact about one MEASURE on an aggregate row, saying what
-// its figure is worth — knowable, a bound, inattributable at the grain asked
+// its figure is worth — knowable, partial, inattributable at the grain asked
 // for, or unavailable because the STRETCH asked about reaches past a published
 // horizon. Do not merge them here on the strength of the names, and do not
 // merge them on the strength of both mentioning a clock.
@@ -106,6 +106,7 @@ import {
   type PricingMode,
   type PricingReceiptSubjectType,
   type PricingStatus,
+  type PricingStatusReason,
   type ReasonCode,
   type SpendPoolEnforceMode,
   type TriggerSource,
@@ -123,9 +124,13 @@ import {
  * defect `measurements_status` was coined to end
  * (`domain-vocabulary/concepts/economics.yaml`), and returning the pair as one
  * object is how a fixture is stopped from re-opening it.
+ *
+ * Each quantity is the canonical exact TEXT the platform records and answers
+ * with (#603, ADR-0020) — `"12"`, `"2.5"`, `"-3"` — never a JS number, which
+ * holds an integer exactly only to 2^53.
  */
 export interface MeasurementScenario {
-  readonly measurements: Readonly<Record<string, number>>;
+  readonly measurements: Readonly<Record<string, string>>;
   readonly measurements_status: MeasurementsStatus;
 }
 
@@ -137,7 +142,7 @@ export interface MeasurementScenario {
  * case saying so out loud.
  */
 export function availableMeasurements(
-  quantities: Readonly<Record<string, number>>,
+  quantities: Readonly<Record<string, string>>,
 ): MeasurementScenario {
   return { measurements: { ...quantities }, measurements_status: "available" };
 }
@@ -243,7 +248,7 @@ export function costNotApplicable(): SupplierCostScenario {
  * not have, `waived` is a charge somebody decided not to pursue, and
  * `not_applicable` is a subject that generates no customer revenue at this
  * level. A reader that guesses tells a tenant they charged nothing — and only
- * the first of the three makes a total a floor.
+ * the first of the three is counted as left out of a total.
  *
  * ⚠ AND THE THIRD FIELD IS WHY THE COUNT IS FOUR STATES AND FIVE ANSWERS.
  * `not_applicable` does not say WHY a subject generates no revenue, and the two
@@ -253,10 +258,17 @@ export function costNotApplicable(): SupplierCostScenario {
  * same reason `unresolved_reason` travels with a supplier cost — a status
  * saying a price does not apply without saying why sends a reader looking for a
  * number nobody wrote.
+ *
+ * ⚠ AND THE STATUS'S OWN REASON TRAVELS WITH IT, ALWAYS (#603). The wire
+ * publishes `pricing_status_reason` REQUIRED AND NULLABLE beside every
+ * `pricing_status`, so every composer states it — null where no reason
+ * applies, `negative_price_unsupported` under the `unknown` UBB calculated
+ * and cannot carry.
  */
 export interface CustomerPriceScenario {
   readonly billed_cost_micros: number | null;
   readonly pricing_status: PricingStatus;
+  readonly pricing_status_reason: PricingStatusReason | null;
   readonly not_applicable_reason: NotApplicableReason | null;
 }
 
@@ -265,6 +277,7 @@ export function knownPrice(micros: number): CustomerPriceScenario {
   return {
     billed_cost_micros: micros,
     pricing_status: "known",
+    pricing_status_reason: null,
     not_applicable_reason: null,
   };
 }
@@ -281,6 +294,25 @@ export function unknownPrice(): CustomerPriceScenario {
   return {
     billed_cost_micros: null,
     pricing_status: "unknown",
+    pricing_status_reason: null,
+    not_applicable_reason: null,
+  };
+}
+
+/**
+ * A posting whose configuration calculated a NEGATIVE customer price (#603
+ * A2): `unknown`, with the reason that says UBB calculated one and cannot
+ * carry it. Never clamped to zero, never `known`, and the calculated number is
+ * published nowhere — so the amount is null, exactly as under
+ * `unknownPrice()`, and only the reason tells the two apart: one is missing
+ * input a recovery run may still supply, the other a result no run revisits.
+ * Like `unknownPrice()` it is counted among the amounts a total leaves out.
+ */
+export function negativePriceUnsupported(): CustomerPriceScenario {
+  return {
+    billed_cost_micros: null,
+    pricing_status: "unknown",
+    pricing_status_reason: "negative_price_unsupported",
     not_applicable_reason: null,
   };
 }
@@ -298,6 +330,7 @@ export function waivedPrice(): CustomerPriceScenario {
   return {
     billed_cost_micros: null,
     pricing_status: "waived",
+    pricing_status_reason: null,
     not_applicable_reason: null,
   };
 }
@@ -330,6 +363,7 @@ export function priceNotApplicable(
   return {
     billed_cost_micros: null,
     pricing_status: "not_applicable",
+    pricing_status_reason: null,
     not_applicable_reason: reason,
   };
 }
@@ -342,8 +376,10 @@ export function priceNotApplicable(
  *
  * The aggregate face of the state above, and a separate scenario rather than a
  * derived one because a total is not a posting: it carries a COUNT, never a
- * status, and there is no fourth value of anything to look up. Non-zero means
- * the amount beside it is a floor.
+ * status, and there is no fourth value of anything to look up. The amount is
+ * the sum of the costs that resolved; non-zero means it is not the total, and
+ * no bound on it either — an amount left out may be negative (#603, ADR-0020
+ * §6). Zero means the amount is complete.
  */
 export interface CostTotalScenario {
   readonly micros: number;
@@ -380,17 +416,18 @@ export function incompleteTotal(
  * than storing it (ADR-0006 R4): `core/crossing.py` reads the pinned ceiling,
  * the known supplier total and the unresolved count off the row and concludes
  * one of the registry's four values, and the two figures beside the status are
- * computed over the KNOWN total in every evaluated state. A fixture that stated
- * a status beside totals the rule would conclude differently from would be
- * describing a row the backend cannot write — so the status is composed with
- * its terms and refused without them.
+ * computed over the KNOWN total wherever everything resolved. A fixture that
+ * stated a status beside totals the rule would conclude differently from would
+ * be describing a row the backend cannot write — so the status is composed
+ * with its terms and refused without them.
  *
- * ⚠ THE TWO FIGURES ARE NULL UNDER `not_applicable` AND A FLOOR UNDER
- * `indeterminate`. Nothing was evaluated in the first case, so there is no
- * share of anything to report; in the second the percentage can only rise and
- * the headroom only fall as unresolved costs settle. A reader that renders
- * either as a confident number — or the null as `$0.00` — has the defect this
- * module exists to make unwritable.
+ * ⚠ THE TWO FIGURES ARE NULL UNDER `not_applicable` AND UNDER `indeterminate`
+ * (#603; ADR-0020 §7). Nothing was evaluated in the first case, so there is no
+ * share of anything to report; in the second a cost still unresolved may move
+ * the total either way, so a share or a headroom over the resolved part is a
+ * number nobody could read. The resolved total and its count ride beside them.
+ * A reader that renders either null as a confident number — `0%`, `$0.00` —
+ * has the defect this module exists to make unwritable.
  */
 export interface CeilingAssessmentScenario {
   readonly task_cogs_ceiling_micros: number | null;
@@ -410,15 +447,18 @@ export interface CeilingTerms {
 /**
  * The registry's decision rule, as `core/crossing.py::ceiling_status` applies
  * it (`spend-controls.yaml`, `ceiling_status.value_semantics`): no ceiling →
- * nothing evaluated; the known total at or over the line → reached, whatever
- * remains unresolved; below the line with something unresolved → cannot tell;
- * below with everything resolved → within. Kept beside the composer so the
- * composer can refuse a status the terms do not fix.
+ * nothing evaluated; anything still unresolved → cannot tell, WHATEVER the
+ * resolved total (#603: an unresolved cost may be negative, so the resolved
+ * part bounds nothing); everything resolved and at or over the line → reached;
+ * everything resolved and below → within. The ENFORCEMENT stop is a different
+ * question and still fires on the resolved total, so a stopped unit may read
+ * `indeterminate` here. Kept beside the composer so the composer can refuse a
+ * status the terms do not fix.
  */
 function concludedStatus(ceiling: number | null, cost: CostTotalScenario): CeilingStatus {
   if (ceiling === null) return "not_applicable";
-  if (cost.micros >= ceiling) return "ceiling_reached";
   if (cost.unresolved_event_count > 0) return "indeterminate";
+  if (cost.micros >= ceiling) return "ceiling_reached";
   return "within_ceiling";
 }
 
@@ -439,8 +479,9 @@ function concludedStatus(ceiling: number | null, cost: CostTotalScenario): Ceili
  * ceiling the known total has used, rounded down so it never overstates and
  * running past 100 once the line is crossed; `null` for a ceiling of zero,
  * because a share of nothing is not a share (the compare still says such a
- * ceiling is reached); and headroom clamped at zero, because past the line
- * there is none and the percentage is what says by how much.
+ * ceiling is reached); headroom clamped at zero, because past the line there
+ * is none and the percentage is what says by how much; and both `null` under
+ * `indeterminate` (`core/crossing.py::ceiling_assessment`).
  */
 export function ceilingAssessment(
   status: "not_applicable",
@@ -464,14 +505,15 @@ export function ceilingAssessment(
     );
   }
   const known = terms.cost.micros;
+  const assessed = ceiling !== null && status !== "indeterminate";
   return {
     task_cogs_ceiling_micros: ceiling,
     total_provider_cost_micros: known,
     unresolved_event_count: terms.cost.unresolved_event_count,
     ceiling_status: status,
     ceiling_used_percentage:
-      ceiling === null || ceiling <= 0 ? null : Math.floor((known * 100) / ceiling),
-    ceiling_remaining_micros: ceiling === null ? null : Math.max(ceiling - known, 0),
+      !assessed || ceiling <= 0 ? null : Math.floor((known * 100) / ceiling),
+    ceiling_remaining_micros: !assessed ? null : Math.max(ceiling - known, 0),
   };
 }
 
@@ -619,10 +661,11 @@ export function endedWorkStop(scope: "task" | "subtask"): StopScenario {
  * The price side of `CostTotalScenario`, and the first the console has had
  * to hold: a run's billed total (`TaskOut.total_billed_cost_micros`) arrives
  * beside `unpriced_event_count`, which counts the events whose price UBB
- * could not resolve — a `waived` price and a `not_applicable` one are NOT
- * counted, because neither is missing information. So non-zero means the
- * amount beside it is a floor, exactly as on the cost side, and a zero amount
- * beside a non-zero count is no amount at all.
+ * could not resolve or cannot carry — a `waived` price and a
+ * `not_applicable` one are NOT counted, because neither is missing from the
+ * total. So the amount is the sum of the prices that resolved, exactly as on
+ * the cost side: non-zero means it is not the total, and a zero amount beside
+ * a non-zero count is no amount at all.
  */
 export interface PriceTotalScenario {
   readonly micros: number;
@@ -692,7 +735,7 @@ export interface MeasureTerms {
 /** The query's order of precedence, as `@/lib/economic-query` holds it once. */
 const WORST_LAST: readonly MeasureStatus[] = MEASURE_STATES_WORST_LAST;
 
-/** The cost side's state: a floor wherever it left an event out. */
+/** The cost side's state: incomplete wherever it left an event out. */
 function costStatusOf(cost: CostTotalScenario): MeasureStatus {
   return cost.unresolved_event_count > 0 ? "incomplete" : "known";
 }
@@ -768,8 +811,8 @@ export function knownMeasures(terms: {
 }
 
 /**
- * A row with at least one side still resolving: its figures are BOUNDS, each
- * beside the count that makes it one.
+ * A row with one side or both still resolving: its figures are the sums of
+ * what resolved, each beside the count of what it left out (#603: no bound).
  *
  * ⚠ **IT REFUSES TERMS THAT LEAVE NOTHING OUT**, on `ceilingAssessment`'s
  * precedent: `incomplete` beside two complete totals is a row the query writes
@@ -807,10 +850,10 @@ export function incompleteMeasures(terms: MeasureTerms): EconomicMeasureScenario
  *
  * ⚠ **AND WHETHER ANY PIECE OF THE REVENUE RESOLVED, WHERE THE MOCK KNOWS IT**
  * (#537). A zero revenue beside an unpriced count is two different rows — a
- * free service beside one nobody priced (a bound of zero), or nothing resolved
+ * free service beside one nobody priced (a resolved zero), or nothing resolved
  * at all (no amount) — and the amount cannot tell them apart. A mock that
  * counts its seeds says `resolved_revenue_pieces`; zero composes
- * `measuresWithNoRevenueResolved`, and leaving it out keeps the bound.
+ * `measuresWithNoRevenueResolved`, and leaving it out keeps the resolved sum.
  */
 export function measuresFor(facts: {
   readonly cost_micros: number;
@@ -847,7 +890,8 @@ export function measuresFor(facts: {
  * `incomplete`.** The owner's ruling on claim 9: the query used to send a zero
  * floor and minus the cost, which the console drew as "at least −$…" — #153
  * §17.1's defect with a prefix. A null under `incomplete` means no figure can
- * be stated, where a number there is a bound; the margin's state still comes
+ * be stated, where a number there is the sum of what resolved; the margin's
+ * state still comes
  * from both sides, so an uncosted event beside this changes nothing about the
  * amount and everything about which side is short.
  *
@@ -889,8 +933,9 @@ export function measuresWithNoRevenueResolved(terms: {
  * covers, so the revenue is `known` and the margin is drawn over it — and the
  * unpriced count still rides beside it, as information rather than as the
  * reason the figure is short. This is the one place a price total's count sits
- * beside a figure that is NOT a floor, which is why it is its own composer:
- * `measuresFor` reads any count as a bound and would compose this as one.
+ * beside a figure that is the WHOLE revenue, which is why it is its own
+ * composer: `measuresFor` reads any count as incomplete and would compose this
+ * as one.
  *
  * ⚠ **THE COUNT IS REQUIRED AND MAY NOT BE ZERO** — it is the fact this row
  * exists to put beside a known revenue, and a renderer that keyed "left out of
@@ -1019,8 +1064,9 @@ export function measureNotApplicable(
  *
  * The five declaration fields are the pool row's own; `known` is the
  * price-side total the drawdown has resolved for the period, beside the
- * count of postings it could not price — a floor wherever that count is
- * not zero, which is the whole reason the pair travels as a pair.
+ * count of postings it could not price — the sum of what resolved, and not
+ * the period's total wherever that count is not zero, which is the whole
+ * reason the pair travels as a pair.
  */
 export interface SpendPoolTerms {
   readonly period: string;
@@ -1036,11 +1082,12 @@ export interface SpendPoolTerms {
  * status route publishes, every field required.
  *
  * ⚠ THE FOUR ASSESSED FIGURES ARE NULL OR FALSE WHERE NO POOL APPLIES, AND
- * A FLOOR WHERE THE PAIR IS. A pool with no amount is no pool, so there is
- * no share of anything to report; and where the known figure left a posting
- * unpriced, the share can only rise and the headroom only fall as it
- * resolves. A reader that renders the null as `0%` or the floor as a settled
- * number has the defect this module exists to make unwritable.
+ * OVER WHAT RESOLVED WHERE THE PAIR IS. A pool with no amount is no pool, so
+ * there is no share of anything to report; and where the known figure left a
+ * posting unpriced, the share and the headroom are over the charges that
+ * resolved, beside the count of those that did not. A reader that renders the
+ * null as `0%`, or a share with a count beside it as a settled one, has the
+ * defect this module exists to make unwritable.
  */
 export interface SpendPoolAssessmentScenario {
   readonly period: string;
@@ -1056,8 +1103,8 @@ export interface SpendPoolAssessmentScenario {
 
 /**
  * Compose one pool's status pair, the way the kernel composes it
- * (`core.crossing.spend_pool_assessment`) over a known total that may be a
- * floor: a whole percent of the pool the known figure has used, rounded
+ * (`core.crossing.spend_pool_assessment`) over a known total that may leave
+ * charges out: a whole percent of the pool the known figure has used, rounded
  * down; headroom never below zero; the highest alert level the known figure
  * is at or over; and whether the start gate's own compare holds — only under
  * a blocking pool, at or over its stop line (`spend_pool_stop_line`: the
@@ -1109,10 +1156,10 @@ export function spendPoolAssessment(terms: SpendPoolTerms): SpendPoolAssessmentS
  * The shape a receipt written today declares — `receipts.RECEIPT_SCHEMA_VERSION`
  * on the backend. A fixture composing a record composes the current shape.
  */
-export const RECEIPT_SCHEMA_VERSION = 1;
+export const RECEIPT_SCHEMA_VERSION = 2;
 
 /** The engine that computed it — `pricing_service.PRICING_ENGINE_VERSION`. */
-export const PRICING_ENGINE_VERSION = "2.1.0";
+export const PRICING_ENGINE_VERSION = "2.2.0";
 
 /**
  * The record a delivered unit of work's charge posting carries, as
@@ -1200,6 +1247,7 @@ export interface ChargeReceiptScenario extends CustomerPriceScenario, SupplierCo
   readonly currency: string;
   readonly billed_cost_micros: number;
   readonly pricing_status: Extract<PricingStatus, "known">;
+  readonly pricing_status_reason: null;
   readonly not_applicable_reason: null;
   readonly provider_cost_micros: 0;
   readonly costing_status: Extract<CostingStatus, "known">;
@@ -1240,6 +1288,7 @@ export function chargeReceipt(terms: ChargeTerms): ChargeReceiptScenario {
     // price and a settled cost, but this price and a cost of exactly nothing.
     billed_cost_micros: terms.agreed_price_micros,
     pricing_status: "known",
+    pricing_status_reason: null,
     not_applicable_reason: null,
     provider_cost_micros: 0,
     costing_status: "known",

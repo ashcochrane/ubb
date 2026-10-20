@@ -118,7 +118,7 @@ describe("topWithOther", () => {
   });
 
   // ⚠ The grain case (#510): a revenue that cannot be placed is not drawn —
-  // the part that could be placed is a floor, and a bar is a total.
+  // the part that could be placed is only a part, and a bar is a total.
   it("draws the cost where the revenue cannot be placed at this grain", () => {
     const grain = rows.map((row) => ({
       ...row,
@@ -201,7 +201,7 @@ describe("toTenantEconomics", () => {
     expect(totals.events).toMatchObject({ status: "known", value: 93_558 });
   });
 
-  // ⚠ §15: the window's cost is a floor by nova-ai's four uncosted events,
+  // ⚠ §15: the window's cost leaves out nova-ai's four uncosted events,
   // so the margin is INCOMPLETE — while the revenue beside it reads known.
   it("reads the margin incomplete where the cost is, whatever the revenue says", () => {
     const totals = toTenantEconomics(mockTenantEconomics(WINDOW));

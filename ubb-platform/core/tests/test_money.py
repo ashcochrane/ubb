@@ -164,34 +164,61 @@ RATIOS = [
 
 
 class TestRoundCharge:
-    def test_exact_half_rounds_up(self):
-        """Half-up: the tie goes to the charge (R4)."""
+    def test_exact_half_rounds_away_from_zero(self):
+        """R1 since #603 (ADR-0020): a tie goes away from zero, so a report
+        and its equal-and-opposite twin round to amounts that cancel."""
         assert round_charge(1, 2) == 1
         assert round_charge(50, 100) == 1
         assert round_charge(150, 100) == 2
+        assert round_charge(-1, 2) == -1
+        assert round_charge(-50, 100) == -1
+        assert round_charge(-150, 100) == -2
 
-    def test_below_half_rounds_down(self):
+    def test_below_half_rounds_toward_zero(self):
         assert round_charge(49, 100) == 0
         assert round_charge(1_499_999, 1_000_000) == 1
+        assert round_charge(-49, 100) == 0
+        assert round_charge(-1_499_999, 1_000_000) == -1
 
     def test_exact_values_are_untouched(self):
-        for n in (0, 1, 7, 1_000_000):
+        for n in (0, 1, 7, 1_000_000, -1, -7):
             assert round_charge(n * 13, 13) == n
 
     @pytest.mark.parametrize("numerator,denominator", RATIOS)
     def test_never_off_by_more_than_half(self, numerator, denominator):
-        """|result*d - n| <= d/2 — the defining property of nearest-rounding."""
-        result = round_charge(numerator, denominator)
-        assert abs(result * denominator - numerator) * 2 <= denominator
+        """|result*d - n| <= d/2 — the defining property of nearest-rounding,
+        on both sides of zero."""
+        for signed in (numerator, -numerator):
+            result = round_charge(signed, denominator)
+            assert abs(result * denominator - signed) * 2 <= denominator
 
-    def test_matches_the_arithmetic_it_replaces(self):
-        """The markup and rate-card sites are re-expressed, not re-decided."""
+    @pytest.mark.parametrize("numerator,denominator", RATIOS)
+    def test_a_negative_is_the_mirror_of_its_positive(self, numerator,
+                                                      denominator):
+        """The property ties away from zero buys: what one report adds, its
+        reversal takes away exactly."""
+        assert round_charge(-numerator, denominator) == -round_charge(
+            numerator, denominator)
+
+    def test_matches_the_arithmetic_it_replaces_wherever_that_was_not_negative(
+            self):
+        """The markup and rate-card sites are re-expressed, not re-decided:
+        for every non-negative numerator the old floor(x + 1/2) and half
+        away from zero are the same expression, so every amount a whole,
+        non-negative quantity produced before #603 is produced unchanged.
+        Only an exact negative tie moves."""
         for cost, pct in ((1_234_567, 15_000_000), (999, 1), (0, 50_000_000)):
             assert round_charge(cost * pct, 100_000_000) == (
                 cost * pct + 50_000_000) // 100_000_000
         for units, rate, quantity in ((7, 333, 1_000_000), (1, 1, 3), (99, 101, 10)):
             assert round_charge(units * rate, quantity) == (
                 units * rate + quantity // 2) // quantity
+        for numerator in range(0, 400):
+            for denominator in (1, 2, 3, 4, 7, 10, 1_000):
+                assert round_charge(numerator, denominator) == (
+                    numerator + denominator // 2) // denominator
+        assert round_charge(-3, 2) == -2
+        assert (-3 + 2 // 2) // 2 == -1
 
     def test_non_positive_denominator_is_refused(self):
         for denominator in (0, -1):

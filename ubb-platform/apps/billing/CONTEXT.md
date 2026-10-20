@@ -204,8 +204,8 @@ nothing else; `check` is now the whole money-shaped answer.
 A cost-coverage condition sat in this list until #321 and is gone with nothing in its place: it
 refused a COGS-limited start unless the tenant had promised full cost coverage, and #320 made that
 promise unkeepable by recording an uncostable event with its cost unresolved rather than counting
-it as zero. The ceiling now races a floor, and saying so is a downstream job (#328), not a
-start-gate one.
+it as zero. The ceiling now races the resolved total — an enforcement trigger, never proof of the
+eventual total (#603, ADR-0020) — and saying so is a downstream concern (#328), not a start-gate one.
 _Avoid_: the retired name for the advisory call — it described a moment in a sequence rather than
 the question asked, and #141 retired it outright.
 
@@ -394,6 +394,8 @@ row's own `fail_closed` first, else `RiskConfig.gate_fail_closed`, the one colum
 charges beside the count of postings whose customer price UBB could not resolve
 (`period_basis`; the status route publishes the same pair) — known at or over the line blocks,
 known below with unknowns present alerts and never blocks, and nothing sums an unknown as zero.
+Known-over is an enforcement trigger on the resolved charges, never a claim about where the
+eventual total lands; the figures beside it are the sum of what resolved (ADR-0020 §6).
 **Each Charge counts once**: ADR-0013 makes a delivered fixed-price unit's Charge → posting →
 `usage.recorded` chain 1:1, and a replayed close writes no second Charge. The compare is
 `core/crossing.py`'s (`spend_pool_stop_line`, `spend_pool_stop_threshold`,

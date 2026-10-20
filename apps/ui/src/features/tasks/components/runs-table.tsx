@@ -22,7 +22,7 @@ import { RunStatusBadge } from "./run-status-badge";
  * and not the front door (#424, spec §25 Q2).
  *
  * Every row is a LINK to the run's own page, and its kind is a link to the
- * kind's. The totals are READINGS rather than numbers: a figure, a floor, an
+ * kind's. The totals are READINGS rather than numbers: a figure, a partial sum, an
  * unknown or a not-applicable, each drawn as itself (see `../lib/runs`). The
  * list holds only top-level runs, so each row is the run its own regime is
  * read off; contained work is on its parent's page.

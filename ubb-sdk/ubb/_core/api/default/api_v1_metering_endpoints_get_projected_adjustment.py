@@ -138,7 +138,8 @@ def sync_detailed(
     One pass examines a bounded number of postings. `postings_not_examined`
     says how many the filter matched beyond it — narrow the date range to reach
     those — and `unpriced_event_count` says how many examined postings still
-    resolve to no price. Both make the figures a floor.
+    resolve to no price. Each figure is the sum of what a run would settle, and
+    is complete when both counts are zero.
 
     The filter is the Resolution Run's: a half-open date range, a customer and
     an Event Type, in any combination. A customer this tenant does not have is
@@ -199,7 +200,8 @@ def sync(
     One pass examines a bounded number of postings. `postings_not_examined`
     says how many the filter matched beyond it — narrow the date range to reach
     those — and `unpriced_event_count` says how many examined postings still
-    resolve to no price. Both make the figures a floor.
+    resolve to no price. Each figure is the sum of what a run would settle, and
+    is complete when both counts are zero.
 
     The filter is the Resolution Run's: a half-open date range, a customer and
     an Event Type, in any combination. A customer this tenant does not have is
@@ -255,7 +257,8 @@ async def asyncio_detailed(
     One pass examines a bounded number of postings. `postings_not_examined`
     says how many the filter matched beyond it — narrow the date range to reach
     those — and `unpriced_event_count` says how many examined postings still
-    resolve to no price. Both make the figures a floor.
+    resolve to no price. Each figure is the sum of what a run would settle, and
+    is complete when both counts are zero.
 
     The filter is the Resolution Run's: a half-open date range, a customer and
     an Event Type, in any combination. A customer this tenant does not have is
@@ -316,7 +319,8 @@ async def asyncio(
     One pass examines a bounded number of postings. `postings_not_examined`
     says how many the filter matched beyond it — narrow the date range to reach
     those — and `unpriced_event_count` says how many examined postings still
-    resolve to no price. Both make the figures a floor.
+    resolve to no price. Each figure is the sum of what a run would settle, and
+    is complete when both counts are zero.
 
     The filter is the Resolution Run's: a half-open date range, a customer and
     an Event Type, in any combination. A customer this tenant does not have is

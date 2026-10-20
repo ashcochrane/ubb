@@ -220,13 +220,13 @@ function run(
 //
 // The runs beneath those kinds tell the second story, the one the runs surface
 // renders (#424): every lifecycle state at least once, every reading a total
-// can have — a figure, a floor, nothing UBB knows, and nothing that applies —
+// can have — a figure, a partial sum, nothing UBB knows, and nothing that applies —
 // and, since #454, every one of the four things a ceiling assessment can say.
 // Newest first, which is the order the route answers in.
 //
 //   6e1f2c8a  video-render        active     28 pieces of contained work, one of
 //                                            them costed by nobody yet, so the
-//                                            run's own total is a FLOOR and its
+//                                            run's own total is PARTIAL and its
 //                                            ceiling is INDETERMINATE
 //   0b7d4e29  transcript-cleanup  completed  quoted $8.00 by the customer's book;
 //                                            within its ceiling
@@ -253,6 +253,8 @@ export const RUN_DELIVERED_FIXED_ID = "9c3a5f71-2d86-4b04-8e19-5a7c1d0e2f95";
 export const RUN_EXPIRED_ID = "7a2e5b1c-9d40-4f67-8b23-6c1a3e5d9f48";
 export const RUN_DELIVERED_EVENT_PRICED_ID = "d4e8b2a6-7c15-4f39-9a02-3b6e8d1c5f27";
 export const RUN_KILLED_ID = "4d7b1e9f-2c58-4a06-b371-9e5f0d8c2a17";
+/** Killed at its ceiling with every cost resolved: the one run that reads `ceiling_reached` (#603). */
+export const RUN_REACHED_ID = "8b5c2e7a-1f94-4d36-a0e8-2c7f9b4d1e53";
 export const RUN_CANCELLED_ID = "b8e2f4a1-6d93-4c25-a70e-3f1b9c8d5e62";
 export const RUN_FAILED_ID = "f7b3e1c9-0a64-4d21-b8c5-6e4f2a9d3b70";
 
@@ -353,10 +355,12 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_KILLED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "killed",
-    // A lower ceiling than the kind's, asked for at start, and reached on the
-    // known total alone — the two uncosted events could only add to it.
+    // A lower ceiling than the kind's, asked for at start. The ENFORCEMENT
+    // stop fired on the known total crossing it and stands; the ASSESSMENT is
+    // indeterminate (#603, ADR-0020 §7), because the two uncosted events may
+    // move the total either way and nothing about the stop says otherwise.
     ...totals(
-      ceilingAssessment("ceiling_reached", {
+      ceilingAssessment("indeterminate", {
         ceiling_micros: 800_000,
         cost: incompleteTotal(900_000, 2),
       }),
@@ -365,6 +369,26 @@ export const MOCK_RUNS: readonly RunRow[] = [
     ),
     created_at: "2026-08-28T20:00:00Z",
     completed_at: "2026-08-28T20:03:00Z",
+  }),
+  run({
+    task_id: RUN_REACHED_ID,
+    task_type: KIND_EVENT_PRICED_KEY,
+    status: "killed",
+    // Stopped at the same lower ceiling, and every cost it reported is
+    // known, so the assessment beside the stop is a conclusion:
+    // `ceiling_reached` is concluded only once nothing is unresolved (#603,
+    // ADR-0020 §7). The killed run above is the same stop with two costs
+    // still unknown, and reads `indeterminate`.
+    ...totals(
+      ceilingAssessment("ceiling_reached", {
+        ceiling_micros: 800_000,
+        cost: completeTotal(820_000),
+      }),
+      completePriceTotal(1_400_000),
+      4,
+    ),
+    created_at: "2026-08-28T18:00:00Z",
+    completed_at: "2026-08-28T18:02:00Z",
   }),
   run({
     task_id: "a1c6d9e3-5b28-4e47-8f60-9d2b7a4c1e58",
@@ -435,7 +459,7 @@ export function containedId(ordinal: number): string {
  * sold (contained work shares its parent's regime), so every piece is under
  * `render-shot`, the fixed-regime contained kind. Every state a piece of
  * contained work can be in appears at least once, and one piece's cost was
- * never learned, so the roll-up is a floor rather than a figure.
+ * never learned, so the roll-up is partial rather than a figure.
  */
 const CONTAINED_UNDER_ACTIVE: readonly RunRow[] = Array.from(
   { length: CONTAINED_UNDER_ACTIVE_RUN },

@@ -1,0 +1,254 @@
+{
+  "blueprint": "constant",
+  "configuration_fingerprint": "sha256:f6cbfe6c303fac687b3ea1a39f6ce0ff83fd751244fad6c11a0f1d7a40577c19",
+  "request": {
+    "records": [
+      {
+        "event_type": "flat.call",
+        "measurements": {
+          "searches": "3"
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 200,
+  "answer": {
+    "configuration_fingerprint": "sha256:f6cbfe6c303fac687b3ea1a39f6ce0ff83fd751244fad6c11a0f1d7a40577c19",
+    "verified": false,
+    "unexercised_event_types": [],
+    "unexercised_subtask_types": [],
+    "environment": {
+      "discarded": true,
+      "customer_external_id": "ubb-verification",
+      "rules_effective_at": "2026-09-01T12:30:00Z"
+    },
+    "task": {
+      "task_type": "flat_rate_call",
+      "start": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "task_type": "flat_rate_call",
+        "status": "active",
+        "task_cogs_ceiling_micros": null,
+        "agreed_price_micros": null,
+        "external_task_id": "",
+        "created_at": "2026-09-01T12:30:00Z",
+        "replayed": false
+      },
+      "close": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "status": "completed",
+        "outcome": "delivered",
+        "replayed": false,
+        "charge_created": false,
+        "total_billed_cost_micros": 0,
+        "total_provider_cost_micros": 0,
+        "unresolved_event_count": 1,
+        "unpriced_event_count": 1,
+        "event_count": 1
+      }
+    },
+    "subtasks": [],
+    "records": [
+      {
+        "event_type": "flat.call",
+        "subtask_type": null,
+        "acknowledgement": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": null,
+          "costing_status": "unresolved",
+          "unresolved_reason": "cost_rate_missing",
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "unknown",
+          "not_applicable_reason": null,
+          "pricing_status_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": 0,
+          "task_total_provider_cost_micros": 0,
+          "task_total_unresolved_event_count": 1,
+          "task_total_unpriced_event_count": 1,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "trigger_source": null,
+          "stop_bound_micros": null,
+          "stop_measured_micros": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "searches": "3",
+            "credit": "-0.75",
+            "flat_fee": "2.5",
+            "ledger_lines": "123456789012345678901234567890",
+            "seats": "3"
+          },
+          "pricing_receipt": {
+            "receipt_schema_version": 2,
+            "pricing_engine_version": "2.2.0",
+            "subject_type": "usage_event",
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "currency": "usd",
+            "costing": {
+              "method": null,
+              "status": "unresolved",
+              "detail": {
+                "components": [],
+                "uncosted_measurement_keys": [
+                  "searches",
+                  "credit",
+                  "flat_fee",
+                  "ledger_lines",
+                  "seats"
+                ],
+                "uncosted_quantities": {
+                  "searches": "3",
+                  "credit": "-0.75",
+                  "flat_fee": "2.5",
+                  "ledger_lines": "123456789012345678901234567890",
+                  "seats": "3"
+                },
+                "undeclared_quantities": {},
+                "unresolved_reason": "cost_rate_missing"
+              }
+            },
+            "pricing": {
+              "method": null,
+              "status": "unknown",
+              "detail": {
+                "components": [],
+                "pricing_mode": "event_priced",
+                "not_applicable_reason": null,
+                "pricing_status_reason": null
+              }
+            },
+            "totals": {
+              "provider_cost_micros": null,
+              "billed_cost_micros": null
+            },
+            "provenance": {
+              "cost_rate_ids": {},
+              "price_rate_ids": {}
+            }
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [
+            "searches",
+            "credit",
+            "flat_fee",
+            "ledger_lines",
+            "seats"
+          ],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "replay": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": null,
+          "costing_status": "unresolved",
+          "unresolved_reason": "cost_rate_missing",
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "unknown",
+          "not_applicable_reason": null,
+          "pricing_status_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": null,
+          "task_total_provider_cost_micros": null,
+          "task_total_unresolved_event_count": null,
+          "task_total_unpriced_event_count": null,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "trigger_source": null,
+          "stop_bound_micros": null,
+          "stop_measured_micros": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "seats": "3",
+            "credit": "-0.75",
+            "flat_fee": "2.5",
+            "searches": "3",
+            "ledger_lines": "123456789012345678901234567890"
+          },
+          "pricing_receipt": {
+            "totals": {
+              "billed_cost_micros": null,
+              "provider_cost_micros": null
+            },
+            "costing": {
+              "detail": {
+                "components": [],
+                "unresolved_reason": "cost_rate_missing",
+                "uncosted_quantities": {
+                  "seats": "3",
+                  "credit": "-0.75",
+                  "flat_fee": "2.5",
+                  "searches": "3",
+                  "ledger_lines": "123456789012345678901234567890"
+                },
+                "undeclared_quantities": {},
+                "uncosted_measurement_keys": [
+                  "searches",
+                  "credit",
+                  "flat_fee",
+                  "ledger_lines",
+                  "seats"
+                ]
+              },
+              "method": null,
+              "status": "unresolved"
+            },
+            "pricing": {
+              "detail": {
+                "components": [],
+                "pricing_mode": "event_priced",
+                "not_applicable_reason": null,
+                "pricing_status_reason": null
+              },
+              "method": null,
+              "status": "unknown"
+            },
+            "currency": "usd",
+            "provenance": {
+              "cost_rate_ids": {},
+              "price_rate_ids": {}
+            },
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "subject_type": "usage_event",
+            "pricing_engine_version": "2.2.0",
+            "receipt_schema_version": 2
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [
+            "searches",
+            "credit",
+            "flat_fee",
+            "ledger_lines",
+            "seats"
+          ],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "missing_required_measurement_keys": [],
+        "complete": false
+      }
+    ],
+    "refusal": null
+  }
+}

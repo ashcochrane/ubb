@@ -156,7 +156,7 @@ class TheMoveIsARenameTest(TestCase):
             tenant=tenant, customer=customer, idempotency_key="idem_rename")
         PostingMeasurement.objects.create(
             posting=posting, recorded_at=timezone.now(),
-            **{CANONICAL_COLUMN: {"input_tokens": 1200}})
+            **{CANONICAL_COLUMN: {"input_tokens": "1200"}})
 
         loader = MigrationLoader(connection)
         before = loader.project_state((APP_LABEL, PARENT_MIGRATION))
@@ -177,14 +177,14 @@ class TheMoveIsARenameTest(TestCase):
         # without going through a model that knows this name.
         if isinstance(carried, str):
             carried = json.loads(carried)
-        self.assertEqual(carried, {"input_tokens": 1200})
+        self.assertEqual(carried, {"input_tokens": "1200"})
 
         with connection.schema_editor() as editor:
             _RENAME.database_forwards(APP_LABEL, editor, before, after)
         self.assertEqual(
             getattr(PostingMeasurement.objects.get(posting=posting),
                     CANONICAL_COLUMN),
-            {"input_tokens": 1200})
+            {"input_tokens": "1200"})
 
 
 class TheNameIsTheDeclarationsOwnTest(TestCase):
@@ -248,12 +248,12 @@ class ThePostingReadsItsQuantitiesUnderTheCanonicalNameTest(TestCase):
             **{CANONICAL_COLUMN: quantities})
 
     def test_the_accessor_serves_the_childs_bag(self):
-        self._measure({"input_tokens": 1200})
+        self._measure({"input_tokens": "1200"})
         self.assertEqual(getattr(self.posting, CANONICAL_COLUMN),
-                         {"input_tokens": 1200})
+                         {"input_tokens": "1200"})
 
     def test_the_retired_accessor_is_gone(self):
-        self._measure({"input_tokens": 1200})
+        self._measure({"input_tokens": "1200"})
         self.assertFalse(hasattr(self.posting, RETIRED_COLUMN))
 
     def test_the_accessor_is_still_read_only(self):
@@ -262,9 +262,9 @@ class ThePostingReadsItsQuantitiesUnderTheCanonicalNameTest(TestCase):
         ADR-0006 §4 is why this may be served and never written back; a writer
         that quietly succeeded here would be filling a column that is not there.
         """
-        self._measure({"input_tokens": 1200})
+        self._measure({"input_tokens": "1200"})
         with self.assertRaises(AttributeError):
-            setattr(self.posting, CANONICAL_COLUMN, {"input_tokens": 9})
+            setattr(self.posting, CANONICAL_COLUMN, {"input_tokens": "9"})
 
     def test_an_absent_child_still_answers_an_empty_bag(self):
         self.assertEqual(getattr(self.posting, CANONICAL_COLUMN), {})
@@ -285,18 +285,18 @@ class TheRecordingPathWritesTheCanonicalColumnTest(TestCase):
         result = UsageService.record_usage(
             self.tenant, self.customer, "idem_recorded",
             provider_cost_micros=1_000_000,
-            **{CANONICAL_COLUMN: {"input_tokens": 1200, "output_tokens": 480}})
+            **{CANONICAL_COLUMN: {"input_tokens": "1200", "output_tokens": "480"}})
         posting = Posting.objects.get(id=result["event_id"])
         self.assertEqual(
             getattr(posting.measurement, CANONICAL_COLUMN),
-            {"input_tokens": 1200, "output_tokens": 480})
+            {"input_tokens": "1200", "output_tokens": "480"})
 
     def test_the_acknowledgement_answers_under_the_canonical_name(self):
         result = UsageService.record_usage(
             self.tenant, self.customer, "idem_acked",
             provider_cost_micros=1_000_000,
-            **{CANONICAL_COLUMN: {"input_tokens": 7}})
-        self.assertEqual(result[CANONICAL_COLUMN], {"input_tokens": 7})
+            **{CANONICAL_COLUMN: {"input_tokens": "7"}})
+        self.assertEqual(result[CANONICAL_COLUMN], {"input_tokens": "7"})
         self.assertNotIn(RETIRED_COLUMN, result)
 
 
@@ -365,7 +365,7 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
                 "idempotency_key": f"idem_{bag_key}",
                 "event_type": DECLARED,
                 "provider_cost_micros": 1_000_000,
-                bag_key: {"input_tokens": 1200},
+                bag_key: {"input_tokens": "1200"},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -387,4 +387,4 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
         self.assertEqual(response.status_code, 200)
         posting = Posting.objects.get(idempotency_key=f"idem_{CANONICAL_COLUMN}")
         self.assertEqual(getattr(posting, CANONICAL_COLUMN),
-                         {"input_tokens": 1200})
+                         {"input_tokens": "1200"})

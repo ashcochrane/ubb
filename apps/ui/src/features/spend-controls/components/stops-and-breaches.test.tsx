@@ -81,13 +81,14 @@ describe("StopsAndBreaches — the three shapes", () => {
     expect(valueBeside(row, "Ceiling")).toHaveTextContent("$3.00");
     expect(valueBeside(row, "Bounds")).toHaveTextContent("Cost");
 
-    // Both pairs are floors beside the one event whose cost UBB never learned.
+    // Both pairs are partial, marked incomplete, beside the one event whose
+    // cost UBB never learned.
     const fired = valueBeside(row, "Known cost when it fired").querySelector("[data-reading]");
-    expect(fired).toHaveAttribute("data-reading", "floor");
-    expect(fired).toHaveTextContent("at least $3.05");
+    expect(fired).toHaveAttribute("data-reading", "partial");
+    expect(fired).toHaveTextContent("$3.05 (Incomplete)");
     const ended = valueBeside(row, "Known cost where it ended").querySelector("[data-reading]");
-    expect(ended).toHaveAttribute("data-reading", "floor");
-    expect(ended).toHaveTextContent("at least $3.42");
+    expect(ended).toHaveAttribute("data-reading", "partial");
+    expect(ended).toHaveTextContent("$3.42 (Incomplete)");
 
     // The events after the stop, itemised: the unlearned cost is NAMED, and
     // the row still shows what it billed.
@@ -134,8 +135,8 @@ describe("StopsAndBreaches — the three shapes", () => {
     expect(crossedBy).toHaveTextContent(CROSSING_REPLAYED);
     expect(valueBeside(row, "Pool")).toHaveTextContent("$500.00");
     const after = valueBeside(row, "Charged after the crossing").querySelector("[data-reading]");
-    expect(after).toHaveAttribute("data-reading", "floor");
-    expect(after).toHaveTextContent("at least $12.50");
+    expect(after).toHaveAttribute("data-reading", "partial");
+    expect(after).toHaveTextContent("$12.50 (Incomplete)");
     expect(valueBeside(row, "Active work stopped")).toHaveTextContent("3");
   });
 
@@ -148,8 +149,9 @@ describe("StopsAndBreaches — the three shapes", () => {
     expect(valueBeside(hard, "Balance at crossing")).toHaveTextContent("-$6.00");
     expect(within(hard).getByText("Episode 3")).toBeInTheDocument();
     // Three events past the stop, two costs known and one never learned: the
-    // episode's supplier total is a floor, exactly as the old report said it.
-    expect(hard).toHaveTextContent("at least $1.87");
+    // episode's supplier total is the sum of what resolved, marked incomplete
+    // (the old report said "at least", which #603 retired).
+    expect(hard).toHaveTextContent("$1.87 (Incomplete)");
 
     const soft = articleFor("wallet_policy", (a) => within(a).queryByText("Soft floor") !== null);
     expect(soft).toHaveTextContent(SOFT_FLOOR_MARKER);
@@ -165,7 +167,7 @@ describe("StopsAndBreaches — the three shapes", () => {
     const wallet = within(totals).getByText("Wallet policy").closest("tr");
     expect(wallet).toHaveTextContent("3");
     expect(wallet).toHaveTextContent("$2.98");
-    expect(wallet).toHaveTextContent("at least $1.87");
+    expect(wallet).toHaveTextContent("$1.87 (Incomplete)");
     expect(within(totals).queryByText("Ceiling")).not.toBeInTheDocument();
   });
 });

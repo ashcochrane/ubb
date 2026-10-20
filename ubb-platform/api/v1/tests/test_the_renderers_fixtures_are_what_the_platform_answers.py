@@ -286,8 +286,8 @@ def _scaffold(routes, target=PYTHON):
 
 def _blocked(routes, target=PYTHON):
     """Every way a known structure can lack something it cannot run without:
-    a constant this Code Builder cannot yet render, a derived quantity, and an
-    Event Type never published. Asked for as shell, the first Event Type's
+    a derived quantity, and an Event Type never published. (A constant was a
+    third until #584 rendered it.) Asked for as shell, the first Event Type's
     shape is one more: a Python library's object, which a shell file cannot
     read. Beside them, a cost read off the supplier's JSON response, which
     blocked this Blueprint until #583 and is a complete call since — so the
@@ -297,8 +297,6 @@ def _blocked(routes, target=PYTHON):
         "chat.completion", shape=A_PYTHON_SHAPE,
         measurements={
             "input_tokens": INPUT_TOKENS,
-            "flat_fee": _a_quantity("constant", unit="call",
-                                    constant_value="1"),
             "ratio": _a_quantity("derived", unit="token",
                                  value_type="decimal")})
     routes._event_type(
@@ -315,16 +313,27 @@ def _blocked(routes, target=PYTHON):
         target=target)
 
 
+#: The constants the `constant` fixture declares, each with the value it is
+#: declared as (#584): an integer, a decimal, a negative one, and one with
+#: more digits than a binary float holds — the cases a renderer could write
+#: as the wrong type, round, or lose a sign or a digit of.
+CONSTANTS = {
+    "flat_fee": ("decimal", "2.5"),
+    "seats": ("integer", "3"),
+    "credit": ("decimal", "-0.75"),
+    "ledger_lines": ("integer", "123456789012345678901234567890"),
+}
+
+
 def _constant(routes, target=PYTHON):
-    """A constant quantity declared WITH its value (#571), beside one the
-    caller supplies. The declaration is complete, and the call is blocked
-    only because this Code Builder version cannot yet generate code that uses
-    a constant's value — the code the ticket that renders it (#584) removes,
-    when this fixture becomes a complete one."""
+    """Constant quantities declared WITH their values (#571), beside one the
+    caller supplies. Rendered since #584, so the call is complete and each
+    constant is a typed exact literal in the generated module."""
     routes._a_kind("flat_rate_call")
     routes._event_type("flat.call", measurements={
-        "flat_fee": _a_quantity("constant", unit="call", required=False,
-                                value_type="decimal", constant_value="2.5"),
+        **{code: _a_quantity("constant", unit="call", required=False,
+                             value_type=value_type, constant_value=value)
+           for code, (value_type, value) in CONSTANTS.items()},
         "searches": SEARCHES})
     return routes._resolve(task_type="flat_rate_call",
                            event_types=["flat.call"], target=target)
@@ -424,7 +433,7 @@ READINESS = {
     "fixed-price": "complete",
     "scaffold": "scaffold",
     "blocked": "blocked",
-    "constant": "blocked",
+    "constant": "complete",
     "odd-names": "complete",
     "draft-preview": "complete",
     "shell-calculated-cost": "complete",
@@ -436,7 +445,7 @@ READINESS = {
     "shell-fixed-price": "complete",
     "shell-scaffold": "scaffold",
     "shell-blocked": "blocked",
-    "shell-constant": "blocked",
+    "shell-constant": "complete",
     "shell-odd-names": "complete",
     "shell-draft-preview": "complete",
     "shell-unreadable-shape": "blocked",
@@ -514,15 +523,13 @@ def test_the_fixtures_cover_what_they_are_named_for():
     assert [d["code"] for d in resolved("explicit-subtasks")["diagnostics"]
             ] == ["source_path_convention_mismatch"]
     assert sorted({d["code"] for d in resolved("blocked")["diagnostics"]}) == [
-        "constant_measurement_not_renderable",
         "derived_measurement_unsupported", "event_type_not_published"]
-    # Valid configuration this Code Builder version cannot yet render offers
-    # nothing to change (#571); every other code names its fix.
+    # Every code a blocked Blueprint reports names its fix: since #584 no
+    # valid configuration is left that this Code Builder cannot render.
     for name in ("blocked", "shell-blocked"):
         blocked = resolved(name)
-        assert sorted(d["code"] for d in blocked["diagnostics"]
-                      if d["remediation_request"] is None) == [
-            "constant_measurement_not_renderable"]
+        assert [d["code"] for d in blocked["diagnostics"]
+                if d["remediation_request"] is None] == []
         # The cost read off the response is a complete call among the
         # blocked ones (#583).
         (search,) = [call for call in blocked["calls"]
@@ -549,15 +556,18 @@ def test_the_fixtures_cover_what_they_are_named_for():
         assert literal(read_currency,
                        "event_type.response_shape_representation") == [
             "python_object" if shape == A_PYTHON_SHAPE else "json"]
-    # A constant declared with its value is complete configuration: the one
-    # thing between it and a runnable file is this Code Builder's version.
+    # A constant declared with its value is complete configuration, and its
+    # token carries the value as the exact text it is declared as (#584).
     for name in ("constant", "shell-constant"):
         constant = resolved(name)
-        assert [d["code"] for d in constant["diagnostics"]] == [
-            "constant_measurement_not_renderable"]
-        (token,) = [token for token in tokens(constant)
-                    if token["name"] == "measurements.flat_fee"]
-        assert (token["configured"], token["value"]) == (False, None)
+        assert constant["diagnostics"] == []
+        for code, (value_type, value) in CONSTANTS.items():
+            (token,) = [token for token in tokens(constant)
+                        if token["name"] == f"measurements.{code}"]
+            assert (token["binding_class"], token["configured"],
+                    token["value"]) == ("platform_known", True, value)
+            assert literal(constant, f"measurements.{code}.value_type") == [
+                value_type]
     preview = resolved("draft-preview")
     assert preview["configuration_fingerprint"] is None
     for name in ("odd-names", "shell-odd-names"):
@@ -588,7 +598,6 @@ def test_the_fixtures_cover_what_they_are_named_for():
                        "python_object"]
     assert sorted({d["code"] for d in resolved("shell-blocked")["diagnostics"]
                    }) == [
-        "constant_measurement_not_renderable",
         "derived_measurement_unsupported", "event_type_not_published",
         "response_shape_not_readable_by_target"]
 
@@ -625,7 +634,7 @@ VERIFIED = {
     # recorded and costed completely, so verified. The tenant declares no
     # price, so the price is unknown — which `verified` does not read.
     "reported-cost": ("reported-cost", {
-        "records": [_record("web.search", measurements={"searches": 3},
+        "records": [_record("web.search", measurements={"searches": "3"},
                             provider_cost_micros=1_250_000)],
         "grouping_fields": {}}, 200),
     # The same for a cost read off the provider's response (#583 D3): the
@@ -634,7 +643,7 @@ VERIFIED = {
     # not what Verify tests — running the generated files does.
     "response-cost": ("response-cost", {
         "records": [_record("grounded.search",
-                            measurements={"input_tokens": 1200},
+                            measurements={"input_tokens": "1200"},
                             provider_response_cost_micros=4_200)],
         "grouping_fields": {}}, 200),
     # With the currency read off the response too, the Blueprint binds
@@ -657,44 +666,55 @@ VERIFIED = {
     # unresolved, so not verified, and the acknowledgement names the gap.
     "calculated-cost": ("calculated-cost", {
         "records": [_record("chat.completion", measurements={
-            "input_tokens": 1200, "output_tokens": 300, "searches": 2})],
+            "input_tokens": "1200", "output_tokens": "300", "searches": "2"})],
         "grouping_fields": {"environment": "staging"}}, 200),
     # The two required quantities left blank: the record names them missing.
     "calculated-cost-without-required-measurements": ("calculated-cost", {
-        "records": [_record("chat.completion", measurements={"searches": 2})],
+        "records": [_record("chat.completion", measurements={"searches": "2"})],
         "grouping_fields": {"environment": "staging"}}, 200),
     # One of two selected Event Types left out: a partial run, never verified.
     "direct-task-events-partial": ("direct-task-events", {
-        "records": [_record("reply.sent", measurements={"replies": 1})],
+        "records": [_record("reply.sent", measurements={"replies": "1"})],
         "grouping_fields": {}}, 200),
     # Recorded under the Subtask kind the Blueprint starts, with a sample for
     # both kinds' required Grouping Fields.
     "explicit-subtasks": ("explicit-subtasks", {
         "records": [_record("gemini.generate", subtask_type="summarise",
-                            measurements={"prompt_tokens": 900,
-                                          "candidate_tokens": 250})],
+                            measurements={"prompt_tokens": "900",
+                                          "candidate_tokens": "250"})],
         "grouping_fields": {"environment": "staging", "phase": "draft"}}, 200),
     # A supplier cost on an Event Type costed from rates: refused inside the
     # run, which stops there and says where.
     "calculated-cost-refused-recording": ("calculated-cost", {
         "records": [_record("chat.completion", provider_cost_micros=5,
-                            measurements={"input_tokens": 1200,
-                                          "output_tokens": 300})],
+                            measurements={"input_tokens": "1200",
+                                          "output_tokens": "300"})],
         "grouping_fields": {"environment": "staging"}}, 200),
+    # Constants are sent as declared, as generated code sends them (#584):
+    # the sample is the caller's quantity alone, and the acknowledgement
+    # echoes every constant as the exact text it is declared as.
+    "constant": ("constant", {
+        "records": [_record("flat.call", measurements={"searches": "3"})],
+        "grouping_fields": {}}, 200),
     # The refusals before anything runs, one of each.
+    # A sample for a constant: no tenant's code could send one (#584).
+    "constant-sampled": ("constant", {
+        "records": [_record("flat.call",
+                            measurements={"searches": "3", "seats": "4"})],
+        "grouping_fields": {}}, 422),
     "not-found": (None, {
         "records": [_record("chat.completion",
-                            measurements={"input_tokens": 1200})],
+                            measurements={"input_tokens": "1200"})],
         "grouping_fields": {"environment": "staging"}}, 404),
     "event-type-not-available": ("blocked", {
-        "records": [_record("draft.only", measurements={"searches": 1})],
+        "records": [_record("draft.only", measurements={"searches": "1"})],
         "grouping_fields": {}}, 422),
     "blocked": ("blocked", {
-        "records": [_record("web.search", measurements={"searches": 1})],
+        "records": [_record("web.search", measurements={"searches": "1"})],
         "grouping_fields": {}}, 409),
     "missing-grouping-field-sample": ("calculated-cost", {
         "records": [_record("chat.completion", measurements={
-            "input_tokens": 1200, "output_tokens": 300})],
+            "input_tokens": "1200", "output_tokens": "300"})],
         "grouping_fields": {}}, 422),
 }
 

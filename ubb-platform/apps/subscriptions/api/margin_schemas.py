@@ -1,7 +1,8 @@
 from typing import Annotated, List, Optional
 from ninja import Schema, Field
 
-from core.amount_status_pairs import supplier_cost_total_meaning
+from core.amount_status_pairs import (
+    PRICING_STATUS_REASON_MEANING, supplier_cost_total_meaning)
 
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
@@ -43,6 +44,16 @@ RevenueBasis = Annotated[
 #: periods, which is where coverage is read from.
 PricingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
+
+#: WHY THAT STATUS APPLIES, where a published reason does (#603) — required
+#: and nullable wherever `pricing_status` is published (the owner's ruling,
+#: `6279966961`). Always null at this scope: a supplied window is `known` or
+#: `unknown` for want of a supplied figure, and no published reason names
+#: either. Declared rather than omitted, because a surface publishing the
+#: status without the reason would be the third "field absent" state the
+#: ruling refuses.
+PricingStatusReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status_reason"})]
 
 
 class TenantSuppliedRevenueIn(Schema):
@@ -154,6 +165,8 @@ class SuppliedRevenueWindowOut(Schema):
     basis: RevenueBasis
     window: PeriodWindow
     pricing_status: PricingStatus
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     totals: List[SuppliedRevenueTotalOut]
     records: List[AttributedSuppliedRevenueOut]
 
@@ -162,10 +175,10 @@ class SuppliedRevenueWindowOut(Schema):
 #
 # It is the number of events the supplier cost beside it could not include —
 # `Posting.provider_cost_micros` is nullable and a null means UBB has not
-# resolved that cost (#317), so a total built over the column is a FLOOR
-# wherever this is non-zero, and every margin derived from that total is a
-# CEILING: the true margin can only be smaller than the figure shown. Zero means
-# the figure is whole.
+# resolved that cost (#317), so a total built over the column is the sum of
+# the resolved costs wherever this is non-zero, and every margin derived from
+# it is not the margin either — in either direction, since an omitted cost may
+# be negative (#603). Zero means the figure is whole.
 #
 # An event whose Event Type declares no supplier cost is NOT counted. Nothing
 # about it is missing (#327), and a caveat that is always on is a caveat nobody
@@ -195,9 +208,9 @@ class SeatMarginOut(Schema):
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
         "this customer's events in the window the margin covers"))
     unresolved_event_count: int
-    #: The revenue half's own count (#351). It bounds the margin the OTHER way
-    #: from the count above it: an excluded cost makes the margin a ceiling, an
-    #: excluded price makes it a floor, and a seat can be bounded both ways at
+    #: The revenue half's own count (#351), kept apart from the count above it:
+    #: an excluded cost or an excluded price leaves the margin incomplete, in a
+    #: direction nobody can state (#603), and a seat can be missing both at
     #: once — which is why they are two properties and not one.
     unpriced_event_count: int
     total_revenue_micros: int
@@ -227,15 +240,14 @@ class UnprofitableCustomerRow(Schema):
     customer_id: str
     external_id: str
     gross_margin_micros: int
-    #: A margin named as unprofitable is a CEILING wherever this is non-zero, so
-    #: the count can never mean "perhaps they are fine" — only that they may be
-    #: worse than the figure says.
+    #: A margin named as unprofitable is INCOMPLETE wherever this is non-zero:
+    #: it is the sum of what resolved, and the count says how many supplier
+    #: costs it leaves out — in a direction nobody can state (#603).
     unresolved_event_count: int
-    #: ⚠ AND THIS ONE CAN MEAN EXACTLY THAT (#351). An excluded PRICE means
-    #: revenue was left out, so the true margin is HIGHER than the figure that
-    #: named this customer unprofitable. Publishing only the count above — the
-    #: one that cannot say it — would have made this list the more misleading of
-    #: the two surfaces.
+    #: ⚠ AND SO IS IT WHEREVER THIS ONE IS (#351). An excluded PRICE means
+    #: revenue was left out of the figure that named this customer
+    #: unprofitable. Publishing only the count above — the one that cannot say
+    #: it — would have made this list the more misleading of the two surfaces.
     unpriced_event_count: int
     margin_percentage: float
 
@@ -271,7 +283,7 @@ class BusinessMarginTotals(Schema):
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
         "every seat's events in the window, the seats' own totals added up"))
     #: The seats' counts added up, exactly as the cost above is: one seat's
-    #: unresolved cost makes the business figure a floor too.
+    #: unresolved cost leaves the business figure incomplete too.
     unresolved_event_count: int
     #: And the revenue half's, added up the same way (#351).
     unpriced_event_count: int

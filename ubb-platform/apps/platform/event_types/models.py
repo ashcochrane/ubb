@@ -47,7 +47,6 @@ and its siblings ``test_event_type_declaration_invariants.py``,
 ``test_reported_cost_invariants.py`` and ``test_quarantine_invariants.py`` are
 where those claims are held to the tree rather than asserted here.
 """
-from decimal import Decimal, InvalidOperation
 from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
@@ -76,7 +75,9 @@ from core.vocabulary import (
     UNIT_KNOWN_VALUES,
 )
 
-from .exact_decimals import CANONICAL, NotAnExactDecimal, anchored, canonical
+from .exact_decimals import (
+    CANONICAL, NotAnExactDecimal, anchored, canonical, canonical_quantity,
+    is_whole)
 from .source_paths import advisories, path_errors
 
 #: The shapes UBB can actually check a declared path against — every response
@@ -260,6 +261,41 @@ class ValueTypeMismatch(UBBError):
     somebody's commercial call, and a quantity silently rounded at the door is
     a quantity nobody can reconcile back to what the supplier reported.
     """
+
+
+def quantity_under(code, value_type, value):
+    """``value`` as a quantity declared ``value_type``, in its canonical exact
+    text, or refuse it. Never rounds.
+
+    THE MEASUREMENT CONTRACT'S ONE READER (#571, #603): a constant's declared
+    value is checked by it when it is declared, and every recorded quantity
+    is checked by it, against the Event Type's last publication, before it is
+    recorded. Text goes through the one decimal grammar FIRST
+    (`exact_decimals.canonical`) — never through ``Decimal(text)``, which
+    reads surrounding whitespace, digit separators, exponents, ``NaN`` and any
+    script's digits, every one of which would pass. A Python ``int`` is exact
+    and reads as its own digits; a ``bool`` is not the number one; a binary
+    float has already rounded and is refused rather than read, because "no
+    binary float anywhere on the path" leaves no exact reading of one.
+
+    A count of calls declared whole and reported as 2.5 is a defect upstream,
+    and the two ways to make it go away — round it, or widen the declaration —
+    are both somebody's commercial decision rather than this function's. In
+    the canonical form "whole" is exactly "has no point", the rule
+    `ck_measurement_integer_constant_is_whole` states at the database.
+    """
+    try:
+        text = canonical_quantity(value)
+    except NotAnExactDecimal as refused:
+        raise ValueTypeMismatch(
+            f"{code} is a quantity, and {refused}") from None
+    if value_type == MEASUREMENT_VALUE_TYPE_INTEGER and not is_whole(text):
+        raise ValueTypeMismatch(
+            f"{code} is declared as a whole number and {text!r} is not one. "
+            f"UBB does not round a quantity to fit a declaration: either the "
+            f"value is wrong or the declaration is, and both repairs are a "
+            f"commercial decision.")
+    return text
 
 
 
@@ -1263,50 +1299,9 @@ class Measurement(DeclarationPart, BaseModel):
     # -- the value type, which is the point of declaring one ------------------
 
     def validate_value(self, value):
-        """``value`` as an exact quantity, or refuse it. Never rounds.
-
-        The check the bare bag could not make. A count of calls declared whole
-        and reported as 2.5 is a defect upstream, and the two ways to make it
-        go away — round it, or widen the declaration — are both somebody's
-        commercial decision rather than this method's.
-
-        A binary float is read through its shortest round-tripping text rather
-        than through its exact binary expansion, because ``0.1`` in a supplier's
-        JSON means a tenth and reading it as
-        ``0.1000000000000000055511151231257827`` would be UBB inventing
-        precision nobody sent. What the wire may carry, and where it is parsed,
-        is slice 3's.
-        """
-        quantity = self._as_quantity(value)
-        if (self.value_type == MEASUREMENT_VALUE_TYPE_INTEGER
-                and quantity != quantity.to_integral_value()):
-            raise ValueTypeMismatch(
-                f"{self.code} is declared as a whole number and {value!r} is "
-                f"not one. UBB does not round a quantity to fit a declaration: "
-                f"either the value is wrong or the declaration is, and both "
-                f"repairs are a commercial decision.")
-        return quantity
-
-    def _as_quantity(self, value):
-        """A quantity, or a refusal. ``True`` is not the number one.
-
-        ``bool`` is a subclass of ``int`` in Python, so a flag reaching a
-        quantity column passes every numeric test there is. It is refused by
-        name for that reason and no other.
-        """
-        if isinstance(value, bool) or value is None:
-            raise ValueTypeMismatch(
-                f"{self.code} is a quantity and {value!r} is not a number.")
-        try:
-            quantity = Decimal(str(value)) if isinstance(value, float) \
-                else Decimal(value)
-        except (InvalidOperation, TypeError, ValueError):
-            raise ValueTypeMismatch(
-                f"{self.code} is a quantity and {value!r} is not a number.")
-        if not quantity.is_finite():
-            raise ValueTypeMismatch(
-                f"{self.code} is a quantity and {value!r} is not a finite one.")
-        return quantity
+        """``value`` as this quantity's canonical exact text, or refuse it.
+        Never rounds — :func:`quantity_under`, asked of this declaration."""
+        return quantity_under(self.code, self.value_type, value)
 
     # -- what UBB has to say, and will never do ------------------------------
 

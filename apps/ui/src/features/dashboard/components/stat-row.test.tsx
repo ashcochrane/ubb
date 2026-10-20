@@ -101,12 +101,12 @@ describe("StatRow", () => {
 
     renderRow(<StatRow window={WINDOW} currency="usd" />);
 
-    // The whole row does not fail with one refinement: revenue, the cost floor,
-    // the margin ceiling and the event count all came back on the first
+    // The whole row does not fail with one refinement: revenue, the partial
+    // cost, the partial margin and the event count all came back on the first
     // request and are worth more than the count that did not.
     expect(await screen.findByText("$852.90")).toBeInTheDocument();
-    expect(screen.getByText("at least $563.60")).toBeInTheDocument();
-    expect(screen.getByText("at most 33.9% margin")).toBeInTheDocument();
+    expect(screen.getByText("$563.60 (Incomplete)")).toBeInTheDocument();
+    expect(screen.getByText("33.9% (Incomplete) margin")).toBeInTheDocument();
     expect(screen.getByText("93.6k")).toBeInTheDocument();
   });
   // ⚠ A WINDOW REACHING BACK PAST THE ECONOMIC HORIZON (#510). The narrowing

@@ -122,7 +122,7 @@ def a_record(event_type=EVENT, **fields):
     return {"event_type": event_type, **fields}
 
 
-THE_SAMPLE = {"input_tokens": 100, "searches": 2}
+THE_SAMPLE = {"input_tokens": "100", "searches": "2"}
 
 
 @pytest.mark.django_db
@@ -522,7 +522,7 @@ class TestVerifiedSpeaksForTheWholeBlueprint(VerifyRoutes):
         fingerprint = self._fingerprint(event_types=[EVENT, OTHER_EVENT])
         body = self._verified(
             fingerprint, a_record(measurements=THE_SAMPLE),
-            a_record(OTHER_EVENT, measurements={"input_tokens": 10}))
+            a_record(OTHER_EVENT, measurements={"input_tokens": "10"}))
         assert body["unexercised_event_types"] == []
         assert body["verified"] is True, body
 
@@ -546,13 +546,13 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
     def test_a_missing_required_measurement_is_named(self):
         self._priced_configuration()
         body = self._verified(self._fingerprint(), a_record(
-            measurements={"searches": 2}))
+            measurements={"searches": "2"}))
         assert body["verified"] is False
         (record,) = body["records"]
         assert record["missing_required_measurement_keys"] == ["input_tokens"]
         assert record["complete"] is False
         # Read off the acknowledgement: what was recorded is what was sent.
-        assert record["acknowledgement"]["measurements"] == {"searches": 2}
+        assert record["acknowledgement"]["measurements"] == {"searches": "2"}
 
     def test_a_missing_cost_rate_is_named(self):
         self._complete_configuration()
@@ -611,6 +611,55 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
 
 
 @pytest.mark.django_db
+class TestAConstantIsSentAsDeclared(VerifyRoutes):
+    """#584: generated code sends a constant as its declared value on every
+    call and asks the tenant's code for nothing, so the run does the same:
+    the request samples the caller's quantities alone, and each constant is
+    recorded as the exact text it is declared as. A sample for a constant is
+    a value no tenant's code could send, and is refused before anything
+    runs."""
+
+    CONSTANTS = {"flat_fee": ("decimal", "2.5"), "credit": ("decimal", "-0.75"),
+                 "ledger_lines": ("integer", "1234567890" * 3)}
+
+    def _constants(self):
+        self._a_kind()
+        self._event_type(measurements={
+            "searches": SEARCHES,
+            **{code: {**SEARCHES, "value_type": value_type, "unit": "call",
+                      "required_for_costing": False,
+                      "source_kind": "constant", "constant_value": value}
+               for code, (value_type, value) in self.CONSTANTS.items()}})
+        return self._fingerprint()
+
+    def test_each_constant_is_recorded_as_declared_beside_the_sample(self):
+        body = self._verified(
+            self._constants(), a_record(measurements={"searches": "2"}),
+            grouping_fields={})
+
+        ack = body["records"][0]["acknowledgement"]
+        assert ack["measurements"] == {
+            "searches": "2",
+            **{code: value for code, (_, value) in self.CONSTANTS.items()}}
+
+    def test_a_sample_for_a_constant_is_refused_before_anything_runs(self):
+        fingerprint = self._constants()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint,
+            a_record(measurements={"searches": "2", "flat_fee": "9"}),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert f"'{EVENT}:flat_fee'" in body["detail"], body
+        assert "takes no sample" in body["detail"], body
+        assert what_moved(before, every_table()) == {}
+
+
+@pytest.mark.django_db
 class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
     """A Blueprint whose supplier cost is read off the provider's response is
     complete since #583, so Verify runs it end to end. Its sample is the cost
@@ -632,7 +681,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
 
     def _run(self, fingerprint, **cost):
         return self._verified(
-            fingerprint, a_record(measurements={"searches": 2}, **cost),
+            fingerprint, a_record(measurements={"searches": "2"}, **cost),
             grouping_fields={})
 
     def test_the_sample_is_recorded_and_costed_and_the_blueprint_verified(self):
@@ -709,7 +758,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         before = every_table()
 
         response = self._verify(
-            fingerprint, a_record(measurements={"searches": 2},
+            fingerprint, a_record(measurements={"searches": "2"},
                                   provider_response_cost_micros=4_200),
             grouping_fields={})
 
@@ -728,7 +777,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         before = every_table()
 
         response = self._verify(
-            fingerprint, a_record(measurements={"searches": 2},
+            fingerprint, a_record(measurements={"searches": "2"},
                                   provider_response_cost_micros=4_200,
                                   currency="usd"),
             grouping_fields={})

@@ -505,8 +505,8 @@ class TheClaimedCostIsAcceptedAnywhereTest(_RecordingCase):
             self.tenant, measurement_key="calls",
             rate_per_unit_micros=1_000, unit_quantity=1)
 
-        plain = self.record("rated-plain", measurements={"calls": 3})
-        claimed = self.record("rated-claimed", measurements={"calls": 3},
+        plain = self.record("rated-plain", measurements={"calls": "3"})
+        claimed = self.record("rated-claimed", measurements={"calls": "3"},
                               claimed_provider_cost_micros=CLAIMED)
 
         self.assertEqual(plain["provider_cost_micros"], 3_000)
@@ -533,8 +533,8 @@ class TheClaimedCostIsAcceptedAnywhereTest(_RecordingCase):
         cost_rate_in_default_book(
             self.tenant, measurement_key="calls",
             rate_per_unit_micros=1_000, unit_quantity=1)
-        self.record("total-one", measurements={"calls": 2})
-        self.record("total-two", measurements={"calls": 2},
+        self.record("total-one", measurements={"calls": "2"})
+        self.record("total-two", measurements={"calls": "2"},
                     claimed_provider_cost_micros=CLAIMED)
 
         response = self.http.get(
@@ -884,17 +884,17 @@ class _EveryOtherFactFollowsThePublication:
         missing = (COSTING_STATUS_UNRESOLVED,
                    UNRESOLVED_REASON_REPORTED_COST_MISSING)
         self.assertEqual(self.costing("before", "acme.embed",
-                                      measurements={"calls": 3}), missing)
+                                      measurements={"calls": "3"}), missing)
 
         self.costing_method("acme.embed", COSTING_METHOD_CALCULATED)
 
         self.assertEqual(self.costing("draft", "acme.embed",
-                                      measurements={"calls": 3}), missing)
+                                      measurements={"calls": "3"}), missing)
 
         self.publish("acme.embed")
 
         ack = self.admitted(self.send("published", event_type="acme.embed",
-                                      measurements={"calls": 3}))
+                                      measurements={"calls": "3"}))
         self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
         self.assertEqual(ack["provider_cost_micros"], 3_000)
 
@@ -907,7 +907,7 @@ class _EveryOtherFactFollowsThePublication:
         self.mapping("acme.calc", SOURCE_KIND_CALLER_SUPPLIED)
 
         ack = self.admitted(self.send("draft", event_type="acme.calc",
-                                      measurements={"calls": 3}))
+                                      measurements={"calls": "3"}))
         self.assertEqual(ack["costing_status"], COSTING_STATUS_KNOWN)
         self.assertEqual(ack["provider_cost_micros"], 3_000)
         self.refused_with_nothing_admissible(self.send(
@@ -917,7 +917,7 @@ class _EveryOtherFactFollowsThePublication:
         self.publish("acme.calc")
 
         self.assertEqual(
-            self.costing("published", "acme.calc", measurements={"calls": 3}),
+            self.costing("published", "acme.calc", measurements={"calls": "3"}),
             (COSTING_STATUS_UNRESOLVED,
              UNRESOLVED_REASON_REPORTED_COST_MISSING))
 
@@ -926,7 +926,7 @@ class _EveryOtherFactFollowsThePublication:
         self.rate("tokens")
         self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
                        quantities=("calls",))
-        report = {"calls": 1, "tokens": 1}
+        report = {"calls": "1", "tokens": "1"}
         held = (COSTING_STATUS_UNRESOLVED,
                 UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED)
 
@@ -949,7 +949,7 @@ class _EveryOtherFactFollowsThePublication:
         self.rate("tokens")
         self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
                        quantities=("calls", "tokens"))
-        report = {"calls": 1, "tokens": 1}
+        report = {"calls": "1", "tokens": "1"}
 
         self.withdraw_quantity("acme.calc", "tokens")
 
@@ -971,19 +971,19 @@ class _EveryOtherFactFollowsThePublication:
         self.rate("calls")
         self.published("acme.free", costing_method=COSTING_METHOD_CALCULATED)
         self.assertEqual(
-            self.costing("before", "acme.free", measurements={"calls": 3}),
+            self.costing("before", "acme.free", measurements={"calls": "3"}),
             (COSTING_STATUS_NOT_APPLICABLE, None))
 
         self.quantity("acme.free", "calls")
 
         self.assertEqual(
-            self.costing("draft", "acme.free", measurements={"calls": 3}),
+            self.costing("draft", "acme.free", measurements={"calls": "3"}),
             (COSTING_STATUS_NOT_APPLICABLE, None))
 
         self.publish("acme.free")
 
         self.assertEqual(
-            self.costing("published", "acme.free", measurements={"calls": 3}),
+            self.costing("published", "acme.free", measurements={"calls": "3"}),
             (COSTING_STATUS_KNOWN, None))
 
     def test_a_draft_that_would_declare_no_cost_waits_for_publication(self):
@@ -1039,9 +1039,9 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
     """
 
     BODIES = {
-        "quantities": {"measurements": {"calls": 3}},
-        "a name nobody declared": {"measurements": {"calls": 3,
-                                                    "mystery": 2}},
+        "quantities": {"measurements": {"calls": "3"}},
+        "a name nobody declared": {"measurements": {"calls": "3",
+                                                    "mystery": "2"}},
         "the supplier's own figure": {"provider_cost_micros": SUPPLIER},
         "a figure read off the response": {
             "provider_response_cost_micros": FROM_THE_RESPONSE},
@@ -1125,10 +1125,10 @@ class _AReplayAnswersWhatWasRecorded:
 
     def test_a_replay_records_nothing_new(self):
         self.rate("calls")
-        original = self.admitted(self.send("once", measurements={"calls": 3}))
+        original = self.admitted(self.send("once", measurements={"calls": "3"}))
 
         self.replays(original, self.admitted(
-            self.send("once", measurements={"calls": 3})))
+            self.send("once", measurements={"calls": "3"})))
 
     def test_a_replay_after_the_source_kind_is_republished(self):
         self.published("acme.embed", costing_method=COSTING_METHOD_REPORTED,
@@ -1157,7 +1157,7 @@ class _AReplayAnswersWhatWasRecorded:
         recorded event nor holds the name a second time."""
         self.published("acme.calc", costing_method=COSTING_METHOD_CALCULATED,
                        quantities=("calls",))
-        report = {"calls": 1, "tokens": 1}
+        report = {"calls": "1", "tokens": "1"}
         original = self.admitted(self.send(
             "names", event_type="acme.calc", measurements=report))
         self.assertEqual(original["unresolved_reason"],
@@ -1193,27 +1193,27 @@ class _AReplayAnswersWhatWasRecorded:
         a new event either: it carries a figure nothing here admits, which only
         an admission that ran would refuse."""
         self.rate("calls")
-        original = self.admitted(self.send("body", measurements={"calls": 3}))
+        original = self.admitted(self.send("body", measurements={"calls": "3"}))
 
-        replay = self.admitted(self.send("body", measurements={"calls": 9},
+        replay = self.admitted(self.send("body", measurements={"calls": "9"},
                                          claimed_provider_cost_micros=CLAIMED,
                                          provider_cost_micros=SUPPLIER))
 
         self.replays(original, replay)
-        self.assertEqual(replay["measurements"], {"calls": 3})
+        self.assertEqual(replay["measurements"], {"calls": "3"})
 
     def test_a_replay_is_the_same_customers(self):
         """The lookup's scope is unchanged: the same key under another
         customer of the tenant is that customer's own new event."""
         self.rate("calls")
-        first = self.admitted(self.send("shared", measurements={"calls": 3}))
+        first = self.admitted(self.send("shared", measurements={"calls": "3"}))
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="another")
 
-        second = self.admitted(self.send("shared", measurements={"calls": 4}))
+        second = self.admitted(self.send("shared", measurements={"calls": "4"}))
 
         self.assertNotEqual(second["event_id"], first["event_id"])
-        self.assertEqual(second["measurements"], {"calls": 4})
+        self.assertEqual(second["measurements"], {"calls": "4"})
         self.assertEqual(Posting.objects.count(), 2)
 
     def test_a_refused_new_event_writes_nothing(self):
@@ -1570,7 +1570,7 @@ class _TheReceiptRecordsWhichSourceAdmittedTheCost:
         """The control: provenance of a REPORTED figure, so a cost worked out
         from Cost Rates carries none — the method already says how it came."""
         self.rate("calls")
-        ack = self.admitted(self.send("rated", measurements={"calls": 3}))
+        ack = self.admitted(self.send("rated", measurements={"calls": "3"}))
 
         receipt = self.stored(ack)
         self.assertEqual(receipt["costing"]["method"],
@@ -1987,7 +1987,8 @@ SAYS_A_TOTAL = (
     "The total supplier cost (COGS) UBB resolved, summed over",
     "whichever valid source supplied it",
     "counted in `unresolved_event_count`",
-    "the total is a floor")
+    "the total is the sum of the resolved costs",
+    "when that count is zero it is complete")
 #: The case a total states only where its events can meet it.
 NO_COST_CLAUSE = "one declared to carry no cost adds nothing and is not counted"
 

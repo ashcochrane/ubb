@@ -13,13 +13,15 @@
 // none of. The pool's posture is said in a sentence, so a reader can tell
 // an alert-only pool past its line from a blocking pool short of it.
 //
-// EVERY FIGURE THAT CAN BE A BOUND OR AN ABSENCE IS A READING, never a
+// EVERY FIGURE THAT CAN BE PARTIAL OR AN ABSENCE IS A READING, never a
 // coalesced number: a per-unit figure through `@/lib/ceiling`, the
 // aggregate and the pool pair through `../lib/utilisation`, so a null
-// renders as an absence and an indeterminate contribution renders as "at
-// least" / "at most". The two amounts that are always whole where they are
-// sent at all — a pinned ceiling, a pool's amount — are null-guarded and
-// formatted directly.
+// renders as an absence, an indeterminate unit has no share and no headroom
+// (and the averages leave it out, with the count beside them), and a pool
+// figure over unpriced postings is marked "(Incomplete)" — never "at least"
+// / "at most", which #603 retired. The two amounts that are always whole
+// where they are sent at all — a pinned ceiling, a pool's amount — are
+// null-guarded and formatted directly.
 
 import { Link } from "@tanstack/react-router";
 import { Gauge } from "lucide-react";
@@ -69,6 +71,7 @@ import type {
 import {
   anyIndeterminate,
   AVERAGED_PER_UNIT,
+  AVERAGES_LEAVE_OUT_INDETERMINATE,
   containedUnit,
   describeAverageHeadroom,
   describeAverageUtilisation,
@@ -92,7 +95,12 @@ function Aggregate({
 }) {
   const utilisation = describeAverageUtilisation(report);
   const headroom = describeAverageHeadroom(report, currency);
-  const bounded = anyIndeterminate(report);
+  // The averages are over the assessed work; where an indeterminate unit
+  // was left out of them the subtitle says so (#603), and the attribute
+  // carries how many, so a test asserts it without matching prose.
+  const averaged = anyIndeterminate(report)
+    ? `${AVERAGED_PER_UNIT} ${AVERAGES_LEAVE_OUT_INDETERMINATE}`
+    : AVERAGED_PER_UNIT;
   return (
     <div className="space-y-2" data-aggregate-over={report.unit_count}>
       <p className="text-[11px] text-text-muted">
@@ -104,11 +112,11 @@ function Aggregate({
         <StatCard
           label="Average utilisation"
           value={
-            <span data-aggregate="average_utilisation" data-bound={bounded ? "floor" : "figure"}>
+            <span data-aggregate="average_utilisation" data-leaves-out={report.indeterminate_count}>
               {utilisation ?? <Absent />}
             </span>
           }
-          subtitle={AVERAGED_PER_UNIT}
+          subtitle={averaged}
         />
         <StatCard
           label="Reached their ceiling"
@@ -139,11 +147,11 @@ function Aggregate({
         <StatCard
           label="Average unused headroom"
           value={
-            <span data-aggregate="average_headroom" data-bound={bounded ? "most" : "figure"}>
+            <span data-aggregate="average_headroom" data-leaves-out={report.indeterminate_count}>
               {headroom ?? <Absent />}
             </span>
           }
-          subtitle={AVERAGED_PER_UNIT}
+          subtitle={averaged}
         />
       </div>
     </div>

@@ -12,6 +12,7 @@ from ..models.usage_event_out_costing_status import UsageEventOutCostingStatus
 from ..models.usage_event_out_kind import UsageEventOutKind
 from ..models.usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
 from ..models.usage_event_out_pricing_status import UsageEventOutPricingStatus
+from ..models.usage_event_out_pricing_status_reason_type_0 import UsageEventOutPricingStatusReasonType0
 from ..models.usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -38,6 +39,10 @@ class UsageEventOut:
             kind (UsageEventOutKind):
             metadata (UsageEventOutMetadata):
             pricing_status (UsageEventOutPricingStatus):
+            pricing_status_reason (None | UsageEventOutPricingStatusReasonType0): Why `pricing_status` applies, where a
+                specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
@@ -62,6 +67,7 @@ class UsageEventOut:
     kind: UsageEventOutKind
     metadata: UsageEventOutMetadata
     pricing_status: UsageEventOutPricingStatus
+    pricing_status_reason: None | UsageEventOutPricingStatusReasonType0
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     event_type: str | Unset = ''
@@ -89,6 +95,12 @@ class UsageEventOut:
         metadata = self.metadata.to_dict()
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, UsageEventOutPricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -148,6 +160,7 @@ class UsageEventOut:
             "kind": kind,
             "metadata": metadata,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -199,6 +212,24 @@ class UsageEventOut:
         pricing_status = UsageEventOutPricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> None | UsageEventOutPricingStatusReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = UsageEventOutPricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UsageEventOutPricingStatusReasonType0, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
@@ -300,6 +331,7 @@ class UsageEventOut:
             kind=kind,
             metadata=metadata,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             event_type=event_type,

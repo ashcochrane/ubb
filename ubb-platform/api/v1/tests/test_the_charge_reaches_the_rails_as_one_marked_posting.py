@@ -77,6 +77,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.work.models import Task
+from core.exceptions import NegativeKnownPriceRefused
 from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     COSTING_STATUS_KNOWN, MEASUREMENTS_STATUS_NOT_APPLICABLE,
@@ -620,25 +621,29 @@ class TestACompensatingChargeIsNotProjected(ProjectionTestBase):
             with transaction.atomic():
                 project_the_charge(self._a_correction_to(started))
 
-    def test_the_rails_would_have_ignored_it_anyway(self):
+    def test_the_rails_would_have_refused_it_anyway(self):
         """The measurement behind the refusal, so the sentence above is a
-        finding rather than an opinion. A negative billed amount is below the
-        handler's own guard, so nothing downstream of it runs — which is why
-        refusing is better than projecting and hoping."""
+        finding rather than an opinion. A negative known billed amount is one
+        the rails refuse BY NAME (#603 ruling 9 retired the old silent
+        "at or below zero is no money" guard, and v1 moves no negative money,
+        ADR-0020 §5), so nothing downstream of it runs — which is why refusing
+        at the projection is better than projecting and hoping."""
         started = self._priced_work()
         self._close(started)
         self._drain_the_rails()
         before = Wallet.objects.get(customer=self.customer).balance_micros
         correction = self._a_correction_to(started)
 
-        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
-            tenant_id=str(self.tenant.id),
-            customer_id=str(self.customer.id),
-            event_id=str(uuid.uuid4()),
-            cost_micros=correction.amount_micros,
-            billed_cost_micros=correction.amount_micros,
-            provider_cost_micros=0,
-            billing_owner_id=str(self.customer.id))))
+        with pytest.raises(NegativeKnownPriceRefused):
+            handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+                pricing_status_reason=None,
+                tenant_id=str(self.tenant.id),
+                customer_id=str(self.customer.id),
+                event_id=str(uuid.uuid4()),
+                cost_micros=correction.amount_micros,
+                billed_cost_micros=correction.amount_micros,
+                provider_cost_micros=0,
+                billing_owner_id=str(self.customer.id))))
 
         assert correction.amount_micros < 0
         assert Wallet.objects.get(

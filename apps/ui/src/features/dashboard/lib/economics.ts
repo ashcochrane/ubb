@@ -83,7 +83,7 @@ export interface BreakdownBar {
  * The plotted measure is `drawableMeasure`'s, the rule the events chart reads
  * too: revenue where every row states one, the supplier cost where it could not
  * be placed at this grain. The bars used to plot the PART that could be placed —
- * billed usage alone — as "Revenue by provider", which drew a floor as a total
+ * billed usage alone — as "Revenue by provider", which drew a part as a total
  * and dropped the subscription without a word.
  *
  * The fold is `combineFigures`, never a sum of numbers: a folded row that
