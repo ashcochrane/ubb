@@ -255,6 +255,18 @@ export function writtenProgram(path: readonly string[]): string[] {
  * the catalogue's words with UBB_EXIT_VALUE_REFUSED. Called with the call,
  * the key, the declared path as JSON, and the declared value type.
  */
+/** Why `_ubb_exact` refused a quantity, by its status: whole where it is
+ * declared an integer (2), or no exact decimal at all. The one switch both
+ * the passed and the read quantity say it with, at their own indents. */
+export function exactRefusalWhy(outer: string, inner: string): string[] {
+  return [
+    `${outer}case $? in`,
+    `${inner}2) _ubb_why=${shWord(SHELL_MESSAGES.wholeQuantity)} ;;`,
+    `${inner}*) _ubb_why=${shWord(SHELL_MESSAGES.quantity)} ;;`,
+    `${outer}esac`,
+  ];
+}
+
 export function readQuantityHelper(): string[] {
   const refused = `"$${SHELL_EXIT.valueRefused.name}"`;
   const why = (kind: string, message: string) => `${I2}${kind}) _ubb_why=${shWord(message)} ;;`;
@@ -265,10 +277,7 @@ export function readQuantityHelper(): string[] {
     `${I2}${KIND.string}:* | ${KIND.integer}:*)`,
     `${I3}_ubb_quantity=\${_ubb_read#*:}`,
     `${I3}_ubb_exact "$_ubb_quantity" "$4" && return 0`,
-    `${I3}case $? in`,
-    `${I3}${I1}2) _ubb_why=${shWord(SHELL_MESSAGES.wholeQuantity)} ;;`,
-    `${I3}${I1}*) _ubb_why=${shWord(SHELL_MESSAGES.quantity)} ;;`,
-    `${I3}esac`,
+    ...exactRefusalWhy(I3, `${I3}${I1}`),
     `${I3};;`,
     why(KIND.missing, SHELL_MESSAGES.readMissing),
     why(KIND.unreadable, SHELL_MESSAGES.readUnreadable),

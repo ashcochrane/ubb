@@ -1010,6 +1010,33 @@ result = server.bodies("/api/v1/metering/usage")
     ]);
   });
 
+  // A quantity has no digit bound (#603), and CPython refuses to compile an
+  // integer literal of more than 4,300 digits — so an integer constant that
+  // long is written `int(Decimal("…"))`: still an int, built from its exact
+  // text by a conversion with no such cap, and sent as every digit.
+  it("writes and sends an integer constant longer than CPython compiles as a literal", () => {
+    const long = `${"9".repeat(5000)}1`;
+    const blueprint = fixture("constant");
+    for (const call of blueprint.calls) {
+      for (const argument of call.arguments) {
+        if (argument.name === "measurements.ledger_lines") argument.value = long;
+      }
+    }
+    const files = render(blueprint);
+    expect(files[0]!.contents).toContain(`"ledger_lines": int(Decimal("${long}"))`);
+    const answer = run<Array<{ measurements: Record<string, string> }>>(
+      files,
+      `
+integration = load()
+task = integration.start_task(customer_id="c", idempotency_key="w")
+integration.record_flat_call(customer_id="c", idempotency_key="e",
+                             task_id=task.task_id, searches=1)
+result = server.bodies("/api/v1/metering/usage")
+`,
+    );
+    expect(answer[0]!.measurements.ledger_lines).toBe(long);
+  });
+
   it("sends nothing for a quantity no token gives a value to", () => {
     const module = rendered("blocked")[0]!.contents;
 

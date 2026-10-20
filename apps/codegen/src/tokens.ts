@@ -304,10 +304,9 @@ export function readCall(call: BlueprintCall): Call {
   };
 }
 
-/** A value a call cannot be sent without, and why it has none here. */
+/** A value a call cannot be sent without, because nothing configures it. */
 export interface NotWritten {
   readonly name: string;
-  readonly why: Unconfigured["kind"];
 }
 
 /** Every value the Blueprint leaves a call without, by name and in the
@@ -319,28 +318,23 @@ export function notWritten(call: Call): NotWritten[] {
   for (const field of call.fields) {
     if (field.shape === "scalar") {
       if (field.token.binding.kind === "unconfigured") {
-        found.push({ name: field.name, why: "unconfigured" });
+        found.push({ name: field.name });
       }
       continue;
     }
     for (const entry of field.entries) {
       if (entry.value?.binding.kind === "unconfigured") {
-        found.push({ name: entry.value.name, why: "unconfigured" });
+        found.push({ name: entry.value.name });
       }
     }
   }
   return found;
 }
 
-/** What a not-ready call says of a value it is written without, by why: the
- * catalogue's sentence, owned here once for both targets. */
-export const SAID_OF: Readonly<Record<NotWritten["why"], string>> = {
-  unconfigured: MESSAGES.notConfigured,
-};
-
-/** The sentence a not-ready call says of one value it is written without. */
-export function said({ name, why }: NotWritten): string {
-  return `${name} ${SAID_OF[why]}.`;
+/** The sentence a not-ready call says of one value it is written without:
+ * the catalogue's, owned here once for both targets. */
+export function said({ name }: NotWritten): string {
+  return `${name} ${MESSAGES.notConfigured}.`;
 }
 
 /** The parameters a call asks for, each once, in the order first named. */

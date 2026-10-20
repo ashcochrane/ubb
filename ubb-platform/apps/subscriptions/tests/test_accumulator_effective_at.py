@@ -23,7 +23,8 @@ def test_payload_fast_path_buckets_by_effective_at_without_db_read():
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
 
-    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(pricing_status_reason=None,
+    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id, customer_id=c.id,
         cost_micros=1_000_000, provider_cost_micros=800_000,
         billed_cost_micros=1_000_000,
@@ -48,7 +49,8 @@ def test_unparseable_payload_effective_at_falls_back_to_getter():
         provider_cost_micros=1, billed_cost_micros=2)
     Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
-    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(pricing_status_reason=None,
+    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id, customer_id=c.id,
         cost_micros=2, provider_cost_micros=1, billed_cost_micros=2,
         event_id=e.id,
@@ -104,7 +106,8 @@ def test_backdated_event_buckets_by_effective_at_not_wallclock():
     # auto_now_add blocks direct assignment; bypass via queryset .update()
     Posting.objects.filter(id=e.id).update(effective_at=backdated)
 
-    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(pricing_status_reason=None,
+    handle_usage_recorded_subscriptions("outbox-1", asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id,
         customer_id=c.id,
         cost_micros=1_000_000,

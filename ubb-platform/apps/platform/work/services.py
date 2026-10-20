@@ -762,9 +762,9 @@ class TaskService:
         cost (#328), and ``pricing_status`` its answer about the customer price
         (#351). Where either says the amount is unresolved, that total takes
         nothing and its own count takes one instead, so both totals this unit
-        publishes are sums of what resolved that say how much they left out. The rollup carries
-        the counts upward like the money: a parent whose child excluded an
-        amount has excluded it too.
+        publishes are sums of what resolved that say how much they left out.
+        The rollup carries the counts upward like the money: a parent whose
+        child excluded an amount has excluded it too.
 
         The two are kept apart all the way down. They are different events —
         a posting can carry a settled cost and an unresolved price — so a single
@@ -962,8 +962,7 @@ class TaskService:
         ⚠ IT FIRES NOTHING, AND THAT IS ENFORCEMENT'S RULE RATHER THAN AN
         OMISSION. A stop already applied is terminal whatever this does to
         the assessment. A resolution that takes an ACTIVE unit's resolved
-        COGS to its ceiling is caught by the patrol's sweep
-        (`billing.gating.patrol.sweep_over_limit_tasks`, the same
+        COGS to its ceiling is caught by the billing patrol's sweep (the same
         `ceiling_reached` compare over the same columns), not here: this runs
         inside a recovery, and a kill announced from it would carry no
         report to attribute the crossing to.

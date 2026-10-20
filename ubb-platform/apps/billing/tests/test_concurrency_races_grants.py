@@ -69,7 +69,8 @@ class ConcurrentDrawdownWithGrants(TransactionTestCase):
             expires_at=timezone.now() + timedelta(days=5))
 
         ev_id = str(uuid.uuid4())
-        payload = asdict(UsageRecorded(pricing_status_reason=None,
+        payload = asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id,
             customer_id=customer.id,
             event_id=ev_id,
@@ -138,7 +139,8 @@ class ConcurrentExpiryVsDrawdown(TransactionTestCase):
 
         tenant, customer, wallet, grant = self._fixture()
         ev_id = str(uuid.uuid4())
-        payload = asdict(UsageRecorded(pricing_status_reason=None,
+        payload = asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id,
             customer_id=customer.id,
             event_id=ev_id,

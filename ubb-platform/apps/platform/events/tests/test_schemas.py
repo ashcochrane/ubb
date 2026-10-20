@@ -8,7 +8,8 @@ class TestUsageRecordedSchema:
     def test_create_with_required_fields(self):
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(pricing_status_reason=None,
+        event = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id="t1",
             customer_id="c1",
             event_id="e1",
@@ -25,14 +26,16 @@ class TestUsageRecordedSchema:
         from apps.platform.events.schemas import UsageRecorded
         import pytest
 
-        event = UsageRecorded(pricing_status_reason=None, tenant_id="t1", customer_id="c1", event_id="e1", cost_micros=5000)
+        event = UsageRecorded(tenant_id="t1", customer_id="c1", event_id="e1",
+                              cost_micros=5000, pricing_status_reason=None)
         with pytest.raises(AttributeError):
             event.cost_micros = 999
 
     def test_roundtrip_via_dict(self):
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(pricing_status_reason=None,
+        event = UsageRecorded(
+            pricing_status_reason=None,
             tenant_id="t1", customer_id="c1", event_id="e1",
             cost_micros=5000, billed_cost_micros=6000,
         )
@@ -271,8 +274,8 @@ class TestUuidOrStrIds:
         from apps.platform.events.schemas import UsageRecorded
 
         tid, cid = uuid.uuid4(), uuid.uuid4()
-        event = UsageRecorded(pricing_status_reason=None, tenant_id=tid, customer_id=cid, event_id="e1",
-                              cost_micros=1)
+        event = UsageRecorded(tenant_id=tid, customer_id=cid, event_id="e1",
+                              cost_micros=1, pricing_status_reason=None)
         assert event.tenant_id == str(tid)
         assert event.customer_id == str(cid)
 
@@ -282,8 +285,9 @@ class TestUuidOrStrIds:
         from dataclasses import asdict
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(pricing_status_reason=None, tenant_id=uuid.uuid4(), customer_id=uuid.uuid4(),
-                              event_id=uuid.uuid4(), cost_micros=1)
+        event = UsageRecorded(tenant_id=uuid.uuid4(), customer_id=uuid.uuid4(),
+                              event_id=uuid.uuid4(), cost_micros=1,
+                              pricing_status_reason=None)
         json.dumps(asdict(event))  # raises on a stray UUID
 
 

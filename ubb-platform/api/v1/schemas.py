@@ -518,7 +518,6 @@ PricingStatusReason = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_status_reason"})]
 
 
-
 #: HOW A CUSTOMER PRICE WAS DERIVED (#355, #147 §2). `closed` — UBB owns both
 #: values — so the export writes a real `enum` here and this file spells
 #: neither of them.
@@ -3382,8 +3381,9 @@ ECONOMIC_AMOUNT_MEANING = (
     "be stated: under 'unavailable_outside_retention_horizon', under "
     "'not_applicable', on a margin under 'unavailable_at_requested_grain', and "
     "under 'incomplete' where no piece of the row's revenue resolved — on the "
-    "revenue and on the margin over it. An amount under 'incomplete' is a "
-    "bound, never a total; under 'unavailable_at_requested_grain' a revenue "
+    "revenue and on the margin over it. An amount under 'incomplete' is the "
+    "sum of what resolved, never the whole: what it leaves out may move it "
+    "either way; under 'unavailable_at_requested_grain' a revenue "
     "amount is the part that could be placed, with the rest in the answer's "
     "context. A revenue figure the tenant supplied is the revenue for the "
     "customer and period it covers and supersedes the revenue derived from "
@@ -3417,8 +3417,9 @@ class EconomicMeasureOut(Schema):
 
     * `known` — every input resolved. Inside a period a tenant-supplied revenue
       figure covers, that figure is the revenue and resolves it whole.
-    * `incomplete` — some input is still unresolved, so the figure is a bound
-      rather than a total, and the count beside it says how far off it can be.
+    * `incomplete` — some input is still unresolved, so the figure is the sum
+      of what resolved rather than a total, and the count beside it says how
+      many amounts it leaves out; no direction is promised for them (#603).
       Where no piece of a row's revenue resolved at all there is nothing to
       bound, and the revenue and the margin over it carry no figure.
     * `unavailable_at_requested_grain` — a figure exists and cannot be

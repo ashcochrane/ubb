@@ -1,6 +1,6 @@
 import logging
 
-from core.money import NegativeKnownPriceRefused
+from core.exceptions import NegativeKnownPriceRefused
 from apps.platform.events.schemas import CustomerDeleted, UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService

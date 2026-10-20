@@ -29,7 +29,6 @@ from apps.metering.pricing.receipts import (
     RECEIPT_SCHEMA_VERSION,
     SECTIONED_SCHEMA_VERSION,
     ReceiptShapeError,
-    pricing_status_reason_of,
     recorded_quantities,
     validate_receipt,
     written_in_the_current_shape,
@@ -112,7 +111,6 @@ class TestAWriterEmitsSchemaTwo:
 
         assert PRICING_STATUS_REASON_KEY in receipt["pricing"]["detail"]
         assert receipt["pricing"]["detail"][PRICING_STATUS_REASON_KEY] is None
-        assert pricing_status_reason_of(receipt) is None
 
     def test_the_boundary_refuses_schema_two_holding_a_number(self):
         receipt = a_receipt_resolved_today(Tenant.objects.create(name="R"))
@@ -160,15 +158,6 @@ class TestEveryReaderReadsEveryShape:
 
         with pytest.raises(ReceiptShapeError, match="whole number"):
             recorded_quantities(older)
-
-    def test_the_reason_reader_answers_none_for_a_shape_that_predates_it(
-            self):
-        current = a_receipt_resolved_today(Tenant.objects.create(name="R"))
-        older = as_schema_1(current)
-        del older["pricing"]["detail"][PRICING_STATUS_REASON_KEY]
-
-        assert pricing_status_reason_of(older) is None
-        assert pricing_status_reason_of({}) is None
 
     def test_an_older_receipt_is_read_and_never_completed(self):
         """Read, never rewritten (#148 §4.6): a schema-1 posting cannot be

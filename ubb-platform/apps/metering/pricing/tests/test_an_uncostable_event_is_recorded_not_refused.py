@@ -126,9 +126,9 @@ class TestTheComputeSpineDecidesTheStatus:
         """A partly resolved cost is not a resolved cost.
 
         The rated half is real and stays on the receipt — that is where the
-        floor lives — but storing it as *the* supplier cost is exactly the
-        ambiguity the nullable column was introduced to remove: a number that
-        cannot be told apart from a complete one.
+        resolved part lives — but storing it as *the* supplier cost is exactly
+        the ambiguity the nullable column was introduced to remove: a number
+        that cannot be told apart from a complete one.
         """
         tenant = _tenant()
         _declaration(tenant, quantities=("prompt_tokens", "image_pixels"))
@@ -536,7 +536,7 @@ class TestTheRecordingCallStopsRefusing:
         assert replay["provider_cost_micros"] is None
 
     def test_a_task_total_excludes_an_unresolved_cost_rather_than_zeroing_it(self):
-        """The unit total accumulates the KNOWN part and is a floor.
+        """The unit total accumulates the KNOWN part: the sum of what resolved.
 
         WHAT THIS CAN AND CANNOT SHOW, stated because the difference is not
         obvious: it catches an accumulator that adds the `None` this ticket now

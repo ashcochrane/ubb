@@ -134,8 +134,8 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
 
     if affected == 1:
         mark_backfill_dirty_period_for_posting(posting_id)
-        its_unit_takes_up_the_resolution(posting_id,
-                              provider_cost_micros=provider_cost_micros)
+        its_unit_takes_up_the_resolution(
+            posting_id, provider_cost_micros=provider_cost_micros)
         return Settlement.SETTLED
 
     if affected > 1:

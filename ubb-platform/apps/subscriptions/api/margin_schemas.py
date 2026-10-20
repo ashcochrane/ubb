@@ -208,9 +208,9 @@ class SeatMarginOut(Schema):
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
         "this customer's events in the window the margin covers"))
     unresolved_event_count: int
-    #: The revenue half's own count (#351). It bounds the margin the OTHER way
-    #: from the count above it: an excluded cost makes the margin a ceiling, an
-    #: excluded price makes it a floor, and a seat can be bounded both ways at
+    #: The revenue half's own count (#351), kept apart from the count above it:
+    #: an excluded cost or an excluded price leaves the margin incomplete, in a
+    #: direction nobody can state (#603), and a seat can be missing both at
     #: once — which is why they are two properties and not one.
     unpriced_event_count: int
     total_revenue_micros: int
@@ -240,15 +240,14 @@ class UnprofitableCustomerRow(Schema):
     customer_id: str
     external_id: str
     gross_margin_micros: int
-    #: A margin named as unprofitable is a CEILING wherever this is non-zero, so
-    #: the count can never mean "perhaps they are fine" — only that they may be
-    #: worse than the figure says.
+    #: A margin named as unprofitable is INCOMPLETE wherever this is non-zero:
+    #: it is the sum of what resolved, and the count says how many supplier
+    #: costs it leaves out — in a direction nobody can state (#603).
     unresolved_event_count: int
-    #: ⚠ AND THIS ONE CAN MEAN EXACTLY THAT (#351). An excluded PRICE means
-    #: revenue was left out, so the true margin is HIGHER than the figure that
-    #: named this customer unprofitable. Publishing only the count above — the
-    #: one that cannot say it — would have made this list the more misleading of
-    #: the two surfaces.
+    #: ⚠ AND SO IS IT WHEREVER THIS ONE IS (#351). An excluded PRICE means
+    #: revenue was left out of the figure that named this customer
+    #: unprofitable. Publishing only the count above — the one that cannot say
+    #: it — would have made this list the more misleading of the two surfaces.
     unpriced_event_count: int
     margin_percentage: float
 
@@ -284,7 +283,7 @@ class BusinessMarginTotals(Schema):
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
         "every seat's events in the window, the seats' own totals added up"))
     #: The seats' counts added up, exactly as the cost above is: one seat's
-    #: unresolved cost makes the business figure a floor too.
+    #: unresolved cost leaves the business figure incomplete too.
     unresolved_event_count: int
     #: And the revenue half's, added up the same way (#351).
     unpriced_event_count: int

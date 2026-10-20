@@ -467,11 +467,12 @@ class Task(BaseModel):
     #
     # Non-zero means the total above is the sum of what resolved and is not
     # complete; what it leaves out may move it either way, since a cost may
-    # be negative (#603). `Posting.provider_cost_micros` is nullable and a null means UBB
-    # has not resolved that cost (#317), so the accumulate primitive adds the
-    # known part and increments this instead — the alternative, adding a zero,
-    # would produce a unit total indistinguishable from a complete one, which is
-    # the ambiguity the nullable column exists to remove.
+    # be negative (#603). `Posting.provider_cost_micros` is nullable and a
+    # null means UBB has not resolved that cost (#317), so the accumulate
+    # primitive adds the known part and increments this instead — the
+    # alternative, adding a zero, would produce a unit total
+    # indistinguishable from a complete one, which is the ambiguity the
+    # nullable column exists to remove.
     #
     # It is a COLUMN rather than something a reader derives, because this total
     # is written on every recording and never rebuilt. A cost that arrives

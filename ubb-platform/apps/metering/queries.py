@@ -1894,12 +1894,12 @@ AXES_A_CHARGE_POSTING_CANNOT_CARRY = ("provider", "event_type", "subtask_type")
 #:
 #: The ORDER is the precedence, and it runs from most to least informative about
 #: the number beside it: a measure that cannot be attributed at this grain is
-#: saying the figure is not the answer at all, which outranks a figure that is a
-#: real bound. Ranking the other way would let a bound hide an inattributable
-#: total. The retention state is last because it outranks even that: a grain
-#: problem has a remedy on this surface — ask a coarser question — and an age
-#: problem has none, so a figure standing beside it would be a figure about a
-#: stretch nothing can be read from.
+#: saying the figure is not the answer at all, which outranks a figure that is
+#: the sum of what resolved. Ranking the other way would let an incomplete
+#: figure hide an inattributable total. The retention state is last because it
+#: outranks even that: a grain problem has a remedy on this surface — ask a
+#: coarser question — and an age problem has none, so a figure standing beside
+#: it would be a figure about a stretch nothing can be read from.
 MEASURE_STATES_WORST_LAST = (MEASURE_STATUS_KNOWN, MEASURE_STATUS_INCOMPLETE,
                              MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
                              MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
@@ -2003,9 +2003,10 @@ class EconomicFilters(NamedTuple):
 #: requested grain is not a small margin.
 #:
 #: ⚠ **NOT ONLY UNDER THE TWO STATES ABOVE THAT NEVER STATE ONE** (#537). Under
-#: `incomplete` an amount is a bound, and a revenue with no resolved piece to
-#: bound — and the margin over it — carries this too. That is decided per row
-#: from what the row holds, which is why `incomplete` is not in the tuple above.
+#: `incomplete` an amount is the sum of what resolved, and a revenue with no
+#: resolved piece to sum — and the margin over it — carries this too. That is
+#: decided per row from what the row holds, which is why `incomplete` is not in
+#: the tuple above.
 NO_FIGURE = None
 
 
@@ -2742,7 +2743,7 @@ def _empty_group() -> dict:
     * ``UNPRICED_EVENT_COUNT_KEY`` — every posting nobody priced, covered or
       not: the count the measure publishes.
     * ``unpriced_outside_cover`` — the ones outside every covered period: the
-      only ones that make the revenue a bound.
+      only ones that leave the revenue incomplete.
     * ``resolved_revenue_pieces`` — every piece that resolved: a posting UBB
       priced outside cover, a posting a supplied figure covers, a contributed
       row.

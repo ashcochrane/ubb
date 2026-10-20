@@ -685,10 +685,10 @@ class MeteringTaskEndpointTest(TestCase):
     def test_the_ack_says_what_the_units_running_total_left_out(self):
         """A caller watching its own spend against a COGS limit (#328).
 
-        The unit total on the ack is a FLOOR wherever the count is non-zero:
+        The unit total on the ack is INCOMPLETE wherever the count is non-zero:
         the second event's cost never entered it, so a caller comparing the
-        total against its limit is comparing a lower bound. Without the count
-        beside it there is nothing on the ack that says so.
+        total against its ceiling is comparing the sum of what resolved. Without
+        the count beside it there is nothing on the ack that says so.
         """
         task = self._task()
         first = self._record(task_id=str(task.id))

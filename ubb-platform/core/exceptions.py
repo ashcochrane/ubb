@@ -68,6 +68,29 @@ class MisalignedAmount(UBBError):
     pass
 
 
+class NegativeKnownPriceRefused(UBBError):
+    """A known customer price below zero reached a rail that moves money.
+
+    UBB never writes one (#603 A2: a negative calculated price is recorded
+    ``unknown`` with ``pricing_status_reason`` ``negative_price_unsupported``),
+    and no rail carries negative money in v1 (ADR-0020 §5). The rule that
+    stood before it — "an amount at or below zero is no money" — dropped such
+    a price silently (ruling 9 retires it), and taking it would credit a
+    wallet or reverse a reward. So a rail that meets one names it and moves
+    nothing; an outbox handler that raises keeps its payload and retries it,
+    so the state stays visible. Beside ``MisalignedAmount`` because it is the
+    same kind of fact: an amount a money boundary must not carry."""
+
+    def __init__(self, event_id, rail):
+        super().__init__(
+            f"usage event {event_id} reached {rail} with a known customer "
+            "price below zero. UBB records a negative calculated price as "
+            "unknown (negative_price_unsupported) and moves no negative money "
+            "in v1, so nothing was moved.")
+        self.event_id = event_id
+        self.rail = rail
+
+
 class NotBillingOwnerError(UBBError):
     """Task 8c ratchet: raised by ``apps.billing.locking.lock_for_billing``
     when handed a customer id that is not itself a billing owner (i.e.

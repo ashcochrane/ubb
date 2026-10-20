@@ -104,9 +104,10 @@ function checkedReads(plan: Plan): { record: CallPlan; eventType: string; check:
   });
 }
 
-/** Which check function each Event Type's reads are checked by, as one jq
- * object: the names are the renderer's, and identifier-safe. */
-function declaredCosts(found: ReturnType<typeof checkedReads>): string[] {
+/** Which check function each Event Type's reads — a cost, a quantity, or
+ * both — are checked by, as one jq object: the names are the renderer's, and
+ * identifier-safe. */
+function declaredChecks(found: ReturnType<typeof checkedReads>): string[] {
   return [
     ...COMMENTS.verifyCosts.map((line) => `# ${line}`),
     "| {",
@@ -215,13 +216,13 @@ export function renderVerifyScript(plan: Plan): string {
   // A line the program prints, as the jq string that is it.
   const say = jqString;
   const unavailable = SHELL_EXIT.toolUnavailable.status;
-  const costs = checkedReads(plan);
+  const reads = checkedReads(plan);
   const readsAQuantity = plan.records.some((record) => quantityReads(record).length > 0);
   const readsACost = plan.records.some((record) => scalarOf(record, "response_cost") !== undefined);
   const program = [
     ...COMMENTS.verifyPaths.map((line) => `# ${line}`),
     ...declaredPaths(plan),
-    ...declaredCosts(costs),
+    ...declaredChecks(reads),
     "| def resolve($path):",
     `${I2}reduce $path[] as $segment ({"found": true, "at": .};`,
     `${I3}if .found and (.at | type) == "object" and (.at | has($segment))`,
@@ -273,22 +274,22 @@ export function renderVerifyScript(plan: Plan): string {
     SHELL_FILE.heredoc,
     "}",
   ];
-  // What checks a cost: the runnable file's own programs and functions, and
-  // one function per record that reads a cost.
-  const costing = costs.length === 0
+  // What checks a read value: the runnable file's own programs and functions,
+  // and one function per record that reads a cost or a quantity.
+  const checking = reads.length === 0
     ? []
     : [
         ...asComments(SHELL_COMMENTS.verifyCosts),
         `${SHELL_EXIT.valueRefused.name}=${SHELL_EXIT.valueRefused.status}`,
         "",
-        ...costs.flatMap(({ record }) => readPrograms(record)),
+        ...reads.flatMap(({ record }) => readPrograms(record)),
         ...(readsAQuantity ? [...exactHelper(), ""] : []),
         ...(readsACost ? [...reportedCostHelpers(false), ""] : []),
         ...checkHelper(),
-        ...costs.flatMap(({ record, check }) => ["", ...readsCheck(record, check)]),
+        ...reads.flatMap(({ record, check }) => ["", ...readsCheck(record, check)]),
         "",
       ];
-  const programs = [...checked, ...costing].join("\n");
+  const programs = [...checked, ...checking].join("\n");
   const lines = [
     ...asComments(SHELL_COMMENTS.verify),
     ...asComments([statement("configuration_fingerprint", plan.header.configuration_fingerprint ?? null)]),
@@ -306,7 +307,7 @@ export function renderVerifyScript(plan: Plan): string {
     "",
     ...checked,
     "",
-    ...costing,
+    ...checking,
     'ubb_report=$(ubb_checked "$@") || exit $?',
     "",
     "{",
@@ -323,7 +324,7 @@ export function renderVerifyScript(plan: Plan): string {
     `${I1}usage) exit 2 ;;`,
     "esac",
     "ubb_failures=$ubb_verdict",
-    ...(costs.length === 0 ? [] : ['[ "$ubb_then" = - ] || "$ubb_then" "$2"']),
+    ...(reads.length === 0 ? [] : ['[ "$ubb_then" = - ] || "$ubb_then" "$2"']),
     'if [ "$ubb_failures" -gt 0 ]; then',
     `${I1}printf '%s %s\\n' "$ubb_failures" ${shWord(MESSAGES.verifyFailed)}`,
     `${I1}exit 1`,

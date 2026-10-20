@@ -116,7 +116,8 @@ class TestOffIsByteForBytePreEnforcement:
         t = _tenant(enf="off")
         c = Customer.objects.create(tenant=t, external_id="jim")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
-        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(pricing_status_reason=None,
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=t.id, customer_id=c.id,
             event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
         w = Wallet.objects.get(customer=c)

@@ -71,27 +71,6 @@ def fits_a_money_column(amount_micros: int) -> bool:
     return MONEY_COLUMN_MIN <= amount_micros <= MONEY_COLUMN_MAX
 
 
-class NegativeKnownPriceRefused(ValueError):
-    """A known customer price below zero reached a rail that moves money.
-
-    UBB never writes one (#603 A2: a negative calculated price is recorded
-    ``unknown`` with ``pricing_status_reason`` ``negative_price_unsupported``),
-    and no rail carries negative money in v1 (ADR-0020 §5). The rule that
-    stood before it — "an amount at or below zero is no money" — dropped such
-    a price silently (ruling 9 retires it), and taking it would credit a
-    wallet or reverse a reward. So a rail that meets one names it and moves
-    nothing; an outbox handler that raises keeps its payload and retries it,
-    so the state stays visible."""
-
-    def __init__(self, event_id, rail):
-        super().__init__(
-            f"usage event {event_id} reached {rail} with a known customer "
-            "price below zero. UBB records a negative calculated price as "
-            "unknown (negative_price_unsupported) and moves no negative money "
-            "in v1, so nothing was moved.")
-        self.event_id = event_id
-        self.rail = rail
-
 # ISO 4217 minor-unit exponent per currency: 2 means the minor unit is a
 # hundredth (cents), 0 means the currency has no minor unit (yen), 3 means a
 # thousandth (dinars). CUR-1 admits two-decimal currencies only — see the

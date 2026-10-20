@@ -40,8 +40,9 @@ class EconomicMeasureOut:
 
     * `known` — every input resolved. Inside a period a tenant-supplied revenue
       figure covers, that figure is the revenue and resolves it whole.
-    * `incomplete` — some input is still unresolved, so the figure is a bound
-      rather than a total, and the count beside it says how far off it can be.
+    * `incomplete` — some input is still unresolved, so the figure is the sum
+      of what resolved rather than a total, and the count beside it says how
+      many amounts it leaves out; no direction is promised for them (#603).
       Where no piece of a row's revenue resolved at all there is nothing to
       bound, and the revenue and the margin over it carry no figure.
     * `unavailable_at_requested_grain` — a figure exists and cannot be
@@ -69,11 +70,11 @@ class EconomicMeasureOut:
                 is not money. Where it is null on a money measure, no figure can be stated: under
                 'unavailable_outside_retention_horizon', under 'not_applicable', on a margin under
                 'unavailable_at_requested_grain', and under 'incomplete' where no piece of the row's revenue resolved — on the
-                revenue and on the margin over it. An amount under 'incomplete' is a bound, never a total; under
-                'unavailable_at_requested_grain' a revenue amount is the part that could be placed, with the rest in the
-                answer's context. A revenue figure the tenant supplied is the revenue for the customer and period it covers and
-                supersedes the revenue derived from priced usage there — the two are never added together. Never a zero standing
-                in for any of these.
+                revenue and on the margin over it. An amount under 'incomplete' is the sum of what resolved, never the whole:
+                what it leaves out may move it either way; under 'unavailable_at_requested_grain' a revenue amount is the part
+                that could be placed, with the rest in the answer's context. A revenue figure the tenant supplied is the revenue
+                for the customer and period it covers and supersedes the revenue derived from priced usage there — the two are
+                never added together. Never a zero standing in for any of these.
             available_from (None | str | Unset):
             event_count (int | None | Unset):
             unpriced_event_count (int | None | Unset): How many of this row's postings carry a customer price UBB could not

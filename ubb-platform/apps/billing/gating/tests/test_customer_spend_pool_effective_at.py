@@ -35,7 +35,8 @@ def _draw(t, c, billed, n, effective_at=None):
         provider_cost_micros=billed, billed_cost_micros=billed)
     if effective_at is not None:
         Posting.objects.filter(id=e.id).update(effective_at=effective_at)
-    payload = asdict(UsageRecorded(pricing_status_reason=None,
+    payload = asdict(UsageRecorded(
+        pricing_status_reason=None,
         tenant_id=t.id, customer_id=c.id, event_id=e.id, cost_micros=billed,
         effective_at=effective_at.isoformat() if effective_at is not None else ""))
     handle_usage_recorded_billing(str(uuid.uuid4()), payload)

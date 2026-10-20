@@ -9,9 +9,11 @@ tenant surface. These pins hold the seam's core promises in the suite itself
 - the runtime ``/api/v1/openapi.json`` serves the same document;
 - the ``webhooks`` section carries the full event catalog with payload
   schemas (subsumes the catalog==schemas set-equality bridge pin);
-- the carve: ops route out, health/ready in and unauthenticated.
+- the carve: ops route out, health/ready in and unauthenticated;
+- no published description promises a direction for a total (#603).
 """
 import json
+import re
 
 from django.test import Client, TestCase
 
@@ -88,6 +90,52 @@ class WebhooksSectionTest(TestCase):
             self.assertEqual(data["type"], "object")
             self.assertIn("tenant_id", data["properties"])
             self.assertIn("data", envelope["required"])
+
+
+class NoTotalIsPublishedAsABoundTest(TestCase):
+    """The retired lower bound stays retired (#603, ADR-0020 §6).
+
+    A total over amounts some of which are unresolved is the sum of what
+    resolved, beside the count of what it leaves out — and since a quantity
+    may be negative, an amount left out may move it either way. So no
+    published description may promise a direction for the rest: not "a
+    floor", not "a lower bound", not "a bound", not "at least", not that an
+    unresolved cost "can only add". Walked over the document the code GENERATES, so a
+    description restored in a schema is red here before anyone regenerates;
+    the wallet's own floors ("0 is a real floor") are a different concept and
+    match none of these phrases.
+    """
+
+    RETIRED = re.compile(
+        r"\bis a floor\b|\ba floor on\b|\blower bound\b|\bat least\b"
+        r"|\bis a bound\b|\ba bound rather than\b"
+        r"|\bno less than\b|\bcan only add\b|\bheadroom (is )?a ceiling\b",
+        re.IGNORECASE)
+
+    def _descriptions(self, node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "description" and isinstance(value, str):
+                    yield value
+                else:
+                    yield from self._descriptions(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from self._descriptions(value)
+
+    def test_no_published_description_bounds_a_total(self):
+        document = json.loads(generated_document_text())
+        said = [match.group(0) for text in self._descriptions(document)
+                for match in [self.RETIRED.search(text)] if match]
+        self.assertEqual(said, [])
+
+    def test_the_walk_reaches_the_totals_it_guards(self):
+        """The vacuity guard: the walk finds the cost total's own sentence,
+        so an empty answer above is a fact about the document."""
+        document = json.loads(generated_document_text())
+        self.assertTrue(any(
+            "the total is the sum of the resolved costs" in text
+            for text in self._descriptions(document)))
 
 
 class CarveTest(TestCase):

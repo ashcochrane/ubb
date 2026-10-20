@@ -13,16 +13,16 @@ sites did something stronger than dropping it and each needed a decision rather
 than a coalesce:
 
 * the **spike comparison** divided by a previous period's cost. A previous cost
-  that is a floor makes the denominator too small and the rise too big, so the
-  one direction that mattered was the one it got wrong — a false alarm about
-  money. An unresolved previous cost is not a spike of any size, so the
-  comparison is skipped.
+  that left something out is not the previous cost, so the rise over it is not
+  the rise, and one way that goes wrong is a false alarm about money. An
+  unresolved previous cost is not a spike of any size, so the comparison is
+  skipped.
 * the **work unit accumulator** added each event's cost into a running total.
   It now adds the known part and counts the rest, and the total it publishes is
-  a floor that says so.
+  the sum of what resolved and says so.
 * the **margin endpoints** summed the read contract's per-customer rows and
-  dropped the count each row carried. A margin over a partial cost is a
-  ceiling on a margin.
+  dropped the count each row carried. A margin over a partial cost is an
+  incomplete margin.
 
 A fourth, in the composition layer, would have **raised** rather than answered
 wrong: the per-customer report of what was spent past a stop added ``None``
@@ -101,7 +101,7 @@ def _posting(tenant, customer, key, *, status=COSTING_STATUS_KNOWN,
 
 
 @pytest.mark.django_db
-class TestTheWorkUnitTotalIsAFloor:
+class TestTheWorkUnitTotalIsTheSumOfWhatResolved:
     """Platform's accumulator: the known part, and a count of the rest.
 
     The unit total is the one figure in this module that is WRITTEN rather than
@@ -159,7 +159,7 @@ class TestTheWorkUnitTotalIsAFloor:
         assert child.unresolved_event_count == 1
         assert parent.unresolved_event_count == 1
 
-    def test_the_unit_receipt_says_the_total_is_a_floor(self):
+    def test_the_unit_receipt_says_what_the_total_leaves_out(self):
         """The tenant-facing read of the same pair."""
         _, raw_key = TenantApiKey.create_key(self.tenant)
         unit = self._unit()
@@ -173,8 +173,9 @@ class TestTheWorkUnitTotalIsAFloor:
     def test_the_unit_economics_rollup_carries_its_own_completeness(self):
         """Per KIND of work — the number that sets a price.
 
-        A mean cost per job built from floors is itself a floor, and a tenant
-        pricing off it is the reader with the most to lose from a silent one.
+        A mean cost per unit of work built from incomplete totals is itself
+        incomplete, and a tenant pricing off it is the reader with the most to
+        lose from a silent one.
         """
         from apps.platform.work.queries import task_rollup_by_type
 
@@ -215,7 +216,7 @@ class TestTheWorkUnitTotalIsAFloor:
         The patrol re-mints a kill whose announcement dead-lettered, from the
         unit's CURRENT state. A re-mint that dropped the count would tell a
         consumer more than the first delivery did — the same total, minus the
-        caveat that makes it a floor.
+        caveat that says it is incomplete.
         """
         from apps.billing.gating.patrol import _remint_kill
         from apps.platform.events.models import OutboxEvent
@@ -243,9 +244,9 @@ class TestTheWorkUnitTotalIsAFloor:
         """The close receipt is the last thing many callers read.
 
         Closing a unit changes its status and nothing about what UBB knows, so
-        a total that was a floor while the unit ran is still a floor once it
-        stops. A close response that dropped the count would be the one surface
-        that made a partial total look final.
+        a total that was the sum of what resolved while the unit ran is still
+        only that once it stops. A close response that dropped the count would
+        be the one surface that made a partial total look final.
         """
         _, raw_key = TenantApiKey.create_key(self.tenant)
         unit = self._unit()
@@ -261,11 +262,11 @@ class TestTheWorkUnitTotalIsAFloor:
         assert body[UNRESOLVED_EVENT_COUNT_KEY] == 1
 
     def test_a_unit_is_not_killed_for_spend_ubb_cannot_demonstrate(self):
-        """The COGS limit races the FLOOR, and that is the safe direction.
+        """The COGS ceiling races the RESOLVED total — an enforcement trigger.
 
-        Two events, one of them a cost UBB could not resolve, against a limit
-        the pair would cross but the known part does not. The patrol passes the
-        unit over: firing here would mean killing a tenant's work on a number
+        Two events, one of them a cost UBB could not resolve, against a ceiling
+        the known part does not reach. The patrol passes the unit over: firing
+        here would mean killing a tenant's work on a number
         nobody has stated. The count is what makes the silence readable — a
         limit that has not fired is visibly not the same as one shown to be
         safe.
@@ -280,11 +281,13 @@ class TestTheWorkUnitTotalIsAFloor:
         assert unit.status == "active"
         assert unit.unresolved_event_count == 1
 
-    def test_the_kill_announcement_carries_the_floor_it_killed_on(self):
+    def test_the_kill_announcement_carries_the_resolved_total_it_stopped_on(self):
         """A limit crossing announces the total that crossed it.
 
-        The unit was killed on a floor, so a consumer reading the announcement
-        as the spend that triggered it is reading a lower bound.
+        The unit was stopped on the resolved total — an enforcement trigger,
+        never proof of the eventual one — so a consumer reading the
+        announcement as the spend that triggered it is reading the sum of what
+        resolved, and the count beside it says how many costs it leaves out.
         """
         from apps.platform.events.models import OutboxEvent
         from apps.platform.events.schemas import TaskKilled
@@ -308,11 +311,11 @@ class TestTheWorkUnitTotalIsAFloor:
 
 @pytest.mark.django_db
 class TestTheMarginSaysWhatItsCostExcluded:
-    """Subscriptions' margin surface: a ceiling that says it is one.
+    """Subscriptions' margin surface: an incomplete figure that says it is one.
 
-    Every figure here is revenue MINUS a cost total. A cost total that is a
-    floor makes the margin a ceiling — the true margin can only be smaller —
-    and the count is the only thing on the page that says so.
+    Every figure here is revenue MINUS a cost total. A cost total that left
+    something out leaves the margin incomplete — in a direction nobody can
+    state (#603) — and the count is the only thing on the page that says so.
     """
 
     def setup_method(self):
@@ -335,9 +338,9 @@ class TestTheMarginSaysWhatItsCostExcluded:
 
     def _economics(self, **params):
         """⚠ THREE OF THIS CLASS'S SURFACES COLLAPSED INTO ONE (#501) and the
-        claim travels with them: a cost total that is a floor makes the margin a
-        ceiling, and the count is what says so. What the one query adds is that
-        the measure says it in its own state as well."""
+        claim travels with them: a cost total that left something out leaves
+        the margin incomplete, and the count is what says so. What the one
+        query adds is that the measure says it in its own state as well."""
         query = [("measures", name) for name in (
             ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
             ANALYTICS_MEASURE_GROSS_MARGIN)]
@@ -385,9 +388,9 @@ class TestTheMarginSaysWhatItsCostExcluded:
 
         Nothing about this case's own claim moves. `c1` has two postings, one
         of which carries a supplier cost UBB never learned; the cost total is
-        therefore a floor, the margin a CEILING, and the count beside it is
-        what says so. A margin that is now positive makes that sharper rather
-        than weaker — an unlearned cost can only take it down.
+        therefore the sum of what resolved, the margin INCOMPLETE, and the
+        count beside it is what says so. A margin that is now positive changes
+        none of that — an unlearned cost may move it either way (#603).
         """
         body = self._economics(customer_id=str(self.c1.id))
         cost = self._measure(body, ANALYTICS_MEASURE_SUPPLIER_COGS)
@@ -398,7 +401,7 @@ class TestTheMarginSaysWhatItsCostExcluded:
         )["amount_micros"] == 2 * BILLED_MICROS
         margin = self._measure(body, ANALYTICS_MEASURE_GROSS_MARGIN)
         assert margin["amount_micros"] == 2 * BILLED_MICROS - KNOWN_COST_MICROS
-        # ⚠ AND THE MARGIN SAYS IT IS A CEILING IN ITS OWN STATE, which is the
+        # ⚠ AND THE MARGIN SAYS IT IS INCOMPLETE IN ITS OWN STATE, which is the
         # half the surface this replaced had no field for: a reader had to know
         # to look at the count on the measure beside it.
         assert margin["status"] == MEASURE_STATUS_INCOMPLETE
@@ -407,8 +410,8 @@ class TestTheMarginSaysWhatItsCostExcluded:
         """A rollup over seats is a total like any other.
 
         Its cost is the sum of the seats' costs, so its completeness is the sum
-        of theirs — one seat's unresolved cost makes the business figure a
-        floor.
+        of theirs — one seat's unresolved cost leaves the business figure
+        incomplete.
         """
         business = Customer.objects.create(
             tenant=self.tenant, external_id="biz", account_type="business")
@@ -446,7 +449,8 @@ class TestTheAccumulatorAndTheSnapshot:
         from apps.platform.events.schemas import UsageRecorded
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
 
-        handle_usage_recorded_subscriptions("evt-1", asdict(UsageRecorded(pricing_status_reason=None,
+        handle_usage_recorded_subscriptions("evt-1", asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             event_id="evt-1",
@@ -508,9 +512,9 @@ class TestTheAccumulatorAndTheSnapshot:
         per bucket for the same reason it carried it per point.
 
         What is left here is the ALERTING read, and its reason is its own: a
-        margin named unprofitable on a partial cost is a CEILING — the customer
-        can only be worse than the figure says, never better — so the count can
-        never read as a reprieve.
+        margin named unprofitable on a partial cost is INCOMPLETE — the
+        customer may be better or worse than the figure says (#603) — so the
+        count is what tells a reader the flag rests on what resolved.
         """
         from apps.subscriptions.economics.services import MarginService
 
@@ -548,11 +552,11 @@ class TestAnUnresolvedPreviousCostIsNotASpike:
     """The comparison that had to be skipped rather than defaulted.
 
     A cost spike is a RATIO, and the previous period is the denominator. A
-    previous total that excluded costs is too small, so every ratio built on it
-    is too big — the failure direction is a false alarm about somebody's money,
-    which is worse than silence. There is no substitute figure to divide by
-    either: the true previous cost is unknown, not zero, and that is the whole
-    reason the count exists.
+    previous total that excluded costs is not the previous cost, so no ratio
+    built on it is the rise — and one way that fails is a false alarm about
+    somebody's money, which is worse than silence. There is no substitute
+    figure to divide by either: the true previous cost is unknown, not zero,
+    and that is the whole reason the count exists.
     """
 
     def setup_method(self):
@@ -615,12 +619,12 @@ class TestAnUnresolvedPreviousCostIsNotASpike:
         assert prev.unresolved_event_count == 1
 
     def test_a_spike_off_a_partial_current_cost_says_what_it_excluded(self):
-        """This one still fires, and the direction is why.
+        """This one still fires, on the resolved figure.
 
-        A partial CURRENT cost understates the rise, so a comparison that
-        crosses the threshold has crossed it on a floor — the real rise is at
-        least that steep. The alarm is sound; what the consumer needs is to
-        know the number under it is a lower bound.
+        An alert, like every control, reads what has resolved. Since #603 an
+        omitted cost may be negative, so a partial CURRENT cost is no bound on
+        the eventual rise in either direction; what the consumer needs is to
+        know how many costs the number under the alarm leaves out.
         """
         from apps.subscriptions.economics.services import MarginService
 

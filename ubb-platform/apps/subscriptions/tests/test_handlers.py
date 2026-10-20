@@ -15,7 +15,8 @@ class TestHandleUsageRecorded:
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
-        handle_usage_recorded_subscriptions("evt-outbox-1", asdict(UsageRecorded(pricing_status_reason=None,
+        handle_usage_recorded_subscriptions("evt-outbox-1", asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id,
             customer_id=customer.id,
             cost_micros=1_500_000,
@@ -38,7 +39,8 @@ class TestHandleUsageRecorded:
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
         for i in range(3):
-            handle_usage_recorded_subscriptions(f"evt-outbox-{i}", asdict(UsageRecorded(pricing_status_reason=None,
+            handle_usage_recorded_subscriptions(f"evt-outbox-{i}", asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id,
                 customer_id=customer.id,
                 cost_micros=1_000_000,
@@ -63,7 +65,8 @@ class TestHandleUsageRecorded:
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
 
-        handle_usage_recorded_subscriptions("evt-outbox-0", asdict(UsageRecorded(pricing_status_reason=None,
+        handle_usage_recorded_subscriptions("evt-outbox-0", asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id,
             customer_id=customer.id,
             cost_micros=0,
@@ -109,7 +112,8 @@ class TestHandleUsageRecorded:
         tenant = Tenant.objects.create(name="test2", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-2")
 
-        handle_usage_recorded_subscriptions("evt1", asdict(UsageRecorded(pricing_status_reason=None,
+        handle_usage_recorded_subscriptions("evt1", asdict(UsageRecorded(
+            pricing_status_reason=None,
             tenant_id=tenant.id, customer_id=customer.id,
             event_id="evt-1", cost_micros=1_000_000,
             provider_cost_micros=800_000, billed_cost_micros=1_000_000)))
@@ -126,7 +130,8 @@ class TestHandleUsageRecorded:
         customer = Customer.objects.create(tenant=tenant, external_id="cust-3")
 
         for _ in range(2):
-            handle_usage_recorded_subscriptions("evt2", asdict(UsageRecorded(pricing_status_reason=None,
+            handle_usage_recorded_subscriptions("evt2", asdict(UsageRecorded(
+                pricing_status_reason=None,
                 tenant_id=tenant.id, customer_id=customer.id,
                 event_id="evt-2", cost_micros=1_000_000,
                 provider_cost_micros=800_000, billed_cost_micros=1_000_000)))

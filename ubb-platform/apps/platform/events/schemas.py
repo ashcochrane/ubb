@@ -4,9 +4,12 @@ Frozen dataclass contracts for outbox events.
 Rules:
 - All event schemas are frozen dataclasses inheriting ``EventSchema``.
 - New fields MUST have defaults (additive-only evolution). The one admitted
-  exception is a CLOSED vocabulary field with no honest default, added only
-  once a data migration has stamped every stored row and queued payload
-  (`_TerminalStop.control_family`, #458).
+  exception is a CLOSED vocabulary field, added only once a data migration
+  has stamped every stored row and queued payload, on one of two grounds:
+  it has no honest default (`_TerminalStop.control_family`, #458), or the
+  owner has ruled the concept required wherever it is published
+  (`UsageRecorded.pricing_status_reason`, #603: required AND nullable, its
+  null a value rather than an absence, `events/migrations/0010`).
 - Breaking changes (renames, removals, type changes) require a new class —
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
@@ -251,10 +254,10 @@ class UsageRecorded(EventSchema):
     # first waits on configuration.
     #
     # ⚠ REQUIRED AND NULLABLE, the owner's rule for this concept wherever
-    # `pricing_status` is published (`6279966961`), and the module's one
-    # admitted exception to "new fields have defaults": every queued payload
-    # was stamped with null by `events/migrations/0010` before this field
-    # could ask for it. It sits here, among the required fields, because a
+    # `pricing_status` is published (`6279966961`) — the second ground of the
+    # module's admitted exception to "new fields have defaults": every queued
+    # payload was stamped with null by `events/migrations/0010` before this
+    # field could ask for it. It sits here, among the required fields, because a
     # dataclass field without a default may not follow one with.
     pricing_status_reason: Annotated[
         Optional[PricingStatusReason],

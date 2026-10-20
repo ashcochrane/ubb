@@ -198,13 +198,13 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
             "idempotency_key": "ik6",
-            "measurements": {"uncovered_metric": "5"},
+            "measurements": {"uncovered_quantity": "5"},
         })
         assert resp.status_code == 200
         body = resp.json()
         assert body["provider_cost_micros"] is None
         assert body["costing_status"] == "unresolved"
-        assert body["uncosted_measurement_keys"] == ["uncovered_metric"]
+        assert body["uncosted_measurement_keys"] == ["uncovered_quantity"]
         assert Posting.objects.filter(
             tenant=t, customer=c, idempotency_key="ik6").count() == 1
 
@@ -235,7 +235,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         self._card_for_some_other_measurement(t)
         resp1 = self._post(http, auth, c, {
             "idempotency_key": "ik7",
-            "measurements": {"uncovered_metric": "5"},
+            "measurements": {"uncovered_quantity": "5"},
         })
         assert resp1.status_code == 200
         assert resp1.json()["costing_status"] == "unresolved"

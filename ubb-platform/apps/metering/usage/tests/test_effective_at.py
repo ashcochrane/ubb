@@ -390,6 +390,6 @@ class TestUsageRecordedPayload:
 
     def test_schema_default_keeps_legacy_payloads_valid(self):
         from apps.platform.events.schemas import UsageRecorded
-        legacy = UsageRecorded(pricing_status_reason=None, tenant_id="t", customer_id="c", event_id="e",
-                               cost_micros=5)
+        legacy = UsageRecorded(tenant_id="t", customer_id="c", event_id="e",
+                               cost_micros=5, pricing_status_reason=None)
         assert legacy.effective_at == ""

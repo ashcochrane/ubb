@@ -4,7 +4,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from core.money import NegativeKnownPriceRefused
+from core.exceptions import NegativeKnownPriceRefused
 from apps.platform.events.schemas import UsageRecorded
 from apps.referrals.rewards.services import RewardService
 

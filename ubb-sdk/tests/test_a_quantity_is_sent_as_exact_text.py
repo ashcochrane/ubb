@@ -84,6 +84,21 @@ class RecordUsageSendsExactTextTest(unittest.TestCase):
                 self.assertIsInstance(body["measurements"]["calls"], str)
 
     @patch("ubb.metering.httpx.Client.post")
+    def test_an_int_past_cpythons_text_conversion_is_sent_whole(self,
+                                                                mock_post):
+        """A quantity has no digit bound, and CPython refuses `str()` of an
+        int longer than 4,300 digits (`sys.get_int_max_str_digits`), so the
+        SDK never asks it to."""
+        mock_post.return_value = MagicMock(status_code=200, json=lambda: ACK)
+        for value, text in ((10 ** 5000 + 7, "1" + "0" * 4999 + "7"),
+                            (-(10 ** 5000), "-1" + "0" * 5000)):
+            with self.subTest(sign=text[0]):
+                self.client.record_usage("c1", "k1",
+                                         measurements={"calls": value})
+                body = mock_post.call_args.kwargs["json"]
+                self.assertEqual(body["measurements"], {"calls": text})
+
+    @patch("ubb.metering.httpx.Client.post")
     def test_a_float_or_a_flag_is_refused_and_nothing_is_sent(self, mock_post):
         for why, value in REFUSED.items():
             with self.subTest(why=why):

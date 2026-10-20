@@ -60,7 +60,7 @@ import { asComments } from "../comments.ts";
 import { headerText } from "../header.ts";
 import { FACT, FIELD } from "../lifecycle.ts";
 import { refuse } from "../blueprint.ts";
-import { factOfField, said, SAID_OF } from "../tokens.ts";
+import { factOfField, said } from "../tokens.ts";
 import type { StopField } from "../lifecycle.ts";
 import {
   EVENT_ID,
@@ -88,6 +88,7 @@ import {
 import {
   asWrittenCopy,
   asWrittenDefinitions,
+  exactRefusalWhy,
   readHelpers,
   readQuantityHelper,
   WHOLE,
@@ -138,7 +139,7 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
   if (needs.has(JQ.notConfigured)) {
     lines.push(
       `def ${JQ.notConfigured}($name):`,
-      `${I1}error($name + ${jqString(` ${SAID_OF.unconfigured}.`)});`,
+      `${I1}error($name + ${jqString(` ${MESSAGES.notConfigured}.`)});`,
     );
   }
   return lines;
@@ -559,10 +560,7 @@ function parameterHelpers(uses: Uses): string[] {
       "",
       "_ubb_quantity() {",
       `${I1}_ubb_exact "$3" "$4" && return 0`,
-      `${I1}case $? in`,
-      `${I2}2) _ubb_why=${shWord(SHELL_MESSAGES.wholeQuantity)} ;;`,
-      `${I2}*) _ubb_why=${shWord(SHELL_MESSAGES.quantity)} ;;`,
-      `${I1}esac`,
+      ...exactRefusalWhy(I1, I2),
       `${I1}printf '%s: %s %s\\n' "$1" "$2" "$_ubb_why" >&2`,
       `${I1}return ${refused}`,
       "}",
@@ -790,7 +788,7 @@ export function reportedCostHelpers(callerCost: boolean): string[] {
  * reason of its own. */
 function unwritten(call: CallPlan): string[] {
   const sentence = (value: Value | null): string[] =>
-    value?.kind === "unconfigured" ? [said({ name: value.token, why: value.kind })] : [];
+    value?.kind === "unconfigured" ? [said({ name: value.token })] : [];
   return call.body.flatMap((field) =>
     field.shape === "keyed"
       ? field.members.flatMap((member) => sentence(member.value))

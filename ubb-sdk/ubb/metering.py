@@ -120,19 +120,19 @@ def measure_on(row: EconomicRowOut, measure: str) -> EconomicMeasureOut | None:
     ⚠ **IT HANDS BACK THE MEASURE AND NEVER THE NUMBER, AND THAT IS THE
     WHOLE POINT** (#505, slice 7 §18). Every figure on this surface comes
     with a `status` saying what it is worth: `incomplete` means the number
-    is a BOUND and the count beside it says how far off it can be — and
-    where no piece of a row's revenue resolved there is no number, on the
-    revenue or the margin (#537); `unavailable_at_requested_grain` means a
-    margin could not be attributed
+    is the sum of what resolved and the count beside it says how many
+    amounts it leaves out (#603) — and where no piece of a row's revenue
+    resolved there is no number, on the revenue or the margin (#537);
+    `unavailable_at_requested_grain` means a margin could not be attributed
     this finely and is null outright, while a revenue at that same state is
     the part that COULD be placed with the rest in the answer's `context`;
     `unavailable_outside_retention_horizon` means there is no figure at all
     and `available_from` says when the series can start.
 
     A convenience returning `amount_micros` alone would let a caller publish
-    a floor as a total in one line, which is the defect the whole surface
-    exists to end — so there is no such convenience here, deliberately, and
-    this is the shape that replaces it. Branch on `.status` against
+    an incomplete sum as a total in one line, which is the defect the whole
+    surface exists to end — so there is no such convenience here,
+    deliberately, and this is the shape that replaces it. Branch on `.status` against
     `vocabulary.MEASURE_STATUS_*`; a zero in `amount_micros` is a MEASURED
     zero and where UBB has no figure the field is null.
 
@@ -228,7 +228,11 @@ def _canonical_quantity(name, value):
             f"int, a decimal.Decimal or a string such as '2.5' — a float has "
             f"already rounded, so UBB will not read one.")
     if isinstance(value, int):
-        text = str(value)
+        # Through `Decimal`, never `str(value)`: CPython refuses to turn an
+        # int of more than 4,300 digits into text, and a quantity has no
+        # digit bound. `Decimal(int)` is exact and its fixed-point text has
+        # no such cap.
+        text = format(Decimal(value), "f")
     elif isinstance(value, Decimal):
         if not value.is_finite():
             raise UBBValidationError(
@@ -1045,8 +1049,9 @@ class MeteringClient:
         ⚠ **EVERY MEASURE CARRIES ITS OWN STATE AND THE STATE IS PART OF THE
         ANSWER.** Read a figure with `measure_on(row, name)`, which hands
         back the measure rather than the number; a figure taken without its
-        `status` can be a bound published as a total. A row's grouped values
-        are POSITIONAL, aligned with the `group_by` the response echoes.
+        `status` can be an incomplete sum published as a total. A row's
+        grouped values are POSITIONAL, aligned with the `group_by` the
+        response echoes.
 
         `basis` picks how revenue you supplied is spread over the span it
         declares — `recorded` places each amount whole on the day its record
@@ -1210,9 +1215,9 @@ class MeteringClient:
     # stop-context ones — composes with all of it exactly as it did.
     #
     # ⚠ AND EACH MEASURE COMES BACK WITH ITS OWN STATE, which is the part no
-    # wrapper should paper over: a figure that is a bound says so beside itself,
-    # and a figure UBB cannot attribute at the grain asked for is absent rather
-    # than small. The ergonomic handle for the replacement is a later ticket's,
+    # wrapper should paper over: a figure that is incomplete says so beside
+    # itself, and a figure UBB cannot attribute at the grain asked for is absent
+    # rather than small. The ergonomic handle for the replacement is a later ticket's,
     # and until it lands the operation is reachable through the generated client
     # with a `generated_only` disposition recorded for it.
 

@@ -1289,7 +1289,7 @@ PUT /api/v1/billing/postpaid-config removed the required property `usage_line_it
 # per surface - the value's `type` changed from `integer` to `string`, and the
 # exact-decimal `pattern` added - and all six are reviewed and deliberate. They
 # have NO line here: `measurements` arrived after `api-v1-launch` (the launch
-# spec's bag was `usage_metrics`), so against the published contract they are
+# spec's bag had the name #274 retired), so against the published contract they are
 # no break, and the cumulative gate reports every one of the six lines as
 # inert (tried, 2026-10-20). The break is recorded here, in the PR and in
 # ADR-0020 instead.

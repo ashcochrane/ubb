@@ -315,12 +315,12 @@ class AProjectionIsTheRunWithTheWritingTakenOutTest(_AReadingMixin, TestCase):
 class ATotalSaysHowManyItCouldNotIncludeTest(_AReadingMixin, TestCase):
     """AC 6. Slice 3's rule on all three surfaces, in BOTH directions.
 
-    An unresolved amount is skipped and counted, so the total is a floor that
-    says how far it falls short; an amount the declaration says does not exist
-    is skipped and NOT counted, because nothing about it is missing. A total
-    that silently omitted rows would be a wrong number wearing a right one's
-    clothes; one that caveated every metering-only tenant's every figure
-    forever would be a caveat nobody reads.
+    An unresolved amount is skipped and counted, so the total is the sum of
+    what resolved and says how many it leaves out; an amount the declaration
+    says does not exist is skipped and NOT counted, because nothing about it is
+    missing. A total that silently omitted rows would be a wrong number wearing
+    a right one's clothes; one that caveated every metering-only tenant's every
+    figure forever would be a caveat nobody reads.
     """
 
     def setUp(self):
@@ -382,7 +382,7 @@ class ATotalSaysHowManyItCouldNotIncludeTest(_AReadingMixin, TestCase):
 
 
 class OnePassIsBoundedAndCountsWhatItDidNotReachTest(_AReadingMixin, TestCase):
-    """AC 6, for the second reason a projected figure can be short.
+    """AC 6, for the second reason a projected figure can leave something out.
 
     ⚠ **A BOUND NOBODY IS TOLD ABOUT IS THE DEFECT THIS PROGRAMME EXISTS TO
     DELETE, WEARING A PERFORMANCE ARGUMENT.** Re-resolving costs a handful of

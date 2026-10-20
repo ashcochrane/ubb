@@ -211,12 +211,11 @@ that finds out what the two have in common, and is where this moves to the
 kernel; today there is one, exactly as `core.amount_status_pairs` had one table
 until #348.
 """
-import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from apps.platform.event_types.exact_decimals import (
-    CANONICAL, canonical_quantity)
+    canonical_quantity, is_canonical)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_VALUES,
@@ -932,7 +931,7 @@ def _validate_components(name, components):
         # WHAT THIS SHAPE SAYS A QUANTITY IS (#603): its canonical
         # exact text, and nothing a reader would have to convert. A number
         # here would be schema 1's spelling under schema 2's version.
-        if not _is_canonical_quantity(component[QUANTITY_KEY]):
+        if not is_canonical(component[QUANTITY_KEY]):
             raise ReceiptShapeError(
                 f"a {name} component's quantity is "
                 f"{component[QUANTITY_KEY]!r}: "
@@ -1159,33 +1158,11 @@ def _whole_as_text(value):
 def _text_as_text(value):
     """A schema-2 quantity, which is already its canonical text — refused
     if it is not, rather than read as whatever it happens to be."""
-    if not _is_canonical_quantity(value):
+    if not is_canonical(value):
         raise ReceiptShapeError(
             f"a schema-{CANONICAL_QUANTITY_SCHEMA_VERSION} receipt holds a "
             f"quantity as its canonical exact text, not {value!r}")
     return value
-
-
-_CANONICAL_QUANTITY = re.compile(CANONICAL)
-
-
-def _is_canonical_quantity(value):
-    return (isinstance(value, str)
-            and _CANONICAL_QUANTITY.fullmatch(value) is not None)
-
-
-def pricing_status_reason_of(receipt):
-    """WHY THIS RECEIPT'S PRICE STATUS APPLIES, or `None` (#603).
-
-    Read off the price section's detail, where the engine records it. A
-    receipt in an older shape predates the concept and answers `None` — this
-    record does not say — on the footing the two readers below take for a
-    question their record predates.
-    """
-    version = _readable_version_of(receipt)
-    if version is None or version == LEGACY_SCHEMA_VERSION:
-        return None
-    return receipt["pricing"]["detail"].get(PRICING_STATUS_REASON_KEY)
 
 
 def pricing_method_of(receipt):

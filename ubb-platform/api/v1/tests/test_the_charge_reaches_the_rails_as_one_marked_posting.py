@@ -77,7 +77,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.work.models import Task
-from core.money import NegativeKnownPriceRefused
+from core.exceptions import NegativeKnownPriceRefused
 from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     COSTING_STATUS_KNOWN, MEASUREMENTS_STATUS_NOT_APPLICABLE,

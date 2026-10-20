@@ -96,9 +96,9 @@ class TestAPeriodOutsideTheRepairHorizon:
         """The control, and it is the half that makes the other half mean
         something.
 
-        The cost is a floor and says so with its count; the margin over a floor
-        is a ceiling, so it reads `incomplete` rather than publishing the
-        subtraction as though the supplier had charged nothing.
+        The cost is the sum of what resolved and says so with its count; the
+        margin over it is incomplete too, so it reads `incomplete` rather than
+        publishing the subtraction as though the supplier had charged nothing.
         """
         body = self._answer()
 
@@ -128,9 +128,9 @@ class TestAPeriodOutsideTheRepairHorizon:
         # It is a FIGURE and not a null, which is the distinction `incomplete`
         # draws against `unavailable_at_requested_grain`: UBB can attribute this
         # margin to this window, and what it cannot do is promise the cost side
-        # is whole — so the number stands with its count beside it, as a bound
-        # rather than a total. The bound is the revenue, because the cost total
-        # it was taken against was a floor of nothing.
+        # is whole — so the number stands with its count beside it, as the sum
+        # of what resolved rather than a total. That sum is the revenue,
+        # because nothing on the cost side had resolved to subtract.
         margin_before = measure_of(before, ANALYTICS_MEASURE_GROSS_MARGIN)
         assert margin_before["amount_micros"] == BILLED
         assert margin_before["status"] == MEASURE_STATUS_INCOMPLETE

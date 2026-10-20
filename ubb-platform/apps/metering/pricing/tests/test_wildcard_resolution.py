@@ -94,7 +94,7 @@ class TestWildcardResolution:
         book for a quantity only the wildcard book prices. This is the branch
         that changes pre-existing behaviour — before the fallback tier was
         added, `_default_book` picked the "openai" book (found), then found
-        no matching rate for "metric_y" in it, and never looked at the ""
+        no matching rate for "quantity_y" in it, and never looked at the ""
         book at all, so this fell through to markup. All the other tests in
         this file exercise "book absent" -> tier 3; this one exercises "book
         present, no matching rate" -> tier 3."""
@@ -102,7 +102,7 @@ class TestWildcardResolution:
         cost_rate_in_default_book(t, provider="openai",
                              measurement_key="metric_x",
                              rate_per_unit_micros=9_000, unit_quantity=1_000_000)
-        cost_rate_in_default_book(t, measurement_key="metric_y",
+        cost_rate_in_default_book(t, measurement_key="quantity_y",
                              rate_per_unit_micros=3_000, unit_quantity=1_000_000)
         base = {"provider": "openai", "event_type": "", "task_type": "",
                 "subtask_type": "", "dim1": "", "dim2": "", "dim3": "",
@@ -110,7 +110,7 @@ class TestWildcardResolution:
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors=base,
-            measurements={"metric_y": "1000000"}, currency="usd",
+            measurements={"quantity_y": "1000000"}, currency="usd",
             caller_provider_cost=None)
         assert costing.provider_cost_micros == 3_000
         assert (costing.pricing_receipt["costing"]["method"]

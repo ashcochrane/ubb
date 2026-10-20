@@ -2257,9 +2257,9 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     is not added to it, and usage nobody priced there does not make it
     incomplete — the count of that usage is still published. Everywhere else a
     revenue is derived from priced usage: where some usage is unpriced the
-    figure is a bound and reads `incomplete`, and where no piece of a row's
-    revenue resolved at all, the revenue and the margin read `incomplete` with
-    no amount. A deliberate zero price is resolved.
+    figure is the sum of what was priced and reads `incomplete`, and where no
+    piece of a row's revenue resolved at all, the revenue and the margin read
+    `incomplete` with no amount. A deliberate zero price is resolved.
 
     `basis` picks how revenue a tenant supplied is spread over the span it
     declares: `recorded` places each amount whole on the day its record opens

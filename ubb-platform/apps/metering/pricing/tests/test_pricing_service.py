@@ -135,7 +135,7 @@ class TestPricing:
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            measurements={"unmatched_metric": "100"}, currency="usd",
+            measurements={"unmatched_quantity": "100"}, currency="usd",
             caller_provider_cost=500,
         )
         assert costing.provider_cost_micros == 500

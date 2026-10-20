@@ -182,4 +182,11 @@ def _digits_of(whole):
 
 
 _CANONICAL = re.compile(CANONICAL)
+
+
+def is_canonical(value):
+    """Whether ``value`` is text already in the one canonical form — what a
+    reader of stored text asks before trusting it, never a way to make it."""
+    return isinstance(value, str) and _CANONICAL.fullmatch(value) is not None
+
 _STR_IS_SAFE_BELOW = 10 ** 4000

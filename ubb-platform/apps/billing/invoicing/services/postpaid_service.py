@@ -22,8 +22,8 @@ def _warn_if_incomplete(tenant, customer, period_start, unpriced_events):
     `Posting.billed_cost_micros` is nullable, and the read contract now reports
     how many postings each total could not include. This service turns those
     totals into invoice LINES, so a total missing prices here is money
-    misstated — and silently: a seat whose every posting is unpriced bills exactly like a seat
-    that emitted nothing.
+    misstated — and silently: a seat whose every posting is unpriced bills
+    exactly like a seat that emitted nothing.
 
     **This warns rather than refuses, deliberately.** #329 answered the
     equivalent question for supplier cost by refusing to close a period, and

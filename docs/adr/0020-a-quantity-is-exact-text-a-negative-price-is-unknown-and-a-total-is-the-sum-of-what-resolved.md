@@ -134,7 +134,7 @@ component is positive.
 - **Zero is a known zero** (ruling 9). The unowned "amount at or below zero moves no money" guard on
   the billing and referral rails is retired. A known zero is a real price that moves nothing because
   it is nothing; a negative known price that somehow reached a rail is refused by name
-  (`core.money.NegativeKnownPriceRefused`) and moves nothing, rather than being read as zero. The
+  (`core.exceptions.NegativeKnownPriceRefused`, beside `MisalignedAmount`) and moves nothing, rather than being read as zero. The
   referral rail's compare on a value that is `None` for every unpriced posting goes with it.
 - **No negative money moves in v1.** Carrying one — a credit on the rails, a negative wallet debit,
   a negative referral reward — is a later capability, and the reason exists so that capability can
@@ -175,6 +175,16 @@ Two questions are kept apart on purpose (`core/crossing.py`):
   reverses the stop. A negative known COGS lowers the total racing a ceiling, so the stop fires
   later, which is right for a real credit. There is no new status and no new reason for "stopped
   while indeterminate".
+- **A late resolution reaches the unit.** Until #603 a unit's totals were written once, when a report
+  was recorded, and nothing told the unit when an amount it counted as unresolved later resolved — so
+  under this section's assessment a unit that ever carried one would read `indeterminate` for ever.
+  The two settlement doors (`cost_settlement`, `price_resolution`) now call
+  `TaskService.take_up_a_late_resolution`, which adds the resolved amount (a negative one included)
+  to the unit's total and its parent's and stops counting it. It fires nothing itself. Its one
+  consequence for enforcement is the existing rule applied to a figure that used to be stale: if a
+  resolution takes an ACTIVE unit's resolved COGS to its ceiling, the patrol's sweep — the same
+  `ceiling_reached` compare over the same columns — stops it on its next pass. A stopped unit stays
+  stopped whatever a resolution does.
 
 ### 8. The generated code: renderer contract 3, and a declared constant rendered (#584)
 
@@ -184,7 +194,9 @@ move). A renderer sends a quantity as text and never as a JSON number, refuses a
 rather than read one, and assumes no digit bound.
 
 - **Python** (ADR-0016) passes an `int`, a `Decimal` or a `str`; the SDK sends its canonical text and
-  refuses a float or a bool before anything is sent.
+  refuses a float or a bool before anything is sent. CPython refuses `str()` of an int longer than
+  4,300 digits and will not compile such a literal, so the SDK formats an int through `Decimal`, and
+  an integer constant that long is written `int(Decimal("…"))` — still an int, with no digit cap.
 - **Shell** (ADR-0017) passes a quantity with `--arg` as text, checked by the file's own `_ubb_exact`
   against the grammar and, for an `integer` Measurement, for whole-ness. The shell target's
   fifteen-digit refusal was a property of the jq number the value went through, and it goes with it;
@@ -268,9 +280,11 @@ Each is quoted as it stood on `main` at `86d978d4`.
 | §2 — exact arithmetic, the tie away from zero, the fixed component as declared, the bound refused by name and per batch item | `ubb-platform/apps/metering/pricing/tests/test_a_quantity_is_costed_exactly.py` — `ARuleCostsAQuantityExactlyTest`, `AMarginIsTakenWithTheSameRuleTest`, `AnAmountPastTheMoneyBoundIsRefusedByNameTest`, `ANegativeCostIsAKnownCostTest`; `ubb-platform/core/tests/test_money.py` |
 | §3 — a writer emits schema 2, every reader reads 0, 1 and 2, the engine version | `ubb-platform/apps/metering/pricing/tests/test_a_receipt_holds_a_quantity_as_exact_text.py` — `TestAWriterEmitsSchemaTwo`, `TestEveryReaderReadsEveryShape` |
 | §4 — the reason required and nullable on every publisher | `ubb-platform/api/v1/tests/test_the_price_status_reason_is_required_and_nullable.py` |
+| §4 — the table holds the reason as it holds the status: never written, cleared or carried in place, and cleared by the one resolution | `ubb-platform/apps/metering/usage/tests/test_a_price_resolves_once.py` — `TheStatusReasonMovesOnlyWithTheResolutionTest` |
 | §4, §5 — a negative price is unknown with its reason, decided on the posting's total, not retried, counted | `ubb-platform/api/v1/tests/test_a_negative_price_is_unknown_with_a_reason.py` — `ANegativePriceIsUnknownWithItsReasonTest`, `TheSignIsDecidedOnThePostingsTotalTest`, `AFixedComponentDecidesTheSignOnItsOwnTest`, `AMarginOverANegativeCostTest` |
 | §5 — the rails refuse a negative known price by name and move nothing | `ubb-platform/apps/billing/tests/test_outbox_handlers.py` — `test_a_negative_known_price_is_refused_by_name_and_moves_nothing`; `ubb-platform/apps/referrals/tests/test_handlers.py`; `ubb-platform/api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py` — `test_the_rails_would_have_refused_it_anyway` |
-| §7 — the assessment `indeterminate` whatever the resolved total; the stop fires on the resolved total | `ubb-platform/core/tests/test_crossing.py` — `test_something_unresolved_is_indeterminate_whatever_the_resolved_total`, `test_everything_resolved_at_or_above_is_reached`; `ubb-platform/api/v1/tests/test_one_rule_pins.py` — `test_resolved_at_the_ceiling_is_stopped_while_the_assessment_is_indeterminate` |
+| §6 — no published description promises a direction for a total | `ubb-platform/api/v1/tests/test_openapi_contract.py` — `NoTotalIsPublishedAsABoundTest` |
+| §7 — the assessment `indeterminate` whatever the resolved total; the stop fires on the resolved total | `ubb-platform/core/tests/test_crossing.py` — `test_something_unresolved_is_indeterminate_whatever_the_resolved_total`, `test_everything_resolved_at_or_above_is_reached`; `ubb-platform/api/v1/tests/test_one_rule_pins.py` — `test_resolved_at_the_ceiling_is_stopped_while_the_assessment_is_indeterminate`, `test_a_later_negative_resolution_moves_the_assessment_and_the_kill_stands` (the late-resolution door) |
 | §8 — renderer contract 3, a constant resolved configured with its value | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py`; `ubb-platform/api/v1/tests/test_a_constant_measurement_declares_its_value.py`; `ubb-platform/api/v1/tests/test_verifying_a_blueprint.py` — `TestAConstantIsSentAsDeclared` |
-| §8 — both targets send a quantity as exact text and write a constant as a typed literal (Seam B) | `apps/codegen/tests/` — the execution suites' "a quantity" cases on both targets; `ubb-sdk/tests/test_a_quantity_is_sent_as_exact_text.py` |
+| §8 — both targets send a quantity as exact text and write a constant as a typed literal (Seam B) | `apps/codegen/tests/` — the execution suites' "a quantity" cases on both targets, and `writes and sends an integer constant longer than CPython compiles as a literal`; `ubb-sdk/tests/test_a_quantity_is_sent_as_exact_text.py` — `test_an_int_past_cpythons_text_conversion_is_sent_whole` |
 | §8 — generated files, unmodified, record a decimal, a count past a float, and constants of both types, one negative, exactly (Seam C) | `tests/code_builder_execution/_scenarios.py` — `DECIMAL_QUANTITY`, `CONSTANT_QUANTITIES` |

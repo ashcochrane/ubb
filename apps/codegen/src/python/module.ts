@@ -60,7 +60,6 @@ import {
   literalOf,
   notWritten,
   said,
-  SAID_OF,
   type Call,
   type Entry,
   type Field,
@@ -134,12 +133,18 @@ function notConfigured(plan: Plan, uses: Uses, name: string): string {
  * of an exact decimal, as the platform keeps it (ADR-0020). */
 const CANONICAL_QUANTITY = /^(0|-?(0\.[0-9]*[1-9]|[1-9][0-9]*(\.[0-9]*[1-9])?))$/;
 
+/** The most digits CPython compiles in an integer literal
+ * (`sys.get_int_max_str_digits()`'s default since 3.11). */
+const PYTHON_LITERAL_DIGITS = 4300;
+
 /**
  * A constant quantity's declared value as a typed exact literal (#584): an
  * `int` where it is declared an integer — Python's int holds any length — and
  * a `Decimal` of its exact text where it is declared a decimal. Never a
  * float. Anything but the canonical text, or a fraction declared whole, is
- * refused rather than written.
+ * refused rather than written. An integer longer than CPython compiles as a
+ * literal is written `int(Decimal("…"))`: still an int, built from its exact
+ * text by a conversion with no digit cap, because a quantity has none (#603).
  */
 function quantityLiteral(uses: Uses, entry: Entry, value: Json): string {
   if (typeof value !== "string" || !CANONICAL_QUANTITY.test(value)) {
@@ -149,6 +154,10 @@ function quantityLiteral(uses: Uses, entry: Entry, value: Json): string {
   if (valueType === "integer") {
     if (value.includes(".")) {
       return refuse(`the constant ${entry.keyText} is declared an integer and is not a whole number`);
+    }
+    if (value.replace("-", "").length > PYTHON_LITERAL_DIGITS) {
+      uses.decimal = true;
+      return `int(Decimal(${pyString(value)}))`;
     }
     return value;
   }
@@ -548,7 +557,7 @@ function notReadyHelpers(plan: Plan, uses: Uses): string[] {
     `${INDENT.repeat(2)}f"{operation} ({readiness}) ${MESSAGES.notReady}{detail}"`,
     `${INDENT})`,
     ...(uses.notConfigured
-      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${SAID_OF.unconfigured}.")`]
+      ? ["", "", `def ${unset}(name) -> NoReturn:`, `${INDENT}raise ${error}(f"{name} ${MESSAGES.notConfigured}.")`]
       : []),
   ];
 }
