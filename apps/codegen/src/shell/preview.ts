@@ -37,8 +37,6 @@ function shown(value: Value): string {
       return at(value.parameter, value.path);
     case "unconfigured":
       return `not_configured(${jqString(value.token)})`;
-    case "not_renderable":
-      return `not_renderable(${jqString(value.token)})`;
     case "cost":
       return `to_micros($${value.parameter.name}, ${jqString(value.representation)}, ${jqString(value.declared)})`;
     case "response_cost":

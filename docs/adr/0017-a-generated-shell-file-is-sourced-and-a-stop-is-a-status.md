@@ -134,6 +134,15 @@ is held to the same: a whole number, or nothing is sent; a field that declares a
 the currency beside it where the mapping reads one — and is then read off that same file, the cost
 as it was written (§6).
 
+*Amended by renderer contract 3 (#603, 2026-10-20; ADR-0015 §3, ADR-0020).* A keyed entry that
+declares a `value_type` is a QUANTITY, and a quantity is text: passed with `--arg` and sent as a
+JSON string, after `_ubb_exact` has checked it against the exact-decimal grammar and, where it is
+declared an integer, for whole-ness — at any length, never through a jq number. One that declares
+a `source_path` is read off the response file as it was written, by a program of its own as the
+cost is (§6): an integer as its digits, a string as its text, checked the same way, and a number
+written with a fraction or an exponent refused. The fifteen-digit limit went with the jq number it
+was a limit of. A constant is written into the body as its canonical text (#584).
+
 The names a call site depends on are `ubb_start_task`, `ubb_run_task`, `ubb_close_task`,
 `ubb_start_subtask_<name>` and `ubb_record_<name>`, with `<name>` and the collision rule exactly
 ADR-0016 §2's — one rule for both targets, in `src/names.ts`. The three fixed ones are named for
@@ -187,7 +196,8 @@ indented and the delimiter is not, and every character that could end a line is 
 name is written. That is structure, not a rule a later edit must remember: a key that IS the
 delimiter, and one that holds it on a line of its own, both render and run.
 
-Runtime values reach a program only as `--arg`, `--argjson` or `--slurpfile`. A response is handed
+Runtime values reach a program only as `--arg`, `--argjson` or `--slurpfile` (since renderer
+contract 3, #603, no runnable file asks for `--argjson`: a quantity is `--arg` text). A response is handed
 to the program that reads it the same way, as an argument, which is also what gives a malformed or
 an empty response one failure whichever jq reads it: read as jq's input, the two fail differently
 on jq 1.6 and 1.7, and an empty one does not fail on 1.6 at all.
@@ -600,5 +610,6 @@ written of §6.
   too, though nothing a Python file says changed.
 - **The suite needs a shell with curl and jq, or a container.** There is no skip.
 - **A quantity above fifteen digits, and a figure in another script's digits, are refused** where
-  the platform would take them. Both are refusals, not wrong answers.
+  the platform would take them. Both are refusals, not wrong answers. *(The first is lifted by
+  renderer contract 3, #603: a quantity is text, carried at any length.)*
 - **A file generated today has no path for work that has already happened** (§10).

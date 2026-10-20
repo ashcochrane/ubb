@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 7;
+export const CATALOGUE_VERSION = 8;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -80,8 +80,9 @@ export const SHELL_EXIT = {
    * that ended without saying how. */
   usage: { name: "UBB_EXIT_USAGE", status: 64 },
   /** A value that was passed and cannot be used: a supplier's cost that
-   * cannot be held or its currency, a quantity that is not a whole number, a
-   * response that does not hold what a declared path reads. */
+   * cannot be held or its currency, a quantity that is not an exact decimal
+   * (or not whole where it is declared an integer), a response that does not
+   * hold what a declared path reads. */
   valueRefused: { name: "UBB_EXIT_VALUE_REFUSED", status: 65 },
   /** jq or curl is missing, or cannot do what the file asks of it. */
   toolUnavailable: { name: "UBB_EXIT_TOOL_UNAVAILABLE", status: 69 },
@@ -118,8 +119,6 @@ export const SHELL_FILE = {
   microsLimit: "9223372036854775807",
   /** How far a reported cost's exponent may run, either way. */
   exponentLimit: 40,
-  /** The most digits a whole number is carried through jq with. */
-  exactDigits: 15,
   /** The two fields a close may carry beside the outcome. */
   outcomeReason: "outcome_reason",
   reasonDetail: "reason_detail",
@@ -145,6 +144,9 @@ export const PYTHON = {
   environmentError: "UBBEnvironmentNotSet",
   amountRefused: "ReportedCostNotRepresentable",
   currencyRefused: "ReportedCostCurrencyRefused",
+  /** What a quantity read off a response raises when it is not one UBB
+   * records exactly (#603). */
+  quantityRefused: "QuantityNotRepresentable",
   logger: "ubb_integration",
   /** The parameter a backfill adds: when the work actually happened. */
   recordedAt: "recorded_at",
@@ -272,12 +274,6 @@ export const REMEDIATION: Readonly<Record<DiagnosticCode, readonly string[]>> = 
     "declares nowhere to read that figure from. Declare the mapping with the",
     "request below.",
   ],
-  constant_measurement_not_renderable: [
-    "The constant quantity is valid platform configuration, with its value",
-    "declared. This Code Builder version cannot yet generate code that uses",
-    "it, so the call is blocked until a version that can. Nothing in the",
-    "declaration needs to change.",
-  ],
   derived_measurement_unsupported: [
     "A derived quantity cannot be computed by generated code. Declare the",
     "quantity another way with the request below.",
@@ -325,9 +321,8 @@ export const COMMENTS = {
     "  A parameter is a value only your code holds. Every one is required:",
     "  leave one out and Python raises TypeError at the call.",
     "  os.environ[...] is a credential. UBB withholds it from this file.",
-    "A literal with no configured value, or one this Code Builder version",
-    "cannot yet generate, is a state of a literal, not a fourth kind: it is",
-    "written as a call that raises, saying which.",
+    "A literal with no configured value is a state of a literal, not a",
+    "fourth kind: it is written as a call that raises, saying which.",
   ],
   client: [
     "The client is built on first use, so importing this file needs no",
@@ -374,6 +369,22 @@ export const COMMENTS = {
     "here. One it holds that is not your UBB currency is refused by UBB",
     "when the event is recorded, and that refusal reaches you as the SDK's",
     "error.",
+  ],
+  /** A quantity your code passes, in a file whose record takes one (#603). */
+  quantity: [
+    "A quantity is sent as the exact decimal it is: pass an int, a",
+    "decimal.Decimal or a str such as \"2.5\" or \"-3\". A float or a bool is",
+    "refused before anything is sent: a binary float has already lost the",
+    "quantity's digits.",
+  ],
+  /** A quantity read off the response, in a file that reads one (#603). */
+  responseQuantity: [
+    "A quantity read off your supplier's response is read as it is there: an",
+    "integer, a decimal string, or a Decimal where you parse JSON with",
+    "parse_float=Decimal. A number written with a fraction or an exponent is",
+    "a binary float, and is refused: UBB records a quantity exactly, so such",
+    "a quantity is recordable only from a supplier that writes it as text or",
+    "as a whole number.",
   ],
   start: [
     "idempotency_key is your own identifier for this piece of work, and the",
@@ -465,9 +476,8 @@ export const SHELL_COMMENTS = {
     "  Leave out one a call requires, or pass it empty, and the call returns",
     "  UBB_EXIT_USAGE before anything is sent, naming it.",
     "  $UBB_API_KEY is a credential. UBB withholds it from this file.",
-    "A literal with no configured value, or one this Code Builder version",
-    "cannot yet generate, is a state of a literal, not a fourth kind: it is",
-    "written as a call that raises, saying which.",
+    "A literal with no configured value is a state of a literal, not a",
+    "fourth kind: it is written as a call that raises, saying which.",
   ],
   usage: [
     "Source this file from the script that does the work:",
@@ -535,9 +545,11 @@ export const SHELL_COMMENTS = {
     "What a call prints, before returning UBB_EXIT_USAGE, for a parameter it",
     "was not given, was given empty, or does not have.",
   ],
-  wholeNumber: [
-    "A quantity is a whole number, carried exactly or refused as",
-    "UBB_EXIT_VALUE_REFUSED.",
+  quantity: [
+    "A quantity is passed as text and sent as text: an exact decimal, digits",
+    "with an optional leading minus and an optional fraction, and whole",
+    "where it is declared an integer. It is carried exactly at any length,",
+    "never through a number, or refused as UBB_EXIT_VALUE_REFUSED.",
   ],
   urlValue: [
     "A value written into a URL is one that needs no encoding there, or it",
@@ -566,6 +578,15 @@ export const SHELL_COMMENTS = {
     "read the response's integer or decimal string instead. So is a",
     "response holding a number Python's json does not read, such as 01, .5",
     "or nan, wherever it sits.",
+  ],
+  /** A quantity read off the response, in a file that reads one (#603). */
+  responseQuantity: [
+    "A quantity read off your supplier's response is read as it is written",
+    "there, never as the number jq would make of it: a JSON string as its",
+    "text, an integer as its digits. A number written with a fraction or an",
+    "exponent is refused as UBB_EXIT_VALUE_REFUSED: such a quantity is",
+    "recordable only from a supplier that writes it as text or as a whole",
+    "number.",
   ],
   /** A currency read off the response beside it (#583 D1). */
   responseCurrency: [
@@ -626,9 +647,10 @@ export const SHELL_COMMENTS = {
     "and creates nothing.",
   ],
   verifyCosts: [
-    "What checks a supplier's cost read off a response: the runnable file's",
-    "own programs and functions, which read, pin and convert it here exactly",
-    "as they do there, and one check of each Event Type that reads a cost.",
+    "What checks a value read off a response: the runnable file's own",
+    "programs and functions, which read a quantity, and read, pin and",
+    "convert a cost, here exactly as they do there; and one check of each",
+    "Event Type that reads either.",
   ],
   callSiteRunTask: [
     "Where the piece of work begins. Everything it does goes inside the",
@@ -662,11 +684,6 @@ export const SHELL_COMMENTS = {
 export const MESSAGES = {
   notReady: "is not ready to run. The generated file's header says why.",
   notConfigured: "has no configured value",
-  /** A value the tenant declared that this renderer cannot yet write (#571).
-   * Never "missing": the declaration is complete. */
-  notRenderable:
-    "is valid platform configuration that this Code Builder version cannot yet generate: " +
-    "see the blocking diagnostic in this file's header",
   environmentNotSet: "is not set. Set it in the environment this code runs in.",
   /** The stop, as the Python boundary logs it: the key, then each field the
    * stop is explained by, by its own name and in `STOP_FIELDS`' order (a test
@@ -680,6 +697,12 @@ export const MESSAGES = {
   floatRead:
     "is a binary float, and a reported cost is money: read the response's integer or its decimal string instead",
   currencyNotText: "is not a currency code: a currency read off a response is text",
+  /** Why a quantity read off a response is refused (#603): never rounded,
+   * and never read through the number a float made of it. */
+  quantityFloatRead:
+    "is a binary float, and a quantity is recorded exactly: read the response's integer or its decimal string instead",
+  quantityFlag: "is a flag, not a quantity",
+  quantityNull: "no quantity was reported, and a missing quantity is never recorded as none",
   flag: "is a flag, not a reported cost",
   missing: "no cost was reported, and a missing cost is not a zero",
   notANumber: "is not a number",
@@ -696,8 +719,7 @@ export const MESSAGES = {
   verifyNothing:
     "No selected Event Type reads a quantity or a cost off a response. There is nothing to check.",
   verifyResolves: "resolves in the captured response",
-  verifyNumber: "is a number",
-  verifyNotZero: "is not zero (a constant zero is what a path to the wrong field reads)",
+  verifyQuantity: "is an integer or a decimal string, as a recorded quantity must be",
   verifyDistinct: "is read from a path no other quantity is read from",
   verifyAmount: "is an integer or a decimal string, as a reported cost must be",
   verifyConverts: "converts to whole micros exactly",
@@ -720,7 +742,8 @@ export const SHELL_MESSAGES = {
   curlUnusable: "The installed curl has no --fail-with-body. curl 7.76 or later has it.",
   missing: "is required, and was left out or passed empty.",
   unknown: "is not a parameter of this call. Pass each one as name=value.",
-  wholeNumber: "is not a whole number of at most 15 digits, which is what is carried exactly.",
+  quantity: "is not an exact decimal: digits, with an optional leading minus and an optional fraction.",
+  wholeQuantity: "is declared a whole number, and UBB does not round a quantity.",
   urlValue: "cannot be written into a URL as it stands.",
   work: "the first argument is the command that does the work.",
   outcomeRequired:
@@ -736,13 +759,11 @@ export const SHELL_MESSAGES = {
    * and a figure is never rounded. */
   stopFigure: "the acknowledgement holds no whole number or null at",
   stopText: "the acknowledgement holds no text or null at",
-  noValue: "the response holds no value at",
-  notWhole: "the response holds a value that is not a whole number at",
   /** Why a value read off the response as written was refused, said after
    * `<call>: <field> read at <path>` (#583). */
   readMissing: "is not in the response",
   readUnreadable: "cannot be read: the response is not JSON",
   readNull: "is null: no cost was reported, and a missing cost is not a zero",
-  inexact: "the response holds a number too large to be carried exactly at",
+  readQuantityNull: "is null: no quantity was reported, and a missing quantity is never recorded as none",
   verifyUsage: "usage: sh verify_integration.sh EVENT_TYPE captured-response.json",
 } as const;

@@ -23,8 +23,10 @@
  * else. A shell argument is always text, so each parameter is one of:
  *
  * - `text`: a JSON string. The default.
- * - `number`: a keyed entry that declares a `value_type`. A whole number,
- *   checked as text and carried exactly or refused.
+ * - `integer` / `decimal`: a keyed entry that declares that `value_type`. A
+ *   quantity, passed as text and sent as text (renderer contract 3, #603):
+ *   checked against the exact-decimal grammar, and whole where it is
+ *   declared an integer, and carried exactly at any length or refused.
  * - `file`: a keyed entry that declares a `source_path`, or — since renderer
  *   contract 2 (#583) — a field of its own that does (a supplier's cost and
  *   its currency), on a call whose response is declared to be JSON. The path
@@ -139,7 +141,17 @@ export const STOP_READS: readonly { readonly name: StopField; readonly read: Sto
 /** The acknowledgement's id for the event, which heads the stop's metadata. */
 export const EVENT_ID: Acknowledged = "event_id";
 
-export type Use = "text" | "number" | "file" | "cost" | "place" | "unread";
+/** What a quantity is declared to be, which decides whether it must be whole. */
+export type QuantityType = "integer" | "decimal";
+
+export type Use = "text" | QuantityType | "file" | "cost" | "place" | "unread";
+
+/** A declared value type this target checks a quantity against, or a
+ * refusal of one it does not know. */
+function quantityType(declared: Json): QuantityType {
+  if (declared === "integer" || declared === "decimal") return declared;
+  return refuse(`${JSON.stringify(declared)} is not a value type this target checks a quantity against`);
+}
 
 export interface Parameter {
   /** Exactly as the Blueprint names it. */
@@ -153,16 +165,23 @@ export interface Parameter {
 export type Value =
   | { readonly kind: "literal"; readonly value: Json }
   | { readonly kind: "parameter"; readonly parameter: Parameter }
+  /**
+   * A quantity read off the response at a declared path, as the response
+   * WROTE it (#603): an integer as its digits or a string as its text,
+   * checked as a quantity of its declared type, and handed to the body as
+   * text. `index` is its place among the call's reads, which names the
+   * program that reads it and the variable it is left in.
+   */
   | {
       readonly kind: "read";
       readonly parameter: Parameter;
       readonly path: readonly string[];
       /** The provenance of the declared path itself. */
       readonly declared: string;
+      readonly valueType: QuantityType;
+      readonly index: number;
     }
   | { readonly kind: "unconfigured"; readonly token: string }
-  /** A value the tenant declared that this renderer cannot yet write (#571). */
-  | { readonly kind: "not_renderable"; readonly token: string }
   | {
       readonly kind: "cost";
       readonly parameter: Parameter;
@@ -314,13 +333,22 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
   const body: BodyField[] = [];
   const filled: Record<string, Parameter> = {};
 
+  let reads = 0;
   for (const field of call.fields) {
     if (field.shape === "keyed") {
       const members: Member[] = field.entries.map((entry) => {
-        const comments = provenance([entry.key, ...factTokens(entry.facts)]);
+        // A constant's own value is a literal too, and states where it was
+        // declared beside the key's and the facts' (#584).
+        const comments = provenance([
+          entry.key,
+          ...(entry.value === null ? [] : [entry.value]),
+          ...factTokens(entry.facts),
+        ]);
         const bound = entry.value;
         if (bound === null) return { key: entry.keyText, comments, value: null };
         if (bound.binding.kind === "literal") {
+          // A constant quantity is sent as the canonical text it is declared
+          // as, which is the wire form (#584, ADR-0020): a JSON string.
           return {
             key: entry.keyText,
             comments,
@@ -330,9 +358,7 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
         if (bound.binding.kind === "unconfigured") {
           return { key: entry.keyText, comments, value: { kind: "unconfigured", token: bound.name } };
         }
-        if (bound.binding.kind === "not_renderable") {
-          return { key: entry.keyText, comments, value: { kind: "not_renderable", token: bound.name } };
-        }
+        const typed = factNamed(entry.facts, FACT.valueType);
         const stated = entry.facts.find((fact) => fact.element === FACT.sourcePath);
         if (stated !== undefined) {
           const declared = segments(stated.token.binding.value);
@@ -340,20 +366,24 @@ function planCall(kind: CallKind, call: Call, name: string): CallPlan {
           // is declared to be something this target cannot hold, the value
           // keeps its place and is written as a call that raises.
           const parameter = used(bound.binding.name, readable ? "file" : "unread");
+          if (!readable) {
+            return { key: entry.keyText, comments, value: { kind: "unconfigured", token: bound.name } };
+          }
+          reads += 1;
           return {
             key: entry.keyText,
             comments,
-            value: readable
-              ? {
-                  kind: "read",
-                  parameter,
-                  path: declared,
-                  declared: tokenStatement(stated.token),
-                }
-              : { kind: "unconfigured", token: bound.name },
+            value: {
+              kind: "read",
+              parameter,
+              path: declared,
+              declared: tokenStatement(stated.token),
+              valueType: quantityType(typed ?? null),
+              index: reads,
+            },
           };
         }
-        const use: Use = factNamed(entry.facts, FACT.valueType) === undefined ? "text" : "number";
+        const use: Use = typed === undefined ? "text" : quantityType(typed);
         return {
           key: entry.keyText,
           comments,

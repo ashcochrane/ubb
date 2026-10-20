@@ -611,6 +611,55 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
 
 
 @pytest.mark.django_db
+class TestAConstantIsSentAsDeclared(VerifyRoutes):
+    """#584: generated code sends a constant as its declared value on every
+    call and asks the tenant's code for nothing, so the run does the same:
+    the request samples the caller's quantities alone, and each constant is
+    recorded as the exact text it is declared as. A sample for a constant is
+    a value no tenant's code could send, and is refused before anything
+    runs."""
+
+    CONSTANTS = {"flat_fee": ("decimal", "2.5"), "credit": ("decimal", "-0.75"),
+                 "ledger_lines": ("integer", "1234567890" * 3)}
+
+    def _constants(self):
+        self._a_kind()
+        self._event_type(measurements={
+            "searches": SEARCHES,
+            **{code: {**SEARCHES, "value_type": value_type, "unit": "call",
+                      "required_for_costing": False,
+                      "source_kind": "constant", "constant_value": value}
+               for code, (value_type, value) in self.CONSTANTS.items()}})
+        return self._fingerprint()
+
+    def test_each_constant_is_recorded_as_declared_beside_the_sample(self):
+        body = self._verified(
+            self._constants(), a_record(measurements={"searches": "2"}),
+            grouping_fields={})
+
+        ack = body["records"][0]["acknowledgement"]
+        assert ack["measurements"] == {
+            "searches": "2",
+            **{code: value for code, (_, value) in self.CONSTANTS.items()}}
+
+    def test_a_sample_for_a_constant_is_refused_before_anything_runs(self):
+        fingerprint = self._constants()
+        before = every_table()
+
+        response = self._verify(
+            fingerprint,
+            a_record(measurements={"searches": "2", "flat_fee": "9"}),
+            grouping_fields={})
+
+        assert response.status_code == 422, response.content
+        body = response.json()
+        assert body["code"] == "validation_error", body
+        assert f"'{EVENT}:flat_fee'" in body["detail"], body
+        assert "takes no sample" in body["detail"], body
+        assert what_moved(before, every_table()) == {}
+
+
+@pytest.mark.django_db
 class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
     """A Blueprint whose supplier cost is read off the provider's response is
     complete since #583, so Verify runs it end to end. Its sample is the cost

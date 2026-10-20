@@ -354,9 +354,7 @@ function SampleForm({
                 <>
                   {measurement.facts.map(({ argument, place }) => (
                     <span key={argument.name}>
-                      {/* A declared fact: never a value this version
-                          cannot generate, which only a value token is. */}
-                      <ShownValue shown={shownValue(argument, place, false)} />
+                      <ShownValue shown={shownValue(argument, place)} />
                     </span>
                   ))}
                   <span>

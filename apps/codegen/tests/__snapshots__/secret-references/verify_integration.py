@@ -3,9 +3,10 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   python verify_integration.py EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:da9df02542949d5e6695f2f838ff741d45d9d6ddbd9b0c3ad16a1d57f98c6922"
+# configuration_fingerprint = "sha256:3e1030ee387e72cfe54b41af3521b85d4d1b62c7494b79ccd4ad5592bf7ffec6"
 
 import json
+import re
 import sys
 
 # Every quantity read off a response, by Event Type, and where.
@@ -26,6 +27,7 @@ DECLARED_COSTS = {
 }
 
 _MISSING = object()
+_EXACT = re.compile(r"-?[0-9]+(\.[0-9]+)?")
 
 
 def _resolve(document, segments):
@@ -65,10 +67,9 @@ def main(arguments) -> int:
         check(value is not _MISSING, quantity, "resolves in the captured response")
         if value is _MISSING:
             continue
-        number = isinstance(value, (int, float)) and not isinstance(value, bool)
-        check(number, quantity, "is a number")
-        if number:
-            check(value != 0, quantity, "is not zero (a constant zero is what a path to the wrong field reads)")
+        exact = (isinstance(value, int) and not isinstance(value, bool)) or (
+            isinstance(value, str) and _EXACT.fullmatch(value) is not None)
+        check(exact, quantity, "is an integer or a decimal string, as a recorded quantity must be")
         shared = [other for other, path in declared.items()
                   if other != quantity and path == segments]
         check(not shared, quantity, "is read from a path no other quantity is read from")

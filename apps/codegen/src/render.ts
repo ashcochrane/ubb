@@ -46,17 +46,19 @@ export interface RenderedFile {
 export const READABLE_SCHEMA_VERSIONS: readonly number[] = [1];
 
 /**
- * The renderer contracts this renderer was written to. Contract 2 (#583) lets
- * a runtime value of a field of its own carry a `source_path` fact, which
- * means it is read off the `response` parameter at that path; the version
- * moved so that a renderer written to contract 1 refuses such a document
- * rather than misreading it. This renderer reads the one contract it is
- * written and tested against, as it reads every version (ADR-0016 §7): the
- * platform resolves contract 2 alone, so a contract-1 document is one no
- * platform answers today, and it is refused like any other version outside
- * the set.
+ * The renderer contracts this renderer was written to. Contract 2 (#583) let
+ * a runtime value of a field of its own carry a `source_path` fact. Contract
+ * 3 (#603, #584) is the one written to now: a measured quantity is exact TEXT
+ * on the wire, sent as text and never as a JSON number, with no digit limit,
+ * and a constant quantity's token is a configured literal carrying its
+ * declared value. A renderer written to contract 2 would send a quantity as
+ * a number and write a constant as missing, so it refuses a contract-3
+ * document rather than misreading it. This renderer reads the one contract
+ * it is written and tested against, as it reads every version (ADR-0016 §7):
+ * the platform resolves contract 3 alone, and an older document is refused
+ * like any other version outside the set.
  */
-export const READABLE_RENDERER_CONTRACT_VERSIONS: readonly number[] = [2];
+export const READABLE_RENDERER_CONTRACT_VERSIONS: readonly number[] = [3];
 
 const TARGETS: Partial<
   Record<CodeTarget, (blueprint: ResolvedIntegrationBlueprint) => RenderedFile[]>

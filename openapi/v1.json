@@ -3489,7 +3489,7 @@
         "type": "object"
       },
       "IntegrationBlueprintDiagnostic": {
-        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work \u2014 and null for `constant_measurement_not_renderable`, where\nthe declaration is valid and complete and nothing in it is the thing to\nchange: this Code Builder version cannot yet generate what it declares.",
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work.",
         "properties": {
           "code": {
             "enum": [
@@ -3504,7 +3504,6 @@
               "event_type_not_published",
               "event_type_revised_since_publication",
               "reported_cost_mapping_missing",
-              "constant_measurement_not_renderable",
               "derived_measurement_unsupported",
               "response_shape_not_declared",
               "response_shape_not_readable_by_target",
@@ -3895,7 +3894,7 @@
         "type": "object"
       },
       "IntegrationBlueprintVerificationRecordIn": {
-        "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements`, `provider_cost_micros` and `provider_response_cost_micros`\nare the same fields, with the same rules, as on a recording.\n`subtask_type` records this event under a Subtask of that kind, which must\nbe one the Blueprint selected; left out, the event is recorded under the\nTask itself.",
+        "description": "One recording the verification makes: the Event Type it claims, and\nthe sample values a tenant's code would send for it.\n\n`measurements`, `provider_cost_micros` and `provider_response_cost_micros`\nare the same fields, with the same rules, as on a recording \u2014 except that\na `constant` quantity takes no sample: the run sends its declared value,\nas generated code does, and refuses a sample for one.\n`subtask_type` records this event under a Subtask of that kind, which must\nbe one the Blueprint selected; left out, the event is recorded under the\nTask itself.",
         "properties": {
           "currency": {
             "anyOf": [
@@ -10615,6 +10614,7 @@
               "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
               "type": "string"
             },
+            "default": {},
             "description": "The quantities this posting was measured by, keyed as sent. Each is the canonical exact decimal text UBB stored.",
             "title": "Measurements",
             "type": "object"

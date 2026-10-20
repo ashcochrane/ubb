@@ -108,6 +108,14 @@ field's own value — a supplier's cost, or the currency beside it — and that 
 `response` at its path, as a value under a key is. The list stays closed: a currency read off the
 response is the runtime `currency` with the existing `currency.source_path` fact, and no new fact.
 
+Since renderer contract 3 (#603, #584, 2026-10-20; ADR-0015 §3, ADR-0020) a quantity is exact
+text on the wire. The tenant's code passes an `int`, a `Decimal` or a `str` and the SDK sends its
+canonical text, refusing a float or a bool before anything is sent; one read off the response goes
+through the module's own `_read_quantity`, which refuses a float, a flag and a null in words that
+say what to read. `value_type` under a measurement is acted on now: a constant's declared value is
+written in the module as an `int` where it is declared an integer and a `Decimal("…")` of its
+exact text where it is a decimal — never a float, and never in a call-site block.
+
 A call that is not ready raises before it sends anything, naming every token with no configured
 value, and is still written beneath the guard so the file shows the lifecycle's shape.
 

@@ -1188,9 +1188,11 @@ class UsageEventDetailOut(Schema):
     pricing_method: Optional[PricingMethod] = None
     # The quantities this posting was measured by, keyed by declared code
     # (#274) — the field the status below has always been about — each in its
-    # canonical exact text (#603).
+    # canonical exact text (#603). A published `default` (not a factory, which
+    # publishes none): the read always carries the bag, and a client generator
+    # reads a defaulted key as always present.
     measurements: dict[str, CanonicalDecimal] = Field(
-        default_factory=dict, description=(
+        default={}, description=(
             "The quantities this posting was measured by, keyed as sent. "
             "Each is the canonical exact decimal text UBB stored."))
     # What the bag above MEANS when it is empty — pruned, never applicable, or
@@ -4699,9 +4701,7 @@ class IntegrationBlueprintDiagnostic(Schema):
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
     Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work — and null for `constant_measurement_not_renderable`, where
-    the declaration is valid and complete and nothing in it is the thing to
-    change: this Code Builder version cannot yet generate what it declares.
+    kind of work.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4742,7 +4742,9 @@ class IntegrationBlueprintVerificationRecordIn(Schema):
     the sample values a tenant's code would send for it.
 
     `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
-    are the same fields, with the same rules, as on a recording.
+    are the same fields, with the same rules, as on a recording — except that
+    a `constant` quantity takes no sample: the run sends its declared value,
+    as generated code does, and refuses a sample for one.
     `subtask_type` records this event under a Subtask of that kind, which must
     be one the Blueprint selected; left out, the event is recorded under the
     Task itself.

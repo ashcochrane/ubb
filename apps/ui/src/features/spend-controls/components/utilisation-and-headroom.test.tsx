@@ -242,7 +242,7 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
     expect(indeterminate).toHaveTextContent("2 of 3 · 66%");
     expect(screen.getByText(INDETERMINATE_HAS_NO_OTHER_HOME)).toBeInTheDocument();
 
-    // And the averages leave the two indeterminate units out (#603, ADR-0020
+    // And the averages leave the two indeterminate pieces of work out (#603, ADR-0020
     // §7): they have no figures, so the averages are over the one unit that
     // could be assessed — stated as the figures they are, with the count of
     // what they leave out beside them, and never as a bound.

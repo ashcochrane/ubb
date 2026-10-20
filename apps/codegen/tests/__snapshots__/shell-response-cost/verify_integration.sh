@@ -3,7 +3,7 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   sh verify_integration.sh EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:cae4658e45eb7e7516e4a6d87733f15c84beb72d94649642222937e87e38636f"
+# configuration_fingerprint = "sha256:98009dc336d138f398c84417322e2c867274955af6848f483c4eb9ef6a9154a2"
 
 # Checks that jq can do what this script asks of it. It contacts nothing
 # and creates nothing.
@@ -75,11 +75,7 @@ ubb_checked() {
         | ($captured[0] | resolve($path)) as $resolved
         | check($resolved.found; $quantity; "resolves in the captured response"),
           ( select($resolved.found)
-            | (($resolved.at | type) == "number") as $number
-            | check($number; $quantity; "is a number"),
-              ( select($number)
-                | check($resolved.at != 0; $quantity; "is not zero (a constant zero is what a path to the wrong field reads)") ),
-              check(
+            | check(
                 ([ $paths | to_entries[] | select(.key != $quantity and .value == $path) ]
                  | length) == 0;
                 $quantity; "is read from a path no other quantity is read from") ) ] as $lines
@@ -89,10 +85,92 @@ ubb_checked() {
 UBB_JQ
 }
 
-# What checks a supplier's cost read off a response: the runnable file's
-# own programs and functions, which read, pin and convert it here exactly
-# as they do there, and one check of each Event Type that reads a cost.
+# What checks a value read off a response: the runnable file's own
+# programs and functions, which read a quantity, and read, pin and
+# convert a cost, here exactly as they do there; and one check of each
+# Event Type that reads either.
 UBB_EXIT_VALUE_REFUSED=65
+
+_ubb_jq_quantity_record_grounded_search_1() {
+  jq --raw-output --raw-input --slurp \
+    --from-file /dev/stdin "$1" <<'UBB_JQ'
+  # Reads one value off the response as the response wrote it, and prints
+  # what kind of value it is: for a string or an integer, with its text. A
+  # response holding a number Python's json does not read is not read, and
+  # no number is read for what it is worth, because that loses how it was
+  # written.
+  def ubb_escapes_next:
+    if endswith("\\") then
+      explode as $c
+      | ([range(0; $c | length) | select($c[.] != 92)] | last) as $kept
+      | ((($c | length) - (if $kept == null then 0 else $kept + 1 end)) % 2) == 1
+    else false end;
+  def ubb_inside_flags:
+    [foreach .[] as $part ([false, false];
+      [.[1], (if .[1] then ($part | ubb_escapes_next) else true end)];
+      .[0])];
+  def ubb_without($character):
+    split($character) | add // "";
+  def ubb_marked($character):
+    split($character)
+    | if length == 0 then ""
+      else [.[0], (.[1:][] | ("\u0001" + $character + "\u0001"), .)] | add end;
+  def ubb_scalars_quoted:
+    ubb_without(" ") | ubb_without("\t") | ubb_without("\n") | ubb_without("\r")
+    | ubb_marked(",") | ubb_marked(":") | ubb_marked("[") | ubb_marked("]") | ubb_marked("{") | ubb_marked("}")
+    | split("\u0001")
+    | map(if . == "" or . == "," or . == ":" or . == "[" or . == "]" or . == "{" or . == "}"
+      then . else "\"" + . + "\"" end)
+    | add // "";
+  def ubb_as_written($parts; $inside):
+    [range(0; $parts | length) as $at
+      | (if $at > 0 then "\"" else empty end),
+        (if $inside[$at] then $parts[$at] else ($parts[$at] | ubb_scalars_quoted) end)]
+    | add;
+  def ubb_python_reads($parts; $inside):
+    ([range(0; $parts | length) as $at | if $inside[$at] then empty else $parts[$at] end] | add // ""
+      | ubb_without(" ") | ubb_without("\t") | ubb_without("\n") | ubb_without("\r")
+      | ubb_marked(",") | ubb_marked(":") | ubb_marked("[") | ubb_marked("]") | ubb_marked("{") | ubb_marked("}")
+      | "\u0001" + . + "\u0001"
+      | ubb_without("\u0001true\u0001") | ubb_without("\u0001false\u0001") | ubb_without("\u0001null\u0001") | ubb_without("\u0001NaN\u0001") | ubb_without("\u0001Infinity\u0001") | ubb_without("\u0001-Infinity\u0001")) as $scalars
+    | ([range(0; $parts | length) as $at | if $inside[$at] then $parts[$at] else empty end] | add // "") as $strings
+    | ([["a", "b", "c", "d", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "A", "B", "C", "D", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "(", ")", "\u0000", "\ufeff", "\u0001+", "\u0001.", "\u0001-.", ".\u0001", ".e", ".E", "\u000100", "\u0001-00", "\u000101", "\u0001-01", "\u000102", "\u0001-02", "\u000103", "\u0001-03", "\u000104", "\u0001-04", "\u000105", "\u0001-05", "\u000106", "\u0001-06", "\u000107", "\u0001-07", "\u000108", "\u0001-08", "\u000109", "\u0001-09"][]
+      | select(. as $pattern | $scalars | split($pattern) | length > 1)] | length) == 0
+    and ($strings | split("\u0000") | length) < 2;
+  def ubb_at($path):
+    reduce $path[] as $segment ({"found": true, "value": .};
+      if .found and (.value | type) == "object" and (.value | has($segment))
+      then {"found": true, "value": .value[$segment]}
+      else {"found": false, "value": null} end);
+  def ubb_whole:
+    explode
+    | (if .[0] == 45 then .[1:] else . end)
+    | length > 0 and (map(select(. < 48 or . > 57)) | length) == 0
+      and (length == 1 or .[0] != 48);
+  . as $text
+  | (try [fromjson] catch null) as $parsed
+  | if $parsed == null then "unreadable"
+    else ($text | split("\"")) as $parts
+    | ($parts | ubb_inside_flags) as $inside
+    | if (ubb_python_reads($parts; $inside) | not) then "unreadable"
+    else ($parsed[0] | ubb_at(["usageMetadata","promptTokenCount"])) as $found
+    | ($found.value | type) as $type
+    | if ($found.found | not) then "missing"
+      elif $type == "null" then "null"
+      elif $type == "boolean" then "flag"
+      elif $type == "string" then
+        (if ($found.value | explode | map(select(. == 0)) | length) > 0
+         then "other" else "string:" + $found.value end)
+      elif $type == "number" then
+        (try [ubb_as_written($parts; $inside) | fromjson] catch null) as $copy
+        | (if $copy == null then null else ($copy[0] | ubb_at(["usageMetadata","promptTokenCount"])).value end) as $token
+        | if ($token | type) == "string" and ($token | ubb_whole)
+          then "integer:" + $token else "float" end
+      else "other" end
+    end
+  end
+UBB_JQ
+}
 
 _ubb_jq_cost_record_grounded_search() {
   jq --raw-output --raw-input --slurp \
@@ -173,6 +251,21 @@ _ubb_jq_cost_record_grounded_search() {
     end
   end
 UBB_JQ
+}
+
+# A quantity is passed as text and sent as text: an exact decimal, digits
+# with an optional leading minus and an optional fraction, and whole
+# where it is declared an integer. It is carried exactly at any length,
+# never through a number, or refused as UBB_EXIT_VALUE_REFUSED.
+_ubb_exact() {
+  _ubb_digits=${1#-}
+  case $_ubb_digits in
+    '' | *[!0-9.]* | .* | *. | *.*.*) return 1 ;;
+  esac
+  case $2:$_ubb_digits in
+    integer:*.*[!0]*) return 2 ;;
+  esac
+  return 0
 }
 
 # A cost a supplier reports is converted to whole micros once, here, on
@@ -358,6 +451,18 @@ _ubb_check() {
 }
 
 _ubb_check_record_grounded_search() {
+  _ubb_read=$(_ubb_jq_quantity_record_grounded_search_1 "$1") || _ubb_read=unreadable
+  case $_ubb_read in
+    missing | unreadable) ;;
+    *)
+      _ubb_exactly=1
+      case $_ubb_read in
+        string:* | integer:*)
+          _ubb_exact "${_ubb_read#*:}" integer && _ubb_exactly=0 ;;
+      esac
+      _ubb_check "$_ubb_exactly" 'input_tokens' 'is an integer or a decimal string, as a recorded quantity must be'
+      ;;
+  esac
   _ubb_read=$(_ubb_jq_cost_record_grounded_search "$1") || _ubb_read=unreadable
   case $_ubb_read in
     missing | unreadable) _ubb_found=1 ;;

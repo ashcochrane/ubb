@@ -95,7 +95,7 @@ function Aggregate({
 }) {
   const utilisation = describeAverageUtilisation(report);
   const headroom = describeAverageHeadroom(report, currency);
-  // The averages are over the assessed units; where an indeterminate unit
+  // The averages are over the assessed work; where an indeterminate unit
   // was left out of them the subtitle says so (#603), and the attribute
   // carries how many, so a test asserts it without matching prose.
   const averaged = anyIndeterminate(report)

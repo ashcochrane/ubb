@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,396 of 2,838 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,406 of 2,848 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2807,6 +2807,15 @@ measurement_key:
     # reason's required-and-nullable census, receipt schema 2); the one that
     # left is the door's "Fix 1" module, whose refusal of a negative quantity
     # #603 overruled and whose other half moved into the wire module.
+    #
+    # 2026-10-20, the same window's SDK, console and Code Builder stages:
+    # 2,396 of 2,838 -> 2,406 of 2,848 tracked files (`units` 42 files / 119
+    # occurrences, UNMOVED). 10 files arrived, all swept: the SDK's exact-text
+    # test module, the seven models its regenerated core gives
+    # `pricing_status_reason` (one per schema that publishes it), and Verify's
+    # two answers for the constant Blueprint (#584: run, and a sample for a
+    # constant refused). The renderer catalogue's pin moved from
+    # `catalogue.v7.json` to `catalogue.v8.json`, one file for one.
 
     - term: units
       retired_as: >-

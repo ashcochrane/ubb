@@ -1,0 +1,24 @@
+{
+  "blueprint": "constant",
+  "configuration_fingerprint": "sha256:f6cbfe6c303fac687b3ea1a39f6ce0ff83fd751244fad6c11a0f1d7a40577c19",
+  "request": {
+    "records": [
+      {
+        "event_type": "flat.call",
+        "measurements": {
+          "searches": "3",
+          "seats": "4"
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 422,
+  "answer": {
+    "type": "https://ubb.dev/errors/validation_error",
+    "title": "Validation error",
+    "status": 422,
+    "code": "validation_error",
+    "detail": "measurements 'flat.call:seats': a constant is sent as its declared value, as generated code sends it, and takes no sample"
+  }
+}

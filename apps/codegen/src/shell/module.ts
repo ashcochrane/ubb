@@ -19,9 +19,10 @@
  * EVERY JQ PROGRAM ARRIVES THROUGH A QUOTED HEREDOC, read by jq from standard
  * input (`--from-file /dev/stdin`). The shell expands nothing inside one, so
  * no declared name can end a string or start a command. Runtime values reach
- * a program only as `--arg`, `--argjson` or `--slurpfile` — or, where a
- * supplier's cost is read off the response as it was written (#583), as the
- * response file the program reads as text, its one input. Every line of a
+ * a program only as `--arg` or `--slurpfile` — or, where a supplier's cost or
+ * a quantity is read off the response as it was written (#583, #603), as the
+ * response file the program reads as text, its one input. A quantity is
+ * always `--arg` text and never a jq number (renderer contract 3). Every line of a
  * program is indented, and the delimiter is not: no line generated from a
  * declaration can be the line that ends the heredoc.
  *
@@ -88,6 +89,7 @@ import {
   asWrittenCopy,
   asWrittenDefinitions,
   readHelpers,
+  readQuantityHelper,
   WHOLE,
   wholeDefinition,
   writtenProgram,
@@ -115,7 +117,10 @@ interface Uses {
   responseRead: boolean;
   /** A currency read off the response, which needs a helper of its own. */
   currencyRead: boolean;
-  wholeNumber: boolean;
+  /** A quantity the caller passes, checked as an exact decimal (#603). */
+  quantity: boolean;
+  /** A quantity read off the response as it was written (#603). */
+  quantityRead: boolean;
   urlValue: boolean;
 }
 
@@ -125,9 +130,7 @@ interface Uses {
 
 /** The jq functions a program may call, each defined in the program itself. */
 const JQ = {
-  read: "read",
   notConfigured: "not_configured",
-  notRenderable: "not_renderable",
 } as const;
 
 function jqDefinitions(needs: ReadonlySet<string>): string[] {
@@ -138,27 +141,13 @@ function jqDefinitions(needs: ReadonlySet<string>): string[] {
       `${I1}error($name + ${jqString(` ${SAID_OF.unconfigured}.`)});`,
     );
   }
-  if (needs.has(JQ.notRenderable)) {
-    lines.push(
-      `def ${JQ.notRenderable}($name):`,
-      `${I1}error($name + ${jqString(` ${SAID_OF.not_renderable}.`)});`,
-    );
-  }
-  if (needs.has(JQ.read)) {
-    const most = "9".repeat(SHELL_FILE.exactDigits);
-    lines.push(
-      `def ${JQ.read}($path):`,
-      `${I1}getpath($path) as $value`,
-      `${I1}| if $value == null`,
-      `${I1}  then error(${jqString(`${SHELL_MESSAGES.noValue} `)} + ($path | tojson))`,
-      `${I1}  elif ($value | type) != "number" or $value != ($value | floor)`,
-      `${I1}  then error(${jqString(`${SHELL_MESSAGES.notWhole} `)} + ($path | tojson))`,
-      `${I1}  elif $value > ${most} or $value < -${most}`,
-      `${I1}  then error(${jqString(`${SHELL_MESSAGES.inexact} `)} + ($path | tojson))`,
-      `${I1}  else $value end;`,
-    );
-  }
   return lines;
+}
+
+/** The jq variable a quantity read off the response is handed to the body
+ * as, by its place among the call's reads: text, never a number. */
+function readVariable(index: number): string {
+  return `q_${index}`;
 }
 
 /** A value as the jq expression that evaluates to it, or `null` where the
@@ -170,14 +159,10 @@ function jqValue(value: Value, needs: Set<string>): string | null {
     case "parameter":
       return `$${jqVariable(value.parameter.name)}`;
     case "read":
-      needs.add(JQ.read);
-      return `($${jqVariable(value.parameter.name)}[0] | ${JQ.read}(${jqLiteral(value.path)}))`;
+      return `$${readVariable(value.index)}`;
     case "unconfigured":
       needs.add(JQ.notConfigured);
       return `${JQ.notConfigured}(${jqString(value.token)})`;
-    case "not_renderable":
-      needs.add(JQ.notRenderable);
-      return `${JQ.notRenderable}(${jqString(value.token)})`;
     case "cost":
     case "response_cost":
     case "response_currency":
@@ -304,9 +289,11 @@ function binding(parameter: Parameter): string | null {
   const from = `"$${shVariable(parameter.name)}"`;
   switch (parameter.use) {
     case "text":
+    case "integer":
+    case "decimal":
+      // A quantity is text on the wire (#603): passed as it is given, after
+      // its check, and never parsed into a jq number.
       return `--arg ${jqVariable(parameter.name)} ${from}`;
-    case "number":
-      return `--argjson ${jqVariable(parameter.name)} ${from}`;
     case "file":
       return `--slurpfile ${jqVariable(parameter.name)} ${from}`;
     case "cost":
@@ -319,6 +306,29 @@ function binding(parameter: Parameter): string | null {
 // ---------------------------------------------------------------------------
 // The file's own helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Whether text is an exact decimal (#603): base-10 digits with an optional
+ * leading minus and an optional fraction, a digit on each side of the point,
+ * and no limit on either. Returns 1 where it is not one, and 2 where it is
+ * declared an integer and its fraction is not all zeros. Never arithmetic:
+ * the text is only ever looked at. The verify script runs this same text.
+ */
+export function exactHelper(): string[] {
+  return [
+    ...asComments(SHELL_COMMENTS.quantity),
+    "_ubb_exact() {",
+    `${I1}_ubb_digits=\${1#-}`,
+    `${I1}case $_ubb_digits in`,
+    `${I2}'' | *[!0-9.]* | .* | *. | *.*.*) return 1 ;;`,
+    `${I1}esac`,
+    `${I1}case $2:$_ubb_digits in`,
+    `${I2}integer:*.*[!0]*) return 2 ;;`,
+    `${I1}esac`,
+    `${I1}return 0`,
+    "}",
+  ];
+}
 
 function say(message: string): string {
   return `printf '%s\\n' ${shWord(message)} >&2`;
@@ -543,18 +553,18 @@ function parameterHelpers(uses: Uses): string[] {
     `${I1}printf '%s: %s %s\\n' "$1" "\${2%%=*}" ${shWord(SHELL_MESSAGES.unknown)} >&2`,
     "}",
   ];
-  if (uses.wholeNumber) {
-    const tooLong = "?".repeat(SHELL_FILE.exactDigits + 1);
+  if (uses.quantity || uses.quantityRead) lines.push("", ...exactHelper());
+  if (uses.quantity) {
     lines.push(
       "",
-      ...asComments(SHELL_COMMENTS.wholeNumber),
-      "_ubb_whole_number() {",
-      `${I1}case \${3#-} in`,
-      `${I2}'' | *[!0-9]* | 0?* | ${tooLong}*)`,
-      `${I3}printf '%s: %s %s\\n' "$1" "$2" ${shWord(SHELL_MESSAGES.wholeNumber)} >&2`,
-      `${I3}return ${refused}`,
-      `${I3};;`,
+      "_ubb_quantity() {",
+      `${I1}_ubb_exact "$3" "$4" && return 0`,
+      `${I1}case $? in`,
+      `${I2}2) _ubb_why=${shWord(SHELL_MESSAGES.wholeQuantity)} ;;`,
+      `${I2}*) _ubb_why=${shWord(SHELL_MESSAGES.quantity)} ;;`,
       `${I1}esac`,
+      `${I1}printf '%s: %s %s\\n' "$1" "$2" "$_ubb_why" >&2`,
+      `${I1}return ${refused}`,
       "}",
     );
   }
@@ -776,14 +786,11 @@ export function reportedCostHelpers(callerCost: boolean): string[] {
  * says why. A value the plan wrote as unconfigured is said to have no
  * configured value — nothing configures it, or (as since #578) it is read
  * off a response this target cannot read, which the header's diagnostic
- * names. One the tenant declared and this Code Builder version cannot yet
- * generate (#571) is said to be exactly that. The sentence is made here, so
- * the helper that prints it states no reason of its own. */
+ * names. The sentence is made here, so the helper that prints it states no
+ * reason of its own. */
 function unwritten(call: CallPlan): string[] {
   const sentence = (value: Value | null): string[] =>
-    value?.kind === "unconfigured" || value?.kind === "not_renderable"
-      ? [said({ name: value.token, why: value.kind })]
-      : [];
+    value?.kind === "unconfigured" ? [said({ name: value.token, why: value.kind })] : [];
   return call.body.flatMap((field) =>
     field.shape === "keyed"
       ? field.members.flatMap((member) => sentence(member.value))
@@ -839,9 +846,9 @@ function readArguments(call: CallPlan): string[] {
 function checks(uses: Uses, call: CallPlan): string[] {
   return call.parameters.flatMap((parameter) => {
     const value = `"$${shVariable(parameter.name)}"`;
-    if (parameter.use === "number") {
-      uses.wholeNumber = true;
-      return [`${I1}_ubb_whole_number ${call.name} ${parameter.name} ${value} || return $?`];
+    if (parameter.use === "integer" || parameter.use === "decimal") {
+      uses.quantity = true;
+      return [`${I1}_ubb_quantity ${call.name} ${parameter.name} ${value} ${parameter.use} || return $?`];
     }
     if (parameter.use === "place") {
       uses.urlValue = true;
@@ -893,23 +900,69 @@ export function readFunctions(call: CallPlan): { cost: string; currency: string 
   return { cost: programName(names.cost), currency: programName(names.currency) };
 }
 
-/** Each program that reads a value off `call`'s response as written. */
+/** A quantity read off a response, with the key it is sent under. */
+export type QuantityRead = { readonly key: string; readonly value: Extract<Value, { kind: "read" }> };
+
+/** Every quantity `call` reads off the response, in the order it names them. */
+export function quantityReads(call: CallPlan): QuantityRead[] {
+  return call.body.flatMap((field) =>
+    field.shape === "keyed"
+      ? field.members.flatMap((member) =>
+          member.value?.kind === "read" ? [{ key: member.key, value: member.value }] : [],
+        )
+      : [],
+  );
+}
+
+/** The program that reads the quantity at a call's `index`th read. */
+function quantityProgramName(call: CallPlan, index: number): string {
+  return `quantity_${callTail(call)}_${index}`;
+}
+
+/** The same program by the name of the function it is written as, which
+ * the verify script calls. */
+export function quantityFunction(call: CallPlan, index: number): string {
+  return programName(quantityProgramName(call, index));
+}
+
+/** Each program that reads a value off `call`'s response as written: each
+ * quantity's (#603), then the cost's and the currency's (#583). */
 export function readPrograms(call: CallPlan): string[] {
   const cost = scalarOf(call, "response_cost");
   const currency = scalarOf(call, "response_currency");
-  if (cost === undefined) {
-    return currency === undefined
-      ? []
-      : refuse(`the call ${call.name} reads a currency off the response with no cost beside it`);
+  if (cost === undefined && currency !== undefined) {
+    return refuse(`the call ${call.name} reads a currency off the response with no cost beside it`);
   }
-  const names = readProgramNames(call);
   const reading = (name: string, path: readonly string[]) =>
     program(name, ["--raw-output", "--raw-input", "--slurp"], [], writtenProgram(path), '"$1"');
+  const quantities = quantityReads(call).flatMap(({ value }) => [
+    ...reading(quantityProgramName(call, value.index), value.path),
+    "",
+  ]);
+  if (cost === undefined) return quantities;
+  const names = readProgramNames(call);
   return [
+    ...quantities,
     ...reading(names.cost, cost.value.path),
     ...(currency === undefined ? [] : ["", ...reading(names.currency, currency.value.path)]),
     "",
   ];
+}
+
+/**
+ * Reading each quantity off the response as it was written, and checking it
+ * as a quantity of its declared type, before anything is built: each refusal
+ * returns before a request exists. Leaves each in `_ubb_q_<index>`, which the
+ * body is handed as text (#603).
+ */
+function readQuantities(call: CallPlan, report: string, comments: (key: string) => readonly string[]): string[] {
+  const refused = status(SHELL_EXIT.valueRefused);
+  return quantityReads(call).flatMap(({ key, value }) => [
+    ...asComments(comments(key), I1),
+    `${I1}_ubb_read=$(${quantityFunction(call, value.index)} "$${shVariable(value.parameter.name)}") || return ${refused}`,
+    `${I1}_ubb_read_quantity ${report} ${shWord(key)} ${shWord(jqLiteral([...value.path]))} ${value.valueType} || return $?`,
+    `${I1}_ubb_q_${value.index}=$_ubb_quantity`,
+  ]);
 }
 
 /**
@@ -996,6 +1049,12 @@ function ending(call: CallPlan): string[] {
 function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): string[] {
   const converted = costs(call);
   const readOff = scalarOf(call, "response_cost") !== undefined;
+  const quantities = quantityReads(call);
+  uses.quantityRead ||= quantities.length > 0;
+  const memberComments = (key: string): readonly string[] =>
+    call.body.flatMap((field) =>
+      field.shape === "keyed" ? field.members.filter((member) => member.key === key).flatMap((member) => member.comments) : [],
+    );
   if (converted.length > 0 || readOff) {
     uses.reportedCost = true;
     uses.callerCost ||= converted.length > 0;
@@ -1014,11 +1073,15 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
     ...program(
       body,
       ["--compact-output", "--null-input"],
-      // Only what the program reads: a response a cost is read off and no
-      // quantity is, is never parsed again here.
-      call.parameters
-        .filter((parameter) => readsTheParameter(lines, parameter))
-        .flatMap((parameter) => binding(parameter) ?? []),
+      // Only what the program reads: a response is read as written by its
+      // own programs and never parsed again here, and each quantity read off
+      // it arrives as the text it was checked as.
+      [
+        ...call.parameters
+          .filter((parameter) => readsTheParameter(lines, parameter))
+          .flatMap((parameter) => binding(parameter) ?? []),
+        ...quantities.map(({ value }) => `--arg ${readVariable(value.index)} "$_ubb_q_${value.index}"`),
+      ],
       lines,
     ),
     "",
@@ -1038,6 +1101,7 @@ function callFunction(uses: Uses, call: CallPlan, comments: readonly string[]): 
       `${I1}_ubb_to_micros "$${shVariable(value.parameter.name)}" ${shWord(value.representation)} "$_ubb_currency" || return $?`,
       `${I1}_ubb_micros_${wireName(field.name)}=$_ubb_micros`,
     ]),
+    ...readQuantities(call, call.name, memberComments),
     ...readCost(call, call.name),
     // Where jq cannot build the body, what it was handed is why: a response
     // that does not hold what a declared path reads, or is not one.
@@ -1118,7 +1182,8 @@ export function renderModule(plan: Plan): string {
     callerCost: false,
     responseRead: false,
     currencyRead: false,
-    wholeNumber: false,
+    quantity: false,
+    quantityRead: false,
     urlValue: false,
   };
 
@@ -1146,6 +1211,7 @@ export function renderModule(plan: Plan): string {
     parameterHelpers(uses),
     uses.notReady ? notReadyHelper() : [],
     uses.reportedCost ? reportedCostHelpers(uses.callerCost) : [],
+    uses.quantityRead ? readQuantityHelper() : [],
     uses.responseRead ? readHelpers(uses.currencyRead) : [],
     start,
     runTask(),

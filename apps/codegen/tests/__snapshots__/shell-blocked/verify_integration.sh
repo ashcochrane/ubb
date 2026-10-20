@@ -3,7 +3,7 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   sh verify_integration.sh EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:97533a7c087603a587c36b9b9824f9b7df048f54297f511722060038f66fb59e"
+# configuration_fingerprint = "sha256:749e0f75a5f80772d93f29e4cc553ea41e25219031b6e1740b4f648c7887768f"
 
 # Checks that jq can do what this script asks of it. It contacts nothing
 # and creates nothing.
@@ -71,11 +71,7 @@ ubb_checked() {
         | ($captured[0] | resolve($path)) as $resolved
         | check($resolved.found; $quantity; "resolves in the captured response"),
           ( select($resolved.found)
-            | (($resolved.at | type) == "number") as $number
-            | check($number; $quantity; "is a number"),
-              ( select($number)
-                | check($resolved.at != 0; $quantity; "is not zero (a constant zero is what a path to the wrong field reads)") ),
-              check(
+            | check(
                 ([ $paths | to_entries[] | select(.key != $quantity and .value == $path) ]
                  | length) == 0;
                 $quantity; "is read from a path no other quantity is read from") ) ] as $lines
@@ -85,9 +81,10 @@ ubb_checked() {
 UBB_JQ
 }
 
-# What checks a supplier's cost read off a response: the runnable file's
-# own programs and functions, which read, pin and convert it here exactly
-# as they do there, and one check of each Event Type that reads a cost.
+# What checks a value read off a response: the runnable file's own
+# programs and functions, which read a quantity, and read, pin and
+# convert a cost, here exactly as they do there; and one check of each
+# Event Type that reads either.
 UBB_EXIT_VALUE_REFUSED=65
 
 _ubb_jq_cost_record_web_search() {

@@ -99,7 +99,8 @@ result = server.requests
       task_id: "task_1",
       event_type: "chat.completion",
       provider: "openai",
-      measurements: { input_tokens: 1200, output_tokens: 340, searches: 2 },
+      // Exact text on the wire, whatever the tenant's code passed (#603).
+      measurements: { input_tokens: "1200", output_tokens: "340", searches: "2" },
       metadata: {},
     });
     expect(close!.body).toEqual({ outcome: "delivered" });
@@ -146,7 +147,7 @@ result = server.requests
       grouping_fields: { phase: "draft" },
     });
     expect(record!.body.task_id).toBe("task_2");
-    expect(record!.body.measurements).toEqual({ candidate_tokens: 7, prompt_tokens: 11 });
+    expect(record!.body.measurements).toEqual({ candidate_tokens: "7", prompt_tokens: "11" });
     for (const [request, schema] of [
       [start!, "StartTaskRequest"],
       [subtask!, "StartTaskRequest"],
@@ -638,7 +639,9 @@ result = answers
   it("is absent from a module that reports no cost", () => {
     const module = rendered("calculated-cost")[0]!.contents;
 
-    expect(module).not.toContain("Decimal");
+    // The comment telling the tenant's code what a quantity may be passed as
+    // names `decimal.Decimal` (#603); what is absent is the conversion.
+    expect(module).not.toContain("from decimal import");
     expect(module).not.toContain("_to_micros");
   });
 
@@ -703,7 +706,7 @@ result = server.bodies("/api/v1/metering/usage")
 
     expect(sent).toEqual([
       expect.objectContaining({
-        provider_response_cost_micros: 4200, currency: "usd", measurements: { input_tokens: 1200 },
+        provider_response_cost_micros: 4200, currency: "usd", measurements: { input_tokens: "1200" },
       }),
       // A cost of zero is a cost.
       expect.objectContaining({ provider_response_cost_micros: 0, currency: "usd" }),
@@ -833,6 +836,83 @@ result = server.bodies("/api/v1/metering/usage")
   });
 });
 
+// ⚠ #603: a quantity is exact text on the wire (renderer contract 3). What the
+// tenant's code passes goes to the SDK as it is — an int, a Decimal or a str —
+// and is sent as its canonical text; a float or a bool is refused before
+// anything is sent. One read off the supplier's response is read exactly or
+// refused in words that say what to read (A4).
+describe("a quantity", () => {
+  it("is sent as the exact text of what the tenant's code passes, and a float or a flag is refused before anything is sent", () => {
+    const answer = run<{ sent: string[]; refused: string[]; after: number }>(
+      rendered("calculated-cost"),
+      `${AN_OBJECT}
+from decimal import Decimal
+from ubb.exceptions import UBBValidationError
+integration = load()
+response = Shaped(usage=Shaped(input_tokens=1200, output_tokens=340))
+task = integration.start_task(customer_id="c", idempotency_key="w", environment="production")
+sent = []
+for searches in (2, Decimal("2.50"), "007", -3, 0, 2 ** 70):
+    integration.record_chat_completion(
+        customer_id="c", idempotency_key=f"e{len(sent)}", task_id=task.task_id,
+        response=response, searches=searches)
+    sent.append(server.bodies("/api/v1/metering/usage")[-1]["measurements"]["searches"])
+before = len(server.bodies("/api/v1/metering/usage"))
+refused = []
+for searches in (2.5, True):
+    try:
+        integration.record_chat_completion(
+            customer_id="c", idempotency_key="f", task_id=task.task_id,
+            response=response, searches=searches)
+    except UBBValidationError as error:
+        refused.append(str(error))
+result = {"sent": sent, "refused": refused,
+          "after": len(server.bodies("/api/v1/metering/usage")) - before}
+`,
+    );
+
+    expect(answer.sent).toEqual(["2", "2.5", "7", "-3", "0", "1180591620717411303424"]);
+    expect(answer.refused).toHaveLength(2);
+    expect(answer.after).toBe(0);
+  });
+
+  it("is read off the response exactly, or refused in words that say what to read", () => {
+    const answer = run<{ sent: Record<string, string>; refused: Record<string, string>; count: number }>(
+      rendered("calculated-cost"),
+      `${AN_OBJECT}
+integration = load()
+task = integration.start_task(customer_id="c", idempotency_key="w", environment="production")
+integration.record_chat_completion(
+    customer_id="c", idempotency_key="e", task_id=task.task_id,
+    response=Shaped(usage=Shaped(input_tokens="1200", output_tokens=2 ** 70)), searches=1)
+sent = server.bodies("/api/v1/metering/usage")[-1]["measurements"]
+refused = {}
+for name, value in (("float", 1200.0), ("flag", True), ("null", None)):
+    try:
+        integration.record_chat_completion(
+            customer_id="c", idempotency_key=name, task_id=task.task_id,
+            response=Shaped(usage=Shaped(input_tokens=value, output_tokens=1)), searches=1)
+    except integration.QuantityNotRepresentable as error:
+        refused[name] = str(error)
+result = {"sent": sent, "refused": refused,
+          "count": len(server.bodies("/api/v1/metering/usage"))}
+`,
+    );
+
+    expect(answer.sent).toEqual({
+      input_tokens: "1200",
+      output_tokens: "1180591620717411303424",
+      searches: "1",
+    });
+    expect(answer.refused).toEqual({
+      float: `1200.0 ${MESSAGES.quantityFloatRead}`,
+      flag: `True ${MESSAGES.quantityFlag}`,
+      null: MESSAGES.quantityNull,
+    });
+    expect(answer.count).toBe(1);
+  });
+});
+
 describe("a module that is not ready", () => {
   it("raises from every call that is not ready, naming what is missing", () => {
     const answer = run<Record<string, string>>(
@@ -893,37 +973,41 @@ result = {"raised": raised,
     expect(Object.keys(raised).sort()).toEqual([
       "backfill_chat_completion", "record_chat_completion", "record_draft_only",
     ]);
-    // The constant is declared with its value (#571): what stops the call is
-    // this Code Builder version, and it says so — never that a value is
-    // missing.
-    expect(raised.record_chat_completion).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
+    // The derived quantity is what stops the call: it has no token, so the
+    // call is blocked by the server's verdict and names no missing value.
+    expect(raised.record_chat_completion).toContain("(blocked)");
     expect(raised.record_chat_completion).not.toContain(MESSAGES.notConfigured);
     expect(raised.record_draft_only).toContain("(blocked)");
     expect(answer.paths).toEqual(["/api/v1/tasks", "/api/v1/metering/usage"]);
   });
 
-  it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
+  // ⚠ #584: a constant is sent as the exact decimal it was declared as, on
+  // every call, without the tenant's code passing it — a decimal, a whole
+  // number, a negative one, and one longer than a binary float holds. The
+  // module's typed literal reaches the wire as the canonical text.
+  it("sends each constant as the exact decimal it was declared as", () => {
     const answer = run<Record<string, unknown>>(
       rendered("constant"),
       `
 integration = load()
 task = integration.start_task(customer_id="c", idempotency_key="w")
-try:
-    integration.record_flat_call(customer_id="c", idempotency_key="e",
-                                 task_id=task.task_id, searches=1)
-    raised = None
-except integration.UBBIntegrationNotReady as error:
-    raised = str(error)
-result = {"raised": raised,
-          "paths": [request["path"] for request in server.requests]}
+integration.record_flat_call(customer_id="c", idempotency_key="e",
+                             task_id=task.task_id, searches=1)
+result = server.bodies("/api/v1/metering/usage")
 `,
     );
 
-    expect(answer.raised).toBe(
-      `api_v1_metering_endpoints_record_usage (blocked) ${MESSAGES.notReady} ` +
-        `measurements.flat_fee ${MESSAGES.notRenderable}.`,
-    );
-    expect(answer.paths).toEqual(["/api/v1/tasks"]);
+    expect(answer).toEqual([
+      expect.objectContaining({
+        measurements: {
+          flat_fee: "2.5",
+          seats: "3",
+          credit: "-0.75",
+          ledger_lines: "123456789012345678901234567890",
+          searches: "1",
+        },
+      }),
+    ]);
   });
 
   it("sends nothing for a quantity no token gives a value to", () => {
@@ -989,8 +1073,8 @@ result = server.requests
     expect(sent[1]!.body.event_type).toBe("it's a $5 chat-completion");
     expect(sent[1]!.body.provider).toBe("o'reilly & co");
     expect(sent[1]!.body.measurements).toEqual({
-      ...Object.fromEntries(ODD.map((code, index) => [code, index + 1])),
-      "read off a hyphenated key": 99,
+      ...Object.fromEntries(ODD.map((code, index) => [code, String(index + 1)])),
+      "read off a hyphenated key": "99",
     });
   });
 
@@ -1081,8 +1165,8 @@ result = server.requests
       );
 
       expect(sent.map((request) => request.body.measurements)).toEqual([
-        { searches: 7 },
-        { searches: 8 },
+        { searches: "7" },
+        { searches: "8" },
       ]);
       expect(sent[0]!.body.provider_cost_micros).toBe(1500000);
       expect(sent[1]!.body.effective_at).toBe("2026-08-01T09:30:00+00:00");
@@ -1152,23 +1236,30 @@ result = {"status": ran.returncode, "output": ran.stdout + ran.stderr}
     expect(answer.output).toMatch(/FAIL.*"output_tokens".*resolves/);
   });
 
-  it("fails on a quantity that reads a constant zero", () => {
+  // ⚠ #603 ruling 6: a zero is a quantity, recorded as one, so a path that
+  // reads one is no sign of a wrong path; and a decimal string is one too.
+  it("passes a zero, and a quantity written as decimal text", () => {
     const answer = verify("calculated-cost", "chat.completion", {
-      usage: { input_tokens: 0, output_tokens: 340 },
+      usage: { input_tokens: 0, output_tokens: "340" },
     });
 
-    expect(answer.status).toBe(1);
-    expect(answer.output).toMatch(/FAIL.*"input_tokens".*is not zero/);
+    expect(answer.output).toContain("Every check passed.");
+    expect(answer.status).toBe(0);
   });
 
-  it("fails on a value that is not a number", () => {
+  it("fails on a value that is not a quantity: a float, a flag, or text that is no exact decimal", () => {
     const answer = verify("calculated-cost", "chat.completion", {
-      usage: { input_tokens: "1200", output_tokens: true },
+      usage: { input_tokens: 1200.5, output_tokens: true },
+    });
+    const text = verify("calculated-cost", "chat.completion", {
+      usage: { input_tokens: "1e3", output_tokens: 340 },
     });
 
     expect(answer.status).toBe(1);
-    expect(answer.output).toMatch(/FAIL.*"input_tokens".*is a number/);
-    expect(answer.output).toMatch(/FAIL.*"output_tokens".*is a number/);
+    expect(answer.output).toMatch(new RegExp(`FAIL.*"input_tokens".*${MESSAGES.verifyQuantity}`));
+    expect(answer.output).toMatch(new RegExp(`FAIL.*"output_tokens".*${MESSAGES.verifyQuantity}`));
+    expect(text.status).toBe(1);
+    expect(text.output).toMatch(new RegExp(`FAIL.*"input_tokens".*${MESSAGES.verifyQuantity}`));
   });
 
   it("fails on two quantities read from one field", () => {
@@ -1200,7 +1291,8 @@ result = {"status": ran.returncode, "output": ran.stdout + ran.stderr}
     expect(answer.output).toContain("Every check passed.");
     expect(answer.status).toBe(0);
     const facts = factsOf("odd-names")["verify_integration.py"]!;
-    expect(facts.imports.sort()).toEqual(["json", "sys"]);
+    // `re` holds the exact-decimal grammar a quantity's text is checked by.
+    expect(facts.imports.sort()).toEqual(["json", "re", "sys"]);
   });
 
   it("says so, and exits clean, where no selected Event Type reads a response", () => {

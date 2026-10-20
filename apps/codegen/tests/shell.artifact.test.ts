@@ -549,7 +549,7 @@ describe("the header of a shell file", () => {
     expect(header("shell-calculated-cost")).toEqual(
       expect.arrayContaining([
         "schema_version = 1",
-        "renderer_contract_version = 2",
+        "renderer_contract_version = 3",
         // No SDK stands between a shell file and the API, and none is claimed.
         "sdk_major_version = null",
         'target = "shell_http"',
@@ -588,7 +588,7 @@ describe("the header of a shell file", () => {
     const blueprint = fixture("shell-blocked");
     const lines = header("shell-blocked");
 
-    expect(blueprint.diagnostics.length).toBeGreaterThan(3);
+    expect(blueprint.diagnostics.length).toBeGreaterThan(2);
     for (const diagnostic of blueprint.diagnostics) {
       const at = lines.indexOf(
         `diagnostic = "${diagnostic.code}" · severity "${diagnostic.severity}"` +
@@ -605,9 +605,8 @@ describe("the header of a shell file", () => {
       if (request === null) expect(lines).not.toContain(stated);
       else expect(lines).toContain(stated);
     }
-    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([
-      "constant_measurement_not_renderable",
-    ]);
+    // Every code names its fix since #584 rendered the last one that did not.
+    expect(blueprint.diagnostics.filter((d) => d.remediation_request == null).map((d) => d.code)).toEqual([]);
   });
 
   it("says a response shape this target cannot read is why the file is blocked", () => {
@@ -772,13 +771,15 @@ describe("the shapes a value takes in a shell file", () => {
   it("reads a declared path off the supplier's JSON, segment by segment as declared", () => {
     const module = moduleOf("shell-explicit-subtasks").contents;
 
-    expect(module).toContain(
-      '      "prompt_tokens": ($p_response[0] | read(["usageMetadata","promptTokenCount"]))',
-    );
+    // Each read as the response wrote it by a program of its own (#603), and
+    // handed to the body as the text it was checked as — never parsed into a
+    // jq number.
+    expect(module).toMatch(/"prompt_tokens": \$q_\d+/);
+    expect(module).toMatch(/"candidate_tokens": \$q_\d+/);
+    expect(module).not.toContain("$p_response[0]");
+    expect(module).toContain(`'["usageMetadata","promptTokenCount"]' integer`);
     // A path spelled against its shape's convention is emitted as declared.
-    expect(module).toContain(
-      '      "candidate_tokens": ($p_response[0] | read(["usage_metadata","candidates_token_count"])),',
-    );
+    expect(module).toContain(`'["usage_metadata","candidates_token_count"]' integer`);
   });
 
   it("guesses no way to read a response it is not declared to be able to read", () => {
@@ -960,7 +961,7 @@ describe("what the shell renderer refuses", () => {
     ],
     [
       "one parameter asked for as two kinds of value",
-      /the parameter searches of api_v1_metering_endpoints_record_usage is asked for as two kinds of value: text and number/,
+      /the parameter searches of api_v1_metering_endpoints_record_usage is asked for as two kinds of value: text and integer/,
       (b) => {
         for (const argument of b.calls[1]!.arguments) {
           if (argument.name === "customer_id") argument.parameter_name = "searches";

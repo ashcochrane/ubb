@@ -68,12 +68,12 @@ export interface Internal {
   readonly logger: string;
   readonly notReady: string;
   readonly notConfigured: string;
-  readonly notRenderable: string;
   readonly toMicros: string;
   readonly pinCurrency: string;
   readonly minorUnit: string;
   readonly readAmount: string;
   readonly readCurrency: string;
+  readonly readQuantity: string;
   readonly attribute: string;
   readonly startTask: string;
   readonly send: (record: RecordPlan) => string;
@@ -191,12 +191,12 @@ export function plan(blueprint: ResolvedIntegrationBlueprint): Plan {
     logger: ownName("_LOGGER"),
     notReady: ownName("_not_ready"),
     notConfigured: ownName("_not_configured"),
-    notRenderable: ownName("_not_renderable"),
     toMicros: ownName("_to_micros"),
     pinCurrency: ownName("_pin_currency"),
     minorUnit: ownName("_minor_unit"),
     readAmount: ownName("_read_amount"),
     readCurrency: ownName("_read_currency"),
+    readQuantity: ownName("_read_quantity"),
     attribute: ownName("_attribute"),
     startTask: ownName("_start_task"),
     send: (record) => sends.get(record)!,

@@ -13,7 +13,7 @@
 // average per unit and then across every unit (#150 §9.3). An
 // `indeterminate` unit has no figures — a cost still unresolved may move its
 // total either way (#603, ADR-0020 §7) — so it contributes nothing to either
-// average, and the indeterminate count beside them says how many units the
+// average, and the indeterminate count beside them says how much work the
 // averages leave out. Every average is null where no unit contributes, and a
 // null renders as an absence, never as zero (#155 §9.2).
 //
@@ -61,14 +61,14 @@ export function containedUnit(row: CeilingUtilisationRow): boolean {
 // ---------------------------------------------------------------------------
 // The aggregate
 
-/** Whether any unit was indeterminate — the units both averages leave out. */
+/** Whether any unit of work was indeterminate — the work both averages leave out. */
 export function anyIndeterminate(report: UtilisationAndHeadroom): boolean {
   return report.indeterminate_count > 0;
 }
 
 /**
  * The average final utilisation, or nothing where no unit had a ceiling it
- * could be assessed against. Over the assessed units only: an indeterminate
+ * could be assessed against. Over the assessed work only: an indeterminate
  * unit has no figure to average.
  *
  * The four nullable aggregate fields are optional on the generated type —
@@ -80,7 +80,7 @@ export function describeAverageUtilisation(report: UtilisationAndHeadroom): stri
   return `${report.average_final_utilisation_percentage}%`;
 }
 
-/** The average unused headroom over the assessed units, or nothing where none had a ceiling. */
+/** The average unused headroom over the assessed work, or nothing where none had a ceiling. */
 export function describeAverageHeadroom(
   report: UtilisationAndHeadroom,
   currency: string,

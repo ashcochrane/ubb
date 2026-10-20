@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "renderer_contract_version": 2,
+  "renderer_contract_version": 3,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:97533a7c087603a587c36b9b9824f9b7df048f54297f511722060038f66fb59e",
+  "configuration_fingerprint": "sha256:749e0f75a5f80772d93f29e4cc553ea41e25219031b6e1740b4f648c7887768f",
   "readiness": "blocked",
   "calls": [
     {
@@ -148,71 +148,6 @@
             "published_revision": 1,
             "published_at": "2026-09-01T12:00:00+00:00"
           }
-        },
-        {
-          "name": "measurements",
-          "binding_class": "platform_known",
-          "value": "flat_fee",
-          "parameter_name": null,
-          "environment_variable": null,
-          "configured": true,
-          "provenance": {
-            "object_kind": "event_type",
-            "key": "chat.completion",
-            "published_revision": 1,
-            "published_at": "2026-09-01T12:00:00+00:00"
-          }
-        },
-        {
-          "name": "measurements.flat_fee.value_type",
-          "binding_class": "platform_known",
-          "value": "integer",
-          "parameter_name": null,
-          "environment_variable": null,
-          "configured": true,
-          "provenance": {
-            "object_kind": "event_type",
-            "key": "chat.completion",
-            "published_revision": 1,
-            "published_at": "2026-09-01T12:00:00+00:00"
-          }
-        },
-        {
-          "name": "measurements.flat_fee.unit",
-          "binding_class": "platform_known",
-          "value": "call",
-          "parameter_name": null,
-          "environment_variable": null,
-          "configured": true,
-          "provenance": {
-            "object_kind": "event_type",
-            "key": "chat.completion",
-            "published_revision": 1,
-            "published_at": "2026-09-01T12:00:00+00:00"
-          }
-        },
-        {
-          "name": "measurements.flat_fee.required_for_costing",
-          "binding_class": "platform_known",
-          "value": true,
-          "parameter_name": null,
-          "environment_variable": null,
-          "configured": true,
-          "provenance": {
-            "object_kind": "event_type",
-            "key": "chat.completion",
-            "published_revision": 1,
-            "published_at": "2026-09-01T12:00:00+00:00"
-          }
-        },
-        {
-          "name": "measurements.flat_fee",
-          "binding_class": "platform_known",
-          "value": null,
-          "parameter_name": null,
-          "environment_variable": null,
-          "configured": false,
-          "provenance": null
         },
         {
           "name": "measurements",
@@ -705,14 +640,6 @@
     }
   ],
   "diagnostics": [
-    {
-      "severity": "blocking",
-      "code": "constant_measurement_not_renderable",
-      "object_kind": "measurement",
-      "key": "chat.completion:flat_fee",
-      "field": "source_kind",
-      "remediation_request": null
-    },
     {
       "severity": "blocking",
       "code": "derived_measurement_unsupported",

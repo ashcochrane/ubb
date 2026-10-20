@@ -226,6 +226,7 @@ describe("the request the samples make", () => {
     expect(rebuilt.sort()).toEqual([
       "calculated-cost",
       "calculated-cost-without-required-measurements",
+      "constant",
       "direct-task-events-partial",
       "explicit-subtasks",
       "reported-cost",
@@ -525,6 +526,20 @@ describe("the quantity rule follows the published contract, for every declared v
     expect(sampleProblems(plan, samples)).toEqual([
       { path: ["records", 0, "measurements", 1], message: WHOLE_QUANTITY_REQUIRED },
     ]);
+  });
+});
+
+// ⚠ #584: a constant is sent as its declared value by generated code, which
+// asks the tenant's code for nothing — so Verify asks no sample of it either,
+// and sends none; the server adds it, and refuses a sample for one.
+describe("a constant", () => {
+  it("is asked no sample, and none is sent for it", async () => {
+    const plan = await planOf("constant");
+
+    expect(plan.records[0]?.measurements.map((measurement) => measurement.code)).toEqual(["searches"]);
+    const samples = blankSamples(plan);
+    samples.records = samples.records.map((record) => ({ ...record, measurements: ["3"] }));
+    expect(verificationRequestOf(plan, samples).records[0]?.measurements).toEqual({ searches: "3" });
   });
 });
 

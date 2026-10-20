@@ -682,9 +682,9 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // selected, or one selected that is not declared. The rest either block a call
 // — a retired kind, a required Grouping Field that cannot be supplied, an
 // Event Type with nothing published, a reported cost with nowhere to read it
-// from, a quantity generated code cannot yet carry, a response shape the
-// target cannot read — or advise without blocking: a declaration revised since
-// it was published, or a path that looks inconsistent with its declared shape.
+// from, a quantity generated code cannot carry, a response shape the target
+// cannot read — or advise without blocking: a declaration revised since it was
+// published, or a path that looks inconsistent with its declared shape.
 //
 // Declared in concepts/code-builder.yaml.
 
@@ -700,7 +700,6 @@ export const DIAGNOSTIC_CODE_VALUES = [
   "event_type_not_published",
   "event_type_revised_since_publication",
   "reported_cost_mapping_missing",
-  "constant_measurement_not_renderable",
   "derived_measurement_unsupported",
   "response_shape_not_declared",
   "response_shape_not_readable_by_target",
@@ -721,7 +720,6 @@ export const DIAGNOSTIC_CODE_LABEL_KEYS = {
   "event_type_not_published": "diagnostic_code.event_type_not_published",
   "event_type_revised_since_publication": "diagnostic_code.event_type_revised_since_publication",
   "reported_cost_mapping_missing": "diagnostic_code.reported_cost_mapping_missing",
-  "constant_measurement_not_renderable": "diagnostic_code.constant_measurement_not_renderable",
   "derived_measurement_unsupported": "diagnostic_code.derived_measurement_unsupported",
   "response_shape_not_declared": "diagnostic_code.response_shape_not_declared",
   "response_shape_not_readable_by_target": "diagnostic_code.response_shape_not_readable_by_target",

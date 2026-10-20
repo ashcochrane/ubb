@@ -1,7 +1,6 @@
 from enum import Enum
 
 class IntegrationBlueprintDiagnosticCode(str, Enum):
-    CONSTANT_MEASUREMENT_NOT_RENDERABLE = "constant_measurement_not_renderable"
     DERIVED_MEASUREMENT_UNSUPPORTED = "derived_measurement_unsupported"
     EVENT_TYPE_NOT_DECLARED = "event_type_not_declared"
     EVENT_TYPE_NOT_PUBLISHED = "event_type_not_published"

@@ -224,7 +224,8 @@ printf 'status=%s\\ntask=%s\\n' "$?" "$UBB_TASK_ID"
       task_id: "task_1",
       event_type: "chat.completion",
       provider: "google",
-      measurements: { input_tokens: 1200, output_tokens: 340, searches: 2 },
+      // Exact text on the wire (#603).
+      measurements: { input_tokens: "1200", output_tokens: "340", searches: "2" },
     });
     expect(close!.body).toEqual({ outcome: "delivered" });
 
@@ -384,18 +385,20 @@ printf 'echoed=%s\\n' "$?"
     expect(ran.requests).toEqual([]);
   });
 
-  it("refuses a quantity that is not a whole number it can carry exactly", () => {
+  // ⚠ #603: a quantity is passed as text and sent as text (renderer contract
+  // 3): checked against the exact-decimal grammar and, declared an integer,
+  // for whole-ness — never parsed into a jq number, so no length is too long
+  // and a negative and a zero are quantities like any other.
+  it("refuses a quantity that is not an exact decimal, or not whole where it is declared an integer", () => {
     const ran = runShell(
       rendered("shell-direct-task-events"),
       `${SOURCE}
-for quantity in three 1.5 007 1e3 9999999999999999 '3; touch made-by-a-quantity' '"3"'; do
+for quantity in three 1e3 +1 .5 1. --1 '1 000' '3; touch made-by-a-quantity' '"3"'; do
   ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches="$quantity"
   printf 'status_%s=%s\\n' "$((count = \${count:-0} + 1))" "$?"
 done
-ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches=999999999999999
-printf 'largest=%s\\n' "$?"
-ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches=0
-printf 'zero=%s\\n' "$?"
+ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches=1.5
+printf 'fraction=%s\\n' "$?"
 ls
 `,
     );
@@ -403,21 +406,39 @@ ls
 
     // Refused as a value, by the file, each naming the parameter: not as a
     // parameter left out, and not by jq or by the API.
-    expect(Object.values(answers).slice(0, 7)).toEqual(
-      Array(7).fill(String(SHELL_EXIT.valueRefused.status)),
+    expect(Object.values(answers).slice(0, 9)).toEqual(
+      Array(9).fill(String(SHELL_EXIT.valueRefused.status)),
     );
     expect(
       ran.stderr.split("\n").filter((line) =>
-        line.startsWith(`ubb_record_search_run: searches ${SHELL_MESSAGES.wholeNumber}`),
+        line.startsWith(`ubb_record_search_run: searches ${SHELL_MESSAGES.quantity}`),
       ),
-    ).toHaveLength(7);
+    ).toHaveLength(9);
+    expect(answers.fraction).toBe(String(SHELL_EXIT.valueRefused.status));
+    expect(ran.stderr).toContain(`ubb_record_search_run: searches ${SHELL_MESSAGES.wholeQuantity}`);
     expect(ran.stdout).not.toMatch(/made-by/);
-    expect(answers.largest).toBe("0");
-    expect(answers.zero).toBe("0");
-    expect(ran.requests.map((request) => request.raw)).toEqual([
-      expect.stringContaining('"measurements":{"searches":999999999999999}'),
-      expect.stringContaining('"measurements":{"searches":0}'),
-    ]);
+    expect(ran.requests).toEqual([]);
+  });
+
+  it("sends a quantity as the text it was passed, at any length, negative or zero", () => {
+    const long = `1${"0".repeat(60)}`;
+    const ran = runShell(
+      rendered("shell-direct-task-events"),
+      `${SOURCE}
+for quantity in 007 9999999999999999 ${long} -3 0 2.0; do
+  ubb_record_search_run customer_id=c idempotency_key=e task_id=t searches="$quantity"
+  printf 'status_%s=%s\\n' "$((count = \${count:-0} + 1))" "$?"
+done
+`,
+    );
+
+    expect(Object.values(said(ran))).toEqual(Array(6).fill("0"));
+    // Text on the wire, exactly as passed: the platform canonicalises it.
+    expect(ran.requests.map((request) => request.raw)).toEqual(
+      ["007", "9999999999999999", long, "-3", "0", "2.0"].map((text) =>
+        expect.stringContaining(`"measurements":{"searches":"${text}"}`),
+      ),
+    );
   });
 
   it.each(["sh", "bash"] as const)("runs the same under %s, with set -eu or without", (shell) => {
@@ -441,19 +462,27 @@ ls
       task_type: "summarise",
       grouping_fields: { phase: "a-phase" },
     });
-    expect(strict.requests[2]!.body.measurements).toEqual({ candidate_tokens: 7, prompt_tokens: 7 });
+    expect(strict.requests[2]!.body.measurements).toEqual({ candidate_tokens: "7", prompt_tokens: "7" });
   });
 
-  it("refuses to record from a response that does not hold what a declared path reads", () => {
+  // ⚠ #603 A4: a quantity read off the response is read as the response
+  // WROTE it — an integer as its digits at any length, a string as its text
+  // — and checked as a quantity. A number written with a fraction or an
+  // exponent, a null, a value not there and a response that is not JSON are
+  // each refused, in words, before anything is sent.
+  it("reads a quantity off the response exactly, or refuses to record", () => {
     const ran = runShell(
       rendered("shell-calculated-cost"),
       `${SOURCE}
-printf '%s' '{"usageMetadata":{"promptTokenCount":12}}' >missing.json
-printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":9007199254740993}}' >inexact.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":9007199254740993}}' >long.json
 printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":"340"}}' >text.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12}}' >missing.json
 printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3.5}}' >fraction.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":1e3}}' >exponent.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":null}}' >null.json
+printf '%s' '{"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":"3.5"}}' >split.json
 printf '%s' 'not json' >malformed.json
-for response in missing.json inexact.json text.json fraction.json malformed.json absent.json; do
+for response in long.json text.json missing.json fraction.json exponent.json null.json split.json malformed.json absent.json; do
   ubb_record_chat_completion customer_id=c idempotency_key=e task_id=t response="$response" searches=1
   printf '%s=%s\\n' "\${response%.json}" "$?"
 done
@@ -461,18 +490,23 @@ done
     );
     const answers = said(ran);
     const refused = String(SHELL_EXIT.valueRefused.status);
+    const at = '["usageMetadata","candidatesTokenCount"]';
 
-    // One named status whichever way the response fails to hold the value.
     expect(answers).toEqual({
-      missing: refused, inexact: refused, text: refused, fraction: refused,
-      malformed: refused, absent: refused,
+      long: "0", text: "0",
+      missing: refused, fraction: refused, exponent: refused, null: refused,
+      split: refused, malformed: refused, absent: refused,
     });
-    expect(ran.stderr).toContain(`${SHELL_MESSAGES.noValue} ["usageMetadata","candidatesTokenCount"]`);
-    expect(ran.stderr).toContain(`${SHELL_MESSAGES.inexact} ["usageMetadata","candidatesTokenCount"]`);
-    expect(
-      ran.stderr.split(`${SHELL_MESSAGES.notWhole} ["usageMetadata","candidatesTokenCount"]`),
-    ).toHaveLength(3);
-    expect(ran.requests).toEqual([]);
+    expect(ran.stderr).toContain(`read at ${at} ${SHELL_MESSAGES.readMissing}`);
+    expect(ran.stderr.split(`read at ${at} ${MESSAGES.quantityFloatRead}`)).toHaveLength(3);
+    expect(ran.stderr).toContain(`read at ${at} ${SHELL_MESSAGES.readQuantityNull}`);
+    expect(ran.stderr).toContain(`read at ${at} ${SHELL_MESSAGES.wholeQuantity}`);
+    expect(ran.stderr).toContain(SHELL_MESSAGES.readUnreadable);
+    // The two read exactly are sent as the text the response wrote.
+    expect(ran.requests.map((request) => request.body.measurements)).toEqual([
+      expect.objectContaining({ output_tokens: "9007199254740993", input_tokens: "12" }),
+      expect.objectContaining({ output_tokens: "340", input_tokens: "12" }),
+    ]);
   });
 });
 
@@ -495,15 +529,10 @@ printf 'status=%s\\n' "$?"
       `${real("curl")}; ${stub("jq", "exit 3")}`,
       SHELL_MESSAGES.jqUnusable,
     ],
-    [
-      // What jq 1.3 and 1.4 lack: everything else is the real jq's.
-      "jq runs a program from standard input but has no --argjson",
-      `${real("curl")}; ln -s "$(command -v jq)" bin/real-jq; ${stub(
-        "jq",
-        'case " $* " in *" --argjson "*) exit 2 ;; esac; exec "${0%/*}/real-jq" "$@"',
-      )}`,
-      SHELL_MESSAGES.jqUnusable,
-    ],
+    // (A jq with no --argjson is no longer a case: no file asks for it since
+    // #603, a quantity being --arg text. What jq 1.3 and 1.4 lack that a file
+    // does ask for — `foreach`, which every runnable file's read of a stop's
+    // figures uses — is still refused, by the probe of its programs.)
     [
       "curl has no --fail-with-body",
       `${real("jq")}; ${stub("curl", 'case "$1" in --fail-with-body) exit 2 ;; esac')}`,
@@ -609,10 +638,14 @@ printf 'status=%s\\n' "$?"
     // Not vacuous: between them the files ask for options and functions
     // that only some do, which is what a probe of its own per file is for.
     expect([...seen]).toEqual(
-      expect.arrayContaining(["--argjson", "--slurpfile", "fromjson", "keys_unsorted", "getpath"]),
+      // (`getpath` left with the jq read of a quantity as a number, #603: a
+      // quantity is read as the response wrote it, with --raw-input.)
+      expect.arrayContaining(["--slurpfile", "--raw-input", "fromjson", "keys_unsorted"]),
     );
+    // A quantity is --arg text (#603): no file parses one into a jq number.
+    expect([...seen]).not.toContain("--argjson");
     expect(asked(only(rendered("shell-scaffold"), "module").contents).probe.options).not.toContain(
-      "--argjson",
+      "--slurpfile",
     );
     expect(asked(only(rendered("shell-scaffold"), "verify_script").contents).probe.functions).not.toContain(
       "fromjson",
@@ -1462,7 +1495,7 @@ describe("a supplier's cost read off the response, in a shell file", () => {
     ).toEqual(["4200", "0", "0", "9223372036854775807"]);
     for (const request of ran.requests) {
       expect(request.body.currency).toBe("usd");
-      expect(request.body.measurements).toEqual({ input_tokens: 1200 });
+      expect(request.body.measurements).toEqual({ input_tokens: "1200" });
       expect(Object.keys(request.body)).not.toContain("provider_cost_micros");
     }
   });
@@ -1647,18 +1680,20 @@ done
       // The cost read off the response is a complete call since #583, and runs.
       ubb_record_web_search: "0",
     });
-    // The constant is declared with its value (#571): what stops the call is
-    // this Code Builder version, and it says so — never that a value is
-    // missing.
-    expect(ran.stderr).toContain(`measurements.flat_fee ${MESSAGES.notRenderable}.`);
-    expect(ran.stderr).not.toContain(`measurements.flat_fee ${MESSAGES.notConfigured}`);
+    // A quantity read off a Python object, which a shell file cannot read,
+    // is the value the blocked call is written without, and is named.
+    expect(ran.stderr).toContain(`measurements.input_tokens ${MESSAGES.notConfigured}.`);
     expect(ran.stderr).toContain("api_v1_metering_endpoints_record_usage (blocked)");
     expect(ran.requests.map((request) => request.path)).toEqual([
       "/api/v1/tasks", "/api/v1/metering/usage",
     ]);
   });
 
-  it("stops a valued constant's call as one this version cannot generate, never as unconfigured", () => {
+  // ⚠ #584: each constant is sent as the canonical text it was declared as —
+  // the wire form — on every call, without the tenant's code passing it: a
+  // decimal, a whole number, a negative one, and one longer than a binary
+  // float holds, every digit kept.
+  it("sends each constant as the exact decimal it was declared as", () => {
     const ran = runShell(
       rendered("shell-constant"),
       `${SOURCE}
@@ -1669,28 +1704,31 @@ printf 'record=%s\\n' "$?"
 `,
     );
 
-    expect(said(ran)).toEqual({ start: "0", record: String(SHELL_EXIT.notConfigured.status) });
-    expect(ran.stderr).toContain(
-      `api_v1_metering_endpoints_record_usage (blocked) ${MESSAGES.notReady} ` +
-        `measurements.flat_fee ${MESSAGES.notRenderable}.`,
-    );
-    expect(ran.stderr).not.toContain(MESSAGES.notConfigured);
-    expect(ran.requests.map((request) => request.path)).toEqual(["/api/v1/tasks"]);
+    expect(said(ran)).toEqual({ start: "0", record: "0" });
+    const [, record] = ran.requests;
+    expect(record!.body.measurements).toEqual({
+      flat_fee: "2.5",
+      seats: "3",
+      credit: "-0.75",
+      ledger_lines: "123456789012345678901234567890",
+      searches: "1",
+    });
+    expect(record!.raw).toContain('"ledger_lines":"123456789012345678901234567890"');
   });
 
   it("prints the name it refuses over whatever the name holds, and runs none of it", () => {
-    // NOT a Blueprint the routes answered: the blocked fixture with its
-    // constant quantity renamed to text that would end a quoted word and run
-    // a command if a refusal ever wrote it into shell code unescaped. Its
-    // diagnostic keeps the old key, so the renamed quantity is read as an
-    // ordinary unconfigured value — and its name is printed, which is what
-    // this case holds.
+    // NOT a Blueprint the routes answered: the blocked fixture with the
+    // quantity this target cannot read (one read off a Python object)
+    // renamed to text that would end a quoted word and run a command if a
+    // refusal ever wrote it into shell code unescaped. It is written as an
+    // unconfigured value, and its name is printed, which is what this case
+    // holds.
     const key = "it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\n'; touch made-by-a-quote; '";
     const blueprint = fixture("shell-blocked");
     for (const argument of everyArgument(blueprint)) {
-      if (argument.name === "measurements" && argument.value === "flat_fee") argument.value = key;
-      if (argument.name.startsWith("measurements.flat_fee")) {
-        argument.name = argument.name.replace("measurements.flat_fee", `measurements.${key}`);
+      if (argument.name === "measurements" && argument.value === "input_tokens") argument.value = key;
+      if (argument.name.startsWith("measurements.input_tokens")) {
+        argument.name = argument.name.replace("measurements.input_tokens", `measurements.${key}`);
       }
     }
     const files = render(blueprint);
@@ -1710,42 +1748,6 @@ ls
     expect(ran.stderr).toContain(
       "measurements.it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\\u000a'; touch made-by-a-quote; ' " +
         `${MESSAGES.notConfigured}.`,
-    );
-    expect(ran.stdout).not.toMatch(/made-by/);
-    expect(ran.requests).toEqual([]);
-  });
-
-  it("prints a name it cannot yet generate over whatever the name holds, and runs none of it", () => {
-    // The case above, with the diagnostic renamed too: the quantity is then
-    // a valued constant this version cannot generate (#571), and its name
-    // reaches the refusal through that sentence instead.
-    const key = "it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\n'; touch made-by-a-quote; '";
-    const blueprint = fixture("shell-blocked");
-    for (const argument of everyArgument(blueprint)) {
-      if (argument.name === "measurements" && argument.value === "flat_fee") argument.value = key;
-      if (argument.name.startsWith("measurements.flat_fee")) {
-        argument.name = argument.name.replace("measurements.flat_fee", `measurements.${key}`);
-      }
-    }
-    for (const diagnostic of blueprint.diagnostics) {
-      if (diagnostic.key === "chat.completion:flat_fee") diagnostic.key = `chat.completion:${key}`;
-    }
-    const files = render(blueprint);
-
-    expect(Object.values(parsed(files)).filter((refusal) => refusal !== null)).toEqual([]);
-    const ran = runShell(
-      files,
-      `${SOURCE}
-ubb_record_chat_completion customer_id=c idempotency_key=e task_id=t response=r.json
-printf 'status=%s\\n' "$?"
-ls
-`,
-    );
-
-    expect(said(ran)).toEqual({ status: String(SHELL_EXIT.notConfigured.status) });
-    expect(ran.stderr).toContain(
-      "measurements.it's $(touch made-by-a-refusal) `touch made-by-a-backtick`\\u000a'; touch made-by-a-quote; ' " +
-        `${MESSAGES.notRenderable}.`,
     );
     expect(ran.stdout).not.toMatch(/made-by/);
     expect(ran.requests).toEqual([]);
@@ -1794,8 +1796,8 @@ describe("declared names, in a shell file", () => {
     expect(record!.body.event_type).toBe("it's a $5 chat-completion");
     expect(record!.body.provider).toBe("o'reilly & co");
     expect(record!.body.measurements).toEqual({
-      ...Object.fromEntries(ODD.map((code) => [code, 3])),
-      "read off a hyphenated key": 7,
+      ...Object.fromEntries(ODD.map((code) => [code, "3"])),
+      "read off a hyphenated key": "7",
     });
   });
 
@@ -1890,7 +1892,7 @@ printf 'status=%s\\n' "$?"
     );
 
     expect(said(ran), ran.stderr).toEqual({ status: "0", untouched: "yes" });
-    expect(ran.requests.map((request) => request.body.measurements)).toEqual([{ searches: 7 }]);
+    expect(ran.requests.map((request) => request.body.measurements)).toEqual([{ searches: "7" }]);
     expect(ran.requests[0]!.body.customer_id).toBe("c");
     expect(ran.requests[0]!.raw).toContain('"provider_cost_micros":1500000,');
   });
@@ -1969,25 +1971,33 @@ printf 'status=%s\\n' "$?"
     expect(answer.output).toContain(`1 ${MESSAGES.verifyFailed}`);
   });
 
-  it("fails on a quantity that reads a constant zero", () => {
+  // ⚠ #603 ruling 6: a zero is a quantity, recorded as one, so a path that
+  // reads one is no sign of a wrong path; and decimal text is a quantity too.
+  it("passes a zero, and a quantity written as decimal text", () => {
     const answer = verify("shell-calculated-cost", "chat.completion", {
-      usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 340 },
+      usageMetadata: { promptTokenCount: 0, candidatesTokenCount: "340" },
     });
 
-    expect(answer.status).toBe(1);
-    expect(answer.output).toMatch(/FAIL "input_tokens" is not zero/);
+    expect(answer.output).toContain("Every check passed.");
+    expect(answer.status).toBe(0);
   });
 
-  it("fails on a value that is not a number, a present null among them", () => {
+  it("fails on a value that is not a quantity, a present null among them", () => {
     const answer = verify("shell-calculated-cost", "chat.completion", {
-      usageMetadata: { promptTokenCount: "1200", candidatesTokenCount: null },
+      usageMetadata: { promptTokenCount: 1200.5, candidatesTokenCount: null },
+    });
+    const whole = verify("shell-calculated-cost", "chat.completion", {
+      usageMetadata: { promptTokenCount: "12.5", candidatesTokenCount: 1 },
     });
 
     expect(answer.status).toBe(1);
-    expect(answer.output).toMatch(/FAIL "input_tokens" is a number/);
-    // Present and null is found, and is not a number: not the same as absent.
+    expect(answer.output).toContain(`FAIL "input_tokens" ${MESSAGES.verifyQuantity}`);
+    // Present and null is found, and is not a quantity: not the same as absent.
     expect(answer.output).toMatch(/ok {3}"output_tokens" resolves/);
-    expect(answer.output).toMatch(/FAIL "output_tokens" is a number/);
+    expect(answer.output).toContain(`FAIL "output_tokens" ${MESSAGES.verifyQuantity}`);
+    // Declared an integer, a fraction is not one, though it is decimal text.
+    expect(whole.status).toBe(1);
+    expect(whole.output).toContain(`FAIL "input_tokens" ${MESSAGES.verifyQuantity}`);
   });
 
   it("fails on two quantities read from one field", () => {

@@ -114,6 +114,19 @@ A contract-1 renderer would silently mis-render such a value, so the version mov
 refuses a contract it was not written to (`READABLE_RENDERER_CONTRACT_VERSIONS`,
 `apps/codegen/src/render.ts`).
 
+**Renderer contract 3 (#603, #584, 2026-10-20; ADR-0020).** What a renderer is promised about a
+quantity changed twice over, so the contract moved once, and every fingerprint with it. First, a
+measured quantity is recorded as canonical exact TEXT: a renderer sends it as text and never as a
+JSON number, refuses a float and a flag rather than read one, and assumes no digit limit — the
+shell target's fifteen-digit `--argjson` read was a limit of the jq number it went through, and
+goes with it. A quantity read off a supplier's response is read exactly (an integer, or a decimal
+string) or refused in words. Second, a `constant` quantity's value token is `platform_known` and
+configured, carrying the declared value as that same canonical text, where contract 2 promised it
+unconfigured with the call blocked: a renderer writes it as a typed exact literal in the module —
+an `int` or a `Decimal("…")` in Python, the text itself in shell — with its provenance. A
+contract-2 renderer would send a quantity as a number and write a constant as missing. The table
+gains no field.
+
 A literal is untyped JSON. Where one carries a closed concept's value — a pricing mode, a costing
 method, a quantity's value type, an amount representation, a response shape's representation — the
 contract cannot mark it there. Each is a declared value, marked on the route that declares it where
@@ -202,7 +215,9 @@ ticket that makes a fixed-price kind ready or not adds the member for a missing 
 for a mapping that was valid configuration the Code Builder did not yet render. Neither carried a
 remediation request — nothing in a valid declaration was the thing to change. #583 renders the read
 on both targets and removed `reported_cost_provider_response_not_renderable` with no successor
-(2026-10-08): sixteen members stand.
+(2026-10-08): sixteen members stand. #584 renders a constant's declared value on both targets and
+removed `constant_measurement_not_renderable` with no successor (2026-10-20): fifteen members
+stand, and every one that blocks names its fix.
 
 ### 7. What this ADR does not decide
 

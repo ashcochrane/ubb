@@ -13,7 +13,6 @@ Content-Type: application/json
   "task_id": $task_id,
   "event_type": "chat.completion",
   "measurements": {
-    "flat_fee": not_renderable("measurements.flat_fee"),
     "input_tokens": not_configured("measurements.input_tokens")
   }
 }

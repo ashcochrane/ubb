@@ -28,7 +28,9 @@ class IntegrationBlueprintVerificationRecordIn:
     the sample values a tenant's code would send for it.
 
     `measurements`, `provider_cost_micros` and `provider_response_cost_micros`
-    are the same fields, with the same rules, as on a recording.
+    are the same fields, with the same rules, as on a recording — except that
+    a `constant` quantity takes no sample: the run sends its declared value,
+    as generated code does, and refuses a sample for one.
     `subtask_type` records this event under a Subtask of that kind, which must
     be one the Blueprint selected; left out, the event is recorded under the
     Task itself.

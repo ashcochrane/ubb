@@ -1,6 +1,6 @@
 {
   "blueprint": "direct-task-events",
-  "configuration_fingerprint": "sha256:5fa28dcb4fe1823d3a58d4654fc449a1e703e5a669407496a35588d09e71ad08",
+  "configuration_fingerprint": "sha256:d3e381268ccee6b1cfdceb27b66ad80b90a6e1d188fa8261d7f48bcd309825f6",
   "request": {
     "records": [
       {
@@ -14,7 +14,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:5fa28dcb4fe1823d3a58d4654fc449a1e703e5a669407496a35588d09e71ad08",
+    "configuration_fingerprint": "sha256:d3e381268ccee6b1cfdceb27b66ad80b90a6e1d188fa8261d7f48bcd309825f6",
     "verified": false,
     "unexercised_event_types": [
       "search.run"

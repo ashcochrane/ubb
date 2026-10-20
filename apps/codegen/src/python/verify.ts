@@ -8,10 +8,14 @@
  * only the tenant can run it. It reads a captured response from a file and
  * calls nothing — no supplier, and no UBB.
  *
- * It catches the three signatures of a wrong path: a path that resolves to
- * nothing, a quantity that reads a constant zero, and two quantities reading
- * one field. A segment is looked up as the key it was declared as, whichever
- * way the module reads the live object.
+ * It catches the two signatures of a wrong path — a path that resolves to
+ * nothing, and two quantities reading one field — and checks that what each
+ * path reads is what a quantity may be: an integer, or a decimal string in
+ * the one exact grammar (#603). A float is not one: the module refuses it,
+ * so a captured response holding one fails here first. A ZERO IS A
+ * QUANTITY (#603 ruling 6): it is recorded as one, so it is no sign of a
+ * wrong path and is not checked as one. A segment is looked up as the key it
+ * was declared as, whichever way the module reads the live object.
  *
  * A SUPPLIER'S COST READ OFF THE RESPONSE (#583) is checked by STRUCTURE and
  * never by its size, because a cost of zero is a cost (owner's ruling 5 on
@@ -213,6 +217,7 @@ export function renderVerifyScript(plan: Plan): string {
     ...asComments([statement("configuration_fingerprint", fingerprint)]),
     "",
     "import json",
+    "import re",
     "import sys",
     ...(checksCosts ? ["from decimal import Decimal, InvalidOperation"] : []),
     "",
@@ -227,6 +232,7 @@ export function renderVerifyScript(plan: Plan): string {
     "}",
     "",
     "_MISSING = object()",
+    "_EXACT = re.compile(r\"-?[0-9]+(\\.[0-9]+)?\")",
     "",
     "",
     "def _resolve(document, segments):",
@@ -279,10 +285,9 @@ export function renderVerifyScript(plan: Plan): string {
     `${INDENT.repeat(2)}check(value is not _MISSING, quantity, ${say(MESSAGES.verifyResolves)})`,
     `${INDENT.repeat(2)}if value is _MISSING:`,
     `${INDENT.repeat(3)}continue`,
-    `${INDENT.repeat(2)}number = isinstance(value, (int, float)) and not isinstance(value, bool)`,
-    `${INDENT.repeat(2)}check(number, quantity, ${say(MESSAGES.verifyNumber)})`,
-    `${INDENT.repeat(2)}if number:`,
-    `${INDENT.repeat(3)}check(value != 0, quantity, ${say(MESSAGES.verifyNotZero)})`,
+    `${INDENT.repeat(2)}exact = (isinstance(value, int) and not isinstance(value, bool)) or (`,
+    `${INDENT.repeat(3)}isinstance(value, str) and _EXACT.fullmatch(value) is not None)`,
+    `${INDENT.repeat(2)}check(exact, quantity, ${say(MESSAGES.verifyQuantity)})`,
     `${INDENT.repeat(2)}shared = [other for other, path in declared.items()`,
     `${INDENT.repeat(2)}          if other != quantity and path == segments]`,
     `${INDENT.repeat(2)}check(not shared, quantity, ${say(MESSAGES.verifyDistinct)})`,

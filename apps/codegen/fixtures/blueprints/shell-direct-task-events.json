@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "renderer_contract_version": 2,
+  "renderer_contract_version": 3,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:e5e949c9dc746bbae2176b104577989ccfa7574c33c9d909df6cab696452bd42",
+  "configuration_fingerprint": "sha256:5e85dd0c48cb813883466ed91b300df0c385eff0437d85a15761d252039e18de",
   "readiness": "complete",
   "calls": [
     {

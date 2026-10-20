@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "renderer_contract_version": 2,
+  "renderer_contract_version": 3,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:e9ef9a484a49cf79289306a803f42e9d443d07914c7c86f6051a55ae4c8c9e7b",
-  "readiness": "blocked",
+  "configuration_fingerprint": "sha256:dd0df48c99893fd08d9fc2552d11b2be607557dfaa2936ad7947a2cbb723f7e4",
+  "readiness": "complete",
   "calls": [
     {
       "operation_id": "api_v1_task_endpoints_start_task",
@@ -83,7 +83,7 @@
     },
     {
       "operation_id": "api_v1_metering_endpoints_record_usage",
-      "readiness": "blocked",
+      "readiness": "complete",
       "arguments": [
         {
           "name": "api_key",
@@ -139,6 +139,76 @@
           "name": "event_type.costing_method",
           "binding_class": "platform_known",
           "value": "calculated",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "credit",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.credit.value_type",
+          "binding_class": "platform_known",
+          "value": "decimal",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.credit.unit",
+          "binding_class": "platform_known",
+          "value": "call",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.credit.required_for_costing",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.credit",
+          "binding_class": "platform_known",
+          "value": "-0.75",
           "parameter_name": null,
           "environment_variable": null,
           "configured": true,
@@ -208,11 +278,86 @@
         {
           "name": "measurements.flat_fee",
           "binding_class": "platform_known",
-          "value": null,
+          "value": "2.5",
           "parameter_name": null,
           "environment_variable": null,
-          "configured": false,
-          "provenance": null
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "ledger_lines",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.ledger_lines.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.ledger_lines.unit",
+          "binding_class": "platform_known",
+          "value": "call",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.ledger_lines.required_for_costing",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.ledger_lines",
+          "binding_class": "platform_known",
+          "value": "123456789012345678901234567890",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
         },
         {
           "name": "measurements",
@@ -283,6 +428,76 @@
             "published_revision": 1,
             "published_at": "2026-09-01T12:00:00+00:00"
           }
+        },
+        {
+          "name": "measurements",
+          "binding_class": "platform_known",
+          "value": "seats",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.seats.value_type",
+          "binding_class": "platform_known",
+          "value": "integer",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.seats.unit",
+          "binding_class": "platform_known",
+          "value": "call",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.seats.required_for_costing",
+          "binding_class": "platform_known",
+          "value": false,
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
+        },
+        {
+          "name": "measurements.seats",
+          "binding_class": "platform_known",
+          "value": "3",
+          "parameter_name": null,
+          "environment_variable": null,
+          "configured": true,
+          "provenance": {
+            "object_kind": "event_type",
+            "key": "flat.call",
+            "published_revision": 1,
+            "published_at": "2026-09-01T12:00:00+00:00"
+          }
         }
       ]
     },
@@ -320,14 +535,5 @@
       ]
     }
   ],
-  "diagnostics": [
-    {
-      "severity": "blocking",
-      "code": "constant_measurement_not_renderable",
-      "object_kind": "measurement",
-      "key": "flat.call:flat_fee",
-      "field": "source_kind",
-      "remediation_request": null
-    }
-  ]
+  "diagnostics": []
 }

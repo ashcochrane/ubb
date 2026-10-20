@@ -144,6 +144,23 @@ function keysUnder(call: BlueprintCall, field: string): string[] {
   );
 }
 
+/**
+ * Whether a call's value under a Measurement's `code` is one UBB holds: a
+ * constant (#584), a configured literal of its declared value. Generated code
+ * sends it as declared and asks the tenant's code for nothing, so Verify asks
+ * no sample of it either — and the server refuses one.
+ */
+function isDeclaredConstant(call: BlueprintCall, code: string): boolean {
+  return tokens(call).some(
+    ({ argument, place }) =>
+      place.kind === "keyed_value" &&
+      place.field === "measurements" &&
+      place.key === code &&
+      argument.binding_class === "platform_known" &&
+      argument.configured,
+  );
+}
+
 function startedKind(call: BlueprintCall, altitude: "task" | "subtask"): StartedKind | null {
   const kind = subjectOf(call);
   return kind === null ? null : { altitude, kind, groupingFields: keysUnder(call, "grouping_fields") };
@@ -155,7 +172,9 @@ function recordSample(call: BlueprintCall): RecordSample | null {
   const facts = tokens(call);
   return {
     eventType,
-    measurements: keysUnder(call, "measurements").map((code) => {
+    measurements: keysUnder(call, "measurements")
+      .filter((code) => !isDeclaredConstant(call, code))
+      .map((code) => {
       const declared = facts.filter(
         ({ place }) =>
           place.kind === "fact" &&

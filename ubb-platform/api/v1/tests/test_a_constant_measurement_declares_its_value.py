@@ -18,8 +18,10 @@ Recording is not here: what a recorded quantity looks like on the wire is
 
 It also holds the registry's same-commit rule for the closed diagnostic set,
 because #571 swapped a member of it — and #570 swapped another under the same
-rule, whose successor #583 then removed with none of its own, so the swap and
-both removals are asserted here, surface by surface.
+rule, whose successor #583 then removed with none of its own. #584 renders a
+constant, so #571's successor went the same way: every member those swaps
+produced or removed is now one nothing produces, and each removal is asserted
+here, surface by surface.
 """
 import json
 from pathlib import Path
@@ -90,25 +92,19 @@ def test_the_contract_states_both_grammars_and_what_gives_the_meaning():
     assert f"`{anchored(CANONICAL)}`" in convention
 
 
-#: The member one valueless constant used to produce, and the one a valued
-#: constant produces until a Code Builder version renders it (#571).
-REMOVED = "constant_value_not_declared"
-ADDED = "constant_measurement_not_renderable"
-
-#: Every member swapped under the registry's same-commit rule, removed member
-#: first and its successor second.
-SWAPS = {
-    "#571": (REMOVED, ADDED),
-}
-
-#: Every member removed with no successor. #570 swapped the member that called
-#: a cost read off the supplier's response unsupported for one saying only
-#: this Code Builder version could not yet render the read; #583 renders it,
-#: so that one went too, and nothing names the state any more — both are on no
-#: surface.
+#: Every member removed under the registry's same-commit rule, by the ticket
+#: that removed it — none has a successor now. #571 swapped the member one
+#: valueless constant produced for one a valued constant produced until a Code
+#: Builder version rendered it; #584 renders it, so that one went too. #570
+#: swapped the member that called a cost read off the supplier's response
+#: unsupported for one saying only this Code Builder version could not yet
+#: render the read; #583 renders it. Nothing names any of the four states any
+#: more — each is on no surface.
 REMOVALS = {
     "#570": "reported_cost_provider_response_unsupported",
+    "#571": "constant_value_not_declared",
     "#583": "reported_cost_provider_response_not_renderable",
+    "#584": "constant_measurement_not_renderable",
 }
 
 #: Each removed member's explanation, in its own WORDS (#571's owner ruling: a
@@ -128,6 +124,12 @@ OLD_EXPLANATIONS = {
              "by the caller with the request below"),
     "#583": ("cannot yet generate code that reads",
              "reported-cost mapping is valid platform configuration"),
+    # #584's at `86d978d4`: the catalogue's remediation, the renderers'
+    # raising message, and the console's label.
+    "#584": ("constant quantity is valid platform configuration",
+             "cannot yet generate code that uses",
+             "cannot yet generate its use",
+             "valid platform configuration that this Code Builder version"),
 }
 
 #: Every generated surface the closed set of diagnostic codes reaches.
@@ -167,34 +169,15 @@ def _platform_written():
     return written
 
 
-@pytest.mark.parametrize("ticket", sorted(SWAPS))
-def test_the_removed_member_is_on_no_surface_and_its_successor_on_every_one(
-        ticket):
-    """The registry's same-commit rule, surface by surface: a state nothing
-    produces any more is named on no surface, and the state that replaced it
-    on every one. (#571: nothing can declare a constant without its value.)
-    The registry's own comment records each removal, so the registry is read
-    by its values."""
-    removed, added = SWAPS[ticket]
-    root = CONTRACT.parents[1]
-
-    assert removed not in _registry_values("diagnostic_code")
-    assert added in _registry_values("diagnostic_code")
-    for path in GENERATED:
-        text = (root / path).read_text(encoding="utf-8")
-        assert removed not in text, path
-        assert added in text, path
-    assert [path.name for path in _platform_written()
-            if removed in path.read_text(encoding="utf-8")] == []
-
-
 @pytest.mark.parametrize("ticket", sorted(REMOVALS))
 def test_a_member_removed_with_no_successor_is_on_no_surface(ticket):
-    """The same rule for a removal alone: the state is one nothing produces,
-    so no surface names it — the registry's values, every generated surface,
-    and every file a renderer or the platform wrote. (#570: a cost read off
-    the supplier's response has a transport of its own. #583: generated code
-    reads it.)"""
+    """The registry's same-commit rule, surface by surface: the state is one
+    nothing produces, so no surface names it — the registry's values (read by
+    value, because its own comment records each removal), every generated
+    surface, and every file a renderer or the platform wrote. (#570: a cost
+    read off the supplier's response has a transport of its own. #571:
+    nothing can declare a constant without its value. #583: generated code
+    reads the cost. #584: generated code uses the constant.)"""
     removed = REMOVALS[ticket]
     root = CONTRACT.parents[1]
 
