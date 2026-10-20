@@ -211,7 +211,9 @@ _EXACT_DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
 
 
 def _canonical_quantity(name, value):
-    """One quantity as the canonical exact text the wire carries (#603).
+    """One quantity as the canonical exact text this SDK sends (#603). The
+    wire admits any exact spelling and the server canonicalises it; the SDK
+    sends the canonical one so that what a caller logs is what UBB keeps.
 
     An ``int`` is exact and goes as its digits. A ``Decimal`` goes as its
     exact fixed-point digits — never through ``float`` and never through a

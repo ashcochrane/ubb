@@ -211,8 +211,13 @@ export function customerPriceAmount(
  */
 export const PRICING_STATUS_EXPLANATIONS = {
   known: "UBB resolved what to charge for this, and this is the amount.",
+  // REASON-NEUTRAL, ON PURPOSE (#603; the owner's review of #614): an
+  // `unknown` price may be one UBB could not determine OR one it calculated
+  // exactly and will not publish (`negative_price_unsupported`), and the
+  // second is not "missing". What separates the two is the reason's own
+  // sentence, which `customerPriceExplanation` adds after this one.
   unknown:
-    "UBB has no customer price for this. The amount is missing rather than zero: it is left out of every revenue total, which counts it among the amounts not included.",
+    "No authoritative customer price is recorded for this event. It is not treated as zero and is not included in revenue totals.",
   waived:
     "Somebody decided not to pursue this charge. The revenue really is nothing — this is a decided loss rather than a question still open, so no total is missing it.",
   not_applicable:
@@ -243,13 +248,23 @@ export const NOT_APPLICABLE_REASON_EXPLANATIONS = {
 } as const satisfies Record<NotApplicableReason, string>;
 
 /**
- * Why an `unknown` price carries a published reason, in a sentence (#603).
- * Total over the generated type, as the two maps above are.
+ * Why an `unknown` price is unknown, where the server published a reason, in
+ * the sentence that follows the status's own (#603). Total over the generated
+ * type, as the two maps above are.
  */
 export const PRICING_STATUS_REASON_EXPLANATIONS = {
   negative_price_unsupported:
-    "This configuration calculated a negative customer price, and UBB does not carry a negative price: nothing was clamped to zero or charged, and no recovery run will resolve it. The amount is left out of every revenue total, which counts it among the amounts not included.",
+    "UBB calculated a negative price, but the current money rails cannot carry it authoritatively. Nothing was clamped to zero or charged, and no recovery run will resolve it.",
 } as const satisfies Record<PricingStatusReason, string>;
+
+/**
+ * The same sentence where the server published NO reason — the ordinary
+ * `unknown`, for want of input. The reason is nullable on every schema that
+ * publishes it, and null means no specific published reason applies, which
+ * for this status is a price that could not be determined.
+ */
+export const UNKNOWN_PRICE_WITHOUT_A_REASON =
+  "The price could not be determined from the configuration and inputs UBB had; a resolution run can complete it once they are in place.";
 
 /**
  * The one sentence to show beside a price, whichever of the answers it is.
@@ -264,14 +279,25 @@ export const PRICING_STATUS_REASON_EXPLANATIONS = {
  * schema that publishes it, so a payload may legitimately arrive with the
  * status and no cause. Rendering nothing there would put the receipt back to a
  * dash with no explanation.
+ *
+ * ⚠ `unknown` IS THE EXCEPTION: ITS SENTENCE IS TWO, AND NEITHER WINS (#603;
+ * the owner's review of #614). The status's own sentence is reason-neutral —
+ * no authoritative price is recorded, it is not zero, it is not in revenue —
+ * and the reason's sentence follows it: a negative price UBB calculated and
+ * the rails cannot carry, or, where the server published no reason, a price
+ * that could not be determined. Collapsing the two meanings into one sentence
+ * is what `pricing_status_reason` exists to prevent.
  */
 export function customerPriceExplanation(price: CustomerPrice): string {
   const reason = price.not_applicable_reason;
   if (price.pricing_status === "not_applicable" && reason != null) {
     return NOT_APPLICABLE_REASON_EXPLANATIONS[reason];
   }
-  if (price.pricing_status === "unknown" && price.pricing_status_reason !== null) {
-    return PRICING_STATUS_REASON_EXPLANATIONS[price.pricing_status_reason];
+  if (price.pricing_status === "unknown") {
+    const why = price.pricing_status_reason === null
+      ? UNKNOWN_PRICE_WITHOUT_A_REASON
+      : PRICING_STATUS_REASON_EXPLANATIONS[price.pricing_status_reason];
+    return `${PRICING_STATUS_EXPLANATIONS.unknown} ${why}`;
   }
   return PRICING_STATUS_EXPLANATIONS[price.pricing_status];
 }

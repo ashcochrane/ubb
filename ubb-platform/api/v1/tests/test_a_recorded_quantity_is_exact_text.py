@@ -1,12 +1,13 @@
-"""A recorded Measurement quantity is exact text, end to end (#603, ADR-0020).
+"""A recorded Measurement quantity travels as exact text (#603, ADR-0020 §1).
 
-The wire carries every quantity as a canonical exact signed-decimal STRING,
-whatever its value type, through #571's one grammar
-(`apps/platform/event_types/exact_decimals.py`). A JSON number is refused, even
-a whole one, because in most clients it has already been a binary float on the
-way; what crosses is canonicalised before anything stores it, and the same text
-is what storage, the acknowledgement's echo, the detail read and the receipt's
-components hold — byte for byte, at every length.
+The wire carries every quantity as an exact decimal STRING in #571's ACCEPTED
+grammar, whatever its value type (`apps/platform/event_types/exact_decimals.py`).
+A JSON number is refused, even a whole one, because in most clients it has
+already been a binary float on the way. UBB canonicalises what it admits before
+anything stores it — a client need not: `"01.50"` is admitted and held as
+`"1.5"` — and the CANONICAL text is what storage, the acknowledgement's echo,
+the detail read and the receipt's components hold, byte for byte, at every
+length.
 
 **Negatives are recordable and zero is a real value.** The door used to refuse a
 negative quantity (the money-model decision's §6.2(2), "quantities are
@@ -195,6 +196,7 @@ class AValueIsCanonicalisedBeforeAnythingHoldsItTest(
         (WHOLE, "-0"): "0",
         (WHOLE, "-000"): "0",
         (WHOLE, "12.0"): "12",
+        (FRACTIONAL, "01.50"): "1.5",
         (FRACTIONAL, "01.500"): "1.5",
         (FRACTIONAL, "-0.000"): "0",
         (FRACTIONAL, "-00.250"): "-0.25",

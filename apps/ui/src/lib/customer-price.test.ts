@@ -6,6 +6,7 @@ import {
   customerPriceAmount,
   customerPriceExplanation,
   PRICING_STATUS_REASON_EXPLANATIONS,
+  UNKNOWN_PRICE_WITHOUT_A_REASON,
   pricingStatusReasonLabel,
   notApplicableReasonLabel,
   pricingMethodLabel,
@@ -219,7 +220,7 @@ describe("what the console says about a price it does not have", () => {
       PRICING_STATUS_EXPLANATIONS.known,
     );
     expect(customerPriceExplanation(unknownPrice())).toBe(
-      PRICING_STATUS_EXPLANATIONS.unknown,
+      `${PRICING_STATUS_EXPLANATIONS.unknown} ${UNKNOWN_PRICE_WITHOUT_A_REASON}`,
     );
     expect(customerPriceExplanation(waivedPrice())).toBe(
       PRICING_STATUS_EXPLANATIONS.waived,
@@ -231,8 +232,17 @@ describe("what the console says about a price it does not have", () => {
   // an outstanding question, and one that counted `not_applicable` would report
   // a metering-only tenant as owing itself revenue.
   it("names UNKNOWN as the one absence a completeness count is about", () => {
-    expect(PRICING_STATUS_EXPLANATIONS.unknown).toMatch(/missing|not yet|has not|no customer price/i);
+    expect(PRICING_STATUS_EXPLANATIONS.unknown).toMatch(/no authoritative customer price/i);
+    expect(PRICING_STATUS_EXPLANATIONS.unknown).toMatch(/not treated as zero/i);
     expect(PRICING_STATUS_EXPLANATIONS.waived).toMatch(/decid|waiv|pursue/i);
+  });
+
+  // ⚠ The status's own sentence is REASON-NEUTRAL (the owner's review of
+  // #614): an `unknown` price may have been calculated exactly and refused
+  // publication, which is not "missing" — so the shared sentence names
+  // neither cause, and each cause is said by its own sentence after it.
+  it("says nothing in the shared unknown sentence that only one cause makes true", () => {
+    expect(PRICING_STATUS_EXPLANATIONS.unknown).not.toMatch(/missing|could not|negative|calculated/i);
   });
 
   // ⚠ THE RETIRED PROMISE STAYS RETIRED (#603, ADR-0020 §6): no sentence a
@@ -242,6 +252,7 @@ describe("what the console says about a price it does not have", () => {
     const sentences = [
       ...Object.values(PRICING_STATUS_EXPLANATIONS),
       ...Object.values(PRICING_STATUS_REASON_EXPLANATIONS),
+      UNKNOWN_PRICE_WITHOUT_A_REASON,
     ];
     for (const sentence of sentences) {
       expect(sentence).not.toMatch(/floor|at least|is higher|is lower|minimum/i);
@@ -260,14 +271,24 @@ describe("a price status's own reason", () => {
     }
   });
 
-  it("prefers the reason's sentence beside an unknown price that carries one", () => {
+  it("follows the shared unknown sentence with the reason's own", () => {
     const negative = negativePriceUnsupported();
     expect(negative.pricing_status).toBe("unknown");
     expect(negative.billed_cost_micros).toBeNull();
     expect(customerPriceExplanation(negative)).toBe(
-      PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported,
+      `${PRICING_STATUS_EXPLANATIONS.unknown} ${PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported}`,
     );
     expect(customerPriceExplanation(negative)).not.toBe(customerPriceExplanation(unknownPrice()));
+  });
+
+  // The amount is NOT missing here: UBB calculated it exactly and refused to
+  // publish it as an authoritative price. Only the missing-input case may say
+  // the price could not be determined.
+  it("never calls a calculated negative price missing or undetermined", () => {
+    const said = customerPriceExplanation(negativePriceUnsupported());
+    expect(said).not.toMatch(/missing|could not be determined/i);
+    expect(said).toMatch(/calculated a negative price/i);
+    expect(customerPriceExplanation(unknownPrice())).toMatch(/could not be determined/i);
   });
 
   it("renders the absence, never a negative figure or a zero", () => {
@@ -276,8 +297,10 @@ describe("a price status's own reason", () => {
   });
 
   it("says nothing of a negative price where the unknown carries no reason", () => {
-    expect(customerPriceExplanation(unknownPrice())).toBe(PRICING_STATUS_EXPLANATIONS.unknown);
-    expect(PRICING_STATUS_EXPLANATIONS.unknown).not.toMatch(/negative/i);
+    expect(customerPriceExplanation(unknownPrice())).toBe(
+      `${PRICING_STATUS_EXPLANATIONS.unknown} ${UNKNOWN_PRICE_WITHOUT_A_REASON}`,
+    );
+    expect(customerPriceExplanation(unknownPrice())).not.toMatch(/negative/i);
   });
 
   it("renders a reason the registry has never seen as the token the server sent", () => {

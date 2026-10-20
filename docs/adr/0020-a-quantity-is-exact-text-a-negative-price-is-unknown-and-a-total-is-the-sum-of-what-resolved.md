@@ -34,17 +34,29 @@ generated file could send, so the Blueprint refused it (`constant_measurement_no
 
 ## Decision
 
-### 1. A quantity is canonical exact signed-decimal text, everywhere it travels
+### 1. A quantity travels as exact decimal text, and UBB canonicalises it on admission
 
-A Measurement quantity is written, carried and kept as TEXT in #571's grammar
-(`apps/platform/event_types/exact_decimals.py`): base-10 ASCII digits, an optional leading `-`, an
-optional fractional part with a digit on each side of the point, and nothing else — no exponent, no
-`+`, no whitespace, separators or locale formatting. It is canonicalised before anything holds it
-(`01.500` is `1.5`, `12.0` is `12`, `-0` is `0`), by editing the text, so the value is never a
-number on the way. That one form is what the single and batch recording routes accept, what Verify's
-record accepts, what `PostingMeasurement` stores, what the acknowledgement echoes, what the event
-detail read publishes, what a receipt holds (§3), what a recovery reason and a resolution run read
-back, and what the SDK and both generated targets send (§8).
+A quantity is transported as exact decimal text. UBB canonicalises an admitted value before
+persistence; stored quantities, receipts and read surfaces use the canonical text. No binary
+floating-point conversion occurs.
+
+The two grammars are #571's, for a constant's declared value, applied unchanged to a recorded one
+(`apps/platform/event_types/exact_decimals.py`):
+
+- **What a caller may send** — the single and batch recording routes and Verify's record — is any
+  ACCEPTED spelling: base-10 ASCII digits, an optional leading `-`, an optional fractional part with
+  a digit on each side of the point, and nothing else (no exponent, no `+`, no whitespace,
+  separators or locale formatting). Leading zeros and trailing fractional zeros are spellings, not
+  errors: `"01.50"` is admitted.
+- **What UBB holds and answers** is the CANONICAL text admission makes of it, by editing the text so
+  the value is never a number on the way (`"01.50"` is `"1.5"`, `"12.0"` is `"12"`, `"-0"` is
+  `"0"`): what `PostingMeasurement` stores, what the acknowledgement echoes, what the event detail
+  read publishes, what a receipt holds (§3), and what a recovery reason and a resolution run read
+  back.
+
+The server is the canonicalisation authority, and no client is required to send byte-identical
+spellings: the SDK happens to canonicalise before it sends, and the shell target sends an accepted
+spelling exactly as it was passed (§8). Both reach the same exact value.
 
 - **A JSON number is refused, even a whole one.** The wire's value type is a string with the
   grammar's pattern; `2` is a 422 naming the quantity, as `"2.5x"` is.
@@ -185,6 +197,17 @@ Two questions are kept apart on purpose (`core/crossing.py`):
   resolution takes an ACTIVE unit's resolved COGS to its ceiling, the patrol's sweep — the same
   `ceiling_reached` compare over the same columns — stops it on its next pass. A stopped unit stays
   stopped whatever a resolution does.
+- **The completion and the unit's adjustment are one fact** (the owner's review of #614). Each
+  door runs its conditional update and the call into the unit inside ONE transaction of its own — a
+  savepoint under a caller's, the transaction itself in autocommit — so the two can never become
+  separately durable. A replay finds no completion and adds nothing; an exception after the update,
+  in the middle of the subtask → parent roll-up included, takes the completion back with it; and of
+  two concurrent completions the conditional update admits one. The unit rows are read and written
+  under their locks (parent before child), so a resolution racing a recording on the same unit loses
+  neither amount. A resolution takes the posting before its unit — the reverse of
+  `core/locking.py`'s order — and meets no cycle: the kernel cannot import a posting, and the
+  recording path holds a unit while writing only the posting it is creating, which no resolution
+  can hold.
 
 ### 8. The generated code: renderer contract 3, and a declared constant rendered (#584)
 
@@ -285,6 +308,7 @@ Each is quoted as it stood on `main` at `86d978d4`.
 | §5 — the rails refuse a negative known price by name and move nothing | `ubb-platform/apps/billing/tests/test_outbox_handlers.py` — `test_a_negative_known_price_is_refused_by_name_and_moves_nothing`; `ubb-platform/apps/referrals/tests/test_handlers.py`; `ubb-platform/api/v1/tests/test_the_charge_reaches_the_rails_as_one_marked_posting.py` — `test_the_rails_would_have_refused_it_anyway` |
 | §6 — no published description promises a direction for a total | `ubb-platform/api/v1/tests/test_openapi_contract.py` — `NoTotalIsPublishedAsABoundTest` |
 | §7 — the assessment `indeterminate` whatever the resolved total; the stop fires on the resolved total | `ubb-platform/core/tests/test_crossing.py` — `test_something_unresolved_is_indeterminate_whatever_the_resolved_total`, `test_everything_resolved_at_or_above_is_reached`; `ubb-platform/api/v1/tests/test_one_rule_pins.py` — `test_resolved_at_the_ceiling_is_stopped_while_the_assessment_is_indeterminate`, `test_a_later_negative_resolution_moves_the_assessment_and_the_kill_stands` (the late-resolution door) |
+| §7 — a late resolution reaches its unit exactly once: no replay adds twice, no failure leaves the posting known and the unit stale (subtask → parent included, and in autocommit), and concurrent completions cannot both win | `ubb-platform/apps/metering/pricing/tests/test_a_late_resolution_reaches_its_unit_once.py` — `AReplayAddsNothingTest`, `AFailureLeavesNeitherWrittenTest`, `WithNoTransactionOfItsOwnTest`, `ConcurrentCompletionsTest` |
 | §8 — renderer contract 3, a constant resolved configured with its value | `ubb-platform/api/v1/tests/test_the_integration_blueprint.py`; `ubb-platform/api/v1/tests/test_a_constant_measurement_declares_its_value.py`; `ubb-platform/api/v1/tests/test_verifying_a_blueprint.py` — `TestAConstantIsSentAsDeclared` |
 | §8 — both targets send a quantity as exact text and write a constant as a typed literal (Seam B) | `apps/codegen/tests/` — the execution suites' "a quantity" cases on both targets, and `writes and sends an integer constant longer than CPython compiles as a literal`; `ubb-sdk/tests/test_a_quantity_is_sent_as_exact_text.py` — `test_an_int_past_cpythons_text_conversion_is_sent_whole` |
 | §8 — generated files, unmodified, record a decimal, a count past a float, and constants of both types, one negative, exactly (Seam C) | `tests/code_builder_execution/_scenarios.py` — `DECIMAL_QUANTITY`, `CONSTANT_QUANTITIES` |

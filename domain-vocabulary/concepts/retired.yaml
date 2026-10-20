@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,407 of 2,849 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,408 of 2,850 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2822,6 +2822,11 @@ measurement_key:
     # occurrences, UNMOVED). One file arrived, swept: ADR-0020, which names
     # the receipt component's quantity key through `receipts.QUANTITY_KEY`
     # rather than spelling it.
+    #
+    # 2026-10-20, the owner's review of #614: 2,407 of 2,849 -> 2,408 of
+    # 2,850 tracked files (`units` 42 files / 119 occurrences, UNMOVED). One
+    # file arrived, swept: the module proving a late resolution reaches its
+    # unit of work exactly once.
 
     - term: units
       retired_as: >-

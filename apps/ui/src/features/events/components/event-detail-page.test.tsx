@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   NOT_APPLICABLE_REASON_EXPLANATIONS,
   PRICING_STATUS_EXPLANATIONS,
+  UNKNOWN_PRICE_WITHOUT_A_REASON,
   notApplicableReasonLabel,
   pricingStatusLabel,
 } from "@/lib/customer-price";
@@ -480,7 +481,9 @@ describe("EventDetailPage", () => {
     renderPage({ eventId: EVENT_UNPRICED_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
-    expect(screen.getByText(PRICING_STATUS_EXPLANATIONS.unknown)).toBeInTheDocument();
+    expect(
+      screen.getByText(`${PRICING_STATUS_EXPLANATIONS.unknown} ${UNKNOWN_PRICE_WITHOUT_A_REASON}`),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Why")).not.toBeInTheDocument();
   });
 

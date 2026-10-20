@@ -1283,8 +1283,9 @@ PUT /api/v1/billing/postpaid-config removed the required property `usage_line_it
 #
 # LICENCE: ADR-0007 §5 - the pre-live lane is open, and #603's rulings make the
 # wire change deliberately. The same window changes the recorded quantity's
-# wire type (`measurements` values become canonical exact decimal STRINGS on
-# the recording request, the batch item and Verify's record). The authoring
+# wire type (`measurements` values become exact decimal STRINGS on the
+# recording request, the batch item and Verify's record, canonicalised on
+# admission). The authoring
 # comparison (`--baseline origin/main --emit`) reports it as six findings, two
 # per surface - the value's `type` changed from `integer` to `string`, and the
 # exact-decimal `pattern` added - and all six are reviewed and deliberate. They

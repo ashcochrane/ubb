@@ -40,6 +40,8 @@ the cost side and not on the revenue side.
 """
 import enum
 
+from django.db import transaction
+
 from apps.metering.queries import mark_backfill_dirty_period_for_posting
 from apps.metering.usage.models import Posting
 from core.vocabulary import COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED
@@ -71,7 +73,14 @@ def its_unit_takes_up_the_resolution(posting_id, **resolved):
     """Tell the unit of work this posting was counted in, if any, that the
     amount it counted as unresolved has resolved (#603) — so its total and
     its count, and the ceiling assessment derived from them, follow the
-    recovery. Shared by both settlement doors, which are one act twice."""
+    recovery. Shared by both settlement doors, which are one act twice.
+
+    ⚠ ONLY EVER INSIDE THE DOOR'S OWN TRANSACTION, after its conditional
+    update reported exactly one completion. That is the whole guarantee that
+    the posting's unknown → known move and the unit's adjustment are one fact:
+    a replay finds no completion and adds nothing, and a failure here rolls
+    the completion back with it (owner's review of #614;
+    `test_a_late_resolution_reaches_its_unit_once.py`)."""
     task_id = (Posting.objects.filter(pk=posting_id)
                .values_list("task_id", flat=True).first())
     if task_id is not None:
@@ -119,34 +128,45 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
     completes_the_record = ({Posting.RECEIPT_COLUMN: pricing_receipt}
                             if pricing_receipt is not None else {})
 
-    # ADR-0007 §2's conditional update, and the reason it is one statement: the
-    # WHERE clause holds the whole precondition, so two callers racing on the
-    # same posting cannot both find it unresolved. A read followed by a write
-    # would pass every test that did not run them concurrently.
-    affected = (Posting.objects
-                .filter(pk=posting_id,
-                        provider_cost_micros__isnull=True,
-                        costing_status=COSTING_STATUS_UNRESOLVED)
-                .update(provider_cost_micros=provider_cost_micros,
-                        costing_status=COSTING_STATUS_KNOWN,
-                        unresolved_reason=None,
-                        **completes_the_record))
+    # ⚠ THE COMPLETION AND EVERYTHING IT OWES ARE ONE TRANSACTION, WHATEVER
+    # THE CALLER HOLDS (#603; the owner's review of #614). The settled posting
+    # moves its unit's total and count (`its_unit_takes_up_the_resolution`),
+    # and those must never become two independently durable facts: in a
+    # caller's transaction this is a savepoint, in autocommit it is the
+    # transaction — and either way an exception after the update, in the
+    # middle of a subtask → parent roll-up included, takes the completion
+    # back with it. Only the outcome below is decided outside it.
+    with transaction.atomic():
+        # ADR-0007 §2's conditional update, and the reason it is one
+        # statement: the WHERE clause holds the whole precondition, so two
+        # callers racing on the same posting cannot both find it unresolved —
+        # which is also why a replay adds nothing to the unit. A read followed
+        # by a write would pass every test that did not run them concurrently.
+        affected = (Posting.objects
+                    .filter(pk=posting_id,
+                            provider_cost_micros__isnull=True,
+                            costing_status=COSTING_STATUS_UNRESOLVED)
+                    .update(provider_cost_micros=provider_cost_micros,
+                            costing_status=COSTING_STATUS_KNOWN,
+                            unresolved_reason=None,
+                            **completes_the_record))
 
-    if affected == 1:
-        mark_backfill_dirty_period_for_posting(posting_id)
-        its_unit_takes_up_the_resolution(
-            posting_id, provider_cost_micros=provider_cost_micros)
-        return Settlement.SETTLED
+        if affected > 1:
+            # Unreachable while the filter above names a primary key, and kept
+            # for what it makes loud if that ever stops being true: a
+            # settlement that quietly wrote one supplier's amount across
+            # several postings would look exactly like a successful one from
+            # here. ADR-0007 §2 asks for this assertion by name — and raised
+            # inside the transaction, it takes the write back.
+            raise RuntimeError(
+                f"a settlement matched {affected} postings; it may only ever "
+                f"match one (posting_id={posting_id})")
 
-    if affected > 1:
-        # Unreachable while the filter above names a primary key, and kept for
-        # what it makes loud if that ever stops being true: a settlement that
-        # quietly wrote one supplier's amount across several postings would
-        # look exactly like a successful one from here. ADR-0007 §2 asks for
-        # this assertion by name.
-        raise RuntimeError(
-            f"a settlement matched {affected} postings; it may only ever match "
-            f"one (posting_id={posting_id})")
+        if affected == 1:
+            mark_backfill_dirty_period_for_posting(posting_id)
+            its_unit_takes_up_the_resolution(
+                posting_id, provider_cost_micros=provider_cost_micros)
+            return Settlement.SETTLED
 
     status = (Posting.objects.filter(pk=posting_id)
               .values_list("costing_status", flat=True).first())

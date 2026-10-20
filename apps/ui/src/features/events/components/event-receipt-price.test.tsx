@@ -47,6 +47,7 @@ import {
   NOT_APPLICABLE_REASON_EXPLANATIONS,
   PRICING_STATUS_EXPLANATIONS,
   PRICING_STATUS_REASON_EXPLANATIONS,
+  UNKNOWN_PRICE_WITHOUT_A_REASON,
   notApplicableReasonLabel,
   pricingStatusLabel,
   pricingStatusReasonLabel,
@@ -220,14 +221,17 @@ describe("a receipt whose configuration calculated a negative price", () => {
     );
   });
 
-  it("explains it with the reason's sentence, not the plain unknown one", async () => {
+  it("explains it with the shared unknown sentence and then the reason's, never as missing", async () => {
     renderReceipt(NEGATIVE_PRICE_EVENT_ID);
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
     expect(
-      screen.getByText(PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported),
+      screen.getByText(
+        `${PRICING_STATUS_EXPLANATIONS.unknown} ${PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported}`,
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(PRICING_STATUS_EXPLANATIONS.unknown)).not.toBeInTheDocument();
+    expect(priceSectionText()).not.toContain(UNKNOWN_PRICE_WITHOUT_A_REASON);
+    expect(priceSectionText()).not.toMatch(/missing/i);
   });
 
   it("renders no amount — never the negative figure, never a zero — and the quantity as recorded", async () => {

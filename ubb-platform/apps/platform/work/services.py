@@ -969,7 +969,11 @@ class TaskService:
 
         Lock order is `accumulate_cost`'s — parent before child — so a
         recovery and a recording on the same tree cannot deadlock. Must be
-        called inside a transaction.
+        called inside a transaction, and it is: each settlement door makes its
+        posting's completion and this one transaction, so the two can never
+        become separately durable facts — a replay completes nothing and so
+        adds nothing, and a failure here takes the completion back (the
+        owner's review of #614).
         """
         if (provider_cost_micros is None) == (billed_cost_micros is None):
             raise ValueError(

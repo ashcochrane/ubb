@@ -2,8 +2,9 @@
 text (#603; the owner's ruling `6279966961`; ADR-0020).
 
 The version says what a component's quantity IS. Schema 1 holds a whole NUMBER and
-schema 2 the canonical TEXT the wire, the measurement record and the
-acknowledgement carry; a writer built today emits schema 2 only, and every
+schema 2 the canonical TEXT UBB makes of an admitted quantity, which the
+measurement record and the acknowledgement carry too; a writer built today
+emits schema 2 only, and every
 reader reads the pre-version shape, 1 and 2. An old receipt is read, never
 rewritten — so the recovery reader, `recorded_quantities`, has to know both
 spellings and answer the same exact bag for either: left reading schema 1

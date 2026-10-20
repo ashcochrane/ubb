@@ -192,9 +192,10 @@ JSON bag and **a misspelled quantity was silently free**: it hit a `continue`, c
 and told nobody. Only a declared quantity may participate in monetary calculation. Declarations are
 **Event-Type-local** — the same code on two Event Types is two independent records that happen to
 share a spelling, which is the correctness boundary, not a duplication to be cleaned up.
-**A recorded quantity is exact text** (#603, ADR-0020 §1): the wire, `PostingMeasurement`, the
-acknowledgement, the detail read and the receipt carry it in the constant value's own canonical
-grammar, never as a JSON number. `integer` requires a whole value and `decimal` permits a fraction;
+**A recorded quantity is exact text** (#603, ADR-0020 §1), never a JSON number: it travels in the
+constant value's ACCEPTED grammar, UBB canonicalises it on admission, and `PostingMeasurement`, the
+acknowledgement, the detail read and the receipt hold and answer the CANONICAL text — no binary
+float on the way. `integer` requires a whole value and `decimal` permits a fraction;
 a negative quantity is valid and zero is a real known value. Costing reads it exactly, an exact
 half-micro tie goes away from zero, and an amount past the money columns is refused by name.
 (`apps/platform/event_types/models.py:Measurement`)

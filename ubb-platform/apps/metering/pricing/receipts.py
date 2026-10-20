@@ -247,8 +247,9 @@ LEGACY_SCHEMA_VERSION = 0
 SECTIONED_SCHEMA_VERSION = 1
 
 #: The same sections, whose components hold the quantity as its
-#: CANONICAL EXACT SIGNED-DECIMAL TEXT (#603, ADR-0020) — the form the wire,
-#: the measurement record and the acknowledgement carry it in. A quantity may
+#: CANONICAL EXACT SIGNED-DECIMAL TEXT (#603, ADR-0020) — the form UBB
+#: canonicalises an admitted quantity to before it is stored, and the one the
+#: measurement record and the acknowledgement carry it in. A quantity may
 #: be fractional, negative and of any length since #603, and no number a JSON
 #: column can hold says all three exactly. A component key whose VALUE changes
 #: kind is a key that moved, which is what this module's rule bumps the

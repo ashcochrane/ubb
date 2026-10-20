@@ -55,6 +55,8 @@ separable ticket and is recorded here rather than left as an absence.**
 """
 import enum
 
+from django.db import transaction
+
 from apps.metering.pricing.services.cost_settlement import (
     its_unit_takes_up_the_resolution)
 from apps.metering.queries import mark_backfill_dirty_period_for_posting
@@ -132,29 +134,37 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
     # never hands this door a price whose reason is `negative_price_unsupported`
     # (`resolution_run.NOT_RETRIED`); the capability that one day carries a
     # negative price completes it through here, and the reason goes with it.
-    affected = (Posting.objects
-                .filter(pk=posting_id,
-                        billed_cost_micros__isnull=True,
-                        pricing_status=PRICING_STATUS_UNKNOWN)
-                .update(billed_cost_micros=billed_cost_micros,
-                        pricing_status=PRICING_STATUS_KNOWN,
-                        pricing_status_reason=None,
-                        **completes_the_record))
+    #
+    # ⚠ AND IT IS ONE TRANSACTION WITH EVERYTHING IT OWES, whatever the caller
+    # holds — the cost door's rule, for the cost door's reason (#603; the
+    # owner's review of #614): the resolved posting moves its unit's billed
+    # total and unpriced count, and the two can never become separately
+    # durable facts.
+    with transaction.atomic():
+        affected = (Posting.objects
+                    .filter(pk=posting_id,
+                            billed_cost_micros__isnull=True,
+                            pricing_status=PRICING_STATUS_UNKNOWN)
+                    .update(billed_cost_micros=billed_cost_micros,
+                            pricing_status=PRICING_STATUS_KNOWN,
+                            pricing_status_reason=None,
+                            **completes_the_record))
 
-    if affected == 1:
-        mark_backfill_dirty_period_for_posting(posting_id)
-        its_unit_takes_up_the_resolution(
-            posting_id, billed_cost_micros=billed_cost_micros)
-        return PriceResolution.RESOLVED
+        if affected > 1:
+            # Unreachable while the filter above names a primary key, and kept
+            # for what it makes loud if that ever stops being true: one
+            # customer's price written quietly across several postings would
+            # look exactly like a successful resolution from here — and raised
+            # inside the transaction, it takes the write back.
+            raise RuntimeError(
+                f"a price resolution matched {affected} postings; it may only "
+                f"ever match one (posting_id={posting_id})")
 
-    if affected > 1:
-        # Unreachable while the filter above names a primary key, and kept for
-        # what it makes loud if that ever stops being true: one customer's
-        # price written quietly across several postings would look exactly like
-        # a successful resolution from here.
-        raise RuntimeError(
-            f"a price resolution matched {affected} postings; it may only ever "
-            f"match one (posting_id={posting_id})")
+        if affected == 1:
+            mark_backfill_dirty_period_for_posting(posting_id)
+            its_unit_takes_up_the_resolution(
+                posting_id, billed_cost_micros=billed_cost_micros)
+            return PriceResolution.RESOLVED
 
     status = (Posting.objects.filter(pk=posting_id)
               .values_list("pricing_status", flat=True).first())
