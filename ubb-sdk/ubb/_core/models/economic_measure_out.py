@@ -32,8 +32,8 @@ class EconomicMeasureOut:
     so in `status`; a measure that could not be attributed at the requested
     grain carries whatever part of itself could be placed — or, for a margin,
     nothing at all — and says so there too. A reader that took the figure and
-    dropped that field would publish a floor as a total, which is the defect the
-    whole surface exists to end.
+    dropped that field would publish a partial sum as a total, which is the
+    defect the whole surface exists to end.
 
     **What each state says about the fields beside it**, which is what the state
     is for:

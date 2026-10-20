@@ -15,6 +15,7 @@ from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEv
 from ..models.usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
 from ..models.usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
 from ..models.usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
+from ..models.usage_event_detail_out_pricing_status_reason_type_0 import UsageEventDetailOutPricingStatusReasonType0
 from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -46,6 +47,10 @@ class UsageEventDetailOut:
             kind (UsageEventDetailOutKind):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
             pricing_status (UsageEventDetailOutPricingStatus):
+            pricing_status_reason (None | UsageEventDetailOutPricingStatusReasonType0): Why `pricing_status` applies, where
+                a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the
@@ -54,7 +59,8 @@ class UsageEventDetailOut:
             currency (str | Unset):  Default: 'usd'.
             event_type (str | Unset):  Default: ''.
             grouping_fields (UsageEventDetailOutGroupingFields | Unset):
-            measurements (UsageEventDetailOutMeasurements | Unset):
+            measurements (UsageEventDetailOutMeasurements | Unset): The quantities this posting was measured by, keyed as
+                sent. Each is the canonical exact decimal text UBB stored.
             metadata (UsageEventDetailOutMetadata | Unset):
             not_applicable_reason (None | Unset | UsageEventDetailOutNotApplicableReasonType0):
             pricing_method (None | Unset | UsageEventDetailOutPricingMethodType0):
@@ -87,6 +93,7 @@ class UsageEventDetailOut:
     kind: UsageEventDetailOutKind
     measurements_status: UsageEventDetailOutMeasurementsStatus
     pricing_status: UsageEventDetailOutPricingStatus
+    pricing_status_reason: None | UsageEventDetailOutPricingStatusReasonType0
     billed_cost_micros: int | None | Unset = UNSET
     claimed_provider_cost_micros: int | None | Unset = UNSET
     currency: str | Unset = 'usd'
@@ -129,6 +136,12 @@ class UsageEventDetailOut:
         measurements_status = self.measurements_status.value
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, UsageEventDetailOutPricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         billed_cost_micros: int | None | Unset
         if isinstance(self.billed_cost_micros, Unset):
@@ -230,6 +243,7 @@ class UsageEventDetailOut:
             "kind": kind,
             "measurements_status": measurements_status,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
         })
         if billed_cost_micros is not UNSET:
             field_dict["billed_cost_micros"] = billed_cost_micros
@@ -304,6 +318,24 @@ class UsageEventDetailOut:
         pricing_status = UsageEventDetailOutPricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> None | UsageEventDetailOutPricingStatusReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = UsageEventDetailOutPricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UsageEventDetailOutPricingStatusReasonType0, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         def _parse_billed_cost_micros(data: object) -> int | None | Unset:
@@ -499,6 +531,7 @@ class UsageEventDetailOut:
             kind=kind,
             measurements_status=measurements_status,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             billed_cost_micros=billed_cost_micros,
             claimed_provider_cost_micros=claimed_provider_cost_micros,
             currency=currency,

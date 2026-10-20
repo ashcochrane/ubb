@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.supplied_revenue_window_out_basis import SuppliedRevenueWindowOutBasis
 from ..models.supplied_revenue_window_out_pricing_status import SuppliedRevenueWindowOutPricingStatus
+from ..models.supplied_revenue_window_out_pricing_status_reason_type_0 import SuppliedRevenueWindowOutPricingStatusReasonType0
 from typing import cast
 
 if TYPE_CHECKING:
@@ -43,6 +44,10 @@ class SuppliedRevenueWindowOut:
         Attributes:
             basis (SuppliedRevenueWindowOutBasis):
             pricing_status (SuppliedRevenueWindowOutPricingStatus):
+            pricing_status_reason (None | SuppliedRevenueWindowOutPricingStatusReasonType0): Why `pricing_status` applies,
+                where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             records (list[AttributedSuppliedRevenueOut]):
             totals (list[SuppliedRevenueTotalOut]):
             window (PeriodWindow):
@@ -50,6 +55,7 @@ class SuppliedRevenueWindowOut:
 
     basis: SuppliedRevenueWindowOutBasis
     pricing_status: SuppliedRevenueWindowOutPricingStatus
+    pricing_status_reason: None | SuppliedRevenueWindowOutPricingStatusReasonType0
     records: list[AttributedSuppliedRevenueOut]
     totals: list[SuppliedRevenueTotalOut]
     window: PeriodWindow
@@ -66,6 +72,12 @@ class SuppliedRevenueWindowOut:
         basis = self.basis.value
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, SuppliedRevenueWindowOutPricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         records = []
         for records_item_data in self.records:
@@ -89,6 +101,7 @@ class SuppliedRevenueWindowOut:
         field_dict.update({
             "basis": basis,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
             "records": records,
             "totals": totals,
             "window": window,
@@ -112,6 +125,24 @@ class SuppliedRevenueWindowOut:
         pricing_status = SuppliedRevenueWindowOutPricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> None | SuppliedRevenueWindowOutPricingStatusReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = SuppliedRevenueWindowOutPricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | SuppliedRevenueWindowOutPricingStatusReasonType0, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         records = []
@@ -142,6 +173,7 @@ class SuppliedRevenueWindowOut:
         supplied_revenue_window_out = cls(
             basis=basis,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             records=records,
             totals=totals,
             window=window,

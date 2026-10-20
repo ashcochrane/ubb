@@ -131,7 +131,8 @@ def sync_detailed(
     response itself.
 
     Waived postings whose own supplier cost UBB never learned are not in the
-    figure and are counted beside it, so the total is a floor. Waived postings
+    figure and are counted beside it: the total is the sum of the resolved
+    costs, complete when that count is zero (#603). Waived postings
     are never candidates for a Resolution Run: a decision somebody made is not
     information UBB is missing.
 
@@ -188,7 +189,8 @@ def sync(
     response itself.
 
     Waived postings whose own supplier cost UBB never learned are not in the
-    figure and are counted beside it, so the total is a floor. Waived postings
+    figure and are counted beside it: the total is the sum of the resolved
+    costs, complete when that count is zero (#603). Waived postings
     are never candidates for a Resolution Run: a decision somebody made is not
     information UBB is missing.
 
@@ -240,7 +242,8 @@ async def asyncio_detailed(
     response itself.
 
     Waived postings whose own supplier cost UBB never learned are not in the
-    figure and are counted beside it, so the total is a floor. Waived postings
+    figure and are counted beside it: the total is the sum of the resolved
+    costs, complete when that count is zero (#603). Waived postings
     are never candidates for a Resolution Run: a decision somebody made is not
     information UBB is missing.
 
@@ -297,7 +300,8 @@ async def asyncio(
     response itself.
 
     Waived postings whose own supplier cost UBB never learned are not in the
-    figure and are counted beside it, so the total is a floor. Waived postings
+    figure and are counted beside it: the total is the sum of the resolved
+    costs, complete when that count is zero (#603). Waived postings
     are never candidates for a Resolution Run: a decision somebody made is not
     information UBB is missing.
 

@@ -40,7 +40,14 @@ class IntegrationBlueprintVerificationRecordIn:
                 reading of a response: the read itself is the generated files' to test, by running them. Required for such an
                 Event Type and refused for any other, whose currency is the Blueprint's own or the tenant's. Recorded as the
                 event's currency under UBB's one rule, which admits the tenant's currency and refuses any other.
-            measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset):
+            measurements (IntegrationBlueprintVerificationRecordInMeasurements | Unset): Each quantity is an exact decimal
+                written as a STRING — `"12"`, `"2.5"`, `"-3"`, `"0"` — never a JSON number, which most clients have already
+                carried as a binary float. Base-10 digits with an optional leading `-` and an optional fractional part, a digit
+                on each side of the point: no exponent, no `+`, and no spaces, separators or locale formatting. There is no
+                precision or scale limit. A quantity may be negative, and zero is a recorded value. Where the event's Event Type
+                declares the key, its `value_type` decides whether a fraction is allowed (`integer` refuses one); a key no
+                publication declares is accepted and held as written. Every value is stored and answered in its canonical form:
+                no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.
             provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
                 caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
                 reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A

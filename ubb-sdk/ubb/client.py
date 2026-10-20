@@ -249,8 +249,10 @@ class UBBClient:
         where you obtained it from the provider's response; each admissible
         only where the Event Type's last publication declares that source,
         never both, and refused with a 422 otherwise — and/or ``measurements``
-        (named quantities priced server-side by your cost rules); all are
-        optional here and the server enforces its pricing rules.
+        (named quantities priced server-side by your cost rules; each an
+        ``int``, a ``decimal.Decimal`` or a string, sent as exact text — a
+        ``float`` raises before anything is sent); all are optional here and
+        the server enforces its pricing rules.
         ``claimed_provider_cost_micros`` is
         your own belief about the cost: accepted anywhere and never COGS. There
         is no keyword for what you CHARGE — that is resolved from the rules your

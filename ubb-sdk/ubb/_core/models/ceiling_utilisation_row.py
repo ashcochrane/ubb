@@ -26,11 +26,12 @@ T = TypeVar("T", bound="CeilingUtilisationRow")
 @_attrs_define
 class CeilingUtilisationRow:
     """ One completed unit's ceiling as it stands at completion: the status
-    (the reading rule is written once, on `RecordUsageResponse.ceiling_status`
-    — under `indeterminate` the percentage is a floor and the headroom a
-    ceiling), the final utilisation over the known total, the headroom, and
-    the pair the figures are computed over. Under `not_applicable` both
-    figures are null, never zero.
+    (the reading rule is written once, on `RecordUsageResponse.ceiling_status`),
+    the final utilisation over the resolved total, the headroom, and the pair
+    the figures are computed over. Under `not_applicable` and under
+    `indeterminate` both figures are null, never zero: an unresolved amount
+    may move the total either way, so a share of the resolved part bounds
+    nothing.
 
         Attributes:
             ceiling_status (CeilingUtilisationRowCeilingStatus):

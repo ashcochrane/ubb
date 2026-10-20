@@ -148,6 +148,7 @@ from .invoice_out import InvoiceOut
 from .itemised_event_row import ItemisedEventRow
 from .itemised_event_row_costing_status import ItemisedEventRowCostingStatus
 from .itemised_event_row_pricing_status import ItemisedEventRowPricingStatus
+from .itemised_event_row_pricing_status_reason_type_0 import ItemisedEventRowPricingStatusReasonType0
 from .itemised_events_out import ItemisedEventsOut
 from .ledger_entry_out import LedgerEntryOut
 from .margin_threshold_in import MarginThresholdIn
@@ -225,6 +226,7 @@ from .record_usage_response_pricing_method_type_0 import RecordUsageResponsePric
 from .record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
 from .record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
 from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
+from .record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
 from .record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from .referral_out import ReferralOut
 from .referrer_earnings_summary import ReferrerEarningsSummary
@@ -268,6 +270,7 @@ from .supplied_revenue_total_out import SuppliedRevenueTotalOut
 from .supplied_revenue_window_out import SuppliedRevenueWindowOut
 from .supplied_revenue_window_out_basis import SuppliedRevenueWindowOutBasis
 from .supplied_revenue_window_out_pricing_status import SuppliedRevenueWindowOutPricingStatus
+from .supplied_revenue_window_out_pricing_status_reason_type_0 import SuppliedRevenueWindowOutPricingStatusReasonType0
 from .sync_response import SyncResponse
 from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
@@ -314,6 +317,7 @@ from .unprofitable_out import UnprofitableOut
 from .unresolved_queue_row import UnresolvedQueueRow
 from .unresolved_queue_row_costing_status import UnresolvedQueueRowCostingStatus
 from .unresolved_queue_row_pricing_status import UnresolvedQueueRowPricingStatus
+from .unresolved_queue_row_pricing_status_reason_type_0 import UnresolvedQueueRowPricingStatusReasonType0
 from .unresolved_queue_row_unresolved_reason_type_0 import UnresolvedQueueRowUnresolvedReasonType0
 from .unresolved_queue_totals import UnresolvedQueueTotals
 from .unsupported_measure_out import UnsupportedMeasureOut
@@ -326,6 +330,7 @@ from .usage_batch_item_response_not_applicable_reason_type_0 import UsageBatchIt
 from .usage_batch_item_response_pricing_method_type_0 import UsageBatchItemResponsePricingMethodType0
 from .usage_batch_item_response_pricing_receipt_subject_type_type_0 import UsageBatchItemResponsePricingReceiptSubjectTypeType0
 from .usage_batch_item_response_pricing_receipt_type_0 import UsageBatchItemResponsePricingReceiptType0
+from .usage_batch_item_response_pricing_status_reason_type_0 import UsageBatchItemResponsePricingStatusReasonType0
 from .usage_batch_item_response_pricing_status_type_0 import UsageBatchItemResponsePricingStatusType0
 from .usage_batch_item_response_unresolved_reason_type_0 import UsageBatchItemResponseUnresolvedReasonType0
 from .usage_batch_request import UsageBatchRequest
@@ -342,6 +347,7 @@ from .usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPri
 from .usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
 from .usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
 from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
+from .usage_event_detail_out_pricing_status_reason_type_0 import UsageEventDetailOutPricingStatusReasonType0
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
 from .usage_event_out import UsageEventOut
 from .usage_event_out_costing_status import UsageEventOutCostingStatus
@@ -349,6 +355,7 @@ from .usage_event_out_kind import UsageEventOutKind
 from .usage_event_out_metadata import UsageEventOutMetadata
 from .usage_event_out_not_applicable_reason_type_0 import UsageEventOutNotApplicableReasonType0
 from .usage_event_out_pricing_status import UsageEventOutPricingStatus
+from .usage_event_out_pricing_status_reason_type_0 import UsageEventOutPricingStatusReasonType0
 from .usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from .usage_invoice_list_response import UsageInvoiceListResponse
 from .usage_invoice_out import UsageInvoiceOut
@@ -521,6 +528,7 @@ __all__ = (
     "ItemisedEventRow",
     "ItemisedEventRowCostingStatus",
     "ItemisedEventRowPricingStatus",
+    "ItemisedEventRowPricingStatusReasonType0",
     "ItemisedEventsOut",
     "LedgerEntryOut",
     "MarginThresholdIn",
@@ -598,6 +606,7 @@ __all__ = (
     "RecordUsageResponsePricingReceiptSubjectTypeType0",
     "RecordUsageResponsePricingReceiptType0",
     "RecordUsageResponsePricingStatus",
+    "RecordUsageResponsePricingStatusReasonType0",
     "RecordUsageResponseUnresolvedReasonType0",
     "ReferralOut",
     "ReferrerEarningsSummary",
@@ -641,6 +650,7 @@ __all__ = (
     "SuppliedRevenueWindowOut",
     "SuppliedRevenueWindowOutBasis",
     "SuppliedRevenueWindowOutPricingStatus",
+    "SuppliedRevenueWindowOutPricingStatusReasonType0",
     "SyncResponse",
     "TaskAnalyticsOut",
     "TaskAnalyticsRow",
@@ -687,6 +697,7 @@ __all__ = (
     "UnresolvedQueueRow",
     "UnresolvedQueueRowCostingStatus",
     "UnresolvedQueueRowPricingStatus",
+    "UnresolvedQueueRowPricingStatusReasonType0",
     "UnresolvedQueueRowUnresolvedReasonType0",
     "UnresolvedQueueTotals",
     "UnsupportedMeasureOut",
@@ -699,6 +710,7 @@ __all__ = (
     "UsageBatchItemResponsePricingMethodType0",
     "UsageBatchItemResponsePricingReceiptSubjectTypeType0",
     "UsageBatchItemResponsePricingReceiptType0",
+    "UsageBatchItemResponsePricingStatusReasonType0",
     "UsageBatchItemResponsePricingStatusType0",
     "UsageBatchItemResponseUnresolvedReasonType0",
     "UsageBatchRequest",
@@ -715,6 +727,7 @@ __all__ = (
     "UsageEventDetailOutPricingReceipt",
     "UsageEventDetailOutPricingReceiptSubjectTypeType0",
     "UsageEventDetailOutPricingStatus",
+    "UsageEventDetailOutPricingStatusReasonType0",
     "UsageEventDetailOutUnresolvedReasonType0",
     "UsageEventOut",
     "UsageEventOutCostingStatus",
@@ -722,6 +735,7 @@ __all__ = (
     "UsageEventOutMetadata",
     "UsageEventOutNotApplicableReasonType0",
     "UsageEventOutPricingStatus",
+    "UsageEventOutPricingStatusReasonType0",
     "UsageEventOutUnresolvedReasonType0",
     "UsageInvoiceListResponse",
     "UsageInvoiceOut",

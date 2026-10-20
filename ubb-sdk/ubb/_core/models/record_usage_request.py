@@ -40,7 +40,14 @@ class RecordUsageRequest:
             effective_at (datetime.datetime | None | Unset):
             event_type (None | str | Unset):
             grouping_fields (RecordUsageRequestGroupingFields | Unset):
-            measurements (None | RecordUsageRequestMeasurementsType0 | Unset):
+            measurements (None | RecordUsageRequestMeasurementsType0 | Unset): Each quantity is an exact decimal written as
+                a STRING — `"12"`, `"2.5"`, `"-3"`, `"0"` — never a JSON number, which most clients have already carried as a
+                binary float. Base-10 digits with an optional leading `-` and an optional fractional part, a digit on each side
+                of the point: no exponent, no `+`, and no spaces, separators or locale formatting. There is no precision or
+                scale limit. A quantity may be negative, and zero is a recorded value. Where the event's Event Type declares the
+                key, its `value_type` decides whether a fraction is allowed (`integer` refuses one); a key no publication
+                declares is accepted and held as written. Every value is stored and answered in its canonical form: no
+                unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset):
             provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the

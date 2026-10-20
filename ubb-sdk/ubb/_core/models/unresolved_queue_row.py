@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.unresolved_queue_row_costing_status import UnresolvedQueueRowCostingStatus
 from ..models.unresolved_queue_row_pricing_status import UnresolvedQueueRowPricingStatus
+from ..models.unresolved_queue_row_pricing_status_reason_type_0 import UnresolvedQueueRowPricingStatusReasonType0
 from ..models.unresolved_queue_row_unresolved_reason_type_0 import UnresolvedQueueRowUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
@@ -39,6 +40,10 @@ class UnresolvedQueueRow:
             customer_id (str):
             effective_at (str):
             pricing_status (UnresolvedQueueRowPricingStatus):
+            pricing_status_reason (None | UnresolvedQueueRowPricingStatusReasonType0): Why `pricing_status` applies, where a
+                specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
+                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
             usage_event_id (str):
             billed_cost_micros (int | None | Unset):
             event_type (str | Unset):  Default: ''.
@@ -57,6 +62,7 @@ class UnresolvedQueueRow:
     customer_id: str
     effective_at: str
     pricing_status: UnresolvedQueueRowPricingStatus
+    pricing_status_reason: None | UnresolvedQueueRowPricingStatusReasonType0
     usage_event_id: str
     billed_cost_micros: int | None | Unset = UNSET
     event_type: str | Unset = ''
@@ -79,6 +85,12 @@ class UnresolvedQueueRow:
         effective_at = self.effective_at
 
         pricing_status = self.pricing_status.value
+
+        pricing_status_reason: None | str
+        if isinstance(self.pricing_status_reason, UnresolvedQueueRowPricingStatusReasonType0):
+            pricing_status_reason = self.pricing_status_reason.value
+        else:
+            pricing_status_reason = self.pricing_status_reason
 
         usage_event_id = self.usage_event_id
 
@@ -115,6 +127,7 @@ class UnresolvedQueueRow:
             "customer_id": customer_id,
             "effective_at": effective_at,
             "pricing_status": pricing_status,
+            "pricing_status_reason": pricing_status_reason,
             "usage_event_id": usage_event_id,
         })
         if billed_cost_micros is not UNSET:
@@ -149,6 +162,24 @@ class UnresolvedQueueRow:
         pricing_status = UnresolvedQueueRowPricingStatus(d.pop("pricing_status"))
 
 
+
+
+        def _parse_pricing_status_reason(data: object) -> None | UnresolvedQueueRowPricingStatusReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_status_reason_type_0 = UnresolvedQueueRowPricingStatusReasonType0(data)
+
+
+
+                return pricing_status_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UnresolvedQueueRowPricingStatusReasonType0, data)
+
+        pricing_status_reason = _parse_pricing_status_reason(d.pop("pricing_status_reason"))
 
 
         usage_event_id = d.pop("usage_event_id")
@@ -203,6 +234,7 @@ class UnresolvedQueueRow:
             customer_id=customer_id,
             effective_at=effective_at,
             pricing_status=pricing_status,
+            pricing_status_reason=pricing_status_reason,
             usage_event_id=usage_event_id,
             billed_cost_micros=billed_cost_micros,
             event_type=event_type,
