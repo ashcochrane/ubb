@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -267,10 +267,15 @@ describe("RunDetailPage", () => {
     try {
       writeMockTenantConfig({ ...original, billing_mode: METERING_ONLY_BILLING_MODE });
       await opened(RUN_ACTIVE_ID);
+      // The billing mode is the tenant config's, a query of its own that may
+      // answer after the heading does — so wait for the reading it decides,
+      // not merely for the page.
+      await waitFor(() => {
+        const price = readingBeside(region("What it cost and earned"), "Customer price");
+        expect(price).toHaveAttribute("data-reading", "not_applicable");
+        expect(price).toHaveTextContent("Metering only");
+      });
       const money = region("What it cost and earned");
-      const price = readingBeside(money, "Customer price");
-      expect(price).toHaveAttribute("data-reading", "not_applicable");
-      expect(price).toHaveTextContent("Metering only");
       const agreed = rowBeside(money, "Agreed price").textContent ?? "";
       expect(agreed).toMatch(/\$5\.00/);
       expect(agreed).not.toMatch(/owed/);
