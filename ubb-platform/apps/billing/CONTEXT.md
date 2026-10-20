@@ -204,8 +204,8 @@ nothing else; `check` is now the whole money-shaped answer.
 A cost-coverage condition sat in this list until #321 and is gone with nothing in its place: it
 refused a COGS-limited start unless the tenant had promised full cost coverage, and #320 made that
 promise unkeepable by recording an uncostable event with its cost unresolved rather than counting
-it as zero. The ceiling now races a floor, and saying so is a downstream job (#328), not a
-start-gate one.
+it as zero. The ceiling now races the resolved total — an enforcement trigger, never proof of the
+eventual total (#603, ADR-0020) — and saying so is a downstream job (#328), not a start-gate one.
 _Avoid_: the retired name for the advisory call — it described a moment in a sequence rather than
 the question asked, and #141 retired it outright.
 

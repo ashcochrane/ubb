@@ -112,21 +112,28 @@ class TheRowAssessesItsOwnCeilingTest(TestCase):
             self.assertEqual(row.ceiling_assessment, CeilingAssessment(
                 CEILING_STATUS_NOT_APPLICABLE, None, None))
 
-    def test_known_at_or_above_is_reached_whatever_remains_unresolved(self):
-        for known, unresolved in ((1_000, 0), (1_000, 3), (1_001, 0)):
+    def test_everything_resolved_at_or_above_is_reached(self):
+        for known in (1_000, 1_001):
             assessment = self._row(ceiling=1_000, known=known,
-                                   unresolved=unresolved).ceiling_assessment
+                                   unresolved=0).ceiling_assessment
             self.assertEqual(assessment.status, CEILING_STATUS_CEILING_REACHED)
             self.assertGreaterEqual(assessment.used_percentage, 100)
             self.assertEqual(assessment.remaining_micros, 0)
 
-    def test_known_below_is_indeterminate_or_within_by_what_is_unresolved(self):
-        indeterminate = self._row(ceiling=1_000, known=400, unresolved=1)
+    def test_anything_unresolved_is_indeterminate_whatever_the_resolved_total(
+            self):
+        """#603 (ADR-0020 §7): an omitted cost may be negative, so the
+        resolved total bounds nothing — below the line or at it — and there
+        are no figures to publish. The row's ENFORCEMENT is a different
+        question (`ceiling_reached` over the same columns) and is pinned by
+        the patrol's selection test below."""
+        for known in (400, 1_000, 1_001):
+            row = self._row(ceiling=1_000, known=known, unresolved=1)
+            self.assertEqual(row.ceiling_assessment, CeilingAssessment(
+                CEILING_STATUS_INDETERMINATE, None, None))
+
+    def test_everything_resolved_below_is_within_with_its_figures(self):
         within = self._row(ceiling=1_000, known=400, unresolved=0)
-        # The figures are over the KNOWN total in both, which is why the
-        # status is what tells a reader whether they are exact or a floor.
-        self.assertEqual(indeterminate.ceiling_assessment, CeilingAssessment(
-            CEILING_STATUS_INDETERMINATE, 40, 600))
         self.assertEqual(within.ceiling_assessment, CeilingAssessment(
             CEILING_STATUS_WITHIN_CEILING, 40, 600))
 

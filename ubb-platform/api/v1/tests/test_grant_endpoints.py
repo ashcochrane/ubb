@@ -253,7 +253,7 @@ class RefundLotAwareTest(TestCase):
             tenant=self.tenant, customer=self.customer,
             idempotency_key=f"uek-{uuid.uuid4()}",
             billed_cost_micros=cost)
-        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(pricing_status_reason=None,
             tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             event_id=ev.id,

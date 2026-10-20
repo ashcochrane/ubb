@@ -122,7 +122,7 @@ def a_record(event_type=EVENT, **fields):
     return {"event_type": event_type, **fields}
 
 
-THE_SAMPLE = {"input_tokens": 100, "searches": 2}
+THE_SAMPLE = {"input_tokens": "100", "searches": "2"}
 
 
 @pytest.mark.django_db
@@ -522,7 +522,7 @@ class TestVerifiedSpeaksForTheWholeBlueprint(VerifyRoutes):
         fingerprint = self._fingerprint(event_types=[EVENT, OTHER_EVENT])
         body = self._verified(
             fingerprint, a_record(measurements=THE_SAMPLE),
-            a_record(OTHER_EVENT, measurements={"input_tokens": 10}))
+            a_record(OTHER_EVENT, measurements={"input_tokens": "10"}))
         assert body["unexercised_event_types"] == []
         assert body["verified"] is True, body
 
@@ -546,13 +546,13 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
     def test_a_missing_required_measurement_is_named(self):
         self._priced_configuration()
         body = self._verified(self._fingerprint(), a_record(
-            measurements={"searches": 2}))
+            measurements={"searches": "2"}))
         assert body["verified"] is False
         (record,) = body["records"]
         assert record["missing_required_measurement_keys"] == ["input_tokens"]
         assert record["complete"] is False
         # Read off the acknowledgement: what was recorded is what was sent.
-        assert record["acknowledgement"]["measurements"] == {"searches": 2}
+        assert record["acknowledgement"]["measurements"] == {"searches": "2"}
 
     def test_a_missing_cost_rate_is_named(self):
         self._complete_configuration()
@@ -632,7 +632,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
 
     def _run(self, fingerprint, **cost):
         return self._verified(
-            fingerprint, a_record(measurements={"searches": 2}, **cost),
+            fingerprint, a_record(measurements={"searches": "2"}, **cost),
             grouping_fields={})
 
     def test_the_sample_is_recorded_and_costed_and_the_blueprint_verified(self):
@@ -709,7 +709,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         before = every_table()
 
         response = self._verify(
-            fingerprint, a_record(measurements={"searches": 2},
+            fingerprint, a_record(measurements={"searches": "2"},
                                   provider_response_cost_micros=4_200),
             grouping_fields={})
 
@@ -728,7 +728,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         before = every_table()
 
         response = self._verify(
-            fingerprint, a_record(measurements={"searches": 2},
+            fingerprint, a_record(measurements={"searches": "2"},
                                   provider_response_cost_micros=4_200,
                                   currency="usd"),
             grouping_fields={})

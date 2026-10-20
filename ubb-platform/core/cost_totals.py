@@ -39,10 +39,11 @@ that is always on is a caveat nobody reads. The count is of ``unresolved``
 alone.
 
 **Anything derived from a partial total is partial, and carries the same
-count.** A margin over a cost total missing an event is a ceiling on a margin,
-not a margin; a markup over one is a floor. There is one fact — which events
-were excluded — and a total's own arithmetic does not make it two, so nothing
-here mints a second counter for a derived figure.
+count.** A margin over a cost total missing an event is not a margin, and a
+markup over one is not the price — and neither is a bound on the real figure
+either way, since an amount left out may be negative (#603). There is one fact —
+which events were excluded — and a total's own arithmetic does not make it two,
+so nothing here mints a second counter for a derived figure.
 
 **Which pair is a parameter, and there is deliberately only one helper (#348,
 #351).** All three rules below take an :class:`AmountStatusPair` the caller

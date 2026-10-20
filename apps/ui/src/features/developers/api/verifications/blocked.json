@@ -6,7 +6,7 @@
       {
         "event_type": "web.search",
         "measurements": {
-          "searches": 1
+          "searches": "1"
         }
       }
     ],

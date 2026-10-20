@@ -127,6 +127,7 @@ def _event_row(posting, *, arrived_after):
         effective_at=posting["effective_at"],
         billed_cost_micros=posting["billed_cost_micros"],
         pricing_status=posting["pricing_status"],
+        pricing_status_reason=posting["pricing_status_reason"],
         provider_cost_micros=posting["provider_cost_micros"],
         costing_status=posting["costing_status"],
         charge_id=posting["charge_id"], arrived_after=arrived_after)

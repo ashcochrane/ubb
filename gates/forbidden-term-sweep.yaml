@@ -411,7 +411,13 @@ exclusions:
     # the three columns on which the signal ledger records how a stop episode
     # opened. Neither names a retired word, so the number moved for the files
     # existing, and the sites and terms held at 1 in 5.
-    files: 271
+    # 271 → 273 in #603: two migrations — the price status's own reason on the
+    # posting, with its closed set, the widened combination rule and the price
+    # transition trigger widened to watch it; and the stamp of `null` onto every
+    # queued `usage.recorded` payload before the field became required. Neither
+    # names a retired word, so the number moved for the files existing, and the
+    # sites and terms held at 1 in 5.
+    files: 273
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -32,11 +32,10 @@ caller sweeping a backlog needs:
 ⚠ **AND LIKE ITS TWIN, A RESOLUTION HERE DECLARES A CLOSED MONTH STALE** (#502,
 slice 7 §8). The two per-customer monthly caches are built from these postings,
 and a price learned long after the call lands at the instant the call happened.
-The direction matters and is the opposite of the cost side's: an excluded cost
-makes a margin a CEILING, an excluded price makes it a FLOOR — so **the customer
-named unprofitable on a floor is the one who might have been fine all along**,
-and a late price is the resolution most worth letting reach a period that has
-closed. `queries.mark_backfill_dirty_period_for_posting` is the shared half.
+An excluded price leaves a margin without part of its revenue — so **the
+customer named unprofitable on a margin missing its revenue is the one who might
+have been fine all along**, and a late price is the resolution most worth
+letting reach a period that has closed. `queries.mark_backfill_dirty_period_for_posting` is the shared half.
 
 Collapsing the last two would throw away exactly the distinction ruling 12c
 exists to draw.
@@ -56,6 +55,8 @@ separable ticket and is recorded here rather than left as an absence.**
 """
 import enum
 
+from apps.metering.pricing.services.cost_settlement import (
+    its_unit_takes_up_the_resolution)
 from apps.metering.queries import mark_backfill_dirty_period_for_posting
 from apps.metering.usage.models import Posting
 from core.vocabulary import (
@@ -124,16 +125,26 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
     # `not_applicable`, a status this statement can neither start from nor
     # arrive at, so a row reaching this door has a null reason already and
     # `0039` refuses the statement outright if it does not.
+    #
+    # AND `pricing_status_reason` IS CLEARED WITH THEM (#603), which IS the
+    # cost side's shape: it qualifies the `unknown` being left behind, and
+    # `0046` refuses a `known` row that still carries one. The normal resolver
+    # never hands this door a price whose reason is `negative_price_unsupported`
+    # (`resolution_run.NOT_RETRIED`); the capability that one day carries a
+    # negative price completes it through here, and the reason goes with it.
     affected = (Posting.objects
                 .filter(pk=posting_id,
                         billed_cost_micros__isnull=True,
                         pricing_status=PRICING_STATUS_UNKNOWN)
                 .update(billed_cost_micros=billed_cost_micros,
                         pricing_status=PRICING_STATUS_KNOWN,
+                        pricing_status_reason=None,
                         **completes_the_record))
 
     if affected == 1:
         mark_backfill_dirty_period_for_posting(posting_id)
+        its_unit_takes_up_the_resolution(
+            posting_id, billed_cost_micros=billed_cost_micros)
         return PriceResolution.RESOLVED
 
     if affected > 1:

@@ -233,8 +233,8 @@ def task_rollup_by_type(tenant_id, *, start_date=None, end_date=None,
 
     Each row carries its OWN ``unresolved_event_count`` (#328): the number of
     events this KIND of work could not cost, summed over every unit in the
-    group. Non-zero makes every figure in the row a floor — the total, the mean
-    and the p95 alike, since each unit contributing to them is one. One kind of
+    group. Non-zero means every figure in the row — the total, the mean and the
+    p95 alike — is built from resolved costs only and is not complete. One kind of
     job being incompletely costed says nothing about another's, which is why the
     count is per row rather than one number for the answer.
 
@@ -436,9 +436,8 @@ def ceiling_utilisation(tenant_id, *, customer_id=None, task_type=None,
     instant it completed. The three assessment fields are the row's own
     (`Task.ceiling_assessment`, composed by the one predicate in
     `core.crossing`) rendered under the wire names every other surface uses:
-    under `not_applicable` both figures are null, never zero, and under
-    `indeterminate` the percentage is a floor and the headroom a ceiling —
-    the status beside them is what says so. The aggregate a report builds on
+    under `not_applicable` and under `indeterminate` both figures are null,
+    never zero (#603) — the status beside them is what says so. The aggregate a report builds on
     these — the average computed per unit and then across every unit (#150
     §9.3) — is the composition layer's, because it is a statement about the
     set the report shows and not about any row.

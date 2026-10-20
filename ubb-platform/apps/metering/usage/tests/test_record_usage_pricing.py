@@ -33,10 +33,10 @@ class TestRecordUsagePricing:
             measurement_key="input_tokens", rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         declares_a_markup(t)
         r = UsageService.record_usage(t, c, "i1", provider_cost_micros=None,
-            provider="openai", event_type="chat", measurements={"input_tokens": 1000})
+            provider="openai", event_type="chat", measurements={"input_tokens": "1000"})
         assert r["provider_cost_micros"] == 5 and r["billed_cost_micros"] == 5
         e = Posting.objects.get(id=r["event_id"])
-        assert e.measurements == {"input_tokens": 1000}
+        assert e.measurements == {"input_tokens": "1000"}
         assert e.pricing_receipt["costing"]["method"] == COSTING_METHOD_CALCULATED
 
     def test_a_stale_callers_quantities_are_dropped_and_it_is_priced_at_zero(self):
@@ -64,7 +64,7 @@ class TestRecordUsagePricing:
                 "customer_id": str(c.id),
                 "idempotency_key": "i_stale", "provider": "openai",
                 "event_type": "chat",
-                RETIRED_COLUMN: {"input_tokens": 1000},
+                RETIRED_COLUMN: {"input_tokens": "1000"},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}")
@@ -198,7 +198,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         self._card_for_some_other_measurement(t)
         resp = self._post(http, auth, c, {
             "idempotency_key": "ik6",
-            "measurements": {"uncovered_metric": 5},
+            "measurements": {"uncovered_metric": "5"},
         })
         assert resp.status_code == 200
         body = resp.json()
@@ -235,7 +235,7 @@ class TestTheRecordingRouteAcceptsWhatItCannotCost:
         self._card_for_some_other_measurement(t)
         resp1 = self._post(http, auth, c, {
             "idempotency_key": "ik7",
-            "measurements": {"uncovered_metric": 5},
+            "measurements": {"uncovered_metric": "5"},
         })
         assert resp1.status_code == 200
         assert resp1.json()["costing_status"] == "unresolved"

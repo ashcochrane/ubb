@@ -1272,3 +1272,22 @@ GET /api/v1/metering/analytics/usage/timeseries api path removed without depreca
 # neither is inert. The request half is in the warn file under the same date.
 GET /api/v1/billing/postpaid-config removed the required property `usage_line_item_group_by` from the response with the `200` status
 PUT /api/v1/billing/postpaid-config removed the required property `usage_line_item_group_by` from the response with the `200` status
+
+# 2026-10-20 - #603 (window A, ADR-0020): the `usage.recorded` payload gains
+# `pricing_status_reason`, REQUIRED AND NULLABLE - the owner's rule for the
+# concept wherever `pricing_status` is published (#603 comment 6279966961: no
+# third "field absent" state, no default). Null where no published reason
+# applies; `negative_price_unsupported` beside an `unknown` price UBB calculated
+# and the money rails cannot carry. Every queued payload was stamped with null
+# by `events/migrations/0010` before the field could ask for it.
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open, and #603's rulings make the
+# wire change deliberately. The same window changes the recorded quantity's
+# wire type (`measurements` values become canonical exact decimal STRINGS on
+# the recording request, the batch item and Verify's record); oasdiff 1.23.0
+# reports no finding for a map's `additionalProperties` type moving, so that
+# break has no line here and is recorded in the PR and ADR-0020 instead.
+#
+# ERR because a subscriber validating the payload against the old schema
+# meets a required property it did not know.
+POST webhook:usage.recorded added the new required request property `data/pricing_status_reason`

@@ -135,7 +135,7 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         status did on its own.
         """
         ack = self.record("unresolved",
-                          measurements={"undeclared_quantity": 100})
+                          measurements={"undeclared_quantity": "100"})
 
         for name, body in self.each_response(ack):
             with self.subTest(response=name):
@@ -162,7 +162,7 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
                                   rate_per_unit_micros=42, unit_quantity=1)
 
         ack = self.record("undeclared-name", event_type="acme.embed",
-                          measurements={"tokens": 100, "tokns": 7})
+                          measurements={"tokens": "100", "tokns": "7"})
 
         for name, body in self.each_response(ack):
             with self.subTest(response=name):
@@ -181,7 +181,7 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         declares_an_event_type(self.tenant, "acme.embed",
                                quantities=("tokens",))
         ack = self.record("queued", event_type="acme.embed",
-                          measurements={"tokns": 7})
+                          measurements={"tokns": "7"})
 
         response = self.http.get(
             "/api/v1/metering/pricing/unresolved-queue",
@@ -221,7 +221,7 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         # history. The default IS the per-unit shape this needs.
         cost_rate_in_default_book(self.tenant, measurement_key="tokens",
                                   rate_per_unit_micros=42, unit_quantity=1)
-        ack = self.record("known", measurements={"tokens": 100})
+        ack = self.record("known", measurements={"tokens": "100"})
 
         for name, body in self.each_response(ack):
             with self.subTest(response=name):
@@ -241,7 +241,7 @@ class TheUnresolvedReasonTravelsWithTheStatusTest(_WireCase):
         fourth reader — or a replay path that re-derives instead of reading —
         fail here rather than in a tenant's reconciliation.
         """
-        ack = self.record("row", measurements={"undeclared_quantity": 7})
+        ack = self.record("row", measurements={"undeclared_quantity": "7"})
         stored = Posting.objects.get(id=ack["event_id"])
 
         self.assertIsNotNone(stored.unresolved_reason,

@@ -229,7 +229,7 @@ class SandboxResetTest(TestCase):
             billed_cost_micros=120)
         for posting in (settled, waiting):
             PostingMeasurement.objects.create(
-                posting=posting, measurements={"input_tokens": 1200},
+                posting=posting, measurements={"input_tokens": "1200"},
                 recorded_at=posting.created_at)
         OutboxEvent.objects.create(
             event_type="usage.recorded", payload={}, tenant_id=str(tenant.id))

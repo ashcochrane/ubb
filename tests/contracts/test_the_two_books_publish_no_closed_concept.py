@@ -101,6 +101,12 @@ THE_CAUSE_MARKER = "reason_code"
 THE_FAMILY_MARKER = "control_family"
 THE_BASIS_MARKER = "ceiling_basis"
 
+#: And the sixth (#603): WHY the price status applies, beside it on the usage
+#: callback — required and nullable wherever `pricing_status` is published.
+#: Spelled, not derived: the event and the field both predate the split and
+#: already appear, spelled, in the set above.
+THE_PRICE_REASON_MARKERS = {("usage.recorded", "pricing_status_reason")}
+
 
 @pytest.fixture(scope="module")
 def spec():
@@ -215,7 +221,7 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     assert seen == (THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
                     | arrived_since | arrived_with_the_pool
                     | arrived_with_the_cause | arrived_with_the_family
-                    | arrived_with_the_basis)
+                    | arrived_with_the_basis | THE_PRICE_REASON_MARKERS)
 
 
 def test_no_webhook_marker_names_a_book(spec):

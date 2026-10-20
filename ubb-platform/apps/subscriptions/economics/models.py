@@ -34,7 +34,7 @@ class CustomerCostAccumulator(BaseModel):
     #
     # The handler adds each event's supplier cost as it arrives, and a cost UBB
     # has not resolved (#317) contributes nothing — so without this the running
-    # total would be a floor that reads like a figure. Written in the same
+    # total would be a partial sum that reads like a figure. Written in the same
     # atomic increment as the amount, because a total and its completeness that
     # can be updated separately will eventually disagree.
     #

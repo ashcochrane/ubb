@@ -7,8 +7,8 @@
         "event_type": "chat.completion",
         "provider_cost_micros": 5,
         "measurements": {
-          "input_tokens": 1200,
-          "output_tokens": 300
+          "input_tokens": "1200",
+          "output_tokens": "300"
         }
       }
     ],

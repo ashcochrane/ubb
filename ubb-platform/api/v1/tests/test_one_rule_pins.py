@@ -32,11 +32,13 @@ Pin 17 — the clean-cut sweep: no run-era event type in the catalog, neither
 """
 import json
 import uuid
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.core.cache import cache
 from django.test import TestCase, Client
+from django.utils import timezone
 
 from api.v1.tests._helpers import retired_aliases
 from apps.billing.gating.models import RiskConfig
@@ -45,10 +47,12 @@ from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import Wallet
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.metering.pricing.services import resolution_run
 from apps.metering.pricing.tests._helpers import (
-    a_rule_that_prices_what_it_measures, priced_at, what_it_bills)
+    a_rule_that_prices_what_it_measures, cost_rate_in_default_book,
+    priced_at, what_it_bills)
 from apps.platform.event_types.tests._helpers import (
-    DECLARED, declares_a_caller_supplied_cost)
+    DECLARED, declares_a_caller_supplied_cost, declares_an_event_type)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.models import Task, TaskType
@@ -244,14 +248,21 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
     """The four-way assessment on the recording acknowledgement (#452, slice
     6 §3, §13) — TD claims 2 and 3, through the route.
 
-    Utilisation is INFORMATION (#150 §9): the two figures beside the status
-    are computed over the KNOWN total in every evaluated state, and it is the
-    status that tells a reader how to read them. No warning event, no
-    threshold, no amber state (§12) — the stop stays binary and these three
-    fields say where the unit stands.
+    Utilisation is INFORMATION (#150 §9), and it is the status that tells a
+    reader whether the two figures beside it are answers at all. No warning
+    event, no threshold, no amber state (§12) — the stop stays binary and
+    these three fields say where the unit stands.
+
+    ⚠ THE OWNER'S THREE PINS FOR #603 (`6279966961`; ADR-0020) ARE THE FIRST
+    THREE CASES, each its own test: the ASSESSMENT is `indeterminate` with null
+    figures whenever the unit carries an unresolved cost, whatever the
+    resolved subtotal, while ENFORCEMENT still fires on the resolved COGS and
+    stays terminal through any later resolution — a negative one included.
     """
 
     def test_known_below_with_one_unresolved_is_indeterminate_and_not_stopped(self, _mock):
+        """Pin (i): an unresolved amount with a resolved subtotal BELOW the
+        ceiling is `indeterminate`, and nothing stops."""
         task = self._task(limit=10_000_000)
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), provider_cost_micros=4_000_000,
@@ -266,17 +277,25 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         self.assertIsNone(body["stop_reason"])
         # UBB tried and could not tell — and says so rather than "within".
         self.assertEqual(body["ceiling_status"], CEILING_STATUS_INDETERMINATE)
-        # The percentage is over the KNOWN total, which is why a reader must
-        # treat it as a floor: the unresolved cost is not in it.
-        self.assertEqual(body["ceiling_used_percentage"], 40)
-        self.assertEqual(body["ceiling_remaining_micros"], 6_000_000)
+        # And it publishes no share and no headroom: with an omitted amount
+        # able to move the total either way, a figure over the resolved 40%
+        # would be a bound on nothing (#603).
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
+        self.assertEqual(task.ceiling_assessment.status,
+                         CEILING_STATUS_INDETERMINATE)
 
-    def test_known_at_the_ceiling_is_reached_and_stopped_whatever_remains_unresolved(self, _mock):
-        """Known-over always fires (#150 §4.2): the unresolved cost can only
-        add to a total that has already reached the line, so it never buys
-        the unit a softer answer or a reprieve."""
+    def test_resolved_at_the_ceiling_is_stopped_while_the_assessment_is_indeterminate(self, _mock):
+        """Pin (ii): an unresolved amount with a resolved subtotal REACHING the
+        ceiling. The ENFORCEMENT TRIGGER fires on the resolved COGS — one
+        missing figure must not switch a unit's ceiling off — and the stop's
+        measured amount is that resolved total at the crossing (ADR-0019 §2).
+        The ASSESSMENT is still `indeterminate`: the stop is a safety action,
+        never proof that the eventual total is above the line. This case was
+        `ceiling_reached` before #603, on the retired reading that an
+        unresolved cost could only add."""
         task = self._task(limit=10_000_000)
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), bills=1_000_000)  # unresolved
@@ -287,11 +306,75 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         self.assertEqual(body["task_total_unresolved_event_count"], 1)
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
+        self.assertEqual(body["stop_bound_micros"], 10_000_000)
+        self.assertEqual(body["stop_measured_micros"], 10_000_000)
+        self.assertEqual(body["ceiling_status"], CEILING_STATUS_INDETERMINATE)
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
+
+    def test_a_later_negative_resolution_moves_the_assessment_and_the_kill_stands(self, _mock):
+        """Pin (iii): a credit recorded before its Cost Rate existed is an
+        unresolved amount; the unit is stopped on its resolved COGS reaching
+        the ceiling; then the rate is declared and a Resolution Run settles
+        the credit as a NEGATIVE known cost. The unit's resolved total falls
+        below the ceiling and nothing is left unresolved, so the derived
+        assessment moves to `within_ceiling` — and the kill stands."""
+        declares_an_event_type(self.tenant, "metered",
+                               quantities=("seconds",))
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            credit = self._record(task_id=str(task.id), event_type="metered",
+                                  measurements={"seconds": "-6"}).json()
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=10_000_000,
+                                bills=1_000_000)
+        self.assertEqual(credit["costing_status"], COSTING_STATUS_UNRESOLVED)
+        self.assertTrue(resp.json()["stop"])
+        task.refresh_from_db()
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
+        self.assertEqual(task.ceiling_assessment.status,
+                         CEILING_STATUS_INDETERMINATE)
+
+        # In force from before the credit was recorded: a run re-resolves at
+        # each posting's own effective instant, never against today's rules.
+        cost_rate_in_default_book(
+            self.tenant, event_type="metered", measurement_key="seconds",
+            rate_per_unit_micros=1_000_000, unit_quantity=1,
+            valid_from=timezone.now() - timedelta(days=1))
+        resolution_run.execute(tenant=self.tenant,
+                               selector=resolution_run.RunSelector())
+
+        self.assertEqual(Posting.objects.get(
+            id=credit["event_id"]).provider_cost_micros, -6_000_000)
+        task.refresh_from_db()
+        self.assertEqual(task.total_provider_cost_micros, 4_000_000)
+        self.assertEqual(task.unresolved_event_count, 0)
+        assessment = task.ceiling_assessment
+        self.assertEqual(assessment.status, CEILING_STATUS_WITHIN_CEILING)
+        self.assertEqual(assessment.used_percentage, 40)
+        self.assertEqual(assessment.remaining_micros, 6_000_000)
+        self.assertEqual(task.status, TASK_STATUS_KILLED)
+        # The acknowledgement that announced the stop is unchanged: it says
+        # what the recording concluded, never where the unit stands now.
+        self.assertTrue(Posting.objects.get(id=resp.json()["event_id"])
+                        .stop_acknowledgement.stop)
+
+    def test_with_everything_resolved_at_the_ceiling_it_is_reached(self, _mock):
+        """The control on the three pins: nothing unresolved, the resolved
+        total at the line — `ceiling_reached`, with its figures."""
+        task = self._task(limit=10_000_000)
+        with self.captureOnCommitCallbacks(execute=True):
+            resp = self._record(task_id=str(task.id),
+                                provider_cost_micros=10_000_000,
+                                bills=1_000_000)
+        body = resp.json()
+        self.assertEqual(body["task_total_unresolved_event_count"], 0)
+        self.assertTrue(body["stop"])
         self.assertEqual(body["ceiling_status"], CEILING_STATUS_CEILING_REACHED)
         self.assertEqual(body["ceiling_used_percentage"], 100)
         self.assertEqual(body["ceiling_remaining_micros"], 0)
-        task.refresh_from_db()
-        self.assertEqual(task.status, TASK_STATUS_KILLED)
 
     def test_no_pinned_ceiling_is_not_applicable_with_null_utilisation(self, _mock):
         """Nothing was evaluated, so nothing was concluded (#158 §12.4) —
@@ -478,8 +561,10 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         body = self.http_client.get(
             f"/api/v1/tasks/{task.id}", **self._auth()).json()
         self.assertEqual(body["ceiling_status"], CEILING_STATUS_INDETERMINATE)
-        self.assertEqual(body["ceiling_used_percentage"], 25)
-        self.assertEqual(body["ceiling_remaining_micros"], 7_500_000)
+        # No share and no headroom under `indeterminate` (#603): the same
+        # three answers the acknowledgement gives.
+        self.assertIsNone(body["ceiling_used_percentage"])
+        self.assertIsNone(body["ceiling_remaining_micros"])
         uncapped = self._task(limit=None)
         body = self.http_client.get(
             f"/api/v1/tasks/{uncapped.id}", **self._auth()).json()

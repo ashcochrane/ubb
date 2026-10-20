@@ -762,7 +762,7 @@ class TaskService:
         cost (#328), and ``pricing_status`` its answer about the customer price
         (#351). Where either says the amount is unresolved, that total takes
         nothing and its own count takes one instead, so both totals this unit
-        publishes are floors that say how much they left out. The rollup carries
+        publishes are sums of what resolved that say how much they left out. The rollup carries
         the counts upward like the money: a parent whose child excluded an
         amount has excluded it too.
 
@@ -860,7 +860,7 @@ class TaskService:
             elif counts_as_unresolved(CUSTOMER_PRICE, pricing_status):
                 unit.unpriced_event_count += 1
             # AN UNRESOLVED SUPPLIER COST ADDS NOTHING AND IS COUNTED, WHICH IS
-            # WHAT MAKES THE TOTAL A FLOOR THAT SAYS SO (#320, #328). Before the
+            # WHAT MAKES THE TOTAL A RESOLVED SUM THAT SAYS SO (#320, #328). Before the
             # compute spine could say "UBB does not know what this cost",
             # `provider_cost_micros` was always a number and this line always
             # ran; now the recording path hands `None` for a posting whose cost
@@ -876,9 +876,9 @@ class TaskService:
             # re-deriving one, because a second definition of "unresolved" is
             # how two of them come to disagree.
             #
-            # The COGS limit below races the floor, which is the direction that
-            # under-fires rather than over-fires: a unit is never killed for
-            # spend UBB cannot demonstrate.
+            # The COGS limit below races the RESOLVED total — the enforcement
+            # trigger (#603): a unit is never killed for spend nobody stated,
+            # and one missing figure never switches its ceiling off.
             if provider_cost_micros is not None:
                 unit.total_provider_cost_micros += int(provider_cost_micros)
             elif counts_as_unresolved(SUPPLIER_COST, costing_status):
@@ -934,6 +934,64 @@ class TaskService:
             "subtask_crossing": _crossing(task, crossed_subtask),
         }
         return task, verdicts
+
+    @staticmethod
+    def take_up_a_late_resolution(task_id, *, provider_cost_micros=None,
+                                  billed_cost_micros=None):
+        """A posting this unit COUNTED as unresolved has now been resolved:
+        add its amount to the unit's resolved total and stop counting it — on
+        the unit and on its parent, the containment `accumulate_cost` rolls
+        up (#603, ADR-0020).
+
+        ⚠ WHY THIS EXISTS. `accumulate_cost` is the only writer of a unit's
+        totals and it runs once, when the report is recorded: an unresolved
+        cost adds nothing and is counted. Until #603 nothing told the unit
+        when that cost later resolved, so its count never fell and its total
+        never caught up — and with the assessment now `indeterminate`
+        whenever the count is above zero (the owner's confirmation,
+        `6279966961`), a unit that ever carried an unresolved cost would read
+        `indeterminate` for ever, and "when the count is zero the total is
+        complete" could never become true of it. The two settlement doors
+        (`cost_settlement`, `price_resolution`) call this when they complete a
+        posting that belongs to a unit.
+
+        Exactly one of the two amounts is given — the side that resolved. A
+        resolved amount may be negative (a credit): it moves the total down,
+        and may move the derived assessment back below the ceiling.
+
+        ⚠ IT FIRES NOTHING, AND THAT IS ENFORCEMENT'S RULE RATHER THAN AN
+        OMISSION. A stop already applied is terminal whatever this does to
+        the assessment. A resolution that takes an ACTIVE unit's resolved
+        COGS to its ceiling is caught by the patrol's sweep
+        (`billing.gating.patrol.sweep_over_limit_tasks`, the same
+        `ceiling_reached` compare over the same columns), not here: this runs
+        inside a recovery, and a kill announced from it would carry no
+        report to attribute the crossing to.
+
+        Lock order is `accumulate_cost`'s — parent before child — so a
+        recovery and a recording on the same tree cannot deadlock. Must be
+        called inside a transaction.
+        """
+        if (provider_cost_micros is None) == (billed_cost_micros is None):
+            raise ValueError(
+                "a late resolution settles exactly one side: pass the "
+                "supplier cost or the customer price that resolved")
+        parent_id = Task.objects.values_list(
+            "parent_id", flat=True).get(id=task_id)
+        locked = ([Task.objects.select_for_update().get(id=parent_id)]
+                  if parent_id is not None else [])
+        locked.append(Task.objects.select_for_update().get(id=task_id))
+        for unit in locked:
+            if provider_cost_micros is not None:
+                unit.total_provider_cost_micros += int(provider_cost_micros)
+                unit.unresolved_event_count -= 1
+                fields = ["total_provider_cost_micros",
+                          "unresolved_event_count"]
+            else:
+                unit.total_billed_cost_micros += int(billed_cost_micros)
+                unit.unpriced_event_count -= 1
+                fields = ["total_billed_cost_micros", "unpriced_event_count"]
+            unit.save(update_fields=[*fields, "updated_at"])
 
     @staticmethod
     def _flip(task_id, status, *, cascade, reason="", control_id="",
@@ -1244,9 +1302,9 @@ class TaskService:
                         ceiling_basis=stopped.ceiling_basis,
                         total_billed_cost_micros=stopped.total_billed_cost_micros,
                         total_provider_cost_micros=stopped.total_provider_cost_micros,
-                        # The total that crossed the limit is a floor when this
-                        # is non-zero (#328) — the unit really spent at least
-                        # that much, so the crossing is sound and understated.
+                        # The total that crossed the limit is the resolved one
+                        # (#328): non-zero here says what it left out, and the
+                        # stop is an enforcement trigger, not proof (#603).
                         unresolved_event_count=stopped.unresolved_event_count,
                         task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros or 0)
                     if stopped.parent_id is not None:

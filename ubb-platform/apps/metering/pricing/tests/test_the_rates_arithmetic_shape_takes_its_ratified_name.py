@@ -295,8 +295,8 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
 
         self.assertEqual(getattr(rule, CANONICAL_COLUMN),
                          RATE_STRUCTURE_FIXED_COMPONENT)
-        self.assertEqual(rule.compute(9), 7_500)
-        self.assertEqual(rule.compute(9_000_000), 7_500)
+        self.assertEqual(rule.compute("9"), 7_500)
+        self.assertEqual(rule.compute("9000000"), 7_500)
 
     def test_a_per_unit_charge_takes_the_other_branch(self):
         """The control, and it is not a formality.
@@ -310,7 +310,7 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
                           unit_quantity=1)
 
         self.assertEqual(getattr(rule, CANONICAL_COLUMN), RATE_STRUCTURE_PER_UNIT)
-        self.assertEqual(rule.compute(9), 7_500 + 9_000)
+        self.assertEqual(rule.compute("9"), 7_500 + 9_000)
 
     def test_the_receipt_records_the_shape_under_the_column_name(self):
         """What a reader six years from now needs to redo the sum.
@@ -337,7 +337,7 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
         receipt = PricingService._compute(
             subject=a_usage_event_subject(), currency="usd",
             effective_at="2026-01-01T00:00:00+00:00",
-            measurements={"api_calls": 9},
+            measurements={"api_calls": "9"},
             caller_provider_cost=None,
             reported_cost_source_kind=None,
             # The ordinary regime and the ordinary posture (#418): this case is

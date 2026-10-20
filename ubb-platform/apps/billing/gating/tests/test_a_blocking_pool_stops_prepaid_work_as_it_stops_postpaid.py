@@ -523,7 +523,7 @@ class TheChargeIsCountedOnceTest(PoolTestBase):
             billing_owner_id=self.customer.id)
         row = OutboxEvent.objects.create(
             event_type=UsageRecorded.EVENT_TYPE, tenant_id=self.tenant.id,
-            payload=asdict(UsageRecorded(
+            payload=asdict(UsageRecorded(pricing_status_reason=None,
                 tenant_id=str(self.tenant.id), customer_id=str(self.customer.id),
                 event_id=str(posting.id), cost_micros=None,
                 billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN,

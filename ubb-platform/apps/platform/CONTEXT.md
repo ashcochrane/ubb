@@ -520,18 +520,23 @@ retry field, the pagination parameter, and the stop-context array's entry key �
 
 **Ceiling status (`ceiling_status`, the assessment)**:
 What the ceiling concluded for one unit of work, **derived on the row and never stored** (#452,
-ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running known supplier
-total and the unresolved-event count — through the same predicate the crossing uses. One of the
-registry's four: `not_applicable` (no ceiling applies — nothing was evaluated, so nothing was
-concluded), `ceiling_reached` (the **known** total is at or above the line, whatever remains
-unresolved — known-over always fires and no later resolution softens it), `indeterminate` (known
-below, at least one applicable cost unresolved — UBB tried and cannot tell; never stops anything,
-never a breach), `within_ceiling` (everything resolved and below). Travels on the recording
-acknowledgement (null where no unit is named) and the unit read, beside `ceiling_used_percentage`
-and `ceiling_remaining_micros` — information over the **known** total, null under `not_applicable`;
-under `indeterminate` the percentage is a floor and the headroom a ceiling, and the status is what
-says so — the three travel as one value (`apps/platform/work/models.py:Task.ceiling_assessment`,
-`core/crossing.py::ceiling_assessment`).
+ADR-0006 R4) from three columns it already holds — the pinned ceiling, the running resolved supplier
+total and the unresolved-event count. One of the registry's four: `not_applicable` (no ceiling
+applies — nothing was evaluated, so nothing was concluded), `indeterminate` (an applicable cost is
+unresolved, **whatever the resolved total** — UBB tried and cannot tell; an omitted amount may be
+negative, so a resolved subtotal bounds nothing in either direction), `ceiling_reached` (everything
+resolved, at or above the line), `within_ceiling` (everything resolved and below). Since #603
+(ADR-0020) it is the **assessment** only: the **enforcement trigger** is a separate question — the
+stop fires when the resolved COGS total reaches the ceiling, even while the assessment is
+`indeterminate`, and stays terminal; it is never proof of where the eventual total lands, and a
+later resolution (a negative one included) may move the assessment, even back below the line,
+without reversing the stop. Travels on the recording acknowledgement (null where no unit is named)
+and the unit read, beside `ceiling_used_percentage` and `ceiling_remaining_micros` — information
+over the resolved total, null under `not_applicable` and under `indeterminate` — the three travel
+as one value (`apps/platform/work/models.py:Task.ceiling_assessment`,
+`core/crossing.py::ceiling_assessment`). A late resolution reaches the unit's total and count
+through the settlement door (`TaskService.take_up_a_late_resolution`), so the assessment follows
+recovery.
 _Avoid_: storing it, or re-deriving it anywhere but the row; a warning threshold or an amber state
 beside it — enforcement is binary and this is information (#150 §9, §12).
 

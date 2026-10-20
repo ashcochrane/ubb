@@ -399,6 +399,15 @@
         "not_applicable"
       ]
     },
+    "pricing_status_reason": {
+      "advertised": true,
+      "backend_serves": "1 of 1 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "negative_price_unsupported"
+      ]
+    },
     "rate_structure": {
       "advertised": true,
       "backend_serves": "2 of 2 values",

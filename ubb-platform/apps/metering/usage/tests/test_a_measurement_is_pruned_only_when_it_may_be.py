@@ -184,7 +184,7 @@ def _price_is_unknown():
 
 def _measurement(posting, prunable_at):
     return PostingMeasurement.objects.create(
-        posting=posting, measurements={"input_tokens": 1200},
+        posting=posting, measurements={"input_tokens": "1200"},
         recorded_at=posting.created_at, prunable_at=prunable_at)
 
 

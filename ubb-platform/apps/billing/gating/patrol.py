@@ -219,15 +219,17 @@ def sweep_over_limit_tasks(tenant):
     A subtask over its OWN limit is killed alone; a parent's kill cascades
     downward as ever.
 
-    ⚠ THE COMPARISON IS AGAINST A FLOOR, AND THAT IS THE SAFE DIRECTION (#328).
-    A unit's provider total excludes every cost UBB has not resolved, so a unit
-    this sweep passes over may really be past its limit — the sweep UNDER-fires,
-    never over-fires, and no unit is killed for spend UBB cannot demonstrate.
-    Firing on the floor plus its unresolved count would mean killing work on a
-    number nobody has stated, which is a worse trade than a late kill. What the
-    tenant gets instead is the count itself, on every read of the unit and on
-    the kill announcement, so a limit that has not fired is visibly not the same
-    as one that has been shown to be safe."""
+    ⚠ THE COMPARISON IS AGAINST THE RESOLVED TOTAL — AN ENFORCEMENT TRIGGER,
+    NEVER PROOF (#328, #603). A unit's provider total is the sum of the costs
+    UBB has resolved, and what it leaves out may move it either way (a quantity
+    may be negative). The sweep fires on what has resolved: firing on a guess
+    at the rest would kill work on a number nobody has stated, and waiting for
+    everything to resolve would let one missing Cost Rate switch a ceiling
+    off. A stop it applies is a one-way safety action and stays terminal
+    whatever a later resolution does. What the tenant gets beside it is the
+    count of what the total leaves out, on every read of the unit and on the
+    kill announcement, and an assessment that says `indeterminate` while that
+    count is above zero."""
     from apps.platform.work.models import Task
     from apps.platform.work.reasons import TASK_COGS_CEILING
     from apps.platform.work.services import TaskService, ceiling_control_id

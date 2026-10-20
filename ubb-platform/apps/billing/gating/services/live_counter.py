@@ -327,9 +327,14 @@ class LiveCounter:
         # that read this (the hard floor's and the pool's, #459) fire on the
         # known figure and never on an invented one. It still READS the
         # standing stop (ADR-0019 §7, the docstring), as a zero amount does.
+        #
+        # A ZERO DEBITS NOTHING because there is nothing to debit — the
+        # `<= 0` that stood here was a missing-value guard with no sign
+        # reason, and its sign half is gone (#603 ruling 9). A known price is
+        # never negative: a negative one is `unknown` with its reason.
         if not enforcing(tenant):
             return None
-        if (billed_cost_micros is None or billed_cost_micros <= 0
+        if (billed_cost_micros is None or billed_cost_micros == 0
                 or not live_counter_maintenance_on(tenant)):
             return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
         try:
@@ -1065,10 +1070,11 @@ class LiveCounter:
             billed = get_billing_owner_billed_total(tenant.id, owner_id, start, end)
             durable = int(billed["billed"])
             if billed[UNPRICED_EVENT_COUNT_KEY]:
-                # A FLOOR MERGED INTO A COUNTER THAT DECIDES WHEN TO STOP WORK.
-                # The MAX-merge below takes the larger of live and durable, so
-                # an understated durable basis cannot overcharge anybody — it
-                # lets a limit be crossed later than it should be. That is a
+                # A PARTIAL SUM MERGED INTO A COUNTER THAT DECIDES WHEN TO STOP
+                # WORK. The MAX-merge below takes the larger of live and
+                # durable, so a durable basis missing some prices cannot
+                # overcharge anybody — it can let a limit be crossed later
+                # than it should be. That is a
                 # spend-control decision rather than a reporting one, it belongs
                 # to the slice that owns ceilings, and until then the one thing
                 # this lane must not do is be silent about it.

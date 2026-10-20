@@ -1,7 +1,8 @@
 from typing import Annotated, List, Optional
 from ninja import Schema, Field
 
-from core.amount_status_pairs import supplier_cost_total_meaning
+from core.amount_status_pairs import (
+    PRICING_STATUS_REASON_MEANING, supplier_cost_total_meaning)
 
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
@@ -43,6 +44,16 @@ RevenueBasis = Annotated[
 #: periods, which is where coverage is read from.
 PricingStatus = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "pricing_status"})]
+
+#: WHY THAT STATUS APPLIES, where a published reason does (#603) — required
+#: and nullable wherever `pricing_status` is published (the owner's ruling,
+#: `6279966961`). Always null at this scope: a supplied window is `known` or
+#: `unknown` for want of a supplied figure, and no published reason names
+#: either. Declared rather than omitted, because a surface publishing the
+#: status without the reason would be the third "field absent" state the
+#: ruling refuses.
+PricingStatusReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "pricing_status_reason"})]
 
 
 class TenantSuppliedRevenueIn(Schema):
@@ -154,6 +165,8 @@ class SuppliedRevenueWindowOut(Schema):
     basis: RevenueBasis
     window: PeriodWindow
     pricing_status: PricingStatus
+    pricing_status_reason: Optional[PricingStatusReason] = Field(
+        description=PRICING_STATUS_REASON_MEANING)
     totals: List[SuppliedRevenueTotalOut]
     records: List[AttributedSuppliedRevenueOut]
 
@@ -162,10 +175,10 @@ class SuppliedRevenueWindowOut(Schema):
 #
 # It is the number of events the supplier cost beside it could not include —
 # `Posting.provider_cost_micros` is nullable and a null means UBB has not
-# resolved that cost (#317), so a total built over the column is a FLOOR
-# wherever this is non-zero, and every margin derived from that total is a
-# CEILING: the true margin can only be smaller than the figure shown. Zero means
-# the figure is whole.
+# resolved that cost (#317), so a total built over the column is the sum of
+# the resolved costs wherever this is non-zero, and every margin derived from
+# it is not the margin either — in either direction, since an omitted cost may
+# be negative (#603). Zero means the figure is whole.
 #
 # An event whose Event Type declares no supplier cost is NOT counted. Nothing
 # about it is missing (#327), and a caveat that is always on is a caveat nobody

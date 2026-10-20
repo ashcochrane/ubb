@@ -58,10 +58,14 @@ ceiling_status:
   label_key_prefix: ceiling_status
   value_semantics:
     summary: >-
-      The lower-bound rule (#158 §12.3). Once the KNOWN portion of accumulated
-      COGS has reached the ceiling, costs still unresolved cannot argue the
-      Task back under it — this is a spend-control safety invariant rather than
-      a naming detail, which is why it is carried beside the values as data.
+      The assessment's rule, as #603 amended #158 §12.3 (ADR-0020; the owner's
+      confirmation `6279966961`). It answers where a Task stands, and it is
+      not the enforcement trigger: the stop fires when the RESOLVED COGS total
+      reaches the ceiling, whatever remains unresolved, and stays terminal.
+      What changed is the assessment's lower-bound reading — once a quantity
+      may be negative, a cost still unresolved can move the total either way,
+      so a resolved subtotal bounds nothing and `ceiling_reached` or
+      `within_ceiling` is never inferred from one while a cost is unresolved.
       `>=` is the comparison, so a ceiling is reached rather than exceeded.
     inputs:
       - a_ceiling_applies
@@ -79,23 +83,26 @@ ceiling_status:
           try (#158 §12.4).
       - when:
           a_ceiling_applies: true
-          known_cogs_at_or_above_ceiling: true
-          unresolved_costs_remain: any
-        then: ceiling_reached
-        because: >-
-          The known accumulated COGS is already at or above the ceiling. Costs
-          that are still unresolved can only add to it, so no later resolution
-          can reverse this answer — reporting anything softer here would let an
-          unresolved cost buy a Task more spending.
-      - when:
-          a_ceiling_applies: true
-          known_cogs_at_or_above_ceiling: false
+          known_cogs_at_or_above_ceiling: any
           unresolved_costs_remain: true
         then: indeterminate
         because: >-
-          The known lower bound is still below the ceiling and at least one
-          applicable cost is unresolved, so UBB cannot prove the Task is inside
-          it. This is the only case the word covers.
+          One or more applicable costs are unresolved, and each may be negative
+          as well as positive, so the resolved total says nothing about the
+          eventual one in either direction. This holds whatever the resolved
+          total is — at or above the ceiling included, where the enforcement
+          trigger may already have stopped the Task: that stop is a safety
+          action on the resolved total, never proof of where the eventual
+          total lands, and a later resolution moves this answer without
+          reversing it.
+      - when:
+          a_ceiling_applies: true
+          known_cogs_at_or_above_ceiling: true
+          unresolved_costs_remain: false
+        then: ceiling_reached
+        because: >-
+          Every applicable cost is resolved and the total is at or above the
+          ceiling.
       - when:
           a_ceiling_applies: true
           known_cogs_at_or_above_ceiling: false

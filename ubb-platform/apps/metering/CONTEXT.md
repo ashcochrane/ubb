@@ -608,8 +608,10 @@ arithmetic with the writing taken out. **It is a projection and not an instructi
 credit note, charge or refund follows from reading it, and UBB will not bill anybody for it: Stripe
 owns the billing engine and a UBB-owned adjustment surface would be reimplementing it. The response
 carries that sentence itself (`queries.PROJECTED_ADJUSTMENT_BASIS`) rather than leaving it to a
-comment, because a projection read as a receivable is the failure mode. The figure is a floor and
-says so — what it could not value, and what one pass did not reach, are counted beside it.
+comment, because a projection read as a receivable is the failure mode. The figure is the sum of
+what a run would settle, and says what it leaves out — what it could not value, and what one pass
+did not reach, are counted beside it; it is complete when both counts are zero (no direction is
+promised for the rest, #603).
 (#364, **ADR-0010**; `apps/metering/queries.py:get_projected_adjustment`)
 _Avoid_: adding the supplier-cost half into the figure — learning what a call cost is not money a
 tenant can go back to a customer for; and reporting waived charges here — what waiving has cost is

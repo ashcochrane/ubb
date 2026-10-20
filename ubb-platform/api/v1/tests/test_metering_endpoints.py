@@ -292,12 +292,12 @@ class UsageEventDetailEndpointTest(TestCase):
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "i-avail",
-                measurements={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": "1200"})["event_id"])
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()
         self.assertEqual(body["measurements_status"], "available")
-        self.assertEqual(body["measurements"], {"input_tokens": 1200})
+        self.assertEqual(body["measurements"], {"input_tokens": "1200"})
 
     def test_a_pruned_payload_does_not_read_as_an_empty_one(self):
         """**The defect this field exists to end**, stated on the response.
@@ -315,7 +315,7 @@ class UsageEventDetailEndpointTest(TestCase):
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "i-pruned",
-                measurements={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": "1200"})["event_id"])
         # Two steps, because the database now holds the child's whole-record
         # rule (#354) and this call has no cost rate behind it, so it records
         # `unresolved`: the rule refuses a `DELETE` while the posting is
@@ -368,7 +368,7 @@ class UsageEventDetailEndpointTest(TestCase):
         ev = Posting.objects.get(
             id=UsageService.record_usage(
                 self.tenant, self.customer, "i-method",
-                measurements={"input_tokens": 1200})["event_id"])
+                measurements={"input_tokens": "1200"})["event_id"])
 
         body = self.http.get(f"/api/v1/metering/usage/{ev.id}",
                              **self._auth()).json()
@@ -400,7 +400,7 @@ class UsageEventDetailEndpointTest(TestCase):
             "/api/v1/metering/usage",
             data=json.dumps(usage_payload(
                 self.customer, "r-ack-method",
-                measurements={"input_tokens": 1200})),
+                measurements={"input_tokens": "1200"})),
             content_type="application/json", **self._auth())
 
         self.assertEqual(resp.status_code, 200)
@@ -817,7 +817,7 @@ class BookValidationTest(TestCase):
         c = Customer.objects.create(tenant=self.tenant, external_id="acme2")
         resp = self.client.post("/api/v1/metering/usage",
             data=json.dumps(usage_payload(
-                c, "r9", measurements={"undeclared_quantity": 100})),
+                c, "r9", measurements={"undeclared_quantity": "100"})),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         assert resp.status_code == 200
         assert "undeclared_quantity" in resp.json().get(

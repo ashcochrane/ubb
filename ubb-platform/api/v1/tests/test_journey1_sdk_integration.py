@@ -117,7 +117,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         #     contract, real (tolerant) deserialization into RecordUsageResult.
         res = client.record_usage(customer_id=str(customer.id),
                                   idempotency_key="i1", grouping_fields={"dim1": "search"},
-                                  measurements={"input_tokens": 1000})
+                                  measurements={"input_tokens": "1000"})
         # The server computed COGS from the cost rate card (no caller cost supplied).
         assert res.provider_cost_micros == 2000  # 1000 * 2
         assert res.uncosted_measurement_keys == []   # input_tokens HAS a cost card

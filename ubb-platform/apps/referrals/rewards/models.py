@@ -51,17 +51,17 @@ class ReferralRewardLedger(BaseModel):
     # so a period reconciled entirely from estimates was written down exactly
     # like one reconciled from figures.
     #
-    # Non-zero makes `raw_cost_micros` a floor and `reward_micros` a figure that
-    # would move if those costs arrived. An event whose Event Type declares no
+    # Non-zero means `raw_cost_micros` is the sum of what resolved and
+    # `reward_micros` a figure that would move, either way, if those costs
+    # arrived. An event whose Event Type declares no
     # supplier cost is not counted (#327).
     unresolved_event_count = models.IntegerField(default=0)
     # HOW MANY OF THE PERIOD'S EVENTS THE SPEND TOTAL COULD NOT INCLUDE (#351).
     #
-    # Non-zero makes `referred_spend_micros` a floor, and the reward computed
-    # from it a floor too — the referrer is owed at least this much. That is the
-    # opposite direction from the count above, which makes the reward a figure
-    # that could move either way, and the two are separate columns because a
-    # single number could not say which.
+    # Non-zero means `referred_spend_micros` is the sum of the prices that
+    # resolved and is not complete, and so is the reward computed from it; what
+    # is left out may move either figure, in either direction (#603). The two
+    # counts are separate columns because they are about different events.
     unpriced_event_count = models.IntegerField(default=0)
     reward_micros = models.BigIntegerField()
     calculation_method = models.CharField(

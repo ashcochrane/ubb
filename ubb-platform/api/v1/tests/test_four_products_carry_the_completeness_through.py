@@ -446,7 +446,7 @@ class TestTheAccumulatorAndTheSnapshot:
         from apps.platform.events.schemas import UsageRecorded
         from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
 
-        handle_usage_recorded_subscriptions("evt-1", asdict(UsageRecorded(
+        handle_usage_recorded_subscriptions("evt-1", asdict(UsageRecorded(pricing_status_reason=None,
             tenant_id=self.tenant.id,
             customer_id=self.customer.id,
             event_id="evt-1",

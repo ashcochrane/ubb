@@ -17,17 +17,20 @@ class TestRate:
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
         # provider, event_type and the first slot.
         assert c.grouping_field_1 == "gpt-4" and c.specificity == 3
-        assert c.compute(1000) == 5  # (1000*5000 + 500000)//1000000 = 5
+        # A quantity is its canonical exact text (#603).
+        assert c.compute("1000") == 5  # (1000*5000 + 500000)//1000000 = 5
         c2 = Rate.objects.create(tenant=t, measurement=declares_a_quantity(t, "m"),
                                      rate_per_unit_micros=1, unit_quantity=2)
-        assert c2.compute(1) == 1 and c2.compute(0) == 0  # round-half-up midpoint
+        # The midpoint rounds away from zero (R1 since #603): +0.5 -> 1.
+        assert c2.compute("1") == 1 and c2.compute("0") == 0
+        assert c2.compute("-1") == -1
 
     def test_flat_compute_uses_fixed(self):
         from apps.metering.pricing.models import Rate
         t = Tenant.objects.create(name="T")
         c = Rate.objects.create(tenant=t, measurement=declares_a_quantity(t, "seats"),
                                     rate_structure=RATE_STRUCTURE_FIXED_COMPONENT, fixed_micros=2_000_000)
-        assert c.compute(5) == 2_000_000
+        assert c.compute("5") == 2_000_000
 
     def test_one_active_rate_per_book_slice(self):
         # Uniqueness is now book-scoped (the book pointer is part of the constraint's

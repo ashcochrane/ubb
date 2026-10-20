@@ -71,7 +71,7 @@ class TestPricing:
             tenant=t, customer=c,
             selectors={"event_type": "chat", "provider": "openai",
                        "grouping_field_1": "gpt-4"},
-            measurements={"input_tokens": 1000}, currency="usd",
+            measurements={"input_tokens": "1000"}, currency="usd",
             caller_provider_cost=None)
         assert costing.provider_cost_micros == 5
         assert costing.billed_cost_micros is None
@@ -93,7 +93,7 @@ class TestPricing:
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "chat", "provider": "openai"},
-            measurements={"input_tokens": 1000, "seats": 3}, currency="usd",
+            measurements={"input_tokens": "1000", "seats": "3"}, currency="usd",
             caller_provider_cost=None)
         assert costing.provider_cost_micros == 5
         assert costing.billed_cost_micros == 9_000_000
@@ -111,7 +111,7 @@ class TestPricing:
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "gpt-4"},
-            measurements={"tok": 1_000_000}, currency="usd",
+            measurements={"tok": "1000000"}, currency="usd",
             caller_provider_cost=None)
         assert costing.provider_cost_micros == 9_000
         fallback = PricingService.price(
@@ -119,7 +119,7 @@ class TestPricing:
             tenant=t, customer=c,
             selectors={"event_type": "e", "provider": "o",
                        "grouping_field_1": "other"},
-            measurements={"tok": 1_000_000}, currency="usd",
+            measurements={"tok": "1000000"}, currency="usd",
             caller_provider_cost=None)
         assert fallback.provider_cost_micros == 1_000
 
@@ -135,7 +135,7 @@ class TestPricing:
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c, selectors={"event_type": "e", "provider": "o"},
-            measurements={"unmatched_metric": 100}, currency="usd",
+            measurements={"unmatched_metric": "100"}, currency="usd",
             caller_provider_cost=500,
         )
         assert costing.provider_cost_micros == 500

@@ -18,19 +18,29 @@ practice, but a helper that dropped the parameter would rebuild exactly the
 coupling this module exists to delete. The restriction is meant to become a
 choice; today it is a constraint.
 
-The four rules (``docs/plans/2026-07-30-money-model-decision.md`` §5.2):
+The four rules (``docs/plans/2026-07-30-money-model-decision.md`` §5.2, with
+R1's tie direction amended by #603 — ADR-0020):
 
-- **R1** — a computed price line rounds half-up to whole micros, at the moment
-  it is computed. That is :func:`round_charge`.
+- **R1** — a computed price line rounds to the nearest whole micro, at the
+  moment it is computed, and an exact half-micro tie rounds AWAY FROM ZERO.
+  That is :func:`round_charge`. The decision's text said "half-up", and the
+  arithmetic was ``floor(x + 1/2)``, which sends a tie toward +∞; the two agree
+  for every non-negative amount, so nothing recorded before a quantity could be
+  negative moved. Since #603 a quantity may be, and away from zero is what
+  makes a report and its equal-and-opposite reversal cancel exactly.
 - **R2** — everything downstream is exact. Nothing rounds between R1 and R3.
 - **R3** — the minor unit is reached exactly once, at the money boundary, and
   the remainder is *always* carried. That is :func:`to_minor`, which returns
   the remainder rather than hiding it: a caller can still drop it, but only by
   writing the line that does so.
-- **R4** — a percentage producing a *charge* rounds half-up
+- **R4** — a percentage producing a *charge* rounds by R1
   (:func:`round_charge`); a percentage producing a *ceiling* rounds down
   (:func:`round_ceiling`), so a spend control binds no later than the value the
   tenant declared. That is the one direction a limit must never err.
+
+The one bound a COMPUTED amount carries is the money columns' own
+(:data:`MONEY_COLUMN_MIN` .. :data:`MONEY_COLUMN_MAX`): an amount past it is
+refused by whoever computed it, never rounded into range.
 
 :func:`assert_aligned` is the boundary assertion those rules imply: proof that
 the carry ran before an amount left for Stripe. It is not a conversion — the
@@ -43,6 +53,44 @@ from core.exceptions import MisalignedAmount, UnknownCurrency
 # A micro is a millionth of a currency unit; every stored money column is an
 # exact whole number of these.
 MICROS_PER_UNIT = 1_000_000
+
+#: THE RANGE A MONEY COLUMN HOLDS: every one is a ``BigIntegerField``, a signed
+#: 64-bit integer of micros. It is the only bound on an amount UBB computes
+#: (#603 ruling 7) — a quantity carries no precision or scale cap, so the
+#: product of one and a rate can be any size, and one past this range is not a
+#: rounding question but an amount with nowhere to go. Whoever computes such
+#: an amount refuses it by name rather than let the database refuse it as a
+#: generic error.
+MONEY_COLUMN_MAX = 2 ** 63 - 1
+MONEY_COLUMN_MIN = -(2 ** 63)
+
+
+def fits_a_money_column(amount_micros: int) -> bool:
+    """Whether ``amount_micros`` is a whole number of micros a money column
+    can hold."""
+    return MONEY_COLUMN_MIN <= amount_micros <= MONEY_COLUMN_MAX
+
+
+class NegativeKnownPriceRefused(ValueError):
+    """A known customer price below zero reached a rail that moves money.
+
+    UBB never writes one (#603 A2: a negative calculated price is recorded
+    ``unknown`` with ``pricing_status_reason`` ``negative_price_unsupported``),
+    and no rail carries negative money in v1 (ADR-0020 §5). The rule that
+    stood before it — "an amount at or below zero is no money" — dropped such
+    a price silently (ruling 9 retires it), and taking it would credit a
+    wallet or reverse a reward. So a rail that meets one names it and moves
+    nothing; an outbox handler that raises keeps its payload and retries it,
+    so the state stays visible."""
+
+    def __init__(self, event_id, rail):
+        super().__init__(
+            f"usage event {event_id} reached {rail} with a known customer "
+            "price below zero. UBB records a negative calculated price as "
+            "unknown (negative_price_unsupported) and moves no negative money "
+            "in v1, so nothing was moved.")
+        self.event_id = event_id
+        self.rail = rail
 
 # ISO 4217 minor-unit exponent per currency: 2 means the minor unit is a
 # hundredth (cents), 0 means the currency has no minor unit (yen), 3 means a
@@ -135,15 +183,25 @@ def assert_aligned(amount_micros: int, currency: str) -> None:
 
 
 def round_charge(numerator: int, denominator: int) -> int:
-    """Half-up division — R1 and R4's charging direction.
+    """Nearest-micro division, an exact tie away from zero — R1 and R4's
+    charging direction.
 
-    Used wherever a rate or a percentage produces an amount someone pays: a
-    priced line, a markup, a platform fee. Ties go up, which is unbiased
-    against the tenant everywhere except an exact half.
+    Used wherever a rate or a percentage produces an amount: a priced line, a
+    cost line, a markup. Rounding the magnitude and restoring the sign is what
+    makes ``round_charge(-n, d) == -round_charge(n, d)``, so a report and its
+    reversal cancel to the micro. For ``numerator >= 0`` it is exactly the
+    ``(n + d // 2) // d`` every line was computed by before #603 — the half is
+    ``d // 2`` for an odd denominator too, where no integer numerator can sit
+    on a tie.
+
+    Integer arithmetic only, on integers a caller built exactly: never a
+    binary float and never a ``Decimal`` context, which would round before
+    this rule was asked.
     """
     if denominator <= 0:
         raise ValueError(f"denominator must be positive, got {denominator}")
-    return (numerator + denominator // 2) // denominator
+    magnitude = (abs(numerator) + denominator // 2) // denominator
+    return -magnitude if numerator < 0 else magnitude
 
 
 def round_ceiling(numerator: int, denominator: int) -> int:

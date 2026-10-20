@@ -16,12 +16,13 @@ logger = logging.getLogger("ubb.billing")
 
 
 def _warn_if_incomplete(tenant, customer, period_start, unpriced_events):
-    """Say out loud when an invoice is being built on a floor (#351).
+    """Say out loud when an invoice is being built on an incomplete total
+    (#351).
 
     `Posting.billed_cost_micros` is nullable, and the read contract now reports
     how many postings each total could not include. This service turns those
-    totals into invoice LINES, so a floor here is money not charged — and
-    silently: a seat whose every posting is unpriced bills exactly like a seat
+    totals into invoice LINES, so a total missing prices here is money
+    misstated — and silently: a seat whose every posting is unpriced bills exactly like a seat
     that emitted nothing.
 
     **This warns rather than refuses, deliberately.** #329 answered the
@@ -110,7 +111,10 @@ class PostpaidUsageService:
             total = totals["billed_cost_micros"]
             _warn_if_incomplete(tenant, customer, period_start,
                                 totals[UNPRICED_EVENT_COUNT_KEY])
-            return total, ([("", total)] if total > 0 else [])
+            # A ZERO TOTAL MAKES NO LINE: there is nothing to invoice. Not a
+            # sign rule (#603 ruling 9) — a resolved total is a sum of known
+            # prices, and a known price is never negative.
+            return total, ([("", total)] if total != 0 else [])
 
         from apps.metering.queries import get_customer_billed_breakdown
         agg = defaultdict(int)
@@ -230,8 +234,18 @@ class PostpaidUsageService:
                     tenant, customer, period_start, period_end)
                 rec.line_snapshot = [[label, amount] for label, amount in lines]
             rec.total_billed_micros = total
-            if total <= 0:
-                rec.status, rec.skip_reason = "skipped", "no_usage"
+            if total == 0:
+                # NOTHING TO BILL IS NOT NO USAGE (#603 ruling 9). A period
+                # whose usage was all priced at exactly nothing totals zero as
+                # an empty one does, and labelling it `no_usage` said the
+                # customer did nothing. Both skips are terminal; only the
+                # words differ, and they are the truth about the period.
+                from apps.metering.queries import (
+                    billing_owner_recorded_anything)
+                recorded = billing_owner_recorded_anything(
+                    tenant.id, customer.id, period_start, period_end)
+                rec.status, rec.skip_reason = "skipped", (
+                    "nothing_to_bill" if recorded else "no_usage")
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             if not customer.stripe_customer_id:
@@ -366,7 +380,9 @@ class PostpaidUsageService:
             # R3's floor-with-carry: the remainder comes BACK from the helper,
             # so this loop cannot drop it by forgetting to compute it.
             cents, residual = to_minor(cent_micros, currency)
-            if cents <= 0:
+            # A line under one minor unit bills nothing this period; its
+            # micros are carried. Never negative: a line sums known prices.
+            if cents == 0:
                 continue
             cent_lines.append((i, label, cents, amount))
         if residual >= minor_units(currency):

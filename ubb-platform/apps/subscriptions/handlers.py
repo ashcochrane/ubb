@@ -67,13 +67,14 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     raw_billed = (evt.billed_cost_micros
                   if evt.billed_cost_micros is not None else evt.cost_micros)
     billed = raw_billed if raw_billed is not None else 0
-    # AN EVENT THAT COSTS NOTHING AND BILLS NOTHING IS STILL WORTH RECORDING
-    # WHEN EITHER AMOUNT IS UNKNOWN. The early return is right for an event that
-    # moved no money; an amount UBB has not learned has not been shown to be
-    # zero, and dropping it here is how a period comes to read complete because
-    # the only thing missing from it was never counted.
-    if billed <= 0 and provider <= 0 and not unresolved and not unpriced:
-        return
+    # EVERY EVENT IS RECORDED HERE, AND THE EARLY RETURN THAT STOOD HERE IS GONE
+    # (#603 ruling 9). It dropped an event that "moved no money" — billed and
+    # cost both at or below zero, nothing unresolved — so a known zero was
+    # discarded (the period's event count missed it until the hourly
+    # reconcile repaired it from the ledger), and so was a known NEGATIVE
+    # supplier cost, which the records hold faithfully and the period's COGS
+    # total has to carry. Zero is a real known value and a negative cost is a
+    # real known cost; adding either to a running total says exactly that.
 
     # Fast path: parse the payload's effective_at (present on all F4.2+
     # payloads) — no DB read needed.

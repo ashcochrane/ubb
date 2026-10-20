@@ -67,6 +67,18 @@ class Settlement(enum.Enum):
     NEVER_UNRESOLVED = "never_unresolved"
 
 
+def its_unit_takes_up_the_resolution(posting_id, **resolved):
+    """Tell the unit of work this posting was counted in, if any, that the
+    amount it counted as unresolved has resolved (#603) — so its total and
+    its count, and the ceiling assessment derived from them, follow the
+    recovery. Shared by both settlement doors, which are one act twice."""
+    task_id = (Posting.objects.filter(pk=posting_id)
+               .values_list("task_id", flat=True).first())
+    if task_id is not None:
+        from apps.platform.work.services import TaskService
+        TaskService.take_up_a_late_resolution(task_id, **resolved)
+
+
 def settle_provider_cost(*, posting_id, provider_cost_micros,
                          pricing_receipt=None):
     """Settle one posting's supplier cost, once, and say what happened.
@@ -122,6 +134,8 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
 
     if affected == 1:
         mark_backfill_dirty_period_for_posting(posting_id)
+        its_unit_takes_up_the_resolution(posting_id,
+                              provider_cost_micros=provider_cost_micros)
         return Settlement.SETTLED
 
     if affected > 1:

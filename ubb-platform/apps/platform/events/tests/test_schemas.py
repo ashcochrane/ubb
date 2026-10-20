@@ -8,7 +8,7 @@ class TestUsageRecordedSchema:
     def test_create_with_required_fields(self):
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(
+        event = UsageRecorded(pricing_status_reason=None,
             tenant_id="t1",
             customer_id="c1",
             event_id="e1",
@@ -25,14 +25,14 @@ class TestUsageRecordedSchema:
         from apps.platform.events.schemas import UsageRecorded
         import pytest
 
-        event = UsageRecorded(tenant_id="t1", customer_id="c1", event_id="e1", cost_micros=5000)
+        event = UsageRecorded(pricing_status_reason=None, tenant_id="t1", customer_id="c1", event_id="e1", cost_micros=5000)
         with pytest.raises(AttributeError):
             event.cost_micros = 999
 
     def test_roundtrip_via_dict(self):
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(
+        event = UsageRecorded(pricing_status_reason=None,
             tenant_id="t1", customer_id="c1", event_id="e1",
             cost_micros=5000, billed_cost_micros=6000,
         )
@@ -46,7 +46,8 @@ class TestUsageRecordedSchema:
 
         d = {
             "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
-            "cost_micros": 5000, "some_new_field": "value",
+            "cost_micros": 5000, "pricing_status_reason": None,
+            "some_new_field": "value",
         }
         event = UsageRecorded.from_payload(d)
         assert event.cost_micros == 5000
@@ -210,19 +211,22 @@ class TestFromPayload:
 
         event = UsageRecorded.from_payload({
             "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
-            "cost_micros": 500, "some_future_field": "ignored",
+            "cost_micros": 500, "pricing_status_reason": None,
+            "some_future_field": "ignored",
         })
         assert event.cost_micros == 500
         assert not hasattr(event, "some_future_field")
 
     def test_defaults_are_defined_once_on_the_class(self):
         # A legacy queued payload written before a field existed constructs
-        # with the class default — no consumer restates it.
+        # with the class default — no consumer restates it. (Its
+        # `pricing_status_reason` is the one required field a migration
+        # stamped onto every queued payload, `events/0010`, #603.)
         from apps.platform.events.schemas import UsageRecorded
 
         event = UsageRecorded.from_payload({
             "tenant_id": "t1", "customer_id": "c1", "event_id": "e1",
-            "cost_micros": 500,
+            "cost_micros": 500, "pricing_status_reason": None,
         })
         assert event.provider_cost_micros is None
         assert event.billing_owner_id == ""
@@ -236,6 +240,20 @@ class TestFromPayload:
 
         with pytest.raises(TypeError):
             UsageRecorded.from_payload({"tenant_id": "t1"})
+
+    def test_the_price_status_reason_is_required_and_nullable(self):
+        # #603: required — a payload without the key is malformed — and
+        # nullable, so null constructs. No default stands in for it.
+        import pytest
+        from apps.platform.events.schemas import UsageRecorded
+
+        complete = {"tenant_id": "t1", "customer_id": "c1",
+                    "event_id": "e1", "cost_micros": None}
+        with pytest.raises(TypeError, match="pricing_status_reason"):
+            UsageRecorded.from_payload(complete)
+        event = UsageRecorded.from_payload(
+            {**complete, "pricing_status_reason": None})
+        assert event.pricing_status_reason is None
 
     def test_roundtrips_the_producer_side(self):
         from dataclasses import asdict
@@ -253,7 +271,7 @@ class TestUuidOrStrIds:
         from apps.platform.events.schemas import UsageRecorded
 
         tid, cid = uuid.uuid4(), uuid.uuid4()
-        event = UsageRecorded(tenant_id=tid, customer_id=cid, event_id="e1",
+        event = UsageRecorded(pricing_status_reason=None, tenant_id=tid, customer_id=cid, event_id="e1",
                               cost_micros=1)
         assert event.tenant_id == str(tid)
         assert event.customer_id == str(cid)
@@ -264,7 +282,7 @@ class TestUuidOrStrIds:
         from dataclasses import asdict
         from apps.platform.events.schemas import UsageRecorded
 
-        event = UsageRecorded(tenant_id=uuid.uuid4(), customer_id=uuid.uuid4(),
+        event = UsageRecorded(pricing_status_reason=None, tenant_id=uuid.uuid4(), customer_id=uuid.uuid4(),
                               event_id=uuid.uuid4(), cost_micros=1)
         json.dumps(asdict(event))  # raises on a stray UUID
 

@@ -6,8 +6,8 @@
       {
         "event_type": "chat.completion",
         "measurements": {
-          "input_tokens": 1200,
-          "output_tokens": 300
+          "input_tokens": "1200",
+          "output_tokens": "300"
         }
       }
     ],

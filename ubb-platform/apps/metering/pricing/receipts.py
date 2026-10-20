@@ -211,9 +211,12 @@ that finds out what the two have in common, and is where this moves to the
 kernel; today there is one, exactly as `core.amount_status_pairs` had one table
 until #348.
 """
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from apps.platform.event_types.exact_decimals import (
+    CANONICAL, canonical_quantity)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_VALUES,
@@ -236,20 +239,33 @@ from core.vocabulary import (
 #: squash, not any migration in this slice.
 LEGACY_SCHEMA_VERSION = 0
 
-#: The shape with two versions, a typed subject and three sections — this one.
-#: Named separately from the constant below because they answer different
-#: questions and will stop being equal: this identifies a SHAPE, permanently,
-#: and is what a reader dispatches on.
+#: The shape with two versions, a typed subject and three sections, whose
+#: components hold the quantity (:data:`QUANTITY_KEY`) as a whole NUMBER.
+#: Named separately from the
+#: constant below because they answer different questions and stopped being
+#: equal in #603: this identifies a SHAPE, permanently, and is what a reader
+#: dispatches on. Read, never rewritten.
 SECTIONED_SCHEMA_VERSION = 1
+
+#: The same sections, whose components hold the quantity as its
+#: CANONICAL EXACT SIGNED-DECIMAL TEXT (#603, ADR-0020) — the form the wire,
+#: the measurement record and the acknowledgement carry it in. A quantity may
+#: be fractional, negative and of any length since #603, and no number a JSON
+#: column can hold says all three exactly. A component key whose VALUE changes
+#: kind is a key that moved, which is what this module's rule bumps the
+#: version for: the version is what says what a component's quantity IS, so a
+#: reader never has to guess from the value's type.
+CANONICAL_QUANTITY_SCHEMA_VERSION = 2
 
 #: THE SHAPE A RECEIPT BUILT TODAY DECLARES, AND ONLY THAT. Bump this when a key
 #: moves, arrives or leaves — never because an amount would come out
 #: differently, which is what `pricing_engine_version` is for. A key arriving
 #: INSIDE a section's `detail` is the exception the module docstring argues
 #: (#350, #357): the open containers promise no fixed key set, so an additive
-#: detail key leaves every reader reading, and `undeclared_quantities` (#428)
-#: and `reported_cost_source_kind` (#570) arrived that way too.
-RECEIPT_SCHEMA_VERSION = SECTIONED_SCHEMA_VERSION
+#: detail key leaves every reader reading, and `undeclared_quantities` (#428),
+#: `reported_cost_source_kind` (#570) and `pricing_status_reason` (#603)
+#: arrived that way too.
+RECEIPT_SCHEMA_VERSION = CANONICAL_QUANTITY_SCHEMA_VERSION
 
 #: EVERY SHAPE THIS CODE CAN READ, which is deliberately not the one shape it
 #: WRITES. A writer declares a version; a reader knows a set of them, and the
@@ -257,7 +273,13 @@ RECEIPT_SCHEMA_VERSION = SECTIONED_SCHEMA_VERSION
 #: readable because the code moved on — the exact failure the pair of versions
 #: exists to prevent. Adding a shape means adding a branch AND a member here.
 READABLE_SCHEMA_VERSIONS = frozenset({LEGACY_SCHEMA_VERSION,
-                                      SECTIONED_SCHEMA_VERSION})
+                                      SECTIONED_SCHEMA_VERSION,
+                                      CANONICAL_QUANTITY_SCHEMA_VERSION})
+
+#: The two shapes with sections — what every reader below dispatches on where
+#: the section structure, not the spelling of a quantity, is the question.
+SECTIONED_SCHEMA_VERSIONS = frozenset({SECTIONED_SCHEMA_VERSION,
+                                       CANONICAL_QUANTITY_SCHEMA_VERSION})
 
 TOP_LEVEL_KEYS = frozenset({
     "receipt_schema_version", "pricing_engine_version",
@@ -310,6 +332,11 @@ TOTALS_KEYS = frozenset({"provider_cost_micros", "billed_cost_micros"})
 #: sense's own evidence block rather than a ledger seat. It is written here
 #: because the quantity is the first thing the obligation names, and a minimum
 #: that left it out would admit a component nobody can recompute.
+#: WHERE A COMPONENT HOLDS ITS QUANTITY — named once (#603), so a reader
+#: addresses the key rather than spelling it; the set below names it as the
+#: obligation's first term.
+QUANTITY_KEY = "units"
+
 REQUIRED_COMPONENT_KEYS = frozenset({
     "measurement_key", "units",
     "rate_per_unit_micros", "unit_quantity", "fixed_micros",
@@ -391,6 +418,16 @@ MARKUP_TERMS_KEY = "markup"
 #: recovery run that re-resolves from it — and a literal at each is how three
 #: modules come to disagree about one key.
 PRICING_REGIME_KEY = "pricing_mode"
+
+#: WHERE THE PRICE STATUS'S OWN REASON SITS IN THE PRICE SECTION'S DETAIL
+#: (#603; the registry's `pricing_status_reason`).
+#:
+#: The authoritative economic provenance of `negative_price_unsupported`: the
+#: posting's column and every surface that publishes it read it back off here,
+#: so the record and the column cannot come to disagree. `None` for every
+#: other answer. An additive key in an open container, so it moved no schema
+#: version on its own — the receipt moved to 2 for the quantity's spelling.
+PRICING_STATUS_REASON_KEY = "pricing_status_reason"
 
 #: WHOSE AMOUNTS THIS ENGINE DERIVED, AND WHOSE IT DID NOT (#418).
 #:
@@ -892,6 +929,15 @@ def _validate_components(name, components):
                 f"carries the quantity, the rule's terms and the denominator "
                 f"by value, because the measurement detail behind it expires "
                 f"and this record does not")
+        # WHAT THIS SHAPE SAYS A QUANTITY IS (#603): its canonical
+        # exact text, and nothing a reader would have to convert. A number
+        # here would be schema 1's spelling under schema 2's version.
+        if not _is_canonical_quantity(component[QUANTITY_KEY]):
+            raise ReceiptShapeError(
+                f"a {name} component's quantity is "
+                f"{component[QUANTITY_KEY]!r}: "
+                f"receipt schema {RECEIPT_SCHEMA_VERSION} holds a quantity "
+                f"as its canonical exact decimal text")
 
 
 def _validate_markup_terms(name, terms):
@@ -1055,12 +1101,25 @@ def recorded_quantities(receipt):
     is in it so that a re-costing after the tenant declares the name costs the
     whole call rather than silently less of it.
 
-    ⚠ A RECEIPT IN AN OLDER SHAPE ANSWERS EMPTY, which is what it is: that shape
-    recorded no per-quantity terms, so there is nothing in it to re-resolve from
-    and a caller must not be handed a partial bag that looks like a whole one.
+    ⚠ A RECEIPT IN THE PRE-VERSION SHAPE ANSWERS EMPTY, which is what it is:
+    that shape recorded no per-quantity terms, so there is nothing in it to
+    re-resolve from and a caller must not be handed a partial bag that looks
+    like a whole one.
+
+    ⚠⚠ **BOTH SECTIONED SHAPES ANSWER, AND THEY ANSWER THE SAME BAG (#603).**
+    Schema 1 holds a quantity as a whole number and schema 2 as its canonical
+    text; this reader knows both spellings — the obligation the note above
+    `REQUIRED_COMPONENT_KEYS` set for the day a real reader of a renamed key
+    appeared — and answers canonical text for either, the one form costing
+    reads. Dispatching on "is it schema 1" alone would have read every new
+    receipt as holding no quantities, and recovery would have re-resolved
+    nothing, silently.
     """
-    if _readable_version_of(receipt) != SECTIONED_SCHEMA_VERSION:
+    version = _readable_version_of(receipt)
+    if version not in SECTIONED_SCHEMA_VERSIONS:
         return {}
+    as_recorded = (_whole_as_text if version == SECTIONED_SCHEMA_VERSION
+                   else _text_as_text)
     quantities = {}
     for name in SECTIONS:
         # `.get` WITHOUT A FALLBACK COERCION, WHICH IS THE DIFFERENCE THAT
@@ -1072,16 +1131,61 @@ def recorded_quantities(receipt):
         # make, for the same reason.
         for component in receipt[name]["detail"].get("components", []):
             quantities.setdefault(component["measurement_key"],
-                                  component["units"])
+                                  as_recorded(component[QUANTITY_KEY]))
     uncosted = receipt["costing"]["detail"]
     if "uncosted_quantities" in uncosted:
-        quantities.update(uncosted["uncosted_quantities"])
+        quantities.update({key: as_recorded(value) for key, value
+                           in uncosted["uncosted_quantities"].items()})
     # Presence-checked like the mapping above it, and for the same reason: a
     # receipt written before #428 has no such key, and that is not a corrupt
     # record but an older one.
     if "undeclared_quantities" in uncosted:
-        quantities.update(uncosted["undeclared_quantities"])
+        quantities.update({key: as_recorded(value) for key, value
+                           in uncosted["undeclared_quantities"].items()})
     return quantities
+
+
+def _whole_as_text(value):
+    """A schema-1 quantity — a whole number — as the canonical text schema 2
+    holds. Exact: an integer's own digits; nothing else was ever written
+    there, and anything else is refused rather than read."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ReceiptShapeError(
+            f"a schema-{SECTIONED_SCHEMA_VERSION} receipt holds a quantity "
+            f"as a whole number, not {value!r}")
+    return canonical_quantity(value)
+
+
+def _text_as_text(value):
+    """A schema-2 quantity, which is already its canonical text — refused
+    if it is not, rather than read as whatever it happens to be."""
+    if not _is_canonical_quantity(value):
+        raise ReceiptShapeError(
+            f"a schema-{CANONICAL_QUANTITY_SCHEMA_VERSION} receipt holds a "
+            f"quantity as its canonical exact text, not {value!r}")
+    return value
+
+
+_CANONICAL_QUANTITY = re.compile(CANONICAL)
+
+
+def _is_canonical_quantity(value):
+    return (isinstance(value, str)
+            and _CANONICAL_QUANTITY.fullmatch(value) is not None)
+
+
+def pricing_status_reason_of(receipt):
+    """WHY THIS RECEIPT'S PRICE STATUS APPLIES, or `None` (#603).
+
+    Read off the price section's detail, where the engine records it. A
+    receipt in an older shape predates the concept and answers `None` — this
+    record does not say — on the footing the two readers below take for a
+    question their record predates.
+    """
+    version = _readable_version_of(receipt)
+    if version is None or version == LEGACY_SCHEMA_VERSION:
+        return None
+    return receipt["pricing"]["detail"].get(PRICING_STATUS_REASON_KEY)
 
 
 def pricing_method_of(receipt):

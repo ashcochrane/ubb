@@ -625,7 +625,7 @@ VERIFIED = {
     # recorded and costed completely, so verified. The tenant declares no
     # price, so the price is unknown — which `verified` does not read.
     "reported-cost": ("reported-cost", {
-        "records": [_record("web.search", measurements={"searches": 3},
+        "records": [_record("web.search", measurements={"searches": "3"},
                             provider_cost_micros=1_250_000)],
         "grouping_fields": {}}, 200),
     # The same for a cost read off the provider's response (#583 D3): the
@@ -634,7 +634,7 @@ VERIFIED = {
     # not what Verify tests — running the generated files does.
     "response-cost": ("response-cost", {
         "records": [_record("grounded.search",
-                            measurements={"input_tokens": 1200},
+                            measurements={"input_tokens": "1200"},
                             provider_response_cost_micros=4_200)],
         "grouping_fields": {}}, 200),
     # With the currency read off the response too, the Blueprint binds
@@ -657,44 +657,44 @@ VERIFIED = {
     # unresolved, so not verified, and the acknowledgement names the gap.
     "calculated-cost": ("calculated-cost", {
         "records": [_record("chat.completion", measurements={
-            "input_tokens": 1200, "output_tokens": 300, "searches": 2})],
+            "input_tokens": "1200", "output_tokens": "300", "searches": "2"})],
         "grouping_fields": {"environment": "staging"}}, 200),
     # The two required quantities left blank: the record names them missing.
     "calculated-cost-without-required-measurements": ("calculated-cost", {
-        "records": [_record("chat.completion", measurements={"searches": 2})],
+        "records": [_record("chat.completion", measurements={"searches": "2"})],
         "grouping_fields": {"environment": "staging"}}, 200),
     # One of two selected Event Types left out: a partial run, never verified.
     "direct-task-events-partial": ("direct-task-events", {
-        "records": [_record("reply.sent", measurements={"replies": 1})],
+        "records": [_record("reply.sent", measurements={"replies": "1"})],
         "grouping_fields": {}}, 200),
     # Recorded under the Subtask kind the Blueprint starts, with a sample for
     # both kinds' required Grouping Fields.
     "explicit-subtasks": ("explicit-subtasks", {
         "records": [_record("gemini.generate", subtask_type="summarise",
-                            measurements={"prompt_tokens": 900,
-                                          "candidate_tokens": 250})],
+                            measurements={"prompt_tokens": "900",
+                                          "candidate_tokens": "250"})],
         "grouping_fields": {"environment": "staging", "phase": "draft"}}, 200),
     # A supplier cost on an Event Type costed from rates: refused inside the
     # run, which stops there and says where.
     "calculated-cost-refused-recording": ("calculated-cost", {
         "records": [_record("chat.completion", provider_cost_micros=5,
-                            measurements={"input_tokens": 1200,
-                                          "output_tokens": 300})],
+                            measurements={"input_tokens": "1200",
+                                          "output_tokens": "300"})],
         "grouping_fields": {"environment": "staging"}}, 200),
     # The refusals before anything runs, one of each.
     "not-found": (None, {
         "records": [_record("chat.completion",
-                            measurements={"input_tokens": 1200})],
+                            measurements={"input_tokens": "1200"})],
         "grouping_fields": {"environment": "staging"}}, 404),
     "event-type-not-available": ("blocked", {
-        "records": [_record("draft.only", measurements={"searches": 1})],
+        "records": [_record("draft.only", measurements={"searches": "1"})],
         "grouping_fields": {}}, 422),
     "blocked": ("blocked", {
-        "records": [_record("web.search", measurements={"searches": 1})],
+        "records": [_record("web.search", measurements={"searches": "1"})],
         "grouping_fields": {}}, 409),
     "missing-grouping-field-sample": ("calculated-cost", {
         "records": [_record("chat.completion", measurements={
-            "input_tokens": 1200, "output_tokens": 300})],
+            "input_tokens": "1200", "output_tokens": "300"})],
         "grouping_fields": {}}, 422),
 }
 

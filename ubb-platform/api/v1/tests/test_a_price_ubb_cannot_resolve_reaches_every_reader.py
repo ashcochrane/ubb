@@ -211,6 +211,7 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
                 "customer_id": str(self.customer.id),
                 "event_id": "e1", "cost_micros": price,
                 "billed_cost_micros": price, "pricing_status": status,
+                "pricing_status_reason": None,
                 "effective_at": timezone.now().isoformat()}
 
     def test_the_handler_answers_rather_than_raising(self):

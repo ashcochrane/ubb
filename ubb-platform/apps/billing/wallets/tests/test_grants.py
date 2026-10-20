@@ -50,7 +50,7 @@ def _make_grant(wallet, tenant, *, kind, amount, expires_at=None, source="api",
 def _drawdown(tenant, customer, cost, event_id=None):
     """Drive the real live drawdown handler once."""
     event_id = event_id or str(uuid.uuid4())
-    payload = asdict(UsageRecorded(
+    payload = asdict(UsageRecorded(pricing_status_reason=None,
         tenant_id=tenant.id, customer_id=customer.id,
         event_id=event_id, billing_owner_id=customer.id,
         cost_micros=cost,

@@ -684,11 +684,11 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
         cls.measured_twice = a_posting(cls.tenant, cls.customer, "i1")
         PostingMeasurement.objects.create(
             posting=cls.measured_twice, recorded_at=MARCH,
-            measurements={"prompt_tokens": 600, "cached_prompt_tokens": 40})
+            measurements={"prompt_tokens": "600", "cached_prompt_tokens": "40"})
         cls.measured_once = a_posting(cls.tenant, cls.customer, "i2")
         PostingMeasurement.objects.create(
             posting=cls.measured_once, recorded_at=MARCH,
-            measurements={"prompt_tokens": 100})
+            measurements={"prompt_tokens": "100"})
 
     def test_every_money_measure_is_refused_at_this_heading_by_name(self):
         for measure in MONEY:
@@ -744,7 +744,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
             resolved_at=MARCH, charged_at=MARCH, idempotency_key="charge-1"))
         PostingMeasurement.objects.create(
             posting=charge, recorded_at=MARCH,
-            measurements={"prompt_tokens": 5})
+            measurements={"prompt_tokens": "5"})
         answer = economics(
             self.tenant.id,
             measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
@@ -931,7 +931,7 @@ class WhichClockGovernsARowTest(TestCase):
                                 effective_at=recently)
         PostingMeasurement.objects.create(posting=cls.posting,
                                           recorded_at=recently,
-                                          measurements={"prompt_tokens": 600})
+                                          measurements={"prompt_tokens": "600"})
 
     def a_question_from(self, opens, **kwargs):
         return economics(

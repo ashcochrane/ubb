@@ -6,7 +6,7 @@
       {
         "event_type": "chat.completion",
         "measurements": {
-          "searches": 2
+          "searches": "2"
         }
       }
     ],
@@ -68,6 +68,7 @@
           "billed_cost_micros": null,
           "pricing_status": "unknown",
           "not_applicable_reason": null,
+          "pricing_status_reason": null,
           "task_id": "00000000-0000-4000-8000-000000000001",
           "parent_task_id": null,
           "task_total_billed_cost_micros": 0,
@@ -81,15 +82,15 @@
           "stop_bound_micros": null,
           "stop_measured_micros": null,
           "ceiling_status": "indeterminate",
-          "ceiling_used_percentage": 0,
-          "ceiling_remaining_micros": 5000000,
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
           "stop_context": null,
           "measurements": {
-            "searches": 2
+            "searches": "2"
           },
           "pricing_receipt": {
-            "receipt_schema_version": 1,
-            "pricing_engine_version": "2.1.0",
+            "receipt_schema_version": 2,
+            "pricing_engine_version": "2.2.0",
             "subject_type": "usage_event",
             "subject_id": "00000000-0000-4000-8000-000000000002",
             "effective_at": "2026-09-01T12:30:00Z",
@@ -103,7 +104,7 @@
                   "searches"
                 ],
                 "uncosted_quantities": {
-                  "searches": 2
+                  "searches": "2"
                 },
                 "undeclared_quantities": {},
                 "unresolved_reason": "cost_rate_missing"
@@ -115,7 +116,8 @@
               "detail": {
                 "components": [],
                 "pricing_mode": "event_priced",
-                "not_applicable_reason": null
+                "not_applicable_reason": null,
+                "pricing_status_reason": null
               }
             },
             "totals": {
@@ -147,6 +149,7 @@
           "billed_cost_micros": null,
           "pricing_status": "unknown",
           "not_applicable_reason": null,
+          "pricing_status_reason": null,
           "task_id": "00000000-0000-4000-8000-000000000001",
           "parent_task_id": null,
           "task_total_billed_cost_micros": null,
@@ -160,11 +163,11 @@
           "stop_bound_micros": null,
           "stop_measured_micros": null,
           "ceiling_status": "indeterminate",
-          "ceiling_used_percentage": 0,
-          "ceiling_remaining_micros": 5000000,
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
           "stop_context": null,
           "measurements": {
-            "searches": 2
+            "searches": "2"
           },
           "pricing_receipt": {
             "totals": {
@@ -176,7 +179,7 @@
                 "components": [],
                 "unresolved_reason": "cost_rate_missing",
                 "uncosted_quantities": {
-                  "searches": 2
+                  "searches": "2"
                 },
                 "undeclared_quantities": {},
                 "uncosted_measurement_keys": [
@@ -190,7 +193,8 @@
               "detail": {
                 "components": [],
                 "pricing_mode": "event_priced",
-                "not_applicable_reason": null
+                "not_applicable_reason": null,
+                "pricing_status_reason": null
               },
               "method": null,
               "status": "unknown"
@@ -203,8 +207,8 @@
             "subject_id": "00000000-0000-4000-8000-000000000002",
             "effective_at": "2026-09-01T12:30:00Z",
             "subject_type": "usage_event",
-            "pricing_engine_version": "2.1.0",
-            "receipt_schema_version": 1
+            "pricing_engine_version": "2.2.0",
+            "receipt_schema_version": 2
           },
           "pricing_receipt_subject_type": "usage_event",
           "uncosted_measurement_keys": [

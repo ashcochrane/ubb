@@ -2,6 +2,7 @@ from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.utils import timezone
 
+from apps.platform.event_types.exact_decimals import canonical_quantities
 from core.models import BaseModel
 from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE
 from core.vocabulary import (
@@ -12,6 +13,7 @@ from core.vocabulary import (
     NOT_APPLICABLE_REASON_VALUES,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_REASON_VALUES,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_VALUES,
     PRICING_STATUS_WAIVED,
@@ -21,7 +23,7 @@ from core.vocabulary import (
 )
 
 
-# The five closed sets this model stores, DERIVED from the registry rather than
+# The six closed sets this model stores, DERIVED from the registry rather than
 # restated beside it. `choices=` is Django's own declaration that a column has a
 # closed value set, and it is worth having — it reaches forms, the admin and
 # `full_clean` — but a hand-typed list is the shape the migration ledger
@@ -39,6 +41,8 @@ UNRESOLVED_REASON_CHOICES = [(value, value)
 PRICING_STATUS_CHOICES = [(value, value) for value in sorted(PRICING_STATUS_VALUES)]
 NOT_APPLICABLE_REASON_CHOICES = [(value, value)
                                  for value in sorted(NOT_APPLICABLE_REASON_VALUES)]
+PRICING_STATUS_REASON_CHOICES = [(value, value)
+                                 for value in sorted(PRICING_STATUS_REASON_VALUES)]
 USAGE_EVENT_KIND_CHOICES = [(value, value)
                             for value in sorted(USAGE_EVENT_KIND_VALUES)]
 
@@ -302,6 +306,17 @@ class Posting(BaseModel):
     not_applicable_reason = models.CharField(
         max_length=32, choices=NOT_APPLICABLE_REASON_CHOICES,
         null=True, blank=True)
+    # WHY THE PRICE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603,
+    # ADR-0020). Today one value, read only beside `unknown`:
+    # `negative_price_unsupported` — UBB calculated a negative customer price
+    # exactly and the money rails cannot carry it, so the price is unresolved
+    # rather than clamped, dropped or `known`. NULL beside an `unknown` price
+    # is the ordinary one, missing input; the two are different remedies (the
+    # first waits on configuration, the second on a capability that carries
+    # negative money), and a Resolution Run selects only the first.
+    pricing_status_reason = models.CharField(
+        max_length=32, choices=PRICING_STATUS_REASON_CHOICES,
+        null=True, blank=True)
     #: WHICH COLUMN HOLDS THE PRICING RECEIPT, NAMED ONCE (#349).
     #:
     #: The receipt is the authoritative record of an ECONOMIC RESOLUTION for
@@ -394,6 +409,12 @@ class Posting(BaseModel):
     #: it qualifies. What keeps it is the same trigger, which refuses to see it
     #: move on any statement at all — the status it belongs to is terminal on
     #: both sides, so unlike the cost side's reason it is never cleared either.
+    #:
+    #: `pricing_status_reason` (#603) carries none either, on the same
+    #: argument: it qualifies an `unknown` price, and the same trigger
+    #: (`migrations/0046` widened `0039`'s rule to name it) lets it move only
+    #: with the one permitted resolution — `unknown` to `known`, which clears
+    #: it — and on no other statement.
     #:
     #: **The price pair's enforcement is a SECOND rule, in a second trigger
     #: (`migrations/0039`), and that is the same mechanism rather than a
@@ -545,11 +566,15 @@ class Posting(BaseModel):
                                NOT_APPLICABLE_REASON_VALUES))),
                 name="ck_posting_not_applicable_reason",
             ),
-            # THE FOUR LEGAL COMBINATIONS, AND THERE ARE ONLY FOUR:
+            # THE FOUR LEGAL COMBINATIONS, AND THERE ARE ONLY FOUR — "reason"
+            # is `not_applicable_reason`, and the price status's own reason
+            # (#603) is NULL everywhere but `unknown`, where either answer is
+            # legal:
             #
             #   known           →  amount IS NOT NULL  and  reason IS NULL
             #   waived          →  amount IS NULL      and  reason IS NULL
             #   unknown         →  amount IS NULL      and  reason IS NULL
+            #                      (pricing_status_reason NULL or not)
             #   not_applicable  →  amount IS NULL      and  reason IS NOT NULL
             #
             # `waived` and `unknown` share a shape, which is why they are
@@ -564,18 +589,29 @@ class Posting(BaseModel):
                 condition=(
                     models.Q(pricing_status=PRICING_STATUS_KNOWN,
                              billed_cost_micros__isnull=False,
-                             not_applicable_reason__isnull=True)
+                             not_applicable_reason__isnull=True,
+                             pricing_status_reason__isnull=True)
                     | models.Q(pricing_status=PRICING_STATUS_WAIVED,
                                billed_cost_micros__isnull=True,
-                               not_applicable_reason__isnull=True)
+                               not_applicable_reason__isnull=True,
+                               pricing_status_reason__isnull=True)
                     | models.Q(pricing_status=PRICING_STATUS_UNKNOWN,
                                billed_cost_micros__isnull=True,
                                not_applicable_reason__isnull=True)
                     | models.Q(pricing_status=PRICING_STATUS_NOT_APPLICABLE,
                                billed_cost_micros__isnull=True,
-                               not_applicable_reason__isnull=False)
+                               not_applicable_reason__isnull=False,
+                               pricing_status_reason__isnull=True)
                 ),
                 name="ck_posting_pricing_status_agrees_with_the_price",
+            ),
+            # The price status's own reason's closed set (#603), the shape of
+            # the two reason checks above.
+            models.CheckConstraint(
+                condition=(models.Q(pricing_status_reason__isnull=True)
+                           | models.Q(pricing_status_reason__in=sorted(
+                               PRICING_STATUS_REASON_VALUES))),
+                name="ck_posting_pricing_status_reason",
             ),
             # THE DISCRIMINATOR'S CLOSED SET, at the database (#417). Same
             # shape and same argument as the four value-set checks above it: a
@@ -642,11 +678,18 @@ class Posting(BaseModel):
         making the difference visible is the next ticket's whole subject, and it
         does it on the contract with a derived status rather than by teaching
         this accessor to lie in a second way.
+
+        **EVERY VALUE IS THE QUANTITY'S CANONICAL TEXT (#603).** The recording
+        path stores nothing else since #603; a record written before it holds
+        whole numbers, and each is answered as its own digits — exact, and the
+        one spelling every surface publishes. The record is read, never
+        rewritten.
         """
         try:
-            return self.measurement.measurements
+            bag = self.measurement.measurements
         except PostingMeasurement.DoesNotExist:
             return {}
+        return canonical_quantities(bag)
 
     def save(self, *args, **kwargs):
         # NOT THE ENFORCEMENT — see `transition_classes` above. This door is

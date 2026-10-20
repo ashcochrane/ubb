@@ -475,14 +475,16 @@ class UtilisationAndHeadroomTest(SpendControlReportsTestBase):
         self.assertEqual(report["indeterminate_count"], 1)
         self.assertEqual(report["indeterminate_share_percentage"], 20)
         self.assertEqual(report["within_ceiling_count"], 2)
-        # (90 + 10 + 200 + 0) // 4 = 75: per unit, then across every unit
-        # that had a ceiling — the chatty unit weighs exactly one.
-        self.assertEqual(report["average_final_utilisation_percentage"], 75)
-        # The indeterminate unit's known total is nothing (its one cost is
-        # unresolved), so its headroom is the whole ceiling — a floor, as the
-        # status beside it says: (1M + 9M + 0 + 10M) // 4.
+        # (90 + 10 + 200) // 3 = 100: per unit, then across every unit whose
+        # ceiling was assessed to a figure — the chatty unit weighs exactly
+        # one. The indeterminate unit has no figures since #603 (its row's are
+        # null), so it contributes to neither average, and
+        # `indeterminate_count` says how many the averages leave out.
+        self.assertIsNone(rows[str(indeterminate.id)]["ceiling_used_percentage"])
+        self.assertIsNone(rows[str(indeterminate.id)]["ceiling_remaining_micros"])
+        self.assertEqual(report["average_final_utilisation_percentage"], 100)
         self.assertEqual(report["average_unused_headroom_micros"],
-                         (1_000_000 + 9_000_000 + 0 + 10_000_000) // 4)
+                         (1_000_000 + 9_000_000 + 0) // 3)
         self.assertIsNone(report["customer_spend_pool"])
 
     def test_a_null_is_never_coerced_to_zero(self):

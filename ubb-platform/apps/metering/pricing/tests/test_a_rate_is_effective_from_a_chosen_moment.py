@@ -299,7 +299,7 @@ class APastRateResolvesOnlyAfterItsMomentTest(TestCase):
         return PricingService.price(
             subject=a_usage_event_subject(),
             tenant=self.tenant, customer=self.customer, selectors={},
-            measurements={"tok": 100}, currency="usd",
+            measurements={"tok": "100"}, currency="usd",
             caller_provider_cost=None,
             as_of=as_of).provider_cost_micros
 
@@ -357,7 +357,7 @@ class AReplayedEventResolvesAgainstTheRateEffectiveThenTest(TestCase):
     def _record(self, **kwargs):
         return UsageService.record_usage(
             self.tenant, self.customer, "k1",
-            measurements={"tok": 100}, **kwargs)
+            measurements={"tok": "100"}, **kwargs)
 
     def test_a_replayed_event_costs_what_it_cost_then(self):
         recorded = self._record(effective_at=self.then)
@@ -813,7 +813,7 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
         cost = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=tenant, customer=customer, selectors={},
-            measurements={"tok": 100}, currency="usd",
+            measurements={"tok": "100"}, currency="usd",
             caller_provider_cost=None,
             as_of=boundary).provider_cost_micros
         self.assertEqual(cost, 9_000)

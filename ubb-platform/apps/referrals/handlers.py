@@ -4,6 +4,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
+from core.money import NegativeKnownPriceRefused
 from apps.platform.events.schemas import UsageRecorded
 from apps.referrals.rewards.services import RewardService
 
@@ -21,8 +22,21 @@ def handle_usage_recorded_referrals(event_id, payload):
 
     evt = UsageRecorded.from_payload(payload)
     cost_micros = evt.cost_micros
-    if cost_micros <= 0:
+    # ⚠ `None <= 0` IS A `TypeError`, AND THIS IS AN OUTBOX HANDLER (#603,
+    # folded in; the defect #351 fixed in billing's handler and never here).
+    # `cost_micros` is the customer price, and it is null for every posting
+    # whose price UBB did not resolve — `unknown`, `waived`, `not_applicable`
+    # — so the first such posting for a referred customer raised, and an
+    # outbox handler that raises retries with backoff. A price that is not
+    # known is no referred spend to reward; a known zero is spend of nothing,
+    # with nothing to reward either. Neither is a sign rule: a known price is
+    # never negative (a negative one is `unknown` with its reason), and one
+    # arriving anyway is refused by name — rewarding it would reverse a
+    # referrer's reward, negative money v1 does not carry (ADR-0020 §5).
+    if cost_micros is None or cost_micros == 0:
         return
+    if cost_micros < 0:
+        raise NegativeKnownPriceRefused(evt.event_id, "the referral rewards")
 
     customer_id = evt.customer_id
     tenant_id = evt.tenant_id

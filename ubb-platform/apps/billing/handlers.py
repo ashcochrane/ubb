@@ -1,5 +1,6 @@
 import logging
 
+from core.money import NegativeKnownPriceRefused
 from apps.platform.events.schemas import CustomerDeleted, UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
@@ -32,11 +33,25 @@ def handle_usage_recorded_billing(event_id, payload):
     # comparison read the payload's legacy billed field, which was typed `int`
     # while the column filling it went nullable — so the first posting UBB could
     # not price would have taken this handler down, and an outbox handler that
-    # raises retries with backoff rather than failing a request. Nothing beyond
-    # this branch applies to an event with no resolved price: there is no amount
-    # to draw down, none to accumulate, and none to count towards the owner's
-    # live spend.
-    if billed_cost_micros is not None and billed_cost_micros > 0:
+    # raises retries with backoff rather than failing a request. Nothing below
+    # applies to an event with no resolved price: there is no amount to draw
+    # down, none to accumulate, and none to count towards the owner's live
+    # spend.
+    #
+    # ⚠ AND THE `> 0` THAT RODE WITH IT IS GONE (#603 ruling 9). It was a
+    # 2026-02 missing-value guard with no sign reason (`6069675803` §A), and it
+    # made a known ZERO price "no money": the period's event count missed it
+    # until the close rewrote the total with a drift warning. A known price is
+    # never negative — a negative one is `unknown` with its reason, so it
+    # stops at the line above — and a known zero is a real price: it is
+    # COUNTED below, and it moves no money because there is none to move.
+    #
+    # A NEGATIVE ONE ARRIVING ANYWAY IS REFUSED BY NAME, never absorbed: the
+    # old guard dropped it silently, and taking it would credit a wallet —
+    # negative money on the rails, which v1 does not carry (ADR-0020 §5).
+    if billed_cost_micros is not None and billed_cost_micros < 0:
+        raise NegativeKnownPriceRefused(evt.event_id, "the billing rails")
+    if billed_cost_micros is not None:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
         mechanism = _the_mechanism_of(evt.event_id)
@@ -46,7 +61,12 @@ def handle_usage_recorded_billing(event_id, payload):
         # the shared tail below, and the hourly reconcile's SET power; this
         # handler never reads the stop flag (the old D13 shape), so a stop
         # and its suspension cannot double-fire.
-        if tenant.billing_mode != "postpaid":
+        #
+        # A ZERO DRAWS NOTHING DOWN: there is no amount to debit and no
+        # ledger row to write for it, which is also what drawdown repair's
+        # `iter_billable_postings` selects on — the two agree on what a
+        # drawdown is owed for.
+        if tenant.billing_mode != "postpaid" and billed_cost_micros != 0:
             from apps.billing.wallets import operations as wallet_ops
 
             owner_id = evt.billing_owner_id or str(seat.resolve_billing_owner().id)

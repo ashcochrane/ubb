@@ -919,7 +919,7 @@
             "type": "integer"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over every seat's events in the window, the seats' own totals added up: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over every seat's events in the window, the seats' own totals added up: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -1121,7 +1121,7 @@
         "type": "object"
       },
       "CeilingUtilisationRow": {
-        "description": "One completed unit's ceiling as it stands at completion: the status\n(the reading rule is written once, on `RecordUsageResponse.ceiling_status`\n\u2014 under `indeterminate` the percentage is a floor and the headroom a\nceiling), the final utilisation over the known total, the headroom, and\nthe pair the figures are computed over. Under `not_applicable` both\nfigures are null, never zero.",
+        "description": "One completed unit's ceiling as it stands at completion: the status\n(the reading rule is written once, on `RecordUsageResponse.ceiling_status`),\nthe final utilisation over the resolved total, the headroom, and the pair\nthe figures are computed over. Under `not_applicable` and under\n`indeterminate` both figures are null, never zero: an unresolved amount\nmay move the total either way, so a share of the resolved part bounds\nnothing.",
         "properties": {
           "ceiling_remaining_micros": {
             "anyOf": [
@@ -2185,7 +2185,7 @@
         "type": "object"
       },
       "CustomerSpendPoolStatusOut": {
-        "description": "Where a customer's known period charges stand against the pool that\napplies to them \u2014 their own row, else the tenant default; no row is no\npool (`cap_micros` 0, every assessed figure null). The basis is the\ndurable pair: `known_period_charges_micros` is the resolved period\ncharges and a LOWER BOUND wherever `unresolved_posting_count` is not\nzero, and every figure beside it is computed over that known figure \u2014\nthe percentage a floor and the headroom a ceiling until the count is\nzero. `highest_threshold_reached` is the largest of the pool's\n`alert_levels` (a percent of `cap_micros`) the known figure has reached;\n`blocking_occurred` is the start gate's own compare \u2014 true only under a\nblocking pool whose stop line the known figure is at or over. The pool\nis blind to a fixed price until delivery; the wallet reservation sees it\nat start.",
+        "description": "Where a customer's known period charges stand against the pool that\napplies to them \u2014 their own row, else the tenant default; no row is no\npool (`cap_micros` 0, every assessed figure null). The basis is the\ndurable pair: `known_period_charges_micros` is the sum of the period's\nresolved charges, `unresolved_posting_count` says how many charges it\ndoes not include, and when that count is zero the figure is complete.\nEvery figure beside it is computed over that resolved figure.\n`highest_threshold_reached` is the largest of the pool's\n`alert_levels` (a percent of `cap_micros`) the known figure has reached;\n`blocking_occurred` is the start gate's own compare \u2014 true only under a\nblocking pool whose stop line the known figure is at or over. The pool\nis blind to a fixed price until delivery; the wallet reservation sees it\nat start.",
         "properties": {
           "blocking_occurred": {
             "title": "Blocking Occurred",
@@ -2480,7 +2480,7 @@
         "type": "object"
       },
       "EconomicMeasureOut": {
-        "description": "One requested measure on one row: its amount, and what that amount is\nworth.\n\n\u26a0 **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS\nOWN.** A measure whose inputs are still resolving carries a bound and says\nso in `status`; a measure that could not be attributed at the requested\ngrain carries whatever part of itself could be placed \u2014 or, for a margin,\nnothing at all \u2014 and says so there too. A reader that took the figure and\ndropped that field would publish a floor as a total, which is the defect the\nwhole surface exists to end.\n\n**What each state says about the fields beside it**, which is what the state\nis for:\n\n* `known` \u2014 every input resolved. Inside a period a tenant-supplied revenue\n  figure covers, that figure is the revenue and resolves it whole.\n* `incomplete` \u2014 some input is still unresolved, so the figure is a bound\n  rather than a total, and the count beside it says how far off it can be.\n  Where no piece of a row's revenue resolved at all there is nothing to\n  bound, and the revenue and the margin over it carry no figure.\n* `unavailable_at_requested_grain` \u2014 a figure exists and cannot be\n  attributed this finely. A REVENUE figure here is the part that COULD be\n  placed, with the rest in the answer's `context`; a MARGIN is null\n  outright, because there is no such thing as a partial margin.\n* `unavailable_outside_retention_horizon` \u2014 the stretch this row covers\n  reaches back past the horizon UBB publishes for the records the figure\n  would be read from, so there is no figure and no count: `available_from`\n  says the day this measure's series can start. The two unavailable states\n  are separate because their remedies are: ask a coarser question, against\n  that data is gone.\n* `not_applicable` \u2014 the measure does not apply. This surface refuses such a\n  combination against `/metering/analytics/grouping-options` before building\n  a row, so an answer from THIS query never carries it; the value is the\n  concept's and a later surface may.\n\n\u26a0 **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured\nzero, and where UBB has no figure at all the field is null.",
+        "description": "One requested measure on one row: its amount, and what that amount is\nworth.\n\n\u26a0 **THE STATE IS NOT DECORATION AND THE FIGURE IS NOT THE ANSWER ON ITS\nOWN.** A measure whose inputs are still resolving carries a bound and says\nso in `status`; a measure that could not be attributed at the requested\ngrain carries whatever part of itself could be placed \u2014 or, for a margin,\nnothing at all \u2014 and says so there too. A reader that took the figure and\ndropped that field would publish a partial sum as a total, which is the\ndefect the whole surface exists to end.\n\n**What each state says about the fields beside it**, which is what the state\nis for:\n\n* `known` \u2014 every input resolved. Inside a period a tenant-supplied revenue\n  figure covers, that figure is the revenue and resolves it whole.\n* `incomplete` \u2014 some input is still unresolved, so the figure is a bound\n  rather than a total, and the count beside it says how far off it can be.\n  Where no piece of a row's revenue resolved at all there is nothing to\n  bound, and the revenue and the margin over it carry no figure.\n* `unavailable_at_requested_grain` \u2014 a figure exists and cannot be\n  attributed this finely. A REVENUE figure here is the part that COULD be\n  placed, with the rest in the answer's `context`; a MARGIN is null\n  outright, because there is no such thing as a partial margin.\n* `unavailable_outside_retention_horizon` \u2014 the stretch this row covers\n  reaches back past the horizon UBB publishes for the records the figure\n  would be read from, so there is no figure and no count: `available_from`\n  says the day this measure's series can start. The two unavailable states\n  are separate because their remedies are: ask a coarser question, against\n  that data is gone.\n* `not_applicable` \u2014 the measure does not apply. This surface refuses such a\n  combination against `/metering/analytics/grouping-options` before building\n  a row, so an answer from THIS query never carries it; the value is the\n  concept's and a later surface may.\n\n\u26a0 **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured\nzero, and where UBB has no figure at all the field is null.",
         "properties": {
           "amount_micros": {
             "anyOf": [
@@ -3917,8 +3917,10 @@
           },
           "measurements": {
             "additionalProperties": {
-              "type": "integer"
+              "pattern": "^(-?[0-9]+(\\.[0-9]+)?)$",
+              "type": "string"
             },
+            "description": "Each quantity is an exact decimal written as a STRING \u2014 `\"12\"`, `\"2.5\"`, `\"-3\"`, `\"0\"` \u2014 never a JSON number, which most clients have already carried as a binary float. Base-10 digits with an optional leading `-` and an optional fractional part, a digit on each side of the point: no exponent, no `+`, and no spaces, separators or locale formatting. There is no precision or scale limit. A quantity may be negative, and zero is a recorded value. Where the event's Event Type declares the key, its `value_type` decides whether a fraction is allowed (`integer` refuses one); a key no publication declares is accepted and held as written. Every value is stored and answered in its canonical form: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.",
             "title": "Measurements",
             "type": "object"
           },
@@ -4203,6 +4205,22 @@
             "type": "string",
             "x-ubb-concept": "pricing_status"
           },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
+          },
           "provider_cost_micros": {
             "anyOf": [
               {
@@ -4221,6 +4239,7 @@
           "customer_id",
           "effective_at",
           "pricing_status",
+          "pricing_status_reason",
           "costing_status",
           "arrived_after"
         ],
@@ -4246,7 +4265,7 @@
             "type": "array"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over the events this episode itemises: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the events this episode itemises: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -6614,7 +6633,8 @@
             "anyOf": [
               {
                 "additionalProperties": {
-                  "type": "integer"
+                  "pattern": "^(-?[0-9]+(\\.[0-9]+)?)$",
+                  "type": "string"
                 },
                 "type": "object"
               },
@@ -6622,6 +6642,7 @@
                 "type": "null"
               }
             ],
+            "description": "Each quantity is an exact decimal written as a STRING \u2014 `\"12\"`, `\"2.5\"`, `\"-3\"`, `\"0\"` \u2014 never a JSON number, which most clients have already carried as a binary float. Base-10 digits with an optional leading `-` and an optional fractional part, a digit on each side of the point: no exponent, no `+`, and no spaces, separators or locale formatting. There is no precision or scale limit. A quantity may be negative, and zero is a recorded value. Where the event's Event Type declares the key, its `value_type` decides whether a fraction is allowed (`integer` refuses one); a key no publication declares is accepted and held as written. Every value is stored and answered in its canonical form: no unnecessary leading zero, no trailing fractional zero or point, and `0` for every spelling of zero.",
             "title": "Measurements"
           },
           "metadata": {
@@ -6779,13 +6800,17 @@
           "measurements": {
             "anyOf": [
               {
-                "additionalProperties": true,
+                "additionalProperties": {
+                  "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+                  "type": "string"
+                },
                 "type": "object"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "The quantities as recorded, keyed as sent. Each is the canonical exact decimal text UBB stored.",
             "title": "Measurements"
           },
           "new_balance_micros": {
@@ -6881,6 +6906,22 @@
             "title": "Pricing Status",
             "type": "string",
             "x-ubb-concept": "pricing_status"
+          },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
           },
           "provider_cost_micros": {
             "anyOf": [
@@ -7079,6 +7120,7 @@
           "suspended",
           "costing_status",
           "pricing_status",
+          "pricing_status_reason",
           "trigger_source",
           "stop_bound_micros",
           "stop_measured_micros"
@@ -7771,7 +7813,7 @@
             "type": "number"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over this customer's events in the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over this customer's events in the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -7858,7 +7900,7 @@
             "type": "integer"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over this family's itemised events, each counted once: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over this family's itemised events, each counted once: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -8279,6 +8321,22 @@
             "type": "string",
             "x-ubb-concept": "pricing_status"
           },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
+          },
           "records": {
             "items": {
               "$ref": "#/components/schemas/AttributedSuppliedRevenueOut"
@@ -8301,6 +8359,7 @@
           "basis",
           "window",
           "pricing_status",
+          "pricing_status_reason",
           "totals",
           "records"
         ],
@@ -9841,6 +9900,22 @@
             "type": "string",
             "x-ubb-concept": "pricing_status"
           },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
+          },
           "provider": {
             "default": "",
             "title": "Provider",
@@ -9886,7 +9961,8 @@
           "customer_id",
           "currency",
           "costing_status",
-          "pricing_status"
+          "pricing_status",
+          "pricing_status_reason"
         ],
         "title": "UnresolvedQueueRow",
         "type": "object"
@@ -9899,7 +9975,7 @@
             "type": "string"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over the queued postings in this currency, across the whole filter rather than one page: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor; one declared to carry no cost adds nothing and is not counted.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the queued postings in this currency, across the whole filter rather than one page: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -10071,13 +10147,17 @@
           "measurements": {
             "anyOf": [
               {
-                "additionalProperties": true,
+                "additionalProperties": {
+                  "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+                  "type": "string"
+                },
                 "type": "object"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "The quantities as recorded, keyed as sent. Each is the canonical exact decimal text UBB stored.",
             "title": "Measurements"
           },
           "new_balance_micros": {
@@ -10180,6 +10260,22 @@
               }
             ],
             "title": "Pricing Status"
+          },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
           },
           "provider_cost_micros": {
             "anyOf": [
@@ -10381,6 +10477,7 @@
           }
         },
         "required": [
+          "pricing_status_reason",
           "trigger_source",
           "stop_bound_micros",
           "stop_measured_micros",
@@ -10514,8 +10611,11 @@
             "x-ubb-concept": "usage_event_kind"
           },
           "measurements": {
-            "additionalProperties": true,
-            "default": {},
+            "additionalProperties": {
+              "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+              "type": "string"
+            },
+            "description": "The quantities this posting was measured by, keyed as sent. Each is the canonical exact decimal text UBB stored.",
             "title": "Measurements",
             "type": "object"
           },
@@ -10601,6 +10701,22 @@
             "type": "string",
             "x-ubb-concept": "pricing_status"
           },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
+          },
           "provider": {
             "default": "",
             "title": "Provider",
@@ -10665,6 +10781,7 @@
           "idempotency_key",
           "costing_status",
           "pricing_status",
+          "pricing_status_reason",
           "measurements_status",
           "effective_at",
           "created_at"
@@ -10762,6 +10879,22 @@
             "type": "string",
             "x-ubb-concept": "pricing_status"
           },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+            "title": "Pricing Status Reason"
+          },
           "provider": {
             "default": "",
             "title": "Provider",
@@ -10814,6 +10947,7 @@
           "kind",
           "costing_status",
           "pricing_status",
+          "pricing_status_reason",
           "metadata",
           "effective_at"
         ],
@@ -10918,7 +11052,7 @@
         "type": "object"
       },
       "UtilisationAndHeadroomResponse": {
-        "description": "How much of each ceiling was used, and how often it could not be\nevaluated (#150 \u00a79.3). The average utilisation is computed per unit and\nthen across every unit that had a ceiling, so one chatty unit never\ndominates; peak utilisation equals the final figure by construction (the\npinned ceiling never moves and the known total never falls) and is not\npublished twice. Shares are whole percentages of `unit_count`, rounded\ndown; every average is null where no unit contributes \u2014 never zero. An\n`indeterminate` unit contributes its own floor, so the average\nutilisation is itself a floor and the average headroom a ceiling\nwherever `indeterminate_count` is not zero \u2014 the same reading rule each\nrow's status states for its own figures, and the count beside the\naverage is what says so. `customer_spend_pool` is the status pair for\nthe customer the filter names, null tenant-wide or where no pool\napplies.",
+        "description": "How much of each ceiling was used, and how often it could not be\nevaluated (#150 \u00a79.3). The average utilisation is computed per unit and\nthen across every unit that had a ceiling, so one chatty unit never\ndominates. Shares are whole percentages of `unit_count`, rounded down;\nevery average is null where no unit contributes \u2014 never zero. An\n`indeterminate` unit has no figures (its row's are null), so it\ncontributes nothing to either average, and `indeterminate_count` says\nhow many the averages leave out. `customer_spend_pool` is the status pair for\nthe customer the filter names, null tenant-wide or where no pool\napplies.",
         "properties": {
           "average_final_utilisation_percentage": {
             "anyOf": [
@@ -11060,7 +11194,7 @@
             "type": "string"
           },
           "provider_cost_micros": {
-            "description": "The total supplier cost (COGS) UBB resolved, summed over the postings in this currency whose price was waived: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it, so the total is a floor.",
+            "description": "The total supplier cost (COGS) UBB resolved, summed over the postings in this currency whose price was waived: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete.",
             "title": "Provider Cost Micros",
             "type": "integer"
           },
@@ -16410,7 +16544,7 @@
     },
     "/api/v1/metering/pricing/projected-adjustment": {
       "get": {
-        "description": "What recovering this filter would be worth, per customer.\n\nA projection and not an instruction: reading it moves no money, creates no\ninvoice, credit note, charge or refund, and UBB will not bill your customer\nfor it. Deciding to go back to a customer stays yours, and you act on it\nthrough the billing path you already use.\n\nEach posting is re-resolved at its own effective instant, so nothing is\nrepriced against today's rules. `usage_event_ids` names the postings behind\neach figure; each one's Pricing Receipt is at\nGET /metering/usage/{event_id}.\n\nOne pass examines a bounded number of postings. `postings_not_examined`\nsays how many the filter matched beyond it \u2014 narrow the date range to reach\nthose \u2014 and `unpriced_event_count` says how many examined postings still\nresolve to no price. Both make the figures a floor.\n\nThe filter is the Resolution Run's: a half-open date range, a customer and\nan Event Type, in any combination. A customer this tenant does not have is\na 404; a stated window longer than 366 days is a `validation_error`.",
+        "description": "What recovering this filter would be worth, per customer.\n\nA projection and not an instruction: reading it moves no money, creates no\ninvoice, credit note, charge or refund, and UBB will not bill your customer\nfor it. Deciding to go back to a customer stays yours, and you act on it\nthrough the billing path you already use.\n\nEach posting is re-resolved at its own effective instant, so nothing is\nrepriced against today's rules. `usage_event_ids` names the postings behind\neach figure; each one's Pricing Receipt is at\nGET /metering/usage/{event_id}.\n\nOne pass examines a bounded number of postings. `postings_not_examined`\nsays how many the filter matched beyond it \u2014 narrow the date range to reach\nthose \u2014 and `unpriced_event_count` says how many examined postings still\nresolve to no price. Each figure is the sum of what a run would settle, and\nis complete when both counts are zero.\n\nThe filter is the Resolution Run's: a half-open date range, a customer and\nan Event Type, in any combination. A customer this tenant does not have is\na 404; a stated window longer than 366 days is a `validation_error`.",
         "operationId": "api_v1_metering_endpoints_get_projected_adjustment",
         "parameters": [
           {
@@ -16705,7 +16839,7 @@
     },
     "/api/v1/metering/pricing/waived-loss": {
       "get": {
-        "description": "What waiving has cost you over a period, as money.\n\nA charge is waived where the margin rule had no supplier cost to take a\nmargin over, so a waived posting never carried a price and this figure\ncannot be revenue forgone. `basis` states what it is instead, in the\nresponse itself.\n\nWaived postings whose own supplier cost UBB never learned are not in the\nfigure and are counted beside it, so the total is a floor. Waived postings\nare never candidates for a Resolution Run: a decision somebody made is not\ninformation UBB is missing.\n\nRows are per currency and there is no total across them. The filter is the\nResolution Run's: a half-open date range, a customer and an Event Type, in\nany combination. A customer this tenant does not have is a 404; a stated\nwindow longer than 366 days is a `validation_error`.",
+        "description": "What waiving has cost you over a period, as money.\n\nA charge is waived where the margin rule had no supplier cost to take a\nmargin over, so a waived posting never carried a price and this figure\ncannot be revenue forgone. `basis` states what it is instead, in the\nresponse itself.\n\nWaived postings whose own supplier cost UBB never learned are not in the\nfigure and are counted beside it: the total is the sum of the resolved\ncosts, complete when that count is zero (#603). Waived postings\nare never candidates for a Resolution Run: a decision somebody made is not\ninformation UBB is missing.\n\nRows are per currency and there is no total across them. The filter is the\nResolution Run's: a half-open date range, a customer and an Event Type, in\nany combination. A customer this tenant does not have is a 404; a stated\nwindow longer than 366 days is a `validation_error`.",
         "operationId": "api_v1_metering_endpoints_get_waived_loss",
         "parameters": [
           {
@@ -24059,6 +24193,22 @@
                         "type": "string",
                         "x-ubb-concept": "pricing_status"
                       },
+                      "pricing_status_reason": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "negative_price_unsupported"
+                            ],
+                            "type": "string",
+                            "x-ubb-concept": "pricing_status_reason"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Why `pricing_status` applies, where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded \u2014 an `unknown` price with a null reason is one UBB had no input to resolve. Always present.",
+                        "title": "Pricing Status Reason"
+                      },
                       "provider": {
                         "default": "",
                         "title": "Provider",
@@ -24098,7 +24248,8 @@
                       "tenant_id",
                       "customer_id",
                       "event_id",
-                      "cost_micros"
+                      "cost_micros",
+                      "pricing_status_reason"
                     ],
                     "title": "UsageRecorded",
                     "type": "object"

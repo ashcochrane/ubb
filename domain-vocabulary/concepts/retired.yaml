@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,392 of 2,832 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,396 of 2,838 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2794,6 +2794,19 @@ measurement_key:
     # catalogue's version-6 pin was renamed to its version-7 one — and both are
     # swept: the exclusions stand at 440. They are the console's read of a
     # Verify answer's stop figures off its text, and its tests.
+    #
+    # 2026-10-20, #603 + #584 (window A) — the platform contract stage: a
+    # Measurement quantity is recorded as canonical exact text, a negative
+    # price is `unknown` with `pricing_status_reason`, receipt schema 2:
+    # 2,392 of 2,832 -> 2,396 of 2,838 tracked files (`units` 42 files / 119
+    # occurrences, UNMOVED — the receipt component's key is addressed through
+    # `receipts.QUANTITY_KEY` rather than spelled again). 7 files arrived and
+    # 1 left. Two are migrations, excluded under `historical-migrations`
+    # (271 -> 273), so the exclusions stand at 442. The 5 swept arrivals are
+    # platform test modules (the wire, costing, negative economics, the
+    # reason's required-and-nullable census, receipt schema 2); the one that
+    # left is the door's "Fix 1" module, whose refusal of a negative quantity
+    # #603 overruled and whose other half moved into the wire module.
 
     - term: units
       retired_as: >-

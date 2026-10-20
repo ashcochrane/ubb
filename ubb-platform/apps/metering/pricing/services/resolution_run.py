@@ -80,6 +80,7 @@ from core.vocabulary import (
     COSTING_STATUS_NOT_APPLICABLE,
     PRICING_MODE_EVENT_PRICED,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+    PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
 )
 
 #: THE PAIRS A RUN RECOVERS, WHICH IS EVERY PAIR THERE IS. Read from the
@@ -137,17 +138,45 @@ class RunSelector:
     selected_event_type: str = ""
 
 
+#: AN UNRESOLVED ANSWER THE NORMAL RESOLVER DOES NOT RETRY, per pair (#603;
+#: the owner's Q1 ruling, `6279554922`).
+#:
+#: A price UBB calculated as NEGATIVE is `unknown` with the reason
+#: `negative_price_unsupported`: the calculation succeeded, and what is missing
+#: is a money rail able to carry the result — not configuration. Re-resolving it
+#: would compute the same number and complete nothing, so a run does not select
+#: it, and the working list a run is aimed at (`queries.get_unresolved_queue`,
+#: exactly this set) does not show it. It is still counted wherever the
+#: unpriced count is taken — `core.cost_totals` counts the pair's unresolved
+#: status, which it carries — because it is an amount the totals do not
+#: include. The capability that one day carries negative money selects these
+#: records explicitly; that is the v1 boundary.
+NOT_RETRIED = {
+    CUSTOMER_PRICE: Q(pricing_status_reason=(
+        PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED)),
+}
+
+
 def never_resolved_condition():
     """The membership predicate, built from the pairs rather than from literals.
 
     Public because the property worth asserting is that **this is all there
     is**: no exclusion of settled rows, no exclusion of `waived`, nothing about
-    a flag. A test that reads this can show the set is constructed rather than
-    filtered, which prose cannot.
+    a flag — and, since #603, the one answer the normal resolver does not
+    retry (:data:`NOT_RETRIED`), excluded from its own pair's term only. A test
+    that reads this can show the set is constructed rather than filtered,
+    which prose cannot.
+
+    A posting can still be selected for its OTHER pair: an unresolved cost
+    beside an unsupported negative price is a candidate for its cost, and the
+    price re-resolves to the same `unknown` and is left as it is.
     """
     predicate = Q()
     for pair in PAIRS:
-        predicate |= Q(**{pair.status_column: pair.unresolved_status})
+        term = Q(**{pair.status_column: pair.unresolved_status})
+        if pair in NOT_RETRIED:
+            term &= ~NOT_RETRIED[pair]
+        predicate |= term
     return predicate
 
 

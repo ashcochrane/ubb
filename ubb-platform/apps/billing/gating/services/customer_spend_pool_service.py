@@ -378,10 +378,13 @@ class CustomerSpendPoolService:
 
         The amount is the posting's RESOLVED customer price and nothing else:
         the handler hands this nothing for a posting whose price is unknown or
-        not applicable, which is what keeps the figure a floor that never sums
-        an unknown as zero.
+        not applicable, which is what keeps the figure the sum of resolved
+        prices and never an unknown summed as zero. A zero moves the counter
+        nowhere, so there is nothing to increment or compare — "nothing to
+        move", not a sign rule (#603 ruling 9): a known price is never
+        negative, because a negative one is `unknown` with its reason.
         """
-        if amount_micros <= 0:
+        if amount_micros == 0:
             return
         try:
             cfg = CustomerSpendPoolService.resolve_config(customer)

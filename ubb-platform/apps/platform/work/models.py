@@ -146,12 +146,13 @@ OUTCOME_REASON_CHOICES = [
 #   not_applicable   no ceiling applies to this unit — nothing was evaluated,
 #                    so nothing was concluded (never "within", never
 #                    "indeterminate").
-#   ceiling_reached  the KNOWN supplier total is at or above the ceiling,
-#                    whatever remains unresolved — unresolved cost can only
-#                    add to it, so no later resolution softens this.
-#   indeterminate    the known total is below the ceiling and at least one
-#                    applicable cost is unresolved: UBB tried and cannot tell.
-#                    Never stops anything; never a breach.
+#   indeterminate    an applicable cost is unresolved, whatever the resolved
+#                    total — at or above the ceiling included (#603): an
+#                    omitted amount may move the total either way, so UBB
+#                    tried and cannot tell. The assessment never stops
+#                    anything; the enforcement trigger may already have.
+#   ceiling_reached  every applicable cost is resolved and the total is at or
+#                    above the ceiling.
 #   within_ceiling   every applicable cost is resolved and the total is below.
 CEILING_STATUS_CHOICES = [
     (CEILING_STATUS_NOT_APPLICABLE, "Not applicable"),
@@ -464,18 +465,20 @@ class Task(BaseModel):
     event_count = models.IntegerField(default=0)
     # HOW MANY OF THOSE EVENTS THE PROVIDER TOTAL COULD NOT INCLUDE (#328).
     #
-    # Non-zero makes the total above a FLOOR: this unit really cost at least
-    # that much. `Posting.provider_cost_micros` is nullable and a null means UBB
+    # Non-zero means the total above is the sum of what resolved and is not
+    # complete; what it leaves out may move it either way, since a cost may
+    # be negative (#603). `Posting.provider_cost_micros` is nullable and a null means UBB
     # has not resolved that cost (#317), so the accumulate primitive adds the
     # known part and increments this instead — the alternative, adding a zero,
     # would produce a unit total indistinguishable from a complete one, which is
     # the ambiguity the nullable column exists to remove.
     #
     # It is a COLUMN rather than something a reader derives, because this total
-    # is written on every recording and never rebuilt: a cost that arrives
-    # unresolved and is later settled elsewhere leaves no trace in a figure that
-    # was only ever added to. The count is written in the same UPDATE as the
-    # amount, so the pair cannot come apart.
+    # is written on every recording and never rebuilt. A cost that arrives
+    # unresolved and is settled later reaches it through the settlement door,
+    # which adds the amount and takes one off this count in one write
+    # (`TaskService.take_up_a_late_resolution`, #603) — so the pair cannot
+    # come apart, and a unit whose every cost has resolved reads complete.
     #
     # An event whose Event Type declares no supplier cost is NOT counted here.
     # Nothing about it is missing (#327), and a caveat that is always on is a
@@ -867,12 +870,11 @@ class Task(BaseModel):
     # copy would be a second answer able to disagree with all three the
     # moment a late event moved the total.
     #
-    # ONE value, not three properties: the status is what tells a reader how
-    # to read the two figures beside it (#150 §9 — under `indeterminate` the
-    # percentage is a floor and the headroom a ceiling), so the row hands them
-    # out together and the acknowledgement and the unit read publish exactly
-    # what it hands out. Both figures are None exactly where no ceiling
-    # applies.
+    # ONE value, not three properties: the status is what tells a reader
+    # whether the two figures beside it are answers at all, so the row hands
+    # them out together and the acknowledgement and the unit read publish
+    # exactly what it hands out. Both figures are None where no ceiling
+    # applies and under `indeterminate` (#603).
 
     @property
     def ceiling_assessment(self) -> crossing.CeilingAssessment:

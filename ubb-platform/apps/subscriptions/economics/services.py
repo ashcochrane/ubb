@@ -121,7 +121,8 @@ def _compose(subscription_revenue, supplied_revenue, usage_revenue, provider_cos
     **The figure is therefore only as complete as the postings are**, which is
     the honest form of the answer the branch was faking. Usage a tenant has
     declared no price for resolves `unknown`, contributes nothing, and travels
-    with `unpriced_event_count` saying the total is a floor; work that was
+    with `unpriced_event_count` saying how many prices the total leaves out
+    (complete when it is zero); work that was
     never going to carry customer revenue is `not_applicable` and contributes
     nothing either, with no caveat, because nothing is missing from it. None of
     that is a fact about a billing mode, and none of it is decided here.
@@ -345,10 +346,12 @@ class MarginService:
         # snapshot both readings come from, so nothing is hidden by declining to
         # compare.
         #
-        # The CURRENT period being partial is the opposite case and still fires:
-        # a floor understates the rise, so a threshold crossed on one has really
-        # been crossed. What the consumer gets told is that the number under the
-        # alarm is a lower bound — see the count on the payload below.
+        # The CURRENT period being partial is the opposite case and still fires,
+        # on the resolved figure — an alert, like every control, reads what has
+        # resolved. Since #603 an omitted cost may be negative, so that figure
+        # is no bound on the eventual rise in either direction, and what the
+        # consumer gets told is how many costs it leaves out — the count on the
+        # payload below.
         if (prev and prev["provider_cost_micros"] > 0
                 and not prev[UNRESOLVED_EVENT_COUNT_KEY]):
             rise = (Decimal(this_period["provider_cost_micros"]

@@ -32,7 +32,7 @@ def _tenant(mode="postpaid", enf="enforcing"):
 
 
 def _payload(t, c, billed):
-    return asdict(UsageRecorded(tenant_id=t.id, customer_id=c.id,
+    return asdict(UsageRecorded(pricing_status_reason=None, tenant_id=t.id, customer_id=c.id,
                                 event_id=str(uuid.uuid4()), cost_micros=billed))
 
 

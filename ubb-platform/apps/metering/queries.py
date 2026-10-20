@@ -161,8 +161,9 @@ class PeriodTotals(TypedDict):
     #: price. It was documented here as "never partial: the column is NOT NULL"
     #: — that sentence died with the NOT NULL in #351, and it is replaced rather
     #: than deleted so a reader meets the change where the old claim stood. Both
-    #: halves of the margin can now be floors, and each says so with its own
-    #: count.
+    #: halves of the margin can now be incomplete, and each says so with its
+    #: own count: each is the sum of what resolved, complete when its count
+    #: is zero.
     total_cost_micros: int
     unpriced_event_count: int
     event_count: int
@@ -248,8 +249,9 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
     THE TWO TOTALS ARE THE SAME KIND OF NUMBER SINCE #351, AND EACH CARRIES ITS
     OWN CAVEAT. This docstring used to say the opposite — that the billed sum
     "passes over nothing and is complete by construction" while only the
-    supplier sum was a floor — and it was true of a NOT NULL column. Both are
-    floors now, and the two counts are about different rows, so neither may be
+    supplier sum was partial — and it was true of a NOT NULL column. Both can
+    be partial now — each the sum of what resolved, complete when its own count
+    is zero — and the two counts are about different rows, so neither may be
     read as a caveat on the other. Both pairs are built by `core.cost_totals` in
     the SAME query as the total each qualifies, which is what stops one group's
     exclusions being counted against another's.
@@ -413,6 +415,25 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
     }
 
 
+def billing_owner_recorded_anything(tenant_id, billing_owner_id, start_date,
+                                    end_date) -> bool:
+    """Whether any posting in [start, end) is billed to this owner — a
+    pooled business's seats included, since each of their postings pins the
+    business as its billing owner.
+
+    The question a postpaid close asks when the resolved total is zero
+    (#603 ruling 9): a period with no usage and a period whose usage was all
+    priced at exactly nothing both total zero, and only one of them had no
+    usage.
+    """
+    from apps.metering.usage.models import Posting
+    return Posting.objects.filter(
+        tenant_id=tenant_id, billing_owner_id=billing_owner_id,
+        effective_at__gte=utc_day_start(start_date),
+        effective_at__lt=utc_day_start(end_date),
+    ).exists()
+
+
 def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date,
                                    end_date) -> dict:
     """The resolved billed total for one billing owner over [start, end), as a pair.
@@ -425,12 +446,12 @@ def get_billing_owner_billed_total(tenant_id, billing_owner_id, start_date,
 
     ⚠ IT RETURNED A BARE `int` WITH AN `or 0` UNTIL #351, AND THAT IS WHY IT IS
     A PAIR NOW. The counter this feeds compares a durable total against a live
-    one and takes the larger, so a floor reported as a figure understates spend
-    — it does not overcharge anybody, it lets a line be crossed later than it
-    should be. That is a spend-control input rather than a report: the pool's
-    stop line races it (#459, known-over fires on this pair and an unknown is
-    never summed as zero), and what #351 owed that line was a number that
-    says when it is incomplete instead of one that quietly is.
+    one and takes the larger, so a partial sum reported as a figure misstates
+    spend — it does not overcharge anybody, it lets a line be crossed later than
+    it should be. That is a spend-control input rather than a report: the pool's
+    stop line races it (#459, the stop fires on the resolved figure and an
+    unknown is never summed as zero), and what #351 owed that line was a number
+    that says when it is incomplete instead of one that quietly is.
     """
     from apps.metering.usage.models import Posting
     return carry_cost_total(CUSTOMER_PRICE, Posting.objects.filter(
@@ -575,7 +596,7 @@ def get_customer_ids_with_postings(tenant_id, period_start: date, period_end: da
 #: ⚠ **`unknown` IS DELIBERATELY NOT HERE.** A price UBB could not resolve is a
 #: liability it failed to put a number on, not an absent one, and dropping those
 #: rows would silently shrink an invoice. They stay in, contribute nothing, and
-#: are COUNTED — which is what makes a line a floor that says so (#351).
+#: are COUNTED — which is what makes a partial line one that says so (#351).
 INVOICE_LINE_STATES_WITH_NO_LIABILITY = (PRICING_STATUS_WAIVED,
                                          PRICING_STATUS_NOT_APPLICABLE)
 
@@ -602,8 +623,8 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
     the GROUP BY.
 
     ⚠ THE VALUE WAS A BARE `int` WITH AN `or 0` UNTIL #351. This builds postpaid
-    INVOICE LINES, so a floor reported as a figure is money not charged, and
-    silently: a seat whose every posting is unpriced billed exactly like a seat
+    INVOICE LINES, so a partial sum reported as a whole figure is money
+    misstated, and silently: a seat whose every posting is unpriced billed exactly like a seat
     that emitted nothing. The count travels so the caller can see the
     difference. **Whether a period holding unresolved prices may be invoiced at
     all is a policy question this ticket does not decide** — #329 answered the
@@ -652,8 +673,8 @@ def get_customer_billed_breakdown(tenant_id, customer_id, period_start: date,
     Returns UNSORTED, aggregated [(label, billed_micros, unpriced_event_count),
     ...] triples (the caller owns presentation order). The third element is
     #351's, and it is on the tuple for the reason `get_billed_totals_by_customer`
-    above gives at length: these are invoice lines, so a line that is a floor and
-    says nothing is money not charged.
+    above gives at length: these are invoice lines, so a line that is partial
+    and says nothing is money misstated.
 
     ⚠ **``group_by`` IS AN AXIS FROM :func:`grouping_options`, NOT A KEY** (#503,
     slice 7 §11). It took a free-text `"tag:<key>"` reading of the open bag, and
@@ -828,11 +849,12 @@ def mark_backfill_dirty_period_for_posting(posting_id) -> None:
     the other is how a cache stops being repairable on the cost side and stays
     unrepairable on the revenue side.
 
-    ⚠ **THE PRICE HALF MATTERS FOR THE SAME REASON THE COST HALF DOES, POINTING
-    THE OTHER WAY.** An excluded cost makes a margin a CEILING; an excluded
-    price makes it a FLOOR. The customer named unprofitable on a floor is the
-    one who might have been fine all along, so a late price is the resolution
-    most worth letting reach a closed period.
+    ⚠ **THE PRICE HALF MATTERS FOR THE SAME REASON THE COST HALF DOES.** An
+    excluded cost or an excluded price makes a margin something other than the
+    margin — in either direction, since an excluded amount may be negative
+    (#603). The customer named unprofitable on a margin missing its revenue is
+    the one who might have been fine all along, so a late price is the
+    resolution most worth letting reach a closed period.
 
     ⚠ **The CURRENT month is deliberately not marked.** Markers are only ever
     written for months that have closed — the hourly repair and the daily
@@ -909,7 +931,8 @@ def clear_backfill_dirty_period(marker_id) -> None:
 
 def iter_billable_postings(tenant_id, since: datetime, before: datetime,
                            basis: str = "effective") -> Iterator[dict]:
-    """Iterate billable postings (billed_cost_micros > 0) in [since, before).
+    """Iterate billable postings in [since, before) — those whose KNOWN
+    price is an amount to draw down: settled, and not zero.
 
     since/before are aware datetimes (NOT dates — no day-snapping here).
     basis="effective" windows on effective_at; basis="created" windows on
@@ -918,13 +941,19 @@ def iter_billable_postings(tenant_id, since: datetime, before: datetime,
     {"id", "billed_cost_micros", "customer_id", "billing_owner_id"}.
     Server-side cursor via .iterator() — safe for large windows.
 
-    ⚠ `billed_cost_micros__gt=0` NOW EXCLUDES AN UNPRICED POSTING TOO, and that
-    is correct rather than incidental (#351). SQL's `> 0` is unknown for `NULL`,
-    so a posting whose price UBB could not resolve is not yielded — and there is
-    nothing to draw down for it, because there is no amount. What a caller must
-    NOT conclude is that the window held no such postings: this iterator answers
-    "what can be drawn down", not "what happened", and the completeness question
-    is answered by the totals above rather than by an absence here.
+    ⚠ AN UNPRICED POSTING IS NOT YIELDED (#351): a posting whose price UBB
+    could not resolve has no amount, so there is nothing to draw down for it.
+    What a caller must NOT conclude is that the window held no such postings:
+    this iterator answers "what can be drawn down", not "what happened", and
+    the completeness question is answered by the totals above rather than by
+    an absence here.
+
+    ⚠ NOR IS A KNOWN ZERO, AND THAT IS NOT A SIGN RULE (#603 ruling 9). It
+    used to be spelled `billed_cost_micros > 0`; a known price is never
+    negative — a negative one is `unknown` with its reason — so what the
+    filter says is "settled, and an amount", and a zero is a settled price
+    with nothing to move. The live drawdown writes no ledger row for one
+    either (`billing.handlers`), so the repair finds nothing missing.
     """
     from apps.metering.usage.models import Posting
 
@@ -932,9 +961,10 @@ def iter_billable_postings(tenant_id, since: datetime, before: datetime,
         raise ValueError("basis must be 'effective' or 'created'")
     field = "created_at" if basis == "created" else "effective_at"
     return Posting.objects.filter(
-        tenant_id=tenant_id, billed_cost_micros__gt=0,
+        tenant_id=tenant_id, billed_cost_micros__isnull=False,
         **{f"{field}__gte": since, f"{field}__lt": before},
-    ).values("id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()
+    ).exclude(billed_cost_micros=0).values(
+        "id", "billed_cost_micros", "customer_id", "billing_owner_id").iterator()
 
 
 # --- What went unresolved, what recovering it is worth, and what waiving cost -
@@ -996,7 +1026,8 @@ PROJECTED_ADJUSTMENT_BASIS = (
     "effective instant, so nothing here is repriced against today's rules. "
     "The supplier-cost half of a recovery is deliberately not in the figure: "
     "learning what a call cost is not money you can go back to a customer "
-    "for. Two things make these figures a floor and both are counted: "
+    "for. Two things can leave these figures incomplete and both are "
+    "counted, so each figure is complete exactly when both counts are zero: "
     "`unpriced_event_count`, per customer, is how many examined postings "
     "still resolve to no price; `postings_not_examined` is how many the "
     "filter matched beyond what one pass takes up — narrow the date range to "
@@ -1019,7 +1050,8 @@ WAIVED_LOSS_BASIS = (
     "waived charge never carried a price, because the margin rule had no "
     "supplier cost to take a margin over, which is why it was waived. Waived "
     "postings whose own supplier cost UBB has not resolved are not in the "
-    "figure and are counted beside it, so the total is a floor. Waived "
+    "figure and are counted beside it: the total is the sum of the resolved "
+    "costs, complete when that count is zero. Waived "
     "postings are never candidates for a "
     "Resolution Run — a decision somebody made is not information UBB is "
     "missing — so this is reported, never repaired."
@@ -1092,6 +1124,7 @@ def _queue_row(posting) -> dict:
         "unresolved_reason": posting.unresolved_reason or None,
         "billed_cost_micros": posting.billed_cost_micros,
         "pricing_status": posting.pricing_status,
+        "pricing_status_reason": posting.pricing_status_reason,
     }
 
 
@@ -1231,8 +1264,9 @@ def stop_context_postings(tenant_id, *, customer_id=None, billing_owner_id=None,
         qs = qs.filter(effective_at__lt=until)
     postings = list(qs.order_by("effective_at", "created_at").values(
         "id", "customer_id", "billing_owner_id", "effective_at",
-        "billed_cost_micros", "pricing_status", "provider_cost_micros",
-        "costing_status", "kind", "idempotency_key", "stop_context"))
+        "billed_cost_micros", "pricing_status", "pricing_status_reason",
+        "provider_cost_micros", "costing_status", "kind", "idempotency_key",
+        "stop_context"))
     projected_keys = [p["idempotency_key"] for p in postings
                       if p["kind"] == USAGE_EVENT_KIND_TASK_CHARGE]
     charges = {}
@@ -1257,6 +1291,7 @@ def _stopped_work_posting_row(p, charge_id):
         "effective_at": p["effective_at"],
         "billed_cost_micros": p["billed_cost_micros"],
         "pricing_status": p["pricing_status"],
+        "pricing_status_reason": p["pricing_status_reason"],
         "provider_cost_micros": p["provider_cost_micros"],
         "costing_status": p["costing_status"],
         "charge_id": str(charge_id) if charge_id else None,
@@ -1315,7 +1350,8 @@ def charge_that_reached(tenant_id, customer_id, *, stop_threshold_micros,
               .filter(Q(customer_id=customer_id) | Q(billing_owner_id=customer_id))
               .order_by("created_at")
               .values("id", "customer_id", "billing_owner_id", "effective_at",
-                      "billed_cost_micros", "pricing_status", "provider_cost_micros",
+                      "billed_cost_micros", "pricing_status",
+                      "pricing_status_reason", "provider_cost_micros",
                       "costing_status", "kind", "idempotency_key")):
         running += p["billed_cost_micros"]
         if running >= stop_threshold_micros:
@@ -2146,10 +2182,11 @@ def economics(tenant_id, *, measures, group_by=(), bucket=None,
     deliberate zero included), a posting a supplied figure covers, or a
     contributed row; a row with unpriced postings outside every covered period
     and no piece at all reads `incomplete` with no amount on the revenue AND on
-    the margin over it, where it used to read a zero floor and its negative. It
+    the margin over it, where it used to read a zero and its negative. It
     is a COUNT of pieces and never a test of the sum, because a sum cannot tell
-    a free service from one nobody priced. So an amount under `incomplete` is a
-    bound, and `NO_FIGURE` under it means no figure can be stated — per row,
+    a free service from one nobody priced. So an amount under `incomplete` is
+    the sum of what resolved — not a total, and no bound on one (#603) — and
+    `NO_FIGURE` under it means no figure can be stated — per row,
     never across the answer.
 
     ⚠ **MARGIN IS A BUCKET-LEVEL SUBTRACTION, NEVER A ROW-LEVEL ONE** (#153 §2).
@@ -2870,11 +2907,11 @@ def _economic_row(key, group, *, measures, attributable,
 
     ⚠ **THE REVENUE'S STATE IS READ OFF COUNTS, NEVER OFF THE SUM** (#537).
     Where the row cannot be attributed at this grain, that decides it. Otherwise
-    the revenue is a bound only where a posting OUTSIDE every covered period is
+    the revenue is partial only where a posting OUTSIDE every covered period is
     unpriced — inside one, a supplied figure is the whole revenue and nothing
-    there is missing — and a bound has an amount only where some piece of the
-    revenue resolved. With none, the row states no revenue at all: not a zero
-    floor, which is the number #153 §17.1 lists as the defect, and which a
+    there is missing — and a partial figure has an amount only where some piece
+    of the revenue resolved. With none, the row states no revenue at all: not a
+    zero, which is the number #153 §17.1 lists as the defect, and which a
     reader cannot tell from a free service. The count of unpriced postings is
     published either way, covered ones included, as diagnostic information.
 
@@ -2982,9 +3019,9 @@ def _margin(revenue, cost, *, revenue_state, cost_state) -> dict:
     claim 9). A row whose revenue nobody priced and nobody supplied used to
     answer a margin of minus its cost, labelled `incomplete` — the "cost
     £2,400, revenue £0, margin −£2,400" #153 §17.1 lists as the defect, which
-    the console drew as "at least −£2,400". Under `incomplete` an amount is a
-    bound, and with no revenue piece resolved there is nothing to bound: the
-    state stays `incomplete` and the amount is absent.
+    the console drew as a bound on the margin. Under `incomplete` an amount is
+    the sum of what resolved, and with no revenue piece resolved there is
+    nothing to sum: the state stays `incomplete` and the amount is absent.
     """
     state = max((revenue_state, cost_state),
                 key=MEASURE_STATES_WORST_LAST.index)

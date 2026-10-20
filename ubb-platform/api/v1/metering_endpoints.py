@@ -64,6 +64,8 @@ from apps.platform.audit.marker import records_audit
 from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
     admitted_supplier_cost_source, cost_declaration)
+from apps.platform.event_types.models import ValueTypeMismatch, quantity_under
+from apps.platform.event_types.publication import last_published_declaration
 from core.vocabulary import (
     COSTING_METHOD_REPORTED, DECLARATION_STATUS_DRAFT,
     GROUPING_FIELD_SCOPE_EVENT, SOURCE_KIND_CALLER_SUPPLIED,
@@ -370,14 +372,59 @@ def with_receipt_reads(result):
     return result
 
 
+class QuantityNotAdmissible(ValueError):
+    """A recorded quantity its declaration's value type refuses (#603).
+
+    A ``ValueError``, so both routes refuse it as they refuse every other
+    admission: a 422 on the single route, that one item in a batch."""
+
+
+def admit_quantities(tenant, item):
+    """Refuse a quantity its Event Type's last publication declares whole
+    and the caller sent with a fraction (#603, ADR-0020).
+
+    The request's own validator has already put every value in its canonical
+    text, so a whole number written `12.0` is `12` by now and passes; what is
+    asked here is only what a request cannot know until the Event Type is
+    looked up — `integer` requires a whole value, `decimal` permits a
+    fraction. The reader is the Measurement contract's own
+    (`event_types.models.quantity_under`), asked of the published copy, never
+    the draft (#605). A key no publication declares has no value type and is
+    admitted as written: it is held for the tenant's decision, not refused.
+
+    After the replay lookup and before anything is written, on
+    `admit_supplier_cost`'s reasoning: a retry of something already recorded
+    is answered first, and a refusal never burns grouping-field keyspace.
+    """
+    if not item.measurements:
+        return
+    published = last_published_declaration(tenant=tenant, key=item.event_type)
+    if published is None:
+        return
+    value_types = {quantity.code: quantity.value_type
+                   for quantity in published.measurements}
+    for code, value in item.measurements.items():
+        if code not in value_types:
+            continue
+        try:
+            quantity_under(code, value_types[code], value)
+        except ValueTypeMismatch as mismatch:
+            raise QuantityNotAdmissible(
+                f"measurements.{code}: {mismatch} The last publication of "
+                f"{item.event_type!r} declares {code} "
+                f"{value_types[code]!r}.") from None
+
+
 def _rejected(code, detail):
     """A batch-item rejection verdict: the typed code plus the constant stop
     facts — a rejected item was never recorded, so nothing can have stopped,
-    and nothing applied, bounded or measured a stop (#569: null, never 0)."""
+    and nothing applied, bounded or measured a stop (#569: null, never 0) —
+    and no price, so no reason for one (#603). Every required-and-nullable
+    acknowledgement fact is here, null."""
     return {"accepted": False, "code": code, "detail": detail,
             "stop": False, "stop_reason": None, "stop_scope": None,
             "trigger_source": None, "stop_bound_micros": None,
-            "stop_measured_micros": None}
+            "stop_measured_micros": None, "pricing_status_reason": None}
 
 
 def replay_or_record(tenant, customer, item):
@@ -403,24 +450,31 @@ def replay_or_record(tenant, customer, item):
        off the provider's response, never both. Refused rather than dropped: a
        200 would tell an integrator UBB is using a number it discards. It is a
        single read, so it goes ahead of the next step at no cost.
-    3. **The grouping-field admission (Task 9) WRITES** — it records novel
+    3. **A quantity's value type (#603)**: `integer` refuses a fraction, by
+       the last publication's declaration of the key (`admit_quantities`). A
+       read too, so it also goes ahead of the write below.
+    4. **The grouping-field admission (Task 9) WRITES** — it records novel
        values against each key's cardinality cap — so it comes after the
-       refusal above, which would otherwise have burned keyspace on a request
+       refusals above, which would otherwise have burned keyspace on a request
        that was never recorded, and before the recording core, outside its
        retry machinery. A replay never reaches it, so a retry neither
        re-admits nor records a value.
-    4. **The recording core**, for a new event.
+    5. **The recording core**, for a new event — which refuses one more thing,
+       by name: an amount its costing computes past the money columns
+       (`pricing_service.AmountPastTheMoneyBound`, #603).
 
     Written once, for the reason the adapters around it are: the single route
     and the batch item must take the same steps in the same order, or the
     batch stops being "N sequential singles". Every refusal it raises is a
-    ``ValueError`` — ``SupplierCostNotAdmissible`` and ``DimensionError`` are
-    — so each route renders all of them through :func:`usage_error`.
+    ``ValueError`` — ``SupplierCostNotAdmissible``, ``QuantityNotAdmissible``,
+    ``DimensionError`` and ``AmountPastTheMoneyBound`` are — so each route
+    renders all of them through :func:`usage_error`.
     """
     replayed = UsageService.replay(tenant, customer, item.idempotency_key)
     if replayed is not None:
         return replayed
     admit_supplier_cost(tenant, item)
+    admit_quantities(tenant, item)
     dimension_slots = DimensionService.admit(
         tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     return UsageService.record_new_usage(
@@ -635,6 +689,9 @@ def get_usage_event(request, event_id: UUID):
         # serialiser that recomputed either could contradict what the row says.
         "pricing_status": e.pricing_status,
         "not_applicable_reason": e.not_applicable_reason,
+        # The price status's own reason (#603), stored and read on the same
+        # two arguments as the status beside it.
+        "pricing_status_reason": e.pricing_status_reason,
         # Derived here rather than stored, and read out of the record rather
         # than recomputed (#355). The receipt is the authority on how an amount
         # was reached; re-deriving the method from today's configuration is the
@@ -1924,7 +1981,8 @@ def get_projected_adjustment(request, selected_from: datetime = None,
     One pass examines a bounded number of postings. `postings_not_examined`
     says how many the filter matched beyond it — narrow the date range to reach
     those — and `unpriced_event_count` says how many examined postings still
-    resolve to no price. Both make the figures a floor.
+    resolve to no price. Each figure is the sum of what a run would settle, and
+    is complete when both counts are zero.
 
     The filter is the Resolution Run's: a half-open date range, a customer and
     an Event Type, in any combination. A customer this tenant does not have is
@@ -1953,7 +2011,8 @@ def get_waived_loss(request, selected_from: datetime = None,
     response itself.
 
     Waived postings whose own supplier cost UBB never learned are not in the
-    figure and are counted beside it, so the total is a floor. Waived postings
+    figure and are counted beside it: the total is the sum of the resolved
+    costs, complete when that count is zero (#603). Waived postings
     are never candidates for a Resolution Run: a decision somebody made is not
     information UBB is missing.
 
