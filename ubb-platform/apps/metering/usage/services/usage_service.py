@@ -291,12 +291,12 @@ def _result(event, acknowledged, *, task=None):
             task.total_provider_cost_micros if task is not None else None,
         # How many amounts the unit total above does not include (#328): the
         # total is the sum of what resolved, complete when this is zero, and a
-        # caller watching its spend against a COGS limit is watching a
+        # caller watching its spend against a COGS ceiling is watching a
         # resolved sum that what is left out may move either way (#603).
         "task_total_unresolved_event_count":
             task.unresolved_event_count if task is not None else None,
         # And how many the unit's BILLED total does not include (#351). Two
-        # counts, because a caller watching spend against a limit is
+        # counts, because a caller watching spend against a ceiling is
         # watching the provider total, while a caller reconciling what it will
         # be charged is watching the billed one — and the same event need not be
         # missing from both.

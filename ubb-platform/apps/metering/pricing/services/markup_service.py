@@ -31,7 +31,7 @@ and its source still in its hand at the point the record is built.
 **AND A COST UBB HAS NOT RESOLVED NO LONGER REACHES HERE AT ALL.** The applier
 carried a refusal for it (#328) because a markup is not a total: there is no
 partial answer to state about a single price, so the honest answers were a
-real basis or an error. The resolver now asks the question one step earlier and in
+real basis or an error. The resolver now asks the question one stage earlier and in
 the vocabulary the answer belongs in — a margin over a cost UBB never learned is
 a `waived` charge — so the case is decided before a percentage is even resolved,
 and the refusal has no caller left to protect.

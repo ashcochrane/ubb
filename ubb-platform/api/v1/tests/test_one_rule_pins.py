@@ -296,7 +296,7 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         never proof that the eventual total is above the line. This case was
         `ceiling_reached` before #603, on the retired reading that an
         unresolved cost could only add."""
-        task = self._task(limit=10_000_000)
+        task = self._task()
         with self.captureOnCommitCallbacks(execute=True):
             self._record(task_id=str(task.id), bills=1_000_000)  # unresolved
             resp = self._record(task_id=str(task.id),
@@ -323,7 +323,7 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
         assessment moves to `within_ceiling` — and the kill stands."""
         declares_an_event_type(self.tenant, "metered",
                                quantities=("seconds",))
-        task = self._task(limit=10_000_000)
+        task = self._task()
         with self.captureOnCommitCallbacks(execute=True):
             credit = self._record(task_id=str(task.id), event_type="metered",
                                   measurements={"seconds": "-6"}).json()
@@ -364,7 +364,7 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
     def test_with_everything_resolved_at_the_ceiling_it_is_reached(self, _mock):
         """The control on the three pins: nothing unresolved, the resolved
         total at the line — `ceiling_reached`, with its figures."""
-        task = self._task(limit=10_000_000)
+        task = self._task()
         with self.captureOnCommitCallbacks(execute=True):
             resp = self._record(task_id=str(task.id),
                                 provider_cost_micros=10_000_000,

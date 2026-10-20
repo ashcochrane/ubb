@@ -196,7 +196,7 @@ SCHEMA_VERSION = 1
 #:
 #: 3 since #603 and #584. A measured quantity is recorded as canonical exact
 #: TEXT (ADR-0020): a renderer sends it as text and never as a JSON number,
-#: refuses a float and a flag, and assumes no digit limit (the shell target's
+#: refuses a float and a flag, and assumes no digit bound (the shell target's
 #: 15-digit `--argjson` read went with it). And a `constant` quantity's value
 #: token is now `platform_known` and configured, carrying the declared value
 #: as that same text, where contract 2 promised the token unconfigured and

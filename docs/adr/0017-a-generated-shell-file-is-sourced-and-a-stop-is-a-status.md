@@ -140,8 +140,8 @@ JSON string, after `_ubb_exact` has checked it against the exact-decimal grammar
 declared an integer, for whole-ness — at any length, never through a jq number. One that declares
 a `source_path` is read off the response file as it was written, by a program of its own as the
 cost is (§6): an integer as its digits, a string as its text, checked the same way, and a number
-written with a fraction or an exponent refused. The fifteen-digit limit went with the jq number it
-was a limit of. A constant is written into the body as its canonical text (#584).
+written with a fraction or an exponent refused. The fifteen-digit refusal went with the jq number it
+was a property of. A constant is written into the body as its canonical text (#584).
 
 The names a call site depends on are `ubb_start_task`, `ubb_run_task`, `ubb_close_task`,
 `ubb_start_subtask_<name>` and `ubb_record_<name>`, with `<name>` and the collision rule exactly
@@ -408,7 +408,8 @@ generated ones, and the same two thousand with a token planted off the path (one
 seven of which Python reads). On jq 1.5, 1.6, 1.7.1 and 1.8.1 it disagreed nowhere; gojq's
 differences are the first of the limitations below. The shell no longer imposes the old arbitrary
 fifteen-digit limit on a cost's input: exact conversion and the platform's economic bounds remain
-authoritative. (Fifteen digits stay a quantity's limit, §2.)
+authoritative. (Fifteen digits were a quantity's bound too, §2, until renderer contract 3 lifted
+it, #603.)
 
 **A stop's figures are read the same way** (#585, 2026-10-09). The acknowledgement is UBB's own
 response, but its two figures are money a jq number cannot hold (§4), so the program that reads

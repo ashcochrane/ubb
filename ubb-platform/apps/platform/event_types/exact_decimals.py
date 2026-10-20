@@ -9,7 +9,7 @@ in ONE canonical form, because every way of holding it as a number loses
 something on the way to somebody: a binary float gives 2**53 + 1 back as
 ...992, a numeric column fixes a scale, and Python's own `Decimal` rounds at
 its context's 28 digits the moment anything normalises or adds (and
-`quantize()` refuses a result longer than that). No precision limit governs a
+`quantize()` refuses a result longer than that). No precision cap governs a
 Measurement quantity, so none is introduced here.
 
 **The text is not evidence that the value is a string.** The declared
@@ -111,7 +111,7 @@ def exact_parts(canonical_text):
     other way to get the integers for that loses the answer before the rule is
     asked: a float has already rounded, ``Decimal`` arithmetic runs through a
     28-digit context, and ``int(text)`` refuses past CPython's 4,300-digit
-    conversion limit. The digits are folded one at a time instead — the
+    conversion bound. The digits are folded one at a time instead — the
     `event_types/reported_cost.py` pattern — so no length is too long and
     nothing rounds.
 
@@ -170,7 +170,7 @@ def canonical_quantities(bag):
 
 def _digits_of(whole):
     """A non-negative Python ``int``'s decimal digits. ``str(int)`` refuses
-    past CPython's 4,300-digit conversion limit, so a longer one is written
+    past CPython's 4,300-digit conversion bound, so a longer one is written
     out a digit at a time."""
     if whole < _STR_IS_SAFE_BELOW:
         return str(whole)

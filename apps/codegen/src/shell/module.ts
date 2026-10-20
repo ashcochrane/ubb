@@ -310,7 +310,7 @@ function binding(parameter: Parameter): string | null {
 /**
  * Whether text is an exact decimal (#603): base-10 digits with an optional
  * leading minus and an optional fraction, a digit on each side of the point,
- * and no limit on either. Returns 1 where it is not one, and 2 where it is
+ * and no bound on either. Returns 1 where it is not one, and 2 where it is
  * declared an integer and its fraction is not all zeros. Never arithmetic:
  * the text is only ever looked at. The verify script runs this same text.
  */

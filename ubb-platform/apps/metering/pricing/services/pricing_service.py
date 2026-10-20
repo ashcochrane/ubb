@@ -42,7 +42,7 @@ from core.vocabulary import (
 #: pair that moves when an amount would come out differently
 #: (`receipts.RECEIPT_SCHEMA_VERSION` is the other half, for its shape).
 #:
-#: 2.1.0 → 2.2.0 IN #603 (ADR-0020), and a MINOR step for a stated reason. The
+#: 2.1.0 → 2.2.0 IN #603 (ADR-0020), and a MINOR version for a stated reason. The
 #: engine now prices quantities it could not be given before — a fraction, a
 #: negative, any length — exactly; an exact negative half-micro tie now rounds
 #: away from zero rather than toward +∞; a fixed per-event component is added
@@ -51,7 +51,7 @@ from core.vocabulary import (
 #: refused. Every input that was legal under 2.1.0 — a whole, non-negative
 #: quantity — computes exactly the amount it did, so no recorded amount would
 #: come out differently and nothing about the earlier receipts is disowned: a
-#: major step would claim otherwise.
+#: major version would claim otherwise.
 PRICING_ENGINE_VERSION = "2.2.0"
 
 #: WHERE A RULE CAME FROM — the ladder's MINOR key (#356, #147 §5.1).

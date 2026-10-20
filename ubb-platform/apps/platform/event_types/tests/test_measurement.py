@@ -292,7 +292,7 @@ class TestTheValueTypeIsEnforced:
         """No binary float anywhere on the path (#603): `0.1` has already
         rounded by the time it is a float, and the shortest text it reads back
         as is a guess about what was sent — exact to fifteen digits and no
-        further, with no way to tell where that limit was crossed."""
+        further, with no way to tell where that bound was crossed."""
         declared = _measurement(_event_type(_tenant()),
                                 value_type=MEASUREMENT_VALUE_TYPE_DECIMAL)
 

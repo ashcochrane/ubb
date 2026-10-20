@@ -24,7 +24,7 @@ throws `BlueprintNotRenderable` for a document it cannot read — an unknown `sc
 written for, or a token that breaks what the contract promises. ADR-0016 §7 and ADR-0017 §8 have
 the lists. It reads renderer contract 3 and no other. Contract 2 (#583) let a runtime value of a
 field of its own carry a `source_path`; contract 3 (#603, #584) makes a quantity exact text on the
-wire — never a JSON number, with no digit limit — and a constant's token a configured literal of
+wire — never a JSON number, with no digit bound — and a constant's token a configured literal of
 its declared value. A renderer written to an older contract would misread either, which is why the
 version moved. This renderer reads the one contract it is written and tested against: the platform
 resolves contract 3 alone, so an older document is refused like any version outside the set.

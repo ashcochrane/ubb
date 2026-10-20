@@ -109,8 +109,8 @@ describe("the catalogue's symbols", () => {
     expect(SHELL_FILE.microsLimit).toBe((2n ** 63n - 1n).toString());
   });
 
-  it("hold no digit limit for a quantity: it is text, never a jq number (#603)", () => {
-    // The 15-digit limit was what a double holds exactly, which a quantity
+  it("hold no digit bound for a quantity: it is text, never a jq number (#603)", () => {
+    // The 15-digit bound was what a double holds exactly, which a quantity
     // passed through jq as a number was bound by. A quantity is text now.
     expect(Object.keys(SHELL_FILE)).not.toContain("exactDigits");
     expect(JSON.stringify([SHELL_COMMENTS, SHELL_MESSAGES])).not.toMatch(/15 digits/);

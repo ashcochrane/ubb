@@ -70,7 +70,7 @@ RECORDED_QUANTITY_MEANING = (
     "have already carried as a binary float. Base-10 digits with an optional "
     "leading `-` and an optional fractional part, a digit on each side of "
     "the point: no exponent, no `+`, and no spaces, separators or locale "
-    "formatting. There is no precision or scale limit. A quantity may be "
+    "formatting. No precision or scale is imposed. A quantity may be "
     "negative, and zero is a recorded value. Where the event's Event Type "
     "declares the key, its `value_type` decides whether a fraction is "
     "allowed (`integer` refuses one); a key no publication declares is "

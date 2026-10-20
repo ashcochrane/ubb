@@ -1073,7 +1073,7 @@ class LiveCounter:
                 # A PARTIAL SUM MERGED INTO A COUNTER THAT DECIDES WHEN TO STOP
                 # WORK. The MAX-merge below takes the larger of live and
                 # durable, so a durable basis missing some prices cannot
-                # overcharge anybody — it can let a limit be crossed later
+                # overcharge anybody — it can let a line be crossed later
                 # than it should be. That is a
                 # spend-control decision rather than a reporting one, it belongs
                 # to the slice that owns ceilings, and until then the one thing

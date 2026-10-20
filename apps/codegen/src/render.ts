@@ -49,7 +49,7 @@ export const READABLE_SCHEMA_VERSIONS: readonly number[] = [1];
  * The renderer contracts this renderer was written to. Contract 2 (#583) let
  * a runtime value of a field of its own carry a `source_path` fact. Contract
  * 3 (#603, #584) is the one written to now: a measured quantity is exact TEXT
- * on the wire, sent as text and never as a JSON number, with no digit limit,
+ * on the wire, sent as text and never as a JSON number, with no digit bound,
  * and a constant quantity's token is a configured literal carrying its
  * declared value. A renderer written to contract 2 would send a quantity as
  * a number and write a constant as missing, so it refuses a contract-3

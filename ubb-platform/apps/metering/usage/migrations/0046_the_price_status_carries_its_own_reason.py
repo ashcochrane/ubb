@@ -7,7 +7,7 @@ exactly and the money rails cannot carry. NULL beside `unknown` is the ordinary
 one — missing input — and NULL beside every other status is the only answer
 there is.
 
-Three steps, and the third is the one that needs its argument written down.
+Three operations, and the third is the one that needs its argument written down.
 
 1. **The column**, nullable, with no default: every row that already exists
    carries no published reason, which is what NULL says. No row moves.

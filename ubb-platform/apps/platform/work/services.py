@@ -876,7 +876,7 @@ class TaskService:
             # re-deriving one, because a second definition of "unresolved" is
             # how two of them come to disagree.
             #
-            # The COGS limit below races the RESOLVED total — the enforcement
+            # The COGS ceiling below races the RESOLVED total — the enforcement
             # trigger (#603): a unit is never killed for spend nobody stated,
             # and one missing figure never switches its ceiling off.
             if provider_cost_micros is not None:
@@ -1302,7 +1302,7 @@ class TaskService:
                         ceiling_basis=stopped.ceiling_basis,
                         total_billed_cost_micros=stopped.total_billed_cost_micros,
                         total_provider_cost_micros=stopped.total_provider_cost_micros,
-                        # The total that crossed the limit is the resolved one
+                        # The total that crossed the ceiling is the resolved one
                         # (#328): non-zero here says what it left out, and the
                         # stop is an enforcement trigger, not proof (#603).
                         unresolved_event_count=stopped.unresolved_event_count,

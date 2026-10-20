@@ -321,7 +321,7 @@ export function groupingFieldsAsked(plan: SamplePlan, values: SampleValues): num
  * (`IntegrationBlueprintVerificationRecordIn`) both type every quantity with:
  * base-10 digits, an optional leading minus and an optional fraction with a
  * digit on each side of the point. No exponent, no `+`, no separators, and no
- * precision limit, so a sample is never a JS number on the way: a number
+ * precision cap, so a sample is never a JS number on the way: a number
  * holds an integer exactly only to 2^53. A Measurement declared `integer`
  * takes a whole number; one declared `decimal` takes a fraction too; both take
  * a negative and a zero. `verification.test.ts` holds this grammar to the

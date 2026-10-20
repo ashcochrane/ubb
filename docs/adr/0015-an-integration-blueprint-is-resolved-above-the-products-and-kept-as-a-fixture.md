@@ -117,8 +117,8 @@ refuses a contract it was not written to (`READABLE_RENDERER_CONTRACT_VERSIONS`,
 **Renderer contract 3 (#603, #584, 2026-10-20; ADR-0020).** What a renderer is promised about a
 quantity changed twice over, so the contract moved once, and every fingerprint with it. First, a
 measured quantity is recorded as canonical exact TEXT: a renderer sends it as text and never as a
-JSON number, refuses a float and a flag rather than read one, and assumes no digit limit — the
-shell target's fifteen-digit `--argjson` read was a limit of the jq number it went through, and
+JSON number, refuses a float and a flag rather than read one, and assumes no digit bound — the
+shell target's fifteen-digit `--argjson` read was a property of the jq number it went through, and
 goes with it. A quantity read off a supplier's response is read exactly (an integer, or a decimal
 string) or refused in words. Second, a `constant` quantity's value token is `platform_known` and
 configured, carrying the declared value as that same canonical text, where contract 2 promised it
