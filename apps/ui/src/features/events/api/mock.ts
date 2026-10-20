@@ -57,7 +57,7 @@ const MOCK_PAGE_SIZE = 25;
  * two differ exactly where it matters: a coalesce produces a number that cannot
  * be told apart from a complete one.
  *
- * The totals below are therefore floors, and every one of them now says how
+ * The totals below are therefore the sum of what resolved, and every one of them now says how
  * many rows it left out: `countUnresolved` is the other half of the pair, and
  * the two are computed over the same event list in the same pass so a total and
  * its completeness cannot come from different sets of rows.
@@ -146,6 +146,7 @@ function toRow(detail: UsageEventDetail): UsageEventRow {
     costing_status: detail.costing_status,
     // And the price half, carried from the detail on the same argument (#351).
     pricing_status: detail.pricing_status,
+    pricing_status_reason: detail.pricing_status_reason,
     effective_at: detail.effective_at,
     metadata: detail.metadata,
     event_type: detail.event_type,
@@ -284,7 +285,7 @@ export async function getUsageAnalytics(
  * COMPOSED rather than written (#510). This file wrote each state by hand, and
  * its day series hardcoded both counts to zero, so a bucket holding an uncosted
  * event read as a whole figure in the chart while the strip above it called
- * the window's total a floor.
+ * the window's total incomplete.
  *
  * ⚠ **A BUCKET WHOSE EVERY EVENT IS UNPRICED STATES NO REVENUE (#537).** The
  * query sends no amount where no piece of the revenue resolved, and these seeds

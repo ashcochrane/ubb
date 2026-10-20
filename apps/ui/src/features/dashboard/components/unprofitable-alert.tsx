@@ -3,7 +3,7 @@ import { TrendingDown } from "lucide-react";
 
 import { ErrorCard } from "@/components/shared/error-card";
 import { formatSignedMicros } from "@/lib/format";
-import { marginBound, marginPercentBound } from "@/lib/supplier-cost";
+import { marginOver, marginPercentOver } from "@/lib/supplier-cost";
 
 import { useUnprofitable } from "../api/queries";
 
@@ -73,13 +73,14 @@ export function UnprofitableAlert({ currency }: { currency: string }) {
                 {/* THE SAME ROW'S MARGIN AS THE TABLE ABOVE IT, AND THEY SIT
                     ON ONE PAGE (#330). `/margin/unprofitable` carries its own
                     completeness count, so a customer whose costs are still
-                    unresolved has a margin that can only be LOWER than this —
-                    and an alert about unprofitability is the last place to
-                    overstate it. Rendering the figure here while the economics
-                    table renders the bound would be one page disagreeing with
-                    itself about one customer. */}
+                    unresolved has a margin that LEAVES THOSE COSTS OUT — and
+                    since #603 they may move it either way, so an alert about
+                    unprofitability is the last place to state it as a figure.
+                    Rendering the figure here while the economics table marks
+                    it incomplete would be one page disagreeing with itself
+                    about one customer. */}
                 <span className="text-destructive">
-                  {marginBound(
+                  {marginOver(
                     row.gross_margin_micros,
                     row,
                     currency,
@@ -88,7 +89,7 @@ export function UnprofitableAlert({ currency }: { currency: string }) {
                   margin
                 </span>
                 <span className="text-text-muted">
-                  {marginPercentBound(row.margin_percentage, row)}
+                  {marginPercentOver(row.margin_percentage, row)}
                 </span>
               </li>
             ))}

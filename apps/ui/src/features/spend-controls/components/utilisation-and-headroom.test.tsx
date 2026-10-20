@@ -41,7 +41,11 @@ import {
   utilisationRow,
 } from "../api/mock-data";
 import type { CeilingUtilisationRow, UtilisationAndHeadroom as Report } from "../api/types";
-import { INDETERMINATE_HAS_NO_OTHER_HOME, NO_COMPLETED_WORK } from "../lib/utilisation";
+import {
+  AVERAGES_LEAVE_OUT_INDETERMINATE,
+  INDETERMINATE_HAS_NO_OTHER_HOME,
+  NO_COMPLETED_WORK,
+} from "../lib/utilisation";
 import { renderWithProviders } from "../test-utils";
 import { UtilisationAndHeadroom } from "./utilisation-and-headroom";
 
@@ -86,9 +90,10 @@ const INDETERMINATE = ceilingAssessment("indeterminate", {
   ceiling_micros: CEILING,
   cost: incompleteTotal(1_240_000, 1),
 });
+/** Reached is concluded only once every cost resolved (#603, ADR-0020 §7). */
 const REACHED = ceilingAssessment("ceiling_reached", {
   ceiling_micros: CEILING,
-  cost: incompleteTotal(3_420_000, 1),
+  cost: completeTotal(3_420_000),
 });
 /** Known cost none of whose parts UBB learned, under a ceiling: indeterminate, and the total is unknown. */
 const COST_UNKNOWN = ceilingAssessment("indeterminate", {
@@ -154,22 +159,26 @@ describe("UtilisationAndHeadroom — the four statuses, one fixture and one asse
     expect(row.textContent).not.toContain("$0.00");
   });
 
-  // Under `indeterminate` the share is a floor and the headroom a most, over
-  // what is known: "at least" and "at most", and never "under" anything.
-  it("says Indeterminate with at least on the share and at most on the headroom, never under", async () => {
+  // Under `indeterminate` there is no share and no headroom (#603, ADR-0020
+  // §7): a cost still unresolved may move the total either way, so both are
+  // absences — never a bound, never a zero, and never "under" anything. The
+  // known cost beside them is the sum of what resolved, marked.
+  it("says Indeterminate with no share and no headroom, never under", async () => {
     serve(utilisationReport(FOUR_STATUSES, WINDOW, null));
     await rendered();
 
     const row = unitRow(UNIT_INDETERMINATE);
     expect(cell(row, "status").querySelector("[data-reading]")).toHaveAttribute("data-reading", "indeterminate");
     expect(cell(row, "status")).toHaveTextContent("Indeterminate");
-    expect(cell(row, "utilisation")).toHaveTextContent("at least 41%");
-    expect(cell(row, "headroom")).toHaveTextContent("at most $1.76");
-    expect(cell(row, "known_cost")).toHaveTextContent("at least $1.24");
-    expect(row.textContent).not.toMatch(/\bunder\b/i);
+    expect(cell(row, "utilisation")).toHaveTextContent(ABSENT_LABEL);
+    expect(cell(row, "utilisation").textContent).not.toMatch(/%/);
+    expect(cell(row, "headroom")).toHaveTextContent(ABSENT_LABEL);
+    expect(cell(row, "headroom").textContent).not.toMatch(A_CURRENCY_FIGURE);
+    expect(cell(row, "known_cost")).toHaveTextContent("$1.24 (Incomplete)");
+    expect(row.textContent).not.toMatch(/\bunder\b|at least|at most/i);
   });
 
-  it("says Ceiling reached on the known total alone, with a settled zero headroom", async () => {
+  it("says Ceiling reached once every cost resolved, with a settled zero headroom", async () => {
     serve(utilisationReport(FOUR_STATUSES, WINDOW, null));
     await rendered();
 
@@ -181,7 +190,8 @@ describe("UtilisationAndHeadroom — the four statuses, one fixture and one asse
     // Past the line the wire clamps the headroom at nothing: a SETTLED zero.
     expect(cell(row, "headroom")).toHaveTextContent("$0.00");
     expect(cell(row, "headroom")).not.toHaveTextContent(/at most/);
-    expect(cell(row, "known_cost")).toHaveTextContent("at least $3.42");
+    expect(cell(row, "known_cost")).toHaveTextContent("$3.42");
+    expect(cell(row, "known_cost")).not.toHaveTextContent(/Incomplete/);
   });
 
   it("says Within ceiling with the figures as figures", async () => {
@@ -199,8 +209,7 @@ describe("UtilisationAndHeadroom — the four statuses, one fixture and one asse
 
   // ⚠ THE ASSERTION THIS SURFACE OWES ABOVE ALL (TD claim 15, DoD 7): a
   // known total none of whose parts UBB learned is unknown, and unknown
-  // never renders as a currency figure — not as `$0.00`, not as `at least
-  // $0.00`.
+  // never renders as a currency figure — not as `$0.00`, marked or not.
   it("renders an unknown known total as unknown, never as money", async () => {
     const row = completed(UNIT_COST_UNKNOWN, "2026-07-06T10:00:00Z", COST_UNKNOWN);
     serve(utilisationReport([row], WINDOW, null));
@@ -233,13 +242,16 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
     expect(indeterminate).toHaveTextContent("2 of 3 · 66%");
     expect(screen.getByText(INDETERMINATE_HAS_NO_OTHER_HOME)).toBeInTheDocument();
 
-    // And the averages over rows that include an indeterminate one are
-    // bounds: the mean of 70, 41 and 0 rounded down, said as a floor; the
-    // mean of $0.90, $1.76 and $3.00 in micros, rounded down, said as a most.
-    expect(aggregate("average_utilisation")).toHaveAttribute("data-bound", "floor");
-    expect(aggregate("average_utilisation")).toHaveTextContent("at least 37%");
-    expect(aggregate("average_headroom")).toHaveAttribute("data-bound", "most");
-    expect(aggregate("average_headroom")).toHaveTextContent("at most $1.89");
+    // And the averages leave the two indeterminate units out (#603, ADR-0020
+    // §7): they have no figures, so the averages are over the one unit that
+    // could be assessed — stated as the figures they are, with the count of
+    // what they leave out beside them, and never as a bound.
+    expect(aggregate("average_utilisation")).toHaveAttribute("data-leaves-out", "2");
+    expect(aggregate("average_utilisation")).toHaveTextContent("70%");
+    expect(aggregate("average_headroom")).toHaveAttribute("data-leaves-out", "2");
+    expect(aggregate("average_headroom")).toHaveTextContent("$0.90");
+    expect(screen.getAllByText(new RegExp(AVERAGES_LEAVE_OUT_INDETERMINATE.slice(0, 40))).length).toBe(2);
+    expect(aggregate("average_utilisation").textContent).not.toMatch(/at least|at most/);
     expect(aggregate("ceiling_reached")).toHaveTextContent("0 of 3 · 0%");
   });
 
@@ -259,7 +271,8 @@ describe("UtilisationAndHeadroom — the aggregate", () => {
     // (70 + 200) / 2 over the two that had a ceiling — the unit that cost
     // twice its ceiling weighs exactly one — and nothing evaluated weighs
     // nothing; the shares are of every unit listed.
-    expect(aggregate("average_utilisation")).toHaveAttribute("data-bound", "figure");
+    expect(aggregate("average_utilisation")).toHaveAttribute("data-leaves-out", "0");
+    expect(screen.queryByText(new RegExp(AVERAGES_LEAVE_OUT_INDETERMINATE.slice(0, 40)))).toBeNull();
     expect(aggregate("average_utilisation")).toHaveTextContent("135%");
     expect(aggregate("average_headroom")).toHaveTextContent("$0.45");
     expect(aggregate("ceiling_reached")).toHaveTextContent("1 of 3 · 33%");
@@ -285,14 +298,14 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
 
     const pool = screen.getByRole("region", { name: POOL_PAIR_TITLE });
     expect(pool).toHaveAttribute("data-pool-pair", "2026-07");
-    // The pair: known charges a floor beside the one posting it could not
-    // price, so the share is a floor — and the headroom past the line is a
-    // SETTLED zero (the kernel clamps it, and an unpriced posting can only
-    // lower a figure already at its floor), never "at most".
-    expect(within(pool).getByText("at least $517.50")).toHaveAttribute("data-reading", "floor");
+    // The pair: known charges beside the one posting they could not price,
+    // so the charges, the share and the clamped headroom are all marked
+    // incomplete — never "at least" or "at most" (#603: the posting left out
+    // is not taken to move the charges any one way).
+    expect(within(pool).getByText("$517.50 (Incomplete)")).toHaveAttribute("data-reading", "partial");
     expect(pool).toHaveTextContent("of $500.00");
-    expect(pool.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 103%");
-    expect(pool.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$0.00");
+    expect(pool.querySelector('[data-pool-figure="used"]')).toHaveTextContent("103% (Incomplete)");
+    expect(pool.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$0.00 (Incomplete)");
     expect(pool.querySelector('[data-pool-figure="headroom"]')).not.toHaveTextContent(/at most/);
     // The posture in words, and the refusal it led to.
     expect(within(pool).getByText(POOL_POSTURE.blocking)).toHaveAttribute("data-pool-posture", "blocking");
@@ -342,7 +355,7 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
     expect(within(region).queryByText(STARTS_REFUSED)).not.toBeInTheDocument();
   });
 
-  it("renders the headroom as a most where the pair is a floor and the line is not yet reached", async () => {
+  it("renders the headroom marked incomplete where the pair is partial and the line is not yet reached", async () => {
     const pool = spendPoolAssessment({
       period: "2026-07",
       cap_micros: 500_000_000,
@@ -355,8 +368,8 @@ describe("UtilisationAndHeadroom — the pool's pair", () => {
     await rendered({ customer_id: CUSTOMER_ACME });
 
     const region = screen.getByRole("region", { name: POOL_PAIR_TITLE });
-    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("at least 46%");
-    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("at most $268.60");
+    expect(region.querySelector('[data-pool-figure="used"]')).toHaveTextContent("46% (Incomplete)");
+    expect(region.querySelector('[data-pool-figure="headroom"]')).toHaveTextContent("$268.60 (Incomplete)");
     expect(within(region).queryByText(STARTS_REFUSED)).not.toBeInTheDocument();
   });
 

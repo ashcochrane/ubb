@@ -108,8 +108,9 @@ export function CustomerPriceReadingView({
 /**
  * What a run's ceiling assessment concluded, drawn so the four conclusions
  * stay visibly different things (#454): the catalogue's word for the status,
- * the figures it was concluded over as the qualifier — with "at least" and
- * "at most" where they are a floor and a most — and the sentence saying what
+ * the figures it was concluded over as the qualifier — only those the wire
+ * sent, so an `indeterminate` assessment shows its ceiling alone, with no
+ * share and no headroom (#603, ADR-0020 §7) — and the sentence saying what
  * it means. `data-reading` is the status, as it is the reading's kind on the
  * two amounts above.
  */

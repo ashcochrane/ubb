@@ -8,7 +8,8 @@
 // line, never a zero; and each row keeps the figures behind its numbers under
 // `FIGURES_KEY`, keyed like the series, so the tooltip says each one as its
 // state allows. The pivot used to carry an uncosted-event count beside the
-// numbers for the tooltip to bound by; the figures carry their own counts now.
+// numbers for the tooltip to qualify them by; the figures carry their own
+// counts now.
 
 import {
   combineFigures,

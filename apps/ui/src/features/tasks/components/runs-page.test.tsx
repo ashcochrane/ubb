@@ -156,12 +156,12 @@ describe("RunsPage", () => {
     expect(reading(row, CUSTOMER_PRICE)).toHaveTextContent("$0.00");
   });
 
-  it("says a partial total is a floor", async () => {
+  it("marks a partial total incomplete", async () => {
     renderRuns();
     await loaded();
     const row = rowOf(RUN_KILLED_ID);
-    expect(reading(row, SUPPLIER_COST)).toHaveAttribute("data-reading", "floor");
-    expect(reading(row, SUPPLIER_COST)).toHaveTextContent("at least $0.90");
+    expect(reading(row, SUPPLIER_COST)).toHaveAttribute("data-reading", "partial");
+    expect(reading(row, SUPPLIER_COST)).toHaveTextContent("$0.90 (Incomplete)");
   });
 
   it("narrows to one kind of work", async () => {

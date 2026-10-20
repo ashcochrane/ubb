@@ -16,6 +16,7 @@ import {
   RUN_EXPIRED_ID,
   RUN_FAILED_ID,
   RUN_KILLED_ID,
+  RUN_REACHED_ID,
   RUN_UNKNOWN_COST_ID,
 } from "../api/mock-data";
 import {
@@ -56,8 +57,9 @@ describe("RunDetailPage", () => {
     const money = region("What it cost and earned");
     expect(within(rowBeside(money, "Events")).getByText("30")).toBeInTheDocument();
     const cost = readingBeside(money, "Supplier cost");
-    expect(cost).toHaveAttribute("data-reading", "floor");
-    expect(cost).toHaveTextContent("at least $1.24");
+    expect(cost).toHaveAttribute("data-reading", "partial");
+    expect(cost).toHaveTextContent("$1.24 (Incomplete)");
+    expect(cost).not.toHaveTextContent(/at least|higher/);
     expect(cost).toHaveTextContent(/1 event has a supplier cost UBB has not learned/);
     const price = readingBeside(money, "Customer price");
     expect(price).toHaveAttribute("data-reading", "not_applicable");
@@ -125,37 +127,53 @@ describe("RunDetailPage", () => {
       expect(ceiling).toHaveTextContent(/No ceiling applies to this unit of work/);
     });
 
-    // Under `indeterminate` the percentage is a floor and the headroom a
-    // most, over what is known: "at least" and "at most", and never "under"
-    // anything — a run UBB cannot place inside its ceiling must not read as
-    // one that is.
-    it("says Indeterminate with at least on the percentage and at most on the headroom, never under", async () => {
+    // Under `indeterminate` there is no share and no headroom (#603,
+    // ADR-0020 §7): a cost still unresolved may move the total either way,
+    // so the wire nulls both and the page states neither — and never "under"
+    // anything, because a run UBB cannot place inside its ceiling must not
+    // read as one that is.
+    it("says Indeterminate with the ceiling alone — no share, no headroom, never under", async () => {
       await opened(RUN_ACTIVE_ID);
       const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
       expect(ceiling).toHaveAttribute("data-reading", "indeterminate");
       expect(within(ceiling).getByText("Indeterminate")).toBeInTheDocument();
       expect(ceiling).toHaveTextContent("$3.00 ceiling");
-      expect(ceiling).toHaveTextContent("at least 41% used");
-      expect(ceiling).toHaveTextContent("at most $1.76 headroom");
+      expect(ceiling).not.toHaveTextContent(/\d+% used|\$[\d.,]+ headroom/);
+      expect(ceiling).not.toHaveTextContent(/at least|at most/);
       expect(ceiling).not.toHaveTextContent(/\bunder\b/i);
       expect(ceiling).not.toHaveTextContent(/within/i);
       expect(ceiling).toHaveTextContent(/1 event has a supplier cost UBB has not learned/);
     });
 
-    it("says Ceiling reached on the known total alone, past the line, whatever remains unresolved", async () => {
+    // ⚠ THE OWNER'S CASE (6279966961): enforcement stopped this run when its
+    // KNOWN cost crossed the ceiling, with two costs still unresolved. The
+    // stop stands; the assessment beside it is indeterminate — never
+    // "reached", which would claim the eventual total is over the line.
+    it("says Indeterminate for a run stopped at its ceiling while a cost is unresolved, and that the stop stands", async () => {
       await opened(RUN_KILLED_ID);
+      expect(within(region("How it ended")).getByText("Killed")).toBeInTheDocument();
+      const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
+      expect(ceiling).toHaveAttribute("data-reading", "indeterminate");
+      expect(within(ceiling).getByText("Indeterminate")).toBeInTheDocument();
+      expect(within(ceiling).queryByText("Ceiling reached")).toBeNull();
+      expect(ceiling).toHaveTextContent("$0.80 ceiling");
+      expect(ceiling).not.toHaveTextContent(/% used/);
+      expect(ceiling).toHaveTextContent(/2 events have a supplier cost UBB has not learned/);
+      expect(ceiling).toHaveTextContent(/fired on the costs already known and stands/);
+    });
+
+    it("says Ceiling reached once every cost resolved, past the line", async () => {
+      await opened(RUN_REACHED_ID);
       const ceiling = readingBeside(region("What it cost and earned"), "Ceiling");
       expect(ceiling).toHaveAttribute("data-reading", "ceiling_reached");
       expect(within(ceiling).getByText("Ceiling reached")).toBeInTheDocument();
       expect(ceiling).toHaveTextContent("$0.80 ceiling");
-      expect(ceiling).toHaveTextContent("112% used");
+      expect(ceiling).toHaveTextContent("102% used");
       // A SETTLED zero, not an unknown one: past the line the wire clamps the
       // headroom at nothing (`core/crossing.py`), and the percentage beside
       // it is what says by how much.
       expect(ceiling).toHaveTextContent("$0.00 headroom");
-      expect(ceiling).not.toHaveTextContent(/at least/);
-      expect(ceiling).toHaveTextContent(/2 events have a supplier cost UBB has not learned/);
-      expect(ceiling).toHaveTextContent(/can only add to it/);
+      expect(ceiling).not.toHaveTextContent(/at least|Incomplete|has not learned/);
     });
 
     it("says Within ceiling with the figures as figures", async () => {

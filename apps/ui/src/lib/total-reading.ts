@@ -4,7 +4,8 @@
 // NO NUMBER NOBODY KNOWS RENDERS AS A ZERO AMOUNT (#155 §9.2). A total arrives
 // as a figure beside a COUNT of what the figure could not include —
 // `incompleteTotal` and `incompletePriceTotal` in `@/lib/economic-scenarios`
-// — and the count is what says whether the figure is a figure, a floor, or
+// — and the count is what says whether the figure is the whole total, the sum
+// of what resolved (no bound on the total in either direction, #603), or
 // nothing at all. That is the reading `@/lib/supplier-cost` gives every other
 // total in the console; what is different here is the THIRD outcome.
 // Elsewhere a total whose resolved part sums to nothing renders as an
@@ -25,7 +26,7 @@
 // the runs surface.
 
 import { formatMicros } from "@/lib/format";
-import { AT_LEAST } from "@/lib/supplier-cost";
+import { incompleteFigure } from "@/lib/supplier-cost";
 
 /**
  * The wording for a total none of whose parts UBB has learned.
@@ -35,7 +36,7 @@ import { AT_LEAST } from "@/lib/supplier-cost";
  * states of ONE posting; a total is not in a state. It is an amount beside a
  * COUNT of what it left out, with no registry value of its own for the
  * catalogue to word — `incompleteTotal` in `@/lib/economic-scenarios` makes
- * the same point, and `at least` beside it is copy of the same kind.
+ * the same point.
  */
 export const UNKNOWN_TOTAL = "Unknown";
 
@@ -43,22 +44,22 @@ export const UNKNOWN_TOTAL = "Unknown";
  * A total and what it is worth as a statement.
  *
  * A union rather than a string, so a renderer branches on WHICH reading it
- * holds and cannot coalesce one into a number: `figure` is the amount, `floor`
- * is an amount that was spent — or will be charged — AT LEAST, and `unknown`
- * is no amount at all. `eventsLeftOut` is the count the total could not
- * include, whichever side's count that is.
+ * holds and cannot coalesce one into a number: `figure` is the amount,
+ * `partial` is the sum of the amounts that resolved — not the total, and no
+ * bound on it either way — and `unknown` is no amount at all. `eventsLeftOut`
+ * is the count the total could not include, whichever side's count that is.
  */
 export type TotalReading =
   | { readonly kind: "figure"; readonly micros: number }
-  | { readonly kind: "floor"; readonly micros: number; readonly eventsLeftOut: number }
+  | { readonly kind: "partial"; readonly micros: number; readonly eventsLeftOut: number }
   | { readonly kind: "unknown"; readonly eventsLeftOut: number };
 
 /**
  * The decision every total makes, once.
  *
- *   nothing left out          → the figure
- *   left out, amount above 0  → a floor
- *   left out, amount at 0     → unknown: UBB knows no amount here
+ *   nothing left out                → the figure
+ *   left out, resolved sum not 0    → partial
+ *   left out, resolved sum 0        → unknown: UBB knows no amount here
  *
  * A total whose parts all resolved to nothing, with nothing left out, is a
  * FIGURE of zero — a real zero, and it renders as one.
@@ -66,7 +67,7 @@ export type TotalReading =
 export function readTotal(micros: number, eventsLeftOut: number): TotalReading {
   if (eventsLeftOut <= 0) return { kind: "figure", micros };
   if (micros === 0) return { kind: "unknown", eventsLeftOut };
-  return { kind: "floor", micros, eventsLeftOut };
+  return { kind: "partial", micros, eventsLeftOut };
 }
 
 export function describeTotal(
@@ -83,8 +84,8 @@ export function describeTotal(
   switch (reading.kind) {
     case "figure":
       return format(reading.micros, currency);
-    case "floor":
-      return `${AT_LEAST} ${format(reading.micros, currency)}`;
+    case "partial":
+      return incompleteFigure(format(reading.micros, currency), true);
     case "unknown":
       return UNKNOWN_TOTAL;
   }

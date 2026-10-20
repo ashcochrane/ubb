@@ -53,10 +53,10 @@ describe("a supplier-cost total", () => {
     expect(explainSupplierCost(zero)).toBeNull();
   });
 
-  it("is a floor when something is missing and the resolved part is above zero", () => {
+  it("is partial when something is missing and the resolved part is above zero", () => {
     const floor = readSupplierCost({ total_provider_cost_micros: 900_000, unresolved_event_count: 2 });
-    expect(floor).toEqual({ kind: "floor", micros: 900_000, eventsLeftOut: 2 });
-    expect(describeTotal(floor, "usd")).toBe("at least $0.90");
+    expect(floor).toEqual({ kind: "partial", micros: 900_000, eventsLeftOut: 2 });
+    expect(describeTotal(floor, "usd")).toBe("$0.90 (Incomplete)");
     expect(explainSupplierCost(floor)).toMatch(/2 events have a supplier cost UBB has not learned/);
   });
 
@@ -70,13 +70,13 @@ describe("a supplier-cost total", () => {
 });
 
 describe("a customer-price total", () => {
-  it("reads figure, floor and unknown off the counts the way the supplier cost does", () => {
+  it("reads figure, partial and unknown off the counts the way the supplier cost does", () => {
     expect(readCustomerPrice({ total_billed_cost_micros: 620_000, unpriced_event_count: 0 }, BILLS)).toEqual({
       kind: "figure",
       micros: 620_000,
     });
     expect(readCustomerPrice({ total_billed_cost_micros: 620_000, unpriced_event_count: 1 }, BILLS)).toEqual({
-      kind: "floor",
+      kind: "partial",
       micros: 620_000,
       eventsLeftOut: 1,
     });

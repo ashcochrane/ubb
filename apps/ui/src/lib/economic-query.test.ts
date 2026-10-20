@@ -46,8 +46,9 @@ describe("figureOn — one measure, with the state that says what it is worth", 
     expect(figureOn(answered, RECORDED_EVENTS)).toMatchObject({ status: "known", value: 42 });
   });
 
-  // The margin's own entry carries no count: both of its sides' counts bound
-  // it, in opposite directions, so the figure takes both from its siblings.
+  // The margin's own entry carries no count: both of its sides' counts leave
+  // it incomplete, each from its own side, so the figure takes both from its
+  // siblings.
   it("gives the margin both sides' counts", () => {
     expect(figureOn(answered, GROSS_MARGIN)).toMatchObject({
       status: "incomplete",
@@ -84,7 +85,7 @@ describe("figureOn — one measure, with the state that says what it is worth", 
 });
 
 describe("statedValue — the figure only where the state states one", () => {
-  it("states a known figure and an incomplete bound", () => {
+  it("states a known figure and an incomplete one", () => {
     expect(statedValue(figure({ status: "known", value: 7 }))).toBe(7);
     expect(statedValue(figure({ status: "incomplete", value: 7 }))).toBe(7);
   });
@@ -114,7 +115,7 @@ describe("combineFigures — folding rows without laundering a state", () => {
     ).toEqual(figure({ value: 5 }));
   });
 
-  it("carries a bound and its counts through the sum", () => {
+  it("carries an incomplete figure and its counts through the sum", () => {
     expect(
       combineFigures(SUPPLIER_COGS, [
         figure({ value: 2 }),
@@ -162,7 +163,7 @@ describe("combineFigures — folding rows without laundering a state", () => {
 
   // #537: a row whose state CAN state a figure and states none is a gap too.
   // Summed as zero, a margin fold of +100 beside a no-amount margin over a
-  // cost of 50 would read 100 where the whole is 50 at most.
+  // cost of 50 would read 100, a figure for a whole nobody knows.
   it("treats an incomplete figure with no amount as a gap, never as zero", () => {
     const folded = combineFigures(GROSS_MARGIN, [
       figure({ measure: GROSS_MARGIN, value: 100 }),

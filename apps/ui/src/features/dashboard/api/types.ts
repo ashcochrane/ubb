@@ -88,7 +88,7 @@ export type BreakdownAxis = (typeof BREAKDOWN_AXES)[number];
  * window reaching back past the economic horizon rendered its cost and revenue
  * as `$0.00` — the state was on the wire and the narrowing threw it away.
  * `@/components/shared/measure-value` draws each one as its state allows; the
- * counts that bound an incomplete figure ride inside it.
+ * counts an incomplete figure leaves out ride inside it.
  */
 export type TenantEconomics = EconomicFigures;
 
@@ -104,7 +104,7 @@ export interface CustomerEconomicsRow extends TenantEconomics {
  * The three plotted numbers are `statedValue` of their figures — a GAP where
  * the state states none, never a zero — and the figures themselves ride under
  * `FIGURES_KEY`, keyed by the same data keys, for the tooltip to say each one
- * as its state allows. The counts that bound a day's figures are per point
+ * as its state allows. The counts a day's figures leave out are per point
  * inside them, because an unresolved cost belongs to the day it fell in.
  */
 export interface RevenueCostPoint {

@@ -35,25 +35,27 @@ describe("CustomersPage", () => {
   });
 
   // #330: nova-ai is the one customer in this roster holding events UBB could
-  // not cost, so its COGS is a floor, its margin a ceiling and its margin
-  // percentage the same — while every settled row stays a figure. Asserted as
-  // a contrast rather than as one row: a table that bounded all five, or none,
-  // would pass a single-row test and mislead on the page.
-  it("bounds the COGS and margin of the customer whose costs are incomplete", async () => {
+  // not cost, so its COGS is the sum of what resolved, and its margin and
+  // margin percentage are marked incomplete with it (no bound in either
+  // direction since #603) — while every settled row stays a figure. Asserted
+  // as a contrast rather than as one row: a table that marked all five, or
+  // none, would pass a single-row test and mislead on the page.
+  it("marks the COGS and margin of the customer whose costs are incomplete", async () => {
     renderPage();
 
     expect(
-      await screen.findByText("at least $88.00", undefined, { timeout: 5000 }),
+      await screen.findByText("$88.00 (Incomplete)", undefined, { timeout: 5000 }),
     ).toBeInTheDocument();
     // ⚠ nova-ai's margin is BREAK-EVEN since #497, not minus its whole
     // supplier cost: the switch that struck its billed usage out of its
-    // revenue is deleted. The bound is what this case is about and it is
+    // revenue is deleted. The mark is what this case is about and it is
     // untouched — sharper, if anything, because a margin of exactly zero
-    // that is only a CEILING says the customer may well be losing money.
-    expect(screen.getByText("at most $0.00")).toBeInTheDocument();
+    // that leaves costs out says nothing about whether the customer is
+    // losing money, in either direction.
+    expect(screen.getByText("$0.00 (Incomplete)")).toBeInTheDocument();
     // luna-labs also runs at a loss, and every one of its costs is known.
     expect(screen.getByText("-$14.70")).toBeInTheDocument();
-    expect(screen.queryByText("at most -$14.70")).not.toBeInTheDocument();
+    expect(screen.queryByText("-$14.70 (Incomplete)")).not.toBeInTheDocument();
     expect(screen.getByText("$55.90")).toBeInTheDocument();
   });
 

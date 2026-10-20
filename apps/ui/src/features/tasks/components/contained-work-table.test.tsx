@@ -162,9 +162,9 @@ describe("ContainedWorkTable", () => {
     expect(unknown).toHaveTextContent("Unknown");
     expect(realZero).toHaveAttribute("data-reading", "figure");
     expect(realZero).toHaveTextContent("$0.00");
-    // And the roll-up, with one piece uncosted, is a floor rather than a figure.
+    // And the roll-up, with one piece uncosted, is partial rather than a figure.
     const rollup = cellsOf(rollupRow());
-    expect(rollup[SUPPLIER_COST]).toBe("at least $0.03");
+    expect(rollup[SUPPLIER_COST]).toBe("$0.03 (Incomplete)");
   });
 
   it("prices contained work under an event-priced run as figures, and as not applicable for a workspace that does not bill", async () => {

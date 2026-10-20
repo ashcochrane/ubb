@@ -74,29 +74,31 @@ describe("BillingPage", () => {
     expect(note).toHaveTextContent("Nothing is divided");
   });
 
-  // #330: the window's supplier total is a FLOOR whenever it holds events UBB
-  // could not cost, and the markup beside it is then a ceiling — billed minus
-  // the RESOLVED cost, which the contract states on the measure itself since
-  // #501 (`EconomicMeasureOut.status` = `incomplete`, where the figure "is a
-  // bound rather than a total"; it used to be `get_revenue_analytics`, one of
-  // the five definitions that collapsed). The mock puts uncosted events on today, so every
-  // default window is partial and both tiles have to say which way they are
-  // wrong.
-  it("renders a partial window's cost as a floor and its markup as a ceiling", async () => {
+  // #330: the window's supplier total is INCOMPLETE whenever it holds events
+  // UBB could not cost, and so is the markup beside it — billed minus the
+  // RESOLVED cost, which the contract states on the measure itself since #501
+  // (`EconomicMeasureOut.status` = `incomplete`: the sum of the inputs that
+  // resolved). Since #603 neither is a bound: a cost left out may be negative,
+  // so neither tile says which way it is wrong, only that it is partial. The
+  // mock puts uncosted events on today, so every default window is partial.
+  it("renders a partial window's cost and its markup marked incomplete, never as a bound", async () => {
     renderPage();
 
     // By role, for the reason the first case gives: two nodes say "Revenue".
     expect(
       await screen.findByRole("heading", { name: "Revenue" }),
     ).toBeInTheDocument();
-    expect(await screen.findByText(/^at least \$/)).toBeInTheDocument();
-    expect(screen.getByText(/^at most \$/)).toBeInTheDocument();
-    // The note beside them says how many events are missing and which way the
-    // total is wrong — a marker alone would leave the reader to guess.
+    // The cost tile and the markup tile, both marked.
+    expect(
+      (await screen.findAllByText(/^-?\$[\d,]+\.\d\d \(Incomplete\)$/)).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/at least|at most/)).not.toBeInTheDocument();
+    // The note beside them says how many events are missing — a mark alone
+    // would leave the reader to wonder what is left out.
     expect(screen.getByText(/3 events have a supplier cost/)).toBeInTheDocument();
     // Every price in this fixture resolved, so the revenue reads `known` and is
-    // drawn as the figure it is — while the margin beside it is a bound, from
-    // the cost side alone (§15).
+    // drawn as the figure it is — while the margin beside it is incomplete,
+    // from the cost side alone (§15).
     expect(screen.getAllByText(/^\$[\d,]+\.\d\d$/).length).toBeGreaterThan(0);
   });
 

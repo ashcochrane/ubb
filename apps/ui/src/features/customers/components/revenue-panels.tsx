@@ -41,6 +41,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
+import { pricingStatusReasonLabel } from "@/lib/customer-price";
 import { formatCalendarDate, formatMicros } from "@/lib/format";
 import { toastSuccess } from "@/lib/mutations";
 import { cn } from "@/lib/utils";
@@ -311,6 +312,10 @@ function SuppliedRevenuePanel({
                   labelKeys={PRICING_STATUS_LABEL_KEYS}
                   value={supplied.data.pricing_status}
                 />
+                {/* The status's own reason, wherever one is published beside
+                    it (#603) — none applies at this scope today. */}
+                {supplied.data.pricing_status_reason != null &&
+                  ` · ${pricingStatusReasonLabel(supplied.data.pricing_status_reason)}`}
                 . {MARGIN_UNAVAILABLE_NOT_ZERO}
               </p>
             )}

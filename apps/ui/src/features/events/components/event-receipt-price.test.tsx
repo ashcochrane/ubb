@@ -46,13 +46,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   NOT_APPLICABLE_REASON_EXPLANATIONS,
   PRICING_STATUS_EXPLANATIONS,
+  PRICING_STATUS_REASON_EXPLANATIONS,
   notApplicableReasonLabel,
   pricingStatusLabel,
+  pricingStatusReasonLabel,
 } from "@/lib/customer-price";
 import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   availableMeasurements,
   knownCost,
+  negativePriceUnsupported,
   priceNotApplicable,
 } from "@/lib/economic-scenarios";
 
@@ -93,28 +96,51 @@ const METERING_ONLY_DETAIL: UsageEventDetail = {
   event_type: "chat.completion",
   provider: "openai",
   grouping_fields: {},
-  ...availableMeasurements({ input_tokens: 1100, output_tokens: 320 }),
+  ...availableMeasurements({ input_tokens: "1100", output_tokens: "320" }),
   pricing_receipt: {},
   metadata: {},
   task_id: null,
   stop_context: null,
 };
 
+const NEGATIVE_PRICE_EVENT_ID = "5e2c9a71-0b4d-4f86-a3c2-7d1e6b9f0a24";
+
+/**
+ * One posting whose configuration calculated a NEGATIVE customer price (#603
+ * A2) — a billing workspace this time, so the price applies and was
+ * calculated, and UBB cannot carry it. Assembled here for the header's reason:
+ * the events mock never authors this state, so only a payload built outside it
+ * can show the reason reaching the page. The quantity is negative too, which
+ * is how such a price arises, and renders as the exact text it was recorded as.
+ */
+const NEGATIVE_PRICE_DETAIL: UsageEventDetail = {
+  ...METERING_ONLY_DETAIL,
+  id: NEGATIVE_PRICE_EVENT_ID,
+  ...correlationId(NEGATIVE_PRICE_EVENT_ID),
+  ...negativePriceUnsupported(),
+  ...availableMeasurements({ returned_documents: "-3" }),
+};
+
+const DETAILS: Readonly<Record<string, UsageEventDetail>> = {
+  [METERING_ONLY_EVENT_ID]: METERING_ONLY_DETAIL,
+  [NEGATIVE_PRICE_EVENT_ID]: NEGATIVE_PRICE_DETAIL,
+};
+
 vi.mock("../api/provider", () => ({
   eventsApi: {
     // Only what this page asks for. A stub that answered more would be a second
     // mock to keep true, and the page under test reads exactly one endpoint.
-    getUsageEvent: async () => METERING_ONLY_DETAIL,
+    getUsageEvent: async (eventId: string) => DETAILS[eventId],
   },
 }));
 
-function renderReceipt() {
+function renderReceipt(eventId: string = METERING_ONLY_EVENT_ID) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const ui: ReactElement = (
     <QueryClientProvider client={queryClient}>
-      <EventDetailPage eventId={METERING_ONLY_EVENT_ID} onBack={vi.fn()} />
+      <EventDetailPage eventId={eventId} onBack={vi.fn()} />
     </QueryClientProvider>
   );
   return render(ui);
@@ -177,5 +203,40 @@ describe("a receipt on a workspace that does not bill", () => {
     // metering-only workspaces still learn what their suppliers charged, which
     // is the entire point of metering without billing.
     expect(screen.getByText("$0.0610")).toBeInTheDocument();
+  });
+});
+
+// ⚠ #603 A2: a negative calculated price is `unknown` WITH ITS REASON, and the
+// reason is the whole difference from a price UBB has no input for — both
+// carry no amount. The mutation that reddens these and nothing mock-authored:
+// drop `pricing_status_reason` from `negativePriceUnsupported()`.
+describe("a receipt whose configuration calculated a negative price", () => {
+  it("names the status WITH its reason, in the catalogue's words", async () => {
+    renderReceipt(NEGATIVE_PRICE_EVENT_ID);
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(priceSectionText()).toContain(
+      `${pricingStatusLabel("unknown")} · ${pricingStatusReasonLabel("negative_price_unsupported")}`,
+    );
+  });
+
+  it("explains it with the reason's sentence, not the plain unknown one", async () => {
+    renderReceipt(NEGATIVE_PRICE_EVENT_ID);
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(
+      screen.getByText(PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(PRICING_STATUS_EXPLANATIONS.unknown)).not.toBeInTheDocument();
+  });
+
+  it("renders no amount — never the negative figure, never a zero — and the quantity as recorded", async () => {
+    renderReceipt(NEGATIVE_PRICE_EVENT_ID);
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    const billed = screen.getByText("Billed").closest("div");
+    expect(billed?.textContent ?? "").toContain(ABSENT_LABEL);
+    expect(priceSectionText()).not.toMatch(/[$£€]\s*-?[\d,]/);
+    expect(screen.getByText("-3")).toBeInTheDocument();
   });
 });

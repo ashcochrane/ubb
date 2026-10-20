@@ -20,7 +20,7 @@ import {
   customerPriceExplanation,
   notApplicableReasonLabel,
   pricingMethodLabel,
-  pricingStatusLabel,
+  pricingStatusWords,
   settledPriceMicros,
 } from "@/lib/customer-price";
 import { ABSENT_LABEL } from "@/lib/localisation";
@@ -88,11 +88,14 @@ function idItem(label: string, value: string): DetailItem {
   };
 }
 
+/**
+ * Each quantity as the canonical text it is recorded as (#603, ADR-0020):
+ * never through `Number`, which would round a digit past 2^53 or a long
+ * fraction, and never locale-grouped, which would be a figure UBB did not
+ * record.
+ */
 function measurementRows(detail: UsageEventDetail): Array<[string, string]> {
-  return Object.entries(detail.measurements).map(([key, quantity]) => [
-    key,
-    typeof quantity === "number" ? quantity.toLocaleString() : String(quantity),
-  ]);
+  return Object.entries(detail.measurements);
 }
 
 /**
@@ -227,8 +230,9 @@ export function EventDetailPage({
   // AND THE ABSENCE IS NAMED (#330). A dash says something is not there; the
   // status says WHICH not-there this is, because a cost UBB could not learn and
   // a cost there was never going to be are opposite facts wearing the same
-  // empty cell. There is no "at least" on this screen and that is not an
-  // omission: one event has no total to be a floor of — it has the mark itself.
+  // empty cell. The event's own cost carries no "(Incomplete)" and that is not
+  // an omission: one event is no total that could leave anything out — it has
+  // the mark itself.
   // AND THE SAME IS NOW TRUE OF THE CUSTOMER PRICE (#351). It went nullable
   // with a status of its own, so a price UBB could not resolve reaches this
   // screen as an absence and must render as one: `£0.00` here would tell a
@@ -309,7 +313,9 @@ export function EventDetailPage({
         formatEventMicros(micros, detail.currency),
       ),
     },
-    { label: "Price status", value: pricingStatusLabel(detail.pricing_status) },
+    // The status WITH its reason (#603): an `unknown` UBB calculated and
+    // cannot carry is a different answer from one it has no input for.
+    { label: "Price status", value: pricingStatusWords(detail) },
     // ⚠ HOW THE PRICE WAS DERIVED, PER EVENT, AND IT IS NOT A PROPERTY OF THE
     // EVENT TYPE (#372, spec §21). Two events of the SAME Event Type may
     // legitimately read differently here — one cost-plus for a customer on a
@@ -374,9 +380,10 @@ export function EventDetailPage({
       : []),
     {
       // Beside the COST rather than beside the price, because the cost is the
-      // side that bounds it: `@/lib/supplier-cost`'s `marginBound` owns the
-      // rule that a margin computed against a partial cost is a ceiling, and a
-      // margin needs both halves so it can sit under only one of them.
+      // side that can leave it incomplete: `@/lib/supplier-cost`'s `marginOver`
+      // owns the rule that a margin computed against a partial cost is marked
+      // incomplete with it, and a margin needs both halves so it can sit under
+      // only one of them.
       label: "Margin on this event",
       value:
         margin === null

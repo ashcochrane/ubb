@@ -5,12 +5,15 @@ import {
   PRICING_STATUS_EXPLANATIONS,
   customerPriceAmount,
   customerPriceExplanation,
+  PRICING_STATUS_REASON_EXPLANATIONS,
+  pricingStatusReasonLabel,
   notApplicableReasonLabel,
   pricingMethodLabel,
   pricingStatusLabel,
   settledPriceMicros,
 } from "./customer-price";
 import {
+  negativePriceUnsupported,
   priceNotApplicable,
   unknownPrice,
   waivedPrice,
@@ -23,6 +26,8 @@ import {
   PRICING_METHOD_LABEL_KEYS,
   PRICING_METHOD_VALUES,
   PRICING_STATUS_LABEL_KEYS,
+  PRICING_STATUS_REASON_LABEL_KEYS,
+  PRICING_STATUS_REASON_VALUES,
   PRICING_STATUS_VALUES,
 } from "./vocabulary";
 
@@ -51,6 +56,12 @@ describe("the price side's words come from the catalogue", () => {
       notApplicableReasonLabel,
     ],
     ["pricing_method", PRICING_METHOD_VALUES, PRICING_METHOD_LABEL_KEYS, pricingMethodLabel],
+    [
+      "pricing_status_reason",
+      PRICING_STATUS_REASON_VALUES,
+      PRICING_STATUS_REASON_LABEL_KEYS,
+      pricingStatusReasonLabel,
+    ],
   ] as const)("carries wording for every %s the registry declares", (_concept, values, keys, label) => {
     for (const value of values) {
       const key: string = keys[value as keyof typeof keys];
@@ -120,7 +131,7 @@ describe("what a price with no amount renders as", () => {
   // status that is not `known` — which is a row a wire payload can carry
   // whatever the column constraint says, since the console is downstream of it.
   it("reads the STATUS, so a zero beside a waived price is still an absence", () => {
-    const zeroed = { billed_cost_micros: 0, pricing_status: "waived" } as const;
+    const zeroed = { billed_cost_micros: 0, pricing_status: "waived", pricing_status_reason: null } as const;
 
     expect(customerPriceAmount(zeroed, pounds)).toBe("—");
   });
@@ -149,6 +160,7 @@ describe("what settled, and what every derived number must ask", () => {
     const waivedAtZero = {
       billed_cost_micros: 0,
       pricing_status: "waived",
+      pricing_status_reason: null,
     } as const;
     const providerCost = 1_400_000;
 
@@ -164,7 +176,7 @@ describe("what settled, and what every derived number must ask", () => {
   // console is downstream of whatever does. It renders as an absence rather
   // than throwing or coalescing.
   it("gives back nothing when a settled status carries no amount", () => {
-    expect(settledPriceMicros({ pricing_status: "known" })).toBeNull();
+    expect(settledPriceMicros({ pricing_status: "known", pricing_status_reason: null })).toBeNull();
   });
 });
 
@@ -193,6 +205,7 @@ describe("what the console says about a price it does not have", () => {
     const unexplained = {
       billed_cost_micros: null,
       pricing_status: "not_applicable",
+      pricing_status_reason: null,
       not_applicable_reason: null,
     } as const;
 
@@ -218,7 +231,56 @@ describe("what the console says about a price it does not have", () => {
   // an outstanding question, and one that counted `not_applicable` would report
   // a metering-only tenant as owing itself revenue.
   it("names UNKNOWN as the one absence a completeness count is about", () => {
-    expect(PRICING_STATUS_EXPLANATIONS.unknown).toMatch(/missing|not yet|has not/i);
+    expect(PRICING_STATUS_EXPLANATIONS.unknown).toMatch(/missing|not yet|has not|no customer price/i);
     expect(PRICING_STATUS_EXPLANATIONS.waived).toMatch(/decid|waiv|pursue/i);
+  });
+
+  // ⚠ THE RETIRED PROMISE STAYS RETIRED (#603, ADR-0020 §6): no sentence a
+  // price renders beside it says a total is a floor or that its true figure
+  // is higher.
+  it("promises no direction about a total in any sentence", () => {
+    const sentences = [
+      ...Object.values(PRICING_STATUS_EXPLANATIONS),
+      ...Object.values(PRICING_STATUS_REASON_EXPLANATIONS),
+    ];
+    for (const sentence of sentences) {
+      expect(sentence).not.toMatch(/floor|at least|is higher|is lower|minimum/i);
+    }
+  });
+});
+
+// ⚠ A NEGATIVE CALCULATED PRICE IS `unknown` WITH ITS REASON (#603 A2), and
+// the reason is what tells it apart from a price UBB has no input for: one is
+// a question a recovery run may still answer, the other a result no run
+// revisits. Both carry no amount, so only the reason can say which.
+describe("a price status's own reason", () => {
+  it("never gives a reason a word that reads as money", () => {
+    for (const reason of PRICING_STATUS_REASON_VALUES) {
+      expect(pricingStatusReasonLabel(reason)).not.toMatch(CURRENCY);
+    }
+  });
+
+  it("prefers the reason's sentence beside an unknown price that carries one", () => {
+    const negative = negativePriceUnsupported();
+    expect(negative.pricing_status).toBe("unknown");
+    expect(negative.billed_cost_micros).toBeNull();
+    expect(customerPriceExplanation(negative)).toBe(
+      PRICING_STATUS_REASON_EXPLANATIONS.negative_price_unsupported,
+    );
+    expect(customerPriceExplanation(negative)).not.toBe(customerPriceExplanation(unknownPrice()));
+  });
+
+  it("renders the absence, never a negative figure or a zero", () => {
+    expect(customerPriceAmount(negativePriceUnsupported(), (micros) => `$${micros}`)).toBe("—");
+    expect(settledPriceMicros(negativePriceUnsupported())).toBeNull();
+  });
+
+  it("says nothing of a negative price where the unknown carries no reason", () => {
+    expect(customerPriceExplanation(unknownPrice())).toBe(PRICING_STATUS_EXPLANATIONS.unknown);
+    expect(PRICING_STATUS_EXPLANATIONS.unknown).not.toMatch(/negative/i);
+  });
+
+  it("renders a reason the registry has never seen as the token the server sent", () => {
+    expect(pricingStatusReasonLabel("a_reason_from_tomorrow")).toBe("a_reason_from_tomorrow");
   });
 });

@@ -311,6 +311,7 @@ export async function getSuppliedRevenue(
     // customer nobody has supplied a figure for has revenue UBB does not know,
     // so margin is unavailable there rather than nil.
     pricing_status: rows.length > 0 ? "known" : "unknown",
+    pricing_status_reason: null,
     totals: [...perCurrency.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([currency, amount_micros]) => ({ currency, amount_micros })),

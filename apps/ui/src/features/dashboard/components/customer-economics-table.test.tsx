@@ -61,19 +61,19 @@ describe("CustomerEconomicsTable", () => {
     expect(dataRowText(1)).toContain("4c3f6d51…");
   });
 
-  it("bounds an incomplete margin and links every row to the customer page", async () => {
+  it("marks an incomplete margin and links every row to the customer page", async () => {
     renderWithClient(
       <CustomerEconomicsTable window={WINDOW} currency="usd" />,
     );
 
-    // nova-ai: gross margin rendered from the API's figures — and bounded,
-    // because it is the one customer holding uncosted events (#330).
-    // ⚠ IT READ "at most -$88.00" UNTIL #497 and the case was named for the
+    // nova-ai: gross margin rendered from the API's figures — and marked
+    // incomplete, because it is the one customer holding uncosted events (#330).
+    // ⚠ IT READ "-$88.00 (Incomplete)" UNTIL #497 and the case was named for the
     // minus sign. That figure was the deleted switch's: this customer's
     // billed usage was struck out of its revenue, leaving a margin of minus
-    // the whole supplier cost. The BOUND is the subject here and survives
+    // the whole supplier cost. The MARK is the subject here and survives
     // unchanged; luna-labs below is the roster's genuinely negative row.
-    expect(await screen.findByText("at most $0.00")).toBeInTheDocument();
+    expect(await screen.findByText("$0.00 (Incomplete)")).toBeInTheDocument();
     const acmeLink = screen.getByRole("link", { name: "1f0c9c4e…" });
     expect(acmeLink).toHaveAttribute(
       "title",
@@ -82,17 +82,18 @@ describe("CustomerEconomicsTable", () => {
   });
 
   // The rule this table has to get right, stated as a contrast rather than as
-  // one assertion: nova-ai's COGS can only be higher and its margin only lower,
-  // while acme-corp's are figures. A row that bounded both, or neither, would
-  // pass a single-row test and mislead on the page.
-  it("says which COGS is a floor and leaves the settled ones alone", async () => {
+  // one assertion: nova-ai's COGS and margin leave its uncosted events out
+  // (and since #603 the complete figures may lie either side of them), while
+  // acme-corp's are figures. A row that marked both, or neither, would pass a
+  // single-row test and mislead on the page.
+  it("says which COGS is incomplete and leaves the settled ones alone", async () => {
     renderWithClient(
       <CustomerEconomicsTable window={WINDOW} currency="usd" />,
     );
 
-    expect(await screen.findByText("at least $88.00")).toBeInTheDocument();
+    expect(await screen.findByText("$88.00 (Incomplete)")).toBeInTheDocument();
     // acme-corp's COGS is whole, and renders as the figure it is.
     expect(screen.getByText("$274.00")).toBeInTheDocument();
-    expect(screen.queryByText("at least $274.00")).not.toBeInTheDocument();
+    expect(screen.queryByText("$274.00 (Incomplete)")).not.toBeInTheDocument();
   });
 });

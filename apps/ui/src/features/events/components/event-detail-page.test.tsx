@@ -1,5 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+
+/** The usage measurements panel — the quantities as recorded. */
+function measurementsPanel(): HTMLElement {
+  const panel = screen.getByText("Usage measurements").closest("section");
+  if (!panel) throw new Error("no measurements panel");
+  return panel;
+}
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -84,7 +91,9 @@ describe("EventDetailPage", () => {
     expect(screen.getByText("$0.1875")).toBeInTheDocument();
     // Usage measurements (the key also appears in the receipt).
     expect(screen.getAllByText("input_tokens").length).toBeGreaterThan(0);
-    expect(screen.getByText("4,200")).toBeInTheDocument();
+    // The quantity as the exact text it was recorded as (#603) — the receipt
+    // carries the same text, so the assertion is scoped to the panel.
+    expect(within(measurementsPanel()).getByText("4200")).toBeInTheDocument();
     // The receipt renders structured, not as raw JSON.
     //
     // ⚠ THE RECORD IS THE ENGINE'S OWN SHAPE NOW (#372). The fixture this
@@ -327,7 +336,9 @@ describe("EventDetailPage", () => {
     renderPage({ eventId: EVENT_RICH_ID, customerId: CUSTOMER_A_ID });
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
-    expect(screen.getByText("4,200")).toBeInTheDocument();
+    // Exact text, never locale-grouped: "4200", not "4,200" (#603).
+    expect(within(measurementsPanel()).getByText("4200")).toBeInTheDocument();
+    expect(within(measurementsPanel()).queryByText("4,200")).toBeNull();
     expect(
       screen.getByText(MEASUREMENTS_STATUS_EXPLANATIONS.available),
     ).toBeInTheDocument();
@@ -415,7 +426,7 @@ describe("EventDetailPage", () => {
       // In the catalogue's words, never the console's.
       expect(sectionText(CUSTOMER_PRICE)).toContain(pricingStatusLabel(status));
       // No currency amount anywhere in the section, not merely no `$0.00`:
-      // "at least $0.00" and "$0.0000" would both slip past the narrower test.
+      // "$0.00 (Incomplete)" and "$0.0000" would both slip past the narrower test.
       expect(sectionText(CUSTOMER_PRICE)).not.toMatch(/[$£€]\s*-?[\d,]/);
 
       // The SUPPLIER cost on the same posting is settled and still a figure —
@@ -530,16 +541,17 @@ describe("EventDetailPage", () => {
     );
   });
 
-  it("closes a task holding an unlearned cost and says the total is a floor", async () => {
+  it("closes a task holding an unlearned cost and marks the total incomplete", async () => {
     // The still-open task holds the one unresolved event, so its rolled-up
-    // supplier cost can only be higher than it says.
+    // supplier cost is the sum of what resolved — marked, never a bound
+    // (#603: the missing cost may be negative).
     renderPage({ eventId: EVENT_UNRESOLVED_ID, customerId: CUSTOMER_A_ID });
 
     fireEvent.click(await screen.findByRole("button", { name: "Close as delivered" }));
     fireEvent.click(await screen.findByRole("button", { name: "Yes, it delivered" }));
 
     expect(await screen.findByText(/Task closed/)).toBeInTheDocument();
-    expect(screen.getByText(/^at least \$\d/)).toBeInTheDocument();
+    expect(screen.getByText(/^\$\d[\d,.]* \(Incomplete\)$/)).toBeInTheDocument();
     expect(screen.getByText("Costs still unknown")).toBeInTheDocument();
   });
 
@@ -572,7 +584,7 @@ describe("EventDetailPage", () => {
     );
 
     expect(await screen.findByText(/Task closed — Completed/)).toBeInTheDocument();
-    expect(screen.queryByText(/at least/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\(Incomplete\)|at least/)).not.toBeInTheDocument();
     expect(screen.queryByText("Costs still unknown")).not.toBeInTheDocument();
   });
 

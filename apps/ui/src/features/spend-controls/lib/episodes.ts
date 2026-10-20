@@ -7,8 +7,8 @@
 // on these rows arrives as a figure beside a COUNT of what it could not
 // include — the itemised block's two pairs, a ceiling's crossed and final
 // pairs, a pool's spend after the crossing — and `@/lib/total-reading` is the
-// one place that decides whether such a figure is a figure, a floor, or
-// nothing at all. Where the wire says null (a kill whose announcement aged
+// one place that decides whether such a figure is a figure, partial (the sum
+// of what resolved, marked), or nothing at all. Where the wire says null (a kill whose announcement aged
 // out, a pool row that is gone, a balance no suspension announced), the
 // reading is null too and a sentence below says so; nothing here coalesces.
 

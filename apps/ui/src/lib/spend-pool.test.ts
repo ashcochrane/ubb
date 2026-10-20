@@ -61,9 +61,9 @@ describe("the pool's status pair", () => {
     expect(excludedFromKnown(status({}))).toBeNull();
   });
 
-  it("reads the known charges as a floor beside the count it excludes, never as a figure", () => {
+  it("reads the known charges as partial beside the count it excludes, never as a figure", () => {
     const pool = status({ known_period_charges_micros: 517_500_000, unresolved_posting_count: 1 });
-    expect(readPoolCharges(pool)).toEqual({ kind: "floor", micros: 517_500_000, eventsLeftOut: 1 });
+    expect(readPoolCharges(pool)).toEqual({ kind: "partial", micros: 517_500_000, eventsLeftOut: 1 });
     expect(excludedFromKnown(pool)).toBe(
       "1 posting whose revenue UBB has not resolved is excluded from the known figure, not counted as zero.",
     );
@@ -79,20 +79,23 @@ describe("the pool's status pair", () => {
     expect(readPoolCharges(pool)).toEqual({ kind: "unknown", eventsLeftOut: 2 });
   });
 
-  it("says the share used is at least where the pair is a floor, and a figure otherwise", () => {
+  // ⚠ #603 (ADR-0020 §6): over an incomplete pair the share and the headroom
+  // are marked, and promise no direction — a clamped zero included, since
+  // reading it as settled would take for granted which way the postings UBB
+  // could not price will move the charges.
+  it("marks the share used where the pair is incomplete, and states a figure otherwise", () => {
     expect(describePoolUtilisation(status({}))).toBe("46%");
-    expect(describePoolUtilisation(status({ unresolved_posting_count: 2 }))).toBe("at least 46%");
+    expect(describePoolUtilisation(status({ unresolved_posting_count: 2 }))).toBe("46% (Incomplete)");
     expect(describePoolUtilisation(status({ used_percentage: null }))).toBeNull();
   });
 
-  it("says the headroom is at most where the pair is a floor, except a clamped zero", () => {
+  it("marks the headroom where the pair is incomplete, a clamped zero included", () => {
     expect(describePoolHeadroom(status({}), "usd")).toBe("$268.60");
-    expect(describePoolHeadroom(status({ unresolved_posting_count: 2 }), "usd")).toBe("at most $268.60");
-    // Past the line the kernel clamps the headroom at nothing, and a posting
-    // it could not price can only lower a figure already at its floor.
+    expect(describePoolHeadroom(status({ unresolved_posting_count: 2 }), "usd")).toBe("$268.60 (Incomplete)");
     expect(
       describePoolHeadroom(status({ remaining_micros: 0, unresolved_posting_count: 1 }), "usd"),
-    ).toBe("$0.00");
+    ).toBe("$0.00 (Incomplete)");
+    expect(describePoolHeadroom(status({ remaining_micros: 0 }), "usd")).toBe("$0.00");
     expect(describePoolHeadroom(status({ remaining_micros: null }), "usd")).toBeNull();
   });
 });

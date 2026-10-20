@@ -7,7 +7,7 @@
 //                 tenant bills OUTSIDE UBB, so it is the one that STATES what
 //                 it earned (#508). Its first month is a part month.
 // nova-ai       — individual whose supplier cost is INCOMPLETE: four events
-//                 carry a cost UBB never learned, so its totals are bounds.
+//                 carry a cost UBB never learned, so its totals are partial.
 //
 // ⚠ TWO OF THOSE THREE LINES DESCRIBED RECORDS THAT NO LONGER EXIST. acme's
 // and luna's named the recurring revenue profile, deleted in #496; nova's
@@ -50,8 +50,9 @@ export const CUS_SEAT_RES = "5d4a5e62-4b86-495a-9b7f-0e5300000005";
 // Each customer's supplier cost for the period, and how much of it UBB knows.
 //
 // COMPOSED, NEVER STATED FIELD BY FIELD (#371). A total and the count of events
-// it had to skip are ONE fact — a total beside a non-zero count is a FLOOR
-// rather than a figure, and the margin computed from it is a CEILING — so
+// it had to skip are ONE fact — a total beside a non-zero count is the SUM OF
+// WHAT RESOLVED rather than a figure, and the margin computed from it is
+// incomplete with it (no bound in either direction since #603) — so
 // `@/lib/economic-scenarios` returns them as one object and a fixture cannot
 // take half. Until this commit those two scenarios reached nothing but their
 // own unit test (ruling 10(b)), which is how a canonical fixture comes to
@@ -64,8 +65,9 @@ export const CUS_SEAT_RES = "5d4a5e62-4b86-495a-9b7f-0e5300000005";
 //
 // nova-ai is the one incomplete customer in this story: four of its events
 // carry a supplier cost UBB never learned, so its provider total renders as
-// "at least $88.00" and its margin as a bound. That wording is #151 §10.3's
-// requirement, and this is the fixture behind it.
+// "$88.00 (Incomplete)" and its margin marked incomplete beside it. #151
+// §10.3 required it be said; #603 retired the "at least" it was said with,
+// and this is the fixture behind it.
 const ACME_PROVIDER_COST = completeTotal(274_000_000);
 const LUNA_PROVIDER_COST = completeTotal(55_900_000);
 const NOVA_PROVIDER_COST = incompleteTotal(88_000_000, 4);
@@ -487,8 +489,9 @@ export const MOCK_POOL_PERIOD = "2026-07";
 /**
  * The durable basis per customer for July — the known period charges beside
  * the count of postings whose revenue UBB could not resolve — from which the
- * mock composes each pair (`spendPoolAssessment`). acme-corp's is a FLOOR:
- * one posting unpriced, the known figure past the pool. The seats' figures
+ * mock composes each pair (`spendPoolAssessment`). acme-corp's is PARTIAL,
+ * marked incomplete: one posting unpriced, the known figure past the pool.
+ * The seats' figures
  * are their July usage revenue in the margin story above; nova-ai is tracked
  * at cost, so nothing is known against a pool for it.
  */
@@ -632,7 +635,7 @@ export const MOCK_SUB_INVOICES: Record<string, SubscriptionInvoiceOut[]> = {
 //
 // ⚠ THE COUNTS RIDE THEIR OWN MEASURES. `unresolved_event_count` belongs to the
 // supplier cost and `unpriced_event_count` to the customer revenue; they are
-// different sets of postings and they bound the margin in opposite directions,
+// different sets of postings, each leaving the margin short on its own side,
 // so a builder that put both on one entry would let a fixture describe a
 // response no server can produce.
 //

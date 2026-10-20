@@ -30,7 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   notApplicableReasonLabel,
   pricingMethodLabel,
-  pricingStatusLabel,
+  pricingStatusWords,
   settledPriceMicros,
 } from "@/lib/customer-price";
 import { formatEventMicros, formatExactMicros, formatMicros, type ExactMicros } from "@/lib/format";
@@ -76,7 +76,7 @@ export function AcknowledgementCard({
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[12px] sm:grid-cols-3">
         {/* Both statuses as the response gives them, beside the amounts. */}
         <ResponseStat label="Costing status" value={costingStatusLabel(response.costing_status)} />
-        <ResponseStat label="Price status" value={pricingStatusLabel(response.pricing_status)} />
+        <ResponseStat label="Price status" value={pricingStatusWords(response)} />
         {/* An absent customer price is NAMED here too, on the same argument as
             the supplier cost below and one slice later (#351, #371): three of
             the four statuses null this column, they mean different things, and
@@ -90,7 +90,7 @@ export function AcknowledgementCard({
           value={
             settledPrice !== null
               ? formatEventMicros(settledPrice, currency)
-              : pricingStatusLabel(response.pricing_status)
+              : pricingStatusWords(response)
           }
         />
         {response.pricing_status === "not_applicable" &&

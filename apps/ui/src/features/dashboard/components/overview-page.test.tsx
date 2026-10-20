@@ -48,12 +48,13 @@ describe("OverviewPage", () => {
     // revenue. Every customer's billed usage is revenue now, so the total is
     // the whole of it and the margin percentage below rises with it.
     expect(await screen.findByText("$852.90")).toBeInTheDocument();
-    // THE HEADLINE COGS IS A FLOOR, and it says so (#330). The mock window
+    // THE HEADLINE COGS IS INCOMPLETE, and it says so (#330). The mock window
     // holds four events whose supplier cost UBB never learned, so the total
-    // over them can only be higher — and the margin computed against it can
-    // only be lower.
-    expect(screen.getByText("at least $563.60")).toBeInTheDocument();
-    expect(screen.getByText("at most 33.9% margin")).toBeInTheDocument();
+    // is the sum of what resolved and leaves those four out — and the margin
+    // computed against it is incomplete with it. Since #603 neither is a
+    // bound: a cost left out may move either figure in either direction.
+    expect(screen.getByText("$563.60 (Incomplete)")).toBeInTheDocument();
+    expect(screen.getByText("33.9% (Incomplete) margin")).toBeInTheDocument();
     // ⚠ **AWAITED, NOT READ SYNCHRONOUSLY, AND THE REASON IS #501.** This
     // card used to read `customer_count` off the SAME response as the three
     // above it — the deleted margin summary published the count as a field,
@@ -77,24 +78,24 @@ describe("OverviewPage", () => {
     // shared mock roster).
     expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
     expect(screen.getByText("View all customers")).toBeInTheDocument();
-    // nova-ai's gross margin renders bounded: it is the one customer in the
-    // mock story holding uncosted events, so its margin is an upper bound —
-    // the unlearned costs can only take it further down (#330). It is
-    // break-even rather than minus its whole cost since #497; the bound is
+    // nova-ai's gross margin renders marked incomplete: it is the one customer
+    // in the mock story holding uncosted events, so its margin leaves them out
+    // (#330) — and since #603 the unlearned costs may move it either way. It
+    // is break-even rather than minus its whole cost since #497; the mark is
     // the claim, and at zero it is at its most load-bearing.
-    expect(screen.getByText("at most $0.00")).toBeInTheDocument();
+    expect(screen.getByText("$0.00 (Incomplete)")).toBeInTheDocument();
   });
 
   // The other side of the same fact, on the same page. A count belongs to the
-  // customer whose events it is about, so a table that bounded every row on the
+  // customer whose events it is about, so a table that marked every row on the
   // window's total would caveat four customers for one customer's missing
   // supplier invoice.
-  it("bounds only the customer whose costs are incomplete", async () => {
+  it("marks only the customer whose costs are incomplete", async () => {
     renderWithClient(<OverviewPage search={{}} onSearchChange={() => {}} />);
 
     // luna-labs also runs at a loss, and every one of its costs is known.
     expect(await screen.findByText("-$14.70")).toBeInTheDocument();
-    expect(screen.queryByText("at most -$14.70")).not.toBeInTheDocument();
+    expect(screen.queryByText("-$14.70 (Incomplete)")).not.toBeInTheDocument();
   });
 
   it("surfaces the unprofitable-customers alert when the API reports them", async () => {
@@ -106,10 +107,11 @@ describe("OverviewPage", () => {
     expect(screen.getByText("nova-ai")).toBeInTheDocument();
     expect(screen.getByText("luna-labs")).toBeInTheDocument();
     // ONE PAGE MUST NOT DISAGREE WITH ITSELF ABOUT ONE CUSTOMER (#330). The
-    // economics table below already bounds nova-ai's margin, and this alert
-    // reads the same customer from a response carrying the same count — an
-    // alert about unprofitability is the last place to overstate a margin.
-    expect(screen.getByText("at most $0.00 margin")).toBeInTheDocument();
+    // economics table below already marks nova-ai's margin incomplete, and
+    // this alert reads the same customer from a response carrying the same
+    // count — an alert about unprofitability is the last place to state a
+    // partial margin as a figure.
+    expect(screen.getByText("$0.00 (Incomplete) margin")).toBeInTheDocument();
     // luna-labs' costs are all known, so its margin is the figure it is.
     expect(screen.getByText("-$14.70 margin")).toBeInTheDocument();
     // Threshold-aware copy links to the margin-alert settings.

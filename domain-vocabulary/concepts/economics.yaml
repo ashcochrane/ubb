@@ -518,6 +518,11 @@ pricing_status_reason:
   consumers:
     - surface: backend
       path: ubb-platform/apps/metering/usage/models.py
+    # The same module that names `not_applicable_reason`: what the console may
+    # say about a price it does not have, and every surface showing a pricing
+    # status reads it from there.
+    - surface: console
+      path: apps/ui/src/lib/customer-price.ts
     - surface: openapi
       path: openapi/v1.json
 

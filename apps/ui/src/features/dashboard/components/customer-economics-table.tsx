@@ -203,7 +203,7 @@ function EconomicsRows({
                 </TableCell>
                 {/* Each customer's figures carry their OWN counts: an
                     unresolved cost belongs to the customer it was incurred
-                    for, and a table that bounded every row on the window's
+                    for, and a table that marked every row on the window's
                     total would caveat nine rows for one customer's missing
                     invoice. */}
                 <TableCell className="text-right text-text-secondary">

@@ -21,6 +21,7 @@ import {
   measuresFor,
   measuresOutsideRetentionHorizon,
   measuresWithNoRevenueResolved,
+  negativePriceUnsupported,
   poolStop,
   priceNotApplicable,
   prunedMeasurements,
@@ -43,13 +44,13 @@ import {
 describe("measurement scenarios", () => {
   it("carries the recorded quantities, and says they can be read", () => {
     const scenario = availableMeasurements({
-      input_tokens: 4200,
-      output_tokens: 1730,
+      input_tokens: "4200",
+      output_tokens: "1730",
     });
 
     expect(scenario.measurements).toEqual({
-      input_tokens: 4200,
-      output_tokens: 1730,
+      input_tokens: "4200",
+      output_tokens: "1730",
     });
     expect(scenario.measurements_status).toBe("available");
   });
@@ -75,7 +76,7 @@ describe("measurement scenarios", () => {
   // one returned object is what stops a fixture author restating half of it.
   it("never yields a bag without the status that says what it means", () => {
     const scenarios = [
-      availableMeasurements({ input_tokens: 1 }),
+      availableMeasurements({ input_tokens: "1" }),
       prunedMeasurements(),
       measurementsNotApplicable(),
     ];
@@ -218,14 +219,31 @@ describe("customer price scenarios", () => {
     for (const scenario of [
       knownPrice(1),
       unknownPrice(),
+      negativePriceUnsupported(),
       waivedPrice(),
       priceNotApplicable("tenant_not_billing"),
     ]) {
       expect(Object.keys(scenario)).toEqual([
         "billed_cost_micros",
         "pricing_status",
+        "pricing_status_reason",
         "not_applicable_reason",
       ]);
+    }
+  });
+
+  // ⚠ #603 A2: a negative calculated price is `unknown` WITH ITS REASON —
+  // never clamped, never `known`, and its number published nowhere. The
+  // reason rides only under `unknown`, and is null on every other composer.
+  it("composes a negative calculated price as unknown with its reason, and no amount", () => {
+    expect(negativePriceUnsupported()).toEqual({
+      billed_cost_micros: null,
+      pricing_status: "unknown",
+      pricing_status_reason: "negative_price_unsupported",
+      not_applicable_reason: null,
+    });
+    for (const scenario of [knownPrice(1), unknownPrice(), waivedPrice(), priceNotApplicable("fixed_task_pricing")]) {
+      expect(scenario.pricing_status_reason).toBeNull();
     }
   });
 
@@ -300,7 +318,7 @@ describe("cost total scenarios", () => {
     expect(isPartial(scenario)).toBe(false);
   });
 
-  it("says a total that skipped events is a floor, and how many it skipped", () => {
+  it("says a total that skipped events is incomplete, and how many it skipped", () => {
     const scenario = incompleteTotal(4_200_000, 3);
 
     expect(scenario.unresolved_event_count).toBe(3);
@@ -310,17 +328,19 @@ describe("cost total scenarios", () => {
   // The rendering assertion §9.2 asks for beside the fixture: the state has to
   // render as ITSELF, and the defect it guards is one line long
   // (`const displayed = amount ?? 0`).
-  it("renders an incomplete total as a floor rather than as a figure", () => {
+  // ⚠ #603 (ADR-0020 §6): marked, never as a bound — a cost left out may be
+  // negative, so the complete figure may be higher or lower.
+  it("renders an incomplete total marked incomplete rather than as a figure or a bound", () => {
     expect(supplierCostTotal(4_200_000, completeTotal(4_200_000), "usd")).toBe(
       "$4.20",
     );
     expect(
       supplierCostTotal(4_200_000, incompleteTotal(4_200_000, 3), "usd"),
-    ).toBe("at least $4.20");
+    ).toBe("$4.20 (Incomplete)");
   });
 
   // AC 2 at its sharpest, composed rather than hand-built: a window UBB knows
-  // no cost in at all must not render the zero its floor really is.
+  // no cost in at all must not render the zero its resolved part sums to.
   it("renders no amount at all when every cost in the window is unknown", () => {
     const nothingKnown = incompleteTotal(0, 5);
 
@@ -338,7 +358,7 @@ describe("customer price total scenarios", () => {
     expect(scenario.unpriced_event_count).toBe(0);
   });
 
-  it("says a billed total that skipped events is a floor, and how many it skipped", () => {
+  it("says a billed total that skipped events is incomplete, and how many it skipped", () => {
     const scenario = incompletePriceTotal(620_000, 3);
 
     expect(scenario.micros).toBe(620_000);
@@ -481,21 +501,36 @@ describe("the ceiling assessment", () => {
     expect(scenario.ceiling_remaining_micros).toBe(130_000);
   });
 
-  it("says indeterminate when the known total is below the line and something is unresolved", () => {
+  // ⚠ #603 (ADR-0020 §7; the owner's confirmation 6279966961): anything still
+  // unresolved makes the assessment indeterminate WHATEVER the known total,
+  // with no figures — an unresolved cost may be negative, so the known part
+  // bounds nothing. Below the line and over it alike.
+  it.each([
+    ["below the line", 1_240_000],
+    ["over the line", 3_420_000],
+  ])("says indeterminate, with no figures, when something is unresolved %s", (_where, known) => {
     const scenario = ceilingAssessment("indeterminate", {
       ceiling_micros: 3_000_000,
-      cost: incompleteTotal(1_240_000, 1),
+      cost: incompleteTotal(known, 1),
     });
 
     expect(scenario.ceiling_status).toBe("indeterminate");
-    expect(scenario.ceiling_used_percentage).toBe(41);
-    expect(scenario.ceiling_remaining_micros).toBe(1_760_000);
+    expect(scenario.ceiling_used_percentage).toBeNull();
+    expect(scenario.ceiling_remaining_micros).toBeNull();
+    expect(scenario.total_provider_cost_micros).toBe(known);
+    expect(scenario.unresolved_event_count).toBe(1);
   });
 
-  it("says reached at the line as well as over it, whatever remains unresolved", () => {
+  it("refuses reached over a known total with something unresolved", () => {
+    expect(() =>
+      ceilingAssessment("ceiling_reached", { ceiling_micros: 800_000, cost: incompleteTotal(900_000, 2) }),
+    ).toThrow(/indeterminate/);
+  });
+
+  it("says reached at the line as well as over it, once every cost resolved", () => {
     const over = ceilingAssessment("ceiling_reached", {
       ceiling_micros: 800_000,
-      cost: incompleteTotal(900_000, 2),
+      cost: completeTotal(900_000),
     });
     expect(over.ceiling_status).toBe("ceiling_reached");
     expect(over.ceiling_used_percentage).toBe(112);
@@ -873,7 +908,8 @@ describe("the two revenue states #537 made reachable", () => {
     expect(row["gross_margin"]).toMatchObject({ status: "known", amount_micros: 2_300_000 });
   });
 
-  // §15 still holds over a supplied revenue: an uncosted event bounds the margin.
+  // §15 still holds over a supplied revenue: an uncosted event leaves the
+  // margin incomplete.
   it("keeps the margin incomplete where the cost side is, over a supplied revenue", () => {
     const row = byMeasure(
       revenueSuppliedOverUnpricedUsage({

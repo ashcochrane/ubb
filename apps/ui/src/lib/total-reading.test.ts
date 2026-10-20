@@ -10,10 +10,14 @@ describe("a total beside the count of what it left out", () => {
     expect(describeTotal(zero, "usd")).toBe("$0.00");
   });
 
-  it("is a floor when something is missing and the resolved part is above zero", () => {
-    const floor = readTotal(900_000, 2);
-    expect(floor).toEqual({ kind: "floor", micros: 900_000, eventsLeftOut: 2 });
-    expect(describeTotal(floor, "usd")).toBe("at least $0.90");
+  // ⚠ #603 (ADR-0020 §6): the sum of what resolved, marked — never a bound,
+  // because an amount left out may be negative. A negative resolved sum is
+  // partial too, not unknown: only a sum of nothing states no amount.
+  it("is partial when something is missing and the resolved part is not zero", () => {
+    const partial = readTotal(900_000, 2);
+    expect(partial).toEqual({ kind: "partial", micros: 900_000, eventsLeftOut: 2 });
+    expect(describeTotal(partial, "usd")).toBe("$0.90 (Incomplete)");
+    expect(describeTotal(readTotal(-400_000, 1), "usd")).toBe("-$0.40 (Incomplete)");
   });
 
   // The third outcome, and the one a dash could not carry in a column beside
@@ -30,7 +34,7 @@ describe("a total beside the count of what it left out", () => {
   it("writes the amount with the formatter it is handed, and an unknown with none", () => {
     const tenths = (micros: number) => `${micros / 100_000} tenths`;
     expect(describeTotal(readTotal(314, 0), "usd", tenths)).toBe("0.00314 tenths");
-    expect(describeTotal(readTotal(300_000, 1), "usd", tenths)).toBe("at least 3 tenths");
+    expect(describeTotal(readTotal(300_000, 1), "usd", tenths)).toBe("3 tenths (Incomplete)");
     expect(describeTotal(readTotal(0, 1), "usd", tenths)).toBe(UNKNOWN_TOTAL);
   });
 

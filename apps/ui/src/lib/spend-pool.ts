@@ -12,9 +12,11 @@
 // (`core.crossing.spend_pool_assessment`) over the durable pair — the known
 // period charges beside the count of postings whose revenue it could not
 // include — and publishes it; the console renders what arrived. The known
-// figure is a floor wherever that count is not zero, and the share and
-// headroom beside it are then a floor and a most; unknown revenue is
-// EXCLUDED and said to be, never summed as zero (#150 §4.2; #155 §9.2).
+// figure is the sum of the charges that resolved, and wherever that count is
+// not zero it is not the period's total — no bound on it either way (#603) —
+// so it and the share and headroom over it are marked incomplete; unknown
+// revenue is EXCLUDED and said to be, never summed as zero (#150 §4.2; #155
+// §9.2).
 //
 // THE POOL AND THE WALLET ANSWER DIFFERENT QUESTIONS (#151 §11.3), and the
 // pool is blind to a price agreed at start until the work is delivered
@@ -39,7 +41,7 @@
 import type { RootSchemas } from "@/api/types";
 import { CUSTOMER_SPEND_POOL_TITLE } from "@/lib/control-family";
 import { labelMap } from "@/lib/localisation";
-import { amountAtMost, shareAtLeast } from "@/lib/supplier-cost";
+import { amountOver, shareOver } from "@/lib/supplier-cost";
 import { readTotal, type TotalReading } from "@/lib/total-reading";
 import {
   SPEND_POOL_ENFORCE_MODE_LABEL_KEYS,
@@ -102,27 +104,26 @@ export function readPoolCharges(pool: CustomerSpendPoolStatus): TotalReading {
   return readTotal(pool.known_period_charges_micros, pool.unresolved_posting_count);
 }
 
-/** Whether the pool's pair is a floor: the known charges left a posting unpriced. */
-function poolPairIsFloor(pool: CustomerSpendPoolStatus): boolean {
+/** Whether the pool's pair is incomplete: the known charges left a posting unpriced. */
+function poolPairIsIncomplete(pool: CustomerSpendPoolStatus): boolean {
   return pool.unresolved_posting_count > 0;
 }
 
-/** The share of the pool the known charges have used — a floor wherever the pair is. */
+/** The share of the pool the known charges have used — marked wherever the pair is incomplete. */
 export function describePoolUtilisation(pool: CustomerSpendPoolStatus): string | null {
   if (pool.used_percentage === null) return null;
-  return shareAtLeast(pool.used_percentage, poolPairIsFloor(pool));
+  return shareOver(pool.used_percentage, poolPairIsIncomplete(pool));
 }
 
 /**
- * The headroom left under the pool — a most wherever the pair is a floor.
- * A zero past the line is SETTLED: the kernel clamps the headroom at
- * nothing, and a posting it could not price can only lower a figure that
- * is already at its floor, so it renders as the zero it is, not as a most.
+ * The headroom left under the pool — marked wherever the pair is
+ * incomplete, a zero past the line included: the kernel clamps the headroom
+ * at nothing, and reading that zero as settled would take for granted which
+ * way the postings it could not price will move the charges (#603).
  */
 export function describePoolHeadroom(pool: CustomerSpendPoolStatus, currency: string): string | null {
   if (pool.remaining_micros === null) return null;
-  const most = poolPairIsFloor(pool) && pool.remaining_micros > 0;
-  return amountAtMost(pool.remaining_micros, currency, most);
+  return amountOver(pool.remaining_micros, currency, poolPairIsIncomplete(pool));
 }
 
 /**

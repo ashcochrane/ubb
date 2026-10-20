@@ -7,7 +7,9 @@
 // ⚠ THE CHART TOOLTIP THAT LIVED HERE IS GONE (#510). `BoundedCostTooltip`
 // bounded each series by a ROLE — supplier cost a floor, margin a ceiling,
 // revenue "whole at the column" — which stopped being true of revenue when
-// #351 made a price nullable, and was never true of a measure of the one
+// #351 made a price nullable, of the cost and the margin when #603 let a
+// quantity be negative (a partial total is no floor and a margin over it no
+// ceiling, in either direction), and was never true of a measure of the one
 // economic query, which carries its own state. Every economic chart now uses
 // `MeasureTooltip` in `./measure-value`, which says each series as its figure's
 // state allows.

@@ -79,9 +79,10 @@ describe("EventsPage", () => {
   });
 
   // #330: the window holds one event whose supplier cost UBB never learned, so
-  // the strip's total can only be higher and its markup only lower. Both say
-  // so, and the note says how many events are behind it.
-  it("says the window's supplier total is a floor, and its markup a ceiling", async () => {
+  // the strip's total and its markup are the sums of what resolved. Both are
+  // marked incomplete — never as a bound, since #603: the missing cost may be
+  // negative — and the note says how many events are behind it.
+  it("marks the window's supplier total and its markup incomplete, never as a bound", async () => {
     // An explicit July window: this fixture's story is July 2026, and the
     // page's own default is month-to-date, which selects none of it.
     renderPage({
@@ -90,8 +91,10 @@ describe("EventsPage", () => {
       end_date: "2026-07-31",
     });
 
-    expect(await screen.findByText(/^at least \$/)).toBeInTheDocument();
-    expect(screen.getByText(/^at most \$/)).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/^-?\$[\d,]+\.\d\d \(Incomplete\)$/)).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/at least|at most/)).not.toBeInTheDocument();
     expect(screen.getByText(/1 event has a supplier cost/)).toBeInTheDocument();
   });
 
