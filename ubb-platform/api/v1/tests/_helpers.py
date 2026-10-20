@@ -385,7 +385,8 @@ class BlueprintRoutes:
             {"provider_key": provider, "key": provider, "is_default": True})
         publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
         draft = self._call("post", publishes, {"changes": [
-            {"kind": kind, "measurement_key": code, "provider": provider,
+            {"line": "rate",
+             "kind": kind, "measurement_key": code, "provider": provider,
              "grouping_fields": grouping_fields or {},
              "rate_per_unit_micros": rate, "unit_quantity": 1}
             for kind, code, rate in rules]})

@@ -66,7 +66,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_RETIRE, PricingBookPublish, Rate)
+    CHANGE_RETIRE, LINE_RATE, PricingBookPublish, Rate)
 from apps.metering.pricing.services.book_service import (
     BookService, latest_scheduled_boundary)
 from apps.metering.pricing.tests._helpers import (
@@ -484,7 +484,8 @@ class APublishSitsAtOrAfterTheBooksLatestBoundaryTest(AForwardDatingBookMixin,
         """
         BookService.publish_declared(BookService.declare(
             self.book,
-            [{"kind": CHANGE_RETIRE, "measurement_key": SCHEDULING_QUANTITY,
+            [{"line": LINE_RATE,
+              "kind": CHANGE_RETIRE, "measurement_key": SCHEDULING_QUANTITY,
               "provider": SCHEDULING_PROVIDER,
               "event_type": SCHEDULING_EVENT_TYPE}],
             effective_at=self.t1))

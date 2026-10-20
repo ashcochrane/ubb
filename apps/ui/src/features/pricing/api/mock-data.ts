@@ -381,6 +381,7 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     diff_unavailable_reason: null,
     diff: [
       {
+        line: "rate",
         kind: "reprice",
         measurement_key: "gpt4o_input_tokens",
         provider: "openai",
@@ -404,6 +405,7 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
         },
       },
       {
+        line: "rate",
         kind: "add",
         measurement_key: "image_generation",
         provider: "openai",
@@ -434,6 +436,7 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     diff_unavailable_reason: null,
     diff: [
       {
+        line: "rate",
         kind: "reprice",
         measurement_key: "gpt4o_output_tokens",
         provider: "openai",
@@ -473,6 +476,7 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     diff_unavailable_reason: null,
     diff: [
       {
+        line: "rate",
         kind: "reprice",
         measurement_key: "gpt4o_output_tokens",
         provider: "openai",

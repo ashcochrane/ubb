@@ -82,6 +82,20 @@
         "title": "AffordabilityResponse",
         "type": "object"
       },
+      "AgreedPriceTermsOut": {
+        "description": "What one delivered unit of the kind of work sells for, in USD micros.",
+        "properties": {
+          "agreed_price_micros": {
+            "title": "Agreed Price Micros",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "agreed_price_micros"
+        ],
+        "title": "AgreedPriceTermsOut",
+        "type": "object"
+      },
       "AnalyticsEarningsOut": {
         "properties": {
           "period_end": {
@@ -559,8 +573,253 @@
         "title": "BalanceResponse",
         "type": "object"
       },
-      "BookChangeDiffOut": {
-        "description": "One row of the diff: which rule, and what happens to it.\n\n`before` is the rule as it will stand at the publish's effective instant and\nis null where the change adds one; `after` is the rule the publish opens and\nis null where the change retires one. Neither is null on a reprice, which is\nwhat makes the row readable as a change rather than as an outcome.",
+      "BookAgreedPriceChangeDiffOut": {
+        "description": "One row of the diff for an agreed price: which kind of work, and what\nhappens to its price.\n\n`line` is `agreed_price`. `before` is the agreed price in force at the\npublish's effective instant and is null where the change adds one;\n`after` is the one the publish opens and is null where the change retires\none.",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreedPriceTermsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgreedPriceTermsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "line": {
+            "const": "agreed_price",
+            "title": "Line",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "kind",
+          "task_type",
+          "before",
+          "after"
+        ],
+        "title": "BookAgreedPriceChangeDiffOut",
+        "type": "object"
+      },
+      "BookAgreedPriceChangeIn": {
+        "description": "One change to an agreed price in a publish: what one delivered unit of\na declared kind of work sells for.\n\n`line` is `agreed_price`. `kind` is `add`, `reprice` or `retire`, the\nsame three acts a rate takes, and `task_type` names the kind of work \u2014\na top-level kind you have declared and not retired, whatever its current\n`pricing_mode`, so the price can be declared before the kind is switched\nto fixed pricing and no start is refused in between. A kind declared only\nas contained work is refused: one agreed price buys a whole unit of work.\n\nA book holds at most one agreed price in force for one kind of work.\n`agreed_price_micros` is in USD micros and is required on `add` and\n`reprice` and refused on `retire`. Zero is a price; a negative amount is\nrefused. The change takes effect at the publish's `effective_at`, like a\nrate change in the same publish.",
+        "properties": {
+          "agreed_price_micros": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Price Micros"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "line": {
+            "const": "agreed_price",
+            "title": "Line",
+            "type": "string"
+          },
+          "task_type": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "kind",
+          "task_type"
+        ],
+        "title": "BookAgreedPriceChangeIn",
+        "type": "object"
+      },
+      "BookPublishIn": {
+        "description": "The intended changes, and when they take effect.\n\n**`effective_at` IS WHAT DATES A CHANGE FORWARD, AND OMITTING IT MEANS\nNOW.** A tenant who has agreed a rise from the first of next month states\nthat instant here and stops having to remember: publishing writes the rows\nimmediately, carrying the boundary as a value the resolver reads, so\n**nothing runs at the instant itself**. There is no job to be late, which\nmatters because a late job would price every event in the gap at the old\nrate and that wrong price would sit permanently on an authoritative record.\n\nThe instant must be timezone-aware (`effective_at_naive`). A change is dated\nforward or not at all, so an instant more than five minutes behind the\npresent is refused with `effective_at_in_past` \u2014 the allowance is clock\nskew, so that a caller stamping its own \"now\" is not told its clock is\nwrong. And it must be within the platform's forward horizon of **366 days**;\nbeyond it the request is refused with `effective_at_too_far_ahead`.\n\nEach of the three carries a code of its own so that *\"that date is a typo\"*\nis distinguishable from *\"that date has passed\"* and from every other reason\na body is refused. The horizon is a platform bound and no tenant setting\nmoves it.",
+        "properties": {
+          "changes": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "agreed_price": "#/components/schemas/BookAgreedPriceChangeIn",
+                  "rate": "#/components/schemas/BookRateChangeIn"
+                },
+                "propertyName": "line"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/BookRateChangeIn"
+                },
+                {
+                  "$ref": "#/components/schemas/BookAgreedPriceChangeIn"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Changes",
+            "type": "array"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          }
+        },
+        "required": [
+          "changes"
+        ],
+        "title": "BookPublishIn",
+        "type": "object"
+      },
+      "BookPublishOut": {
+        "description": "A change to a book: an intention while it is a draft, a decision once\npublished.",
+        "properties": {
+          "actor_display": {
+            "title": "Actor Display",
+            "type": "string"
+          },
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "actor_kind": {
+            "title": "Actor Kind",
+            "type": "string"
+          },
+          "book_id": {
+            "title": "Book Id",
+            "type": "string"
+          },
+          "closed_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Closed Rule Ids",
+            "type": "array"
+          },
+          "declaration_status": {
+            "enum": [
+              "draft",
+              "published"
+            ],
+            "title": "Declaration Status",
+            "type": "string",
+            "x-ubb-concept": "declaration_status"
+          },
+          "diff": {
+            "anyOf": [
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "agreed_price": "#/components/schemas/BookAgreedPriceChangeDiffOut",
+                      "rate": "#/components/schemas/BookRateChangeDiffOut"
+                    },
+                    "propertyName": "line"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BookRateChangeDiffOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BookAgreedPriceChangeDiffOut"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
+          "diff_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff Unavailable Reason"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "opened_rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opened Rule Ids",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          }
+        },
+        "required": [
+          "id",
+          "book_id",
+          "declaration_status",
+          "effective_at",
+          "actor_kind",
+          "actor_id",
+          "actor_display",
+          "opened_rule_ids",
+          "closed_rule_ids"
+        ],
+        "title": "BookPublishOut",
+        "type": "object"
+      },
+      "BookRateChangeDiffOut": {
+        "description": "One row of the diff for a rate: which rule, and what happens to it.\n\n`line` is `rate`. `before` is the rule as it will stand at the publish's\neffective instant and is null where the change adds one; `after` is the\nrule the publish opens and is null where the change retires one. Neither\nis null on a reprice, which is what makes the row readable as a change\nrather than as an outcome.",
         "properties": {
           "after": {
             "anyOf": [
@@ -598,6 +857,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "line": {
+            "const": "rate",
+            "title": "Line",
+            "type": "string"
+          },
           "measurement_key": {
             "title": "Measurement Key",
             "type": "string"
@@ -616,6 +880,7 @@
           }
         },
         "required": [
+          "line",
           "kind",
           "measurement_key",
           "provider",
@@ -623,11 +888,11 @@
           "task_type",
           "subtask_type"
         ],
-        "title": "BookChangeDiffOut",
+        "title": "BookRateChangeDiffOut",
         "type": "object"
       },
-      "BookChangeIn": {
-        "description": "One change in a publish: what to do, and to which rule.\n\n`kind` is `add`, `reprice` or `retire` \u2014 the three surfaces a book used to\nhave, arriving as three kinds of one act. It is a plain string and the\nservice refuses anything else, which is how the book's own discriminators\nare already handled on this surface: these three name the shape of one\nrequest body, they are stored on no column and returned in no response, and\na `Literal` here would publish an enumeration the vocabulary registry does\nnot own.\n\nThe rule is identified by the quantity it prices plus its selectors \u2014\n`provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own\ndeclared grouping fields. An omitted selector means the rule leaves it\nunpinned, which is what an unpinned selector means everywhere on this\nsurface, so a change body names only what the rule pins.\n\nThe three terms, the method and the arithmetic shape are nullable because a\nreprice states only what moves: anything unstated is carried over from the\nrule being superseded. An `add` takes the model's own defaults for what it\nleaves out, and a `retire` states none of them at all \u2014 it opens no rule.\n\n`rate_structure` says which arithmetic the rule runs: an amount per unit of\nquantity, or a component that applies once regardless of quantity. It is a\ndifferent fact from `pricing_method`, which says how the price is DERIVED,\nand a change may move either without the other.",
+      "BookRateChangeIn": {
+        "description": "One change to a rate in a publish: what to do, and to which rule.\n\n`line` is `rate`. A change to an agreed price is the other body of the\ntwo, `BookAgreedPriceChangeIn`, and `line` is what says which one this is.\n\n`kind` is `add`, `reprice` or `retire` \u2014 the three surfaces a book used to\nhave, arriving as three kinds of one act. It is a plain string and the\nservice refuses anything else, which is how the book's own discriminators\nare already handled on this surface: these three name the shape of one\nrequest body, they are stored on no column and returned in no response, and\na `Literal` here would publish an enumeration the vocabulary registry does\nnot own.\n\nThe rule is identified by the quantity it prices plus its selectors \u2014\n`provider`, `event_type`, `task_type`, `subtask_type` and the tenant's own\ndeclared grouping fields. An omitted selector means the rule leaves it\nunpinned, which is what an unpinned selector means everywhere on this\nsurface, so a change body names only what the rule pins.\n\nThe three terms, the method and the arithmetic shape are nullable because a\nreprice states only what moves: anything unstated is carried over from the\nrule being superseded. An `add` takes the model's own defaults for what it\nleaves out, and a `retire` states none of them at all \u2014 it opens no rule.\n\n`rate_structure` says which arithmetic the rule runs: an amount per unit of\nquantity, or a component that applies once regardless of quantity. It is a\ndifferent fact from `pricing_method`, which says how the price is DERIVED,\nand a change may move either without the other.",
         "properties": {
           "event_type": {
             "default": "",
@@ -657,6 +922,11 @@
           },
           "kind": {
             "title": "Kind",
+            "type": "string"
+          },
+          "line": {
+            "const": "rate",
+            "title": "Line",
             "type": "string"
           },
           "measurement_key": {
@@ -741,141 +1011,11 @@
           }
         },
         "required": [
+          "line",
           "kind",
           "measurement_key"
         ],
-        "title": "BookChangeIn",
-        "type": "object"
-      },
-      "BookPublishIn": {
-        "description": "The intended changes, and when they take effect.\n\n**`effective_at` IS WHAT DATES A CHANGE FORWARD, AND OMITTING IT MEANS\nNOW.** A tenant who has agreed a rise from the first of next month states\nthat instant here and stops having to remember: publishing writes the rows\nimmediately, carrying the boundary as a value the resolver reads, so\n**nothing runs at the instant itself**. There is no job to be late, which\nmatters because a late job would price every event in the gap at the old\nrate and that wrong price would sit permanently on an authoritative record.\n\nThe instant must be timezone-aware (`effective_at_naive`). A change is dated\nforward or not at all, so an instant more than five minutes behind the\npresent is refused with `effective_at_in_past` \u2014 the allowance is clock\nskew, so that a caller stamping its own \"now\" is not told its clock is\nwrong. And it must be within the platform's forward horizon of **366 days**;\nbeyond it the request is refused with `effective_at_too_far_ahead`.\n\nEach of the three carries a code of its own so that *\"that date is a typo\"*\nis distinguishable from *\"that date has passed\"* and from every other reason\na body is refused. The horizon is a platform bound and no tenant setting\nmoves it.",
-        "properties": {
-          "changes": {
-            "items": {
-              "$ref": "#/components/schemas/BookChangeIn"
-            },
-            "minItems": 1,
-            "title": "Changes",
-            "type": "array"
-          },
-          "effective_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective At"
-          }
-        },
-        "required": [
-          "changes"
-        ],
-        "title": "BookPublishIn",
-        "type": "object"
-      },
-      "BookPublishOut": {
-        "description": "A change to a book: an intention while it is a draft, a decision once\npublished.",
-        "properties": {
-          "actor_display": {
-            "title": "Actor Display",
-            "type": "string"
-          },
-          "actor_id": {
-            "title": "Actor Id",
-            "type": "string"
-          },
-          "actor_kind": {
-            "title": "Actor Kind",
-            "type": "string"
-          },
-          "book_id": {
-            "title": "Book Id",
-            "type": "string"
-          },
-          "closed_rule_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Closed Rule Ids",
-            "type": "array"
-          },
-          "declaration_status": {
-            "enum": [
-              "draft",
-              "published"
-            ],
-            "title": "Declaration Status",
-            "type": "string",
-            "x-ubb-concept": "declaration_status"
-          },
-          "diff": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/BookChangeDiffOut"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diff"
-          },
-          "diff_unavailable_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diff Unavailable Reason"
-          },
-          "effective_at": {
-            "title": "Effective At",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "opened_rule_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Opened Rule Ids",
-            "type": "array"
-          },
-          "published_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Published At"
-          }
-        },
-        "required": [
-          "id",
-          "book_id",
-          "declaration_status",
-          "effective_at",
-          "actor_kind",
-          "actor_id",
-          "actor_display",
-          "opened_rule_ids",
-          "closed_rule_ids"
-        ],
-        "title": "BookPublishOut",
+        "title": "BookRateChangeIn",
         "type": "object"
       },
       "BusinessMarginOut": {

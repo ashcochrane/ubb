@@ -600,7 +600,7 @@ class Rate(BaseModel):
         DERIVED, NEVER STORED (#326), which is the whole of what the conversion
         bought: the name is the declaration's, so a rate cannot hold a spelling
         the catalogue does not. It is still what the wire carries — every
-        schema naming a rule, `RateChangeIn`, `BookChangeIn`, `RateOut` and the
+        schema naming a rule, `RateChangeIn`, `BookRateChangeIn`, `RateOut` and the
         override bodies among them, publishes this key, and THIS KEY has not
         moved on any of them — and still what the pricing receipt and the audit
         record write, so #326's conversion changed nothing a caller can see.
@@ -1410,6 +1410,22 @@ CHANGE_ADD = "add"
 CHANGE_REPRICE = "reprice"
 CHANGE_RETIRE = "retire"
 CHANGE_KINDS = (CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE)
+
+#: WHICH KIND OF LINE A CHANGE IS ABOUT (#553, ADR-0021 §1): a `Rate`, which
+#: prices a measured quantity, or a `TaskPrice` — the agreed price — which
+#: prices one delivered unit of a declared kind of work. The two have
+#: different identities, so a change names which one it is about rather than
+#: leaving a quantity "optional" on one shape that would then mean two things.
+#:
+#: Held as plain constants beside `CHANGE_KINDS`, for that tuple's reason: they
+#: name which of two request bodies a change is, and the contract renders each
+#: as the `const` of one variant of a discriminated union rather than as an
+#: enumeration a registry would own. Unlike the verbs they are stored — each
+#: draft's change list holds its `line` — and they come back on each diff row,
+#: which is the same discriminator answered back.
+LINE_RATE = "rate"
+LINE_AGREED_PRICE = "agreed_price"
+BOOK_LINES = (LINE_RATE, LINE_AGREED_PRICE)
 
 
 class PricingBookPublish(BaseModel):

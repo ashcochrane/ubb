@@ -26,6 +26,8 @@ import type {
   AnyBook,
   BookChangeDiff,
   BookChangeIn,
+  BookRateChangeDiff,
+  BookRateChangeIn,
   BookPublish,
   BookPublishIn,
   CostBook,
@@ -280,6 +282,18 @@ function termsOf(rule: Rule): RuleTerms {
  * and its `after` is null.
  */
 function diffFor(bookId: string, change: BookChangeIn): BookChangeDiff {
+  if (change.line !== "rate") {
+    throw problem(
+      422,
+      "validation_error",
+      "Validation error",
+      "change 0: an agreed price is not yet planned",
+    );
+  }
+  return rateDiffFor(bookId, change);
+}
+
+function rateDiffFor(bookId: string, change: BookRateChangeIn): BookRateChangeDiff {
   const superseded = supersededBy(bookId, change);
   const before = superseded ? termsOf(superseded) : null;
   const carried = before ?? {
@@ -301,6 +315,7 @@ function diffFor(bookId: string, change: BookChangeIn): BookChangeDiff {
           pricing_method: change.pricing_method ?? carried.pricing_method ?? null,
         };
   return {
+    line: "rate",
     kind: change.kind,
     measurement_key: change.measurement_key,
     provider: change.provider ?? "",
@@ -446,6 +461,7 @@ export async function publishBookPublish(
   const opened: string[] = [];
   const closed: string[] = [];
   for (const row of draft.diff ?? []) {
+    if (row.line !== "rate") continue;
     const live = supersededBy(bookId, row);
     if (live) {
       // ⚠ CLOSED, NOT DELETED. A superseded rule keeps its row and gains an
@@ -628,7 +644,7 @@ export async function declareCustomerOverride(
   }
   const { effective_at: effectiveAt, ...rule } = body;
   return declareBookPublish(theirOwn.id, {
-    changes: [{ ...rule, kind: "add" }],
+    changes: [{ ...rule, line: "rate", kind: "add" }],
     effective_at: effectiveAt,
   });
 }

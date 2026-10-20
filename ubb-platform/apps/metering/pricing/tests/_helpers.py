@@ -10,7 +10,8 @@ from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook, Rate,
+    CHANGE_REPRICE, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook,
+    Rate,
     TaskPrice, TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.pricing.services.book_service import BookService
@@ -855,7 +856,7 @@ class AForwardDatingBookMixin:
         self.book = the_book_holding(self.rule)
 
     def a_change(self, **terms):
-        return {"kind": CHANGE_REPRICE,
+        return {"line": LINE_RATE, "kind": CHANGE_REPRICE,
                 "measurement_key": SCHEDULING_QUANTITY,
                 "provider": SCHEDULING_PROVIDER,
                 "event_type": SCHEDULING_EVENT_TYPE, **terms}

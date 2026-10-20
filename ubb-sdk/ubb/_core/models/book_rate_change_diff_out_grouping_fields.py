@@ -14,12 +14,12 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="BookChangeDiffOutGroupingFields")
+T = TypeVar("T", bound="BookRateChangeDiffOutGroupingFields")
 
 
 
 @_attrs_define
-class BookChangeDiffOutGroupingFields:
+class BookRateChangeDiffOutGroupingFields:
     """ 
      """
 
@@ -41,12 +41,12 @@ class BookChangeDiffOutGroupingFields:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        book_change_diff_out_grouping_fields = cls(
+        book_rate_change_diff_out_grouping_fields = cls(
         )
 
 
-        book_change_diff_out_grouping_fields.additional_properties = d
-        return book_change_diff_out_grouping_fields
+        book_rate_change_diff_out_grouping_fields.additional_properties = d
+        return book_rate_change_diff_out_grouping_fields
 
     @property
     def additional_keys(self) -> list[str]:

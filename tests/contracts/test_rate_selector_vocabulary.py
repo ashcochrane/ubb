@@ -52,8 +52,9 @@ RESERVED_AXES_CONCEPT = "reserved_grouping_axis"
 ROLLUPS_CONCEPT = "analytics_rollup"
 
 #: The published bodies a rule is read and written through: a book's rule, a
-#: change to one, and one customer's own deal.
-RULE_SCHEMAS = ("RateOut", "BookChangeIn", "CustomerOverrideIn")
+#: change to one (the rate body of a book change, #553), and one customer's
+#: own deal.
+RULE_SCHEMAS = ("RateOut", "BookRateChangeIn", "CustomerOverrideIn")
 
 #: The tenant's declared fields ride on a rule as ten slot columns on the read
 #: side and as one map keyed by the declared key on the write side. They are

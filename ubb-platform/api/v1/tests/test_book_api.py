@@ -78,7 +78,7 @@ class _ABookApiMixin:
         """
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", **change}]})
+            {"changes": [{"line": "rate", "kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -87,7 +87,7 @@ class _ABookApiMixin:
     def _reprice(self, book_id, **change):
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "reprice", **change}]})
+            {"changes": [{"line": "rate", "kind": "reprice", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -321,7 +321,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
                         rate_per_unit_micros=10)
         retired = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "retire", "measurement_key": "input_tokens"}]})
+            {"changes": [{"line": "rate",
+                          "kind": "retire", "measurement_key": "input_tokens"}]})
         self.assertEqual(retired.status_code, 200, retired.content)
         self.assertEqual(
             self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -348,7 +349,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
         book_id = self._a_pricing_book().json()["id"]
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+            {"changes": [{"line": "rate",
+                          "kind": "add", "measurement_key": "input_tokens",
                           "rate_per_unit_micros": 10}]})
         self.assertEqual(declared.status_code, 200, declared.content)
 
@@ -368,7 +370,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
         book_id = self._a_pricing_book().json()["id"]
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+            {"changes": [{"line": "rate",
+                          "kind": "add", "measurement_key": "input_tokens",
                           "rate_per_unit_micros": 10}]})
         self.http.delete(
             f"/api/v1/metering/pricing/books/{book_id}"

@@ -6,6 +6,7 @@ from ninja import Schema, Field
 from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
+from apps.metering.pricing.models import LINE_AGREED_PRICE, LINE_RATE
 from apps.platform.event_types.exact_decimals import (
     ACCEPTED, CANONICAL, anchored, canonical_quantities)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -2390,8 +2391,33 @@ def rate_out(r):
 # disagree about which rule they mean.
 
 
-class BookChangeIn(Schema):
-    """One change in a publish: what to do, and to which rule.
+#: WHICH KIND OF LINE A CHANGE IS ABOUT — the discriminator of the contract's
+#: first `oneOf` (#553, ADR-0021 §1).
+#:
+#: A Pricing Book holds two kinds of line: a RATE prices a measured quantity,
+#: and an AGREED PRICE prices one delivered unit of a declared kind of work.
+#: The two are different economic grains with different identities — a rate is
+#: the quantity it prices plus its selectors, an agreed price is the kind of
+#: work — so a change body names which one it is about rather than making the
+#: quantity "optional" on one shape that then means two things (the owner's
+#: constraint of 2026-10-06).
+#:
+#: ⚠ A `Literal` PER VARIANT, AND THAT IS NOT A CLOSED ENUMERATION THE REGISTRY
+#: SHOULD OWN. Each value is the NAME OF A SCHEMA — it says which of two bodies
+#: this one is — and the contract renders it as a `const` on each variant with
+#: a `discriminator` mapping beside the `oneOf`, never as an `enum` on one
+#: node. The two values are the two domain nouns the registry already names
+#: (`rate`, and the agreed price); what they decide is the shape of a body,
+#: which is the contract's own business. ADR-0021 §1 records the rule.
+BOOK_LINE_RATE = LINE_RATE
+BOOK_LINE_AGREED_PRICE = LINE_AGREED_PRICE
+
+
+class BookRateChangeIn(Schema):
+    """One change to a rate in a publish: what to do, and to which rule.
+
+    `line` is `rate`. A change to an agreed price is the other body of the
+    two, `BookAgreedPriceChangeIn`, and `line` is what says which one this is.
 
     `kind` is `add`, `reprice` or `retire` — the three surfaces a book used to
     have, arriving as three kinds of one act. It is a plain string and the
@@ -2417,6 +2443,7 @@ class BookChangeIn(Schema):
     different fact from `pricing_method`, which says how the price is DERIVED,
     and a change may move either without the other.
     """
+    line: Literal[BOOK_LINE_RATE]
     kind: str
     measurement_key: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
@@ -2458,6 +2485,37 @@ class BookChangeIn(Schema):
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
+
+
+class BookAgreedPriceChangeIn(Schema):
+    """One change to an agreed price in a publish: what one delivered unit of
+    a declared kind of work sells for.
+
+    `line` is `agreed_price`. `kind` is `add`, `reprice` or `retire`, the
+    same three acts a rate takes, and `task_type` names the kind of work —
+    a top-level kind you have declared and not retired, whatever its current
+    `pricing_mode`, so the price can be declared before the kind is switched
+    to fixed pricing and no start is refused in between. A kind declared only
+    as contained work is refused: one agreed price buys a whole unit of work.
+
+    A book holds at most one agreed price in force for one kind of work.
+    `agreed_price_micros` is in USD micros and is required on `add` and
+    `reprice` and refused on `retire`. Zero is a price; a negative amount is
+    refused. The change takes effect at the publish's `effective_at`, like a
+    rate change in the same publish.
+    """
+    line: Literal[BOOK_LINE_AGREED_PRICE]
+    kind: str
+    task_type: str = Field(min_length=1, max_length=64)
+    agreed_price_micros: Optional[int] = Field(default=None, ge=0)
+
+
+#: ONE CHANGE IN A PUBLISH, WHICHEVER KIND OF LINE IT IS ABOUT — the request's
+#: first discriminated union. `line` is required on both bodies, so a body that
+#: names neither is refused before anything is planned.
+BookChangeIn = Annotated[
+    Union[BookRateChangeIn, BookAgreedPriceChangeIn],
+    Field(discriminator="line")]
 
 
 class BookPublishIn(Schema):
@@ -2538,14 +2596,16 @@ def rule_terms_out(terms):
     }
 
 
-class BookChangeDiffOut(Schema):
-    """One row of the diff: which rule, and what happens to it.
+class BookRateChangeDiffOut(Schema):
+    """One row of the diff for a rate: which rule, and what happens to it.
 
-    `before` is the rule as it will stand at the publish's effective instant and
-    is null where the change adds one; `after` is the rule the publish opens and
-    is null where the change retires one. Neither is null on a reprice, which is
-    what makes the row readable as a change rather than as an outcome.
+    `line` is `rate`. `before` is the rule as it will stand at the publish's
+    effective instant and is null where the change adds one; `after` is the
+    rule the publish opens and is null where the change retires one. Neither
+    is null on a reprice, which is what makes the row readable as a change
+    rather than as an outcome.
     """
+    line: Literal[BOOK_LINE_RATE]
     kind: str
     measurement_key: str
     provider: str
@@ -2555,6 +2615,37 @@ class BookChangeDiffOut(Schema):
     grouping_fields: dict[str, str] = {}
     before: Optional[RuleTermsOut] = None
     after: Optional[RuleTermsOut] = None
+
+
+class AgreedPriceTermsOut(Schema):
+    """What one delivered unit of the kind of work sells for, in USD micros."""
+    agreed_price_micros: int
+
+
+class BookAgreedPriceChangeDiffOut(Schema):
+    """One row of the diff for an agreed price: which kind of work, and what
+    happens to its price.
+
+    `line` is `agreed_price`. `before` is the agreed price in force at the
+    publish's effective instant and is null where the change adds one;
+    `after` is the one the publish opens and is null where the change retires
+    one.
+    """
+    line: Literal[BOOK_LINE_AGREED_PRICE]
+    kind: str
+    task_type: str
+    # REQUIRED AND NULLABLE, the posture the owner set for a new response fact
+    # (#569's review): null says "no line on this side", and a missing key
+    # would be a third state. The rate row's pair keeps its older posture.
+    before: Optional[AgreedPriceTermsOut]
+    after: Optional[AgreedPriceTermsOut]
+
+
+#: ONE ROW OF A DIFF, WHICHEVER KIND OF LINE IT IS ABOUT — the discriminated
+#: union `BookChangeIn` is, answered back.
+BookChangeDiffOut = Annotated[
+    Union[BookRateChangeDiffOut, BookAgreedPriceChangeDiffOut],
+    Field(discriminator="line")]
 
 
 #: Whether a declaration is still a draft or has been published. `closed` — UBB
@@ -2642,6 +2733,14 @@ def book_publish_out(record, diff=None, diff_unavailable_reason=None):
     }
 
 
+def _agreed_price_terms_out(terms):
+    """`AgreedPriceTermsOut`'s serializer, or `None` for the side with no
+    line — named key by key for the reason `rule_terms_out` gives."""
+    if terms is None:
+        return None
+    return {"agreed_price_micros": terms["agreed_price_micros"]}
+
+
 class UndeclaredGroupingField(ValueError):
     """A change body selects on a grouping field the tenant has not declared.
 
@@ -2663,7 +2762,12 @@ def book_change_body(change: dict, slots: dict) -> dict:
     that tenant, and a key the registry does not carry raises `KeyError` here so
     the route can answer 422 rather than silently matching a rule that leaves
     every slot unpinned — which would reprice the wrong rule, or none.
+
+    An agreed price selects on nothing but its kind of work, so its body is
+    already the service's and passes through as it came.
     """
+    if change.get("line") == BOOK_LINE_AGREED_PRICE:
+        return dict(change)
     body = {name: value for name, value in change.items()
             if name != "grouping_fields"}
     for key, value in (change.get("grouping_fields") or {}).items():
@@ -2683,11 +2787,21 @@ def book_change_diff_out(row: dict, keys: dict) -> dict:
 
     The inverse of `book_change_body`: `keys` is the registry's `{slot: key}`
     map, so a row names the grouping field the tenant declared rather than the
-    column it happens to occupy.
+    column it happens to occupy. An agreed price's row names no selector, so
+    it is the service's row with its two sides named key by key.
     """
+    if row["line"] == BOOK_LINE_AGREED_PRICE:
+        return {
+            "line": BOOK_LINE_AGREED_PRICE,
+            "kind": row["kind"],
+            "task_type": row["task_type"],
+            "before": _agreed_price_terms_out(row["before"]),
+            "after": _agreed_price_terms_out(row["after"]),
+        }
     reserved = ("provider", "event_type", "task_type", "subtask_type")
     selectors = row["selectors"]
     return {
+        "line": BOOK_LINE_RATE,
         "kind": row["kind"],
         "measurement_key": row["measurement_key"],
         **{name: selectors.get(name, "") for name in reserved},

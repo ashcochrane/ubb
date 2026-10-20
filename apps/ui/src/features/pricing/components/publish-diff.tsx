@@ -1,8 +1,16 @@
 import { Badge } from "@/components/ui/badge";
 import { pricingMethodLabel } from "@/lib/customer-price";
-import { ABSENT_LABEL } from "@/lib/localisation";
-import type { BookChangeDiff, RuleTerms } from "../api/types";
+import { formatExactMicros, type ExactMicros } from "@/lib/format";
+import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
+import type {
+  AgreedPriceTerms,
+  BookAgreedPriceChangeDiff,
+  BookChangeDiff,
+  BookRateChangeDiff,
+  RuleTerms,
+} from "../api/types";
 import {
+  agreedPriceChangeKindDone,
   changeKindDone,
   pinnedInDiff,
   rateStructureLabel,
@@ -23,6 +31,11 @@ import {
  * `after` sit side by side even where one of them is null. An add has no
  * before, a retire has no after, and a reprice has both — so the shape of the
  * row already says which of the three acts it is, before the word does.
+ *
+ * ⚠ **TWO KINDS OF ROW, TOLD APART BY `line` (#553).** A rate's row names the
+ * quantity and the selectors it pins; an agreed price's names the kind of work
+ * and nothing else, because one agreed price buys a whole unit of that kind.
+ * Each is narrowed before anything only it carries is read.
  */
 export function PublishDiff({
   rows,
@@ -50,28 +63,97 @@ export function PublishDiff({
   }
   return (
     <ul className="space-y-2">
-      {rows.map((row, index) => (
-        <li
-          key={`${row.measurement_key}-${index}`}
-          className="rounded-md border border-border px-3 py-2"
-        >
-          <div className="flex flex-wrap items-center gap-2">
-            <ChangeKind kind={row.kind} />
-            <span className="font-mono text-[12px] text-text-primary">
-              {row.measurement_key}
-            </span>
-            <DiffSelectors row={row} />
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]">
-            <Terms terms={row.before} currency={currency} muted />
-            <span aria-hidden="true" className="text-text-muted">
-              →
-            </span>
-            <Terms terms={row.after} currency={currency} />
-          </div>
-        </li>
-      ))}
+      {rows.map((row, index) =>
+        row.line === "agreed_price" ? (
+          <AgreedPriceRow key={`agreed-${row.task_type}-${index}`} row={row} currency={currency} />
+        ) : (
+          <RateRow key={`rate-${row.measurement_key}-${index}`} row={row} currency={currency} />
+        ),
+      )}
     </ul>
+  );
+}
+
+function RateRow({ row, currency }: { row: BookRateChangeDiff; currency: string }) {
+  return (
+    <li className="rounded-md border border-border px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <ChangeKind kind={row.kind} />
+        <span className="font-mono text-[12px] text-text-primary">
+          {row.measurement_key}
+        </span>
+        <DiffSelectors row={row} />
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]">
+        <Terms terms={row.before} currency={currency} muted />
+        <span aria-hidden="true" className="text-text-muted">
+          →
+        </span>
+        <Terms terms={row.after} currency={currency} />
+      </div>
+    </li>
+  );
+}
+
+/**
+ * An agreed price's row: the kind of work, and what one delivered unit of it
+ * sells for on each side. The kind is the tenant's own word, rendered as they
+ * declared it, and the price is shown to the micro — an agreed price may be
+ * below a cent, and a cent-rounded figure would show two different prices as
+ * one.
+ */
+function AgreedPriceRow({
+  row,
+  currency,
+}: {
+  row: BookAgreedPriceChangeDiff;
+  currency: string;
+}) {
+  return (
+    <li className="rounded-md border border-border px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline" className="text-[10px]">
+          {agreedPriceChangeKindDone(row.kind)}
+        </Badge>
+        <span className="text-[12px] text-text-secondary">for</span>
+        <span className="font-mono text-[12px] text-text-primary">
+          {tenantDefinedLabel(row.task_type)}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12px]">
+        <AgreedPrice terms={row.before} currency={currency} muted />
+        <span aria-hidden="true" className="text-text-muted">
+          →
+        </span>
+        <AgreedPrice terms={row.after} currency={currency} />
+      </div>
+    </li>
+  );
+}
+
+function AgreedPrice({
+  terms,
+  currency,
+  muted,
+}: {
+  terms: AgreedPriceTerms | null;
+  currency: string;
+  muted?: boolean;
+}) {
+  if (terms == null) {
+    return (
+      <span className="text-text-muted" title="No agreed price on this side">
+        {ABSENT_LABEL}
+      </span>
+    );
+  }
+  return (
+    <span className={muted ? "text-text-muted" : "text-text-primary"}>
+      <span className="font-medium">
+        {formatExactMicros(String(terms.agreed_price_micros) as ExactMicros, currency)}
+      </span>
+      <span className="ml-1.5 text-[11px]">per delivered run</span>
+    </span>
   );
 }
 
@@ -91,7 +173,7 @@ function ChangeKind({ kind }: { kind: string }) {
  * one rule cannot come to name its columns differently — which they had, at
  * `event=` against `event type=`.
  */
-function DiffSelectors({ row }: { row: BookChangeDiff }) {
+function DiffSelectors({ row }: { row: BookRateChangeDiff }) {
   const pins = pinnedInDiff(row);
   if (pins.length === 0) {
     return <span className="text-[11px] text-text-muted">any event</span>;

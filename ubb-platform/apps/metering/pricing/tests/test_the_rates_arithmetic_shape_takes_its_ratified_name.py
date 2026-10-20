@@ -95,7 +95,7 @@ RETIRED_VALUE = _MODULE.THE_RETIRED_SENSE
 #: a rule is a declared change on a publish now, so the body that opened one
 #: directly is deleted from the contract with its route, and #368 deleted the
 #: immediate reprice body the same way. Their share of the claim did not vanish
-#: with them: `BookChangeIn` carries the shape too, which #366 put there and
+#: with them: `BookRateChangeIn` carries the shape too, which #366 put there and
 #: `tests/contracts/test_openapi_known_values.py` asserts by name over every
 #: schema that carries a rule. This is the one this module's own subject — the
 #: rate's SCHEMAS — still covers.
@@ -388,6 +388,6 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
         with it.
         """
         self.assertIn(CANONICAL_COLUMN,
-                      schemas()["BookChangeIn"]["properties"])
+                      schemas()["BookRateChangeIn"]["properties"])
         self.assertIn(CANONICAL_COLUMN,
                       schemas()["RuleTermsOut"]["properties"])

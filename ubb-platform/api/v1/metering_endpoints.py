@@ -47,7 +47,7 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     REVENUE_BASIS_VALUES)
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CHANGE_RETIRE,
+    CHANGE_ADD, CHANGE_RETIRE, LINE_RATE,
     CostBook, PricingBook, PricingBookPublish, Rate,
 )
 from api.v1.pagination import page
@@ -1627,7 +1627,8 @@ def declare_customer_override(request, customer_id: UUID,
     customer = get_object_or_404(Customer, id=customer_id,
                                  tenant=request.auth.tenant)
     slots = slot_map(request.auth.tenant.id)
-    body = {**payload.dict(exclude={"effective_at"}), "kind": CHANGE_ADD}
+    body = {**payload.dict(exclude={"effective_at"}), "line": LINE_RATE,
+            "kind": CHANGE_ADD}
     try:
         change = book_change_body(body, slots)
     except UndeclaredGroupingField as e:
@@ -1689,7 +1690,7 @@ def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
     # so what is retired is the rule the caller addressed and nothing that
     # merely resembles it. `plan_changes` identifies a rule by the quantity it
     # prices plus its selectors, which is exactly what this reads back.
-    change = {"kind": CHANGE_RETIRE,
+    change = {"line": LINE_RATE, "kind": CHANGE_RETIRE,
               "measurement_key": override.measurement_key,
               **{name: getattr(override, name) for name in Rate.SELECTORS}}
     try:

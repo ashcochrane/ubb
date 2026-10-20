@@ -308,15 +308,17 @@ class AnOverrideStatesAWholeRuleTest(_ATenantWithACustomerMixin, TestCase):
     """
 
     def test_the_body_names_every_field_of_a_rule_and_no_rule_to_inherit_from(self):
-        from api.v1.schemas import BookChangeIn, CustomerOverrideIn
+        from api.v1.schemas import BookRateChangeIn, CustomerOverrideIn
 
         stated = set(CustomerOverrideIn.model_fields)
         self.assertIn("pricing_method", stated)
-        # Every field a change body can state about a rule, minus the act,
-        # which the route is. Nothing else — in particular nothing naming
-        # another rule, another customer or another book.
+        # Every field a rate change body can state about a rule, minus the
+        # act, which the route is, and the line, which an override always
+        # is. Nothing else — in particular nothing naming another rule,
+        # another customer or another book.
         self.assertEqual(stated,
-                         (set(BookChangeIn.model_fields) - {"kind"})
+                         (set(BookRateChangeIn.model_fields)
+                          - {"kind", "line"})
                          | {"effective_at"})
 
     def test_a_price_with_no_method_does_not_inherit_the_one_it_replaces(self):

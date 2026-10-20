@@ -71,6 +71,7 @@ const DRAFT: BookPublish = {
   diff_unavailable_reason: null,
   diff: [
     {
+      line: "rate",
       kind: "add",
       measurement_key: "audio_seconds",
       provider: "openai",
@@ -94,6 +95,7 @@ const DRAFT: BookPublish = {
       // onto a flat price. A row that rendered only the amounts would read as
       // "nothing changed" for the one change that alters what the customer is
       // exposed to when their supplier's prices move.
+      line: "rate",
       kind: "reprice",
       measurement_key: "gpt4o_input_tokens",
       provider: "openai",
@@ -117,6 +119,7 @@ const DRAFT: BookPublish = {
       },
     },
     {
+      line: "rate",
       kind: "retire",
       measurement_key: "image_generation",
       provider: "openai",
@@ -133,6 +136,16 @@ const DRAFT: BookPublish = {
       },
       // A retire opens no rule. THE SHAPE THE MOCK NEVER PRODUCES.
       after: null,
+    },
+    {
+      // An agreed price's row (#553): the kind of work and its price on each
+      // side, a micro apart — which a cent-rounded figure would show as one
+      // price twice.
+      line: "agreed_price",
+      kind: "reprice",
+      task_type: "transcode",
+      before: { agreed_price_micros: 8_000_000 },
+      after: { agreed_price_micros: 8_000_001 },
     },
   ],
 };
@@ -213,6 +226,18 @@ describe("a draft's diff", () => {
     // The tenant's declared key, never the slot number it happens to occupy.
     expect(row.getByText("tier=")).toBeInTheDocument();
     expect(row.queryByText(/grouping_field/)).not.toBeInTheDocument();
+  });
+
+  it("renders an agreed price by its kind of work, to the micro", async () => {
+    renderPanel();
+    expect(await screen.findByText("Reprices the agreed price")).toBeInTheDocument();
+
+    const row = within(rowFor("transcode"));
+    expect(row.getByText("$8.00")).toBeInTheDocument();
+    expect(row.getByText("$8.000001")).toBeInTheDocument();
+    // It names no quantity and pins no selector: one agreed price buys the
+    // whole unit of work.
+    expect(row.queryByText("any event")).not.toBeInTheDocument();
   });
 
   it("reads a dated change as scheduled, and says when", async () => {

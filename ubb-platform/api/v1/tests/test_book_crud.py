@@ -101,11 +101,11 @@ class BookCRUDTest(TestCase):
                           f"/publishes/{declared.json()['id']}/publish")
 
     def _open_rule(self, book_id, body=COST_RULE):
-        return self._change(book_id, {"kind": "add", **body})
+        return self._change(book_id, {"line": "rate", "kind": "add", **body})
 
     def _retire_rule(self, book_id, body=COST_RULE):
         return self._change(book_id, {
-            "kind": "retire",
+            "line": "rate", "kind": "retire",
             **{key: value for key, value in body.items()
                if key in ("measurement_key", "provider", "event_type",
                           "grouping_fields")}})
@@ -122,7 +122,7 @@ class BookCRUDTest(TestCase):
         That route is deleted; a reprice is a declared change like any other,
         which is why this is one line over `_change`.
         """
-        return self._change(book_id, *[dict(change, kind="reprice")
+        return self._change(book_id, *[dict(change, line="rate", kind="reprice")
                                        for change in changes])
 
     def test_create_book_and_rule_return_ids(self):

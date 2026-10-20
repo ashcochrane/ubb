@@ -57,7 +57,8 @@ def _open_rule(api, book_id, **change):
     opened.
     """
     base = f"/api/v1/metering/pricing/books/{book_id}"
-    declared = _post(api, f"{base}/publishes", {"changes": [{"kind": "add",
+    declared = _post(api, f"{base}/publishes", {"changes": [{"line": "rate",
+                                                             "kind": "add",
                                                              **change}]})
     return _post(api, f"{base}/publishes/{declared['id']}/publish", {})
 
@@ -354,7 +355,8 @@ def test_journey1_best_in_class_cost_attribution_via_sdk(live_server, _no_outbox
         # audit action names it wrote.
         declared = _post(
             api, f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "reprice", "measurement_key": "tokens",
+            {"changes": [{"line": "rate",
+                          "kind": "reprice", "measurement_key": "tokens",
                           "grouping_fields": {"service": "alpha"},
                           "rate_per_unit_micros": 99}]})
         _post(api, f"/api/v1/metering/pricing/books/{book_id}"

@@ -802,7 +802,8 @@ class NoInstantFallsBetweenTwoVersionsTest(TestCase):
         # used to call is deleted with the audit action it wrote, so the
         # boundary is written by the act that writes every boundary now.
         BookService.publish_declared(BookService.declare(
-            book, [{"kind": "reprice", "measurement_key": "tok",
+            book, [{"line": "rate",
+                    "kind": "reprice", "measurement_key": "tok",
                     "rate_per_unit_micros": 90}]))
 
         opened.refresh_from_db()

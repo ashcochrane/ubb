@@ -106,7 +106,7 @@ from api.v1.schemas import (
     CloseTaskRequest, RecordUsageRequest, StartTaskRequest, TaskTypeIn,
     TaskTypeRegistryIn)
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CostBook, PricingBook, TenantDefaultMarkup)
+    CHANGE_ADD, LINE_RATE, CostBook, PricingBook, TenantDefaultMarkup)
 from apps.metering.pricing.services.book_service import BookService
 from apps.platform.code_builder import snapshots
 from apps.platform.customers.models import Customer
@@ -539,7 +539,8 @@ def _a_pricing_book(tenant, described):
 def _the_change_that_adds(rule):
     """A stored rule as the change a book publish takes to open it."""
     return {
-        "kind": CHANGE_ADD, "measurement_key": rule["measurement_code"],
+        "line": LINE_RATE, "kind": CHANGE_ADD,
+        "measurement_key": rule["measurement_code"],
         "provider": rule["provider"], "event_type": rule["event_type"],
         "task_type": rule["task_type"], "subtask_type": rule["subtask_type"],
         **rule["grouping_fields"],

@@ -1,6 +1,7 @@
 """ Contains all the data models used in inputs/outputs """
 
 from .affordability_response import AffordabilityResponse
+from .agreed_price_terms_out import AgreedPriceTermsOut
 from .analytics_earnings_out import AnalyticsEarningsOut
 from .analytics_summary_out import AnalyticsSummaryOut
 from .api_key_create_in import ApiKeyCreateIn
@@ -34,15 +35,17 @@ from .audit_record_list_response import AuditRecordListResponse
 from .audit_record_out import AuditRecordOut
 from .audit_record_out_metadata import AuditRecordOutMetadata
 from .balance_response import BalanceResponse
-from .book_change_diff_out import BookChangeDiffOut
-from .book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
-from .book_change_in import BookChangeIn
-from .book_change_in_grouping_fields import BookChangeInGroupingFields
-from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
-from .book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
+from .book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
+from .book_agreed_price_change_in import BookAgreedPriceChangeIn
 from .book_publish_in import BookPublishIn
 from .book_publish_out import BookPublishOut
 from .book_publish_out_declaration_status import BookPublishOutDeclarationStatus
+from .book_rate_change_diff_out import BookRateChangeDiffOut
+from .book_rate_change_diff_out_grouping_fields import BookRateChangeDiffOutGroupingFields
+from .book_rate_change_in import BookRateChangeIn
+from .book_rate_change_in_grouping_fields import BookRateChangeInGroupingFields
+from .book_rate_change_in_pricing_method_type_0 import BookRateChangeInPricingMethodType0
+from .book_rate_change_in_rate_structure_type_0 import BookRateChangeInRateStructureType0
 from .business_margin_out import BusinessMarginOut
 from .business_margin_totals import BusinessMarginTotals
 from .ceiling_episode_row import CeilingEpisodeRow
@@ -381,6 +384,7 @@ from .withdraw_response import WithdrawResponse
 
 __all__ = (
     "AffordabilityResponse",
+    "AgreedPriceTermsOut",
     "AnalyticsEarningsOut",
     "AnalyticsSummaryOut",
     "ApiKeyCreateIn",
@@ -414,15 +418,17 @@ __all__ = (
     "AuditRecordOut",
     "AuditRecordOutMetadata",
     "BalanceResponse",
-    "BookChangeDiffOut",
-    "BookChangeDiffOutGroupingFields",
-    "BookChangeIn",
-    "BookChangeInGroupingFields",
-    "BookChangeInPricingMethodType0",
-    "BookChangeInRateStructureType0",
+    "BookAgreedPriceChangeDiffOut",
+    "BookAgreedPriceChangeIn",
     "BookPublishIn",
     "BookPublishOut",
     "BookPublishOutDeclarationStatus",
+    "BookRateChangeDiffOut",
+    "BookRateChangeDiffOutGroupingFields",
+    "BookRateChangeIn",
+    "BookRateChangeInGroupingFields",
+    "BookRateChangeInPricingMethodType0",
+    "BookRateChangeInRateStructureType0",
     "BusinessMarginOut",
     "BusinessMarginTotals",
     "CeilingEpisodeRow",

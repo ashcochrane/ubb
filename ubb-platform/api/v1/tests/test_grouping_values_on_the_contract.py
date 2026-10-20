@@ -97,7 +97,7 @@ SLOT_NAMED = re.compile(r"(dim|grouping_field_)\d+")
 #:
 #: ⚠ **RULING 15's GAP STAYS CLOSED, THROUGH THE OTHER VOCABULARY.** The gap
 #: was that a rule pinned on the seventh slot could be written server-side and
-#: repriced by no body in existence. `BookChangeIn.grouping_fields` reaches
+#: repriced by no body in existence. `BookRateChangeIn.grouping_fields` reaches
 #: every slot a tenant has declared, whichever slot the registry bound it to,
 #: so the rule is reachable — by key rather than by column. The set below falls
 #: by ten because a SURFACE left, not because a slot did, and
@@ -171,7 +171,7 @@ class NoPhysicalSlotIsPublishedTest(TestCase):
         went with ITS route, and it was the second of the two schemas that
         named a slot by its column. What is left is the row a read answers
         with. A change to a book names a slot by the tenant's own declared KEY,
-        so `BookChangeIn` carries no slot property to count — which is why
+        so `BookRateChangeIn` carries no slot property to count — which is why
         ruling 15's gap stays closed while this number falls twice.
         """
         self.assertEqual(_slot_named_properties(self.document),

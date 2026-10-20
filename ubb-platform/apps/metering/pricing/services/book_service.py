@@ -5,8 +5,8 @@ from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE,
-    CostBook, PricingBook, PricingBookPublish, Rate)
+    BOOK_LINES, CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE, LINE_AGREED_PRICE,
+    LINE_RATE, CostBook, PricingBook, PricingBookPublish, Rate)
 from apps.platform.event_types.quantities import declaration_named
 from core.problems import Problem
 from core.vocabulary import (
@@ -140,6 +140,7 @@ class PlannedChange:
 
     def as_diff_row(self):
         return {
+            "line": LINE_RATE,
             "kind": self.kind,
             "measurement_key": self.measurement_key,
             "selectors": {name: value for name, value in self.selectors.items()
@@ -352,11 +353,20 @@ def plan_changes(book, changes, effective_at):
     claimed = set()
 
     for position, change in enumerate(changes):
+        line = change.get("line")
+        if line not in BOOK_LINES:
+            raise ValueError(
+                f"change {position}: line must be one of {sorted(BOOK_LINES)} "
+                f"— which kind of line in the book the change is about; got "
+                f"{line!r}")
         kind = change.get("kind")
         if kind not in CHANGE_KINDS:
             raise ValueError(
                 f"change {position}: kind must be one of "
                 f"{sorted(CHANGE_KINDS)}; got {kind!r}")
+        if line == LINE_AGREED_PRICE:
+            raise ValueError(
+                f"change {position}: an agreed price is not yet planned")
         measurement_key = change.get("measurement_key") or ""
         if not measurement_key:
             raise ValueError(

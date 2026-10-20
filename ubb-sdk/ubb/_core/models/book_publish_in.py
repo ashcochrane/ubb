@@ -13,7 +13,8 @@ from typing import cast
 import datetime
 
 if TYPE_CHECKING:
-  from ..models.book_change_in import BookChangeIn
+  from ..models.book_agreed_price_change_in import BookAgreedPriceChangeIn
+  from ..models.book_rate_change_in import BookRateChangeIn
 
 
 
@@ -48,11 +49,11 @@ class BookPublishIn:
     moves it.
 
         Attributes:
-            changes (list[BookChangeIn]):
+            changes (list[BookAgreedPriceChangeIn | BookRateChangeIn]):
             effective_at (datetime.datetime | None | Unset):
      """
 
-    changes: list[BookChangeIn]
+    changes: list[BookAgreedPriceChangeIn | BookRateChangeIn]
     effective_at: datetime.datetime | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -61,10 +62,16 @@ class BookPublishIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_change_in import BookChangeIn
+        from ..models.book_agreed_price_change_in import BookAgreedPriceChangeIn
+        from ..models.book_rate_change_in import BookRateChangeIn
         changes = []
         for changes_item_data in self.changes:
-            changes_item = changes_item_data.to_dict()
+            changes_item: dict[str, Any]
+            if isinstance(changes_item_data, BookRateChangeIn):
+                changes_item = changes_item_data.to_dict()
+            else:
+                changes_item = changes_item_data.to_dict()
+
             changes.append(changes_item)
 
 
@@ -92,14 +99,32 @@ class BookPublishIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_change_in import BookChangeIn
+        from ..models.book_agreed_price_change_in import BookAgreedPriceChangeIn
+        from ..models.book_rate_change_in import BookRateChangeIn
         d = dict(src_dict)
         changes = []
         _changes = d.pop("changes")
         for changes_item_data in (_changes):
-            changes_item = BookChangeIn.from_dict(changes_item_data)
+            def _parse_changes_item(data: object) -> BookAgreedPriceChangeIn | BookRateChangeIn:
+                try:
+                    if not isinstance(data, dict):
+                        raise TypeError()
+                    changes_item_type_0 = BookRateChangeIn.from_dict(data)
 
 
+
+                    return changes_item_type_0
+                except (TypeError, ValueError, AttributeError, KeyError):
+                    pass
+                if not isinstance(data, dict):
+                    raise TypeError()
+                changes_item_type_1 = BookAgreedPriceChangeIn.from_dict(data)
+
+
+
+                return changes_item_type_1
+
+            changes_item = _parse_changes_item(changes_item_data)
 
             changes.append(changes_item)
 

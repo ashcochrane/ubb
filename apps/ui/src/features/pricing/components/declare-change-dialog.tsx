@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toastSuccess } from "@/lib/mutations";
 import { useDeclareBookPublish, useGroupingFields } from "../api/queries";
-import type { AnyBook, BookChangeIn } from "../api/types";
+import type { AnyBook, BookRateChangeIn } from "../api/types";
 import { toMicros } from "../lib/pricing-math";
 import {
   CHANGE_KINDS,
@@ -70,7 +70,7 @@ export function DeclareChangeDialog({
   const declare = useDeclareBookPublish(book.id);
   const groupingFields = useGroupingFields();
   const currency = "currency" in book ? book.currency : "usd";
-  const [staged, setStaged] = React.useState<BookChangeIn[]>([]);
+  const [staged, setStaged] = React.useState<BookRateChangeIn[]>([]);
   const [kind, setKind] = React.useState<ChangeKind>("add");
   const [effectiveLocal, setEffectiveLocal] = React.useState("");
 
@@ -104,10 +104,11 @@ export function DeclareChangeDialog({
     // ⚠ A RETIRE STATES NONE OF THE TERMS AT ALL — it opens no rule, so an
     // amount on it would be a number nobody will ever read. The contract makes
     // every term nullable for exactly this reason and the body follows it.
-    const change: BookChangeIn =
+    const change: BookRateChangeIn =
       kind === "retire"
-        ? { kind, ...identity }
+        ? { line: "rate", kind, ...identity }
         : {
+            line: "rate",
             kind,
             ...identity,
             pricing_method: values.pricing_method,
