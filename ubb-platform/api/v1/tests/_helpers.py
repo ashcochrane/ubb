@@ -215,7 +215,7 @@ def a_tenant_selling_whole_work(*, products=("metering", "billing"),
         TaskType.objects.create(tenant=tenant, key=SOLD_PER_EVENT, kind=kind,
                                 uncapped=True)
     a_price_for_whole_work(tenant, task_type=SOLD_WHOLE,
-                           amount_micros=price_micros)
+                           agreed_price_micros=price_micros)
     wallet = None
     if balance_micros is not None:
         wallet = Wallet.objects.create(customer=customer,

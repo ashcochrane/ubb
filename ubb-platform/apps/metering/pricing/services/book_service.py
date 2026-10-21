@@ -6,11 +6,13 @@ from django.utils import timezone
 
 from apps.metering.pricing.models import (
     BOOK_LINES, CHANGE_ADD, CHANGE_KINDS, CHANGE_RETIRE, LINE_AGREED_PRICE,
-    LINE_RATE, CostBook, PricingBook, PricingBookPublish, Rate)
+    LINE_RATE, CostBook, PricingBook, PricingBookPublish, Rate, TaskPrice)
 from apps.platform.event_types.quantities import declaration_named
+from apps.platform.work.queries import task_type_policy
 from core.problems import Problem
 from core.vocabulary import (
-    DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES)
+    DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES,
+    TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 #: WHAT A REPRICE CARRIES FROM THE OUTGOING RULE TO ITS REPLACEMENT.
 #:
@@ -151,6 +153,43 @@ class PlannedChange:
         }
 
 
+class PlannedAgreedPrice:
+    """One intended change to an agreed price, resolved like a rate's (#553).
+
+    The rate side's twin rather than a flag on it, for the reason the change
+    body is a union: an agreed price is identified by the kind of work alone
+    and carries one amount, so a planned rate's quantity, selectors and terms
+    would all be empty here, and an empty field is what tells a reader nothing.
+    Built once and used twice, exactly as `PlannedChange` is.
+    """
+
+    __slots__ = ("kind", "task_type", "outgoing", "amount")
+
+    def __init__(self, *, kind, task_type, outgoing, amount):
+        self.kind = kind
+        self.task_type = task_type
+        #: The line this change supersedes, or `None` where it adds one.
+        self.outgoing = outgoing
+        #: The amount the incoming line will carry, or `None` where none is
+        #: opened — which is what retiring an agreed price is.
+        self.amount = amount
+
+    def as_diff_row(self):
+        return {
+            "line": LINE_AGREED_PRICE,
+            "kind": self.kind,
+            "task_type": self.task_type,
+            "before": (_agreed_price_terms(self.outgoing.agreed_price_micros)
+                       if self.outgoing is not None else None),
+            "after": (_agreed_price_terms(self.amount)
+                      if self.amount is not None else None),
+        }
+
+
+def _agreed_price_terms(amount):
+    return {"agreed_price_micros": amount}
+
+
 def _terms_of(rule):
     return {name: getattr(rule, name) for name in _RULE_FIELDS}
 
@@ -189,8 +228,30 @@ def rules_in_force_at(book, instant):
         Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
 
 
+def agreed_prices_in_force_at(book, instant):
+    """The book's agreed prices as they stand at `instant`, on the same
+    half-open range `rules_in_force_at` reads for its rates (#553).
+
+    Only the WHOLE-WORK altitude: that is the only line the publish act opens,
+    and the one a start resolves (see `TaskPrice`). A cost book holds none — a
+    supplier's cost is never a customer's agreed price — so it answers an
+    empty set rather than a query against a column it does not have.
+    """
+    if not isinstance(book, PricingBook):
+        return TaskPrice.objects.none()
+    return TaskPrice.objects.filter(
+        pricing_book=book, kind=TASK_TYPE_KIND_TASK,
+        valid_from__lte=instant).filter(
+        Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
+
+
 def latest_scheduled_boundary(book):
-    """The furthest instant at which any rule in this book opens or closes.
+    """The furthest instant at which any line in this book opens or closes.
+
+    ⚠ **BOTH KINDS OF LINE, SINCE #553.** It read rates only while nothing else
+    was published into a book; an agreed price scheduled to open next month is
+    the same entry in the same diary, and a publish dated behind it would
+    change what that one does exactly as it would for a rate.
 
     A **maximum over both moments**, not over the openings alone: a rule that
     is retired rather than replaced closes at an instant no other rule opens
@@ -213,9 +274,13 @@ def latest_scheduled_boundary(book):
     matters, because filtering to future boundaries is the one change that
     would put a clock in here and collapse the two rules into one.
     """
-    moments = book.rates.aggregate(opens=Max("valid_from"),
-                                   closes=Max("valid_to"))
-    scheduled = [moment for moment in moments.values() if moment is not None]
+    lines = [book.rates]
+    if isinstance(book, PricingBook):
+        lines.append(book.task_prices)
+    scheduled = [moment for held in lines
+                 for moment in held.aggregate(opens=Max("valid_from"),
+                                              closes=Max("valid_to")).values()
+                 if moment is not None]
     return max(scheduled) if scheduled else None
 
 
@@ -309,6 +374,153 @@ def _identity_of_change(selectors, measurement_key):
             tuple(selectors[name] for name in Rate.SELECTORS))
 
 
+class _AgreedPricesOf:
+    """The agreed prices one publish is planned against (#553).
+
+    WHAT IDENTIFIES AN AGREED PRICE INSIDE ONE BOOK IS THE KIND OF WORK, AND
+    NOTHING ELSE. `uq_task_price_active_in_pricing_book` is that identity plus
+    the altitude, and the publish act only ever writes the whole-work altitude,
+    so within one book the two agree about which lines may be open at once —
+    the relationship the rate side's identity has with its own two keys.
+
+    The rate side's rules, applied to this identity: a change is resolved
+    against the book as it will stand at the effective instant, an `add` may
+    not land on a line already in force or already scheduled, a `reprice` or
+    `retire` addresses exactly the line in force, and a line already scheduled
+    to close cannot be closed again — which is ruling 14b's case, refused with
+    its code. Lazy, so a publish naming no agreed price asks nothing of this
+    table.
+    """
+
+    def __init__(self, book, effective_at):
+        self.book = book
+        self.effective_at = effective_at
+        self._lines = None
+
+    def _in_force_and_still_open(self):
+        if self._lines is None:
+            self._lines = (
+                list(agreed_prices_in_force_at(self.book, self.effective_at)),
+                list(TaskPrice.objects.filter(
+                    pricing_book=self.book, kind=TASK_TYPE_KIND_TASK,
+                    valid_to__isnull=True)))
+        return self._lines
+
+    def plan(self, position, kind, change, claimed):
+        if not isinstance(self.book, PricingBook):
+            raise ValueError(
+                f"change {position}: a cost book records what a supplier "
+                f"charged this tenant, and an agreed price is what a "
+                f"customer is charged; declare it in a Pricing Book")
+        task_type = change.get("task_type") or ""
+        if not task_type:
+            raise ValueError(
+                f"change {position}: task_type names the kind of work this "
+                f"agreed price sells and is required")
+        identity = (LINE_AGREED_PRICE, task_type)
+        if identity in claimed:
+            raise ValueError(
+                f"change {position}: this publish already changes the agreed "
+                f"price for {task_type!r}. One publish states one outcome per "
+                f"line; two changes to one line are two publishes or one "
+                f"change")
+        claimed.add(identity)
+
+        amount = change.get("agreed_price_micros")
+        if kind == CHANGE_RETIRE:
+            if amount is not None:
+                raise ValueError(
+                    f"change {position}: a retirement opens no line, so it "
+                    f"states no agreed_price_micros")
+        else:
+            self._refuse_an_amount_that_is_not_a_price(position, kind, amount)
+            # WHAT A CHANGE MAY OPEN A LINE FOR. A kind nobody declared, one
+            # that is retired, or one declared only as contained work would be
+            # a line no start can ever resolve — a typo that looks configured.
+            # Asked of a change that OPENS a line and not of a retirement: a
+            # line whose kind has since been retired is exactly the line a
+            # tenant must still be able to close.
+            self._refuse_a_kind_no_start_can_price(position, task_type)
+
+        in_force, still_open = self._in_force_and_still_open()
+        matched = [line for line in in_force if line.task_type == task_type]
+        if kind == CHANGE_ADD:
+            if matched:
+                raise ValueError(
+                    f"change {position}: the book already holds an agreed "
+                    f"price for {task_type!r} in force at the effective "
+                    f"instant. Changing it is a reprice")
+            if any(line.task_type == task_type for line in still_open):
+                raise ValueError(
+                    f"change {position}: the book holds an open agreed price "
+                    f"for {task_type!r} that opens after the effective "
+                    f"instant. Two agreed prices in force for one kind of work "
+                    f"is what this book refuses")
+            return PlannedAgreedPrice(kind=kind, task_type=task_type,
+                                      outgoing=None, amount=amount)
+
+        if len(matched) != 1:
+            raise ValueError(
+                f"change {position}: no agreed price for {task_type!r} is in "
+                f"force at the effective instant, so there is nothing to "
+                f"{kind}")
+        (outgoing,) = matched
+        if outgoing.valid_to is not None:
+            # Ruling 14b's own case, as `plan_changes` refuses it for a rate:
+            # `TaskPrice.valid_to` is SET_ONCE, so a close a later publish
+            # already wrote cannot be moved.
+            raise Problem(
+                "effective_at_before_scheduled_boundary",
+                f"change {position}: the agreed price for {task_type!r} is "
+                f"already scheduled to close at "
+                f"{outgoing.valid_to.isoformat()}, and effective_at is before "
+                f"that. `TaskPrice.valid_to` is set once, so a close cannot "
+                f"be moved; discard the publish that scheduled it, or date "
+                f"this one at or after that instant")
+        return PlannedAgreedPrice(
+            kind=kind, task_type=task_type, outgoing=outgoing,
+            amount=None if kind == CHANGE_RETIRE else amount)
+
+    @staticmethod
+    def _refuse_an_amount_that_is_not_a_price(position, kind, amount):
+        """ZERO IS A PRICE; A NEGATIVE AMOUNT IS A SIGN ERROR (the spec's
+        story 12). The published body bounds it too (`ge=0`), and the table's
+        CHECK refuses it at the last door; this is the refusal said where a
+        caller of the service can act on it."""
+        if amount is None:
+            raise ValueError(
+                f"change {position}: an agreed price states its amount, so "
+                f"agreed_price_micros is required on {kind}")
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            raise ValueError(
+                f"change {position}: agreed_price_micros is a whole number of "
+                f"micros; got {amount!r}")
+        if amount < 0:
+            raise ValueError(
+                f"change {position}: agreed_price_micros may not be negative "
+                f"— a price that pays the customer to be served is a sign "
+                f"error. Zero is a price; got {amount}")
+
+    def _refuse_a_kind_no_start_can_price(self, position, task_type):
+        tenant_id = self.book.tenant_id
+        policy = task_type_policy(tenant_id, task_type, TASK_TYPE_KIND_TASK)
+        if policy is None:
+            if task_type_policy(tenant_id, task_type,
+                                TASK_TYPE_KIND_SUBTASK) is not None:
+                raise ValueError(
+                    f"change {position}: {task_type!r} is declared only as "
+                    f"contained work, and one agreed price buys a whole unit "
+                    f"of work; price the kind of work that contains it")
+            raise ValueError(
+                f"change {position}: no kind of work is declared as "
+                f"{task_type!r}. An agreed price sells a kind of work this "
+                f"tenant has declared; declare it first, then price it")
+        if policy["retired"]:
+            raise ValueError(
+                f"change {position}: {task_type!r} is retired, so no unit of "
+                f"it can start and a price for it would never be read")
+
+
 def plan_changes(book, changes, effective_at):
     """Resolve every intended change against the book **as it will stand at
     `effective_at`**, or refuse the whole set.
@@ -349,6 +561,7 @@ def plan_changes(book, changes, effective_at):
     still_open = list(Rate.objects.filter(
         valid_to__isnull=True,
         **{book.REFERENCE_COLUMN: book}).select_related("measurement"))
+    prices = _AgreedPricesOf(book, effective_at)
     planned = []
     claimed = set()
 
@@ -365,15 +578,15 @@ def plan_changes(book, changes, effective_at):
                 f"change {position}: kind must be one of "
                 f"{sorted(CHANGE_KINDS)}; got {kind!r}")
         if line == LINE_AGREED_PRICE:
-            raise ValueError(
-                f"change {position}: an agreed price is not yet planned")
+            planned.append(prices.plan(position, kind, change, claimed))
+            continue
         measurement_key = change.get("measurement_key") or ""
         if not measurement_key:
             raise ValueError(
                 f"change {position}: measurement_key names the declared "
                 f"quantity this rule prices and is required")
         selectors = {name: (change.get(name) or "") for name in Rate.SELECTORS}
-        identity = _identity_of_change(selectors, measurement_key)
+        identity = (LINE_RATE, _identity_of_change(selectors, measurement_key))
         if identity in claimed:
             raise ValueError(
                 f"change {position}: this publish already changes the rule for "
@@ -383,7 +596,7 @@ def plan_changes(book, changes, effective_at):
         claimed.add(identity)
 
         matched = [rule for rule in in_force
-                   if _identity_of_rule(rule) == identity]
+                   if (LINE_RATE, _identity_of_rule(rule)) == identity]
         stated = {name: change[name] for name in _RULE_FIELDS
                   if change.get(name) is not None}
         # THE CLOSED VALUE SETS ARE CLOSED AND THE SERVICE IS WHERE A BODY
@@ -425,7 +638,7 @@ def plan_changes(book, changes, effective_at):
             # instant and still open today would be admitted by the check above
             # and refused by the database. Saying so here keeps the refusal
             # readable and keeps the publish all-or-nothing.
-            if any(_identity_of_rule(rule) == identity
+            if any((LINE_RATE, _identity_of_rule(rule)) == identity
                    for rule in still_open):
                 raise ValueError(
                     f"change {position}: the book holds an open rule for "
@@ -525,6 +738,38 @@ def plan_changes(book, changes, effective_at):
             terms={**_terms_of(outgoing), **stated}))
     _refuse_an_instant_behind_the_books_own_diary(book, effective_at)
     return planned
+
+
+def _publish_an_agreed_price(book, change, effective_at, new_version, *,
+                             opened, closed):
+    """Close the agreed price a change supersedes and open its replacement,
+    from the publish's one instant — `publish_declared`'s rate loop, for the
+    other kind of line (#553).
+
+    Called inside that method's transaction, with the book locked: the close
+    and the open land together or not at all, and the book's one-open-line key
+    is satisfied at every statement because the outgoing line closes first.
+    A replacement continues its predecessor's lineage; an `add` starts one.
+    """
+    if change.outgoing is not None:
+        outgoing = TaskPrice.objects.select_for_update(of=("self",)).get(
+            pk=change.outgoing.pk)
+        outgoing.valid_to = effective_at
+        outgoing.book_version_to = book.version
+        outgoing.save(update_fields=["valid_to", "book_version_to",
+                                     "updated_at"])
+        closed.append(str(outgoing.pk))
+    if change.amount is None:
+        return
+    incoming = TaskPrice.objects.create(
+        tenant_id=book.tenant_id, pricing_book=book,
+        kind=TASK_TYPE_KIND_TASK, task_type=change.task_type,
+        agreed_price_micros=change.amount,
+        lineage_id=(change.outgoing.lineage_id
+                    if change.outgoing is not None else uuid.uuid4()),
+        book_version_from=new_version, book_version_to=None,
+        valid_from=effective_at, valid_to=None)
+    opened.append(str(incoming.pk))
 
 
 class BookService:
@@ -718,7 +963,13 @@ class BookService:
             planned = plan_changes(locked, record.changes,
                                    record.effective_at)
             opened, closed = [], []
+            opened_prices, closed_prices = [], []
             for change in planned:
+                if isinstance(change, PlannedAgreedPrice):
+                    _publish_an_agreed_price(
+                        locked, change, record.effective_at, new_version,
+                        opened=opened_prices, closed=closed_prices)
+                    continue
                 if change.outgoing is not None:
                     outgoing = Rate.objects.select_for_update(
                         of=("self",)).get(pk=change.outgoing.pk)
@@ -774,6 +1025,8 @@ class BookService:
             record.actor_display = actor.display if actor is not None else ""
             record.opened_rule_ids = opened
             record.closed_rule_ids = closed
+            record.opened_agreed_price_ids = opened_prices
+            record.closed_agreed_price_ids = closed_prices
             record.save()
         record.book.version = new_version
         return record

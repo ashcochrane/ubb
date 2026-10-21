@@ -485,7 +485,7 @@ class TheStopAcknowledgementIsKeptOnceTest(PoolTestBase):
                                 kind=TASK_TYPE_KIND_TASK,
                                 pricing_mode=PRICING_MODE_FIXED, uncapped=True)
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         unit = self._unit(task_type=SOLD_WHOLE)
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             closed = self.http.post(

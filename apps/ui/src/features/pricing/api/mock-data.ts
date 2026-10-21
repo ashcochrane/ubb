@@ -377,6 +377,8 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     ...ACTOR,
     opened_rule_ids: [],
     closed_rule_ids: [],
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     published_at: null,
     diff_unavailable_reason: null,
     diff: [
@@ -432,6 +434,8 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     ...ACTOR,
     opened_rule_ids: [],
     closed_rule_ids: [],
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     published_at: null,
     diff_unavailable_reason: null,
     diff: [
@@ -472,6 +476,8 @@ export const MOCK_BOOK_PUBLISHES: BookPublish[] = [
     ...ACTOR,
     opened_rule_ids: [],
     closed_rule_ids: [],
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     published_at: null,
     diff_unavailable_reason: null,
     diff: [

@@ -722,6 +722,13 @@
             "title": "Book Id",
             "type": "string"
           },
+          "closed_agreed_price_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Closed Agreed Price Ids",
+            "type": "array"
+          },
           "closed_rule_ids": {
             "items": {
               "type": "string"
@@ -785,6 +792,13 @@
             "title": "Id",
             "type": "string"
           },
+          "opened_agreed_price_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Opened Agreed Price Ids",
+            "type": "array"
+          },
           "opened_rule_ids": {
             "items": {
               "type": "string"
@@ -813,7 +827,9 @@
           "actor_id",
           "actor_display",
           "opened_rule_ids",
-          "closed_rule_ids"
+          "closed_rule_ids",
+          "opened_agreed_price_ids",
+          "closed_agreed_price_ids"
         ],
         "title": "BookPublishOut",
         "type": "object"

@@ -67,6 +67,8 @@ const DRAFT: BookPublish = {
   actor_display: "dana@acme.ai",
   opened_rule_ids: [],
   closed_rule_ids: [],
+  opened_agreed_price_ids: [],
+  closed_agreed_price_ids: [],
   published_at: null,
   diff_unavailable_reason: null,
   diff: [

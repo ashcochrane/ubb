@@ -1528,7 +1528,11 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
                 metadata={"book_id": str(book_id),
                           "effective_at": record.effective_at.isoformat(),
                           "opened": len(record.opened_rule_ids),
-                          "closed": len(record.closed_rule_ids)},
+                          "closed": len(record.closed_rule_ids),
+                          "opened_agreed_prices":
+                              len(record.opened_agreed_price_ids),
+                          "closed_agreed_prices":
+                              len(record.closed_agreed_price_ids)},
             )
     except ValueError as e:
         raise Problem("validation_error", str(e))

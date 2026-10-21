@@ -344,7 +344,11 @@ class APublishedRecordIsNotEditableTest(_ABookMixin,
                 ("published_at", timezone.now()),
                 ("actor_display", "somebody-else@example.com"),
                 ("opened_rule_ids", []),
-                ("closed_rule_ids", [])):
+                ("closed_rule_ids", []),
+                # Empty on this rate-only publish, so a non-empty list is the
+                # write the rule refuses (#553).
+                ("opened_agreed_price_ids", ["a-line-it-never-opened"]),
+                ("closed_agreed_price_ids", ["a-line-it-never-closed"])):
             with self.subTest(column=column):
                 self.assert_every_door_refuses(self._published(),
                                                **{column: value})

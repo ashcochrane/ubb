@@ -35,6 +35,7 @@ def a_draft(diff):
             "effective_at": "2026-10-21T00:00:00+00:00", "published_at": None,
             "actor_kind": "", "actor_id": "", "actor_display": "",
             "opened_rule_ids": [], "closed_rule_ids": [],
+            "opened_agreed_price_ids": [], "closed_agreed_price_ids": [],
             "diff": diff, "diff_unavailable_reason": None}
 
 

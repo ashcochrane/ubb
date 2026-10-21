@@ -142,7 +142,7 @@ class ChargeTestBase:
         """A line in the tenant's default book, and one piece of work started
         against it — the fixture every claim here shares."""
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=amount, **line)
+                               agreed_price_micros=amount, **line)
         return self._start()
 
     def _charges_against(self, task_id):
@@ -203,7 +203,7 @@ class TestADeliveredUnitOfWorkIsChargedExactlyOnce(ChargeTestBase):
         that close would bill a flat price for work nobody agreed one for.
         """
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(task_type=SOLD_PER_EVENT)
 
         body = self._close(started).json()
@@ -399,7 +399,7 @@ class TestWhatTheChargeCarries(ChargeTestBase):
 
     def test_the_charge_names_the_line_that_answered_and_its_book_version(self):
         line = a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                                      amount_micros=THE_AGREED_PRICE)
+                                      agreed_price_micros=THE_AGREED_PRICE)
         started = self._start()
 
         self._close(started)
@@ -416,7 +416,7 @@ class TestWhatTheChargeCarries(ChargeTestBase):
         amount and the line, and copied from there.
         """
         line = a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                                      amount_micros=THE_AGREED_PRICE)
+                                      agreed_price_micros=THE_AGREED_PRICE)
         started = self._start()
         at_resolution = Task.objects.get(id=started).agreed_price_book_version
 
@@ -459,7 +459,7 @@ class TestWhatTheChargeCarries(ChargeTestBase):
         DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
                                  slot="grouping_field_1", scope="task")
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(**declared_grouping_values(
             {A_GROUPING_KEY: A_GROUPING_VALUE}))
 

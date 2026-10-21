@@ -730,26 +730,25 @@ class TaskPrice(BaseModel):
     is charged in is the Charge's to record (#416), where it is a fact about a
     money movement rather than about a price list.
 
-    ⚠ **NOTHING WRITES THIS TABLE YET, AND THAT IS A NAMED RESIDUAL RATHER
-    THAN AN OVERSIGHT.** Prices are edited in ONE place — the book's
+    **THE PUBLIC NAME IS THE AGREED PRICE, AND ITS ONE WRITER IS THE PUBLISH
+    ACT (#553, ADR-0021).** Prices are edited in ONE place — the book's
     declare-then-publish act (`services/book_service.py`) — and slice 4 spent
     #367 and #368 deleting every immediate-effect mutation path so that a rule
-    could not move without a publish record saying who moved it and when. So
-    the surface that opens and closes a work-level line is the publish act's to
-    grow, and it is not a small edit: that act's change body REQUIRES the
-    quantity a line prices (`BookChangeIn.measurement_key`), which a whole-work
-    line does not have, and relaxing it reshapes the planner, the rendered diff
-    and the published request together.
+    could not move without a publish record saying who moved it and when. A
+    change body names which kind of line it is about (`line: agreed_price`),
+    the planner identifies a line by `(book, task_type)` under the rate side's
+    conflict and boundary rules, and publishing opens and closes lines from
+    the publish's one effective instant. A second write path — an admin
+    registration, or a `PUT` of its own — was rejected for the reason those
+    two tickets bought: it would put a money-shaped configuration change back
+    outside the publish record, and #187 §25 Q1 rules that *price is a
+    read-only link into the book* precisely because there is one place prices
+    are edited. Read back through `GET /pricing/books/{book_id}/agreed-prices`.
 
-    A second write path in the meantime — an admin registration, or a `PUT` of
-    its own — was considered and rejected on exactly what those two tickets
-    bought: it would put a money-shaped configuration change back outside the
-    publish record, one table over from where that hole was closed, and #187
-    §25 Q1 rules that *price is a read-only link into the book* precisely
-    because there is one place prices are edited. This ticket builds the half
-    that decides money — the resolution, the pinning and the refusals — and
-    the line's own surface arrives with the act that already owns every other
-    line in this book.
+    The publish act writes only the WHOLE-WORK altitude: it refuses a kind of
+    work declared only as contained work, so a line at the contained altitude
+    is reachable by no write path, and the start gate's refusal of one
+    (`pricing_service.determine_the_agreed_price`) is the backstop.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -820,7 +819,23 @@ class TaskPrice(BaseModel):
     #: nothing has said something, and the constraint below admits it while
     #: refusing a negative one: a line that pays the customer to be delivered
     #: to is not a price, it is a sign error.
-    amount_micros = models.BigIntegerField()
+    #:
+    #: Named for the public concept (#553): the column is the published field
+    #: `agreed_price_micros` on the change body, the diff and the read, and on
+    #: the unit of work that pins it — one name from the declaration to the
+    #: Charge. USD micros, the tenant's one currency; no FX (#555).
+    agreed_price_micros = models.BigIntegerField()
+    #: WHICH PUBLISH OPENED AND CLOSED THIS LINE, AND WHICH LINE IT CONTINUES —
+    #: the rate side's provenance, carried over whole (#553). A reprice opens a
+    #: line in the outgoing one's lineage; an `add` starts a lineage of its
+    #: own. The book's version is provenance and never the economic decision:
+    #: effective dating is what resolution reads (the owner's constraint of
+    #: 2026-10-06), and the start gate pins the version it read beside the
+    #: amount and the line (`Task.agreed_price_book_version`).
+    book_version_from = models.PositiveIntegerField(default=1)
+    book_version_to = models.PositiveIntegerField(null=True, blank=True)
+    lineage_id = models.UUIDField(default=uuid.uuid4, editable=False,
+                                  db_index=True)
     #: WHEN THIS LINE TAKES EFFECT, and when it stops — the rate side's two
     #: instants, with the same meanings and the same half-open window
     #: (`valid_from <= t < valid_to`).
@@ -830,19 +845,26 @@ class TaskPrice(BaseModel):
     #: instant and not another there would only ever be one answer for the
     #: price half, and the cost/revenue asymmetry `work.Task
     #: .agreed_price_micros` argues could not be stated, let alone tested.
-    #:
-    #: ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THIS TABLE DECLARES NONE.
-    #: The rate table declares these two exact columns and this one deliberately
-    #: does not, which is a difference worth stating rather than leaving silent:
-    #: a rate's window is read by every recording forever, so moving it re-costs
-    #: work that has already reported, whereas a work-level line is read ONCE
-    #: per unit of work and the answer is pinned onto the row that same instant
-    #: (`Task.agreed_price_micros`). What protects history here is that pinning,
-    #: which holds a VALUE — editing this line cannot move a number a unit of
-    #: work already carries. The ticket that gives this table a publish path is
-    #: the one that should ask whether its windows want a rule of their own.
     valid_from = models.DateTimeField(default=timezone.now, db_index=True)
     valid_to = models.DateTimeField(null=True, blank=True)
+
+    #: WHAT MAY HAPPEN TO THE TWO INSTANTS (ADR-0007 §2) — the rate side's
+    #: declaration, word for word, now that this table has a publish path.
+    #:
+    #: Until #553 these were undeclared, on the argument that a line is read
+    #: once per unit of work and the answer pinned that instant, so editing the
+    #: line could move no number a unit already carried. That argument still
+    #: holds for the PIN; it does not hold for the HISTORY a publish now
+    #: records. A book's diary — which line was in force when, which publish
+    #: opened and closed it — is read by the planner, the read and the Code
+    #: Builder, and a window moved in place would make the publish record and
+    #: the line disagree about what was in force. So `valid_from` is FROZEN and
+    #: `valid_to` is SET_ONCE, held by the trigger `migrations/0032` installs
+    #: on this table across `save()`, `QuerySet.update()` and raw SQL alike.
+    transition_classes = {
+        "valid_from": FROZEN,
+        "valid_to": SET_ONCE,
+    }
 
     class Meta:
         db_table = "ubb_task_price"
@@ -864,10 +886,10 @@ class TaskPrice(BaseModel):
                 condition=models.Q(valid_to__isnull=True),
                 name="uq_task_price_active_in_pricing_book"),
             # A PRICE IS NOT NEGATIVE. Zero is admitted and is a real answer;
-            # see `amount_micros`.
+            # see `agreed_price_micros`.
             models.CheckConstraint(
-                condition=models.Q(amount_micros__gte=0),
-                name="ck_task_price_amount_not_negative"),
+                condition=models.Q(agreed_price_micros__gte=0),
+                name="ck_task_price_agreed_price_not_negative"),
         ]
         indexes = [
             # THE RESOLUTION LOOKUP: every book in play at once, one
@@ -878,7 +900,8 @@ class TaskPrice(BaseModel):
         ]
 
     def __str__(self):
-        return f"TaskPrice({self.kind}:{self.task_type}: {self.amount_micros})"
+        return (f"TaskPrice({self.kind}:{self.task_type}: "
+                f"{self.agreed_price_micros})")
 
 
 class Charge(BaseModel):
@@ -952,7 +975,7 @@ class Charge(BaseModel):
     #: ⚠ SIGNED, AND ONLY BECAUSE A COMPENSATING RECORD MUST BE. The check below
     #: refuses a negative primary charge — a charge that pays the customer is a
     #: sign error, and zero is a real answer for work a tenant agreed to deliver
-    #: for nothing (`TaskPrice.amount_micros` argues the same admission).
+    #: for nothing (`TaskPrice.agreed_price_micros` argues the same admission).
     amount_micros = models.BigIntegerField()
     #: THE CURRENCY THIS MONEY MOVED IN.
     #:
@@ -1119,7 +1142,7 @@ class Charge(BaseModel):
             # AN ORIGINAL CHARGE IS NOT NEGATIVE, AND A CORRECTION MAY BE.
             #
             # A charge that pays the customer to be delivered to is a sign error
-            # rather than a deal, which is `TaskPrice.amount_micros`' own
+            # rather than a deal, which is `TaskPrice.agreed_price_micros`' own
             # sentence; zero is admitted there and admitted here for the same
             # reason. A COMPENSATING row is exempt because reversing a charge is
             # exactly a negative one, and refusing that would leave a wrong
@@ -1535,13 +1558,20 @@ class PricingBookPublish(BaseModel):
     #: draft, because a draft opened and closed none.
     opened_rule_ids = models.JSONField(default=list)
     closed_rule_ids = models.JSONField(default=list)
+    #: The agreed-price lines this publish opened and closed, by id (#553).
+    #: A pair of their own rather than more ids in the two above, because an
+    #: agreed price is not a rule: a reader of `opened_rule_ids` is reading
+    #: rates, and widening "rule" to mean either line would make every such
+    #: reader ask which table an id is in.
+    opened_agreed_price_ids = models.JSONField(default=list)
+    closed_agreed_price_ids = models.JSONField(default=list)
 
     #: WHAT MAY HAPPEN TO THIS RECORD (ADR-0007 §2).
     #:
     #: One column takes a defended class and the rest declare the record's own
     #: rule, which is `PostingMeasurement`'s shape for the same reason: the
     #: question ADR-0007 §2 asks is *what is allowed to happen to this?*, and
-    #: for thirteen of these fourteen columns the honest answer is "nothing this
+    #: for sixteen of these seventeen columns the honest answer is "nothing this
     #: column decides — read the record's rule", stated rather than left absent.
     #:
     #: `declaration_status` is `RESOLVE_ONCE` and it is the real thing rather
@@ -1580,6 +1610,8 @@ class PricingBookPublish(BaseModel):
         "actor_display": RECORD_RULE,
         "opened_rule_ids": RECORD_RULE,
         "closed_rule_ids": RECORD_RULE,
+        "opened_agreed_price_ids": RECORD_RULE,
+        "closed_agreed_price_ids": RECORD_RULE,
     }
 
     class Meta:

@@ -34,10 +34,12 @@ class BookPublishOut:
             actor_id (str):
             actor_kind (str):
             book_id (str):
+            closed_agreed_price_ids (list[str]):
             closed_rule_ids (list[str]):
             declaration_status (BookPublishOutDeclarationStatus):
             effective_at (str):
             id (str):
+            opened_agreed_price_ids (list[str]):
             opened_rule_ids (list[str]):
             diff (list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset):
             diff_unavailable_reason (None | str | Unset):
@@ -48,10 +50,12 @@ class BookPublishOut:
     actor_id: str
     actor_kind: str
     book_id: str
+    closed_agreed_price_ids: list[str]
     closed_rule_ids: list[str]
     declaration_status: BookPublishOutDeclarationStatus
     effective_at: str
     id: str
+    opened_agreed_price_ids: list[str]
     opened_rule_ids: list[str]
     diff: list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset = UNSET
     diff_unavailable_reason: None | str | Unset = UNSET
@@ -73,6 +77,10 @@ class BookPublishOut:
 
         book_id = self.book_id
 
+        closed_agreed_price_ids = self.closed_agreed_price_ids
+
+
+
         closed_rule_ids = self.closed_rule_ids
 
 
@@ -82,6 +90,10 @@ class BookPublishOut:
         effective_at = self.effective_at
 
         id = self.id
+
+        opened_agreed_price_ids = self.opened_agreed_price_ids
+
+
 
         opened_rule_ids = self.opened_rule_ids
 
@@ -125,10 +137,12 @@ class BookPublishOut:
             "actor_id": actor_id,
             "actor_kind": actor_kind,
             "book_id": book_id,
+            "closed_agreed_price_ids": closed_agreed_price_ids,
             "closed_rule_ids": closed_rule_ids,
             "declaration_status": declaration_status,
             "effective_at": effective_at,
             "id": id,
+            "opened_agreed_price_ids": opened_agreed_price_ids,
             "opened_rule_ids": opened_rule_ids,
         })
         if diff is not UNSET:
@@ -155,6 +169,9 @@ class BookPublishOut:
 
         book_id = d.pop("book_id")
 
+        closed_agreed_price_ids = cast(list[str], d.pop("closed_agreed_price_ids"))
+
+
         closed_rule_ids = cast(list[str], d.pop("closed_rule_ids"))
 
 
@@ -166,6 +183,9 @@ class BookPublishOut:
         effective_at = d.pop("effective_at")
 
         id = d.pop("id")
+
+        opened_agreed_price_ids = cast(list[str], d.pop("opened_agreed_price_ids"))
+
 
         opened_rule_ids = cast(list[str], d.pop("opened_rule_ids"))
 
@@ -237,10 +257,12 @@ class BookPublishOut:
             actor_id=actor_id,
             actor_kind=actor_kind,
             book_id=book_id,
+            closed_agreed_price_ids=closed_agreed_price_ids,
             closed_rule_ids=closed_rule_ids,
             declaration_status=declaration_status,
             effective_at=effective_at,
             id=id,
+            opened_agreed_price_ids=opened_agreed_price_ids,
             opened_rule_ids=opened_rule_ids,
             diff=diff,
             diff_unavailable_reason=diff_unavailable_reason,

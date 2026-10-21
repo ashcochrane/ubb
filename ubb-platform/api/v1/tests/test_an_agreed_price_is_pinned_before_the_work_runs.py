@@ -135,7 +135,7 @@ class AgreedPriceTestBase:
 
     def _price_is(self, amount, **where):
         return a_price_for_whole_work(
-            self.tenant, task_type=SOLD_WHOLE, amount_micros=amount, **where)
+            self.tenant, task_type=SOLD_WHOLE, agreed_price_micros=amount, **where)
 
 
 @pytest.mark.django_db
@@ -191,7 +191,7 @@ class TestTheAgreedPriceIsResolvedAndPinned(AgreedPriceTestBase):
         line = self._price_is(THE_AGREED_PRICE)
         registered_id = self._start(task_type=SOLD_WHOLE).json()["task_id"]
 
-        TaskPrice.objects.filter(id=line.id).update(amount_micros=99_000_000)
+        TaskPrice.objects.filter(id=line.id).update(agreed_price_micros=99_000_000)
 
         assert (Task.objects.get(id=registered_id).agreed_price_micros
                 == THE_AGREED_PRICE)
@@ -258,7 +258,7 @@ class TestTheAgreedPriceIsResolvedAndPinned(AgreedPriceTestBase):
         is unreachable however well it names the kind of work."""
         book_nobody_is_on = a_price_for_whole_work(
             self.tenant, task_type=SOLD_WHOLE,
-            amount_micros=THE_AGREED_PRICE,
+            agreed_price_micros=THE_AGREED_PRICE,
             customer=Customer.objects.create(tenant=self.tenant,
                                              external_id="somebody-else"))
         assert book_nobody_is_on.pricing_book.customer_id != self.customer.id
@@ -401,7 +401,7 @@ class TestAMeteringOnlyTenantsDeclarationIsRecordedAndInert(
         parent = self._start(task_type=SOLD_WHOLE).json()["task_id"]
         a_price_for_whole_work(self.tenant, task_type=ALSO_SOLD_WHOLE,
                                kind=TASK_TYPE_KIND_SUBTASK,
-                               amount_micros=THE_OTHER_AGREED_PRICE)
+                               agreed_price_micros=THE_OTHER_AGREED_PRICE)
 
         refused = self._start(parent_task_id=parent,
                               task_type=ALSO_SOLD_WHOLE)
@@ -432,7 +432,7 @@ class TestOneAgreedPriceBuysAWholeUnitOfWork(AgreedPriceTestBase):
         parent = self._a_priced_parent()
         a_price_for_whole_work(self.tenant, task_type=ALSO_SOLD_WHOLE,
                                kind=TASK_TYPE_KIND_SUBTASK,
-                               amount_micros=THE_OTHER_AGREED_PRICE)
+                               agreed_price_micros=THE_OTHER_AGREED_PRICE)
 
         refused = self._start(parent_task_id=parent,
                               task_type=ALSO_SOLD_WHOLE)
@@ -541,7 +541,7 @@ class TestThePinnedPriceSurvivesARepeat(AgreedPriceTestBase):
         replay would charge one kind of work's price for another's."""
         self._price_is(THE_AGREED_PRICE)
         a_price_for_whole_work(self.tenant, task_type=ALSO_SOLD_WHOLE,
-                               amount_micros=THE_OTHER_AGREED_PRICE)
+                               agreed_price_micros=THE_OTHER_AGREED_PRICE)
         self._start(idempotency_key="k1", task_type=SOLD_WHOLE)
 
         refused = self._start(idempotency_key="k1", task_type=ALSO_SOLD_WHOLE)

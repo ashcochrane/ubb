@@ -2684,9 +2684,15 @@ class BookPublishOut(Schema):
     actor_id: str
     actor_display: str
     #: The rule versions this publish opened and closed. Empty on a draft,
-    #: because a draft opened and closed none.
+    #: because a draft opened and closed none. They name rates only: an
+    #: agreed price is not a rule, and its lines are the pair below.
     opened_rule_ids: list[str]
     closed_rule_ids: list[str]
+    #: The agreed-price lines this publish opened and closed, as read back
+    #: through `GET /pricing/books/{book_id}/agreed-prices`. Empty on a
+    #: draft.
+    opened_agreed_price_ids: list[str]
+    closed_agreed_price_ids: list[str]
     #: WHAT THIS PUBLISH WILL DO, computed against the book as it will stand at
     #: `effective_at`. Present while the record is a draft and NULL once it is
     #: published, because a diff is a statement about a change that has not
@@ -2728,6 +2734,8 @@ def book_publish_out(record, diff=None, diff_unavailable_reason=None):
         "actor_display": record.actor_display,
         "opened_rule_ids": list(record.opened_rule_ids),
         "closed_rule_ids": list(record.closed_rule_ids),
+        "opened_agreed_price_ids": list(record.opened_agreed_price_ids),
+        "closed_agreed_price_ids": list(record.closed_agreed_price_ids),
         "diff": diff,
         "diff_unavailable_reason": diff_unavailable_reason,
     }

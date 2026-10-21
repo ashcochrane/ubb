@@ -358,7 +358,7 @@ def start(tenant, payload):
                 # asking it at close time would record the version the book has
                 # reached since — a number with nothing to do with the
                 # resolution the Charge exists to explain.
-                agreed_price_micros=(agreed_price.amount_micros
+                agreed_price_micros=(agreed_price.agreed_price_micros
                                      if agreed_price else None),
                 agreed_price_line_id=(agreed_price.id
                                       if agreed_price else None),

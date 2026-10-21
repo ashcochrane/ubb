@@ -334,7 +334,7 @@ class AStopAcknowledgementSaysWhatStoppedIt(ReadsAStopAcknowledgement):
                                 kind=TASK_TYPE_KIND_TASK,
                                 pricing_mode=PRICING_MODE_FIXED, uncapped=True)
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         self._pool_line(self.customer, cap=8_000_000, pct=90)
         unit = self._unit(task_type=SOLD_WHOLE)
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):

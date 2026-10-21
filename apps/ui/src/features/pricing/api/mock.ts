@@ -430,6 +430,8 @@ export async function declareBookPublish(
     actor_display: "dana@acme.ai",
     opened_rule_ids: [],
     closed_rule_ids: [],
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     published_at: null,
     diff_unavailable_reason: null,
     diff: body.changes.map((change) => diffFor(bookId, change)),
@@ -514,6 +516,8 @@ export async function publishBookPublish(
     published_at: new Date().toISOString(),
     opened_rule_ids: opened,
     closed_rule_ids: closed,
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     // The diff is a property of an intention. Once the rules are written the
     // record says what it DID — the two id lists above — and the contract
     // nulls the diff for exactly that reason.

@@ -198,7 +198,7 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
         book_version_from=book.version, **fields)
 
 
-def a_price_for_whole_work(tenant, *, task_type, amount_micros,
+def a_price_for_whole_work(tenant, *, task_type, agreed_price_micros,
                            customer=None, plan_key=None, **fields):
     """A WORK-LEVEL LINE — what one whole delivered unit of work of this kind
     sells for (#415), in whichever of the three books a caller means.
@@ -233,7 +233,7 @@ def a_price_for_whole_work(tenant, *, task_type, amount_micros,
             tenant=tenant, is_default=True, defaults={"key": "default"})
     return TaskPrice.objects.create(
         tenant=tenant, pricing_book=book, task_type=task_type,
-        amount_micros=amount_micros, **fields)
+        agreed_price_micros=agreed_price_micros, **fields)
 
 
 def cost_book(tenant, *, key="default", provider="", currency="usd"):
