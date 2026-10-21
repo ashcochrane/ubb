@@ -26,14 +26,14 @@
 // ⚠ WHY THIS IS NOT ON THE TASKS SURFACE, THOUGH THE TICKET NAMES IT THERE.
 // The run page reads `GET /tasks/{id}` and nothing else. A run carries no
 // customer id and no postings; the one usage list the contract publishes is
-// per customer; its row, `UsageEventOut`, carries no measurement status; and
-// the projection is never accumulated into the run's own counters. There is
-// no wire-borne posting for the tasks surface to render, and inventing one
-// from the regime would put a payload on the page that nobody read. The one
-// surface that renders a charge posting is this one, and the run page says in
-// its own words what its totals leave out (`RUN_TOTALS_LEAVE_OUT_THE_CHARGE`
-// in `features/tasks/lib/runs.ts`). A per-run read of postings is a contract
-// change nobody owns.
+// per customer; and its row, `UsageEventOut`, carries no measurement status.
+// There is no wire-borne posting for the tasks surface to render, and
+// inventing one from the regime would put a payload on the page that nobody
+// read. The one surface that renders a charge posting is this one, and the run
+// page says in its own words where the charge sits among its totals — in what
+// the run billed since #553, never in its supplier cost or events
+// (`RUN_TOTALS_AND_THE_CHARGE` in `features/tasks/lib/runs.ts`). A per-run read
+// of postings is a contract change nobody owns.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";

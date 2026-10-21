@@ -49,6 +49,15 @@ export type Rule = MeteringSchemas["RateOut"];
 export type PaginatedRules = MeteringSchemas["PaginatedRates"];
 
 /**
+ * One agreed price a Pricing Book holds: what one delivered unit of a kind of
+ * work sells for, from when, until when (#553). Its own read, beside the
+ * rules' — an agreed price is not a rule, and the two lines share a book and
+ * a publish act and nothing else a screen could compare.
+ */
+export type AgreedPrice = MeteringSchemas["AgreedPriceOut"];
+export type PaginatedAgreedPrices = MeteringSchemas["PaginatedAgreedPrices"];
+
+/**
  * Which arithmetic a rule runs — per unit of quantity, or once regardless.
  *
  * ⚠ RE-EXPORTED FROM THE REGISTRY RATHER THAN DERIVED FROM THE SCHEMA. The
@@ -186,6 +195,9 @@ export interface ListRulesParams {
   cursor?: string;
   limit?: number;
 }
+
+/** The agreed-prices read takes the rules read's three questions. */
+export type ListAgreedPricesParams = ListRulesParams;
 
 /** Which rule to ask the inherited-rule route about. */
 export interface InheritedRuleParams {

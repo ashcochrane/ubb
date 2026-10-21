@@ -183,32 +183,33 @@ export const RUN_TOTALS_COVER =
   "Totals over every metered event under this run, including the work contained in it.";
 
 /**
- * What they are NOT over, for a run sold at one agreed price (#425).
+ * Where the Charge sits among them, for a run sold at one agreed price (#425;
+ * rewritten for #553's totals rule, A9).
  *
- * The projection of a delivered run's Charge is a posting under the run — it
- * names the run as its task — that the run's own counters never accumulate:
- * `TaskService.accumulate_cost` runs on the metered recording path and on no
- * other, so the totals above leave out exactly the posting that carries the
- * run's revenue. "Every event under this run" was one posting short on the
- * one run where that posting is the money, and this sentence is the nearest
- * the tasks surface can get to it: the contract publishes no read of a run's
- * postings, so the posting itself renders on the events surface and nowhere
- * else.
+ * The projection of a delivered run's Charge is a posting under the run, and
+ * since #553 it reaches the run's BILLED total — from the close that created
+ * it — and nothing else: never the supplier cost, never the event count, never
+ * the count of what is unpriced (`TaskService.take_up_a_charge`). This sentence
+ * used to say the totals left the Charge out, which was true while the
+ * projection reached no counter at all.
  *
- * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE. Nothing in the
- * console can see the day a later slice makes the projection accumulate into
- * the run; this constant is the console site to revisit then, and the test
- * that pins it is the one to rewrite.
+ * The run's customer price still reads as not applicable at the level of its
+ * events — none of them carries a price of its own — and the agreed price row
+ * below is where the charge is stated, owed or not by how the run ended.
+ *
+ * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE: this constant is
+ * the console site to revisit if the rule moves again, and the test that pins
+ * it is the one to rewrite.
  */
-export const RUN_TOTALS_LEAVE_OUT_THE_CHARGE =
-  "A run sold at one agreed price also carries that price as one charge posting once it delivers. These totals do not count it; the agreed price below does.";
+export const RUN_TOTALS_AND_THE_CHARGE =
+  "A run sold at one agreed price earns that price as one charge when it delivers: it counts in what the run billed from that close, and never in its supplier cost or its event count. The agreed price below is that charge.";
 
-/** The sentence under the totals: what they cover, and — where it applies — what they leave out. */
+/** The sentence under the totals: what they cover, and — where it applies — where the Charge sits. */
 export function describeRunTotals(
   applicability: Pick<PriceApplicability, "soldAtOnePrice">,
 ): string {
   return applicability.soldAtOnePrice
-    ? `${RUN_TOTALS_COVER} ${RUN_TOTALS_LEAVE_OUT_THE_CHARGE}`
+    ? `${RUN_TOTALS_COVER} ${RUN_TOTALS_AND_THE_CHARGE}`
     : RUN_TOTALS_COVER;
 }
 

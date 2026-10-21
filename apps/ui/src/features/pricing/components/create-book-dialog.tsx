@@ -16,7 +16,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { useHasProduct } from "@/hooks/use-tenant-config";
 import { cn } from "@/lib/utils";
 import { toastSuccess } from "@/lib/mutations";
 import { useDeclareCostBook, useDeclarePricingBook } from "../api/queries";
@@ -43,7 +42,11 @@ type Kind = "cost" | "pricing";
  * half that has one. A single body carrying a kind word is what the split
  * deleted.
  *
- * A Pricing Book needs the Billing product; a cost book is always available.
+ * Both kinds are available to every workspace (#553): a Pricing Book takes the
+ * cost book's metering floor, because billing mode does not decide whether UBB
+ * may know a customer's agreed price. A workspace that meters without billing
+ * records its prices for its own margin reporting, and the book's own page
+ * tells it what enabling billing later would change.
  */
 export function CreateBookDialog({
   open,
@@ -54,7 +57,6 @@ export function CreateBookDialog({
   onOpenChange: (open: boolean) => void;
   onCreated?: (book: AnyBook) => void;
 }) {
-  const hasBilling = useHasProduct("billing");
   const [kind, setKind] = React.useState<Kind>("cost");
   const declareCost = useDeclareCostBook();
   const declarePricing = useDeclarePricingBook();
@@ -135,17 +137,10 @@ export function CreateBookDialog({
               <BookKindOption
                 selected={kind === "pricing"}
                 title="Pricing book"
-                description="What you bill your customers."
-                disabled={!hasBilling}
+                description="What your customers are agreed to pay."
                 onSelect={() => setKind("pricing")}
               />
             </div>
-            {!hasBilling && (
-              <p className="text-xs text-muted-foreground">
-                Pricing books need the Billing product, which isn't enabled for
-                this workspace. Cost books are always available.
-              </p>
-            )}
           </div>
           <FormField
             label="Key"

@@ -24,6 +24,7 @@
 import { MOCK_DECLARED_AXIS_KEYS } from "@/hooks/use-grouping-options";
 
 import type {
+  AgreedPrice,
   BookPublish,
   CostBook,
   GroupingFieldDef,
@@ -350,6 +351,49 @@ const ACTOR = {
   actor_id: "usr_9f21c4",
   actor_display: "dana@acme.ai",
 } as const;
+
+/**
+ * The agreed prices the books hold (#553) — what one delivered unit of a kind
+ * of work sells for.
+ *
+ * The kind keys are the tasks mock's own words (`video-render` sold at one
+ * price; `transcript-cleanup`, the negotiated one), spelled rather than
+ * imported because features do not import each other — so a run of
+ * `video-render` and the line pricing it read as one workspace. The standard
+ * book carries a repriced line WITH its history, which is what the editor's
+ * history toggle exists to show; the customer's own book carries the
+ * negotiated price that out-ranks the default for that customer.
+ */
+const VIDEO_RENDER_LINEAGE = "1a9e0001-0000-4000-8000-00000000a001";
+export const MOCK_AGREED_PRICES: AgreedPrice[] = [
+  {
+    id: "a9e00001-0000-4000-8000-000000000001",
+    book_id: STANDARD_PRICE_BOOK,
+    lineage_id: VIDEO_RENDER_LINEAGE,
+    task_type: "video-render",
+    agreed_price_micros: 4_500_000,
+    valid_from: "2026-03-01T00:00:00Z",
+    valid_to: "2026-06-01T00:00:00Z",
+  },
+  {
+    id: "a9e00001-0000-4000-8000-000000000002",
+    book_id: STANDARD_PRICE_BOOK,
+    lineage_id: VIDEO_RENDER_LINEAGE,
+    task_type: "video-render",
+    agreed_price_micros: 5_000_000,
+    valid_from: "2026-06-01T00:00:00Z",
+    valid_to: null,
+  },
+  {
+    id: "a9e00001-0000-4000-8000-000000000003",
+    book_id: CUSTOMERS_OWN_BOOK,
+    lineage_id: "1a9e0001-0000-4000-8000-00000000a003",
+    task_type: "transcript-cleanup",
+    agreed_price_micros: 12_000_000,
+    valid_from: "2026-05-15T00:00:00Z",
+    valid_to: null,
+  },
+];
 
 /**
  * The changes PENDING on the standard price list — three drafts, and the three

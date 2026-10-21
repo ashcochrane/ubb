@@ -14,8 +14,10 @@ import type {
   GroupingFieldRegistry,
   InheritedRule,
   InheritedRuleParams,
+  ListAgreedPricesParams,
   ListBooksParams,
   ListRulesParams,
+  PaginatedAgreedPrices,
   PaginatedBookPublishes,
   PaginatedCostBooks,
   PaginatedPricingBooks,
@@ -90,6 +92,30 @@ export async function listRules(
 ): Promise<PaginatedRules> {
   return unwrap(
     await meteringApi.GET("/pricing/books/{book_id}/rates", {
+      params: {
+        path: { book_id: bookId },
+        query: {
+          include_history: params?.include_history,
+          as_of: params?.as_of,
+          cursor: params?.cursor,
+          limit: params?.limit,
+        },
+      },
+    }),
+  );
+}
+
+/**
+ * A Pricing Book's agreed prices (#553): the lines still open by default,
+ * every version with `include_history`, the line in force at one instant with
+ * `as_of`. A cost book holds none, and its id answers 404.
+ */
+export async function listAgreedPrices(
+  bookId: string,
+  params?: ListAgreedPricesParams,
+): Promise<PaginatedAgreedPrices> {
+  return unwrap(
+    await meteringApi.GET("/pricing/books/{book_id}/agreed-prices", {
       params: {
         path: { book_id: bookId },
         query: {

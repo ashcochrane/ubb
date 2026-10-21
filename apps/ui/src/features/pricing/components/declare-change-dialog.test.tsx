@@ -342,3 +342,87 @@ describe("what a rule may select on", () => {
     ]);
   });
 });
+
+describe("declaring an agreed price (#553)", () => {
+  /** Choose the agreed-price line, then stage one through its own fields. */
+  async function stageAgreedPrice(fields: { kindOfWork: string; amount?: string; retire?: boolean }) {
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.click(dialog.getByRole("radio", { name: /An agreed price/ }));
+    if (fields.retire) {
+      fireEvent.click(dialog.getByRole("radio", { name: /Retire the agreed price/ }));
+    }
+    fireEvent.change(dialog.getByLabelText("Kind of work"), {
+      target: { value: fields.kindOfWork },
+    });
+    if (fields.amount !== undefined) {
+      fireEvent.change(dialog.getByLabelText(/^Agreed price per delivered run/), {
+        target: { value: fields.amount },
+      });
+    }
+    fireEvent.click(dialog.getByRole("button", { name: "Add to this draft" }));
+  }
+
+  it("declares an agreed price beside a rate, in one draft, and its diff names the kind of work", async () => {
+    renderDialog();
+    await stageAgreedPrice({ kindOfWork: "image-upscale", amount: "3.5" });
+    await within(screen.getByRole("dialog")).findByText("image-upscale");
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("radio", { name: /A rate/ }));
+    await fillRule({
+      measurement: "claude_input_tokens",
+      eventType: "chat.completion",
+      method: "Direct event price",
+      amount: "6",
+    });
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /Declare 2 changes/ }),
+    );
+
+    const changes = within(
+      await screen.findByRole("region", { name: "Changes to this book" }),
+    );
+    await waitFor(() => expect(changes.getByText("image-upscale")).toBeInTheDocument());
+    const row = changes.getByText("image-upscale").closest("li") as HTMLElement;
+    expect(within(row).getByText("Adds an agreed price")).toBeInTheDocument();
+    expect(within(row).getByText("$3.50")).toBeInTheDocument();
+    // ONE draft carrying both lines.
+    const draft = row.parentElement as HTMLElement;
+    expect(within(draft).getByText("claude_input_tokens")).toBeInTheDocument();
+  });
+
+  it("asks for the amount of an added agreed price, and stages nothing without it", async () => {
+    renderDialog();
+    await stageAgreedPrice({ kindOfWork: "image-upscale" });
+
+    const dialog = within(screen.getByRole("dialog"));
+    expect(await dialog.findByText("Required")).toBeInTheDocument();
+    expect(dialog.queryByText("In this draft")).not.toBeInTheDocument();
+  });
+
+  it("retires an agreed price by its kind of work alone", async () => {
+    renderDialog();
+    await stageAgreedPrice({ kindOfWork: "video-render", retire: true });
+    const dialog = within(screen.getByRole("dialog"));
+    await dialog.findByText("video-render");
+    // A retirement states no amount, so the form offers none.
+    expect(dialog.queryByLabelText(/^Agreed price per delivered run/)).not.toBeInTheDocument();
+
+    fireEvent.click(dialog.getByRole("button", { name: /Declare 1 change/ }));
+
+    const changes = within(
+      await screen.findByRole("region", { name: "Changes to this book" }),
+    );
+    await waitFor(() => expect(changes.getByText("Retires the agreed price")).toBeInTheDocument());
+    const row = changes.getByText("Retires the agreed price").closest("li") as HTMLElement;
+    expect(within(row).getByText("$5.00")).toBeInTheDocument();
+  });
+
+  it("offers no agreed price on a cost book, which holds what a supplier charged", async () => {
+    renderDialog(OPENAI_COSTS);
+    await screen.findByLabelText("model");
+
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("radio", { name: /An agreed price/ }),
+    ).not.toBeInTheDocument();
+  });
+});

@@ -6,8 +6,11 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsMeteringOnly } from "@/hooks/use-tenant-config";
 import { useBook } from "../api/queries";
 import { isCostBook, type AnyBook } from "../api/types";
+import { METERING_ONLY_PRICES } from "../lib/agreed-prices";
+import { AgreedPricesTable } from "./agreed-prices-table";
 import { BookChangesPanel } from "./book-changes-panel";
 import { DeclareChangeDialog } from "./declare-change-dialog";
 import { RulesTable } from "./rules-table";
@@ -66,6 +69,7 @@ export function BookDetailPage({
   }) => void;
 }) {
   const book = useBook(bookId);
+  const meteringOnly = useIsMeteringOnly();
   const [declareOpen, setDeclareOpen] = React.useState(false);
 
   if (book.isLoading) {
@@ -152,7 +156,7 @@ export function BookDetailPage({
       <p className="text-[12px] text-text-muted">
         {isCostBook(data)
           ? "A cost book: these rules derive what one supplier charges you (your COGS)."
-          : "A pricing book: these rules set what your customers are billed."}{" "}
+          : "A pricing book: what your customers are agreed to pay — per event, by its rules, and per delivered run, by its agreed prices."}{" "}
         {onShowAuditTrail && (
           <button
             type="button"
@@ -169,9 +173,17 @@ export function BookDetailPage({
         )}
       </p>
 
+      {!isCostBook(data) && meteringOnly && (
+        <p className="text-[12px] text-text-secondary" role="note">
+          {METERING_ONLY_PRICES}
+        </p>
+      )}
+
       <BookChangesPanel book={data} onDeclareChange={() => setDeclareOpen(true)} />
 
       <RulesTable book={data} />
+
+      {!isCostBook(data) && <AgreedPricesTable book={data} />}
 
       <DeclareChangeDialog
         book={data}
