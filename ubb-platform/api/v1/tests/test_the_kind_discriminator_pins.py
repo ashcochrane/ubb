@@ -260,25 +260,25 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
 
         assert Task.objects.get(id=started).event_count == 0
 
-    def test_the_billed_total_on_the_unit_of_work_is_unmoved_too(self):
-        """⚠ THE COUNTER AND THE MONEY MOVE IN ONE `UPDATE`, so this is not a
-        second claim — it is what pin 2 costs, said out loud rather than left
-        for a reader to discover.
+    def test_the_billed_total_holds_the_charge_and_the_count_does_not(self):
+        """⚠ PIN 2'S COST WAS PAID IN #553, AND THIS IS THE CASE THAT SAYS SO.
 
-        `accumulate_cost` writes `event_count` and both running totals in one
-        statement, so a projection cannot add the revenue without adding to the
-        count. The unit's own billed total therefore stays at what its METERED
-        calls billed, and the agreed price lives on the Charge and on the
-        posting. Pin 4 below is what makes that revenue visible where it is
-        supposed to be visible.
+        Until then the counter and the money moved in one statement —
+        `accumulate_cost` writes `event_count` and both running totals together
+        — so a projection could not add the revenue without adding to the
+        count, and the unit's billed total stayed at what its metered calls
+        billed while the agreed price lived only on the Charge. A9 separated
+        them: the projection takes the Charge up through a door of its own
+        (`TaskService.take_up_a_charge`), which moves the BILLED total and
+        nothing else. So the money is in the unit's total and the count is
+        where pin 2 holds it — the two directions G14 says pull apart, each
+        on its own field (ADR-0021 §3).
 
-        ⚠ **AND UNDER THIS REGIME WHAT ITS METERED CALLS BILLED IS NOTHING
-        (#418).** Every posting under a piece of work sold at one agreed price
-        carries `not_applicable` rather than an amount, because the customer
-        revenue for it is the agreed price. So the total is zero from BOTH
-        directions — the projection does not add to it and the metered calls
-        have nothing to add — and the assertion says so in both, because a bare
-        `== 0` would be satisfied by a fixture that recorded no calls at all.
+        Under this regime the metered calls add nothing (#418): every posting
+        under a piece of work sold at one agreed price carries `not_applicable`
+        rather than an amount. So the billed total is the Charge exactly, and
+        the assertion reads both halves, because a bare `== price` would be
+        satisfied by a projection that also counted itself an event.
         """
         started = self._priced_work()
         metered = self._a_metered_sale(started)
@@ -286,7 +286,9 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
         self._close(started)
 
         assert metered.billed_cost_micros is None
-        assert Task.objects.get(id=started).total_billed_cost_micros == 0
+        unit = Task.objects.get(id=started)
+        assert unit.total_billed_cost_micros == THE_AGREED_PRICE
+        assert unit.event_count == 1
 
 
 @pytest.mark.django_db

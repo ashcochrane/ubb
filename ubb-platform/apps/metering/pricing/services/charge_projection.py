@@ -48,6 +48,8 @@ reader to notice: the two writers above complete a column on a row the recording
 path created, and this one creates the row. What makes that admissible is that
 the row it creates is the one kind no caller can report.
 """
+from django.db import transaction
+
 from apps.metering.pricing.receipts import (
     PRICING_REGIME_KEY, ReceiptSubject, Resolution, build_receipt,
 )
@@ -236,6 +238,14 @@ def project_the_charge(charge):
     of who acted), so nothing can reach this refusal from outside a test today.
     Refusing loudly is what stops the gap being closed by accident.
 
+    **AND IT PUTS THE CHARGE ON THE UNIT'S BILLED TOTAL (#553 A9).** The
+    unit's `total_billed_cost_micros` takes the posting up in the same
+    transaction — and its provider-cost total, event count and unpriced
+    count do not, because the Charge is revenue rather than supplier work
+    or a reported event. This function owns that transaction, so the
+    posting and the total can never be separately durable, under a
+    caller's `atomic` or with none.
+
     Must be called inside @transaction.atomic, with the transition that earned
     the Charge — the same requirement, for the same reason, as writing the
     Charge itself: a crash between the two would leave a charge that never
@@ -246,6 +256,17 @@ def project_the_charge(charge):
             "a compensating charge is not projected onto a posting: the "
             "money rails ignore a non-positive amount, so the reversal would "
             "move nothing while looking like it had")
+    # THE POSTING AND THE UNIT'S BILLED TOTAL ARE ONE FACT (#553 A9, ADR-0021
+    # §3), so they are one transaction of this function's own — a savepoint
+    # under the close's `atomic`, and a real transaction for a caller holding
+    # none. A failure anywhere below takes the posting back with the total.
+    with transaction.atomic():
+        return _the_posting_and_the_units_billed_total(charge)
+
+
+def _the_posting_and_the_units_billed_total(charge):
+    from apps.platform.work.services import TaskService
+
     task = charge.task
     posting = Posting.objects.create(
         tenant_id=charge.tenant_id,
@@ -281,6 +302,12 @@ def project_the_charge(charge):
         task_id=str(charge.task_id),
         billing_owner_id=str(posting.billing_owner_id),
         effective_at=posting.effective_at.isoformat()))
+    # THE UNIT'S BILLED TOTAL TAKES THE POSTING UP — and only that total: the
+    # Charge is the unit's revenue, so its provider-cost total, its event
+    # count and its unpriced count stay where the recording path left them
+    # (`TaskService.take_up_a_charge`).
+    TaskService.take_up_a_charge(charge.task_id,
+                                 billed_cost_micros=posting.billed_cost_micros)
     # ⚠ THE DISCRIMINATOR IS DELIBERATELY NOT ON THE PAYLOAD, and the payload's
     # own rule is what decides it: `costing_status` joined this event because
     # two products count their exclusions off it, and the field beside it

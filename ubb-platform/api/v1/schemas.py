@@ -1555,6 +1555,20 @@ class CloseTaskRequest(Schema):
     reason_detail: Optional[str] = None
 
 
+#: WHAT A UNIT'S BILLED TOTAL HOLDS, published once for the two schemas that
+#: carry it (#553 A9, ADR-0021 §3). A unit sold at one agreed price earns its
+#: revenue as ONE Charge when it delivers, projected onto one posting under
+#: the unit; that posting reaches this total and nothing else — never the
+#: provider-cost total, the event count or the unpriced count.
+TASK_BILLED_TOTAL_MEANING = (
+    "What this unit billed, in micros: the sum of the customer prices UBB "
+    "has resolved for its events and, for a unit sold at one agreed price "
+    "that delivered, its Charge — included from the close that created it. "
+    "`unpriced_event_count` says how many events it does not include. The "
+    "Charge is never in `total_provider_cost_micros`, `event_count` or "
+    "`unpriced_event_count`.")
+
+
 class CloseTaskResponse(Schema):
     task_id: str
     # Set when the closed unit is contained work (#38). Closing a PARENT
@@ -1582,7 +1596,8 @@ class CloseTaskResponse(Schema):
     #: hands back the ORIGINAL unit of work, not a second one. `replayed` beside
     #: it is what says nothing new happened.
     charge_created: bool
-    total_billed_cost_micros: int
+    total_billed_cost_micros: int = Field(
+        description=TASK_BILLED_TOTAL_MEANING)
     total_provider_cost_micros: int
     #: See `TaskOut.unresolved_event_count` — a closed unit's total is read on
     #: exactly the same terms as a running one's, and closing it settles
@@ -1636,7 +1651,8 @@ class TaskOut(Schema):
     #: An event whose Event Type declares no supplier cost is not counted: there
     #: is nothing missing about a cost that does not exist.
     unresolved_event_count: int
-    total_billed_cost_micros: int
+    total_billed_cost_micros: int = Field(
+        description=TASK_BILLED_TOTAL_MEANING)
     #: HOW MANY OF THIS UNIT'S EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
     #:
     #: The mirror of the count above: the billed total is the sum of the

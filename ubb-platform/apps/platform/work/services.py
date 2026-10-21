@@ -997,6 +997,47 @@ class TaskService:
             unit.save(update_fields=[*fields, "updated_at"])
 
     @staticmethod
+    def take_up_a_charge(task_id, *, billed_cost_micros):
+        """A delivered unit's Charge is part of what the unit BILLED: add its
+        posting's amount to the unit's billed total and to nothing else
+        (#553 A9, ADR-0021 §3).
+
+        ⚠ WHY THIS EXISTS. `accumulate_cost` runs on the metered recording
+        path and on no other, so the one posting under a fixed-price unit that
+        carries its revenue — the Charge's projection — never reached the
+        unit's totals, and a delivered run's billed total read zero beside the
+        agreed price it earned. The totals rule (#553's 2026-10-06 constraint)
+        is that a Task-level billed total whose source of truth is the posting
+        includes the unit's own fixed-price posting, and a COGS or
+        provider-cost total must not.
+
+        So it moves `total_billed_cost_micros` alone: never the provider-cost
+        total (the Charge is revenue, not supplier work), never `event_count`
+        (the Charge is not an event anybody reported) and never the unpriced
+        count (its price is `known`). A Charge's unit is always whole work —
+        `ck_task_agreed_price_only_on_a_whole_fixed_unit` admits a pinned
+        price nowhere else — so there is no parent to roll up into, and a unit
+        with one is refused rather than half-handled.
+
+        Must be called inside the transaction that wrote the Charge's posting,
+        and it is: `charge_projection.project_the_charge` makes the posting
+        and this one transaction of its own, so the two can never become
+        separately durable facts — the same rule the late-resolution door
+        keeps (ADR-0020 §7). Exactly once follows from the close: only the
+        winning transition into the delivered state writes a Charge.
+
+        Returns the unit as it now stands.
+        """
+        unit = Task.objects.select_for_update().get(id=task_id)
+        if unit.parent_id is not None:
+            raise ValueError(
+                "a Charge's unit is whole work: contained work never pins an "
+                "agreed price, so it never earns a Charge to take up")
+        unit.total_billed_cost_micros += int(billed_cost_micros)
+        unit.save(update_fields=["total_billed_cost_micros", "updated_at"])
+        return unit
+
+    @staticmethod
     def _flip(task_id, status, *, cascade, reason="", control_id="",
               declaration=None, tenant_id=None, customer_id=None):
         """THE ONE TERMINAL TRANSITION, and the one place terminality is

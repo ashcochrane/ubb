@@ -604,6 +604,14 @@ def close(tenant, task_id, payload):
         # resolves a price out of that same app and hands it to the kernel's own
         # writer.
         charge = charge_for_delivered_work(closed) if transitioned else None
+        # ⚠ THE CHARGE IS ON THE UNIT'S BILLED TOTAL NOW (#553 A9), written by
+        # the projection inside this same `atomic` — so the response reads the
+        # unit back rather than answering the total it had before its Charge.
+        # A replay never reaches this: the original's close already took the
+        # Charge up, and the row it reads carries it.
+        if charge is not None:
+            closed.refresh_from_db(fields=["total_billed_cost_micros",
+                                           "updated_at"])
 
     # A CLOSE THAT DID NOT WIN THE TRANSITION IS ONE OF EXACTLY TWO THINGS, and
     # telling them apart is the point of this endpoint (spec §5). The unit was

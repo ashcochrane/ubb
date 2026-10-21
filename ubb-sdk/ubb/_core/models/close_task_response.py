@@ -32,7 +32,10 @@ class CloseTaskResponse:
             replayed (bool):
             status (CloseTaskResponseStatus):
             task_id (str):
-            total_billed_cost_micros (int):
+            total_billed_cost_micros (int): What this unit billed, in micros: the sum of the customer prices UBB has
+                resolved for its events and, for a unit sold at one agreed price that delivered, its Charge — included from the
+                close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in
+                `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.
             total_provider_cost_micros (int):
             unpriced_event_count (int):
             unresolved_event_count (int):
