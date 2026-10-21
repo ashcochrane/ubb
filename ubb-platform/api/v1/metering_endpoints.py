@@ -32,14 +32,16 @@ from api.v1.schemas import (
     TenantDefaultMarkupIn, TenantDefaultMarkupOut,
     TaskAnalyticsOut,
     PricingBookIn, PricingBookOut, CostBookIn, CostBookOut,
-    PaginatedPricingBooks, PaginatedCostBooks, PaginatedRates,
+    PaginatedAgreedPrices, PaginatedPricingBooks, PaginatedCostBooks,
+    PaginatedRates,
     BookPublishIn, BookPublishOut, PaginatedBookPublishes,
     CustomerOverrideIn, InheritedRuleOut, inherited_rule_out,
     ResolutionRunIn, ResolutionRunOut, resolution_run_out,
     PaginatedUnresolvedQueue, ProjectedAdjustmentOut, WaivedLossOut,
     UndeclaredGroupingField,
     book_change_body, book_change_diff_out, book_publish_out,
-    pricing_book_out, cost_book_out, rate_out, usage_event_out,
+    agreed_price_out, pricing_book_out, cost_book_out, rate_out,
+    usage_event_out,
     DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
     GroupingOptionsOut, EconomicsOut,
 )
@@ -1293,6 +1295,34 @@ def list_book_rates(request, book_id: UUID, include_history: bool = False,
     elif not include_history:
         qs = qs.filter(valid_to__isnull=True)
     return 200, page(qs, cursor, limit, serialize=rate_out)
+
+
+@metering_router.get("/pricing/books/{book_id}/agreed-prices",
+                     response={200: PaginatedAgreedPrices, 404: ProblemOut})
+@role_floor(READ)
+def list_book_agreed_prices(request, book_id: UUID,
+                            include_history: bool = False,
+                            as_of: datetime = None, cursor: str = None,
+                            limit: int = 50):
+    """List the agreed prices in a Pricing Book, newest first: what one
+    delivered unit of each kind of work sells for.
+
+    Lines still open by default — in force now, or scheduled to open —
+    ``include_history`` returns every version (a superseded or retired line
+    carries a ``valid_to``), and ``as_of`` returns the line in force at that
+    instant, at most one per kind of work. Lines are added, repriced and
+    retired through the book's publish act.
+
+    A cost book holds no agreed price: its id answers 404 here."""
+    from apps.metering.pricing.services.book_service import agreed_prices_of
+
+    book = get_object_or_404(PricingBook, id=book_id,
+                             tenant=request.auth.tenant)
+    _gate_a_pricing_book(request)
+    return 200, page(
+        agreed_prices_of(book, as_of=as_of,
+                         include_history=include_history),
+        cursor, limit, serialize=agreed_price_out)
 
 
 # --- Every change to a Pricing Book is a publish, and a draft is not one ------

@@ -2287,6 +2287,40 @@ class RateOut(Schema):
     valid_to: Optional[str] = None
 
 
+class AgreedPriceOut(Schema):
+    """One agreed price in a Pricing Book: what one delivered unit of a
+    declared kind of work sells for, in USD micros, from `valid_from` until
+    `valid_to`.
+
+    The window is half-open — in force at `valid_from`, gone at `valid_to` —
+    and `valid_to` is null while the line is open. A reprice closes a line and
+    opens its successor at one instant, and the successor carries the same
+    `lineage_id`, so a lineage is the history of one kind of work's price in
+    one book.
+    """
+    id: str
+    book_id: str
+    lineage_id: str
+    task_type: str
+    agreed_price_micros: int
+    valid_from: str
+    # Required and nullable (#569's review): null is "still open".
+    valid_to: Optional[str]
+
+
+def agreed_price_out(line):
+    """AgreedPriceOut's serializer — one agreed-price line under its book."""
+    return {
+        "id": str(line.id),
+        "book_id": str(line.pricing_book_id),
+        "lineage_id": str(line.lineage_id),
+        "task_type": line.task_type,
+        "agreed_price_micros": line.agreed_price_micros,
+        "valid_from": line.valid_from.isoformat(),
+        "valid_to": line.valid_to.isoformat() if line.valid_to else None,
+    }
+
+
 #: THE PROPERTY/COLUMN MISMATCH IS GONE, AND THE JOIN THAT HELD IT WENT WITH IT
 #: (#366, ruling 15).
 #:
@@ -3245,6 +3279,10 @@ class PaginatedPricingBooks(Paginated[PricingBookOut]):
 
 
 class PaginatedCostBooks(Paginated[CostBookOut]):
+    pass
+
+
+class PaginatedAgreedPrices(Paginated[AgreedPriceOut]):
     pass
 
 

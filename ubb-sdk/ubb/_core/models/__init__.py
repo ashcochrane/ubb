@@ -1,6 +1,7 @@
 """ Contains all the data models used in inputs/outputs """
 
 from .affordability_response import AffordabilityResponse
+from .agreed_price_out import AgreedPriceOut
 from .agreed_price_terms_out import AgreedPriceTermsOut
 from .analytics_earnings_out import AnalyticsEarningsOut
 from .analytics_summary_out import AnalyticsSummaryOut
@@ -168,6 +169,7 @@ from .measurement_out_value_type import MeasurementOutValueType
 from .member_list_response import MemberListResponse
 from .member_out import MemberOut
 from .member_role_update_in import MemberRoleUpdateIn
+from .paginated_agreed_prices import PaginatedAgreedPrices
 from .paginated_book_publishes import PaginatedBookPublishes
 from .paginated_cost_books import PaginatedCostBooks
 from .paginated_event_categories import PaginatedEventCategories
@@ -384,6 +386,7 @@ from .withdraw_response import WithdrawResponse
 
 __all__ = (
     "AffordabilityResponse",
+    "AgreedPriceOut",
     "AgreedPriceTermsOut",
     "AnalyticsEarningsOut",
     "AnalyticsSummaryOut",
@@ -551,6 +554,7 @@ __all__ = (
     "MemberRoleUpdateIn",
     "MeSubscriptionInvoiceOut",
     "MeUsageInvoiceOut",
+    "PaginatedAgreedPrices",
     "PaginatedBookPublishes",
     "PaginatedCostBooks",
     "PaginatedEventCategories",

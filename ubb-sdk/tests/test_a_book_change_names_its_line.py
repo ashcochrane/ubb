@@ -20,6 +20,7 @@ from ubb._core.models.book_publish_in import BookPublishIn
 from ubb._core.models.book_publish_out import BookPublishOut
 from ubb._core.models.book_rate_change_diff_out import BookRateChangeDiffOut
 from ubb._core.models.book_rate_change_in import BookRateChangeIn
+from ubb._core.models.paginated_agreed_prices import PaginatedAgreedPrices
 
 A_RATE_CHANGE = {"line": "rate", "kind": "reprice",
                  "measurement_key": "input_tokens", "provider": "",
@@ -79,3 +80,22 @@ class ABookChangeNamesItsLineTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "line must match const"):
             BookRateChangeIn.from_dict(dict(AN_AGREED_PRICE_CHANGE,
                                             measurement_key="input_tokens"))
+
+
+class TheAgreedPricesReadIsTypedTest(unittest.TestCase):
+    """The read's models (#553 story 26): generated, so an integrator checking
+    configuration in code gets each line typed with no wrapper."""
+
+    def test_a_page_of_agreed_prices_parses_into_typed_lines(self):
+        page = PaginatedAgreedPrices.from_dict({
+            "data": [{"id": "l1", "book_id": "b1", "lineage_id": "g1",
+                      "task_type": "transcode",
+                      "agreed_price_micros": 8_000_000,
+                      "valid_from": "2026-10-21T00:00:00+00:00",
+                      "valid_to": None}],
+            "next_cursor": None, "has_more": False})
+
+        (line,) = page.data
+        self.assertEqual(line.task_type, "transcode")
+        self.assertEqual(line.agreed_price_micros, 8_000_000)
+        self.assertIsNone(line.valid_to)

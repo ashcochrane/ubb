@@ -82,6 +82,57 @@
         "title": "AffordabilityResponse",
         "type": "object"
       },
+      "AgreedPriceOut": {
+        "description": "One agreed price in a Pricing Book: what one delivered unit of a\ndeclared kind of work sells for, in USD micros, from `valid_from` until\n`valid_to`.\n\nThe window is half-open \u2014 in force at `valid_from`, gone at `valid_to` \u2014\nand `valid_to` is null while the line is open. A reprice closes a line and\nopens its successor at one instant, and the successor carries the same\n`lineage_id`, so a lineage is the history of one kind of work's price in\none book.",
+        "properties": {
+          "agreed_price_micros": {
+            "title": "Agreed Price Micros",
+            "type": "integer"
+          },
+          "book_id": {
+            "title": "Book Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lineage_id": {
+            "title": "Lineage Id",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "id",
+          "book_id",
+          "lineage_id",
+          "task_type",
+          "agreed_price_micros",
+          "valid_from",
+          "valid_to"
+        ],
+        "title": "AgreedPriceOut",
+        "type": "object"
+      },
       "AgreedPriceTermsOut": {
         "description": "What one delivered unit of the kind of work sells for, in USD micros.",
         "properties": {
@@ -4992,6 +5043,38 @@
           "role"
         ],
         "title": "MemberRoleUpdateIn",
+        "type": "object"
+      },
+      "PaginatedAgreedPrices": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AgreedPriceOut"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "PaginatedAgreedPrices",
         "type": "object"
       },
       "PaginatedBookPublishes": {
@@ -15588,6 +15671,105 @@
           }
         ],
         "summary": "List Grouping Field Values"
+      }
+    },
+    "/api/v1/metering/pricing/books/{book_id}/agreed-prices": {
+      "get": {
+        "description": "List the agreed prices in a Pricing Book, newest first: what one\ndelivered unit of each kind of work sells for.\n\nLines still open by default \u2014 in force now, or scheduled to open \u2014\n``include_history`` returns every version (a superseded or retired line\ncarries a ``valid_to``), and ``as_of`` returns the line in force at that\ninstant, at most one per kind of work. Lines are added, repriced and\nretired through the book's publish act.\n\nA cost book holds no agreed price: its id answers 404 here.",
+        "operationId": "api_v1_metering_endpoints_list_book_agreed_prices",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "book_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Book Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include History",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAgreedPrices"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "List Book Agreed Prices"
       }
     },
     "/api/v1/metering/pricing/books/{book_id}/publishes": {

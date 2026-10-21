@@ -527,3 +527,20 @@ authorisations:
       what a developer asks once that code exists, from the console's builder
       page, and no running integration asks it. The generated core carries the
       request and the answer typed for a caller who wants them.
+  - id: pricing-books-553-the-agreed-prices-read
+    issue: 553
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION, `generated_only`: reading a Pricing Book's agreed
+      prices (`GET /pricing/books/{book_id}/agreed-prices`), the sibling of
+      the book's rates read and, like it, unwrapped.
+
+      WHY IT IS NOT WRAPPED, AND WHY THAT IS THE SPEC'S DECISION RATHER THAN A
+      DEFERRAL. #553's spec rules the SDK side "generated models only": the
+      publish act that declares an agreed price is generated-only, and so is
+      every other read of a book's contents. A running integration starts
+      work, records usage and closes it; it never reads its tenant's price
+      list to do so — the start resolves the price server-side and pins it.
+      An integrator checking configuration in code (the spec's story 26)
+      gets the read typed from the generated core: `AgreedPriceOut` and
+      `PaginatedAgreedPrices`.

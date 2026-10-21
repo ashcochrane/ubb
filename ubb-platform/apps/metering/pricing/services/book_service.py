@@ -245,6 +245,24 @@ def agreed_prices_in_force_at(book, instant):
         Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
 
 
+def agreed_prices_of(book, *, as_of=None, include_history=False):
+    """The agreed prices a Pricing Book holds, as its read publishes them
+    (`GET /pricing/books/{book_id}/agreed-prices`, #553).
+
+    The rates read's three questions, asked of the other kind of line: the
+    lines still open by default — in force now or scheduled to open — every
+    version with `include_history`, and the line in force at one instant with
+    `as_of`, on the half-open window resolution reads. It is ONE query with
+    two callers: the route serves it, and the Code Builder reads the same
+    lines through it rather than through a channel of its own (spec story 27).
+    """
+    if as_of is not None:
+        return agreed_prices_in_force_at(book, as_of)
+    held = TaskPrice.objects.filter(pricing_book=book,
+                                    kind=TASK_TYPE_KIND_TASK)
+    return held if include_history else held.filter(valid_to__isnull=True)
+
+
 def latest_scheduled_boundary(book):
     """The furthest instant at which any line in this book opens or closes.
 
