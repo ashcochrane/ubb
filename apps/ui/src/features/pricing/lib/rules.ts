@@ -262,9 +262,13 @@ export const CHANGE_KINDS = {
  * rule `@/lib/localisation` applies to every value the registry has not met.
  */
 export function changeKindDone(kind: string): string {
-  return kind in CHANGE_KINDS
-    ? CHANGE_KINDS[kind as keyof typeof CHANGE_KINDS].done
-    : kind;
+  return doneIn(CHANGE_KINDS, kind);
+}
+
+/** The one reading both kinds of line share. Own keys only: a kind spelled
+ * like an object's built-in (`toString`) is a value nobody declared. */
+function doneIn(words: Readonly<Record<string, { readonly done: string }>>, kind: string): string {
+  return (Object.hasOwn(words, kind) ? words[kind]?.done : undefined) ?? kind;
 }
 
 /**
@@ -297,7 +301,5 @@ export const AGREED_PRICE_CHANGE_KINDS = {
 /** What a change to an agreed price DID, for a diff row; an unrecognised kind
  * renders as itself, for `changeKindDone`'s reason. */
 export function agreedPriceChangeKindDone(kind: string): string {
-  return kind in AGREED_PRICE_CHANGE_KINDS
-    ? AGREED_PRICE_CHANGE_KINDS[kind as keyof typeof AGREED_PRICE_CHANGE_KINDS].done
-    : kind;
+  return doneIn(AGREED_PRICE_CHANGE_KINDS, kind);
 }

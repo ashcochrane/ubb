@@ -169,22 +169,6 @@ export function statedGroupingFields(
 }
 
 /**
- * The tenant's default markup rung — ONE term.
- *
- * ⚠ **ONE FIELD, BECAUSE A MARGIN NEVER COMPOSES** (#147 §2, #369). The form
- * this replaces validated a percentage beside a flat per-event addend, because
- * two markup records could supply one; both records are deleted and the rung
- * that remains takes a percentage and nothing else. A resolved price is
- * explicable by naming one thing, and a chain whose middle terms sit on no
- * record is what that rule exists to prevent.
- *
- * ⚠ **AND AN EMPTY STRING IS NOT ZERO.** The field is required with no default
- * for the same reason the contract makes it required: a rung of zero says
- * *charge my customer exactly what the call cost*, which is a decision, and it
- * has to be typed rather than fallen into. Withdrawing the rung is the other
- * button, not an empty box.
- */
-/**
  * An agreed price as a tenant types it (#553): the kind of work, and what one
  * delivered run of it sells for, as a decimal of the currency's major unit.
  *
@@ -211,6 +195,22 @@ export function blankAgreedPrice(): AgreedPriceFormValues {
   return { task_type: "", amount: "" };
 }
 
+/**
+ * The tenant's default markup rung — ONE term.
+ *
+ * ⚠ **ONE FIELD, BECAUSE A MARGIN NEVER COMPOSES** (#147 §2, #369). The form
+ * this replaces validated a percentage beside a flat per-event addend, because
+ * two markup records could supply one; both records are deleted and the rung
+ * that remains takes a percentage and nothing else. A resolved price is
+ * explicable by naming one thing, and a chain whose middle terms sit on no
+ * record is what that rule exists to prevent.
+ *
+ * ⚠ **AND AN EMPTY STRING IS NOT ZERO.** The field is required with no default
+ * for the same reason the contract makes it required: a rung of zero says
+ * *charge my customer exactly what the call cost*, which is a decision, and it
+ * has to be typed rather than fallen into. Withdrawing the rung is the other
+ * button, not an empty box.
+ */
 export const markupFormSchema = z.object({
   markup_percent: nonNegativeNumberString("Enter a percentage of 0 or more"),
 });

@@ -12,6 +12,7 @@ import {
   formatEventMicros,
   formatExactMicros,
   formatFileSize,
+  formatParsedMicros,
   formatRoundedDollars,
   formatSignedDollars,
 } from "./format";
@@ -167,6 +168,23 @@ describe("formatExactMicros", () => {
 
   it("respects the tenant currency", () => {
     expect(formatExactMicros("4900", "eur")).toBe("€0.0049");
+  });
+});
+
+describe("formatParsedMicros", () => {
+  it("draws a parsed figure to the micro wherever the number holds it exactly", () => {
+    expect(formatParsedMicros(8_000_001, "usd")).toBe("$8.000001");
+    expect(formatParsedMicros(8_000_000, "usd")).toBe("$8.00");
+    expect(formatParsedMicros(0, "usd")).toBe("$0.00");
+    expect(formatParsedMicros(Number.MAX_SAFE_INTEGER, "usd")).toBe("$9,007,199,254.740991");
+  });
+
+  // Past 2^53 `JSON.parse` has already rounded the figure, so no digit past the
+  // cent is claimed: it is drawn as `formatMicros` draws any amount.
+  it("never claims a micro a parsed number could not hold", () => {
+    const rounded = Number.MAX_SAFE_INTEGER + 2;
+    expect(Number.isSafeInteger(rounded)).toBe(false);
+    expect(formatParsedMicros(rounded, "usd")).toBe(formatMicros(rounded, "usd"));
   });
 });
 

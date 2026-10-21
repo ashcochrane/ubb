@@ -12,7 +12,7 @@ import { listKinds, resetTasksMockState } from "../api/mock";
 import { KIND_EVENT_PRICED_KEY, KIND_FIXED_KEY, MOCK_KINDS } from "../api/mock-data";
 import type { KindOfWork } from "../api/types";
 import { CEILING_BOTH, CEILING_NEITHER } from "../lib/declaration-form";
-import { REGIME_CANNOT_CHANGE, REGIME_IS_INERT_UNTIL_BILLING } from "../lib/kinds";
+import { REGIME_CANNOT_CHANGE, A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING } from "../lib/kinds";
 import { renderWithProviders } from "../test-utils";
 import { DeclareKindDialog } from "./declare-kind-dialog";
 
@@ -60,7 +60,7 @@ describe("DeclareKindDialog", () => {
     await asMeteringOnly(async () => {
       renderWithProviders(<Harness />);
       const regime = await regimeControl();
-      expect(await regime.findByText(REGIME_IS_INERT_UNTIL_BILLING)).toBeInTheDocument();
+      expect(await regime.findByText(A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING)).toBeInTheDocument();
       expect(regime.getByText(REGIME_CANNOT_CHANGE)).toBeInTheDocument();
       // Stated while the choice is still open — every regime is enabled here.
       for (const radio of regime.getAllByRole("radio")) expect(radio).toBeEnabled();
@@ -71,7 +71,7 @@ describe("DeclareKindDialog", () => {
     renderWithProviders(<Harness />);
     const regime = await regimeControl();
     expect(await regime.findByText(REGIME_CANNOT_CHANGE)).toBeInTheDocument();
-    expect(regime.queryByText(REGIME_IS_INERT_UNTIL_BILLING)).toBeNull();
+    expect(regime.queryByText(A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING)).toBeNull();
   });
 
   it("disables the regime control once a kind of work is declared, and its identity with it", async () => {

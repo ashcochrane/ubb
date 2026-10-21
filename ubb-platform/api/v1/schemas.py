@@ -2458,9 +2458,9 @@ def rate_out(r):
 #: a `discriminator` mapping beside the `oneOf`, never as an `enum` on one
 #: node. The two values are the two domain nouns the registry already names
 #: (`rate`, and the agreed price); what they decide is the shape of a body,
-#: which is the contract's own business. ADR-0021 §1 records the rule.
-BOOK_LINE_RATE = LINE_RATE
-BOOK_LINE_AGREED_PRICE = LINE_AGREED_PRICE
+#: which is the contract's own business. ADR-0021 §1 records the rule,
+#: and the values are the model module's own constants, `LINE_RATE` and
+#: `LINE_AGREED_PRICE`, never spelled here.
 
 
 class BookRateChangeIn(Schema):
@@ -2493,7 +2493,7 @@ class BookRateChangeIn(Schema):
     different fact from `pricing_method`, which says how the price is DERIVED,
     and a change may move either without the other.
     """
-    line: Literal[BOOK_LINE_RATE]
+    line: Literal[LINE_RATE]
     kind: str
     measurement_key: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
@@ -2554,7 +2554,7 @@ class BookAgreedPriceChangeIn(Schema):
     refused. The change takes effect at the publish's `effective_at`, like a
     rate change in the same publish.
     """
-    line: Literal[BOOK_LINE_AGREED_PRICE]
+    line: Literal[LINE_AGREED_PRICE]
     kind: str
     task_type: str = Field(min_length=1, max_length=64)
     agreed_price_micros: Optional[int] = Field(default=None, ge=0)
@@ -2655,7 +2655,7 @@ class BookRateChangeDiffOut(Schema):
     is null on a reprice, which is what makes the row readable as a change
     rather than as an outcome.
     """
-    line: Literal[BOOK_LINE_RATE]
+    line: Literal[LINE_RATE]
     kind: str
     measurement_key: str
     provider: str
@@ -2681,7 +2681,7 @@ class BookAgreedPriceChangeDiffOut(Schema):
     `after` is the one the publish opens and is null where the change retires
     one.
     """
-    line: Literal[BOOK_LINE_AGREED_PRICE]
+    line: Literal[LINE_AGREED_PRICE]
     kind: str
     task_type: str
     # REQUIRED AND NULLABLE, the posture the owner set for a new response fact
@@ -2824,7 +2824,7 @@ def book_change_body(change: dict, slots: dict) -> dict:
     An agreed price selects on nothing but its kind of work, so its body is
     already the service's and passes through as it came.
     """
-    if change.get("line") == BOOK_LINE_AGREED_PRICE:
+    if change.get("line") == LINE_AGREED_PRICE:
         return dict(change)
     body = {name: value for name, value in change.items()
             if name != "grouping_fields"}
@@ -2848,9 +2848,9 @@ def book_change_diff_out(row: dict, keys: dict) -> dict:
     column it happens to occupy. An agreed price's row names no selector, so
     it is the service's row with its two sides named key by key.
     """
-    if row["line"] == BOOK_LINE_AGREED_PRICE:
+    if row["line"] == LINE_AGREED_PRICE:
         return {
-            "line": BOOK_LINE_AGREED_PRICE,
+            "line": LINE_AGREED_PRICE,
             "kind": row["kind"],
             "task_type": row["task_type"],
             "before": _agreed_price_terms_out(row["before"]),
@@ -2859,7 +2859,7 @@ def book_change_diff_out(row: dict, keys: dict) -> dict:
     reserved = ("provider", "event_type", "task_type", "subtask_type")
     selectors = row["selectors"]
     return {
-        "line": BOOK_LINE_RATE,
+        "line": LINE_RATE,
         "kind": row["kind"],
         "measurement_key": row["measurement_key"],
         **{name: selectors.get(name, "") for name in reserved},

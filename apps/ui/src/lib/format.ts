@@ -210,6 +210,25 @@ export function formatExactMicros(micros: ExactMicros, currency: string): string
 }
 
 /**
+ * An amount the API answered as a JSON NUMBER, to the micro where that number
+ * holds it exactly — "$8.00", "$8.000001" — for a figure whose last micro its
+ * reader cares about but whose page is not about exactness at any size (an
+ * agreed price, #553).
+ *
+ * `JSON.parse` keeps every integer up to 2^53 exactly, so a safe integer's
+ * digits ARE the figure's, and they go to `formatExactMicros` as text. Past
+ * that the parse has already rounded it, so no micro is claimed: it is drawn to
+ * the cent, as `formatMicros` draws any amount. A page whose point is exactness
+ * across the whole signed 64-bit column reads the figure off the body's text
+ * instead, as an `ExactMicros` (`features/developers/api/exact-figures.ts`).
+ */
+export function formatParsedMicros(micros: number, currency: string): string {
+  return Number.isSafeInteger(micros)
+    ? formatExactMicros(String(micros) as ExactMicros, currency)
+    : formatMicros(micros, currency);
+}
+
+/**
  * Format large numbers with abbreviations.
  * 84219 → "84.2k"   1247000 → "1.25M"
  */

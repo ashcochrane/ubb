@@ -1019,12 +1019,14 @@ class TaskService:
         price nowhere else — so there is no parent to roll up into, and a unit
         with one is refused rather than half-handled.
 
-        Must be called inside the transaction that wrote the Charge's posting,
-        and it is: `charge_projection.project_the_charge` makes the posting
-        and this one transaction of its own, so the two can never become
-        separately durable facts — the same rule the late-resolution door
-        keeps (ADR-0020 §7). Exactly once follows from the close: only the
-        winning transition into the delivered state writes a Charge.
+        Must be called inside the transaction that writes the Charge's
+        posting, and it is: `charge_projection.project_the_charge` makes this
+        and the posting one transaction of its own — this first, since it
+        locks the unit's row and the canonical order takes a Task before a
+        Posting (`core/locking.py`) — so the two can never become separately
+        durable facts, the same rule the late-resolution door keeps (ADR-0020
+        §7). Exactly once follows from the close: only the winning transition
+        into the delivered state writes a Charge.
 
         Returns the unit as it now stands.
         """

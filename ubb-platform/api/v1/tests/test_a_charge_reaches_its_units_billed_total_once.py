@@ -12,9 +12,11 @@ test_a_late_resolution_reaches_its_unit_once.py`):
 * **a replayed close adds nothing** — only the winning transition writes a
   Charge, and only a Charge reaches the total;
 * **a failure after the posting is written leaves neither** — the projection
-  makes its posting and the adjustment one transaction of its own, inside the
-  close's `atomic`, so an exception in the adjustment takes the posting, the
-  Charge and the transition back together;
+  takes the adjustment up and writes its posting (in that order, the canonical
+  lock order's) in one transaction of its own, inside the close's `atomic`, so
+  an exception raised after both — at the outbox write that follows the
+  posting — takes the adjustment, the posting, the Charge and the transition
+  back together;
 * **a caller holding no transaction is no exception** — in autocommit the
   projection's own transaction is what keeps the two together;
 * **two racing closes add once** — one wins the transition, the other replays.
@@ -33,6 +35,7 @@ from api.v1.schemas import CloseTaskRequest
 from api.v1.task_endpoints import close
 from api.v1.tests._helpers import THE_AGREED_PRICE, a_tenant_selling_whole_work
 from apps.metering.pricing.models import Charge
+from apps.metering.pricing.services import charge_projection
 from apps.metering.pricing.services.charge_service import (
     charge_for_delivered_work)
 from apps.metering.usage.models import Posting
@@ -42,6 +45,18 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, USAGE_EVENT_KIND_TASK_CHARGE)
 
 DELIVERED = CloseTaskRequest(outcome=TASK_OUTCOME_DELIVERED)
+
+#: The billed total holding the Charge and nothing else moved: no supplier
+#: work, no event, nothing left unpriced — `(billed, provider, events,
+#: unpriced)`, as `_totals` reads them.
+CHARGED_ALONE = (THE_AGREED_PRICE, 0, 0, 0)
+
+
+def _after_the_posting():
+    """A failure raised AFTER both writes: at the outbox write that follows
+    the posting, once the adjustment is taken up and the posting is written."""
+    return patch.object(charge_projection, "write_event",
+                        side_effect=RuntimeError("after the posting"))
 
 
 class _ADeliverableUnit:
@@ -72,12 +87,10 @@ class _ADeliverableUnit:
         return Posting.objects.filter(task_id=task_id,
                                       kind=USAGE_EVENT_KIND_TASK_CHARGE)
 
-    def _the_charge_alone_moved(self, task_id, *, billed):
-        """The billed total holds the Charge and nothing else moved: no
-        supplier work, no event, nothing left unpriced."""
+    def _totals(self, task_id):
         unit = self._the_unit(task_id)
         return (unit["billed"], unit["provider"], unit["events"],
-                unit["unpriced"]) == (billed, 0, 0, 0)
+                unit["unpriced"])
 
 
 class AReplayedCloseAddsNothingTest(_ADeliverableUnit, TestCase):
@@ -101,18 +114,33 @@ class AReplayedCloseAddsNothingTest(_ADeliverableUnit, TestCase):
 
         self.assertTrue(replayed["replayed"])
         self.assertEqual(replayed["total_billed_cost_micros"], THE_AGREED_PRICE)
-        self.assertTrue(self._the_charge_alone_moved(task_id,
-                                                     billed=THE_AGREED_PRICE))
+        self.assertEqual(self._totals(task_id), CHARGED_ALONE)
         self.assertEqual(Charge.objects.filter(task_id=task_id).count(), 1)
         self.assertEqual(self._charge_postings(task_id).count(), 1)
 
 
 class AFailureAfterThePostingLeavesNeitherTest(_ADeliverableUnit, TestCase):
 
-    def test_a_failure_in_the_adjustment_takes_the_posting_back(self):
-        """The posting is written first and the adjustment raises: nothing of
-        the close survives — no posting, no Charge, no transition — so a
-        retry finds the unit exactly as it was and charges it once."""
+    def test_a_failure_after_the_posting_takes_both_writes_back(self):
+        """The adjustment is taken up and the posting written, and then the
+        close fails: nothing of it survives — no total, no posting, no
+        Charge, no transition — so a retry finds the unit exactly as it was
+        and charges it once."""
+        task_id = self._arrange()
+
+        with _after_the_posting():
+            with self.assertRaisesRegex(RuntimeError, "after the posting"):
+                self._close(task_id)
+
+        self.assertEqual(self._charge_postings(task_id).count(), 0)
+        self.assertEqual(Charge.objects.filter(task_id=task_id).count(), 0)
+        unit = self._the_unit(task_id)
+        self.assertEqual(unit["status"], TASK_STATUS_ACTIVE)
+        self.assertEqual(unit["billed"], 0)
+
+    def test_a_failure_in_the_adjustment_writes_no_posting(self):
+        """The adjustment comes first, so its failure stops the projection
+        before any posting exists."""
         task_id = self._arrange()
 
         with patch.object(TaskService, "take_up_a_charge",
@@ -122,21 +150,17 @@ class AFailureAfterThePostingLeavesNeitherTest(_ADeliverableUnit, TestCase):
 
         self.assertEqual(self._charge_postings(task_id).count(), 0)
         self.assertEqual(Charge.objects.filter(task_id=task_id).count(), 0)
-        unit = self._the_unit(task_id)
-        self.assertEqual(unit["status"], TASK_STATUS_ACTIVE)
-        self.assertEqual(unit["billed"], 0)
+        self.assertEqual(self._the_unit(task_id)["billed"], 0)
 
     def test_the_retry_then_charges_it_once(self):
         task_id = self._arrange()
-        with patch.object(TaskService, "take_up_a_charge",
-                          side_effect=RuntimeError("the adjustment failed")):
+        with _after_the_posting():
             with self.assertRaises(RuntimeError):
                 self._close(task_id)
 
         self._close(task_id)
 
-        self.assertTrue(self._the_charge_alone_moved(task_id,
-                                                     billed=THE_AGREED_PRICE))
+        self.assertEqual(self._totals(task_id), CHARGED_ALONE)
         self.assertEqual(self._charge_postings(task_id).count(), 1)
 
 
@@ -161,14 +185,17 @@ class WithNoTransactionOfItsOwnTest(_ADeliverableUnit, TransactionTestCase):
         charge_for_delivered_work(closed)
 
         self.assertEqual(self._charge_postings(closed.id).count(), 1)
-        self.assertTrue(self._the_charge_alone_moved(closed.id,
-                                                     billed=THE_AGREED_PRICE))
+        self.assertEqual(self._totals(closed.id), CHARGED_ALONE)
 
-    def test_a_failure_leaves_no_committed_posting(self):
+    def test_a_failure_leaves_neither_write_committed(self):
+        """Both writes made, then a failure: the projection's own transaction
+        takes both back though nobody else holds one. (The Charge row itself
+        is the CALLER's to keep with its projection — `project_the_charge`
+        says so — and this caller holds no transaction, so it is not asked
+        about here.)"""
         closed = self._delivered_without_a_charge()
 
-        with patch.object(TaskService, "take_up_a_charge",
-                          side_effect=RuntimeError("the adjustment failed")):
+        with _after_the_posting():
             with self.assertRaises(RuntimeError):
                 charge_for_delivered_work(closed)
 
@@ -203,7 +230,6 @@ class TwoRacingClosesTest(_ADeliverableUnit, TransactionTestCase):
         self.assertEqual(failures, [])
         self.assertEqual(sorted(answer["replayed"] for answer in answers),
                          [False, True])
-        self.assertTrue(self._the_charge_alone_moved(task_id,
-                                                     billed=THE_AGREED_PRICE))
+        self.assertEqual(self._totals(task_id), CHARGED_ALONE)
         self.assertEqual(Charge.objects.filter(task_id=task_id).count(), 1)
 

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { pricingMethodLabel } from "@/lib/customer-price";
-import { formatExactMicros, type ExactMicros } from "@/lib/format";
+import { formatParsedMicros } from "@/lib/format";
 import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
 import type {
   AgreedPriceTerms,
@@ -98,9 +98,9 @@ function RateRow({ row, currency }: { row: BookRateChangeDiff; currency: string 
 /**
  * An agreed price's row: the kind of work, and what one delivered unit of it
  * sells for on each side. The kind is the tenant's own word, rendered as they
- * declared it, and the price is shown to the micro — an agreed price may be
- * below a cent, and a cent-rounded figure would show two different prices as
- * one.
+ * declared it, and the price is shown to the micro wherever the parsed figure
+ * holds it (`formatParsedMicros`) — an agreed price may be below a cent, and a
+ * cent-rounded figure would show two different prices as one.
  */
 function AgreedPriceRow({
   row,
@@ -150,7 +150,7 @@ function AgreedPrice({
   return (
     <span className={muted ? "text-text-muted" : "text-text-primary"}>
       <span className="font-medium">
-        {formatExactMicros(String(terms.agreed_price_micros) as ExactMicros, currency)}
+        {formatParsedMicros(terms.agreed_price_micros, currency)}
       </span>
       <span className="ml-1.5 text-[11px]">per delivered run</span>
     </span>

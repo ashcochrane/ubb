@@ -59,6 +59,10 @@ A change that OPENS a line — an add, a reprice — is refused for a kind of wo
 retired, or one declared only as contained work. A retirement opens nothing, so a line whose kind was
 retired since can still be closed.
 
+A draft declared before a change named its line held rate changes only, and the planner would now
+refuse it whole; migration `pricing/0032` gives each of its changes `line: rate` rather than leave
+it unreadable and unpublishable. A published record is history and is left as it was.
+
 ### 2. The provenance split: an agreed-price line carries the rate side's history
 
 An agreed-price line (`TaskPrice`) carries what a rate carries: the book version that opened it and
@@ -83,10 +87,11 @@ A Charge's projection adds its posting's amount to the top-level Task's **billed
 nothing else: never `total_provider_cost_micros`, never `event_count`, never the unpriced count. The
 close response carries it when that close created the Charge.
 
-The posting and the total are ONE FACT, by ADR-0020 §7's standard: the projection writes the posting
-and takes the amount into the Task (`TaskService.take_up_a_charge`) inside one transaction of its
-own, nested in the close's. A replayed close adds nothing, a failure after the posting is written
-leaves neither, and two racing closes add once.
+The posting and the total are ONE FACT, by ADR-0020 §7's standard: the projection takes the amount
+into the Task (`TaskService.take_up_a_charge`) and writes the posting inside one transaction of its
+own, nested in the close's — the total first, because it locks the Task's row and the canonical lock
+order (`core/locking.py`) takes a Task before a Posting. A replayed close adds nothing, a failure
+after the posting is written leaves neither, and two racing closes add once.
 
 ### 4. The metering-floor gate: collection mode does not decide whether UBB may know a price (A6)
 
@@ -195,6 +200,7 @@ Named and quoted, with the 2026-10-08 rulings as the evidence:
 |---|---|
 | §1 the union, through all three consumers | `ubb-platform/api/v1/tests/test_a_book_change_names_its_line.py`; `ubb-sdk/tests/test_a_book_change_names_its_line.py`; the console's `features/pricing/api/book-lines.test.ts` |
 | §1–§2 the act's plan, refusals, provenance and record | `ubb-platform/api/v1/tests/test_an_agreed_price_is_declared_through_the_publish_act.py` |
+| §1 a draft of the old shape is given its line | `ubb-platform/apps/metering/pricing/tests/test_a_draft_declared_before_a_change_named_its_line.py` |
 | §2 the window held by the database | `ubb-platform/apps/metering/pricing/tests/test_an_agreed_price_window_is_held_by_the_database.py` |
 | §2 the read | `ubb-platform/api/v1/tests/test_a_books_agreed_prices_are_read.py` |
 | §3 the totals, one fact with the posting | `ubb-platform/api/v1/tests/test_a_charge_reaches_its_units_billed_total_once.py`; end to end for both postures: `test_an_agreed_price_is_charged_end_to_end.py` |

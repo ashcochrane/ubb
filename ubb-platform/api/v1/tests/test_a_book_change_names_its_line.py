@@ -21,11 +21,11 @@ import json
 from django.test import Client, TestCase
 
 from api.v1.openapi_export import generated_document_text
+from api.v1.tests._helpers import a_tenant
 from apps.metering.pricing.models import BOOK_LINES, LINE_AGREED_PRICE, LINE_RATE
 from apps.metering.pricing.tests._helpers import (
     rate_in_default_book, the_book_holding)
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.tenants.models import Tenant, TenantApiKey
 
 SCHEMAS = "#/components/schemas/"
 
@@ -102,9 +102,7 @@ class AChangeNamingNoLineIsRefusedTest(TestCase):
 
     def setUp(self):
         self.http = Client()
-        tenant = Tenant.objects.create(name="T",
-                                       products=["metering", "billing"])
-        _, self.raw_key = TenantApiKey.create_key(tenant)
+        tenant, self.raw_key = a_tenant(products=("metering", "billing"))
         declares_a_quantity(tenant, "input_tokens")
         book = the_book_holding(rate_in_default_book(
             tenant, measurement_key="input_tokens", rate_per_unit_micros=1))

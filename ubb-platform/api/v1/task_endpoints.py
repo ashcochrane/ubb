@@ -78,7 +78,7 @@ from apps.metering.pricing.services.charge_service import (
     charge_for_delivered_work, the_work_was_charged,
 )
 from apps.metering.pricing.services.pricing_service import (
-    AgreedPriceRefused, determine_the_agreed_price,
+    AgreedPriceRefused, bills_through_ubb, determine_the_agreed_price,
 )
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.services import DimensionError
@@ -313,10 +313,12 @@ def start(tenant, payload):
         # ran would be the expensive one, and this is the cheapest moment it can
         # land.
         #
-        # `has_a_wallet` is passed as the posture, and deliberately not
-        # duplicated into a second constant: whether the money-shaped checks
+        # The posture is `bills_through_ubb`, the one named answer the Code
+        # Builder's readiness reads too (#586): a Blueprint says a start would
+        # be refused exactly where this gate would refuse it. It asks the same
+        # product flag `has_a_wallet` asks — whether the money-shaped checks
         # apply and whether this tenant bills through UBB at all are one
-        # question about one product flag, asked twice. What it decides here is
+        # question about one flag. What it decides here is
         # narrow — see `determine_the_agreed_price` — a tenant that does not
         # bill is not refused for a pricing gap on revenue nobody collects,
         # and a price that does resolve is pinned for them regardless, because
@@ -329,7 +331,7 @@ def start(tenant, payload):
                     task_type=policy.task_type,
                     contained=parent is not None,
                     as_of=timezone.now(),
-                    tenant_bills_through_ubb=has_a_wallet)
+                    tenant_bills_through_ubb=bills_through_ubb(tenant))
             except AgreedPriceRefused as refused:
                 raise Problem(refused.reason, str(refused))
 

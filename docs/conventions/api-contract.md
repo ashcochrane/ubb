@@ -311,6 +311,18 @@ value set the registry owns, and for an open concept it is the silent closure
 G4 exists to refuse. The gate accounts for every `enum` in the committed
 document by JSON pointer, so a new one has to come past a reviewer.
 
+**The one `Literal` a body takes is a union's discriminator** (ADR-0021 §1).
+A request body that can carry more than one kind of thing is a union told
+apart by a REQUIRED field named for what it carries — the Pricing Book
+change's `line` is the first — and Pydantic's discriminated union needs each
+variant's field typed as that variant's one value, which exports as a `const`
+under a `discriminator` mapping and as no `enum` at all. The discriminator is
+not a registry concept: its values name the variants of one body, and they are
+the constants the owning model module states once (`LINE_RATE`,
+`LINE_AGREED_PRICE` in `apps/metering/pricing/models.py`), never spelled in the
+schema. A field the registry DOES own stays a string with its marker, inside a
+variant like anywhere else.
+
 The export **refuses** a marker whose concept the backend does not yet serve —
 the contract states a value only where the backend already returns it. Full
 rules, and the order they force on a slice, in

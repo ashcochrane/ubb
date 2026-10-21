@@ -20,9 +20,9 @@ from datetime import timedelta
 from django.test import Client, TestCase
 from django.utils import timezone
 
+from api.v1.tests._helpers import a_tenant
 from apps.metering.pricing.models import PricingBookPublish, Rate, TaskPrice
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.tenants.models import Tenant, TenantApiKey
 
 #: A top-level kind sold at one agreed price, one sold per event, one declared
 #: only as contained work, and one retired.
@@ -50,9 +50,7 @@ class _APricingBookMixin:
 
     def setUp(self):
         self.http = Client()
-        self.tenant = Tenant.objects.create(name="T",
-                                            products=["metering", "billing"])
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
+        self.tenant, self.raw_key = a_tenant(products=("metering", "billing"))
         declares_a_quantity(self.tenant, QUANTITY)
         self._put("/api/v1/task-types", {"task_types": [
             {"key": SOLD_WHOLE, "pricing_mode": "fixed", "uncapped": True},

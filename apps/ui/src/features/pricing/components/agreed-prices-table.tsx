@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate, formatExactMicros, formatShortDate, type ExactMicros } from "@/lib/format";
+import { formatDate, formatParsedMicros, formatShortDate } from "@/lib/format";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,8 @@ import type { AgreedPrice, PricingBook } from "../api/types";
  * and publishing it, so a row action here would be a second mutation surface
  * for an act that has one.
  *
- * The price is shown to the micro: an agreed price may be below a cent, and a
+ * The price is shown to the micro wherever the parsed figure holds it
+ * (`formatParsedMicros`): an agreed price may be below a cent, and a
  * cent-rounded figure would show two different prices as one. A line opening
  * in the future is open and not yet in force, and says so beside its date.
  */
@@ -130,7 +131,7 @@ function AgreedPriceRow({ line, currency }: { line: AgreedPrice; currency: strin
     <TableRow className={cn(closed && "opacity-55")}>
       <TableCell className="font-mono text-[12px]">{tenantDefinedLabel(line.task_type)}</TableCell>
       <TableCell className="text-[12px] whitespace-nowrap">
-        {formatExactMicros(String(line.agreed_price_micros) as ExactMicros, currency)}
+        {formatParsedMicros(line.agreed_price_micros, currency)}
       </TableCell>
       <TableCell className="text-[12px] whitespace-nowrap">
         <span title={formatDate(line.valid_from)}>{formatShortDate(line.valid_from)}</span>
