@@ -391,8 +391,9 @@ how a price is DERIVED and has exactly two values; an agreed price is not derive
 sold that way records no method rather than a third one.
 
 **Agreed price**:
-What one whole delivered unit of work was sold for, resolved at START from a work-level line in the
-customer's own policy book (`apps/metering/CONTEXT.md`: *Work-level price line*) and PINNED onto the
+What one whole delivered unit of work was sold for, resolved at START from the agreed price in force
+in a Pricing Book the start selects — the customer's own, their Plan's, or the tenant default
+(`apps/metering/CONTEXT.md`: *Agreed price*) — and PINNED onto the
 unit of work with the identity of the line that answered and the version the customer's book stood
 at (#416 widened the pair to three, because the book's counter steps on every publish and a Charge
 reading it at close would record the wrong one). Three columns that move together or not at all — a
@@ -407,6 +408,10 @@ cost is observed.* Without that sentence a single receipt reads like a defect, w
 also stated at `apps/metering/pricing/receipts.py`.
 **A whole unit of work only**: contained work never carries one, and a line written against a
 declaration meant for contained work refuses the start loudly rather than being ignored.
+**Its Charge is in what the unit of work billed** (#553, A9; ADR-0021 §3): a delivered close's
+Charge adds its amount to the top-level Task's billed total, in the same transaction as the Charge's
+posting (`TaskService.take_up_a_charge`), and never to its supplier cost, event count or unpriced
+count — so a run's totals read as revenue and as work, never mixed.
 (`apps/platform/work/models.py:Task.agreed_price_micros`, `.agreed_price_line_id` and
 `.agreed_price_book_version`; `ck_task_agreed_price_and_its_provenance_move_together`;
 `work/migrations/0022_an_agreed_price_is_pinned_before_the_work_runs.py`;
@@ -1043,16 +1048,29 @@ pinned meanings. `scaffold`: a structural selection is missing (no kind of work,
 `blocked`: the structure is known and a call lacks something mandatory. `complete`: everything
 resolves from published configuration and every call is renderable for the target. The whole is the
 least ready of its calls, and an advisory never lowers it.
+**A kind sold at one agreed price is ready by the prices the tenant PUBLISHED** (#586; the owner's
+ruling of 2026-10-20 on #553; ADR-0021 §6). Readiness reads every Pricing Book some start could price
+from — the default, each live Plan's, each customer's own — and never a runtime customer, how many
+there are or who is on which Plan, so a Blueprint is the same whoever the customers are. Its start is
+`blocked` (`agreed_price_missing`) only where the tenant bills through UBB and no such book holds a
+price in force for the kind; a tenant that meters without billing is never blocked by one. Whenever
+the DEFAULT book holds none, either posture is advised — customers without their own or a Plan price
+will be refused at start (`default_agreed_price_missing_refused_at_start`), or will have no
+authoritative revenue figure (`default_agreed_price_missing_no_revenue_figure`). `complete` promises a
+path a start can price by, not that every customer has one.
 _Avoid_: "incomplete" for the middle state — that word is a measure's status and means a figure is
-partly known.
+partly known; reading a fixed-price kind's readiness off one customer's price.
 
 **Blueprint snapshot** (and its **configuration fingerprint**):
 The immutable, content-addressed record of exactly what one Blueprint resolved. Its **identity** is
 the selection, the Blueprint's machine-readable resolution, and the configuration a sandbox would
 need to run it — the kinds with what they may spend and how they are sold, each Event Type as
-published (all but a constant's value, which it keeps only once a Code Builder version renders
-one), the required Grouping Fields, the rules that cost and price the selected quantities, the
-default markup, and the tenant fields a sandbox is provisioned from. Its `configuration_fingerprint`
+published (a constant's value included, since #584), the required Grouping Fields, the rules that
+cost and price the selected quantities, the default markup, the tenant fields a sandbox is
+provisioned from, and — for a kind sold at one agreed price only (#586) — whether any book a start
+can price from holds one and the DEFAULT book's price with where it came from: no customer, no Plan
+and no other book's amount, so a deal repriced moves nothing while the first price or the last
+retired does. Its `configuration_fingerprint`
 is `sha256:` and the hash of that identity: a **stable identity of the resolved contract**, not a
 hash of everything serialised. It includes which publication each Event Type was resolved from, so
 republishing an unchanged declaration moves it. It excludes what is only presentation — the
@@ -1080,7 +1098,11 @@ cost). It refuses, before anything is written, an Event Type the snapshot does n
 **verdict** (`verified`) speaks for the whole Blueprint and for recording and costing — never for
 price: it is true only when every selected Event Type and Subtask kind was exercised and every
 recording carried what its cost needs and was costed. A gap fails it with a 200 and names the gap;
-the unit of work's outcome never carries pass or fail.
+the unit of work's outcome never carries pass or fail. A kind sold at one agreed price is given the
+default Pricing Book's price the snapshot keeps, and is charged it on delivery; a price held only in
+a Plan's or a customer's own book is in no snapshot, so the run's customer is refused at start where
+the tenant bills, and Verify answers that real refusal rather than picking a book or making a price
+up (#586, ADR-0021 §6).
 (`api/v1/verification.py`; ADR-0018)
 _Avoid_: "test event" — the form this replaces; and "sandbox" for where it runs — a tenant's sandbox
 is its own and holds the developer's configuration, and the run is neither.

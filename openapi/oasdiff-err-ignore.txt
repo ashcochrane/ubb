@@ -1298,3 +1298,31 @@ PUT /api/v1/billing/postpaid-config removed the required property `usage_line_it
 # ERR because a subscriber validating the payload against the old schema
 # meets a required property it did not know.
 POST webhook:usage.recorded added the new required request property `data/pricing_status_reason`
+
+# 2026-10-21 - #553 (window B, ADR-0021 §1): a Pricing Book change names its
+# line. The publish act's change body becomes the contract's first
+# discriminated union, on a required `line` - `rate` (the old body, schema now
+# `BookRateChangeIn`) or `agreed_price` - and a draft's `diff` rows become the
+# same union (`BookRateChangeDiffOut` | `BookAgreedPriceChangeDiffOut`).
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open, and #553's final spec
+# (comment 6069879273) makes the discriminator deliberately; ADR-0021 §1 records
+# it and the rule the next union follows. The authoring comparison
+# (`--baseline origin/main --emit`) reports it as SIX findings, one per
+# operation that answers a publish record with its diff - the four publish-act
+# operations under `/pricing/books/{book_id}/publishes` and the customer
+# override's declare and discard - each "added `BookRateChangeDiffOut,
+# BookAgreedPriceChangeDiffOut` to the diff rows' `oneOf` list". All six are
+# reviewed and deliberate. They have NO line here: the Pricing Book routes
+# arrived after `api-v1-launch`, so against the published contract they are no
+# break, and the cumulative gate reports every one of the six lines as inert
+# (pasted, run and restored, 2026-10-21). The break is recorded here, in the PR
+# and in ADR-0021 instead.
+#
+# The same window removes `tenant_not_billing` from `not_applicable_reason`
+# (ADR-0021 §5) and adds three Integration Blueprint diagnostic codes and the
+# `agreed_price` object kind (§6). Neither direction reports either (oasdiff
+# raises no error for a response enum member removed or added). Both are
+# deliberate: the value lost its last producer, and `diagnostic_code` is a
+# versioned closed set whose members change in the commit that changes the
+# capability behind them (domain-vocabulary/concepts/code-builder.yaml).

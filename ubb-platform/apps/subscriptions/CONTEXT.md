@@ -75,8 +75,9 @@ resolved from the tenant's billing mode wherever it was unset. It turned *"UBB d
 customer's invoices"* into *"this customer produced no revenue"* — the inversion #141 §1.1's
 governing invariant forbids — and it answered coarsely, per customer, a question #147 §7 answers
 precisely per posting. **Nothing succeeds it**: ask the posting. `Posting.pricing_status` is
-`known`, `waived`, `unknown` or `not_applicable`, and `not_applicable_reason` says which of the two
-causes applies. The tenant-level posture that survives is `tenant_posture`, which is DERIVED from
+`known`, `waived`, `unknown` or `not_applicable`, and `not_applicable_reason` says why — since #553
+the pricing regime alone decides that, for every tenant, and the posture is never encoded in a
+pricing result again (ADR-0021 §5). The tenant-level posture that survives is `tenant_posture`, which is DERIVED from
 the billing mode, never stored (ADR-0006 §4), and decides who invoices — and nothing more.
 
 **Accrued subscription revenue**:

@@ -18,6 +18,48 @@ run yet — in both cases the entry is recording what the surface was on its
 date, which is what it is for. An entry's *facts* are never rewritten: what
 changed, when, and why stay exactly as recorded.
 
+## 2026-10-21 — A book change names its line, an agreed price is published and read, and Pricing Books open to every tenant (BREAKING)
+
+A Pricing Book holds a second kind of line, the **agreed price** of a whole
+delivered unit of work, and it travels through the same publish act as a rate
+(issue #553; ADR-0021).
+
+- **`POST /pricing/books/{book_id}/publishes` — every change names its `line`
+  (BREAKING).** The change body is a discriminated union on a required `line`:
+  `rate` (today's body, unchanged apart from the field; its schema is now
+  `BookRateChangeIn`) or `agreed_price` (`kind` add | reprice | retire,
+  `task_type`, and `agreed_price_micros`, absent on a retirement). A change with
+  no `line`, or one naming a line nobody defined, is refused. One publish may
+  carry both kinds, and applies both or neither. The draft's `diff` rows are the
+  same union. This is the contract's first `oneOf` with a discriminator.
+- **What the act refuses for an agreed price**: a kind of work nobody declared,
+  one retired, or one declared only as contained work (for a change that opens a
+  line); a second line in force for one kind; a negative amount. Zero is a price.
+  A declared top-level kind is accepted whatever its current pricing mode.
+- **The publish record** gains `opened_agreed_price_ids` and
+  `closed_agreed_price_ids` beside `opened_rule_ids` / `closed_rule_ids`, which
+  keep naming rates only. Both are empty on a draft.
+- **`GET /pricing/books/{book_id}/agreed-prices` — NEW.** A book's agreed prices,
+  typed and paginated: the open lines by default, every version with
+  `include_history`, the line in force at an instant with `as_of`. Fields `id`,
+  `book_id`, `lineage_id`, `task_type`, `agreed_price_micros`, `valid_from`,
+  `valid_to`. A cost book holds none.
+- **Pricing Books take the metering floor (a widening).** Creating, listing,
+  reading and withdrawing a Pricing Book, publishing
+  into one, reading its lines and declaring a customer's override need the
+  metering product, not billing: whether a tenant collects payment through UBB no
+  longer decides whether UBB may know its prices. Plans stay behind billing.
+- **`not_applicable_reason` loses `tenant_not_billing` (BREAKING).** A
+  fixed-price unit of work's event postings say `fixed_task_pricing` for every
+  tenant; the old value had no producer left and is removed from the contract.
+  Existing postings were rewritten (migration `usage/0047`).
+- **Model/migration** — the agreed-price line takes its public name
+  (`agreed_price_micros`), the rate side's provenance and lineage, and a trigger
+  freezing `valid_from` and setting `valid_to` once
+  (`pricing/0032_an_agreed_price_is_published_with_provenance.py`).
+- **SDK** — generated models only; the new read is a generated operation,
+  recorded in `coverage-authorisations.yaml`.
+
 ## 2026-08-21 — Adding and retiring a rule become publishes (BREAKING)
 
 Every change to a Pricing Book is a publish. The two routes that wrote a rule

@@ -186,7 +186,7 @@ export function statedGroupingFields(
  */
 /**
  * An agreed price as a tenant types it (#553): the kind of work, and what one
- * delivered run of it sells for, in the currency's units.
+ * delivered run of it sells for, as a decimal of the currency's major unit.
  *
  * The amount may be EMPTY here because a retirement states none; the dialog
  * requires it for an add or a reprice, as the API does. Zero is a price and

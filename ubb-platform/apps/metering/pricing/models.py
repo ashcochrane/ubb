@@ -6,7 +6,7 @@ from django.utils import timezone
 from apps.platform.event_types.exact_decimals import exact_parts
 from apps.platform.grouping_fields.models import SLOT_CHOICES
 # THE ALTITUDE VOCABULARY, BY REFERENCE FROM THE MODEL THAT OWNS THE
-# DECLARATION (#415). A work-level price line names the same two altitudes a
+# DECLARATION (#415). An agreed price names the same two altitudes a
 # `TaskType` does and must never hold a second copy of that wording — the
 # import is the `SLOT_CHOICES` line above doing the same job for the same
 # reason, and ADR-001 permits a product reading the kernel.
