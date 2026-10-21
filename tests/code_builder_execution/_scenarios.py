@@ -24,8 +24,9 @@ negative and one longer than a float holds (scenario 10);
 #585 extended two declarations rather than adding a scenario: #569's names in
 `_customer.STOP_METADATA` (what a Python process reports of a stop) and
 their values in `_the_stop`, which both stop scenarios assert through, each
-worked out from the scenario's own configuration; #586 a fixed-price kind
-against a price declared through #553's publish act.
+worked out from the scenario's own configuration; and #586 a fixed-price
+kind against a price declared through #553's publish act, charged its price
+once on a delivered close (scenario 11).
 
 **Costs are known on purpose.** An unresolved cost adds nothing to a unit of
 work's total (`work/services.py`), so a configuration without Cost Rates can
@@ -48,10 +49,13 @@ from core.vocabulary import (
     AMOUNT_REPRESENTATION_MAJOR_UNITS_DECIMAL,
     AMOUNT_REPRESENTATION_MINOR_UNITS, CODE_TARGET_PYTHON_SDK,
     CODE_TARGET_SHELL_HTTP, COSTING_STATUS_KNOWN,
+    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     OUTCOME_REASON_EXECUTION_FAILED, PRICING_STATUS_KNOWN,
+    PRICING_STATUS_NOT_APPLICABLE,
     SOURCE_KIND_CALLER_SUPPLIED, SOURCE_KIND_PROVIDER_RESPONSE,
     TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
-    TASK_STATUS_FAILED, TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
+    TASK_STATUS_FAILED, TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST,
+    USAGE_EVENT_KIND_TASK_CHARGE)
 
 from _customer import CustomerId, Record, Response, Subtask, Work
 from _harness import COMPLETE, PROVIDER_RESPONSES, Artifact, Ran, catalogue
@@ -1056,6 +1060,81 @@ CONSTANT_QUANTITIES = Scenario(
 )
 
 
+# ---------------------------------------------------------------------------
+# 11. A kind of work sold at one agreed price (#586)
+# ---------------------------------------------------------------------------
+#
+# A tenant that bills through UBB sells a kind of work whole, and declares its
+# price the way a tenant does: into its default Pricing Book, through a draft
+# and its publish (#553's act). The Blueprint is complete — the default book
+# holds a price — and the generated file, which holds no price, runs
+# unmodified. The work closes delivered, and the Charge's revenue posting is
+# the declared price. The event inside it is costed and carries no price of
+# its own, and its cost is the work's whole supplier cost: the Charge is in
+# what the work billed and never in what it cost.
+
+AGREED_PRICE = 9_750_000
+REPLY_RATE = 2_000
+REPLIES = 3
+
+
+def _fixed_price_configuration(tenant: ScenarioTenant, target: str) -> dict:
+    tenant._kinds({"key": "transcode", "uncapped": True,
+                   "pricing_mode": "fixed"})
+    tenant._event_type(
+        "reply.sent", provider="replyco",
+        measurements={"replies": _quantity("caller_supplied", unit="reply")})
+    tenant._cost_rules(("add", "replies", REPLY_RATE), provider="replyco")
+    tenant._publish_agreed_price("transcode", AGREED_PRICE)
+    tenant.customer("acme")
+    return {"task_type": "transcode", "event_types": ["reply.sent"]}
+
+
+def _charged_its_agreed_price(outcome: Outcome) -> None:
+    (ran,) = outcome.runs
+    assert ran.status == 0, ran
+    postings = outcome.postings()
+    event = postings.pop("event-1")
+    (charge,) = postings.values()
+
+    cost = REPLIES * REPLY_RATE
+    assert outcome.measured(event) == {"replies": str(REPLIES)}, ran
+    assert (event.costing_status, event.provider_cost_micros) == (
+        COSTING_STATUS_KNOWN, cost), ran
+    # Sold whole: the event has no price of its own, and says why.
+    assert (event.pricing_status, event.billed_cost_micros,
+            event.not_applicable_reason) == (
+        PRICING_STATUS_NOT_APPLICABLE, None,
+        NOT_APPLICABLE_REASON_FIXED_TASK_PRICING), ran
+    # The one Charge, on the work the event was recorded in: its revenue is
+    # the declared price, and it costs nothing a supplier charged.
+    assert charge.kind == USAGE_EVENT_KIND_TASK_CHARGE, charge
+    assert charge.task_id == event.task_id
+    assert (charge.pricing_status, charge.billed_cost_micros) == (
+        PRICING_STATUS_KNOWN, AGREED_PRICE), ran
+    assert charge.provider_cost_micros == 0, ran
+
+    # The work, as the API answers it: delivered, billed the price, and its
+    # supplier cost the event's alone.
+    task = outcome.tenant.task(str(event.task_id))
+    # A delivered close is `completed`, with no reason (scenario 1).
+    assert (task["status"], task["outcome_reason"]) == (
+        TASK_STATUS_COMPLETED, None), task
+    assert (task["event_count"], task["total_provider_cost_micros"],
+            task["total_billed_cost_micros"]) == (1, cost, AGREED_PRICE), task
+
+
+FIXED_PRICE = Scenario(
+    name="fixed-price",
+    posture={"products": ["metering", "billing"],
+             "billing_mode": "postpaid"},
+    configure=_fixed_price_configuration,
+    works=lambda target: (_a_lone_record("acme", "reply.sent",
+                                         replies=REPLIES),),
+    expect=_charged_its_agreed_price,
+)
+
+
 SCENARIOS: tuple[Scenario, ...] = (
     REPRESENTATIVE_LIFECYCLE,
     CEILING_CROSSED,
@@ -1069,4 +1148,5 @@ SCENARIOS: tuple[Scenario, ...] = (
     COST_WRITTEN_AS_A_FLOAT,
     DECIMAL_QUANTITY,
     CONSTANT_QUANTITIES,
+    FIXED_PRICE,
 )

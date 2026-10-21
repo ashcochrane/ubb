@@ -229,6 +229,7 @@ describe("the request the samples make", () => {
       "constant",
       "direct-task-events-partial",
       "explicit-subtasks",
+      "fixed-price-priced",
       "reported-cost",
       "response-cost",
       "response-cost-foreign-currency",

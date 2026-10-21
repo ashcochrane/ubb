@@ -28,6 +28,11 @@ const BLOCKED: CodeBuilderSearch = {
   event_types: ["chat.completion", "draft.only", "web.search"],
 };
 const COMPLETE: CodeBuilderSearch = { task_type: "report_generation", event_types: ["chat.completion"] };
+/**
+ * The platform's `fixed-price-unpriced` fixture: a kind sold at one agreed price,
+ * for a tenant that bills, with no price in any Pricing Book (#586).
+ */
+const UNPRICED: CodeBuilderSearch = { task_type: "translation", event_types: ["reply.sent"] };
 /** The platform's `constant` fixture: constants declared with their values (#584). */
 const CONSTANT: CodeBuilderSearch = { task_type: "flat_rate_call", event_types: ["flat.call"] };
 const SHELL_COMPLETE: CodeBuilderSearch = {
@@ -222,6 +227,22 @@ describe("the Blueprint stage", () => {
       "/tasks/kinds/summarise",
     );
     expect(within(blueprint).getAllByRole("link", { name: "Cost Rates" })[0]).toHaveAttribute("href", "/pricing");
+  });
+
+  it("links a missing agreed price to the Pricing Books, where one is declared (#586)", async () => {
+    renderCodeBuilder(UNPRICED);
+    await resolved(/^Blocked$/);
+    const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
+
+    expect(within(diagnostics).getByText(diagnosticCodeLabel("agreed_price_missing"))).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText(diagnosticCodeLabel("default_agreed_price_missing_refused_at_start")),
+    ).toBeInTheDocument();
+    // Both are answered on Pricing, and neither by a request to copy.
+    const links = within(diagnostics).getAllByRole("link", { name: "Pricing Books" });
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link).toHaveAttribute("href", "/pricing");
+    expect(diagnostics.querySelectorAll("[data-remediation]")).toHaveLength(0);
   });
 
   // That the page CANNOT send one is the feature-wide source check in

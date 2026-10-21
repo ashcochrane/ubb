@@ -3,7 +3,7 @@
   "renderer_contract_version": 3,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:c337673f06069d2df81e28c6230d5e9450b4884d7e7c1394533c6def29c04919",
+  "configuration_fingerprint": "sha256:c65051508d614bd9e9500d65ad7e0437dbb7635bc38ae42b07ee29c060083b96",
   "readiness": "complete",
   "calls": [
     {
@@ -255,5 +255,14 @@
       ]
     }
   ],
-  "diagnostics": []
+  "diagnostics": [
+    {
+      "severity": "advisory",
+      "code": "default_agreed_price_missing_no_revenue_figure",
+      "object_kind": "agreed_price",
+      "key": "report",
+      "field": "agreed_price_micros",
+      "remediation_request": null
+    }
+  ]
 }

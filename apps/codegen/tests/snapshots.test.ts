@@ -72,6 +72,10 @@ describe("the snapshots", () => {
     // and with its currency read beside it.
     "response-cost",
     "response-cost-read-currency",
+    // #586: a kind sold at one agreed price for a tenant that bills — blocked
+    // where no Pricing Book holds a price, complete where the default does.
+    "fixed-price-unpriced",
+    "fixed-price-priced",
   ];
 
   it("cover every branch the ticket names", () => {

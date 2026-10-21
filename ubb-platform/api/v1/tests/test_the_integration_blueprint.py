@@ -1609,8 +1609,10 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
         """The kinds with what they may spend and how they are sold, the
         Event Type as published, the required Grouping Fields, the rules that
         cost and price the selected quantities, the markup, and the tenant
-        fields a sandbox is provisioned from. The agreed price of a kind sold
-        whole is not here; nothing declares one yet."""
+        fields a sandbox is provisioned from. A kind priced per event keeps
+        no agreed price: that is kept only for a kind sold whole (#586,
+        `test_the_blueprint_resolves_an_agreed_price.py`), so no snapshot of
+        any other kind moved when it began to be."""
         from apps.metering.pricing.models import CostBook, Rate
         from apps.metering.pricing.models import TenantDefaultMarkup
         from apps.platform.event_types.models import Measurement
@@ -1636,6 +1638,7 @@ class TestResolvingStoresTheSnapshotAndNothingElse(_Routes):
         assert configuration["task_type"]["task_cogs_ceiling_micros"] == (
             5_000_000)
         assert configuration["task_type"]["pricing_mode"] == "event_priced"
+        assert "agreed_price" not in configuration
         assert [kind["key"] for kind in
                 configuration["subtask_types"]] == [SUBTASK_KIND]
         assert configuration["subtask_types"][0]["uncapped"] is True
@@ -2074,6 +2077,10 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     #: diagnostic carries a request instead of naming a page.
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
+    #: And the ones it has a screen for: a kind of work's own page, and the
+    #: Pricing Books an agreed price is declared on (#586) — whose publish
+    #: names a book by its row id, which no diagnostic carries.
+    WITH_A_SCREEN = {"task_type", "subtask_type", "agreed_price"}
     #: The codes reported over a declaration that is complete, where nothing in
     #: the configuration is the thing to change: valid configuration this Code
     #: Builder version cannot yet render. No request is offered for one: the
@@ -2116,7 +2123,12 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                      "missing.entirely"]
         published = self._complete(event_types=selection)
         preview = self._complete(event_types=selection, draft_preview=True)
-        return [diagnostic for blueprint in (published, preview)
+        # A kind sold at one agreed price that no book prices (#586).
+        self._kinds({"key": "sold_whole", "pricing_mode": "fixed",
+                     "uncapped": True})
+        unpriced = self._complete(task_type="sold_whole",
+                                  event_types=["advised"])
+        return [diagnostic for blueprint in (published, preview, unpriced)
                 for diagnostic in blueprint["diagnostics"]]
 
     def test_an_object_with_no_screen_carries_a_request_and_one_with_a_screen_does_not(
@@ -2129,7 +2141,8 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                 if not d["remediation_request"]
                 and d["code"] not in self.NOTHING_TO_CHANGE}
         assert carrying == self.WITHOUT_A_SCREEN
-        assert bare <= {"task_type", "subtask_type"}
+        assert bare <= self.WITH_A_SCREEN
+        assert "agreed_price" in bare
         # Each reported once over the published Blueprint and once over the
         # draft preview, and never with a request.
         assert sorted(d["code"] for d in diagnostics
@@ -2156,7 +2169,7 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
         contract, so a code added there and reported nowhere turns this red."""
         published = set(_schema("IntegrationBlueprintDiagnostic")[
             "properties"]["code"]["enum"])
-        assert len(published) >= 15, "the contract's set was not read"
+        assert len(published) >= 18, "the contract's set was not read"
         diagnostics = self._every_remediation()
         self._grouping_fields(("environment", "task"), ("region", "event"))
         self._kinds({"key": "wrongly_scoped", "uncapped": True,
@@ -2166,6 +2179,14 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                           {"task_type": "wrongly_scoped"},
                           {"task_type": "withdrawn"}):
             diagnostics += self._resolve(**selection)["diagnostics"]
+        # The kind sold at one agreed price that no book prices, once the
+        # tenant bills through UBB: blocked, and advised in that posture's
+        # words (#586). Turned on through the row's own `save`, which checks
+        # the posture: no route in this module's reach enables a product.
+        self.tenant.products = ["metering", "billing"]
+        self.tenant.billing_mode = "postpaid"
+        self.tenant.save()
+        diagnostics += self._resolve(task_type="sold_whole")["diagnostics"]
 
         severities = {}
         for diagnostic in diagnostics:
@@ -2178,7 +2199,9 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
         assert {code for code, found in severities.items()
                 if found == {"advisory"}} == {
             "event_type_revised_since_publication",
-            "source_path_convention_mismatch"}
+            "source_path_convention_mismatch",
+            "default_agreed_price_missing_refused_at_start",
+            "default_agreed_price_missing_no_revenue_figure"}
 
     def test_each_request_is_a_real_operation_addressed_to_the_object(self):
         """Method, route and operation agree with the committed contract, and

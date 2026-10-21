@@ -116,7 +116,10 @@ from api.v1.schemas import (
     EventTypeIn, EventTypeUpdateIn, MeasurementIn, ReportedCostMappingIn)
 from apps.metering.pricing.models import (
     CostBook, PricingBook, TenantDefaultMarkup)
-from apps.metering.pricing.services.book_service import rules_in_force_at
+from apps.metering.pricing.services.book_service import (
+    agreed_prices_in_force_in, rules_in_force_at)
+from apps.metering.pricing.services.pricing_service import (
+    bills_through_ubb, the_books_a_start_can_price_from)
 from apps.platform.code_builder import snapshots, token_names
 from apps.platform.code_builder.withheld import (
     API_KEY, environment_variable, is_withheld)
@@ -139,6 +142,7 @@ from core.vocabulary import (
     CODE_TARGET_PYTHON_SDK,
     CODE_TARGET_SHELL_HTTP,
     CODE_TARGET_VALUES,
+    CONFIGURATION_OBJECT_KIND_AGREED_PRICE,
     CONFIGURATION_OBJECT_KIND_EVENT_TYPE,
     CONFIGURATION_OBJECT_KIND_GROUPING_FIELD,
     CONFIGURATION_OBJECT_KIND_MEASUREMENT,
@@ -148,6 +152,9 @@ from core.vocabulary import (
     CONFIGURATION_OBJECT_KIND_TASK_TYPE,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_PUBLISHED,
+    DIAGNOSTIC_CODE_AGREED_PRICE_MISSING,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START,
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_DECLARED,
     DIAGNOSTIC_CODE_EVENT_TYPE_NOT_PUBLISHED,
@@ -170,6 +177,7 @@ from core.vocabulary import (
     INTEGRATION_READINESS_BLOCKED,
     INTEGRATION_READINESS_COMPLETE,
     INTEGRATION_READINESS_SCAFFOLD,
+    PRICING_MODE_FIXED,
     RESPONSE_SHAPE_REPRESENTATION_JSON,
     RESPONSE_SHAPE_REPRESENTATION_PYTHON_OBJECT,
     SOURCE_KIND_CALLER_SUPPLIED,
@@ -203,6 +211,11 @@ SCHEMA_VERSION = 1
 #: the call blocked. A renderer written to contract 2 would send a quantity
 #: as a number and write a constant as missing, so the contract moves, and
 #: every fingerprint with it, once.
+#:
+#: #586 does NOT move it. The agreed price is kept in the snapshot, for Verify,
+#: and no token carries it, so nothing a renderer is handed means anything new;
+#: what is new is three members of the diagnostic codes, a set a renderer
+#: already words from its own catalogue — which moved instead (catalogue 9).
 RENDERER_CONTRACT_VERSION = 3
 
 #: The SDK major the Python target is generated against (owner item 3,
@@ -277,8 +290,11 @@ EFFECTS = {
     DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED: _BLOCKING,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET: _BLOCKING,
+    DIAGNOSTIC_CODE_AGREED_PRICE_MISSING: _BLOCKING,
     DIAGNOSTIC_CODE_EVENT_TYPE_REVISED_SINCE_PUBLICATION: _ADVISORY,
     DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH: _ADVISORY,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START: _ADVISORY,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE: _ADVISORY,
 }
 
 #: Which object a kind of work is, by the altitude it was declared for. Two
@@ -551,6 +567,9 @@ class _Resolution:
         self.draft_preview = draft_preview
         self.calls = []
         self.diagnostics = []
+        #: What the snapshot keeps of the selected kind's agreed price, or
+        #: `None` for a kind that is not sold at one (`_agreed_price`).
+        self.agreed_price = None
 
     def call(self, operation_id, *fixed_parameters):
         call = _Call(operation_id, *fixed_parameters)
@@ -687,7 +706,7 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
             tenant, kinds,
             [resolved for resolved in resolved_event_types
              if resolved is not None],
-            declared_fields),
+            declared_fields, resolution.agreed_price),
     }
     presentation = {REMEDIATION_REQUESTS: [
         diagnostic[_REMEDIATION_REQUEST]
@@ -741,6 +760,12 @@ def _start(resolution, altitude, key, declared_fields):
     if policy["retired"]:
         resolution.report(call, DIAGNOSTIC_CODE_TASK_TYPE_RETIRED,
                           object_kind, key, field="retired")
+    # Only the WHOLE unit of work pins an agreed price: contained work never
+    # does, whatever its own kind declares (`determine_the_agreed_price`), so
+    # a Subtask start has no price to find.
+    if (altitude == TASK_TYPE_KIND_TASK
+            and policy["pricing_mode"] == PRICING_MODE_FIXED):
+        resolution.agreed_price = _agreed_price(resolution, call, key)
 
     # In key order, and each once. The order a kind lists its requirements in
     # means nothing, so it must not reach the tokens or the fingerprint.
@@ -776,6 +801,83 @@ def _start(resolution, altitude, key, declared_fields):
                      call.parameters.named_for(required),
                      declared_by_the_kind))
     return {"kind": altitude, **policy, "required_grouping_fields": requires}
+
+
+#: The field a missing agreed price is missing: the one the publish act's
+#: change sets (`BookAgreedPriceChangeIn`).
+_AGREED_PRICE_FIELD = "agreed_price_micros"
+
+
+def _agreed_price(resolution, call, key):
+    """Whether a start of a kind of work sold at one agreed price can find a
+    price, and what the snapshot keeps of it (#586; the owner's readiness
+    ruling of 2026-10-20 on #553, and its clarification the same day).
+
+    **READ OFF PUBLISHED PRICING CONFIGURATION, NEVER OFF A CUSTOMER.** The
+    books are every one some start could price from — the default, each live
+    Plan's, each customer's own (`the_books_a_start_can_price_from`) — and the
+    question is whether ANY holds a price in force now. No customer is
+    selected, counted or looked up, and no Plan's membership is read, so the
+    same configuration is the same Blueprint whoever the tenant's customers
+    are, and a Blueprint never picks the customer whose price makes it look
+    complete.
+
+    **BLOCKED ONLY WHERE A START WOULD BE REFUSED FOR EVERYBODY**: the tenant
+    bills through UBB — the one posture in which a start with no price is
+    refused (`determine_the_agreed_price`) — and no book holds one. One price
+    anywhere makes the call complete, which promises a path a start can price
+    by and not that every customer has one.
+
+    **THE ADVISORY IS ABOUT THE DEFAULT BOOK ALONE**, reported in either
+    posture whenever it holds none, even where another book does: a customer
+    with no price of their own or from their Plan meets the default, and its
+    code says what follows in this posture — refused at start where UBB
+    bills, no revenue figure UBB stands behind where it does not.
+
+    Every diagnostic here points at the agreed price by the kind it prices,
+    and offers no request: an agreed price is declared on a Pricing Book's
+    editor, which is the console screen a consumer links to, and the request
+    that publishes one names a book by its row id, which a diagnostic never
+    carries.
+
+    Returns what the snapshot keeps: the one tenant-level outcome, and the
+    DEFAULT book's price with where it came from — the price a generated
+    file's run meets when nobody has a deal, and the one Verify materialises.
+    No other book's amount, no customer and no Plan, so repricing one
+    customer's deal moves no fingerprint, while adding the first price
+    anywhere or retiring the last does.
+    """
+    tenant = resolution.tenant
+    in_force = list(
+        agreed_prices_in_force_in(the_books_a_start_can_price_from(tenant),
+                                  timezone.now())
+        .filter(task_type=key).select_related("pricing_book"))
+    in_the_default = next((line for line in in_force
+                           if line.pricing_book.is_default), None)
+    bills = bills_through_ubb(tenant)
+    if bills and not in_force:
+        resolution.report(call, DIAGNOSTIC_CODE_AGREED_PRICE_MISSING,
+                          CONFIGURATION_OBJECT_KIND_AGREED_PRICE, key,
+                          field=_AGREED_PRICE_FIELD)
+    if in_the_default is None:
+        resolution.report(
+            call,
+            DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START
+            if bills
+            else DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE,
+            CONFIGURATION_OBJECT_KIND_AGREED_PRICE, key,
+            field=_AGREED_PRICE_FIELD)
+    return {
+        "has_any_effective_runtime_agreed_price": bool(in_force),
+        "default_book_agreed_price": None if in_the_default is None else {
+            "book_key": in_the_default.pricing_book.key,
+            "agreed_price_micros": in_the_default.agreed_price_micros,
+            "book_version_from": in_the_default.book_version_from,
+            "valid_from": in_the_default.valid_from.isoformat(),
+            "valid_to": (in_the_default.valid_to.isoformat()
+                         if in_the_default.valid_to else None),
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1032,7 +1134,8 @@ def _response_shape(resolution, call, declaration, declared_by):
 # What a later sandbox needs: the configuration beside the Blueprint
 # ---------------------------------------------------------------------------
 
-def _configuration(tenant, kinds, event_types, declared_fields):
+def _configuration(tenant, kinds, event_types, declared_fields,
+                   agreed_price):
     """Everything a sandbox must hold to run the Blueprint's lifecycle as this
     tenant's configuration would (#184 §13 step 2).
 
@@ -1042,8 +1145,12 @@ def _configuration(tenant, kinds, event_types, declared_fields):
     id and no row timestamp, and every list whose order means nothing in a
     canonical order.
 
-    ⚠ WHAT IS NOT HERE: the agreed price of a kind of work sold whole. Nothing
-    declares one yet; the ticket that consumes that declaration adds it.
+    **THE AGREED PRICE IS HERE ONLY FOR A KIND SOLD AT ONE** (#586), as
+    `_agreed_price` returns it: whether any book a start can price from holds
+    one, and the default book's price with where it came from. It is no
+    call's token, so no generated file holds it (a renderer writes a token's
+    literal into the file), and it is absent rather than empty for every
+    other kind, so no snapshot resolved before it existed moves.
     """
     task, *subtasks = kinds
     declared_kinds = [kind for kind in kinds if kind is not None]
@@ -1054,7 +1161,10 @@ def _configuration(tenant, kinds, event_types, declared_fields):
                     for quantity in resolved["declaration"].measurements})
     keys = sorted(resolved["declaration"].key for resolved in event_types)
     provisioned = copied_to_a_sandbox(tenant)
+    sold_at_one_price = ({} if agreed_price is None
+                         else {"agreed_price": agreed_price})
     return {
+        **sold_at_one_price,
         "task_type": task,
         "subtask_types": [kind for kind in subtasks if kind is not None],
         "grouping_fields": [declared_fields[key] for key in required],

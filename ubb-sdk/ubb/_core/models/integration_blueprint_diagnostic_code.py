@@ -1,6 +1,9 @@
 from enum import Enum
 
 class IntegrationBlueprintDiagnosticCode(str, Enum):
+    AGREED_PRICE_MISSING = "agreed_price_missing"
+    DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE = "default_agreed_price_missing_no_revenue_figure"
+    DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START = "default_agreed_price_missing_refused_at_start"
     DERIVED_MEASUREMENT_UNSUPPORTED = "derived_measurement_unsupported"
     EVENT_TYPE_NOT_DECLARED = "event_type_not_declared"
     EVENT_TYPE_NOT_PUBLISHED = "event_type_not_published"

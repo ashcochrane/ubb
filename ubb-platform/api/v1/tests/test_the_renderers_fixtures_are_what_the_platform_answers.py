@@ -55,6 +55,7 @@ import re
 from datetime import datetime, timezone as datetime_timezone
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 from urllib.parse import quote
 
 import pytest
@@ -76,7 +77,7 @@ from core.vocabulary import (
 
 from ._helpers import (
     A_JSON_SHAPE, A_PYTHON_SHAPE, INPUT_TOKENS, KIND, SEARCHES, SUBTASK_KIND,
-    BlueprintRoutes)
+    BlueprintRoutes, a_tenant)
 
 FIXTURES = Path(__file__).resolve().parents[4] / "apps" / "codegen" / "fixtures"
 BLUEPRINTS = FIXTURES / "blueprints"
@@ -270,12 +271,63 @@ def _explicit_subtasks(routes, target=PYTHON):
 
 
 def _fixed_price(routes, target=PYTHON):
-    """A kind of work sold whole, at one agreed price."""
+    """A kind of work sold whole, at one agreed price, for a tenant that
+    meters without billing and has published no price: complete, because
+    nothing refuses its start, and advised that a customer with no price of
+    their own or from their Plan has no revenue figure (#586)."""
     routes._kinds({"key": "report", "uncapped": True,
                    "pricing_mode": PRICING_MODE_FIXED})
     routes._event_type("reply.sent", measurements={
         "replies": _a_quantity("caller_supplied", unit="reply")})
     return routes._resolve(task_type="report", event_types=["reply.sent"],
+                           target=target)
+
+
+#: The agreed price the priced fixture publishes, which no generated file may
+#: hold (#586, B3).
+THE_AGREED_PRICE = 12_500_000
+
+
+def _a_tenant_that_bills(routes):
+    """The fixture's tenant, replaced by one that bills through UBB — made
+    as every fixture's tenant is made, by the shared helper."""
+    routes.tenant, routes.raw_key = a_tenant(
+        products=("metering", "billing"), billing_mode="postpaid")
+
+
+def _fixed_price_unpriced(routes, target=PYTHON):
+    """The same, for a tenant that bills through UBB, with no price in any
+    Pricing Book a start can price from: every start would be refused, so the
+    start is blocked, and advised in that posture's words (#586)."""
+    _a_tenant_that_bills(routes)
+    routes._kinds({"key": "translation", "uncapped": True,
+                   "pricing_mode": PRICING_MODE_FIXED})
+    routes._event_type("reply.sent", measurements={
+        "replies": _a_quantity("caller_supplied", unit="reply")})
+    return routes._resolve(task_type="translation",
+                           event_types=["reply.sent"], target=target)
+
+
+def _fixed_price_priced(routes, target=PYTHON):
+    """A tenant that bills through UBB, with the kind's agreed price published
+    into its default Pricing Book through the publish act (#553), and its
+    Event Type costed: complete, with nothing reported, and the price in the
+    snapshot and in no call (#586).
+
+    A line's opening is part of what the snapshot keeps, so of the
+    fingerprint the file holds, and a publish opens its lines NOW (the route
+    refuses an instant in the past). So the clock is held at the instant the
+    Event Type's publication is held at while both books are published —
+    the same instant, by the same reasoning, and no row written."""
+    _a_tenant_that_bills(routes)
+    routes._kinds({"key": "transcode", "uncapped": True,
+                   "pricing_mode": PRICING_MODE_FIXED})
+    routes._event_type("reply.sent", provider="openai", measurements={
+        "replies": _a_quantity("caller_supplied", unit="reply")})
+    with mock.patch("django.utils.timezone.now", return_value=PUBLISHED_AT):
+        routes._cost_rules(("add", "replies", 2_000))
+        routes._publish_agreed_price("transcode", THE_AGREED_PRICE)
+    return routes._resolve(task_type="transcode", event_types=["reply.sent"],
                            target=target)
 
 
@@ -397,6 +449,8 @@ BLUEPRINT_FIXTURES = {
     "direct-task-events": _direct_task_events,
     "explicit-subtasks": _explicit_subtasks,
     "fixed-price": _fixed_price,
+    "fixed-price-unpriced": _fixed_price_unpriced,
+    "fixed-price-priced": _fixed_price_priced,
     "scaffold": _scaffold,
     "blocked": _blocked,
     "constant": _constant,
@@ -410,6 +464,8 @@ BLUEPRINT_FIXTURES = {
     "shell-direct-task-events": _as_shell(_direct_task_events),
     "shell-explicit-subtasks": _as_shell(_explicit_subtasks),
     "shell-fixed-price": _as_shell(_fixed_price),
+    "shell-fixed-price-unpriced": _as_shell(_fixed_price_unpriced),
+    "shell-fixed-price-priced": _as_shell(_fixed_price_priced),
     "shell-scaffold": _as_shell(_scaffold),
     "shell-blocked": _as_shell(_blocked),
     "shell-constant": _as_shell(_constant),
@@ -431,6 +487,8 @@ READINESS = {
     "direct-task-events": "complete",
     "explicit-subtasks": "complete",
     "fixed-price": "complete",
+    "fixed-price-unpriced": "blocked",
+    "fixed-price-priced": "complete",
     "scaffold": "scaffold",
     "blocked": "blocked",
     "constant": "complete",
@@ -443,6 +501,8 @@ READINESS = {
     "shell-direct-task-events": "complete",
     "shell-explicit-subtasks": "complete",
     "shell-fixed-price": "complete",
+    "shell-fixed-price-unpriced": "blocked",
+    "shell-fixed-price-priced": "complete",
     "shell-scaffold": "scaffold",
     "shell-blocked": "blocked",
     "shell-constant": "complete",
@@ -513,6 +573,26 @@ def test_the_fixtures_cover_what_they_are_named_for():
 
     assert literal(resolved("fixed-price"), "task_type.pricing_mode") == [
         PRICING_MODE_FIXED]
+    # A kind sold at one agreed price (#586): complete and advised for a
+    # tenant that meters only; blocked, and advised, for one that bills with
+    # no price in any book; complete with nothing reported once its default
+    # book holds one. The price itself is in no call, so in no generated file:
+    # `render` is a function of the Blueprint alone.
+    for prefix in ("", _SHELL_PREFIX):
+        assert [d["code"] for d in resolved(f"{prefix}fixed-price")[
+            "diagnostics"]] == [
+            "default_agreed_price_missing_no_revenue_figure"]
+        unpriced = resolved(f"{prefix}fixed-price-unpriced")
+        assert [d["code"] for d in unpriced["diagnostics"]] == [
+            "agreed_price_missing",
+            "default_agreed_price_missing_refused_at_start"]
+        assert [call["readiness"] for call in unpriced["calls"]] == [
+            "blocked", "complete", "complete"]
+        priced = resolved(f"{prefix}fixed-price-priced")
+        assert priced["diagnostics"] == []
+        assert literal(priced, "task_type.pricing_mode") == [
+            PRICING_MODE_FIXED]
+        assert str(THE_AGREED_PRICE) not in json.dumps(priced)
     assert literal(resolved("reported-cost"),
                    "provider_cost_micros.amount_representation") == [MAJOR]
     assert literal(resolved("explicit-subtasks"),
@@ -695,6 +775,12 @@ VERIFIED = {
     # echoes every constant as the exact text it is declared as.
     "constant": ("constant", {
         "records": [_record("flat.call", measurements={"searches": "3"})],
+        "grouping_fields": {}}, 200),
+    # A kind sold at one agreed price, priced in the tenant's default book
+    # (#586): the run is given the price the snapshot keeps, and the
+    # delivered close is charged it — its billed total is the price.
+    "fixed-price-priced": ("fixed-price-priced", {
+        "records": [_record("reply.sent", measurements={"replies": "4"})],
         "grouping_fields": {}}, 200),
     # The refusals before anything runs, one of each.
     # A sample for a constant: no tenant's code could send one (#584).

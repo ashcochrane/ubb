@@ -12,7 +12,8 @@ from apps.metering.pricing.receipts import (
 )
 from apps.platform.event_types.costing import cost_declaration
 from apps.platform.event_types.exact_decimals import canonical_quantities
-from apps.platform.plans.queries import get_pricing_book_for_customer
+from apps.platform.plans.queries import (
+    get_pricing_book_for_customer, pricing_books_of_live_plans)
 from core.money import MONEY_COLUMN_MAX, MONEY_COLUMN_MIN, fits_a_money_column
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
@@ -1426,6 +1427,30 @@ def bills_through_ubb(tenant) -> bool:
     rather than two readings of a product flag.
     """
     return TENANT_PRODUCT_BILLING in (tenant.products or [])
+
+
+def the_books_a_start_can_price_from(tenant):
+    """EVERY PRICING BOOK FROM WHICH SOME START COULD RESOLVE AN AGREED PRICE,
+    read off configuration alone (#586).
+
+    `PricingService._selected_pricing_books` answers this for ONE customer:
+    their own book, their Plan's, the tenant's default. This is the union of
+    that answer over every customer the tenant could have — the default, the
+    book of every live Plan, and every customer's own book — without reading a
+    customer at all: no Plan membership, no customer count, no customer chosen
+    to stand for the rest. The owner's readiness ruling of 2026-10-20 on #553
+    is that a Blueprint is customer-independent, so the Code Builder asks
+    "could a start of this kind find a price anywhere?" of the tenant's
+    PUBLISHED pricing configuration and of nothing else.
+
+    A book reachable no way a start selects one — a Pricing Book nobody's
+    Plan names, which is not the default and belongs to no customer — is not
+    here, for the reason `_selected_pricing_books` gives: no line inside it can
+    be anybody's answer.
+    """
+    return PricingBook.objects.filter(tenant=tenant).filter(
+        Q(is_default=True) | Q(customer__isnull=False)
+        | Q(id__in=pricing_books_of_live_plans(tenant.id)))
 
 
 class AgreedPriceRefused(ValueError):

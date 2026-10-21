@@ -3715,7 +3715,10 @@
               "derived_measurement_unsupported",
               "response_shape_not_declared",
               "response_shape_not_readable_by_target",
-              "source_path_convention_mismatch"
+              "source_path_convention_mismatch",
+              "agreed_price_missing",
+              "default_agreed_price_missing_refused_at_start",
+              "default_agreed_price_missing_no_revenue_figure"
             ],
             "title": "Code",
             "type": "string",
@@ -3751,7 +3754,8 @@
               "measurement",
               "reported_cost_mapping",
               "provider",
-              "grouping_field"
+              "grouping_field",
+              "agreed_price"
             ],
             "title": "Object Kind",
             "type": "string",
@@ -3800,7 +3804,8 @@
               "measurement",
               "reported_cost_mapping",
               "provider",
-              "grouping_field"
+              "grouping_field",
+              "agreed_price"
             ],
             "title": "Object Kind",
             "type": "string",

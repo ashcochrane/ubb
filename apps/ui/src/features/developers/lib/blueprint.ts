@@ -234,11 +234,16 @@ export function shownValue(argument: BlueprintArgument, place: TokenPlace): Show
 // ---------------------------------------------------------------------------
 // Where the round trip goes
 
-/** A console screen that owns something the page points at (§11). */
+/**
+ * A console screen that owns something the page points at (§11). Pricing owns
+ * two things the page points at — the Cost Rates a calculated cost is costed
+ * from, and the Pricing Books an agreed price is declared on (#586) — so its
+ * link says which.
+ */
 export type ConsoleScreen =
   | { readonly to: "/tasks/kinds/$key"; readonly params: { readonly key: string } }
   | { readonly to: "/tasks" }
-  | { readonly to: "/pricing" }
+  | { readonly to: "/pricing"; readonly owns: "cost_rates" | "agreed_prices" }
   | { readonly to: "/webhooks" };
 
 function isKindOfWork(objectKind: ConfigurationObjectKind | undefined): boolean {
@@ -269,7 +274,7 @@ export function screenFor(argument: BlueprintArgument, place: TokenPlace): Conso
     return { to: "/tasks" };
   }
   if (place.kind === "fact" && place.element === "costing_method" && argument.value === "calculated") {
-    return { to: "/pricing" };
+    return { to: "/pricing", owns: "cost_rates" };
   }
   return null;
 }
@@ -294,6 +299,12 @@ export function fixFor(diagnostic: BlueprintDiagnostic): Fix {
     return diagnostic.code === "task_type_not_declared"
       ? { kind: "screen", screen: { to: "/tasks" } }
       : { kind: "screen", screen: { to: "/tasks/kinds/$key", params: { key } } };
+  }
+  if (diagnostic.object_kind === "agreed_price") {
+    // An agreed price is declared on a Pricing Book's editor (#553), reached
+    // from Pricing. The server offers no request: the publish that declares
+    // one names a book by its row id, which a diagnostic never carries (#586).
+    return { kind: "screen", screen: { to: "/pricing", owns: "agreed_prices" } };
   }
   const request = diagnostic.remediation_request ?? null;
   return request === null ? { kind: "none" } : { kind: "request", request };

@@ -239,8 +239,17 @@ def agreed_prices_in_force_at(book, instant):
     """
     if not isinstance(book, PricingBook):
         return TaskPrice.objects.none()
+    return agreed_prices_in_force_in([book], instant)
+
+
+def agreed_prices_in_force_in(books, instant):
+    """The agreed prices in force at `instant` in any of several Pricing
+    Books, in one query: the window above, asked of a set of books rather than
+    one (#586 — the Code Builder's readiness asks it of every book a start can
+    price from). `books` is Pricing Books or their ids.
+    """
     return TaskPrice.objects.filter(
-        pricing_book=book, kind=TASK_TYPE_KIND_TASK,
+        pricing_book__in=books, kind=TASK_TYPE_KIND_TASK,
         valid_from__lte=instant).filter(
         Q(valid_to__isnull=True) | Q(valid_to__gt=instant))
 
@@ -252,9 +261,11 @@ def agreed_prices_of(book, *, as_of=None, include_history=False):
     The rates read's three questions, asked of the other kind of line: the
     lines still open by default — in force now or scheduled to open — every
     version with `include_history`, and the line in force at one instant with
-    `as_of`, on the half-open window resolution reads. It is ONE query with
-    two callers: the route serves it, and the Code Builder reads the same
-    lines through it rather than through a channel of its own (spec story 27).
+    `as_of`, on the half-open window resolution reads. The Code Builder reads
+    the same window through `agreed_prices_in_force_in`, the one predicate
+    both are written over, rather than through a channel of its own (spec
+    story 27), so what this read says is in force and what a Blueprint
+    resolves as in force cannot come apart.
     """
     if as_of is not None:
         return agreed_prices_in_force_at(book, as_of)

@@ -511,9 +511,9 @@ export const CODE_TARGET_LABEL_KEYS = {
 //
 // Which kind of tenant declaration a Blueprint's provenance or diagnostic
 // points at: a kind of work at either altitude, an Event Type, one of its
-// Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
-// With the object's key it names the declaration a value came from, or the one
-// a fix belongs to.
+// Measurements, its reported-cost mapping, its Provider, a Grouping Field, or
+// the agreed price a Pricing Book holds for a kind of work. With the object's
+// key it names the declaration a value came from, or the one a fix belongs to.
 //
 // Declared in concepts/code-builder.yaml.
 
@@ -525,6 +525,7 @@ export const CONFIGURATION_OBJECT_KIND_VALUES = [
   "reported_cost_mapping",
   "provider",
   "grouping_field",
+  "agreed_price",
 ] as const;
 
 export type ConfigurationObjectKind = (typeof CONFIGURATION_OBJECT_KIND_VALUES)[number];
@@ -537,6 +538,7 @@ export const CONFIGURATION_OBJECT_KIND_LABEL_KEYS = {
   "reported_cost_mapping": "configuration_object_kind.reported_cost_mapping",
   "provider": "configuration_object_kind.provider",
   "grouping_field": "configuration_object_kind.grouping_field",
+  "agreed_price": "configuration_object_kind.agreed_price",
 } as const satisfies Record<ConfigurationObjectKind, string>;
 
 
@@ -683,8 +685,11 @@ export const DECLARATION_STATUS_LABEL_KEYS = {
 // — a retired kind, a required Grouping Field that cannot be supplied, an
 // Event Type with nothing published, a reported cost with nowhere to read it
 // from, a quantity generated code cannot carry, a response shape the target
-// cannot read — or advise without blocking: a declaration revised since it was
-// published, or a path that looks inconsistent with its declared shape.
+// cannot read, a kind sold at one agreed price that no Pricing Book a start
+// can price from holds a price for — or advise without blocking: a declaration
+// revised since it was published, a path that looks inconsistent with its
+// declared shape, or a default Pricing Book holding no agreed price for such a
+// kind.
 //
 // Declared in concepts/code-builder.yaml.
 
@@ -704,6 +709,9 @@ export const DIAGNOSTIC_CODE_VALUES = [
   "response_shape_not_declared",
   "response_shape_not_readable_by_target",
   "source_path_convention_mismatch",
+  "agreed_price_missing",
+  "default_agreed_price_missing_refused_at_start",
+  "default_agreed_price_missing_no_revenue_figure",
 ] as const;
 
 export type DiagnosticCode = (typeof DIAGNOSTIC_CODE_VALUES)[number];
@@ -724,6 +732,9 @@ export const DIAGNOSTIC_CODE_LABEL_KEYS = {
   "response_shape_not_declared": "diagnostic_code.response_shape_not_declared",
   "response_shape_not_readable_by_target": "diagnostic_code.response_shape_not_readable_by_target",
   "source_path_convention_mismatch": "diagnostic_code.source_path_convention_mismatch",
+  "agreed_price_missing": "diagnostic_code.agreed_price_missing",
+  "default_agreed_price_missing_refused_at_start": "diagnostic_code.default_agreed_price_missing_refused_at_start",
+  "default_agreed_price_missing_no_revenue_figure": "diagnostic_code.default_agreed_price_missing_no_revenue_figure",
 } as const satisfies Record<DiagnosticCode, string>;
 
 

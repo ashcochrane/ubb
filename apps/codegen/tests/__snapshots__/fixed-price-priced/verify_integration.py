@@ -1,0 +1,79 @@
+# Checks the paths you declared against a response your supplier really
+# returned. UBB never sees that response, so only you can run this.
+# It calls nothing: no supplier and no UBB. Save one real response as
+# JSON and pass it:
+#   python verify_integration.py EVENT_TYPE captured-response.json
+# configuration_fingerprint = "sha256:f0431428892185022ebe6736de85d362950103d6dcdcbab262fdd71d81f9aa99"
+
+import json
+import re
+import sys
+
+# Every quantity read off a response, by Event Type, and where.
+DECLARED_PATHS = {
+}
+
+# Every supplier cost read off a response, by Event Type: where, what it
+# represents, and its currency or where that is read. A cost of zero is
+# a cost: what is checked is that each value is there, is what a cost
+# may be, and converts.
+DECLARED_COSTS = {
+}
+
+_MISSING = object()
+_EXACT = re.compile(r"-?[0-9]+(\.[0-9]+)?")
+
+
+def _resolve(document, segments):
+    found = document
+    for segment in segments:
+        if not isinstance(found, dict) or segment not in found:
+            return _MISSING
+        found = found[segment]
+    return found
+
+
+def main(arguments) -> int:
+    known = [*DECLARED_PATHS, *(event_type for event_type in DECLARED_COSTS
+                                if event_type not in DECLARED_PATHS)]
+    if not known:
+        print("No selected Event Type reads a quantity or a cost off a response. There is nothing to check.")
+        return 0
+    if len(arguments) != 3 or arguments[1] not in known:
+        print("usage: python verify_integration.py EVENT_TYPE captured-response.json")
+        print("Event Types with a quantity or a cost read off a response:")
+        for event_type in known:
+            print(f"  {json.dumps(event_type, ensure_ascii=False)}")
+        return 2
+    declared = DECLARED_PATHS.get(arguments[1], {})
+    with open(arguments[2], encoding="utf-8") as captured:
+        document = json.load(captured)
+    failures = 0
+
+    def check(passed, quantity, message):
+        nonlocal failures
+        failures += 0 if passed else 1
+        verdict = "ok  " if passed else "FAIL"
+        print(f"  {verdict} {json.dumps(quantity, ensure_ascii=False)} {message}")
+
+    for quantity, segments in declared.items():
+        value = _resolve(document, segments)
+        check(value is not _MISSING, quantity, "resolves in the captured response")
+        if value is _MISSING:
+            continue
+        exact = (isinstance(value, int) and not isinstance(value, bool)) or (
+            isinstance(value, str) and _EXACT.fullmatch(value) is not None)
+        check(exact, quantity, "is an integer or a decimal string, as a recorded quantity must be")
+        shared = [other for other, path in declared.items()
+                  if other != quantity and path == segments]
+        check(not shared, quantity, "is read from a path no other quantity is read from")
+
+    if failures:
+        print(f"{failures} check(s) failed.")
+        return 1
+    print("Every check passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

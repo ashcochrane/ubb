@@ -274,7 +274,10 @@ describe("where a fact can be changed", () => {
     const calculated = aCall(known("event_type", "e"), known("event_type.costing_method", "calculated"));
     const reported = aCall(known("event_type", "e"), known("event_type.costing_method", "reported"));
 
-    expect(calculated.arguments[1] && screenFor(calculated.arguments[1], placesOf(calculated)[1] ?? { kind: "field", field: "" })).toEqual({ to: "/pricing" });
+    expect(calculated.arguments[1] && screenFor(calculated.arguments[1], placesOf(calculated)[1] ?? { kind: "field", field: "" })).toEqual({
+      to: "/pricing",
+      owns: "cost_rates",
+    });
     expect(reported.arguments[1] && screenFor(reported.arguments[1], placesOf(reported)[1] ?? { kind: "field", field: "" })).toBeNull();
   });
 
@@ -288,7 +291,7 @@ describe("where a fact can be changed", () => {
       return place ? [screenFor(argument, place)] : [];
     });
 
-    expect(screens.filter((screen) => screen !== null)).toEqual([{ to: "/pricing" }]);
+    expect(screens.filter((screen) => screen !== null)).toEqual([{ to: "/pricing", owns: "cost_rates" }]);
   });
 });
 
@@ -339,6 +342,28 @@ describe("what answers a diagnostic", () => {
       kind: "screen",
       screen: { to: "/tasks" },
     });
+  });
+
+  it("points a missing agreed price at the Pricing Books, which carry no request (#586)", async () => {
+    // A billing tenant with no price in any book: blocked, and advised. Both
+    // are about the agreed price, and both are answered on Pricing — where a
+    // Pricing Book's editor declares one — never by a request to copy.
+    const unpriced = await loadBlueprintFixture("fixed-price-unpriced");
+    const metersOnly = await loadBlueprintFixture("fixed-price");
+    const diagnostics = [...unpriced.diagnostics, ...metersOnly.diagnostics];
+
+    expect(diagnostics.map((d) => d.code)).toEqual([
+      "agreed_price_missing",
+      "default_agreed_price_missing_refused_at_start",
+      "default_agreed_price_missing_no_revenue_figure",
+    ]);
+    for (const diagnostic of diagnostics) {
+      expect(diagnostic.remediation_request ?? null).toBeNull();
+      expect(fixFor(diagnostic)).toEqual({
+        kind: "screen",
+        screen: { to: "/pricing", owns: "agreed_prices" },
+      });
+    }
   });
 
   it("offers nothing where the diagnostic carries nothing", () => {

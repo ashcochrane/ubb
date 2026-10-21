@@ -115,12 +115,20 @@ configuration_object_kind:
   # this one names a record a tenant declared. They share spellings because
   # both are named for the same four things, and nothing reads one as the
   # other.
+  #
+  # `agreed_price` was ADDED with #586 (2026-10-21), when a Blueprint first
+  # had a diagnostic about one. Its key is the kind of work the price is for,
+  # which is how a Pricing Book addresses its agreed prices: a book holds at
+  # most one in force per kind. The book is not in the pointer — readiness is
+  # about every book a start can price from, and the diagnostics say which
+  # book they mean by their code.
   summary: >-
     Which kind of tenant declaration a Blueprint's provenance or diagnostic
     points at: a kind of work at either altitude, an Event Type, one of its
-    Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
-    With the object's key it names the declaration a value came from, or the
-    one a fix belongs to.
+    Measurements, its reported-cost mapping, its Provider, a Grouping Field,
+    or the agreed price a Pricing Book holds for a kind of work. With the
+    object's key it names the declaration a value came from, or the one a fix
+    belongs to.
   values:
     - task_type
     - subtask_type
@@ -129,6 +137,7 @@ configuration_object_kind:
     - reported_cost_mapping
     - provider
     - grouping_field
+    - agreed_price
   label_key_prefix: configuration_object_kind
   consumers:
     - surface: backend
@@ -139,7 +148,7 @@ configuration_object_kind:
 diagnostic_code:
   kind: closed
   # A VERSIONED CLOSED SET, NOT A FOREVER-FINAL ONE (owner ruling of
-  # 2026-10-02 on #576). These sixteen are the set as it stands: each is a
+  # 2026-10-02 on #576). These eighteen are the set as it stands: each is a
   # condition the resolver actually reports, none is provisional (ADR-0007 §3)
   # and none is reserved for later. The set is CLOSED — a consumer may switch
   # over it exhaustively — and it CHANGES, deliberately:
@@ -151,10 +160,8 @@ diagnostic_code:
   # one something does. The Blueprint's own tests hold both directions: the
   # codes resolutions report are exactly the set the contract publishes.
   #
-  # What is already expected to change it. The ticket that makes a kind sold
-  # at one agreed price ready or not ADDS the member that says its price is
-  # missing. `derived_measurement_unsupported` is a stated limitation with
-  # nothing designed to lift it.
+  # What is already expected to change it. `derived_measurement_unsupported`
+  # is a stated limitation with nothing designed to lift it.
   #
   # Changed by this rule once already (#571, owner confirmation of 2026-10-06
   # on #571). A constant quantity is now declared WITH its value and refused
@@ -187,6 +194,23 @@ diagnostic_code:
   # `constant_measurement_not_renderable` was REMOVED with no successor, as
   # #571 said it would be.
   #
+  # And a fifth time (#586, 2026-10-21), as #576's note said a ticket would.
+  # An agreed price is declarable through the Pricing Book publish act (#553),
+  # so a kind of work sold at one agreed price is ready or not by the prices
+  # the tenant has PUBLISHED (the owner's ruling of 2026-10-20 on #553), and
+  # three members were ADDED, each reported over an `agreed_price`:
+  # `agreed_price_missing` BLOCKS a tenant that bills through UBB when no
+  # Pricing Book a start can price from — the default, a live Plan's, a
+  # customer's own — holds one in force for the kind, because every start
+  # would then be refused. The two `default_agreed_price_missing_*` members
+  # ADVISE, in either posture, whenever the DEFAULT book holds none: a
+  # customer with no price of their own or from their Plan is
+  # `refused_at_start` where UBB bills, and has `no_revenue_figure` that UBB
+  # stands behind where it does not. They are two members rather than one
+  # because what follows differs by posture and a diagnostic carries no
+  # prose: a renderer, which is never told the posture, words each from its
+  # code alone.
+  #
   # Named for the STATE of a declaration, `<object>_<what is true of it>`,
   # never for the ticket that will change it. A diagnostic carries no prose —
   # the console words each code from its label key — so the code is the whole
@@ -198,9 +222,11 @@ diagnostic_code:
     a call — a retired kind, a required Grouping Field that cannot be supplied,
     an Event Type with nothing published, a reported cost with nowhere to read
     it from, a quantity generated code cannot carry, a response shape the
-    target cannot read — or advise
-    without blocking: a declaration revised since it was published, or a path
-    that looks inconsistent with its declared shape.
+    target cannot read, a kind sold at one agreed price that no Pricing Book a
+    start can price from holds a price for — or advise without blocking: a
+    declaration revised since it was published, a path that looks
+    inconsistent with its declared shape, or a default Pricing Book holding no
+    agreed price for such a kind.
   values:
     - task_type_not_selected
     - task_type_not_declared
@@ -217,6 +243,9 @@ diagnostic_code:
     - response_shape_not_declared
     - response_shape_not_readable_by_target
     - source_path_convention_mismatch
+    - agreed_price_missing
+    - default_agreed_price_missing_refused_at_start
+    - default_agreed_price_missing_no_revenue_figure
   label_key_prefix: diagnostic_code
   consumers:
     - surface: backend
