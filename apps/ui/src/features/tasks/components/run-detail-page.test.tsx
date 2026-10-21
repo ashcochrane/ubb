@@ -271,10 +271,15 @@ describe("RunDetailPage", () => {
       // answer after the heading does — so wait for the reading it decides,
       // not merely for the page.
       await waitFor(() => {
-        const price = readingBeside(region("What it cost and earned"), "Customer price");
-        expect(price).toHaveAttribute("data-reading", "not_applicable");
-        expect(price).toHaveTextContent("Metering only");
+        const agreed = rowBeside(region("What it cost and earned"), "Agreed price").textContent ?? "";
+        expect(agreed).toMatch(/does not bill through UBB/);
       });
+      // The regime decides why the customer price does not apply, for every
+      // workspace (#553); the posture decides only what the agreed price is
+      // called.
+      const price = readingBeside(region("What it cost and earned"), "Customer price");
+      expect(price).toHaveAttribute("data-reading", "not_applicable");
+      expect(price).toHaveTextContent("Priced at the task");
       const money = region("What it cost and earned");
       const agreed = rowBeside(money, "Agreed price").textContent ?? "";
       expect(agreed).toMatch(/\$5\.00/);

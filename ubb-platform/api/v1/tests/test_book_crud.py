@@ -218,7 +218,9 @@ class BookCRUDTest(TestCase):
 
 
 class BookGatingTest(TestCase):
-    """metering-only tenant cannot create a PRICE book (billing-gated)."""
+    """A metering-only tenant declares both kinds of book (#553 A6): a Pricing
+    Book takes the cost book's metering floor, because billing mode does not
+    decide whether UBB may know a customer's agreed price."""
 
     def setUp(self):
         self.http_client = Client()
@@ -235,9 +237,10 @@ class BookGatingTest(TestCase):
             f"/api/v1/metering/pricing/{path}",
             data=json.dumps(body), content_type="application/json", **self._auth())
 
-    def test_metering_only_tenant_cannot_declare_a_pricing_book(self):
+    def test_metering_only_tenant_can_declare_a_pricing_book(self):
         resp = self._post("pricing-books", PRICING_BOOK)
-        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn("id", resp.json())
 
     def test_metering_only_tenant_can_declare_a_cost_book(self):
         resp = self._post("cost-books", COST_BOOK)

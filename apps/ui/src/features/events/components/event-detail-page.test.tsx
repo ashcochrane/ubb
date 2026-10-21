@@ -441,15 +441,11 @@ describe("EventDetailPage", () => {
     },
   );
 
-  // ⚠ AC 5. THE TWO NOT-APPLICABLE REASONS ARE DIFFERENT ANSWERS, and this is
-  // the one of them a coherent workspace can seed. `fixed_task_pricing` leaves
+  // ⚠ AC 5. A PRICE THAT DOES NOT APPLY SAYS WHY. `fixed_task_pricing` leaves
   // a real charge to go and look at — it sits on the Task — so the receipt must
-  // send the reader there rather than shrug.
-  //
-  // Its sibling, `tenant_not_billing`, cannot be seeded from this mock: this
-  // workspace bills. It is rendered in `event-receipt-price.test.tsx` from a
-  // fixture the mock does not author, which is also where the narrowing proof
-  // lives.
+  // send the reader there rather than shrug. It is the one reason left since
+  // #553, for every workspace; `event-receipt-price.test.tsx` renders it for a
+  // workspace that does not bill, from a fixture the mock does not author.
   it("says WHY a price does not apply, and sends the reader to the Task", async () => {
     renderPage({
       eventId: EVENT_PRICE_NOT_APPLICABLE_ID,
@@ -466,12 +462,9 @@ describe("EventDetailPage", () => {
       screen.getByText(NOT_APPLICABLE_REASON_EXPLANATIONS.fixed_task_pricing),
     ).toBeInTheDocument();
 
-    // NOT the other cause, and NOT the generic status sentence: a screen that
-    // fell back to either would answer "why is there no price here?" with the
-    // shrug the reason exists to replace.
-    expect(
-      screen.queryByText(NOT_APPLICABLE_REASON_EXPLANATIONS.tenant_not_billing),
-    ).not.toBeInTheDocument();
+    // NOT the generic status sentence: a screen that fell back to it would
+    // answer "why is there no price here?" with the shrug the reason exists to
+    // replace.
     expect(
       screen.queryByText(PRICING_STATUS_EXPLANATIONS.not_applicable),
     ).not.toBeInTheDocument();

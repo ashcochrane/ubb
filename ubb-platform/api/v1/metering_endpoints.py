@@ -946,26 +946,36 @@ def _apply_task_filter(qs, tenant, task_id, include_subtasks):
 
 # --- Rate Cards ---
 
-_billing_check = ProductAccess("billing")
-
-
 def _gate_a_pricing_book(request):
-    """Reading or changing what a tenant CHARGES is a billing surface.
+    """A Pricing Book — what a tenant's customers are agreed to pay — takes the
+    metering floor, exactly as a cost book does (#553, ADR-0021 §4).
 
-    ⚠ The gate this replaces took the kind word as an argument and branched on
-    it, which is how a cost route came to be gated on billing at least once in
-    this programme (#363). Two named gates cannot make that mistake: a route
-    calls the one for the entity it serves, and there is no value to get wrong.
+    **BILLING/COLLECTION MODE DOES NOT DECIDE WHETHER UBB MAY KNOW THE AGREED
+    CUSTOMER PRICE.** This gate asked for the billing product until #553, on
+    the reading that a price is what UBB COLLECTS. A metering-only tenant
+    collects elsewhere and still agrees prices with its customers, and its
+    margin reporting is exactly what those prices exist for: a fixed-price
+    unit's revenue, an event's billed amount, the margin between them. So
+    declaring, reading and publishing a Pricing Book — and a customer's own
+    override — is metering. What the billing product still gates is MOVING
+    money: its outbox handlers draw wallets and accumulate fees only for a
+    tenant that has it, and a Plan, whose fee axes are subscriptions and
+    Stripe, stays behind it (`plan_endpoints.py`).
+
+    ⚠ TWO NAMED GATES STILL, ALTHOUGH THEY NOW ASK THE SAME THING. The gate
+    this pair replaced took the kind word as an argument and branched on it,
+    which is how a cost route came to be gated on billing once (#363); a route
+    calls the gate for the entity it serves, and the day the two entities'
+    floors differ again the call sites are already right.
     """
     _product_check(request)
-    _billing_check(request)
 
 
 def _gate_a_cost_book(request):
     """Recording what a SUPPLIER charges is metering, not billing.
 
-    A metering-only tenant tracks its supplier costs and has no customer
-    prices at all, so nothing here may ask for the billing product.
+    A metering-only tenant tracks its supplier costs whatever it bills, so
+    nothing here may ask for the billing product.
     """
     _product_check(request)
 
@@ -973,11 +983,13 @@ def _gate_a_cost_book(request):
 def _gate_the_books_product(request, book):
     """The product gate for an act performed on a book already looked up.
 
-    Which product a book belongs to is a property of the ENTITY — a Pricing
-    Book is billing, a cost book is metering — so the two named gates above are
-    reached through the book rather than through a value read off it. The
-    routes that know which kind they serve call those directly; the SIX that
-    act on either kind come here.
+    Which gate a book takes is a property of the ENTITY, so the two named
+    gates above are reached through the book rather than through a value
+    read off it. Both are the metering floor since #553 — see
+    `_gate_a_pricing_book` for why a Pricing Book is not a billing surface —
+    and they stay two because the entities are two. The routes that know
+    which kind they serve call those directly; the SIX that act on either
+    kind come here.
 
     ⚠ **THE THREE READS CAME HERE LATE, AND UNTIL THEY DID A METERING-ONLY
     TENANT COULD READ A PRICING BOOK.** Listing a book's rules, listing its
@@ -1845,17 +1857,16 @@ def execute_resolution_run(request, payload: ResolutionRunIn):
     """
     from apps.metering.pricing.services import resolution_run
 
-    # ⚠ THE METERING GATE AND NOT THE BILLING ONE, WHICH IS A DECISION RATHER
-    # THAN THE HABIT OF THE ROUTES AROUND THIS. The pricing routes beside it
-    # gate on `billing` because writing a price rule is a billing act. A run is
-    # not: it completes BOTH pairs, and one of them — a supplier cost UBB never
-    # learned — is metering's own, owed to a metering-only tenant who never
-    # charges anybody through UBB. Gating on billing would leave exactly that
-    # tenant with no way to work through an unresolved-cost backlog at all,
-    # which is the queue this mechanism exists to be. A tenant that does not
-    # bill resolves no PRICE either way: their postings price to
-    # `not_applicable`, which is not a completable status, so the wider gate
-    # admits nothing extra rather than admitting something wrong.
+    # ⚠ THE METERING GATE, LIKE EVERY PRICING ROUTE BESIDE IT SINCE #553. A run
+    # completes BOTH pairs, and one of them — a supplier cost UBB never learned
+    # — is metering's own, owed to a metering-only tenant who never charges
+    # anybody through UBB; gating on `billing` would leave exactly that tenant
+    # with no way through an unresolved-cost backlog. The price pair is no
+    # longer a reason to gate differently: a metering-only tenant declares
+    # Pricing Books like any other (ADR-0021 §4), its event-priced postings are
+    # priced for its own margin reporting, and an `unknown` price of its is
+    # completed by a run exactly as a billing tenant's is. What a run never
+    # does, for anybody, is move money.
     _product_check(request)
     customer = None
     if payload.selected_customer_id is not None:

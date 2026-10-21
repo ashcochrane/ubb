@@ -55,7 +55,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.vocabulary import (
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
+    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
@@ -77,7 +77,7 @@ def _posting(tenant, customer, key, *, status=PRICING_STATUS_KNOWN,
     if status == PRICING_STATUS_KNOWN:
         amount, reason = price, None
     elif status == PRICING_STATUS_NOT_APPLICABLE:
-        amount, reason = None, NOT_APPLICABLE_REASON_TENANT_NOT_BILLING
+        amount, reason = None, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
     else:  # waived, unknown
         amount, reason = None, None
     return Posting.objects.create(

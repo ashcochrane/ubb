@@ -395,7 +395,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # on the posting with its rules, and the stamp onto queued payloads.
         # Neither names a retired word, so the number moved for the files
         # existing.
-        "historical-migrations": (UNTIL_SLICE_8, 273, 19),
+        # 273 -> 275 in #553: two migrations — the agreed price's provenance
+        # and window trigger, and the rewrite of the removed posture reason
+        # under a one-time lift of the price trigger. Neither names a retired
+        # word, so the number moved for the files existing.
+        "historical-migrations": (UNTIL_SLICE_8, 275, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

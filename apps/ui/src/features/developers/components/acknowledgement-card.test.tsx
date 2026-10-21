@@ -122,7 +122,7 @@ describe("AcknowledgementCard — the customer price", () => {
   it.each([
     ["unknown", unknownPrice()],
     ["waived", waivedPrice()],
-    ["not_applicable", priceNotApplicable("tenant_not_billing")],
+    ["not_applicable", priceNotApplicable("fixed_task_pricing")],
   ] as const)("names a %s price in the cell, never zeroes it", (status, price) => {
     renderCard(responseWith(price));
 
@@ -132,11 +132,10 @@ describe("AcknowledgementCard — the customer price", () => {
   });
 
   it("names the cause where the status has one", () => {
-    renderCard(responseWith(priceNotApplicable("tenant_not_billing")));
+    renderCard(responseWith(priceNotApplicable("fixed_task_pricing")));
 
     expect(screen.getByText("Why")).toBeInTheDocument();
-    expect(screen.getByText(notApplicableReasonLabel("tenant_not_billing"))).toBeInTheDocument();
-    expect(screen.queryByText(notApplicableReasonLabel("fixed_task_pricing"))).not.toBeInTheDocument();
+    expect(screen.getByText(notApplicableReasonLabel("fixed_task_pricing"))).toBeInTheDocument();
   });
 
   it("asks WHY only where the status has a cause to give", () => {

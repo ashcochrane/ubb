@@ -221,7 +221,7 @@ describe("customer price scenarios", () => {
       unknownPrice(),
       negativePriceUnsupported(),
       waivedPrice(),
-      priceNotApplicable("tenant_not_billing"),
+      priceNotApplicable("fixed_task_pricing"),
     ]) {
       expect(Object.keys(scenario)).toEqual([
         "billed_cost_micros",
@@ -288,7 +288,7 @@ describe("customer price scenarios", () => {
       knownPrice(1),
       unknownPrice(),
       waivedPrice(),
-      priceNotApplicable("tenant_not_billing"),
+      priceNotApplicable("fixed_task_pricing"),
     ]) {
       const settled = scenario.pricing_status === "known";
       expect(scenario.billed_cost_micros === null).toBe(!settled);

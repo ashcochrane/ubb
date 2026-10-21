@@ -90,7 +90,7 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
+    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
@@ -207,7 +207,7 @@ class ARunReachesOnlyWhatWasNeverResolvedTest(
             provider_cost_micros=None,
             pricing_status=PRICING_STATUS_NOT_APPLICABLE,
             billed_cost_micros=None,
-            not_applicable_reason=NOT_APPLICABLE_REASON_TENANT_NOT_BILLING)
+            not_applicable_reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
 
     def test_the_seeds_are_the_five_states_they_claim_to_be(self):
         """The premise, established rather than assumed — a mix that was

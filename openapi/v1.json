@@ -7066,8 +7066,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "fixed_task_pricing",
-                  "tenant_not_billing"
+                  "fixed_task_pricing"
                 ],
                 "type": "string",
                 "x-ubb-concept": "not_applicable_reason"
@@ -10413,8 +10412,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "fixed_task_pricing",
-                  "tenant_not_billing"
+                  "fixed_task_pricing"
                 ],
                 "type": "string",
                 "x-ubb-concept": "not_applicable_reason"
@@ -10878,8 +10876,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "fixed_task_pricing",
-                  "tenant_not_billing"
+                  "fixed_task_pricing"
                 ],
                 "type": "string",
                 "x-ubb-concept": "not_applicable_reason"
@@ -11095,8 +11092,7 @@
             "anyOf": [
               {
                 "enum": [
-                  "fixed_task_pricing",
-                  "tenant_not_billing"
+                  "fixed_task_pricing"
                 ],
                 "type": "string",
                 "x-ubb-concept": "not_applicable_reason"

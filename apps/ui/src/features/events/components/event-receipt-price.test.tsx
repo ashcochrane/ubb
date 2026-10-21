@@ -12,31 +12,21 @@
 //
 // So the detail below is assembled HERE, field by field, and served through a
 // stubbed provider. The only thing it takes from the fixture module is the one
-// object under test — `priceNotApplicable("tenant_not_billing")` — which is the
+// object under test — `priceNotApplicable("fixed_task_pricing")` — which is the
 // point: this asserts on RENDERED OUTPUT for a payload the mock never saw.
 //
-// ⚠ THE MUTATION THAT PROVES IT IS NOT VACUOUS, and it is chosen to be one the
-// mock CANNOT see. In `@/lib/economic-scenarios`, narrow `priceNotApplicable`
-// to ignore its argument and return `not_applicable_reason: "fixed_task_pricing"`
-// always. EVERY MOCK-AUTHORED RENDERING TEST STAYS GREEN — the events mock
-// seeds that very reason, so the fixture it composes is unchanged and the page
-// receives exactly what it always received.
+// ⚠ THE WORKSPACE IS ONE THAT DOES NOT BILL, AND THAT IS THE #553 CASE. The
+// posture used to win here — such a workspace's fixed-price postings carried
+// `tenant_not_billing`, "no charge exists anywhere" — and the C2 ruling
+// replaced it: the regime decides the reason for every workspace, so this
+// posting says what a billing workspace's says, the revenue sits on the run's
+// own charge. The events mock's workspace bills, so a workspace that does not
+// is assembled here rather than seeded into a mock describing another tenant.
 //
-// Measured on this commit: 5 of 451 fail. Two are unit tests, which call the
-// narrowed function directly. The three RENDERING failures are the first two
-// below and one in the developers' response-card test (since #581,
-// `features/developers/components/acknowledgement-card.test.tsx`) — and that
-// file assembles its own response for the same reason this one does.
-// NOT ONE MOCK-AUTHORED COMPONENT TEST MOVES. That is the shape spec §25
-// describes, and it is a narrowing rather than a rename: the CAUSE stops
-// reaching the renderer, and no token moves.
-//
-// AND THIS IS THE SIXTH ECONOMIC STATE'S ONLY POSSIBLE HOME. `tenant_not_billing`
-// says the workspace meters and does not bill customers through UBB at all; the
-// events mock's workspace has billing enabled, so a posting of its own claiming
-// otherwise would be a fixture describing a tenant that is not the one every
-// other fixture in that file describes. #155 §9.2 asks for a fixture and a
-// rendering assertion, not for an incoherent mock.
+// ⚠ THE MUTATION THAT PROVES IT IS NOT VACUOUS: in `@/lib/customer-price`,
+// give `NOT_APPLICABLE_REASON_EXPLANATIONS.fixed_task_pricing` a posture-shaped
+// sentence ("…does not bill customers…"). The first case below goes red on
+// the sentence it reads.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
@@ -89,7 +79,7 @@ const METERING_ONLY_DETAIL: UsageEventDetail = {
   // helper is now singular. It is still a key-shape helper rather than a
   // fixture: nothing about the payload below comes from the mock.
   ...correlationId(METERING_ONLY_EVENT_ID),
-  ...priceNotApplicable("tenant_not_billing"),
+  ...priceNotApplicable("fixed_task_pricing"),
   ...knownCost(61_000),
   effective_at: "2026-07-09T12:14:07Z",
   created_at: "2026-07-09T12:14:08Z",
@@ -154,22 +144,19 @@ function priceSectionText(): string {
 }
 
 describe("a receipt on a workspace that does not bill", () => {
-  // ⚠ THE ASSERTION THE MUTATION ABOVE REDDENS, and the second half of AC 5:
-  // the two not-applicable causes have to be visibly different answers.
-  // `fixed_task_pricing` leaves a real charge to go and look at; this one says
-  // no charge exists anywhere. A receipt that gave both the generic status
-  // sentence would answer both questions with the same shrug.
-  it("says no charge exists anywhere, not that one is priced at the Task", async () => {
+  // The C2 ruling (#553) at the console: the price does not apply for the
+  // regime's reason, whatever the workspace's billing mode, so the receipt
+  // sends the reader to the run's charge — and never to the generic status
+  // sentence, which would answer "why is there no price here?" with a shrug.
+  it("says the revenue sits on the run's charge, as for any workspace", async () => {
     renderReceipt();
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
 
     expect(
-      screen.getByText(NOT_APPLICABLE_REASON_EXPLANATIONS.tenant_not_billing),
+      screen.getByText(NOT_APPLICABLE_REASON_EXPLANATIONS.fixed_task_pricing),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText(NOT_APPLICABLE_REASON_EXPLANATIONS.fixed_task_pricing),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/does not bill customers/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(PRICING_STATUS_EXPLANATIONS.not_applicable),
     ).not.toBeInTheDocument();
@@ -182,7 +169,7 @@ describe("a receipt on a workspace that does not bill", () => {
 
     expect(screen.getByText("Why")).toBeInTheDocument();
     expect(priceSectionText()).toContain(
-      notApplicableReasonLabel("tenant_not_billing"),
+      notApplicableReasonLabel("fixed_task_pricing"),
     );
     expect(priceSectionText()).toContain(pricingStatusLabel("not_applicable"));
   });

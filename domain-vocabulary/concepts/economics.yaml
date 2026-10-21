@@ -424,42 +424,27 @@ not_applicable_reason:
     Why a subject generates no customer revenue at this level. Read only where
     `pricing_status` is `not_applicable`, and never on its own: a status saying
     a price does not apply without saying WHY sends a reader looking for a
-    number nobody wrote. The two values are mutually exclusive causes, and
-    where both are true POSTURE WINS — a metering-only tenant is
-    `tenant_not_billing` whatever the work's pricing regime, because this
-    concept answers why no CUSTOMER REVENUE arises and for such a tenant none
-    ever does, for a reason that has nothing to do with how the work was sold.
-    Naming the regime instead would say the customer revenue for this event
-    sits on the Task, which for that tenant names revenue nobody will ever
-    collect.
+    number nobody wrote. The pricing regime decides the reason, for every
+    tenant: the tenant's billing mode is not encoded again in the pricing
+    result.
   values:
-    # The event belongs to a Task sold for one agreed price, so the revenue is
-    # the Task's and none of it is this event's (#151 §8.2). The tenant DOES
-    # bill through UBB — the customer charge exists, at the Task.
+    # The event belongs to a unit of work sold for one agreed price, so the
+    # revenue is the unit's — on its Charge, projected onto one posting — and
+    # none of it is this event's (#151 §8.2). For EVERY tenant (#553, the
+    # owner's C2 ruling of 2026-10-08, ADR-0021 §5): whether UBB collects that
+    # revenue is the billing product's question, not this concept's.
     - fixed_task_pricing
-    # The tenant meters and does not bill through UBB at all, so no customer
-    # charge is raised anywhere and there is no customer price to resolve. Wins
-    # the tie-break against the value above.
-    #
-    # ⚠ THE ARGUMENT THIS TIE-BREAK WAS RECORDED WITH EXPIRED IN #416 AND THE
-    # RULING DID NOT. It read *"no Charge is created anywhere for that tenant"*
-    # — true when slice 4 wrote it and false one commit later, because a
-    # metering-only tenant's delivered fixed-price work now DOES produce a
-    # `pricing.Charge`, deliberately, as a recorded revenue and margin fact
-    # rather than a collection. So a reader can go and look at a row; what
-    # survives is the narrower argument in the summary above, which is about
-    # CUSTOMER REVENUE rather than about the existence of a record.
-    #
-    # #418 WIRED THE RULE UP AND RE-TOOK THE TIE-BREAK AGAINST THAT ROW. Both
-    # values are written by the recording path now, for every event under a
-    # piece of work sold at one agreed price. The re-examination the note above
-    # asked for was made against the projected posting itself rather than
-    # against the sentence it replaced, and the ruling held: naming the regime
-    # for a tenant UBB does not bill would send a reader to look for a bill
-    # nobody raises, and it would now be HALF TRUE, which is worse than plainly
-    # wrong. What decides is that this concept answers *why no customer revenue
-    # arises*, and for that tenant the answer has nothing to do with the regime.
-    - tenant_not_billing
+    # ⚠ `tenant_not_billing` WAS THE SECOND VALUE, AND IT IS REMOVED RATHER THAN
+    # RETIRED. It named the tenant's posture — a metering-only tenant's
+    # fixed-price work was `tenant_not_billing` whatever its regime, "posture
+    # wins" (#418) — and C2 supersedes that tie-break: the regime decides the
+    # reason, so the value lost its one producer. A value nothing can produce
+    # is deleted in the change that removes its last producer, not kept alive
+    # (#553's spec). The postings that held it were rewritten to
+    # `fixed_task_pricing`, the reason that was always true of them
+    # (`usage/0047`); a sealed Pricing Receipt that holds it keeps it as
+    # written, because a receipt is never rewritten, and every reader of a
+    # receipt reads that text as history.
   label_key_prefix: not_applicable_reason
   consumers:
     - surface: backend

@@ -343,14 +343,11 @@ export function waivedPrice(): CustomerPriceScenario {
  * total — nothing about it is.
  *
  * IT TAKES THE REASON, and that is a difference from its cost-side twin rather
- * than an inconsistency with it. A supplier cost that was never going to exist
- * has ONE cause — the Event Type declares none — so there is nothing to choose.
- * A customer price has TWO, and they are not the same answer: `fixed_task_pricing`
- * says the revenue is real and sits on the Task's own charge, so LOOK AT THE
- * TASK; `tenant_not_billing` says no Charge was created anywhere for this
- * tenant, so THERE IS NOTHING TO LOOK AT. A scenario that fixed one of them
- * would leave the other with no fixture for anything to render, which is
- * precisely the gap #155 §9.2 exists to close.
+ * than an inconsistency with it: the price's cause is a published concept, so
+ * a fixture states it rather than a default supplying it. One value is left
+ * since #553 — `fixed_task_pricing`, the revenue sits on the Task's own charge,
+ * so LOOK AT THE TASK — for every workspace; the posture value that said there
+ * was nothing to look at was removed with its last producer.
  *
  * The registry reads the reason ONLY under this status, which is why it is a
  * parameter here and `null` on the other three: a cause recorded beside an

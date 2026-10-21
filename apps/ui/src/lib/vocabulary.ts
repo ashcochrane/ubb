@@ -1085,26 +1085,20 @@ export const MEASUREMENTS_STATUS_LABEL_KEYS = {
 // Why a subject generates no customer revenue at this level. Read only where
 // `pricing_status` is `not_applicable`, and never on its own: a status saying
 // a price does not apply without saying WHY sends a reader looking for a
-// number nobody wrote. The two values are mutually exclusive causes, and where
-// both are true POSTURE WINS — a metering-only tenant is `tenant_not_billing`
-// whatever the work's pricing regime, because this concept answers why no
-// CUSTOMER REVENUE arises and for such a tenant none ever does, for a reason
-// that has nothing to do with how the work was sold. Naming the regime instead
-// would say the customer revenue for this event sits on the Task, which for
-// that tenant names revenue nobody will ever collect.
+// number nobody wrote. The pricing regime decides the reason, for every
+// tenant: the tenant's billing mode is not encoded again in the pricing
+// result.
 //
 // Declared in concepts/economics.yaml.
 
 export const NOT_APPLICABLE_REASON_VALUES = [
   "fixed_task_pricing",
-  "tenant_not_billing",
 ] as const;
 
 export type NotApplicableReason = (typeof NOT_APPLICABLE_REASON_VALUES)[number];
 
 export const NOT_APPLICABLE_REASON_LABEL_KEYS = {
   "fixed_task_pricing": "not_applicable_reason.fixed_task_pricing",
-  "tenant_not_billing": "not_applicable_reason.tenant_not_billing",
 } as const satisfies Record<NotApplicableReason, string>;
 
 

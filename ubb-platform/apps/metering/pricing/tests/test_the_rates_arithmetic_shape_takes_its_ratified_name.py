@@ -344,7 +344,6 @@ class TheComputePathRunsThroughTheNamedShapeTest(TestCase):
             # about a COST component's arithmetic, and both facts decide only
             # whether a CUSTOMER price applies at all.
             pricing_mode=PRICING_MODE_EVENT_PRICED,
-            tenant_bills_through_ubb=True,
             resolve_declaration=lambda: None,
             resolve_the_cost_rule=lambda key: rate,
             resolve_the_price_rule=lambda key: None,

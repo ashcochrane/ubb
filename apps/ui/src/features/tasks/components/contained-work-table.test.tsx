@@ -177,15 +177,14 @@ describe("ContainedWorkTable", () => {
     expect(cellsOf(rollupRow())[CUSTOMER_PRICE]).toBe("$0.35");
     bills.unmount();
 
+    // A workspace that does not bill reads the same roll-up (#553): its
+    // event-priced work is priced event by event for its own reporting, and
+    // the posture is not an input to whether a customer price applies.
     renderTable(rows, IN_A_WORKSPACE_THAT_DOES_NOT_BILL);
     await screen.findByText("All contained work");
     const reading = readingIn(rollupRow(), CUSTOMER_PRICE);
-    expect(reading).toHaveAttribute("data-reading", "not_applicable");
-    expect(reading).toHaveTextContent("Metering only");
-    expect(reading).toHaveAttribute(
-      "title",
-      expect.stringMatching(/does not bill customers through UBB/),
-    );
+    expect(reading).not.toHaveAttribute("data-reading", "not_applicable");
+    expect(cellsOf(rollupRow())[CUSTOMER_PRICE]).toBe("$0.35");
   });
 
   it("says so when nothing is contained, rather than drawing an empty table", async () => {

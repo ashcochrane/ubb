@@ -307,12 +307,11 @@
     },
     "not_applicable_reason": {
       "advertised": true,
-      "backend_serves": "2 of 2 values",
+      "backend_serves": "1 of 1 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
-        "fixed_task_pricing",
-        "tenant_not_billing"
+        "fixed_task_pricing"
       ]
     },
     "outcome_reason": {

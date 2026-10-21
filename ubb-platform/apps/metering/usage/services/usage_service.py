@@ -631,8 +631,8 @@ class UsageService:
                     # sold at one agreed price the ladder is not consulted at
                     # all: the customer revenue is the whole unit's, so this
                     # event's price is `not_applicable` rather than zero, and
-                    # the reason beside it says whether that is because of the
-                    # regime or because the tenant does not bill at all.
+                    # the reason beside it is the regime's — for every tenant
+                    # (#553, `pricing/applicability.py`).
                     pricing_mode=inp.pricing_mode,
                     as_of=inp.effective_at)
                 # THE STATUS IS THE SPINE'S ANSWER, CARRIED — NOT RE-DERIVED
