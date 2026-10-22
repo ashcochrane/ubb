@@ -27,6 +27,8 @@ control drives it through real git in a real repository, because the plumbing
 that resolves a base ref is exactly the part a pure test cannot reach.
 """
 
+from typing import NamedTuple
+
 import pytest
 import yaml
 
@@ -68,11 +70,16 @@ def slices(programme):
 EARLIER, LATER = "synthetic_earlier", "synthetic_later"
 
 
+class Chain(NamedTuple):
+    """The synthetic chain: its slices document, and the slices it loads as."""
+    document: dict
+    slices: dict
+
+
 @pytest.fixture
 def chain(tmp_path):
     """A synthetic programme in ``tmp_path`` that declares two slices of its
     own beside the shipped ones, neither landed, one earlier than the other.
-    Returns its slices document and the slices it loads as.
 
     Three controls run on it: the landed-owner control and the two about the
     ratchet's direction. Each needs slices that have not landed, and none may
@@ -105,7 +112,7 @@ def chain(tmp_path):
     slices = load(tmp_path, slices=declared).slices
     assert not slices[EARLIER].landed and not slices[LATER].landed
     assert slices[EARLIER].order < slices[LATER].order
-    return declared, slices
+    return Chain(declared, slices)
 
 
 def ledger(entries=(), authorisations=()):
@@ -266,7 +273,7 @@ def test_an_entry_owned_by_a_landed_slice_is_rejected(tmp_path, chain):
     reason the test had not caused, and the assertion held with the mutation
     line deleted outright.
     """
-    declared, _ = chain
+    declared = chain.document
     owner = EARLIER
     assert owner != UNLANDED_SLICE, (
         f"the synthetic gate rows are owed by {UNLANDED_SLICE}, so landing it "
@@ -395,16 +402,14 @@ def test_an_override_that_licensed_nothing_fails(slices):
 def test_deferring_a_debt_to_a_later_slice_fails(chain):
     """Not an addition, and not a shrink either: the entry is still owed and now
     lands nearer the cutover. #155 §17's failure with an extra step."""
-    _, slices = chain
     comparison = compare(ledger([entry(owner_slice=EARLIER)]),
-                         ledger([entry(owner_slice=LATER)]), slices)
+                         ledger([entry(owner_slice=LATER)]), chain.slices)
     assert {fault.code for fault in comparison.faults} == {codes.DEBT_DEFERRED}
 
 
 def test_pulling_a_debt_earlier_is_free(chain):
-    _, slices = chain
     comparison = compare(ledger([entry(owner_slice=LATER)]),
-                         ledger([entry(owner_slice=EARLIER)]), slices)
+                         ledger([entry(owner_slice=EARLIER)]), chain.slices)
     assert comparison.ok
 
 

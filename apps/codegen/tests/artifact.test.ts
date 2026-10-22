@@ -318,6 +318,17 @@ describe("the header", () => {
     );
   });
 
+  it("states the verdict its Blueprint carries, in every branch", () => {
+    // #158 §5.2: the rendered verdict matches the plan on every generated
+    // case, not only on the one branch of each verdict below.
+    for (const branch of PYTHON_BRANCH_NAMES) {
+      const readiness = BRANCHES[branch]!().readiness;
+      expect(header(branch), branch).toEqual(
+        expect.arrayContaining([`readiness = "${readiness}"`, ...READINESS_COMMENTS[readiness]]),
+      );
+    }
+  });
+
   it.each(["scaffold", "blocked"] as const)(
     "states a %s verdict and what it means",
     (readiness) => {

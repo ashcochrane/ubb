@@ -32,7 +32,8 @@ So its enforcement is checked here, the way the contract suite's own is:
    suite rather than a case: deleting the five secret tests would leave the
    step, and the row, green. A vitest case is not a node the gate manifest
    can name, so the cases each of those rows rests on are named here, by
-   file and title, and every row naming the step is held to having them.
+   file and title, and every row naming the step is held to having them and
+   to naming the two nodes here that hold them.
 
 Claims 1 to 4 and 6 each carry negative controls, through the same predicate
 the real workflow and the real sources are read with. Claim 5 is two readings
@@ -47,12 +48,15 @@ import re
 
 import yaml
 
+from _gate_helpers import real
 from _helpers import REPO_ROOT
 from tools.gates.enforcement import collection_faults, step_faults
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
-MANIFEST = REPO_ROOT / "gates" / "manifest.yaml"
 PACKAGE = REPO_ROOT / "apps" / "codegen"
+
+#: What `vitest run` collects: every `*.test.ts` under `tests/`.
+INCLUDE = 'include: ["tests/**/*.test.ts"]'
 
 JOB = "codegen"
 
@@ -162,7 +166,7 @@ def test_the_suite_has_tests_to_run():
     assert "execution.test.ts" in found
     assert "shell.execution.test.ts" in found
     config = (PACKAGE / "vitest.config.ts").read_text(encoding="utf-8")
-    assert 'include: ["tests/**/*.test.ts"]' in config
+    assert INCLUDE in config
 
 
 def silencers(source):
@@ -214,11 +218,20 @@ GATE_CASES = {
         ("execution.test.ts", "reach the wire exactly as they were declared"),
         ("shell.execution.test.ts",
          "reach the wire exactly as they were declared"),
-        # The rendered verdict is the one the plan was handed.
+        # The rendered verdict is the one the plan was handed: in every
+        # branch, and for each of the three verdicts in what it means.
         ("artifact.test.ts",
          "states the three versions, the target, the fingerprint and the verdict"),
+        ("artifact.test.ts",
+         "states the verdict its Blueprint carries, in every branch"),
+        ("artifact.test.ts", "states a %s verdict and what it means"),
+        ("artifact.test.ts", "lists an advisory and still says complete"),
         ("shell.artifact.test.ts",
          "states the three versions, the target, the fingerprint and the verdict"),
+        ("shell.artifact.test.ts",
+         "carries no readiness verdict, and the header of the runnable file does"),
+        ("shell.artifact.test.ts",
+         "states a %s verdict and what it means for a shell file"),
     ),
     # Every renderer branch of both targets, pinned as the files it returns.
     "G24": (
@@ -254,12 +267,25 @@ GATE_CASES = {
          "gives every secret reference its setup instructions"),
         ("shell.artifact.test.ts",
          "gives every secret reference its setup instructions"),
-        # 4. Every non-secret platform-known value renders consistently.
+        # 4. Every non-secret platform-known value renders consistently — a
+        # declared constant's among them, which sits on a dotted token the
+        # two cases above it pass over (#584).
         ("artifact.test.ts",
          "writes every platform-known argument as the literal Python reads "
          "back unchanged"),
         ("shell.artifact.test.ts",
          "writes every platform-known value a call sends as the JSON that means it"),
+        ("artifact.test.ts",
+         "states every platform-known token in the function for its call"),
+        ("artifact.test.ts",
+         "writes each constant as a typed exact literal in the module, with "
+         "where it was declared"),
+        ("artifact.test.ts",
+         "keeps every constant's value out of the lines a tenant maintains"),
+        ("execution.test.ts",
+         "sends each constant as the exact decimal it was declared as"),
+        ("shell.execution.test.ts",
+         "sends each constant as the exact decimal it was declared as"),
         # 5. Every runtime value lands at its declared scope.
         ("artifact.test.ts",
          "asks for every runtime value as a required parameter, at the call "
@@ -270,30 +296,44 @@ GATE_CASES = {
     ),
 }
 
-#: A comment line, which can spell a case without being one.
-COMMENT = re.compile(r"^\s*(//|/\*|\*)")
+#: Comment, which can spell a case without being one: a whole `/* … */`
+#: block, and a line comment.
+BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+LINE_COMMENT = re.compile(r"^\s*//")
+
+#: The two nodes of this module every row with cases names (claim 6): its
+#: cases written, and nothing around them silenced.
+CASE_NODES = tuple(
+    f"tests/contracts/test_the_renderer_suite_is_enforced.py::{name}"
+    for name in ("test_every_case_a_code_builder_gate_rests_on_is_written_to_run",
+                 "test_no_renderer_test_is_skipped_or_run_alone"))
 
 
 def written(title, source):
     """Is `title` a case `source` writes to run?
 
-    `it("<title>", …)`, or `it.each(<cases>)("<title>", …)` — the two forms
-    the suite uses. A case under a modifier (`it.skip(`, `it.only(`) does not
-    match, and neither does a `describe` of that title or a line of comment.
-    The title is matched as the double-quoted literal the suite writes it as.
+    `it("<title>", …)`, or `it.each(<cases>)("<title>", …)` over cases that
+    are not written empty — the two forms the suite uses. A case under a
+    modifier (`it.skip(`, `it.only(`) does not match, and neither does a
+    `describe` of that title or a case in a comment. A skip or an `only`
+    elsewhere — on the `describe` around it, or on another case — is
+    `test_no_renderer_test_is_skipped_or_run_alone`'s to refuse. The title is
+    matched as the double-quoted literal the suite writes it as.
     """
-    code = "\n".join(line for line in source.splitlines()
-                     if not COMMENT.match(line))
+    code = "\n".join(line for line in BLOCK_COMMENT.sub("", source).splitlines()
+                     if not LINE_COMMENT.match(line))
     literal = re.escape(json.dumps(title, ensure_ascii=False))
-    each = r"(?:\.each\((?:[^()]|\([^()]*\))*\))?"
+    each = r"(?:\.each\((?!\s*\[\s*\]\s*\))(?:[^()]|\([^()]*\))*\))?"
     return re.search(rf"\bit{each}\(\s*{literal}\s*,", code) is not None
 
 
 def test_every_case_a_code_builder_gate_rests_on_is_written_to_run():
     """Claim 6. Each case is written to run in a file the step's
-    `vitest run` collects, so deleting, renaming or silencing one is red."""
+    `vitest run` collects, so deleting or renaming one, or putting a modifier
+    on it, is red here; a skip or an `only` around it is red in
+    `test_no_renderer_test_is_skipped_or_run_alone`."""
     config = (PACKAGE / "vitest.config.ts").read_text(encoding="utf-8")
-    assert 'include: ["tests/**/*.test.ts"]' in config
+    assert INCLUDE in config
 
     missing = []
     for gate, cases in GATE_CASES.items():
@@ -307,11 +347,12 @@ def test_every_case_a_code_builder_gate_rests_on_is_written_to_run():
 
 
 def test_the_rows_that_name_the_renderers_tests_are_the_rows_with_cases():
-    """Every gate naming the test step as a site has its cases named above,
-    and no gate has cases named that does not name the step — so a row
-    cannot rest on the suite without saying which of it, and a list cannot
-    outlive the row it was for."""
-    rows = yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))["gates"]
+    """Every gate naming the test step as a site has its cases named above
+    and names this module's two nodes that hold them, and no gate has cases
+    named that does not name the step — so a row cannot rest on the suite
+    without saying which of it, nor drop what holds those cases, and a list
+    cannot outlive the row it was for."""
+    rows = yaml.safe_load(real("manifest.yaml"))["gates"]
     naming = sorted(
         gate for gate, row in rows.items()
         if {"job": JOB, "step": TESTS} in (row.get("enforced_by") or []))
@@ -319,6 +360,9 @@ def test_the_rows_that_name_the_renderers_tests_are_the_rows_with_cases():
     assert naming == sorted(GATE_CASES)
     for gate in naming:
         assert rows[gate]["status"] == "installed", gate
+        sites = rows[gate]["enforced_by"]
+        for node in CASE_NODES:
+            assert {"suite": "contracts", "node": node} in sites, (gate, node)
 
 
 def test_the_shell_tests_have_no_way_to_pass_without_a_shell():
@@ -508,4 +552,11 @@ def test_negative_control_a_silenced_case_is_not_written():
 def test_negative_control_a_describe_or_a_comment_is_not_a_case():
     assert not written("holds it", 'describe("holds it", () => {})')
     assert not written("holds it", '// it("holds it", () => {})')
-    assert not written("holds it", '  * it("holds it", () => {})')
+    assert not written("holds it", '/**\n * it("holds it", () => {})\n */')
+    assert not written("holds it", '/*\nit("holds it", () => {});\n*/')
+    assert written("holds it", '/* a note */\nit("holds it", () => {})')
+
+
+def test_negative_control_a_case_over_no_cases_is_not_written():
+    assert not written("refuses %s", 'it.each([])("refuses %s", (x) => {})')
+    assert not written("refuses %s", 'it.each( [ ] )("refuses %s", (x) => {})')

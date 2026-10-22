@@ -76,6 +76,8 @@ describe("the snapshots", () => {
     // where no Pricing Book holds a price, complete where the default does.
     "fixed-price-unpriced",
     "fixed-price-priced",
+    // #584: constant values, which #184's Seam B names among its branches.
+    "constant",
   ];
 
   it("cover every branch the ticket names", () => {

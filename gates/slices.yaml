@@ -215,15 +215,16 @@
 # so it is untouched by construction for the third flip running.
 #
 # ⚠ THE NEXT FLIP IS THE FIRST WHERE ONLY ONE SLICE IS LEFT UNLANDED, AND THREE
-# CONTROLS WILL NOT RUN. `test_migration_ledger.py`'s `unlanded` fixture asserts
-# that at least two slices have yet to land, because the controls about the
-# ratchet's direction need an earlier and a later one; the deferral, the
-# pull-earlier and the landed-owner controls take it. Today they read
-# `slice_builder` and `slice_8`. When the Code Builder lands, only the cutover
-# is left, and those three ERROR at setup with the fixture's own message rather
-# than going vacuous — as designed. #184's flip (#587) decided what replaces
-# them: a synthetic programme in `tmp_path` that declares an earlier and a later
-# slice of its own, recorded under that flip below.
+# CONTROLS WILL NOT RUN. `test_migration_ledger.py`'s `unlanded` fixture
+# asserted that at least two slices had yet to land, because the controls about
+# the ratchet's direction need an earlier and a later one; the deferral, the
+# pull-earlier and the landed-owner controls took it. At this flip they read
+# `slice_builder` and `slice_8`. When the Code Builder landed only the cutover
+# was left, and those three ERRORED at setup with the fixture's own message
+# rather than going vacuous — as designed. #184's flip (#587) decided what
+# replaced them, and the fixture with them: a synthetic programme in `tmp_path`
+# that declares an earlier and a later slice of its own, recorded under that
+# flip below.
 #
 # THE AUTHORING-DIRECTION BREAKS ARE NAMED HERE AND DELIBERATELY NOT FILED.
 # `oasdiff --baseline 3fe1dbff` reports 33 breaks, 17 already covered and
@@ -256,7 +257,7 @@
 # does not exist; G26 on a key-shaped value on a fixture's secret token. G23,
 # G24 and G26 rest partly on renderer cases, which a vitest step cannot name,
 # so the cases are named by file and title in the renderer suite's own
-# enforcement test, and that test is a site of each row.
+# enforcement test, and two of its nodes are sites of each of those rows.
 #
 # Nothing in the ledger was owed. The census was walked by IDENTITY over
 # `git rev-list` from slice 7's flip: twenty-three commits, of which ONE moved

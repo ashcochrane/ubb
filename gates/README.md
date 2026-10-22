@@ -170,7 +170,8 @@ unlanded behind it and the first to install its rows in the flip itself:
   stays armed with any one case deleted. G23, G24 and G26 rest on cases of the
   renderer's vitest suite, so the cases are named by file and title in
   `GATE_CASES` (`tests/contracts/test_the_renderer_suite_is_enforced.py`), and
-  that module's node is a site of each row.
+  two of that module's nodes — every case written to run, and none silenced —
+  are sites of each such row, which the module itself holds.
 
 ## The ledger, and its three rules
 

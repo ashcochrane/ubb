@@ -39,9 +39,10 @@ version: 1
 # G26 on the renderer's — a step alone would stay armed with those cases
 # deleted, so the cases are named by file and title in
 # `tests/contracts/test_the_renderer_suite_is_enforced.py` (`GATE_CASES`), and
-# that module's node is a site of each row (#587). A row that needs more than
-# that adds the suite kind then, rather than this file carrying a checker
-# nobody has exercised.
+# two of that module's nodes — every case written to run, and none silenced —
+# are sites of each such row, which the module itself holds (#587). A row that
+# needs more than that adds the suite kind then, rather than this file
+# carrying a checker nobody has exercised.
 suites:
   contracts:
     summary: >-
@@ -1049,11 +1050,14 @@ gates:
       and sent only keys that operation's request publishes — the shell
       target has no SDK to refuse an unpublished key, and the server drops one
       in silence and still answers 200 — that every declared name reached the
-      wire unchanged, that the credential is written nowhere, and that the
-      header states the verdict the plan handed it. A vitest case is not a
-      node this manifest can name, so the cases this row rests on are named
-      by file and title in `GATE_CASES`, and the contract node below fails if
-      one is deleted, renamed or silenced. Installed by #184's flip (#587).
+      wire unchanged, that the credential is written nowhere, and that every
+      file's header states the verdict its Blueprint carries, whichever of
+      the three it is. A vitest case is not a node this manifest can name, so
+      the cases this row rests on are named by file and title in
+      `GATE_CASES`, and the two contract nodes below fail if one is deleted,
+      renamed or silenced: the first if its own line changes, the second if a
+      skip or an `only` anywhere takes it out of the run. Installed by #184's
+      flip (#587).
     enforced_by:
       - suite: platform
         node: >-
@@ -1070,6 +1074,9 @@ gates:
       - suite: contracts
         node: >-
           tests/contracts/test_the_renderer_suite_is_enforced.py::test_every_case_a_code_builder_gate_rests_on_is_written_to_run
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_no_renderer_test_is_skipped_or_run_alone
       - job: codegen
         step: Codegen typecheck — the renderer compiles against the committed contract
       - job: codegen
@@ -1194,17 +1201,19 @@ gates:
       body — resolved, previewed or read back by fingerprint — and no stored
       snapshot row carries any of them, and the same search over the tenant's
       own rows finds every one they hold — the key only as its hash — so the
-      check cannot pass over values that were never set. The renderer's half runs in CI's `codegen` job, on both
-      targets (#577 Python, #578 shell): the credential is read from the
-      environment and written into no generated file, even with a secret
-      planted in the Blueprint; nothing in the renderer's fixtures, tests,
-      snapshots or source is shaped like a key, and no fixture carries a value
-      on a secret token; every secret reference's environment line carries
-      its setup instructions; every platform-known value is written as a
-      literal its target reads back as that value; and every runtime value is
-      asked for at the call it is declared for. The cases this row rests on
-      are named in `GATE_CASES`, held by the contract node below. Installed by
-      #184's flip (#587).
+      check cannot pass over values that were never set. The renderer's half
+      runs in CI's `codegen` job, on both targets (#577 Python, #578 shell):
+      the credential is read from the environment and written into no
+      generated file, even with a secret planted in the Blueprint; nothing in
+      the renderer's fixtures, tests, snapshots or source is shaped like a
+      key, and no fixture carries a value on a secret token; every secret
+      reference's environment line carries its setup instructions; every
+      platform-known value is written as a literal its target reads back as
+      that value, a declared constant's among them — written exactly in the
+      module, sent exactly, and never in a line the tenant maintains (#584);
+      and every runtime value is asked for at the call it is declared for.
+      The cases this row rests on are named in `GATE_CASES`, held by the two
+      contract nodes below. Installed by #184's flip (#587).
     enforced_by:
       - suite: platform
         node: >-
@@ -1215,6 +1224,9 @@ gates:
       - suite: contracts
         node: >-
           tests/contracts/test_the_renderer_suite_is_enforced.py::test_every_case_a_code_builder_gate_rests_on_is_written_to_run
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_no_renderer_test_is_skipped_or_run_alone
       - job: codegen
         step: Codegen tests — every renderer branch, compiled and run
 
