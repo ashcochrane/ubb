@@ -105,6 +105,11 @@ class AReplayedCloseAddsNothingTest(_ADeliverableUnit, TestCase):
         self.assertEqual(closed["total_provider_cost_micros"], 0)
         self.assertEqual(closed["event_count"], 0)
         self.assertEqual(closed["unpriced_event_count"], 0)
+        # And the unit as STORED, which every later read answers from: the
+        # close reads back only the billed total after the Charge, so a
+        # Charge that wrongly reached another total would leave the response
+        # right and the row wrong (the mutation check found exactly that).
+        self.assertEqual(self._totals(task_id), CHARGED_ALONE)
 
     def test_a_replay_adds_nothing(self):
         task_id = self._arrange()
