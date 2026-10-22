@@ -54,19 +54,26 @@ export const REGIME_CANNOT_CHANGE =
 
 /**
  * The posture trap (#187 §9, #151 §18): for a workspace that meters without
- * billing, the regime is recorded and inert — and turns into a start-gate
+ * billing, a missing price refuses nothing today — and turns into a start-gate
  * refusal the day billing is enabled. Said before that day, which is the whole
  * point of saying it.
+ *
+ * ⚠ "RECORDED AND INERT" WAS THE OLD WORDING AND THE OLD NAME, AND #553 MADE IT FALSE. Such a
+ * workspace declares Pricing Books like any other now, and a run with a price
+ * there records it as the run's revenue when it delivers — for the tenant's own
+ * reporting, collected from nobody. What stays true is the trap: no price
+ * refuses nothing until billing is on.
  */
-export const REGIME_IS_INERT_UNTIL_BILLING =
-  "This workspace meters without billing, so the regime is recorded and changes nothing " +
-  "today. The day billing is enabled, a fixed-price kind of work with no price in the " +
-  "pricing book refuses to start.";
+export const A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING =
+  "This workspace meters without billing: a run with a price in the pricing book records " +
+  "it as the run's revenue when it delivers, for your own reporting, and a run with none " +
+  "starts unpriced. The day billing is enabled, a fixed-price kind of work with no price " +
+  "in the pricing book refuses to start."
 
 /** What to say beside the regime control, in the order it should be read. */
 export function declarationNotes(opts: { meteringOnly: boolean }): readonly string[] {
   return opts.meteringOnly
-    ? [REGIME_IS_INERT_UNTIL_BILLING, REGIME_CANNOT_CHANGE]
+    ? [A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING, REGIME_CANNOT_CHANGE]
     : [REGIME_CANNOT_CHANGE];
 }
 

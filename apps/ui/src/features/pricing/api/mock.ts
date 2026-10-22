@@ -15,6 +15,7 @@
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import {
+  MOCK_AGREED_PRICES,
   MOCK_BOOK_PUBLISHES,
   MOCK_COST_BOOKS,
   MOCK_GROUPING_FIELDS,
@@ -23,9 +24,14 @@ import {
   MOCK_TENANT_DEFAULT_MARKUP,
 } from "./mock-data";
 import type {
+  AgreedPrice,
   AnyBook,
+  BookAgreedPriceChangeDiff,
+  BookAgreedPriceChangeIn,
   BookChangeDiff,
   BookChangeIn,
+  BookRateChangeDiff,
+  BookRateChangeIn,
   BookPublish,
   BookPublishIn,
   CostBook,
@@ -34,8 +40,10 @@ import type {
   GroupingFieldDef,
   InheritedRule,
   InheritedRuleParams,
+  ListAgreedPricesParams,
   ListBooksParams,
   ListRulesParams,
+  PaginatedAgreedPrices,
   PaginatedBookPublishes,
   PaginatedCostBooks,
   PaginatedPricingBooks,
@@ -54,6 +62,7 @@ import type {
 let pricingBooks: PricingBook[] = MOCK_PRICING_BOOKS.map((book) => ({ ...book }));
 let costBooks: CostBook[] = MOCK_COST_BOOKS.map((book) => ({ ...book }));
 let rules: Rule[] = MOCK_RULES.map((rule) => ({ ...rule }));
+let agreedPrices: AgreedPrice[] = MOCK_AGREED_PRICES.map((line) => ({ ...line }));
 let publishes: BookPublish[] = MOCK_BOOK_PUBLISHES.map((publish) => ({
   ...publish,
 }));
@@ -75,6 +84,7 @@ export function resetPricingMockState(): void {
   pricingBooks = MOCK_PRICING_BOOKS.map((book) => ({ ...book }));
   costBooks = MOCK_COST_BOOKS.map((book) => ({ ...book }));
   rules = MOCK_RULES.map((rule) => ({ ...rule }));
+  agreedPrices = MOCK_AGREED_PRICES.map((line) => ({ ...line }));
   publishes = MOCK_BOOK_PUBLISHES.map((publish) => ({ ...publish }));
   defaultMarkup = { ...MOCK_TENANT_DEFAULT_MARKUP };
   idCounter = 0;
@@ -205,6 +215,35 @@ export async function listRules(
   return { data: sorted, has_more: false, next_cursor: null };
 }
 
+export async function listAgreedPrices(
+  bookId: string,
+  params?: ListAgreedPricesParams,
+): Promise<PaginatedAgreedPrices> {
+  await mockDelay();
+  const book = requireBook(bookId);
+  // A cost book holds no agreed price, and the route says so with a 404.
+  if ("provider_key" in book) {
+    throw problem(404, "not_found", "Not found", "No Pricing Book with that id.");
+  }
+  let inBook = agreedPrices.filter((line) => line.book_id === bookId);
+  if (params?.as_of) {
+    const asOf = new Date(params.as_of).getTime();
+    inBook = inBook.filter((line) => inForceAt(line, asOf));
+  } else if (!params?.include_history) {
+    inBook = inBook.filter((line) => line.valid_to == null);
+  }
+  const sorted = [...inBook].sort((a, b) => b.valid_from.localeCompare(a.valid_from));
+  return { data: sorted, has_more: false, next_cursor: null };
+}
+
+/** The half-open window resolution reads: in force at `valid_from`, gone at `valid_to`. */
+function inForceAt(line: AgreedPrice, instant: number): boolean {
+  return (
+    new Date(line.valid_from).getTime() <= instant &&
+    (line.valid_to == null || new Date(line.valid_to).getTime() > instant)
+  );
+}
+
 // --- Publishes --------------------------------------------------------------
 
 /**
@@ -279,7 +318,63 @@ function termsOf(rule: Rule): RuleTerms {
  * supersedes; an add takes the model's defaults; a retire opens no rule at all
  * and its `after` is null.
  */
-function diffFor(bookId: string, change: BookChangeIn): BookChangeDiff {
+function diffFor(
+  bookId: string,
+  change: BookChangeIn,
+  effectiveAt: string,
+  position: number,
+): BookChangeDiff {
+  return change.line === "agreed_price"
+    ? agreedPriceDiffFor(bookId, change, effectiveAt, position)
+    : rateDiffFor(bookId, change);
+}
+
+/**
+ * The diff an agreed-price change would have (#553), refusing what the API
+ * refuses that the mock can see: a cost book, a missing or negative amount, an
+ * amount on a retirement, a second line in force for one kind, and a reprice
+ * or retirement of a kind with none. Whether the kind of work is declared is
+ * the server's question — this feature holds no kinds of work to ask.
+ */
+function agreedPriceDiffFor(
+  bookId: string,
+  change: BookAgreedPriceChangeIn,
+  effectiveAt: string,
+  position: number,
+): BookAgreedPriceChangeDiff {
+  const refuse = (detail: string) =>
+    problem(422, "validation_error", "Validation error", `change ${position}: ${detail}`);
+  if ("provider_key" in requireBook(bookId)) {
+    throw refuse("a cost book records what a supplier charged this tenant; declare it in a Pricing Book");
+  }
+  const amount = change.agreed_price_micros ?? null;
+  if (change.kind === "retire") {
+    if (amount !== null) throw refuse("a retirement opens no line, so it states no agreed_price_micros");
+  } else if (amount === null) {
+    throw refuse(`an agreed price states its amount, so agreed_price_micros is required on ${change.kind}`);
+  } else if (amount < 0) {
+    throw refuse("agreed_price_micros may not be negative. Zero is a price");
+  }
+  const instant = new Date(effectiveAt).getTime();
+  const inForce = agreedPrices.find(
+    (line) => line.book_id === bookId && line.task_type === change.task_type && inForceAt(line, instant),
+  );
+  if (change.kind === "add" && inForce) {
+    throw refuse(`the book already holds an agreed price for '${change.task_type}' in force at the effective instant. Changing it is a reprice`);
+  }
+  if (change.kind !== "add" && !inForce) {
+    throw refuse(`no agreed price for '${change.task_type}' is in force at the effective instant, so there is nothing to ${change.kind}`);
+  }
+  return {
+    line: "agreed_price",
+    kind: change.kind,
+    task_type: change.task_type,
+    before: inForce ? { agreed_price_micros: inForce.agreed_price_micros } : null,
+    after: amount === null ? null : { agreed_price_micros: amount },
+  };
+}
+
+function rateDiffFor(bookId: string, change: BookRateChangeIn): BookRateChangeDiff {
   const superseded = supersededBy(bookId, change);
   const before = superseded ? termsOf(superseded) : null;
   const carried = before ?? {
@@ -301,6 +396,7 @@ function diffFor(bookId: string, change: BookChangeIn): BookChangeDiff {
           pricing_method: change.pricing_method ?? carried.pricing_method ?? null,
         };
   return {
+    line: "rate",
     kind: change.kind,
     measurement_key: change.measurement_key,
     provider: change.provider ?? "",
@@ -415,9 +511,13 @@ export async function declareBookPublish(
     actor_display: "dana@acme.ai",
     opened_rule_ids: [],
     closed_rule_ids: [],
+    opened_agreed_price_ids: [],
+    closed_agreed_price_ids: [],
     published_at: null,
     diff_unavailable_reason: null,
-    diff: body.changes.map((change) => diffFor(bookId, change)),
+    diff: body.changes.map((change, position) =>
+      diffFor(bookId, change, body.effective_at ?? new Date().toISOString(), position),
+    ),
   };
   publishes = [...publishes, declared];
   return { ...declared };
@@ -445,7 +545,35 @@ export async function publishBookPublish(
   }
   const opened: string[] = [];
   const closed: string[] = [];
+  const openedPrices: string[] = [];
+  const closedPrices: string[] = [];
   for (const row of draft.diff ?? []) {
+    if (row.line === "agreed_price") {
+      // ⚠ CLOSED, NOT DELETED, as a rule is: the outgoing line gains an end
+      // date at the publish's one instant and its successor opens there,
+      // continuing its lineage.
+      const live = agreedPrices.find(
+        (line) => line.book_id === bookId && line.task_type === row.task_type && line.valid_to == null,
+      );
+      if (live) {
+        live.valid_to = draft.effective_at;
+        closedPrices.push(live.id);
+      }
+      if (row.after != null) {
+        const line: AgreedPrice = {
+          id: nextId("agreed-price"),
+          book_id: bookId,
+          lineage_id: live?.lineage_id ?? nextId("lineage"),
+          task_type: row.task_type,
+          agreed_price_micros: row.after.agreed_price_micros,
+          valid_from: draft.effective_at,
+          valid_to: null,
+        };
+        agreedPrices = [...agreedPrices, line];
+        openedPrices.push(line.id);
+      }
+      continue;
+    }
     const live = supersededBy(bookId, row);
     if (live) {
       // ⚠ CLOSED, NOT DELETED. A superseded rule keeps its row and gains an
@@ -498,6 +626,8 @@ export async function publishBookPublish(
     published_at: new Date().toISOString(),
     opened_rule_ids: opened,
     closed_rule_ids: closed,
+    opened_agreed_price_ids: openedPrices,
+    closed_agreed_price_ids: closedPrices,
     // The diff is a property of an intention. Once the rules are written the
     // record says what it DID — the two id lists above — and the contract
     // nulls the diff for exactly that reason.
@@ -628,7 +758,7 @@ export async function declareCustomerOverride(
   }
   const { effective_at: effectiveAt, ...rule } = body;
   return declareBookPublish(theirOwn.id, {
-    changes: [{ ...rule, kind: "add" }],
+    changes: [{ ...rule, line: "rate", kind: "add" }],
     effective_at: effectiveAt,
   });
 }

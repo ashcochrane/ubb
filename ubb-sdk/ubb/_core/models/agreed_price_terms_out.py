@@ -14,25 +14,34 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="BookChangeInGroupingFields")
+T = TypeVar("T", bound="AgreedPriceTermsOut")
 
 
 
 @_attrs_define
-class BookChangeInGroupingFields:
-    """ 
+class AgreedPriceTermsOut:
+    """ What one delivered unit of the kind of work sells for, in USD micros.
+
+        Attributes:
+            agreed_price_micros (int):
      """
 
-    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
+    agreed_price_micros: int
+    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
 
 
 
     def to_dict(self) -> dict[str, Any]:
-        
+        agreed_price_micros = self.agreed_price_micros
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update({
+            "agreed_price_micros": agreed_price_micros,
+        })
 
         return field_dict
 
@@ -41,21 +50,24 @@ class BookChangeInGroupingFields:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        book_change_in_grouping_fields = cls(
+        agreed_price_micros = d.pop("agreed_price_micros")
+
+        agreed_price_terms_out = cls(
+            agreed_price_micros=agreed_price_micros,
         )
 
 
-        book_change_in_grouping_fields.additional_properties = d
-        return book_change_in_grouping_fields
+        agreed_price_terms_out.additional_properties = d
+        return agreed_price_terms_out
 
     @property
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> str:
+    def __getitem__(self, key: str) -> Any:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: str) -> None:
+    def __setitem__(self, key: str, value: Any) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

@@ -658,7 +658,7 @@ gates:
       - suite: platform
         node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_a_unit_of_work_with_no_metered_calls_still_counts_none
       - suite: platform
-        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_billed_total_on_the_unit_of_work_is_unmoved_too
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_billed_total_holds_the_charge_and_the_count_does_not
       # Pin 3 — the provider and measurement analytics exclude `task_charge`.
       - suite: platform
         node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_no_provider_is_credited_with_the_charge

@@ -1596,11 +1596,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # inherits the acknowledgement), so by the rule the method does.
     placed("pricing_method", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventDetailOut",
-                              "BookChangeIn", "CustomerOverrideIn",
+                              "BookRateChangeIn", "CustomerOverrideIn",
                               "RuleTermsOut", "InheritedPricingRule"})
     # The rate's arithmetic shape (#366), on every schema carrying a rule in
     # either direction. The two `Rate*` schemas are the immediate reprice and
-    # the row a read answers with; `BookChangeIn` and `RuleTermsOut` are the
+    # the row a read answers with; `BookRateChangeIn` and `RuleTermsOut` are the
     # publish act that replaces the immediate surface; `CustomerOverrideIn` and
     # `InheritedPricingRule` are the override that states a whole rule and the
     # row a client copies into it. None of the last four could carry it until
@@ -1610,8 +1610,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # SIXTH (#368). Both bodies that wrote a rule immediately left with their
     # routes, so the shape is advertised on two fewer nodes — and on no fewer
     # of the surfaces that still carry a rule, because a change to a book is
-    # `BookChangeIn` now whichever of the three kinds it is.
-    placed("rate_structure", {"RateOut", "BookChangeIn", "RuleTermsOut",
+    # `BookChangeIn` now whichever of the three kinds it is — and, since #553
+    # split that body by the kind of line it is about, `BookRateChangeIn`:
+    # the agreed-price body carries no rule and no marker.
+    placed("rate_structure", {"RateOut", "BookRateChangeIn", "RuleTermsOut",
                               "CustomerOverrideIn", "InheritedPricingRule"})
     # WHAT THE RECEIPT EXPLAINS (#370), on exactly the two schemas that publish
     # the receipt. The rule is the mechanical one `pricing_method` states two

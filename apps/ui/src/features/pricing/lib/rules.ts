@@ -262,7 +262,44 @@ export const CHANGE_KINDS = {
  * rule `@/lib/localisation` applies to every value the registry has not met.
  */
 export function changeKindDone(kind: string): string {
-  return kind in CHANGE_KINDS
-    ? CHANGE_KINDS[kind as keyof typeof CHANGE_KINDS].done
-    : kind;
+  return doneIn(CHANGE_KINDS, kind);
+}
+
+/** The one reading both kinds of line share. Own keys only: a kind spelled
+ * like an object's built-in (`toString`) is a value nobody declared. */
+function doneIn(words: Readonly<Record<string, { readonly done: string }>>, kind: string): string {
+  return (Object.hasOwn(words, kind) ? words[kind]?.done : undefined) ?? kind;
+}
+
+/**
+ * The same three acts, said of an agreed price (#553).
+ *
+ * ⚠ **A SECOND SET OF WORDS FOR THE SAME THREE VERBS, AND NOT A SECOND COPY OF
+ * THE FIRST.** An agreed price is not a rule — it prices one delivered unit of
+ * a kind of work, not a quantity — so "Adds a rule" would misname the line a
+ * diff row reports. The verbs are the wire's one set; what each is called is
+ * said once per kind of line, here beside the other.
+ */
+export const AGREED_PRICE_CHANGE_KINDS = {
+  add: {
+    offer: "Add an agreed price",
+    done: "Adds an agreed price",
+    hint: "Sell a kind of work at one price per delivered run.",
+  },
+  reprice: {
+    offer: "Reprice the agreed price",
+    done: "Reprices the agreed price",
+    hint: "Change what one delivered run sells for. Runs already started keep their price.",
+  },
+  retire: {
+    offer: "Retire the agreed price",
+    done: "Retires the agreed price",
+    hint: "Stop this book holding a price for that kind of work.",
+  },
+} as const satisfies Record<ChangeKind, { offer: string; done: string; hint: string }>;
+
+/** What a change to an agreed price DID, for a diff row; an unrecognised kind
+ * renders as itself, for `changeKindDone`'s reason. */
+export function agreedPriceChangeKindDone(kind: string): string {
+  return doneIn(AGREED_PRICE_CHANGE_KINDS, kind);
 }

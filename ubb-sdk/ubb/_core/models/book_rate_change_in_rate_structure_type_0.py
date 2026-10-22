@@ -1,6 +1,6 @@
 from enum import Enum
 
-class BookChangeInRateStructureType0(str, Enum):
+class BookRateChangeInRateStructureType0(str, Enum):
     FIXED_COMPONENT = "fixed_component"
     PER_UNIT = "per_unit"
 

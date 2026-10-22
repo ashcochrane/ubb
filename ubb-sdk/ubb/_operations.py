@@ -254,6 +254,10 @@ API_V1_METERING_ENDPOINTS_GET_WAIVED_LOSS = Operation(
     'api_v1_metering_endpoints_get_waived_loss',
     'get',
     '/api/v1/metering/pricing/waived-loss')
+API_V1_METERING_ENDPOINTS_LIST_BOOK_AGREED_PRICES = Operation(
+    'api_v1_metering_endpoints_list_book_agreed_prices',
+    'get',
+    '/api/v1/metering/pricing/books/{book_id}/agreed-prices')
 API_V1_METERING_ENDPOINTS_LIST_BOOK_PUBLISHES = Operation(
     'api_v1_metering_endpoints_list_book_publishes',
     'get',

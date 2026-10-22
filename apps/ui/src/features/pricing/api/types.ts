@@ -49,6 +49,15 @@ export type Rule = MeteringSchemas["RateOut"];
 export type PaginatedRules = MeteringSchemas["PaginatedRates"];
 
 /**
+ * One agreed price a Pricing Book holds: what one delivered unit of a kind of
+ * work sells for, from when, until when (#553). Its own read, beside the
+ * rules' — an agreed price is not a rule, and the two lines share a book and
+ * a publish act and nothing else a screen could compare.
+ */
+export type AgreedPrice = MeteringSchemas["AgreedPriceOut"];
+export type PaginatedAgreedPrices = MeteringSchemas["PaginatedAgreedPrices"];
+
+/**
  * Which arithmetic a rule runs — per unit of quantity, or once regardless.
  *
  * ⚠ RE-EXPORTED FROM THE REGISTRY RATHER THAN DERIVED FROM THE SCHEMA. The
@@ -91,11 +100,27 @@ export type BookPublish = MeteringSchemas["BookPublishOut"];
 export type BookPublishIn = MeteringSchemas["BookPublishIn"];
 export type PaginatedBookPublishes = MeteringSchemas["PaginatedBookPublishes"];
 
-/** One change inside a publish: what to do, and to which rule. */
-export type BookChangeIn = MeteringSchemas["BookChangeIn"];
+/**
+ * One change inside a publish, whichever kind of line it is about (#553).
+ *
+ * ⚠ **A UNION THE CONTRACT DISCRIMINATES ON `line`, AND THIS IS ITS FIRST.**
+ * A rate prices a measured quantity and an agreed price prices one delivered
+ * unit of a kind of work; the two bodies share the change verb and nothing
+ * else a reader could compare, so a caller narrows on `line` before it reads
+ * anything only one of them has — the same discipline `AnyBook` asks for.
+ */
+export type BookRateChangeIn = MeteringSchemas["BookRateChangeIn"];
+export type BookAgreedPriceChangeIn = MeteringSchemas["BookAgreedPriceChangeIn"];
+export type BookChangeIn = BookPublishIn["changes"][number];
 
-/** One row of a draft's diff — the rule, and what happens to it. */
-export type BookChangeDiff = MeteringSchemas["BookChangeDiffOut"];
+/** One row of a draft's diff, by the same `line`: a rule and what happens to
+ * it, or a kind of work and what happens to its agreed price. */
+export type BookRateChangeDiff = MeteringSchemas["BookRateChangeDiffOut"];
+export type BookAgreedPriceChangeDiff = MeteringSchemas["BookAgreedPriceChangeDiffOut"];
+export type BookChangeDiff = NonNullable<BookPublish["diff"]>[number];
+
+/** What one delivered unit of a kind of work sells for, on one side of a diff. */
+export type AgreedPriceTerms = MeteringSchemas["AgreedPriceTermsOut"];
 
 /** What a rule charges, how it derives it, and which arithmetic it runs. */
 export type RuleTerms = MeteringSchemas["RuleTermsOut"];
@@ -170,6 +195,9 @@ export interface ListRulesParams {
   cursor?: string;
   limit?: number;
 }
+
+/** The agreed-prices read takes the rules read's three questions. */
+export type ListAgreedPricesParams = ListRulesParams;
 
 /** Which rule to ask the inherited-rule route about. */
 export interface InheritedRuleParams {

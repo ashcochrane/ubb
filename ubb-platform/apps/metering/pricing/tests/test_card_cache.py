@@ -255,7 +255,7 @@ def test_a_publish_invalidates_nothing(tenant, customer, price_card_fixture,
         # declared and published, which is the same write to the same rows and
         # is what the cache is being asked about.
         BookService.publish_declared(BookService.declare(book, [{
-            "kind": "reprice",
+            "line": "rate", "kind": "reprice",
             "measurement_key": "tokens", "provider": "openai",
             "event_type": "llm_call", "rate_per_unit_micros": 20_000_000,
         }]))

@@ -109,10 +109,8 @@ export function explainSupplierCost(reading: SupplierCostReading): string | null
  * The price-side reading, with the fourth outcome the supplier cost has no
  * counterpart for. `not_applicable` is decided by the SUBJECT before any
  * count is read, and it carries the registry's own reason
- * (`not_applicable_reason` in `@/lib/vocabulary`) so the renderer can say
- * which of two different things it means: revenue that sits on the run's own
- * agreed price, or revenue that exists nowhere because the workspace does not
- * bill.
+ * (`not_applicable_reason` in `@/lib/vocabulary`) so the renderer says what it
+ * means: the revenue sits on the run's own agreed price.
  */
 export type CustomerPriceReading =
   | TotalReading
@@ -125,15 +123,18 @@ export interface CustomerPriceTotal {
 }
 
 /**
- * The two facts about a run that decide whether a customer price applies at
- * all — both about the subject, neither about resolution.
+ * Two facts about a run, and only ONE of them decides whether a customer
+ * price applies at all (#553).
  *
- * They mirror `apps/metering/pricing/applicability.py`, which decides the same
- * question for one posting and rules that POSTURE WINS THE TIE-BREAK: a
- * workspace that does not bill produces no customer revenue on any work,
- * whatever the regime, and naming the regime instead would send a reader to
- * look for a bill that is never raised. The same order is kept here so a run
- * and the receipts under it can never disagree about why there is no price.
+ * `soldAtOnePrice` mirrors `apps/metering/pricing/applicability.py`, where the
+ * regime decides why a posting has no price of its own — for every workspace.
+ * `meteringOnly` decides only what the agreed price is CALLED (owed, or
+ * recorded for the tenant's own reporting), because whether money is collected
+ * is the billing product's question. It used to decide the customer price as
+ * well — "posture wins" — which read every run of a metering-only workspace as
+ * having no price, its event-priced runs included, although those are priced
+ * event by event for the tenant's margin reporting. The receipts under a run
+ * and the run now say the same thing for the same reason.
  */
 export interface PriceApplicability {
   /** The workspace meters usage and does not bill customers through UBB. */
@@ -161,9 +162,8 @@ export function soldAtOnePrice(run: Pick<RunRow, "agreed_price_micros">): boolea
 
 export function readCustomerPrice(
   row: CustomerPriceTotal,
-  applicability: PriceApplicability,
+  applicability: Pick<PriceApplicability, "soldAtOnePrice">,
 ): CustomerPriceReading {
-  if (applicability.meteringOnly) return { kind: "not_applicable", reason: "tenant_not_billing" };
   if (applicability.soldAtOnePrice) {
     return { kind: "not_applicable", reason: "fixed_task_pricing" };
   }
@@ -183,45 +183,44 @@ export const RUN_TOTALS_COVER =
   "Totals over every metered event under this run, including the work contained in it.";
 
 /**
- * What they are NOT over, for a run sold at one agreed price (#425).
+ * Where the Charge sits among them, for a run sold at one agreed price (#425;
+ * rewritten for #553's totals rule, A9).
  *
- * The projection of a delivered run's Charge is a posting under the run — it
- * names the run as its task — that the run's own counters never accumulate:
- * `TaskService.accumulate_cost` runs on the metered recording path and on no
- * other, so the totals above leave out exactly the posting that carries the
- * run's revenue. "Every event under this run" was one posting short on the
- * one run where that posting is the money, and this sentence is the nearest
- * the tasks surface can get to it: the contract publishes no read of a run's
- * postings, so the posting itself renders on the events surface and nowhere
- * else.
+ * The projection of a delivered run's Charge is a posting under the run, and
+ * since #553 it reaches the run's BILLED total — from the close that created
+ * it — and nothing else: never the supplier cost, never the event count, never
+ * the count of what is unpriced (`TaskService.take_up_a_charge`). This sentence
+ * used to say the totals left the Charge out, which was true while the
+ * projection reached no counter at all.
  *
- * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE. Nothing in the
- * console can see the day a later slice makes the projection accumulate into
- * the run; this constant is the console site to revisit then, and the test
- * that pins it is the one to rewrite.
+ * The run's customer price still reads as not applicable at the level of its
+ * events — none of them carries a price of its own — and the agreed price row
+ * below is where the charge is stated, owed or not by how the run ended.
+ *
+ * ⚠ IT STATES A ROLL-UP RULE, AND IT MOVES WITH THAT RULE: this constant is
+ * the console site to revisit if the rule moves again, and the test that pins
+ * it is the one to rewrite.
  */
-export const RUN_TOTALS_LEAVE_OUT_THE_CHARGE =
-  "A run sold at one agreed price also carries that price as one charge posting once it delivers. These totals do not count it; the agreed price below does.";
+export const RUN_TOTALS_AND_THE_CHARGE =
+  "A run sold at one agreed price earns that price as one charge when it delivers: it counts in what the run billed from that close, and never in its supplier cost or its event count. The agreed price below is that charge.";
 
-/** The sentence under the totals: what they cover, and — where it applies — what they leave out. */
+/** The sentence under the totals: what they cover, and — where it applies — where the Charge sits. */
 export function describeRunTotals(
   applicability: Pick<PriceApplicability, "soldAtOnePrice">,
 ): string {
   return applicability.soldAtOnePrice
-    ? `${RUN_TOTALS_COVER} ${RUN_TOTALS_LEAVE_OUT_THE_CHARGE}`
+    ? `${RUN_TOTALS_COVER} ${RUN_TOTALS_AND_THE_CHARGE}`
     : RUN_TOTALS_COVER;
 }
 
 /**
  * Why a run generates no customer revenue of its own, said at the run rather
  * than at one event — console copy (ADR-0008 §4.5), total over the registry's
- * two reasons so a third would fail `tsc` rather than render nothing.
+ * reasons so a new one would fail `tsc` rather than render nothing.
  */
 export const RUN_PRICE_NOT_APPLICABLE = {
   fixed_task_pricing:
     "This run is sold at one agreed price, so no event under it carries a customer price of its own. What it earns is the agreed price, owed when it delivers.",
-  tenant_not_billing:
-    "This workspace meters usage and does not bill customers through UBB, so no customer price is resolved for anything it runs.",
 } as const satisfies Record<NotApplicableReason, string>;
 
 /** The sentence beside a customer-price reading, or nothing when the figure is whole. */

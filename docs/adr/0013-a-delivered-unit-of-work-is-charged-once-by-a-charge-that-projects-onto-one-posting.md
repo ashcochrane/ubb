@@ -1,7 +1,9 @@
 # ADR-0013: A delivered unit of work is charged once — by a Charge that projects onto one posting
 
-**Status:** accepted
+**Status:** accepted — superseded in part
 **Date:** 2026-09-03
+**Superseded in part by:** ADR-0021 (#553) on §5's tie-break — the regime decides the
+`not_applicable` reason for every tenant, and `tenant_not_billing` is removed
 **Decision records:** `docs/plans/2026-07-30-fixed-price-task-economics-decision.md` (#139 §2–§4) —
 an agreed price replaces metered revenue, non-delivery never charges, and the charge is a
 first-class record; its §4.3 named the posting discriminator by a word the registry has since
@@ -167,12 +169,20 @@ retention obligations, every one of them `not_applicable`; for a fine-grained te
 the most common pricing status in the system, and the unit's own count of unpriced events counts
 none of them.
 
-**Posture wins the tie.** A tenant that does not bill through UBB records `tenant_not_billing` on
+~~**Posture wins the tie.** A tenant that does not bill through UBB records `tenant_not_billing` on
 those postings even though, since §4, the Charge the more specific value would point at does exist.
 The reason answers *why no customer revenue arises*, and for that tenant none does anywhere, for a
 reason unrelated to how the work was sold — so `fixed_task_pricing` would send a reader to look for
 a bill nobody raises, while now being half true, which is worse than plainly wrong. The regime
-decides the status; the posture only decides the reason.
+decides the status; the posture only decides the reason.~~
+
+**SUPERSEDED by ADR-0021 §5 (#553, the owner's C2 ruling of 2026-10-08): the regime decides the
+reason too, for every tenant.** Whether UBB may know a customer's price is not decided by whether
+UBB collects it, so a metering-only tenant's fixed-price postings say `fixed_task_pricing` — the
+revenue sits on the unit's Charge, which §4 already makes real for such a tenant — and the billing
+mode is not encoded again in the pricing result. `tenant_not_billing` lost its only producer and
+was removed; the postings that held it were rewritten to the reason that was always true of them
+(`usage/0047`).
 
 **The receipt whose subject is the Charge** names no `pricing_method` on either amount — the price
 was agreed, not derived, and there is no supplier behind a Charge — carries the regime by value so a
@@ -206,7 +216,7 @@ database.
 | §4 — a tenant that does not bill through UBB is charged with no wallet in sight, the charge is a record rather than a collection, the projection is written, the revenue reaches the margin report, and nothing is collected | charged-once module — `test_a_delivered_piece_of_work_is_charged_with_no_wallet_in_sight`, `test_the_charge_is_a_record_rather_than_a_collection`; projection module — `test_the_projection_is_written_with_no_wallet_in_sight`, `test_the_revenue_reaches_the_margin_report`, `test_nothing_is_collected_for_it` |
 | §5 — not applicable and never zero; cost-only; per-event work unaffected; the reason is the one slice 4 coined; no price rule is consulted; a fine grain multiplies these; the unit counts none as unpriced | not-applicable module — `test_a_metered_posting_carries_no_customer_price_at_all`, `test_it_is_not_a_zero_and_the_database_is_what_says_so` (the end-to-end reading: `None`, not `0`), `test_the_supplier_work_is_still_costed`, `test_work_priced_per_event_is_unaffected`, `test_the_reason_is_the_one_slice_4_coined_for_this_case`, `test_no_price_rule_is_consulted_at_all`, `test_a_finely_declared_quantity_multiplies_these_and_not_zeroes`, `test_the_piece_of_work_counts_none_of_them_as_unpriced` |
 | §5 — the database is what refuses a zero beside `not_applicable`: the whole sixteen-combination space, four admitted and twelve refused by name, on `INSERT` and as literal SQL | `ubb-platform/apps/metering/usage/tests/test_a_price_ubb_cannot_resolve_stops_being_zero.py` — `EveryIllegalCombinationIsRefusedByTheDatabaseTest`: `test_the_twelve_illegal_combinations_are_each_refused`, `test_the_derived_set_is_the_whole_space_minus_the_legal_four`, `test_an_illegal_combination_written_as_literal_sql_is_refused`, and the control `test_the_orm_can_insert_a_legal_combination` |
-| §5 — posture wins the tie, and the Charge the other reason would point at does exist | not-applicable module — `test_the_posture_reason_is_recorded_and_not_the_regimes`, `test_the_charge_the_more_specific_reason_would_point_at_does_exist`; the rule on its own, over all four combinations: `ubb-platform/apps/metering/pricing/tests/test_why_a_price_does_not_apply.py` — `test_the_reason_recorded_for_each_combination`, `test_posture_beats_the_jobs_regime_where_they_disagree` |
+| §5 as superseded by ADR-0021 §5 — the regime decides the reason for every tenant, and the Charge the reason points at does exist | not-applicable module — `test_the_regimes_reason_is_recorded_whatever_the_posture`, `test_the_charge_the_reason_points_at_does_exist`; the rule on its own: `ubb-platform/apps/metering/pricing/tests/test_why_a_price_does_not_apply.py` — `test_the_reason_recorded_for_each_regime`, `test_the_tenants_posture_is_not_an_input_to_the_rule` |
 | §5 — the receipt whose subject is the Charge: subject, no method, regime by value, no supplier work and no measured quantity, a valid receipt | not-applicable module — `test_the_projection_carries_a_receipt_whose_subject_is_the_charge`, `test_the_subject_is_the_charge_and_not_the_row_it_is_stored_on`, `test_the_price_is_the_agreed_one_and_names_no_method`, `test_it_carries_the_regime_by_value`, `test_it_records_no_supplier_work_and_no_measured_quantity`, `test_the_stored_record_is_a_valid_receipt` |
 | §5 — the price was promised and the cost is observed | `ubb-platform/api/v1/tests/test_an_agreed_price_is_pinned_before_the_work_runs.py` — `test_costs_float_while_the_agreed_price_stays_at_the_start_instant` |
 | Consequence — a charge posting never inflates a unit's event count; monetary totals include both kinds | `ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py` — `test_delivering_priced_work_leaves_the_event_count_where_it_was`, `test_the_revenue_total_holds_the_agreed_price_and_the_metered_sale`, `test_the_margin_nets_the_agreed_price_against_the_work_it_cost` |

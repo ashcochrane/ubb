@@ -262,7 +262,7 @@ class ACustomerSpendPoolEpisodeTest(SpendControlReportsTestBase):
                                 kind=TASK_TYPE_KIND_TASK,
                                 pricing_mode=PRICING_MODE_FIXED, uncapped=True)
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         self.pool = CustomerSpendPool.objects.create(
             tenant=self.tenant, customer=self.customer, cap_micros=THE_AGREED_PRICE,
             enforce_mode=SPEND_POOL_ENFORCE_MODE_BLOCKING)

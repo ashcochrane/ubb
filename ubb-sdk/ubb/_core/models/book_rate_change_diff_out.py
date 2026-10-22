@@ -10,49 +10,53 @@ from ..types import UNSET, Unset
 
 from ..types import UNSET, Unset
 from typing import cast
+from typing import Literal, cast
 
 if TYPE_CHECKING:
-  from ..models.book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
+  from ..models.book_rate_change_diff_out_grouping_fields import BookRateChangeDiffOutGroupingFields
   from ..models.rule_terms_out import RuleTermsOut
 
 
 
 
 
-T = TypeVar("T", bound="BookChangeDiffOut")
+T = TypeVar("T", bound="BookRateChangeDiffOut")
 
 
 
 @_attrs_define
-class BookChangeDiffOut:
-    """ One row of the diff: which rule, and what happens to it.
+class BookRateChangeDiffOut:
+    """ One row of the diff for a rate: which rule, and what happens to it.
 
-    `before` is the rule as it will stand at the publish's effective instant and
-    is null where the change adds one; `after` is the rule the publish opens and
-    is null where the change retires one. Neither is null on a reprice, which is
-    what makes the row readable as a change rather than as an outcome.
+    `line` is `rate`. `before` is the rule as it will stand at the publish's
+    effective instant and is null where the change adds one; `after` is the
+    rule the publish opens and is null where the change retires one. Neither
+    is null on a reprice, which is what makes the row readable as a change
+    rather than as an outcome.
 
         Attributes:
             event_type (str):
             kind (str):
+            line (Literal['rate']):
             measurement_key (str):
             provider (str):
             subtask_type (str):
             task_type (str):
             after (None | RuleTermsOut | Unset):
             before (None | RuleTermsOut | Unset):
-            grouping_fields (BookChangeDiffOutGroupingFields | Unset):
+            grouping_fields (BookRateChangeDiffOutGroupingFields | Unset):
      """
 
     event_type: str
     kind: str
+    line: Literal['rate']
     measurement_key: str
     provider: str
     subtask_type: str
     task_type: str
     after: None | RuleTermsOut | Unset = UNSET
     before: None | RuleTermsOut | Unset = UNSET
-    grouping_fields: BookChangeDiffOutGroupingFields | Unset = UNSET
+    grouping_fields: BookRateChangeDiffOutGroupingFields | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -60,11 +64,13 @@ class BookChangeDiffOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
+        from ..models.book_rate_change_diff_out_grouping_fields import BookRateChangeDiffOutGroupingFields
         from ..models.rule_terms_out import RuleTermsOut
         event_type = self.event_type
 
         kind = self.kind
+
+        line = self.line
 
         measurement_key = self.measurement_key
 
@@ -100,6 +106,7 @@ class BookChangeDiffOut:
         field_dict.update({
             "event_type": event_type,
             "kind": kind,
+            "line": line,
             "measurement_key": measurement_key,
             "provider": provider,
             "subtask_type": subtask_type,
@@ -118,12 +125,16 @@ class BookChangeDiffOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
+        from ..models.book_rate_change_diff_out_grouping_fields import BookRateChangeDiffOutGroupingFields
         from ..models.rule_terms_out import RuleTermsOut
         d = dict(src_dict)
         event_type = d.pop("event_type")
 
         kind = d.pop("kind")
+
+        line = cast(Literal['rate'] , d.pop("line"))
+        if line != 'rate':
+            raise ValueError(f"line must match const 'rate', got '{line}'")
 
         measurement_key = d.pop("measurement_key")
 
@@ -174,18 +185,19 @@ class BookChangeDiffOut:
 
 
         _grouping_fields = d.pop("grouping_fields", UNSET)
-        grouping_fields: BookChangeDiffOutGroupingFields | Unset
+        grouping_fields: BookRateChangeDiffOutGroupingFields | Unset
         if isinstance(_grouping_fields,  Unset):
             grouping_fields = UNSET
         else:
-            grouping_fields = BookChangeDiffOutGroupingFields.from_dict(_grouping_fields)
+            grouping_fields = BookRateChangeDiffOutGroupingFields.from_dict(_grouping_fields)
 
 
 
 
-        book_change_diff_out = cls(
+        book_rate_change_diff_out = cls(
             event_type=event_type,
             kind=kind,
+            line=line,
             measurement_key=measurement_key,
             provider=provider,
             subtask_type=subtask_type,
@@ -196,8 +208,8 @@ class BookChangeDiffOut:
         )
 
 
-        book_change_diff_out.additional_properties = d
-        return book_change_diff_out
+        book_rate_change_diff_out.additional_properties = d
+        return book_rate_change_diff_out
 
     @property
     def additional_keys(self) -> list[str]:

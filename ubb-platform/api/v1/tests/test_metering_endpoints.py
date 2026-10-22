@@ -770,7 +770,7 @@ class BookValidationTest(TestCase):
         """
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", **change}]})
+            {"changes": [{"line": "rate", "kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -785,7 +785,7 @@ class BookValidationTest(TestCase):
         """
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "reprice", **change}]})
+            {"changes": [{"line": "rate", "kind": "reprice", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -886,7 +886,7 @@ class ManyRulesInOneBookTest(TestCase):
         """
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", **change}]})
+            {"changes": [{"line": "rate", "kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"

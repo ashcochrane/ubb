@@ -57,6 +57,23 @@ def get_pricing_book_for_customer(tenant_id, customer_id):
     return str(row.plan.pricing_book_id)
 
 
+def pricing_books_of_live_plans(tenant_id):
+    """The id of the Pricing Book each of the tenant's live Plans prices from
+    (#586).
+
+    The question the Code Builder's readiness asks of the plan catalog: which
+    books COULD price a start, read off configuration alone. So it reads the
+    Plans and never who is on them — a Plan's book can price a start whether or
+    not anybody is on the Plan today, and the owner's ruling of 2026-10-20 on
+    #553 forbids readiness from depending on Plan membership. An archived Plan
+    is left out for the reason `_the_plan_pricing_this_customer` leaves it out:
+    it prices nobody.
+    """
+    return [str(book_id) for book_id in Plan.objects.filter(
+        tenant_id=tenant_id, archived_at__isnull=True,
+    ).values_list("pricing_book_id", flat=True)]
+
+
 def get_plan_by_key(tenant_id, key):
     """The tenant's plan with this key, archived or not, or None."""
     return Plan.objects.filter(tenant_id=tenant_id, key=key).first()

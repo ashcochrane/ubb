@@ -6,6 +6,7 @@ from ninja import Schema, Field
 from pydantic import ConfigDict, field_validator, model_validator
 
 from api.v1.pagination import Paginated
+from apps.metering.pricing.models import LINE_AGREED_PRICE, LINE_RATE
 from apps.platform.event_types.exact_decimals import (
     ACCEPTED, CANONICAL, anchored, canonical_quantities)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -1554,6 +1555,20 @@ class CloseTaskRequest(Schema):
     reason_detail: Optional[str] = None
 
 
+#: WHAT A UNIT'S BILLED TOTAL HOLDS, published once for the two schemas that
+#: carry it (#553 A9, ADR-0021 §3). A unit sold at one agreed price earns its
+#: revenue as ONE Charge when it delivers, projected onto one posting under
+#: the unit; that posting reaches this total and nothing else — never the
+#: provider-cost total, the event count or the unpriced count.
+TASK_BILLED_TOTAL_MEANING = (
+    "What this unit billed, in micros: the sum of the customer prices UBB "
+    "has resolved for its events and, for a unit sold at one agreed price "
+    "that delivered, its Charge — included from the close that created it. "
+    "`unpriced_event_count` says how many events it does not include. The "
+    "Charge is never in `total_provider_cost_micros`, `event_count` or "
+    "`unpriced_event_count`.")
+
+
 class CloseTaskResponse(Schema):
     task_id: str
     # Set when the closed unit is contained work (#38). Closing a PARENT
@@ -1581,7 +1596,8 @@ class CloseTaskResponse(Schema):
     #: hands back the ORIGINAL unit of work, not a second one. `replayed` beside
     #: it is what says nothing new happened.
     charge_created: bool
-    total_billed_cost_micros: int
+    total_billed_cost_micros: int = Field(
+        description=TASK_BILLED_TOTAL_MEANING)
     total_provider_cost_micros: int
     #: See `TaskOut.unresolved_event_count` — a closed unit's total is read on
     #: exactly the same terms as a running one's, and closing it settles
@@ -1635,7 +1651,8 @@ class TaskOut(Schema):
     #: An event whose Event Type declares no supplier cost is not counted: there
     #: is nothing missing about a cost that does not exist.
     unresolved_event_count: int
-    total_billed_cost_micros: int
+    total_billed_cost_micros: int = Field(
+        description=TASK_BILLED_TOTAL_MEANING)
     #: HOW MANY OF THIS UNIT'S EVENTS THE BILLED TOTAL COULD NOT INCLUDE (#351).
     #:
     #: The mirror of the count above: the billed total is the sum of the
@@ -2286,6 +2303,40 @@ class RateOut(Schema):
     valid_to: Optional[str] = None
 
 
+class AgreedPriceOut(Schema):
+    """One agreed price in a Pricing Book: what one delivered unit of a
+    declared kind of work sells for, in USD micros, from `valid_from` until
+    `valid_to`.
+
+    The window is half-open — in force at `valid_from`, gone at `valid_to` —
+    and `valid_to` is null while the line is open. A reprice closes a line and
+    opens its successor at one instant, and the successor carries the same
+    `lineage_id`, so a lineage is the history of one kind of work's price in
+    one book.
+    """
+    id: str
+    book_id: str
+    lineage_id: str
+    task_type: str
+    agreed_price_micros: int
+    valid_from: str
+    # Required and nullable (#569's review): null is "still open".
+    valid_to: Optional[str]
+
+
+def agreed_price_out(line):
+    """AgreedPriceOut's serializer — one agreed-price line under its book."""
+    return {
+        "id": str(line.id),
+        "book_id": str(line.pricing_book_id),
+        "lineage_id": str(line.lineage_id),
+        "task_type": line.task_type,
+        "agreed_price_micros": line.agreed_price_micros,
+        "valid_from": line.valid_from.isoformat(),
+        "valid_to": line.valid_to.isoformat() if line.valid_to else None,
+    }
+
+
 #: THE PROPERTY/COLUMN MISMATCH IS GONE, AND THE JOIN THAT HELD IT WENT WITH IT
 #: (#366, ruling 15).
 #:
@@ -2390,8 +2441,33 @@ def rate_out(r):
 # disagree about which rule they mean.
 
 
-class BookChangeIn(Schema):
-    """One change in a publish: what to do, and to which rule.
+#: WHICH KIND OF LINE A CHANGE IS ABOUT — the discriminator of the contract's
+#: first `oneOf` (#553, ADR-0021 §1).
+#:
+#: A Pricing Book holds two kinds of line: a RATE prices a measured quantity,
+#: and an AGREED PRICE prices one delivered unit of a declared kind of work.
+#: The two are different economic grains with different identities — a rate is
+#: the quantity it prices plus its selectors, an agreed price is the kind of
+#: work — so a change body names which one it is about rather than making the
+#: quantity "optional" on one shape that then means two things (the owner's
+#: constraint of 2026-10-06).
+#:
+#: ⚠ A `Literal` PER VARIANT, AND THAT IS NOT A CLOSED ENUMERATION THE REGISTRY
+#: SHOULD OWN. Each value is the NAME OF A SCHEMA — it says which of two bodies
+#: this one is — and the contract renders it as a `const` on each variant with
+#: a `discriminator` mapping beside the `oneOf`, never as an `enum` on one
+#: node. The two values are the two domain nouns the registry already names
+#: (`rate`, and the agreed price); what they decide is the shape of a body,
+#: which is the contract's own business. ADR-0021 §1 records the rule,
+#: and the values are the model module's own constants, `LINE_RATE` and
+#: `LINE_AGREED_PRICE`, never spelled here.
+
+
+class BookRateChangeIn(Schema):
+    """One change to a rate in a publish: what to do, and to which rule.
+
+    `line` is `rate`. A change to an agreed price is the other body of the
+    two, `BookAgreedPriceChangeIn`, and `line` is what says which one this is.
 
     `kind` is `add`, `reprice` or `retire` — the three surfaces a book used to
     have, arriving as three kinds of one act. It is a plain string and the
@@ -2417,6 +2493,7 @@ class BookChangeIn(Schema):
     different fact from `pricing_method`, which says how the price is DERIVED,
     and a change may move either without the other.
     """
+    line: Literal[LINE_RATE]
     kind: str
     measurement_key: str = Field(min_length=1, max_length=100)
     provider: str = Field(default="", max_length=100)
@@ -2458,6 +2535,37 @@ class BookChangeIn(Schema):
     rate_per_unit_micros: Optional[int] = Field(default=None, ge=0)
     unit_quantity: Optional[int] = Field(default=None, gt=0)
     fixed_micros: Optional[int] = Field(default=None, ge=0)
+
+
+class BookAgreedPriceChangeIn(Schema):
+    """One change to an agreed price in a publish: what one delivered unit of
+    a declared kind of work sells for.
+
+    `line` is `agreed_price`. `kind` is `add`, `reprice` or `retire`, the
+    same three acts a rate takes, and `task_type` names the kind of work —
+    a top-level kind you have declared and not retired, whatever its current
+    `pricing_mode`, so the price can be declared before the kind is switched
+    to fixed pricing and no start is refused in between. A kind declared only
+    as contained work is refused: one agreed price buys a whole unit of work.
+
+    A book holds at most one agreed price in force for one kind of work.
+    `agreed_price_micros` is in USD micros and is required on `add` and
+    `reprice` and refused on `retire`. Zero is a price; a negative amount is
+    refused. The change takes effect at the publish's `effective_at`, like a
+    rate change in the same publish.
+    """
+    line: Literal[LINE_AGREED_PRICE]
+    kind: str
+    task_type: str = Field(min_length=1, max_length=64)
+    agreed_price_micros: Optional[int] = Field(default=None, ge=0)
+
+
+#: ONE CHANGE IN A PUBLISH, WHICHEVER KIND OF LINE IT IS ABOUT — the request's
+#: first discriminated union. `line` is required on both bodies, so a body that
+#: names neither is refused before anything is planned.
+BookChangeIn = Annotated[
+    Union[BookRateChangeIn, BookAgreedPriceChangeIn],
+    Field(discriminator="line")]
 
 
 class BookPublishIn(Schema):
@@ -2538,14 +2646,16 @@ def rule_terms_out(terms):
     }
 
 
-class BookChangeDiffOut(Schema):
-    """One row of the diff: which rule, and what happens to it.
+class BookRateChangeDiffOut(Schema):
+    """One row of the diff for a rate: which rule, and what happens to it.
 
-    `before` is the rule as it will stand at the publish's effective instant and
-    is null where the change adds one; `after` is the rule the publish opens and
-    is null where the change retires one. Neither is null on a reprice, which is
-    what makes the row readable as a change rather than as an outcome.
+    `line` is `rate`. `before` is the rule as it will stand at the publish's
+    effective instant and is null where the change adds one; `after` is the
+    rule the publish opens and is null where the change retires one. Neither
+    is null on a reprice, which is what makes the row readable as a change
+    rather than as an outcome.
     """
+    line: Literal[LINE_RATE]
     kind: str
     measurement_key: str
     provider: str
@@ -2555,6 +2665,37 @@ class BookChangeDiffOut(Schema):
     grouping_fields: dict[str, str] = {}
     before: Optional[RuleTermsOut] = None
     after: Optional[RuleTermsOut] = None
+
+
+class AgreedPriceTermsOut(Schema):
+    """What one delivered unit of the kind of work sells for, in USD micros."""
+    agreed_price_micros: int
+
+
+class BookAgreedPriceChangeDiffOut(Schema):
+    """One row of the diff for an agreed price: which kind of work, and what
+    happens to its price.
+
+    `line` is `agreed_price`. `before` is the agreed price in force at the
+    publish's effective instant and is null where the change adds one;
+    `after` is the one the publish opens and is null where the change retires
+    one.
+    """
+    line: Literal[LINE_AGREED_PRICE]
+    kind: str
+    task_type: str
+    # REQUIRED AND NULLABLE, the posture the owner set for a new response fact
+    # (#569's review): null says "no line on this side", and a missing key
+    # would be a third state. The rate row's pair keeps its older posture.
+    before: Optional[AgreedPriceTermsOut]
+    after: Optional[AgreedPriceTermsOut]
+
+
+#: ONE ROW OF A DIFF, WHICHEVER KIND OF LINE IT IS ABOUT — the discriminated
+#: union `BookChangeIn` is, answered back.
+BookChangeDiffOut = Annotated[
+    Union[BookRateChangeDiffOut, BookAgreedPriceChangeDiffOut],
+    Field(discriminator="line")]
 
 
 #: Whether a declaration is still a draft or has been published. `closed` — UBB
@@ -2593,9 +2734,15 @@ class BookPublishOut(Schema):
     actor_id: str
     actor_display: str
     #: The rule versions this publish opened and closed. Empty on a draft,
-    #: because a draft opened and closed none.
+    #: because a draft opened and closed none. They name rates only: an
+    #: agreed price is not a rule, and its lines are the pair below.
     opened_rule_ids: list[str]
     closed_rule_ids: list[str]
+    #: The agreed-price lines this publish opened and closed, as read back
+    #: through `GET /pricing/books/{book_id}/agreed-prices`. Empty on a
+    #: draft.
+    opened_agreed_price_ids: list[str]
+    closed_agreed_price_ids: list[str]
     #: WHAT THIS PUBLISH WILL DO, computed against the book as it will stand at
     #: `effective_at`. Present while the record is a draft and NULL once it is
     #: published, because a diff is a statement about a change that has not
@@ -2637,9 +2784,19 @@ def book_publish_out(record, diff=None, diff_unavailable_reason=None):
         "actor_display": record.actor_display,
         "opened_rule_ids": list(record.opened_rule_ids),
         "closed_rule_ids": list(record.closed_rule_ids),
+        "opened_agreed_price_ids": list(record.opened_agreed_price_ids),
+        "closed_agreed_price_ids": list(record.closed_agreed_price_ids),
         "diff": diff,
         "diff_unavailable_reason": diff_unavailable_reason,
     }
+
+
+def _agreed_price_terms_out(terms):
+    """`AgreedPriceTermsOut`'s serializer, or `None` for the side with no
+    line — named key by key for the reason `rule_terms_out` gives."""
+    if terms is None:
+        return None
+    return {"agreed_price_micros": terms["agreed_price_micros"]}
 
 
 class UndeclaredGroupingField(ValueError):
@@ -2663,7 +2820,12 @@ def book_change_body(change: dict, slots: dict) -> dict:
     that tenant, and a key the registry does not carry raises `KeyError` here so
     the route can answer 422 rather than silently matching a rule that leaves
     every slot unpinned — which would reprice the wrong rule, or none.
+
+    An agreed price selects on nothing but its kind of work, so its body is
+    already the service's and passes through as it came.
     """
+    if change.get("line") == LINE_AGREED_PRICE:
+        return dict(change)
     body = {name: value for name, value in change.items()
             if name != "grouping_fields"}
     for key, value in (change.get("grouping_fields") or {}).items():
@@ -2683,11 +2845,21 @@ def book_change_diff_out(row: dict, keys: dict) -> dict:
 
     The inverse of `book_change_body`: `keys` is the registry's `{slot: key}`
     map, so a row names the grouping field the tenant declared rather than the
-    column it happens to occupy.
+    column it happens to occupy. An agreed price's row names no selector, so
+    it is the service's row with its two sides named key by key.
     """
+    if row["line"] == LINE_AGREED_PRICE:
+        return {
+            "line": LINE_AGREED_PRICE,
+            "kind": row["kind"],
+            "task_type": row["task_type"],
+            "before": _agreed_price_terms_out(row["before"]),
+            "after": _agreed_price_terms_out(row["after"]),
+        }
     reserved = ("provider", "event_type", "task_type", "subtask_type")
     selectors = row["selectors"]
     return {
+        "line": LINE_RATE,
         "kind": row["kind"],
         "measurement_key": row["measurement_key"],
         **{name: selectors.get(name, "") for name in reserved},
@@ -3123,6 +3295,10 @@ class PaginatedPricingBooks(Paginated[PricingBookOut]):
 
 
 class PaginatedCostBooks(Paginated[CostBookOut]):
+    pass
+
+
+class PaginatedAgreedPrices(Paginated[AgreedPriceOut]):
     pass
 
 
@@ -4690,6 +4866,11 @@ class IntegrationBlueprintRemediationRequest(Schema):
     else of yours: the key is in `route`, or in `body` for an operation that
     declares a new object, and every other field of `body` is left empty.
     `body` is null for an operation that takes none.
+
+    An agreed price's request is the one that names a book: it publishes the
+    price into your default Pricing Book, which `route` names by its id, with
+    the change filled in but its amount; or, where you have no default
+    Pricing Book, it declares one, with `is_default` set.
     """
     method: str
     route: str
@@ -4704,8 +4885,8 @@ class IntegrationBlueprintDiagnostic(Schema):
     `object_kind`, `key` and `field` say of which declaration. `key` is null
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
-    Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work.
+    Measurement, a reported-cost mapping, a Grouping Field and an agreed
+    price, and null for a kind of work.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4713,6 +4894,25 @@ class IntegrationBlueprintDiagnostic(Schema):
     key: Optional[str] = None
     field: Optional[str] = None
     remediation_request: Optional[IntegrationBlueprintRemediationRequest] = None
+
+
+class IntegrationBlueprintAgreedPrice(Schema):
+    """What one delivered unit of the selected kind of work sells for where a
+    customer has no price of their own or from their Plan: the agreed price
+    your default Pricing Book holds, and where it came from.
+
+    `pricing_book_key` is that book, `book_version_from` the version its
+    publish made it, and the line is in force from `valid_from` until
+    `valid_to` (null while open). Shown, never sent: no call carries it, so
+    no generated file holds it.
+    """
+    task_type: str
+    agreed_price_micros: int
+    pricing_book_key: str
+    book_version_from: int
+    valid_from: str
+    # Required and nullable (#569's review): null is "still open".
+    valid_to: Optional[str]
 
 
 class ResolvedIntegrationBlueprint(Schema):
@@ -4730,6 +4930,12 @@ class ResolvedIntegrationBlueprint(Schema):
     configuration they were resolved from. A diagnostic's
     `remediation_request` is not part of it. `readiness` is the least ready of
     `calls`.
+
+    `agreed_price` is shown beside the calls for a kind of work sold at one
+    agreed price, and is null for any other kind and where your default
+    Pricing Book holds no price for it (a diagnostic then says so). It is read
+    off the configuration the fingerprint covers, and it is not a call's: a
+    generated file never holds it.
     """
     schema_version: int
     renderer_contract_version: int
@@ -4739,6 +4945,9 @@ class ResolvedIntegrationBlueprint(Schema):
     readiness: IntegrationReadiness
     calls: List[IntegrationBlueprintCall]
     diagnostics: List[IntegrationBlueprintDiagnostic]
+    # Required and nullable (#569's review): null is "no default agreed price
+    # to show", never an absent key.
+    agreed_price: Optional[IntegrationBlueprintAgreedPrice]
 
 
 class IntegrationBlueprintVerificationRecordIn(Schema):

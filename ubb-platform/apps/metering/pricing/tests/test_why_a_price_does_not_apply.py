@@ -1,79 +1,57 @@
-"""The tie-break between the two `not_applicable_reason` values (#351, #151 §8.2).
+"""Why a price does not apply: the regime decides, for every tenant (#351,
+#151 §8.2; rewritten by #553, ADR-0021 §5).
 
-Four combinations of two facts, and the whole content of the rule is the one row
-where they disagree: a **metering-only tenant running a Task sold for one agreed
-price** records `tenant_not_billing`, not `fixed_task_pricing`.
+The rule this file held until #553 was a tie-break between two reasons — a
+metering-only tenant's fixed-price work recorded the tenant's posture
+(`tenant_not_billing`, "posture wins") rather than the work's regime. The
+owner's C2 ruling superseded it: whether UBB may know a customer's price is
+not decided by whether UBB collects it, so the regime decides the reason and
+the billing mode is not encoded again in the pricing result. The posture value
+lost its last producer and was removed (`usage/0047`).
 
-That row is why this file exists. The other three are obvious and would be
-written by anybody; the tempting answer to the fourth is the more specific value,
-and it is wrong — for a metering-only tenant no CUSTOMER CHARGE is raised, so
-naming the piece of work's regime would send a reader to look for a bill that is
-never raised.
+What is left is one fact and one answer, and the case where the fact is false
+has no reason at all — the price applies. Both are asserted, and the posture is
+asserted to be no input to the rule any more, which is what a regression to
+the old tie-break would have to undo.
 
-⚠ **THE ORIGINAL WORDING ENDED "revenue sitting on a Charge that does not
-exist", AND #416 MADE THAT FALSE.** Such a tenant's delivered fixed-price work
-DOES produce a `pricing.Charge` — a recorded revenue and margin fact rather than
-a collection — and #417 projected it onto a posting, so the row a reader would
-be sent to is really there. What the ruling rests on now is narrower and does
-not depend on the record existing: `fixed_task_pricing` says the customer
-revenue for this event sits on the piece of work INSTEAD, and for this tenant
-there is no customer revenue anywhere. #418 wired the rule up and re-took the
-tie-break against that row;
-`api/v1/tests/test_the_postings_under_an_agreed_price_are_not_applicable.py`
-drives it end to end through a tenant that has the Charge and not the bill.
-
-**Driven through the real function, table-first.** The rule is two branches, so a
-test per branch would be a test per line of the implementation; what has content
-here is the mapping, and it is asserted as one.
+End to end, for both postures,
+`api/v1/tests/test_the_postings_under_an_agreed_price_are_not_applicable.py`.
 """
+import inspect
+
 import pytest
 
 from apps.metering.pricing.applicability import not_applicable_reason_for
 from core.vocabulary import (
-    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
-)
-
-#: (tenant bills through UBB, sold for one agreed price) -> reason.
-#:
-#: All four combinations, because a table missing one is a case somebody decides
-#: later by accident. The `None` row is the case that has no reason at all.
-THE_TIE_BREAK = [
-    # The three rows of the ticket's table, in its order.
-    (False, False, NOT_APPLICABLE_REASON_TENANT_NOT_BILLING),
-    (True, True, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING),
-    (False, True, NOT_APPLICABLE_REASON_TENANT_NOT_BILLING),
-    # And the fourth combination, which is not in that table because it is not a
-    # `not_applicable` subject: the price applies.
-    (True, False, None),
-]
+    NOT_APPLICABLE_REASON_FIXED_TASK_PRICING, NOT_APPLICABLE_REASON_VALUES)
 
 
-@pytest.mark.parametrize("bills, fixed_price, expected", THE_TIE_BREAK)
-def test_the_reason_recorded_for_each_combination(bills, fixed_price, expected):
+@pytest.mark.parametrize("fixed_price, expected", [
+    (True, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING),
+    # Not a `not_applicable` subject at all: the price applies.
+    (False, None),
+])
+def test_the_reason_recorded_for_each_regime(fixed_price, expected):
     assert not_applicable_reason_for(
-        tenant_bills_through_ubb=bills,
         sold_for_one_agreed_price=fixed_price) == expected
 
 
-def test_posture_beats_the_jobs_regime_where_they_disagree():
-    """The one row above stated as its own claim, because it is the ruling.
-
-    Asserted as an inequality against the value a caller would reach for, so
-    that flipping the rule's two branches fails here with the reason named
-    rather than only shifting one row of a parametrized table.
-    """
-    metering_only_fixed_job = not_applicable_reason_for(
-        tenant_bills_through_ubb=False, sold_for_one_agreed_price=True)
-    assert metering_only_fixed_job == NOT_APPLICABLE_REASON_TENANT_NOT_BILLING
-    assert metering_only_fixed_job != NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
+def test_the_tenants_posture_is_not_an_input_to_the_rule():
+    """The C2 ruling, held at the rule's signature: there is no parameter
+    through which a billing mode could reach the reason."""
+    assert list(inspect.signature(not_applicable_reason_for).parameters) == [
+        "sold_for_one_agreed_price"]
 
 
-def test_the_two_facts_cannot_be_passed_positionally():
-    """Two booleans of the same type, and swapping them changes one answer.
+def test_every_reason_the_rule_can_answer_is_one_the_registry_holds():
+    """And nothing the rule answers is outside the registry's set — the value
+    that named the posture is gone from both."""
+    answers = {not_applicable_reason_for(sold_for_one_agreed_price=fact)
+               for fact in (True, False)} - {None}
+    assert answers == NOT_APPLICABLE_REASON_VALUES
 
-    Keyword-only is the guard, and this is what proves it is still there: a
-    positional call would be a silent wrong answer on exactly the row above.
-    """
+
+def test_the_fact_cannot_be_passed_positionally():
+    """Keyword-only, so a call site says which fact it is passing."""
     with pytest.raises(TypeError):
-        not_applicable_reason_for(False, True)
+        not_applicable_reason_for(True)

@@ -28,6 +28,8 @@ const rulesKey = (
   bookId: string,
   view: { include_history: boolean; as_of: string | null },
 ) => ["metering", "pricing", "books", bookId, "rules", view] as const;
+const agreedPricesKey = (bookId: string, view: { include_history: boolean }) =>
+  ["metering", "pricing", "books", bookId, "agreed-prices", view] as const;
 const publishesKey = (bookId: string) =>
   ["metering", "pricing", "books", bookId, "publishes"] as const;
 const markupKey = ["metering", "pricing", "default-markup"] as const;
@@ -74,6 +76,28 @@ export function useRules(
       pricingApi.listRules(bookId, {
         include_history: normalized.include_history,
         as_of: normalized.as_of ?? undefined,
+        cursor,
+      }),
+    { enabled: options?.enabled },
+  );
+}
+
+/**
+ * A Pricing Book's agreed prices (#553) — the open lines, or every version.
+ * Under the book's own prefix, so the over-invalidation every publish already
+ * does refreshes this list with the rules beside it.
+ */
+export function useAgreedPrices(
+  bookId: string,
+  view: { include_history?: boolean },
+  options?: { enabled?: boolean },
+) {
+  const normalized = { include_history: view.include_history ?? false };
+  return useCursorList(
+    agreedPricesKey(bookId, normalized),
+    (cursor) =>
+      pricingApi.listAgreedPrices(bookId, {
+        include_history: normalized.include_history,
         cursor,
       }),
     { enabled: options?.enabled },

@@ -10,7 +10,8 @@ from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_REPRICE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook, Rate,
+    CHANGE_REPRICE, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook,
+    Rate,
     TaskPrice, TenantDefaultMarkup)
 from apps.metering.pricing.receipts import ReceiptSubject
 from apps.metering.pricing.services.book_service import BookService
@@ -197,7 +198,7 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
         book_version_from=book.version, **fields)
 
 
-def a_price_for_whole_work(tenant, *, task_type, amount_micros,
+def a_price_for_whole_work(tenant, *, task_type, agreed_price_micros,
                            customer=None, plan_key=None, **fields):
     """A WORK-LEVEL LINE — what one whole delivered unit of work of this kind
     sells for (#415), in whichever of the three books a caller means.
@@ -232,7 +233,7 @@ def a_price_for_whole_work(tenant, *, task_type, amount_micros,
             tenant=tenant, is_default=True, defaults={"key": "default"})
     return TaskPrice.objects.create(
         tenant=tenant, pricing_book=book, task_type=task_type,
-        amount_micros=amount_micros, **fields)
+        agreed_price_micros=agreed_price_micros, **fields)
 
 
 def cost_book(tenant, *, key="default", provider="", currency="usd"):
@@ -855,7 +856,7 @@ class AForwardDatingBookMixin:
         self.book = the_book_holding(self.rule)
 
     def a_change(self, **terms):
-        return {"kind": CHANGE_REPRICE,
+        return {"line": LINE_RATE, "kind": CHANGE_REPRICE,
                 "measurement_key": SCHEDULING_QUANTITY,
                 "provider": SCHEDULING_PROVIDER,
                 "event_type": SCHEDULING_EVENT_TYPE, **terms}

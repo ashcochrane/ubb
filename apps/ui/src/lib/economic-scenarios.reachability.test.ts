@@ -40,9 +40,9 @@
 // ⚠ IT READS SOURCE TEXT, and that is a deliberate trade. The alternative —
 // importing every mock and inspecting what it serves — cannot see a fixture
 // consumed by a component test at all, and cannot see WHICH ARGUMENT a
-// parameterised scenario was called with. Both matter here: the sixth state
-// this slice owes is `priceNotApplicable("tenant_not_billing")`, which is one
-// argument away from its sibling and lives in a test rather than a mock.
+// parameterised scenario was called with. Both matter here: a state that is
+// one argument away from its sibling — `priceNotApplicable(<reason>)` — may
+// live in a test rather than a mock.
 // `import.meta.glob` is Vite's own facility, so this needs no filesystem access
 // and no extra dependency.
 
@@ -160,11 +160,11 @@ describe("the scenario module is wired to something that renders", () => {
   });
 
   // The reachability of a scenario's ARGUMENT, which the import list cannot
-  // see. `not_applicable` is one status and two economic states — the causes
-  // send a reader to opposite places — so a commit that composed one of them
-  // and left the other to nothing would satisfy the check above while leaving
-  // half of what it owes unrendered.
-  it("composes BOTH not-applicable causes somewhere that renders", () => {
+  // see. `not_applicable` is one status with a published cause per state, so a
+  // cause the registry adds and no renderer composes would satisfy the check
+  // above while leaving what it owes unrendered. Driven off the generated list
+  // — one cause since #553, which removed the posture value.
+  it("composes every not-applicable cause somewhere that renders", () => {
     for (const reason of NOT_APPLICABLE_REASON_VALUES) {
       const call = `priceNotApplicable("${reason}")`;
       const where = CONSUMERS.filter((consumer) =>

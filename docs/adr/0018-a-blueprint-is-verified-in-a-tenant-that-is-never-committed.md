@@ -1,7 +1,9 @@
 # ADR-0018: A Blueprint is verified in a tenant that is never committed, and its verdict is read off the acknowledgements
 
-**Status:** accepted
+**Status:** accepted — amended in part
 **Date:** 2026-10-03
+**Amended in part by:** ADR-0021 §6 (#586) on §8's agreed price — the snapshot carries the default
+Pricing Book's agreed price for a kind sold whole, and a run is given it
 **Decision records:** the consolidated Code Builder specification on #184 (four comments,
 2026-09-25) — §13 steps 4 to 6 and the Verify operation (a) to (e), and the Testing Decisions'
 Seam A · the owner's ruling on #567 (2026-09-23): the refusal is a Verify-boundary rule against
@@ -164,9 +166,15 @@ survives the call to be audited.
 ### 8. What this ADR does not decide
 
 A draft-preview verification (#567 point 3: possible later, labelled, not now). Ordinary
-recording's handling of an undeclared Event Type (#568). The agreed price a fixed-price kind needs
+recording's handling of an undeclared Event Type (#568). ~~The agreed price a fixed-price kind needs
 to start for a tenant that bills: until the snapshot carries it, such a run is refused at its start
-and says so.
+and says so.~~
+
+**AMENDED by ADR-0021 §6 (#586, 2026-10-21):** the snapshot of a kind sold at one agreed price
+carries the DEFAULT Pricing Book's price, and the run publishes it into its own default book, so the
+run is charged it. A price held only in a Plan's book or a customer's own is in no snapshot: the
+run's customer, on no Plan and with no deal, is refused at its start where the tenant bills, and
+Verify answers that refusal — it never picks the priced book and never makes a price up.
 
 ## What proves it
 
@@ -211,4 +219,6 @@ integer is refused, as the generated shell file refuses one (ADR-0017 §4). A ru
 committed Verify answer is a stop; the card's stopped states are proved on composed
 acknowledgements. A future need to verify against something the snapshot does not hold — an agreed price,
 a constant's value — is met by the ticket that adds it to the snapshot's configuration, in a
-canonical order, moving every fingerprint once.
+canonical order, moving every fingerprint once. (#586 met it for the agreed price more narrowly:
+the content is present only for a kind sold whole and absent for every other, so only those
+fingerprints moved — ADR-0021 §6.)

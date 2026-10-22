@@ -66,7 +66,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE, Rate)
+    CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE, LINE_RATE, Rate)
 from apps.metering.pricing.services.book_service import (
     BookService, plan_changes)
 from apps.metering.pricing.services.pricing_service import (
@@ -327,7 +327,8 @@ class NoPartialOverrideIsExpressibleTest(_ACustomerWithADealMixin, TestCase):
             self.tenant, self.customer)
 
     def _an_added_override(self, **stated):
-        return {"kind": CHANGE_ADD, "measurement_key": QUANTITY,
+        return {"line": LINE_RATE,
+                "kind": CHANGE_ADD, "measurement_key": QUANTITY,
                 "provider": PROVIDER, "event_type": EVENT_TYPE,
                 **{name: "" for name in Rate.SELECTORS
                    if name not in ("provider", "event_type")},
@@ -377,7 +378,7 @@ class NoPartialOverrideIsExpressibleTest(_ACustomerWithADealMixin, TestCase):
                 self.book,
                 [{**self._an_added_override(
                     pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE),
-                  "kind": CHANGE_RETIRE}],
+                  "line": LINE_RATE, "kind": CHANGE_RETIRE}],
                 timezone.now())
 
     def test_a_method_outside_the_ratified_pair_is_refused(self):
@@ -407,7 +408,8 @@ class ANegotiatedDealSurvivesChangesToTheStandardBookTest(
     def _reprice_the_catalogue(self):
         record = BookService.declare(
             the_book_holding(self.inherited),
-            [{"kind": CHANGE_REPRICE, "measurement_key": QUANTITY,
+            [{"line": LINE_RATE,
+              "kind": CHANGE_REPRICE, "measurement_key": QUANTITY,
               "provider": PROVIDER, "event_type": EVENT_TYPE,
               **{name: "" for name in Rate.SELECTORS
                  if name not in ("provider", "event_type")},
@@ -604,7 +606,8 @@ class AnOverrideIsPublishedDatedForwardAndReversedTest(
     def _declare(self, kind, effective_at, **stated):
         return BookService.declare(
             self.book,
-            [{"kind": kind, "measurement_key": QUANTITY, "provider": PROVIDER,
+            [{"line": LINE_RATE,
+              "kind": kind, "measurement_key": QUANTITY, "provider": PROVIDER,
               "event_type": EVENT_TYPE,
               **{name: "" for name in Rate.SELECTORS
                  if name not in ("provider", "event_type")},

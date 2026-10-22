@@ -8,25 +8,29 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
-from ..models.book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
+from ..models.book_rate_change_in_pricing_method_type_0 import BookRateChangeInPricingMethodType0
+from ..models.book_rate_change_in_rate_structure_type_0 import BookRateChangeInRateStructureType0
 from ..types import UNSET, Unset
 from typing import cast
+from typing import Literal, cast
 
 if TYPE_CHECKING:
-  from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
+  from ..models.book_rate_change_in_grouping_fields import BookRateChangeInGroupingFields
 
 
 
 
 
-T = TypeVar("T", bound="BookChangeIn")
+T = TypeVar("T", bound="BookRateChangeIn")
 
 
 
 @_attrs_define
-class BookChangeIn:
-    """ One change in a publish: what to do, and to which rule.
+class BookRateChangeIn:
+    """ One change to a rate in a publish: what to do, and to which rule.
+
+    `line` is `rate`. A change to an agreed price is the other body of the
+    two, `BookAgreedPriceChangeIn`, and `line` is what says which one this is.
 
     `kind` is `add`, `reprice` or `retire` — the three surfaces a book used to
     have, arriving as three kinds of one act. It is a plain string and the
@@ -54,28 +58,30 @@ class BookChangeIn:
 
         Attributes:
             kind (str):
+            line (Literal['rate']):
             measurement_key (str):
             event_type (str | Unset):  Default: ''.
             fixed_micros (int | None | Unset):
-            grouping_fields (BookChangeInGroupingFields | Unset):
-            pricing_method (BookChangeInPricingMethodType0 | None | Unset):
+            grouping_fields (BookRateChangeInGroupingFields | Unset):
+            pricing_method (BookRateChangeInPricingMethodType0 | None | Unset):
             provider (str | Unset):  Default: ''.
             rate_per_unit_micros (int | None | Unset):
-            rate_structure (BookChangeInRateStructureType0 | None | Unset):
+            rate_structure (BookRateChangeInRateStructureType0 | None | Unset):
             subtask_type (str | Unset):  Default: ''.
             task_type (str | Unset):  Default: ''.
             unit_quantity (int | None | Unset):
      """
 
     kind: str
+    line: Literal['rate']
     measurement_key: str
     event_type: str | Unset = ''
     fixed_micros: int | None | Unset = UNSET
-    grouping_fields: BookChangeInGroupingFields | Unset = UNSET
-    pricing_method: BookChangeInPricingMethodType0 | None | Unset = UNSET
+    grouping_fields: BookRateChangeInGroupingFields | Unset = UNSET
+    pricing_method: BookRateChangeInPricingMethodType0 | None | Unset = UNSET
     provider: str | Unset = ''
     rate_per_unit_micros: int | None | Unset = UNSET
-    rate_structure: BookChangeInRateStructureType0 | None | Unset = UNSET
+    rate_structure: BookRateChangeInRateStructureType0 | None | Unset = UNSET
     subtask_type: str | Unset = ''
     task_type: str | Unset = ''
     unit_quantity: int | None | Unset = UNSET
@@ -86,8 +92,10 @@ class BookChangeIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
+        from ..models.book_rate_change_in_grouping_fields import BookRateChangeInGroupingFields
         kind = self.kind
+
+        line = self.line
 
         measurement_key = self.measurement_key
 
@@ -106,7 +114,7 @@ class BookChangeIn:
         pricing_method: None | str | Unset
         if isinstance(self.pricing_method, Unset):
             pricing_method = UNSET
-        elif isinstance(self.pricing_method, BookChangeInPricingMethodType0):
+        elif isinstance(self.pricing_method, BookRateChangeInPricingMethodType0):
             pricing_method = self.pricing_method.value
         else:
             pricing_method = self.pricing_method
@@ -122,7 +130,7 @@ class BookChangeIn:
         rate_structure: None | str | Unset
         if isinstance(self.rate_structure, Unset):
             rate_structure = UNSET
-        elif isinstance(self.rate_structure, BookChangeInRateStructureType0):
+        elif isinstance(self.rate_structure, BookRateChangeInRateStructureType0):
             rate_structure = self.rate_structure.value
         else:
             rate_structure = self.rate_structure
@@ -142,6 +150,7 @@ class BookChangeIn:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "kind": kind,
+            "line": line,
             "measurement_key": measurement_key,
         })
         if event_type is not UNSET:
@@ -171,9 +180,13 @@ class BookChangeIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_change_in_grouping_fields import BookChangeInGroupingFields
+        from ..models.book_rate_change_in_grouping_fields import BookRateChangeInGroupingFields
         d = dict(src_dict)
         kind = d.pop("kind")
+
+        line = cast(Literal['rate'] , d.pop("line"))
+        if line != 'rate':
+            raise ValueError(f"line must match const 'rate', got '{line}'")
 
         measurement_key = d.pop("measurement_key")
 
@@ -190,16 +203,16 @@ class BookChangeIn:
 
 
         _grouping_fields = d.pop("grouping_fields", UNSET)
-        grouping_fields: BookChangeInGroupingFields | Unset
+        grouping_fields: BookRateChangeInGroupingFields | Unset
         if isinstance(_grouping_fields,  Unset):
             grouping_fields = UNSET
         else:
-            grouping_fields = BookChangeInGroupingFields.from_dict(_grouping_fields)
+            grouping_fields = BookRateChangeInGroupingFields.from_dict(_grouping_fields)
 
 
 
 
-        def _parse_pricing_method(data: object) -> BookChangeInPricingMethodType0 | None | Unset:
+        def _parse_pricing_method(data: object) -> BookRateChangeInPricingMethodType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -207,14 +220,14 @@ class BookChangeIn:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                pricing_method_type_0 = BookChangeInPricingMethodType0(data)
+                pricing_method_type_0 = BookRateChangeInPricingMethodType0(data)
 
 
 
                 return pricing_method_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(BookChangeInPricingMethodType0 | None | Unset, data)
+            return cast(BookRateChangeInPricingMethodType0 | None | Unset, data)
 
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
@@ -231,7 +244,7 @@ class BookChangeIn:
         rate_per_unit_micros = _parse_rate_per_unit_micros(d.pop("rate_per_unit_micros", UNSET))
 
 
-        def _parse_rate_structure(data: object) -> BookChangeInRateStructureType0 | None | Unset:
+        def _parse_rate_structure(data: object) -> BookRateChangeInRateStructureType0 | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -239,14 +252,14 @@ class BookChangeIn:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                rate_structure_type_0 = BookChangeInRateStructureType0(data)
+                rate_structure_type_0 = BookRateChangeInRateStructureType0(data)
 
 
 
                 return rate_structure_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(BookChangeInRateStructureType0 | None | Unset, data)
+            return cast(BookRateChangeInRateStructureType0 | None | Unset, data)
 
         rate_structure = _parse_rate_structure(d.pop("rate_structure", UNSET))
 
@@ -265,8 +278,9 @@ class BookChangeIn:
         unit_quantity = _parse_unit_quantity(d.pop("unit_quantity", UNSET))
 
 
-        book_change_in = cls(
+        book_rate_change_in = cls(
             kind=kind,
+            line=line,
             measurement_key=measurement_key,
             event_type=event_type,
             fixed_micros=fixed_micros,
@@ -281,8 +295,8 @@ class BookChangeIn:
         )
 
 
-        book_change_in.additional_properties = d
-        return book_change_in
+        book_rate_change_in.additional_properties = d
+        return book_rate_change_in
 
     @property
     def additional_keys(self) -> list[str]:

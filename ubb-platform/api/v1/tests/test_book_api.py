@@ -78,7 +78,7 @@ class _ABookApiMixin:
         """
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", **change}]})
+            {"changes": [{"line": "rate", "kind": "add", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -87,7 +87,7 @@ class _ABookApiMixin:
     def _reprice(self, book_id, **change):
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "reprice", **change}]})
+            {"changes": [{"line": "rate", "kind": "reprice", **change}]})
         if declared.status_code != 200:
             return declared
         return self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -321,7 +321,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
                         rate_per_unit_micros=10)
         retired = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "retire", "measurement_key": "input_tokens"}]})
+            {"changes": [{"line": "rate",
+                          "kind": "retire", "measurement_key": "input_tokens"}]})
         self.assertEqual(retired.status_code, 200, retired.content)
         self.assertEqual(
             self._post(f"/api/v1/metering/pricing/books/{book_id}"
@@ -348,7 +349,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
         book_id = self._a_pricing_book().json()["id"]
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+            {"changes": [{"line": "rate",
+                          "kind": "add", "measurement_key": "input_tokens",
                           "rate_per_unit_micros": 10}]})
         self.assertEqual(declared.status_code, 200, declared.content)
 
@@ -368,7 +370,8 @@ class ABookIsWithdrawnOnlyWhenNothingDependsOnItTest(_ABookApiMixin, TestCase):
         book_id = self._a_pricing_book().json()["id"]
         declared = self._post(
             f"/api/v1/metering/pricing/books/{book_id}/publishes",
-            {"changes": [{"kind": "add", "measurement_key": "input_tokens",
+            {"changes": [{"line": "rate",
+                          "kind": "add", "measurement_key": "input_tokens",
                           "rate_per_unit_micros": 10}]})
         self.http.delete(
             f"/api/v1/metering/pricing/books/{book_id}"
@@ -438,12 +441,18 @@ def _mutating_pricing_operations(api):
 
 
 class BookGatingTest(_ABookApiMixin, TestCase):
-    """A metering-only tenant records what its suppliers charge and sells
-    nothing, so cost books are theirs and Pricing Books are not.
+    """Pricing Books take the cost book's metering floor everywhere (#553 A6,
+    ADR-0021 §4): billing mode does not decide whether UBB may know a
+    customer's agreed price.
 
-    ⚠ The gate this replaces took the kind word as an argument and branched on
-    it, which is how a cost route came to be gated on billing at least once in
-    this programme. Two named gates cannot make that mistake.
+    The class used to hold the opposite — a metering-only tenant records what
+    its suppliers charge and sells nothing, so Pricing Books were not theirs.
+    A metering-only tenant does agree prices with its customers, and its margin
+    reporting is exactly what those prices are for, so every Pricing Book act
+    is open to it now: create, list, read, delete, the publish act, the lines
+    reads and a customer's own override. Plans stay behind billing. (A
+    tenant without metering is not a state to test: `Tenant.clean` refuses
+    a product set that lacks it.)
     """
 
     def setUp(self):
@@ -451,57 +460,63 @@ class BookGatingTest(_ABookApiMixin, TestCase):
         self.tenant.products = ["metering"]
         self.tenant.save(update_fields=["products"])
 
-    def test_metering_only_cannot_declare_a_pricing_book(self):
-        self.assertEqual(self._a_pricing_book().status_code, 403)
-
-    def test_metering_only_cannot_list_pricing_books(self):
+    def test_metering_only_can_declare_and_list_pricing_books(self):
+        self.assertEqual(self._a_pricing_book().status_code, 200)
         self.assertEqual(
             self._get("/api/v1/metering/pricing/pricing-books").status_code,
-            403)
+            200)
 
-    def test_metering_only_can_declare_a_cost_book(self):
-        self.assertEqual(self._a_cost_book().status_code, 200)
+    def test_metering_only_can_withdraw_a_pricing_book(self):
+        book_id = self._a_pricing_book().json()["id"]
 
-    def test_metering_only_can_list_cost_books(self):
         self.assertEqual(
-            self._get("/api/v1/metering/pricing/cost-books").status_code, 200)
+            self._delete(f"/api/v1/metering/pricing/pricing-books/{book_id}")
+            .status_code, 200)
 
-    def test_metering_only_cannot_read_a_pricing_books_rules(self):
-        """⚠ THE HOLE REVIEW FOUND, DRIVEN (#368).
-
-        The three acts performed on EITHER kind of book — list its rules, list
-        its pending changes, read one of them — took the bare metering check
-        they had when one container served both halves. After the split the
-        collection routes gated per kind and these did not, so this tenant was
-        refused at `/pricing/pricing-books` and served the same workspace's
-        Pricing Book rules one path over. It is the mistake the deleted
-        kind-word gate made in the other direction (#363), and no walker sees
-        it: they check that a route HAS a floor, never which product it names.
-        """
-        # The book is declared while the workspace still has billing, because
-        # a metering-only tenant cannot declare one — which is the whole reason
-        # the read had to be gated separately.
-        self.tenant.products = ["metering", "billing"]
-        self.tenant.save(update_fields=["products"])
+    def test_metering_only_can_publish_into_and_read_a_pricing_book(self):
         book_id = self._a_pricing_book(is_default=True).json()["id"]
-        self._open_rule(book_id, measurement_key="input_tokens",
-                        rate_per_unit_micros=10)
-        self.tenant.products = ["metering"]
-        self.tenant.save(update_fields=["products"])
+        published = self._open_rule(book_id, measurement_key="input_tokens",
+                                    rate_per_unit_micros=10)
+        self.assertEqual(published.status_code, 200, published.content)
 
         for path in (f"/api/v1/metering/pricing/books/{book_id}/rates",
-                     f"/api/v1/metering/pricing/books/{book_id}/publishes"):
+                     f"/api/v1/metering/pricing/books/{book_id}/publishes",
+                     f"/api/v1/metering/pricing/books/{book_id}/agreed-prices"):
             with self.subTest(path=path):
-                self.assertEqual(self._get(path).status_code, 403)
+                self.assertEqual(self._get(path).status_code, 200)
 
-    def test_metering_only_can_still_read_a_cost_books_rules(self):
-        """The control. A gate that refused every per-book read would pass the
-        case above while breaking the product this tenant actually has."""
+    def test_metering_only_can_declare_and_withdraw_a_customer_override(self):
+        declared = self._post(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/overrides",
+            {"measurement_key": "input_tokens", "rate_per_unit_micros": 5})
+        self.assertEqual(declared.status_code, 200, declared.content)
+        book_id = declared.json()["book_id"]
+        self.assertEqual(self._post(
+            f"/api/v1/metering/pricing/books/{book_id}/publishes/"
+            f"{declared.json()['id']}/publish").status_code, 200)
+        (override,) = Rate.objects.filter(pricing_book_id=book_id)
+
+        withdrawn = self._delete(
+            f"/api/v1/metering/pricing/customers/{self.customer.id}/"
+            f"overrides/{override.id}")
+
+        self.assertEqual(withdrawn.status_code, 200, withdrawn.content)
+
+    def test_metering_only_can_still_declare_and_read_cost_books(self):
+        """The control on the other entity: the floor moved for Pricing Books
+        and stayed where it was for cost books."""
         book_id = self._a_cost_book(is_default=True).json()["id"]
         self._open_rule(book_id, measurement_key="input_tokens",
                         provider="openai", rate_per_unit_micros=3)
 
-        for path in (f"/api/v1/metering/pricing/books/{book_id}/rates",
-                     f"/api/v1/metering/pricing/books/{book_id}/publishes"):
+        for path in ("/api/v1/metering/pricing/cost-books",
+                     f"/api/v1/metering/pricing/books/{book_id}/rates"):
             with self.subTest(path=path):
                 self.assertEqual(self._get(path).status_code, 200)
+
+    def test_plans_stay_behind_the_billing_product(self):
+        """A Plan's fee axes are subscriptions and Stripe, so its gate did not
+        move with the book it prices from."""
+        response = self._post("/api/v1/plans", {"key": "pro", "name": "Pro"})
+
+        self.assertEqual(response.status_code, 403, response.content)

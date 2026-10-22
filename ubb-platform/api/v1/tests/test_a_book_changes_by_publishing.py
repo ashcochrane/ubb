@@ -119,7 +119,8 @@ class _APublishingTenantMixin:
         names. Sharing them would mean sharing a translation, which is the thing
         under test on this side.
         """
-        return {"kind": kind, "measurement_key": measurement_key,
+        return {"line": "rate",
+                "kind": kind, "measurement_key": measurement_key,
                 "provider": PROVIDER, "event_type": EVENT_TYPE, **terms}
 
     def declare(self, *changes):

@@ -4,9 +4,7 @@ from typing import Any, NamedTuple, Optional
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.metering.pricing.applicability import (
-    bills_through_ubb, not_applicable_reason_for,
-)
+from apps.metering.pricing.applicability import not_applicable_reason_for
 from apps.metering.pricing.models import CostBook, PricingBook, Rate, TaskPrice
 from apps.metering.pricing.receipts import (
     MARKUP_TERMS_KEY, PRICING_REGIME_KEY, PRICING_STATUS_REASON_KEY,
@@ -14,7 +12,8 @@ from apps.metering.pricing.receipts import (
 )
 from apps.platform.event_types.costing import cost_declaration
 from apps.platform.event_types.exact_decimals import canonical_quantities
-from apps.platform.plans.queries import get_pricing_book_for_customer
+from apps.platform.plans.queries import (
+    get_pricing_book_for_customer, pricing_books_of_live_plans)
 from core.money import MONEY_COLUMN_MAX, MONEY_COLUMN_MIN, fits_a_money_column
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
@@ -33,6 +32,7 @@ from core.vocabulary import (
     PRICING_STATUS_WAIVED,
     TASK_TYPE_KIND_SUBTASK,
     TASK_TYPE_KIND_TASK,
+    TENANT_PRODUCT_BILLING,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
@@ -377,10 +377,10 @@ class Costing(NamedTuple):
     #: all. The fourth is still not a fact about resolution: `not_applicable`
     #: says the ladder was not consulted, because the event belongs to a piece
     #: of work sold for ONE AGREED PRICE and the customer revenue is that whole
-    #: piece's. `pricing/applicability.py` decides which of its two REASONS.
+    #: piece's. `pricing/applicability.py` decides its reason.
     pricing_status: str
-    #: Which of two mutually exclusive causes produced `not_applicable`, and
-    #: `None` for every other status. The rule is
+    #: Why the status is `not_applicable`, and `None` for every other
+    #: status. The rule is
     #: `apps.metering.pricing.applicability.not_applicable_reason_for`, and this
     #: is read back off the receipt's price section rather than decided again
     #: here — the same terms `unresolved_reason` above is read on.
@@ -816,7 +816,7 @@ class PricingService:
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
                  caller_provider_cost, reported_cost_source_kind, pricing_mode,
-                 tenant_bills_through_ubb, resolve_declaration,
+                 resolve_declaration,
                  resolve_the_cost_rule, resolve_the_price_rule,
                  resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
@@ -884,15 +884,20 @@ class PricingService:
         configuration-dependent arrives through the two rule resolvers and
         `resolve_declaration`.
 
-        ⚠ **`pricing_mode` AND `tenant_bills_through_ubb` ARE PLAIN FACTS AND
-        NOT RESOLVERS, WHICH IS WHAT THEY ARE (#418).** The four resolvers above
-        are lazy because each may cost a query and several branches never need
-        one; these two are already in hand at every call site — one is a column
-        on the piece of work the event belongs to, the other a product flag on
-        the tenant — and a resolver over a value already read would be a closure
-        pretending there was a question left. They arrive as arguments rather
-        than being read off `subject` because this method takes the receipt's
-        SUBJECT, which is a typed identity and carries neither.
+        ⚠ **`pricing_mode` IS A PLAIN FACT AND NOT A RESOLVER, WHICH IS WHAT IT
+        IS (#418).** The four resolvers above are lazy because each may cost a
+        query and several branches never need one; this is already in hand at
+        every call site — a column on the piece of work the event belongs to —
+        and a resolver over a value already read would be a closure pretending
+        there was a question left. It arrives as an argument rather than being
+        read off `subject` because this method takes the receipt's SUBJECT,
+        which is a typed identity and does not carry it.
+
+        ⚠ **THE TENANT'S BILLING POSTURE IS NOT AN ARGUMENT ANY MORE (#553,
+        ADR-0021 §5).** It was, while it decided which of two reasons a
+        `not_applicable` posting carried; the regime decides the reason now,
+        for every tenant, so the pricing result encodes the billing mode
+        nowhere and the spine has no reason to be told it.
 
         ⚠ **AND THE REGIME DECIDES WHETHER A PRICE APPLIES AT ALL, WHICH IS NOT
         A RUNG.** Where the piece of work was sold for one agreed price the
@@ -1151,16 +1156,13 @@ class PricingService:
             # piece of work's margin is netted against.
             billed, pricing_method = None, None
             pricing_status = PRICING_STATUS_NOT_APPLICABLE
-            # ⚠ THE SECOND ARGUMENT IS A LITERAL BECAUSE THIS BRANCH HAS
-            # ALREADY ESTABLISHED IT, and passing `sold_for_one_agreed_price`
-            # instead would hand the rule a variable that is `True` at every
-            # reachable call. The rule keeps BOTH parameters rather than
-            # collapsing to one: it is stated over all four combinations of the
-            # two facts, its `None` answer is the case that has no reason at
-            # all, and a function taking only the posture could not say that —
-            # see its module docstring on why the totality is written out.
+            # ⚠ THE ARGUMENT IS A LITERAL BECAUSE THIS BRANCH HAS ALREADY
+            # ESTABLISHED IT. The rule keeps its parameter rather than being
+            # replaced by its one answer: its `None` is the case that has no
+            # reason at all, and a constant here could not say that — see its
+            # module docstring. The answer is `fixed_task_pricing` for every
+            # tenant (#553, ADR-0021 §5).
             not_applicable_reason = not_applicable_reason_for(
-                tenant_bills_through_ubb=tenant_bills_through_ubb,
                 sold_for_one_agreed_price=True)
         else:
             for measurement_key, units_val in sorted(measurements.items()):
@@ -1405,6 +1407,50 @@ class PricingService:
 #: of internal synonyms.
 AGREED_PRICE_UNRESOLVED = "fixed_task_price_unresolved"
 AGREED_PRICE_ON_CONTAINED_WORK = "fixed_task_price_on_contained_work"
+
+
+def bills_through_ubb(tenant) -> bool:
+    """Whether UBB raises this tenant's customer bills at all.
+
+    **THE PRODUCT IS WHAT THE QUESTION ASKS**, not whether any money record
+    happens to exist — the reading `api/v1/task_endpoints.py` gives it at the
+    start gate, where a billing tenant's customer who has never been credited
+    has no wallet row and is still a customer UBB bills.
+
+    ⚠ **ITS ONE ECONOMIC MEANING IN PRICING IS THE REFUSAL BELOW, AND IT MOVED
+    HERE WITH THAT MEANING (#553).** It lived in `applicability.py` while it
+    decided which of two reasons a `not_applicable` posting carried; the
+    regime decides the reason now, for every tenant. What the posture still
+    decides is whether a fixed-price start with no agreed price is REFUSED
+    (`determine_the_agreed_price`), and the Code Builder's readiness asks
+    exactly that question of a Blueprint — so the two read one named answer
+    rather than two readings of a product flag.
+    """
+    return TENANT_PRODUCT_BILLING in (tenant.products or [])
+
+
+def the_books_a_start_can_price_from(tenant):
+    """EVERY PRICING BOOK FROM WHICH SOME START COULD RESOLVE AN AGREED PRICE,
+    read off configuration alone (#586).
+
+    `PricingService._selected_pricing_books` answers this for ONE customer:
+    their own book, their Plan's, the tenant's default. This is the union of
+    that answer over every customer the tenant could have — the default, the
+    book of every live Plan, and every customer's own book — without reading a
+    customer at all: no Plan membership, no customer count, no customer chosen
+    to stand for the rest. The owner's readiness ruling of 2026-10-20 on #553
+    is that a Blueprint is customer-independent, so the Code Builder asks
+    "could a start of this kind find a price anywhere?" of the tenant's
+    PUBLISHED pricing configuration and of nothing else.
+
+    A book reachable no way a start selects one — a Pricing Book nobody's
+    Plan names, which is not the default and belongs to no customer — is not
+    here, for the reason `_selected_pricing_books` gives: no line inside it can
+    be anybody's answer.
+    """
+    return PricingBook.objects.filter(tenant=tenant).filter(
+        Q(is_default=True) | Q(customer__isnull=False)
+        | Q(id__in=pricing_books_of_live_plans(tenant.id)))
 
 
 class AgreedPriceRefused(ValueError):
@@ -1676,11 +1722,6 @@ def resolve_price(subject, as_of):
         caller_provider_cost=subject.caller_provider_cost,
         reported_cost_source_kind=subject.reported_cost_source_kind,
         pricing_mode=subject.pricing_mode,
-        # THE POSTURE IS READ HERE AND NOT INSIDE THE SPINE, because the spine
-        # takes facts and this is the one read of a row it would otherwise have
-        # to make. `bills_through_ubb` lives beside the rule that consumes it,
-        # so the answer and the reason it decides are one module's.
-        tenant_bills_through_ubb=bills_through_ubb(tenant),
         resolve_declaration=resolve_declaration,
         resolve_the_cost_rule=resolve_the_cost_rule,
         resolve_the_price_rule=resolve_the_price_rule,

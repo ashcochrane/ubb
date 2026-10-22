@@ -101,11 +101,11 @@ class BookCRUDTest(TestCase):
                           f"/publishes/{declared.json()['id']}/publish")
 
     def _open_rule(self, book_id, body=COST_RULE):
-        return self._change(book_id, {"kind": "add", **body})
+        return self._change(book_id, {"line": "rate", "kind": "add", **body})
 
     def _retire_rule(self, book_id, body=COST_RULE):
         return self._change(book_id, {
-            "kind": "retire",
+            "line": "rate", "kind": "retire",
             **{key: value for key, value in body.items()
                if key in ("measurement_key", "provider", "event_type",
                           "grouping_fields")}})
@@ -122,7 +122,7 @@ class BookCRUDTest(TestCase):
         That route is deleted; a reprice is a declared change like any other,
         which is why this is one line over `_change`.
         """
-        return self._change(book_id, *[dict(change, kind="reprice")
+        return self._change(book_id, *[dict(change, line="rate", kind="reprice")
                                        for change in changes])
 
     def test_create_book_and_rule_return_ids(self):
@@ -218,7 +218,9 @@ class BookCRUDTest(TestCase):
 
 
 class BookGatingTest(TestCase):
-    """metering-only tenant cannot create a PRICE book (billing-gated)."""
+    """A metering-only tenant declares both kinds of book (#553 A6): a Pricing
+    Book takes the cost book's metering floor, because billing mode does not
+    decide whether UBB may know a customer's agreed price."""
 
     def setUp(self):
         self.http_client = Client()
@@ -235,9 +237,10 @@ class BookGatingTest(TestCase):
             f"/api/v1/metering/pricing/{path}",
             data=json.dumps(body), content_type="application/json", **self._auth())
 
-    def test_metering_only_tenant_cannot_declare_a_pricing_book(self):
+    def test_metering_only_tenant_can_declare_a_pricing_book(self):
         resp = self._post("pricing-books", PRICING_BOOK)
-        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn("id", resp.json())
 
     def test_metering_only_tenant_can_declare_a_cost_book(self):
         resp = self._post("cost-books", COST_BOOK)

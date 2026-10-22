@@ -30,12 +30,9 @@ import { RunStatusBadge } from "./run-status-badge";
 export function RunsTable({
   runs,
   currency,
-  meteringOnly,
 }: {
   runs: readonly RunRow[];
   currency: string;
-  /** The workspace meters usage and does not bill customers through UBB. */
-  meteringOnly: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -92,10 +89,9 @@ export function RunsTable({
               </TableCell>
               <TableCell className="text-right text-[12px]">
                 <CustomerPriceReadingView
-                  reading={readCustomerPrice(run, {
-                    meteringOnly,
-                    soldAtOnePrice: soldAtOnePrice(run),
-                  })}
+                  // The regime decides, for every workspace (#553): a workspace
+                  // that does not bill still prices its event-priced runs.
+                  reading={readCustomerPrice(run, { soldAtOnePrice: soldAtOnePrice(run) })}
                   currency={currency}
                 />
               </TableCell>

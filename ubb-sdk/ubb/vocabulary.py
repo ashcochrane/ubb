@@ -473,9 +473,9 @@ CODE_TARGET_VALUES = frozenset({
 #
 # Which kind of tenant declaration a Blueprint's provenance or diagnostic
 # points at: a kind of work at either altitude, an Event Type, one of its
-# Measurements, its reported-cost mapping, its Provider, or a Grouping Field.
-# With the object's key it names the declaration a value came from, or the one
-# a fix belongs to.
+# Measurements, its reported-cost mapping, its Provider, a Grouping Field, or
+# the agreed price a Pricing Book holds for a kind of work. With the object's
+# key it names the declaration a value came from, or the one a fix belongs to.
 #
 # Declared in concepts/code-builder.yaml.
 
@@ -486,6 +486,7 @@ CONFIGURATION_OBJECT_KIND_MEASUREMENT = 'measurement'
 CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING = 'reported_cost_mapping'
 CONFIGURATION_OBJECT_KIND_PROVIDER = 'provider'
 CONFIGURATION_OBJECT_KIND_GROUPING_FIELD = 'grouping_field'
+CONFIGURATION_OBJECT_KIND_AGREED_PRICE = 'agreed_price'
 
 CONFIGURATION_OBJECT_KIND_VALUES = frozenset({
     CONFIGURATION_OBJECT_KIND_TASK_TYPE,
@@ -495,6 +496,7 @@ CONFIGURATION_OBJECT_KIND_VALUES = frozenset({
     CONFIGURATION_OBJECT_KIND_REPORTED_COST_MAPPING,
     CONFIGURATION_OBJECT_KIND_PROVIDER,
     CONFIGURATION_OBJECT_KIND_GROUPING_FIELD,
+    CONFIGURATION_OBJECT_KIND_AGREED_PRICE,
 })
 
 
@@ -620,9 +622,11 @@ DECLARATION_STATUS_VALUES = frozenset({
 # selected, or one selected that is not declared. The rest either block a call
 # — a retired kind, a required Grouping Field that cannot be supplied, an Event
 # Type with nothing published, a reported cost with nowhere to read it from, a
-# quantity generated code cannot carry, a response shape the target cannot read
-# — or advise without blocking: a declaration revised since it was published,
-# or a path that looks inconsistent with its declared shape.
+# quantity generated code cannot carry, a response shape the target cannot
+# read, a kind sold at one agreed price that no Pricing Book a start can price
+# from holds a price for — or advise without blocking: a declaration revised
+# since it was published, a path that looks inconsistent with its declared
+# shape, or a default Pricing Book holding no agreed price for such a kind.
 #
 # Declared in concepts/code-builder.yaml.
 
@@ -641,6 +645,9 @@ DIAGNOSTIC_CODE_DERIVED_MEASUREMENT_UNSUPPORTED = 'derived_measurement_unsupport
 DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED = 'response_shape_not_declared'
 DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET = 'response_shape_not_readable_by_target'
 DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH = 'source_path_convention_mismatch'
+DIAGNOSTIC_CODE_AGREED_PRICE_MISSING = 'agreed_price_missing'
+DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START = 'default_agreed_price_missing_refused_at_start'
+DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE = 'default_agreed_price_missing_no_revenue_figure'
 
 DIAGNOSTIC_CODE_VALUES = frozenset({
     DIAGNOSTIC_CODE_TASK_TYPE_NOT_SELECTED,
@@ -658,6 +665,9 @@ DIAGNOSTIC_CODE_VALUES = frozenset({
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_DECLARED,
     DIAGNOSTIC_CODE_RESPONSE_SHAPE_NOT_READABLE_BY_TARGET,
     DIAGNOSTIC_CODE_SOURCE_PATH_CONVENTION_MISMATCH,
+    DIAGNOSTIC_CODE_AGREED_PRICE_MISSING,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_REFUSED_AT_START,
+    DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE,
 })
 
 
@@ -995,22 +1005,15 @@ MEASUREMENTS_STATUS_VALUES = frozenset({
 # Why a subject generates no customer revenue at this level. Read only where
 # `pricing_status` is `not_applicable`, and never on its own: a status saying a
 # price does not apply without saying WHY sends a reader looking for a number
-# nobody wrote. The two values are mutually exclusive causes, and where both
-# are true POSTURE WINS — a metering-only tenant is `tenant_not_billing`
-# whatever the work's pricing regime, because this concept answers why no
-# CUSTOMER REVENUE arises and for such a tenant none ever does, for a reason
-# that has nothing to do with how the work was sold. Naming the regime instead
-# would say the customer revenue for this event sits on the Task, which for
-# that tenant names revenue nobody will ever collect.
+# nobody wrote. The pricing regime decides the reason, for every tenant: the
+# tenant's billing mode is not encoded again in the pricing result.
 #
 # Declared in concepts/economics.yaml.
 
 NOT_APPLICABLE_REASON_FIXED_TASK_PRICING = 'fixed_task_pricing'
-NOT_APPLICABLE_REASON_TENANT_NOT_BILLING = 'tenant_not_billing'
 
 NOT_APPLICABLE_REASON_VALUES = frozenset({
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
 })
 
 

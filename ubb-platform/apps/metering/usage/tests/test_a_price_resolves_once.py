@@ -84,7 +84,6 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
@@ -318,13 +317,18 @@ class OnlyAnUnknownPriceResolvesTest(TransitionRefusalMixin, TestCase):
         """Which cause produced `not_applicable` is settled when it is written.
 
         Re-labelling it rewrites what the system said at the time, on a row a
-        tenant may already have been shown, and the two causes send a reader to
-        different places: one says this tenant bills nobody through UBB, the
-        other says this Task was sold for one agreed price.
+        tenant may already have been shown. One cause is left since #553
+        (`fixed_task_pricing`), so the rewrite left to refuse is taking it
+        away — and the trigger answers before the combination `CHECK` that
+        would also refuse a `not_applicable` row with no reason.
+
+        ⚠ The one rewrite this rule ever admitted was `usage/0047`'s, under a
+        one-time lift of this trigger (ADR-0021 §5); that it is enabled and
+        refusing again afterwards is pinned in
+        `test_the_regime_decides_why_a_price_does_not_apply.py`.
         """
         self._refused_by_the_trigger(
-            _not_applicable, RESOLVE_ONCE,
-            **{REASON: NOT_APPLICABLE_REASON_TENANT_NOT_BILLING})
+            _not_applicable, RESOLVE_ONCE, **{REASON: None})
 
 
 class TheAmountAndTheStatusNeverSeparateTest(TransitionRefusalMixin, TestCase):

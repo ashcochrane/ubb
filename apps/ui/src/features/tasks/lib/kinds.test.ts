@@ -19,7 +19,7 @@ import {
   pricedRuns,
   PRICING_MODE_EXPLANATIONS,
   REGIME_CANNOT_CHANGE,
-  REGIME_IS_INERT_UNTIL_BILLING,
+  A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING,
   sortedKinds,
   undeclaredWorkCeiling,
 } from "./kinds";
@@ -85,7 +85,7 @@ describe("the words for a kind of work", () => {
 describe("what a tenant is told at declaration time", () => {
   it("tells a metering-only workspace both things, the refusal first", () => {
     expect(declarationNotes({ meteringOnly: true })).toEqual([
-      REGIME_IS_INERT_UNTIL_BILLING,
+      A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING,
       REGIME_CANNOT_CHANGE,
     ]);
   });
@@ -95,8 +95,8 @@ describe("what a tenant is told at declaration time", () => {
   });
 
   it("names the start-gate refusal and the retire-and-redeclare path in so many words", () => {
-    expect(REGIME_IS_INERT_UNTIL_BILLING).toMatch(/refuses to start/);
-    expect(REGIME_IS_INERT_UNTIL_BILLING).toMatch(/billing is enabled/);
+    expect(A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING).toMatch(/refuses to start/);
+    expect(A_MISSING_PRICE_REFUSES_NOTHING_UNTIL_BILLING).toMatch(/billing is enabled/);
     expect(REGIME_CANNOT_CHANGE).toMatch(/cannot be changed/);
     expect(REGIME_CANNOT_CHANGE).toMatch(/retire/);
     expect(REGIME_CANNOT_CHANGE).toMatch(/new key/);

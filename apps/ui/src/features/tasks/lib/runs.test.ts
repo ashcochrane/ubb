@@ -21,7 +21,7 @@ import {
   soldAtOnePrice,
 } from "./runs";
 
-const BILLS = { meteringOnly: false, soldAtOnePrice: false } as const;
+const BILLS = { soldAtOnePrice: false } as const;
 
 // A row with NO ceiling, so the cost totals the cases below override stay
 // consistent with its assessment whatever they are: `not_applicable` is the
@@ -89,22 +89,32 @@ describe("a customer-price total", () => {
   it("does not apply to a run sold at one agreed price, whatever its counts say", () => {
     const reading = readCustomerPrice(
       { total_billed_cost_micros: 0, unpriced_event_count: 0 },
-      { meteringOnly: false, soldAtOnePrice: true },
+      { soldAtOnePrice: true },
     );
     expect(reading).toEqual({ kind: "not_applicable", reason: "fixed_task_pricing" });
     expect(describeCustomerPrice(reading, "usd")).toBe("Not applicable");
     expect(explainCustomerPrice(reading)).toMatch(/sold at one agreed price/);
   });
 
-  it("lets the workspace's posture win the tie-break, as the backend's applicability rule does", () => {
-    // Both facts true at once: a metering-only workspace running work sold at
-    // one price. The reason is the posture's, never the regime's.
+  it("lets the regime decide for every workspace, as the backend's applicability rule does", () => {
+    // A metering-only workspace running work sold at one price: the reason is
+    // the regime's (#553). The posture once won this tie-break.
     const reading = readCustomerPrice(
       { total_billed_cost_micros: 0, unpriced_event_count: 0 },
-      { meteringOnly: true, soldAtOnePrice: true },
+      { soldAtOnePrice: true },
     );
-    expect(reading).toEqual({ kind: "not_applicable", reason: "tenant_not_billing" });
-    expect(explainCustomerPrice(reading)).toMatch(/does not bill customers through UBB/);
+    expect(reading).toEqual({ kind: "not_applicable", reason: "fixed_task_pricing" });
+    expect(explainCustomerPrice(reading)).toMatch(/sold at one agreed price/);
+  });
+
+  it("reads a metering-only workspace's event-priced run by its total, never as not applicable", () => {
+    // The misreading #553 fixed: every run of a workspace that does not bill
+    // read "not applicable", although its events are priced one by one for its
+    // own margin reporting. The posture is not an input here any more.
+    expect(readCustomerPrice({ total_billed_cost_micros: 620_000, unpriced_event_count: 0 }, BILLS)).toEqual({
+      kind: "figure",
+      micros: 620_000,
+    });
   });
 
   it("reads the regime off the pinned price, which only a top-level run sold at one price carries", () => {

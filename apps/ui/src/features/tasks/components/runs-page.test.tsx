@@ -177,19 +177,27 @@ describe("RunsPage", () => {
     }
   });
 
-  it("says no run has a customer price when the workspace meters without billing, and why", async () => {
+  it("reads each run's customer price by its regime when the workspace meters without billing", async () => {
+    // #553 fixed a misreading here: every run of a workspace that does not
+    // bill read "not applicable", its event-priced runs included, although
+    // those are priced event by event for the workspace's own reporting.
     const original = readMockTenantConfig();
     try {
       writeMockTenantConfig({ ...original, billing_mode: METERING_ONLY_BILLING_MODE });
       renderRuns();
       await loaded();
-      for (const row of bodyRows()) {
-        expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute("data-reading", "not_applicable");
-        expect(reading(row, CUSTOMER_PRICE)).toHaveTextContent("Metering only");
-        expect(reading(row, CUSTOMER_PRICE)).toHaveAttribute(
-          "title",
-          expect.stringMatching(/does not bill customers through UBB/),
-        );
+      const rows = bodyRows();
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        const run = MOCK_RUNS.find((candidate) => row.textContent?.includes(candidate.task_id.slice(0, 8)));
+        expect(run).toBeDefined();
+        const price = reading(row, CUSTOMER_PRICE);
+        if (run?.agreed_price_micros != null) {
+          expect(price).toHaveAttribute("data-reading", "not_applicable");
+          expect(price).toHaveTextContent("Priced at the task");
+        } else {
+          expect(price).not.toHaveAttribute("data-reading", "not_applicable");
+        }
       }
     } finally {
       writeMockTenantConfig(original);

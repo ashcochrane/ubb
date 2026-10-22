@@ -1,6 +1,8 @@
 """ Contains all the data models used in inputs/outputs """
 
 from .affordability_response import AffordabilityResponse
+from .agreed_price_out import AgreedPriceOut
+from .agreed_price_terms_out import AgreedPriceTermsOut
 from .analytics_earnings_out import AnalyticsEarningsOut
 from .analytics_summary_out import AnalyticsSummaryOut
 from .api_key_create_in import ApiKeyCreateIn
@@ -34,15 +36,17 @@ from .audit_record_list_response import AuditRecordListResponse
 from .audit_record_out import AuditRecordOut
 from .audit_record_out_metadata import AuditRecordOutMetadata
 from .balance_response import BalanceResponse
-from .book_change_diff_out import BookChangeDiffOut
-from .book_change_diff_out_grouping_fields import BookChangeDiffOutGroupingFields
-from .book_change_in import BookChangeIn
-from .book_change_in_grouping_fields import BookChangeInGroupingFields
-from .book_change_in_pricing_method_type_0 import BookChangeInPricingMethodType0
-from .book_change_in_rate_structure_type_0 import BookChangeInRateStructureType0
+from .book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
+from .book_agreed_price_change_in import BookAgreedPriceChangeIn
 from .book_publish_in import BookPublishIn
 from .book_publish_out import BookPublishOut
 from .book_publish_out_declaration_status import BookPublishOutDeclarationStatus
+from .book_rate_change_diff_out import BookRateChangeDiffOut
+from .book_rate_change_diff_out_grouping_fields import BookRateChangeDiffOutGroupingFields
+from .book_rate_change_in import BookRateChangeIn
+from .book_rate_change_in_grouping_fields import BookRateChangeInGroupingFields
+from .book_rate_change_in_pricing_method_type_0 import BookRateChangeInPricingMethodType0
+from .book_rate_change_in_rate_structure_type_0 import BookRateChangeInRateStructureType0
 from .business_margin_out import BusinessMarginOut
 from .business_margin_totals import BusinessMarginTotals
 from .ceiling_episode_row import CeilingEpisodeRow
@@ -118,6 +122,7 @@ from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGrouping
 from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
 from .inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from .inherited_rule_out import InheritedRuleOut
+from .integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
 from .integration_blueprint_argument import IntegrationBlueprintArgument
 from .integration_blueprint_argument_binding_class import IntegrationBlueprintArgumentBindingClass
 from .integration_blueprint_call import IntegrationBlueprintCall
@@ -165,6 +170,7 @@ from .measurement_out_value_type import MeasurementOutValueType
 from .member_list_response import MemberListResponse
 from .member_out import MemberOut
 from .member_role_update_in import MemberRoleUpdateIn
+from .paginated_agreed_prices import PaginatedAgreedPrices
 from .paginated_book_publishes import PaginatedBookPublishes
 from .paginated_cost_books import PaginatedCostBooks
 from .paginated_event_categories import PaginatedEventCategories
@@ -381,6 +387,8 @@ from .withdraw_response import WithdrawResponse
 
 __all__ = (
     "AffordabilityResponse",
+    "AgreedPriceOut",
+    "AgreedPriceTermsOut",
     "AnalyticsEarningsOut",
     "AnalyticsSummaryOut",
     "ApiKeyCreateIn",
@@ -414,15 +422,17 @@ __all__ = (
     "AuditRecordOut",
     "AuditRecordOutMetadata",
     "BalanceResponse",
-    "BookChangeDiffOut",
-    "BookChangeDiffOutGroupingFields",
-    "BookChangeIn",
-    "BookChangeInGroupingFields",
-    "BookChangeInPricingMethodType0",
-    "BookChangeInRateStructureType0",
+    "BookAgreedPriceChangeDiffOut",
+    "BookAgreedPriceChangeIn",
     "BookPublishIn",
     "BookPublishOut",
     "BookPublishOutDeclarationStatus",
+    "BookRateChangeDiffOut",
+    "BookRateChangeDiffOutGroupingFields",
+    "BookRateChangeIn",
+    "BookRateChangeInGroupingFields",
+    "BookRateChangeInPricingMethodType0",
+    "BookRateChangeInRateStructureType0",
     "BusinessMarginOut",
     "BusinessMarginTotals",
     "CeilingEpisodeRow",
@@ -498,6 +508,7 @@ __all__ = (
     "InheritedPricingRulePricingMethodType0",
     "InheritedPricingRuleRateStructure",
     "InheritedRuleOut",
+    "IntegrationBlueprintAgreedPrice",
     "IntegrationBlueprintArgument",
     "IntegrationBlueprintArgumentBindingClass",
     "IntegrationBlueprintCall",
@@ -545,6 +556,7 @@ __all__ = (
     "MemberRoleUpdateIn",
     "MeSubscriptionInvoiceOut",
     "MeUsageInvoiceOut",
+    "PaginatedAgreedPrices",
     "PaginatedBookPublishes",
     "PaginatedCostBooks",
     "PaginatedEventCategories",

@@ -102,7 +102,7 @@ def test_journey1_cost_attribution_end_to_end_via_sdk(live_server, _no_outbox_di
         # (#367) — the immediate route this journey used to POST to is gone.
         base = f"/api/v1/metering/pricing/books/{book_id}"
         declared = _post(api, f"{base}/publishes", {"changes": [{
-            "kind": "add", "measurement_key": "output_tokens",
+            "line": "rate", "kind": "add", "measurement_key": "output_tokens",
             "rate_structure": "per_unit", "rate_per_unit_micros": 5,
             "unit_quantity": 1}]})
         published = _post(api, f"{base}/publishes/{declared['id']}/publish", {})

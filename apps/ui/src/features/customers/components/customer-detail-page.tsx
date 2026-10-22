@@ -167,14 +167,15 @@ export function CustomerDetailPage({
           <UsageTab customerId={customerId} range={range} stopsAndBreaches={stopsAndBreaches} />
         </TabsContent>
         <TabsContent value="pricing" className="pt-3">
-          <ProductGate product="billing">
-            {pricingTab ?? (
-              <EmptyState
-                title="Pricing isn't wired up here"
-                description="This customer's own pricing rules live in the pricing feature, and this page renders whatever it is handed."
-              />
-            )}
-          </ProductGate>
+          {/* No billing gate (#553): a customer's own prices are pricing
+              configuration, and a workspace that meters without billing
+              keeps them for its margin reporting like any other. */}
+          {pricingTab ?? (
+            <EmptyState
+              title="Pricing isn't wired up here"
+              description="This customer's own pricing rules live in the pricing feature, and this page renders whatever it is handed."
+            />
+          )}
         </TabsContent>
         <TabsContent value="billing" className="pt-3">
           <ProductGate product="billing">

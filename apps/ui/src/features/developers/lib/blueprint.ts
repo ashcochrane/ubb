@@ -239,6 +239,7 @@ export type ConsoleScreen =
   | { readonly to: "/tasks/kinds/$key"; readonly params: { readonly key: string } }
   | { readonly to: "/tasks" }
   | { readonly to: "/pricing" }
+  | { readonly to: "/pricing/$bookId"; readonly params: { readonly bookId: string } }
   | { readonly to: "/webhooks" };
 
 function isKindOfWork(objectKind: ConfigurationObjectKind | undefined): boolean {
@@ -274,6 +275,22 @@ export function screenFor(argument: BlueprintArgument, place: TokenPlace): Conso
   return null;
 }
 
+/** The route of a publish into one Pricing Book, as the contract spells it. */
+const A_BOOKS_PUBLISH = /^\/api\/v1\/metering\/pricing\/books\/([^/]+)\/publishes$/;
+
+/**
+ * The Pricing Book a request publishes into, or `null` for a request that does
+ * something else. An agreed price's diagnostic offers the publish into the
+ * tenant's default book — named there by its id, the route's own parameter —
+ * and that book's editor is where the console makes the same change (#586,
+ * owner's review of #615).
+ */
+function theBookItPublishesInto(request: RemediationRequest): string | null {
+  if (request.method !== "POST") return null;
+  const bookId = A_BOOKS_PUBLISH.exec(request.route)?.[1];
+  return bookId === undefined ? null : decodeURIComponent(bookId);
+}
+
 /** What answers a diagnostic. */
 export type Fix =
   /** The console has a screen for the object. */
@@ -296,6 +313,16 @@ export function fixFor(diagnostic: BlueprintDiagnostic): Fix {
       : { kind: "screen", screen: { to: "/tasks/kinds/$key", params: { key } } };
   }
   const request = diagnostic.remediation_request ?? null;
+  if (diagnostic.object_kind === "agreed_price" && request !== null) {
+    // Where the tenant has a default Pricing Book the server offers the
+    // publish into it, and the console opens that book's editor instead. With
+    // none, it offers the declaration of one, which only the request makes.
+    // Never a Plan's book or a customer's own: the server never names one.
+    const bookId = theBookItPublishesInto(request);
+    if (bookId !== null) {
+      return { kind: "screen", screen: { to: "/pricing/$bookId", params: { bookId } } };
+    }
+  }
   return request === null ? { kind: "none" } : { kind: "request", request };
 }
 

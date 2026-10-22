@@ -284,6 +284,30 @@ describe("BillingTab", () => {
   // The pool is behind the billing product gate (slice 6 §4's ruling: a
   // tenant that does not bill through UBB may not declare one). The page
   // renders the gate's explanation and none of the pool's words.
+  it("opens the pricing tab to a tenant without the billing product (#553)", async () => {
+    // A customer's own prices are pricing configuration, and a workspace that
+    // meters without billing keeps them for its margin reporting — the tab is
+    // gated on nothing a metering-only tenant lacks.
+    const original = readMockTenantConfig();
+    writeMockTenantConfig({ ...original, products: ["metering"] });
+    try {
+      renderWithProviders(
+        <CustomerDetailPage
+          customerId={CUS_ACME}
+          search={{ tab: "pricing" }}
+          onSearchChange={vi.fn()}
+          pricingTab={<p>This customer's own pricing</p>}
+        />,
+      );
+      expect(
+        await screen.findByText("This customer's own pricing", undefined, SLOW),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Billing isn't enabled")).not.toBeInTheDocument();
+    } finally {
+      writeMockTenantConfig(original);
+    }
+  });
+
   it("shows no pool surface to a tenant without the billing product", async () => {
     const original = readMockTenantConfig();
     writeMockTenantConfig({ ...original, products: ["metering"] });

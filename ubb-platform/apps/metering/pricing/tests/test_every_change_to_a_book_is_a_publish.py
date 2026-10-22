@@ -44,7 +44,8 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE, PricingBookPublish, Rate)
+    CHANGE_ADD, CHANGE_REPRICE, CHANGE_RETIRE, LINE_RATE, PricingBookPublish,
+    Rate)
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import (
     PricingSubject, resolve_price)
@@ -134,7 +135,7 @@ class _ABookMixin:
         self.book = the_book_holding(self.rule)
 
     def a_change(self, kind=CHANGE_REPRICE, measurement_key=QUANTITY, **terms):
-        return {"kind": kind, "measurement_key": measurement_key,
+        return {"line": LINE_RATE, "kind": kind, "measurement_key": measurement_key,
                 "provider": PROVIDER, "event_type": EVENT_TYPE, **terms}
 
     def a_draft(self, changes=None, effective_at=None):
@@ -343,7 +344,11 @@ class APublishedRecordIsNotEditableTest(_ABookMixin,
                 ("published_at", timezone.now()),
                 ("actor_display", "somebody-else@example.com"),
                 ("opened_rule_ids", []),
-                ("closed_rule_ids", [])):
+                ("closed_rule_ids", []),
+                # Empty on this rate-only publish, so a non-empty list is the
+                # write the rule refuses (#553).
+                ("opened_agreed_price_ids", ["a-line-it-never-opened"]),
+                ("closed_agreed_price_ids", ["a-line-it-never-closed"])):
             with self.subTest(column=column):
                 self.assert_every_door_refuses(self._published(),
                                                **{column: value})

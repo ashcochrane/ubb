@@ -6,6 +6,11 @@
 // `uncapped`, and its frozen pricing mode — and every one of them is a token
 // of the Blueprint, read through `lib/blueprint.ts`. Nothing is re-derived
 // here; a fact the Blueprint does not carry is not shown.
+//
+// One fact is the Blueprint's and no call's: the agreed price of a kind sold
+// whole, with the default Pricing Book it came from (#586, owner's review of
+// #615). It is shown beside the verdict, never as a token, because generated
+// code never holds it.
 
 import type { UseQueryResult } from "@tanstack/react-query";
 
@@ -16,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { formatDate, formatMicros } from "@/lib/format";
+import { formatDate, formatMicros, formatParsedMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 
 import type { Blueprint, BlueprintArgument, BlueprintCall } from "../api/types";
@@ -93,6 +98,36 @@ export function BlueprintStage({
   );
 }
 
+/**
+ * What one delivered run of the kind sells for where a customer has no price
+ * of their own or from their Plan, and where that came from: the default
+ * Pricing Book, the version its publish made it, and when it is in force.
+ */
+function AgreedPriceShown({ price }: { price: NonNullable<Blueprint["agreed_price"]> }) {
+  const currency = useTenantCurrency();
+  const until = price.valid_to ?? null;
+  return (
+    <>
+      <dt className="text-text-secondary">Agreed price</dt>
+      <dd className="space-y-0.5">
+        <p>
+          <span className="font-medium text-text-primary">
+            {formatParsedMicros(price.agreed_price_micros, currency)}
+          </span>
+          {" per delivered run of "}
+          <code className="font-mono">{tenantDefinedLabel(price.task_type)}</code>
+        </p>
+        <p className="text-[12px] text-text-secondary">
+          {"From the default Pricing Book "}
+          <code className="font-mono">{tenantDefinedLabel(price.pricing_book_key)}</code>
+          {`, version ${price.book_version_from}, in force from ${formatDate(price.valid_from)}`}
+          {until !== null && ` until ${formatDate(until)}`}
+        </p>
+      </dd>
+    </>
+  );
+}
+
 function Verdict({ blueprint }: { blueprint: Blueprint }) {
   const fingerprint = blueprint.configuration_fingerprint ?? null;
   return (
@@ -117,6 +152,7 @@ function Verdict({ blueprint }: { blueprint: Blueprint }) {
             <Fingerprint value={fingerprint} />
           )}
         </dd>
+        {blueprint.agreed_price != null && <AgreedPriceShown price={blueprint.agreed_price} />}
       </dl>
       {fingerprint === null && (
         <p role="note" className="text-[12px] text-text-secondary">

@@ -805,15 +805,9 @@ const FEATURE_EVENTS: MockEvent[] = [
       // Task's and none of it is this event's, so there is no customer price
       // here to resolve or to miss.
       //
-      // ⚠ AND IT NAMES WHICH OF THE TWO CAUSES THAT IS (#371). `fixed_task_pricing`
-      // is the one that leaves a real charge to go and look at — it sits on the
-      // Task. Its sibling, `tenant_not_billing`, says no CUSTOMER charge is
-      // raised anywhere (#416 gave such a tenant a Charge RECORD, for margin,
-      // which is not a bill),
-      // and it CANNOT be seeded here: this workspace has billing enabled, so a
-      // posting of its own claiming the tenant does not bill would be a fixture
-      // describing a tenant that is not this one. That state is rendered from a
-      // fixture the mock does not author — `event-receipt-price.test.tsx`.
+      // ⚠ AND IT NAMES ITS CAUSE (#371). `fixed_task_pricing` leaves a real
+      // charge to go and look at — it sits on the Task — and it is the cause
+      // for every workspace since #553, billing or not.
       id: EVENT_PRICE_NOT_APPLICABLE_ID,
       effective_at: "2026-06-13T16:08:22Z",
       created_at: "2026-06-13T16:08:23Z",

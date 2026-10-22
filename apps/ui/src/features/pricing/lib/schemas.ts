@@ -169,6 +169,33 @@ export function statedGroupingFields(
 }
 
 /**
+ * An agreed price as a tenant types it (#553): the kind of work, and what one
+ * delivered run of it sells for, as a decimal of the currency's major unit.
+ *
+ * The amount may be EMPTY here because a retirement states none; the dialog
+ * requires it for an add or a reprice, as the API does. Zero is a price and
+ * is admitted; a negative amount is refused, as the API refuses it.
+ */
+export const agreedPriceFormSchema = z.object({
+  task_type: z
+    .string()
+    .trim()
+    .min(1, "Required")
+    .max(64, "Keep the kind of work under 64 characters"),
+  amount: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || (Number.isFinite(Number(value)) && Number(value) >= 0), {
+      message: "Enter an amount of 0 or more",
+    }),
+});
+export type AgreedPriceFormValues = z.infer<typeof agreedPriceFormSchema>;
+
+export function blankAgreedPrice(): AgreedPriceFormValues {
+  return { task_type: "", amount: "" };
+}
+
+/**
  * The tenant's default markup rung — ONE term.
  *
  * ⚠ **ONE FIELD, BECAUSE A MARGIN NEVER COMPOSES** (#147 §2, #369). The form

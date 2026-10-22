@@ -28,6 +28,13 @@ const BLOCKED: CodeBuilderSearch = {
   event_types: ["chat.completion", "draft.only", "web.search"],
 };
 const COMPLETE: CodeBuilderSearch = { task_type: "report_generation", event_types: ["chat.completion"] };
+/**
+ * The platform's `fixed-price-unpriced` fixture: a kind sold at one agreed price,
+ * for a tenant that bills, with no price in any Pricing Book (#586).
+ */
+const UNPRICED: CodeBuilderSearch = { task_type: "translation", event_types: ["reply.sent"] };
+/** The platform's `fixed-price-priced` fixture: its default Pricing Book holds the price. */
+const PRICED: CodeBuilderSearch = { task_type: "transcode", event_types: ["reply.sent"] };
 /** The platform's `constant` fixture: constants declared with their values (#584). */
 const CONSTANT: CodeBuilderSearch = { task_type: "flat_rate_call", event_types: ["flat.call"] };
 const SHELL_COMPLETE: CodeBuilderSearch = {
@@ -222,6 +229,48 @@ describe("the Blueprint stage", () => {
       "/tasks/kinds/summarise",
     );
     expect(within(blueprint).getAllByRole("link", { name: "Cost Rates" })[0]).toHaveAttribute("href", "/pricing");
+  });
+
+  it("offers the request that declares a default Pricing Book where there is none (#586)", async () => {
+    renderCodeBuilder(UNPRICED);
+    await resolved(/^Blocked$/);
+    const diagnostics = within(stage("Blueprint")).getByRole("list", { name: "Diagnostics" });
+
+    expect(within(diagnostics).getByText(diagnosticCodeLabel("agreed_price_missing"))).toBeInTheDocument();
+    expect(
+      within(diagnostics).getByText(diagnosticCodeLabel("default_agreed_price_missing_refused_at_start")),
+    ).toBeInTheDocument();
+    // No default book, so no editor to open: each offers the declaration.
+    const blocks = [...diagnostics.querySelectorAll<HTMLElement>("[data-remediation]")];
+    expect(blocks.map((block) => block.getAttribute("data-remediation"))).toEqual([
+      "api_v1_metering_endpoints_declare_pricing_book",
+      "api_v1_metering_endpoints_declare_pricing_book",
+    ]);
+    expect(within(diagnostics).queryByRole("link", { name: "Open the default Pricing Book" })).toBeNull();
+  });
+
+  it("shows the agreed price and the default Pricing Book it came from (#586)", async () => {
+    renderCodeBuilder(PRICED);
+    await resolved(/^Complete$/);
+    const blueprint = await loadBlueprintFixture("fixed-price-priced");
+    const shown = blueprint.agreed_price;
+    if (shown == null) throw new Error("the priced fixture shows an agreed price");
+    const verdict = within(stage("Blueprint"));
+
+    expect(verdict.getByText("Agreed price")).toBeInTheDocument();
+    expect(verdict.getByText("$12.50")).toBeInTheDocument();
+    expect(verdict.getByText(shown.pricing_book_key)).toBeInTheDocument();
+    expect(
+      verdict.getByText(
+        new RegExp(`version ${shown.book_version_from}, in force from ${formatDate(shown.valid_from)}`),
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no agreed price for a kind priced per event", async () => {
+    renderCodeBuilder(COMPLETE);
+    await resolved(/^Complete$/);
+    expect(within(stage("Blueprint")).queryByText("Agreed price")).toBeNull();
   });
 
   // That the page CANNOT send one is the feature-wide source check in

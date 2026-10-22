@@ -146,7 +146,7 @@ describe("what settled, and what every derived number must ask", () => {
   it.each([
     ["unknown", unknownPrice()],
     ["waived", waivedPrice()],
-    ["not applicable", priceNotApplicable("tenant_not_billing")],
+    ["not applicable", priceNotApplicable("fixed_task_pricing")],
   ])("gives back nothing for a %s price", (_state, price) => {
     expect(settledPriceMicros(price)).toBeNull();
   });

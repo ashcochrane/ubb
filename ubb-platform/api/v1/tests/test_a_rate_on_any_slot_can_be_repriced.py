@@ -103,7 +103,7 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         pinned = {key: value for key, value in pins.items()
                   if key.startswith("grouping_field_")}
         terms = {key: value for key, value in pins.items() if key not in pinned}
-        change = {"kind": "add", "measurement_key": QUANTITY,
+        change = {"line": "rate", "kind": "add", "measurement_key": QUANTITY,
                   "provider": "openai", "rate_per_unit_micros": 5_000,
                   "unit_quantity": 1_000_000, **terms}
         if pinned:
@@ -130,7 +130,8 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         reachable, and the registry resolves whichever slot a declared key is
         bound to.
         """
-        change = {"kind": "reprice", "measurement_key": QUANTITY,
+        change = {"line": "rate",
+                  "kind": "reprice", "measurement_key": QUANTITY,
                   "provider": "openai", "rate_per_unit_micros": to}
         if pins:
             change["grouping_fields"] = {DECLARED_KEY_OF[slot]: value

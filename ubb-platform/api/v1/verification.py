@@ -82,6 +82,17 @@ identity CAN move is a customer price, through a plan's book or an override,
 and the verdict does not judge price: the acknowledgements' `pricing_status`
 reports it, and it is the price of a customer on no plan and no deal.
 
+**AND FOR A KIND SOLD AT ONE AGREED PRICE, THAT CUSTOMER MEETS THE DEFAULT
+BOOK'S PRICE OR NONE** (#586). The snapshot keeps the default book's agreed
+price and no other book's, and the run publishes it into its own default book
+(`_the_default_agreed_price`). Where only a Plan's book or a customer's own
+holds one, the Blueprint is complete — some start can find a price — and
+advises that a customer without one meets none; for a tenant that bills, the
+run's customer is that customer, and its start is refused as theirs would be.
+Verify answers that refusal. It never picks the priced book and never makes a
+price up, because either would verify a run no customer without a deal could
+make.
+
 THE UNIT OF WORK'S OUTCOME
 --------------------------
 The server ran the work itself, so it holds the evidence a declaration needs.
@@ -106,7 +117,8 @@ from api.v1.schemas import (
     CloseTaskRequest, RecordUsageRequest, StartTaskRequest, TaskTypeIn,
     TaskTypeRegistryIn)
 from apps.metering.pricing.models import (
-    CHANGE_ADD, CostBook, PricingBook, TenantDefaultMarkup)
+    CHANGE_ADD, LINE_AGREED_PRICE, LINE_RATE, CostBook, PricingBook,
+    TenantDefaultMarkup)
 from apps.metering.pricing.services.book_service import BookService
 from apps.platform.code_builder import snapshots
 from apps.platform.customers.models import Customer
@@ -355,6 +367,7 @@ class _Run:
                                  suppliers.get(declared["provider_key"]))
         self._books(tenant, held["cost_rates"], _a_cost_book)
         self._books(tenant, held["pricing_rules"], _a_pricing_book)
+        self._the_default_agreed_price(tenant, held)
         if held["default_markup_micro_percent"] is not None:
             TenantDefaultMarkup.objects.create(
                 tenant=tenant,
@@ -376,6 +389,36 @@ class _Run:
                 book, [_the_change_that_adds(rule) for rule in held],
                 effective_at=self.at)
             BookService.publish_declared(draft)
+
+    def _the_default_agreed_price(self, tenant, held):
+        """The default book's agreed price for the kind of work, published
+        through the act into the run's default book to take effect at the
+        run's start (#586).
+
+        It is the one agreed price a snapshot keeps, and the only one the
+        run's customer — on no Plan, with no deal — could be priced by. A
+        price in a Plan's book or a customer's own is in no snapshot, so the
+        run cannot pick one, and none is made up: a kind priced only there is
+        refused at start for a billing tenant, which is the real refusal a
+        customer without a price meets, and what the run then answers.
+
+        Absent from a snapshot of a kind not sold at one agreed price, and
+        from every snapshot resolved before #586 kept one.
+        """
+        kept = (held.get("agreed_price") or {}).get(
+            "default_book_agreed_price")
+        if kept is None:
+            return
+        book = (PricingBook.objects.filter(tenant=tenant,
+                                           is_default=True).first()
+                or _a_pricing_book(tenant, {"key": kept["book_key"],
+                                            "is_default": True}))
+        draft = BookService.declare(book, [{
+            "line": LINE_AGREED_PRICE, "kind": CHANGE_ADD,
+            "task_type": held["task_type"]["key"],
+            "agreed_price_micros": kept["agreed_price_micros"]}],
+            effective_at=self.at)
+        BookService.publish_declared(draft)
 
     # -- (c) run -----------------------------------------------------------
 
@@ -539,7 +582,8 @@ def _a_pricing_book(tenant, described):
 def _the_change_that_adds(rule):
     """A stored rule as the change a book publish takes to open it."""
     return {
-        "kind": CHANGE_ADD, "measurement_key": rule["measurement_code"],
+        "line": LINE_RATE, "kind": CHANGE_ADD,
+        "measurement_key": rule["measurement_code"],
         "provider": rule["provider"], "event_type": rule["event_type"],
         "task_type": rule["task_type"], "subtask_type": rule["subtask_type"],
         **rule["grouping_fields"],

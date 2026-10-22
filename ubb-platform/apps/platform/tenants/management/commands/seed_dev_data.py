@@ -190,7 +190,7 @@ class Command(BaseCommand):
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
-            f'-d \'{{"changes": [{{"kind": "add", "measurement_key": "input_tokens", '
+            f'-d \'{{"changes": [{{"line": "rate", "kind": "add", "measurement_key": "input_tokens", '
             f'"rate_structure": "per_unit", "rate_per_unit_micros": 2, '
             f'"unit_quantity": 1}}]}}\' '
             f'http://localhost:8001/api/v1/metering/pricing/books/$BOOK_ID/publishes\n')

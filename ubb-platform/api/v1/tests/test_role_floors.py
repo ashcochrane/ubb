@@ -342,7 +342,10 @@ _WRITE_ROUTES = {
 #
 # 148 + 1 = 149 (#580): verifying a stored Blueprint, at Write — see its row
 # in `_WRITE_ROUTES`.
-_EXPECTED_FLOORED = 149
+#
+# 149 + 1 = 150 (#553): a Pricing Book's agreed prices, read at Read like its
+# rates — a GET, on the carve's default.
+_EXPECTED_FLOORED = 150
 _EXPECTED_EXEMPT = 9
 
 

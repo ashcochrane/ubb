@@ -18,19 +18,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toastSuccess } from "@/lib/mutations";
 import { useDeclareBookPublish, useGroupingFields } from "../api/queries";
-import type { AnyBook, BookChangeIn } from "../api/types";
+import { isCostBook, type AnyBook, type BookChangeIn, type BookRateChangeIn } from "../api/types";
+import { agreedPriceChange } from "../lib/agreed-prices";
 import { toMicros } from "../lib/pricing-math";
 import {
+  AGREED_PRICE_CHANGE_KINDS,
   CHANGE_KINDS,
   pinnableGroupingFields,
   selectorTitle,
   type ChangeKind,
 } from "../lib/rules";
 import {
+  agreedPriceFormSchema,
+  blankAgreedPrice,
   blankRule,
   resolveUnitQuantity,
   ruleFormSchema,
   statedGroupingFields,
+  type AgreedPriceFormValues,
   type RuleFormValues,
 } from "../lib/schemas";
 import { effectiveInstant, scheduleRefusal } from "../lib/schedule";
@@ -43,6 +48,15 @@ const KINDS = Object.entries(CHANGE_KINDS).map(([value, words]) => ({
   ...words,
 }));
 
+/** The same three acts, said of an agreed price (#553). */
+const AGREED_PRICE_KINDS = Object.entries(AGREED_PRICE_CHANGE_KINDS).map(([value, words]) => ({
+  value: value as ChangeKind,
+  ...words,
+}));
+
+/** Which kind of line a change is about — the change body's `line` (#553). */
+type Line = BookChangeIn["line"];
+
 /**
  * Declare a change to a book — one draft, however many changes it carries.
  *
@@ -50,13 +64,16 @@ const KINDS = Object.entries(CHANGE_KINDS).map(([value, words]) => ({
  * of the record rather than a convenience. A tenant agreeing a repricing does
  * not agree it one rule at a time; a dialog that declared a draft per rule
  * would record one decision as several, and then the diff a tenant reads before
- * committing would never be the decision they actually made. So the staging
- * list lives here, in the console, and the API sees one body.
+ * committing would never be the decision they actually made.
+ *
+ * ⚠ **A PRICING BOOK HOLDS TWO KINDS OF LINE, AND ONE DRAFT MAY CARRY BOTH
+ * (#553).** A rate prices a measured quantity; an agreed price prices one
+ * delivered run of a kind of work. The tenant picks which a change is about,
+ * and the draft stages either — one price list changes in one act. A cost
+ * book holds rates only: a supplier's cost is never a customer's agreed price.
  *
  * ⚠ **NOTHING IS WRITTEN BY THIS DIALOG.** Declaring produces a draft with its
- * diff, and publishing it is a separate act on the panel behind. That is the
- * whole point of the two-step: a tenant decides against the OUTCOME rather than
- * against their own request.
+ * diff, and publishing it is a separate act on the panel behind.
  */
 export function DeclareChangeDialog({
   book,
@@ -70,7 +87,9 @@ export function DeclareChangeDialog({
   const declare = useDeclareBookPublish(book.id);
   const groupingFields = useGroupingFields();
   const currency = "currency" in book ? book.currency : "usd";
+  const holdsAgreedPrices = !isCostBook(book);
   const [staged, setStaged] = React.useState<BookChangeIn[]>([]);
+  const [line, setLine] = React.useState<Line>("rate");
   const [kind, setKind] = React.useState<ChangeKind>("add");
   const [effectiveLocal, setEffectiveLocal] = React.useState("");
 
@@ -78,19 +97,26 @@ export function DeclareChangeDialog({
     resolver: zodResolver(ruleFormSchema),
     defaultValues: blankRule(),
   });
+  const agreedForm = useForm<AgreedPriceFormValues>({
+    resolver: zodResolver(agreedPriceFormSchema),
+    defaultValues: blankAgreedPrice(),
+  });
 
   React.useEffect(() => {
     if (open) {
       setStaged([]);
+      setLine("rate");
       setKind("add");
       setEffectiveLocal("");
       form.reset(blankRule());
+      agreedForm.reset(blankAgreedPrice());
       declare.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const declared = pinnableGroupingFields(groupingFields.data ?? []);
+  const kindWords = line === "agreed_price" ? AGREED_PRICE_KINDS : KINDS;
 
   const stage = (values: RuleFormValues) => {
     const identity = {
@@ -104,10 +130,11 @@ export function DeclareChangeDialog({
     // ⚠ A RETIRE STATES NONE OF THE TERMS AT ALL — it opens no rule, so an
     // amount on it would be a number nobody will ever read. The contract makes
     // every term nullable for exactly this reason and the body follows it.
-    const change: BookChangeIn =
+    const change: BookRateChangeIn =
       kind === "retire"
-        ? { kind, ...identity }
+        ? { line: "rate", kind, ...identity }
         : {
+            line: "rate",
             kind,
             ...identity,
             pricing_method: values.pricing_method,
@@ -120,6 +147,16 @@ export function DeclareChangeDialog({
     form.reset(blankRule());
   };
 
+  const stageAgreedPrice = (values: AgreedPriceFormValues) => {
+    // An add or a reprice states what one delivered run sells for; the form
+    // admits an empty amount only because a retirement states none.
+    if (kind !== "retire" && values.amount === "") {
+      agreedForm.setError("amount", { message: "Required" });
+      return;
+    }
+    setStaged((current) => [...current, agreedPriceChange(kind, values)]);
+    agreedForm.reset(blankAgreedPrice());
+  };
 
   const submit = () => {
     declare.mutate(
@@ -137,6 +174,39 @@ export function DeclareChangeDialog({
     );
   };
 
+  const kindChoice = (
+    <fieldset className="space-y-1.5">
+      <legend className="text-[13px] font-medium text-text-primary">
+        What kind of change
+      </legend>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {kindWords.map((entry) => (
+          <label
+            key={entry.value}
+            className="flex cursor-pointer gap-2 rounded-lg border border-border px-3 py-2 hover:bg-bg-subtle/50"
+          >
+            <input
+              type="radio"
+              name="change-kind"
+              className="mt-1"
+              value={entry.value}
+              checked={kind === entry.value}
+              onChange={() => setKind(entry.value)}
+            />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-medium text-text-primary">
+                {entry.offer}
+              </span>
+              <span className="mt-0.5 block text-xs text-text-secondary">
+                {entry.hint}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -144,7 +214,7 @@ export function DeclareChangeDialog({
           <DialogTitle>Change this book</DialogTitle>
           <DialogDescription>
             Assemble the changes you want, then declare them as one draft. A
-            draft writes no rules — you read its diff and publish it, or discard
+            draft writes nothing — you read its diff and publish it, or discard
             it and the book is exactly as it was.
           </DialogDescription>
         </DialogHeader>
@@ -155,64 +225,64 @@ export function DeclareChangeDialog({
               In this draft
             </p>
             <ul className="space-y-1.5">
-              {staged.map((change, index) => (
-                <li
-                  key={`${change.measurement_key}-${index}`}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]">
-                      {KINDS.find((entry) => entry.value === change.kind)?.offer ??
-                        change.kind}
-                    </Badge>
-                    <span className="truncate font-mono text-[12px]">
-                      {change.measurement_key}
-                    </span>
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`Remove ${change.measurement_key} from this draft`}
-                    onClick={() =>
-                      setStaged((current) =>
-                        current.filter((_, position) => position !== index),
-                      )
-                    }
+              {staged.map((change, index) => {
+                const subject =
+                  change.line === "agreed_price" ? change.task_type : change.measurement_key;
+                const words = change.line === "agreed_price" ? AGREED_PRICE_KINDS : KINDS;
+                return (
+                  <li
+                    key={`${change.line}-${subject}-${index}`}
+                    className="flex items-center justify-between gap-2"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </li>
-              ))}
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Badge variant="outline" className="text-[10px]">
+                        {words.find((entry) => entry.value === change.kind)?.offer ??
+                          change.kind}
+                      </Badge>
+                      <span className="truncate font-mono text-[12px]">{subject}</span>
+                    </span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`Remove ${subject} from this draft`}
+                      onClick={() =>
+                        setStaged((current) =>
+                          current.filter((_, position) => position !== index),
+                        )
+                      }
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
 
-        <form
-          onSubmit={(event) => void form.handleSubmit(stage)(event)}
-          className="space-y-4"
-        >
+        {holdsAgreedPrices && (
           <fieldset className="space-y-1.5">
             <legend className="text-[13px] font-medium text-text-primary">
-              What kind of change
+              What it prices
             </legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {KINDS.map((entry) => (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {LINES.map((entry) => (
                 <label
                   key={entry.value}
                   className="flex cursor-pointer gap-2 rounded-lg border border-border px-3 py-2 hover:bg-bg-subtle/50"
                 >
                   <input
                     type="radio"
-                    name="change-kind"
+                    name="change-line"
                     className="mt-1"
                     value={entry.value}
-                    checked={kind === entry.value}
-                    onChange={() => setKind(entry.value)}
+                    checked={line === entry.value}
+                    onChange={() => setLine(entry.value)}
                   />
                   <span className="min-w-0">
                     <span className="block text-[13px] font-medium text-text-primary">
-                      {entry.offer}
+                      {entry.title}
                     </span>
                     <span className="mt-0.5 block text-xs text-text-secondary">
                       {entry.hint}
@@ -222,26 +292,44 @@ export function DeclareChangeDialog({
               ))}
             </div>
           </fieldset>
+        )}
 
-          {kind === "retire" ? (
-            <RetireFields form={form} />
-          ) : (
-            <RuleEditor
-              form={form}
-              groupingFields={declared}
-              currency={currency}
-            />
-          )}
-
-          <Button type="submit" variant="outline" size="sm">
-            Add to this draft
-          </Button>
-        </form>
+        {line === "agreed_price" ? (
+          <form
+            onSubmit={(event) => void agreedForm.handleSubmit(stageAgreedPrice)(event)}
+            className="space-y-4"
+          >
+            {kindChoice}
+            <AgreedPriceFields form={agreedForm} retiring={kind === "retire"} currency={currency} />
+            <Button type="submit" variant="outline" size="sm">
+              Add to this draft
+            </Button>
+          </form>
+        ) : (
+          <form
+            onSubmit={(event) => void form.handleSubmit(stage)(event)}
+            className="space-y-4"
+          >
+            {kindChoice}
+            {kind === "retire" ? (
+              <RetireFields form={form} />
+            ) : (
+              <RuleEditor
+                form={form}
+                groupingFields={declared}
+                currency={currency}
+              />
+            )}
+            <Button type="submit" variant="outline" size="sm">
+              Add to this draft
+            </Button>
+          </form>
+        )}
 
         <div className="border-t border-border pt-3">
           <EffectiveInstant
             label="Date this change ahead"
-            hint="Publishing writes the rules straight away and they take effect at the instant you set — nothing has to run on the day. Within 366 days."
+            hint="Publishing writes the change straight away and it takes effect at the instant you set — nothing has to run on the day. Within 366 days."
             value={effectiveLocal}
             onChange={setEffectiveLocal}
           />
@@ -274,6 +362,65 @@ export function DeclareChangeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** The two kinds of line a Pricing Book holds, in the words a tenant reads. */
+const LINES: readonly { value: Line; title: string; hint: string }[] = [
+  {
+    value: "rate",
+    title: "A rate",
+    hint: "So much per unit of a measured quantity, per event.",
+  },
+  {
+    value: "agreed_price",
+    title: "An agreed price",
+    hint: "One price per delivered run of a kind of work sold at one agreed price.",
+  },
+];
+
+/**
+ * An agreed price states a kind of work and what one delivered run of it sells
+ * for — and a retirement states the kind alone, because it opens no line.
+ *
+ * The kind of work is any top-level kind you have declared and not retired,
+ * whatever its current pricing mode, so the price can be declared before the
+ * kind is switched to fixed pricing; the API refuses one declared only as
+ * contained work, and the refusal reaches this dialog as its error.
+ */
+function AgreedPriceFields({
+  form,
+  retiring,
+  currency,
+}: {
+  form: ReturnType<typeof useForm<AgreedPriceFormValues>>;
+  retiring: boolean;
+  currency: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <FormField
+        label="Kind of work"
+        error={form.formState.errors.task_type?.message}
+        hint="The key of a kind of work you declared on Tasks."
+      >
+        {(id) => <Input id={id} className="font-mono" {...form.register("task_type")} />}
+      </FormField>
+      {retiring ? (
+        <Label className="text-xs text-muted-foreground">
+          Retiring keeps the line's history and stops this book holding a price
+          for that kind of work. A run already started keeps the price it pinned.
+        </Label>
+      ) : (
+        <FormField
+          label={`Agreed price per delivered run (${currency.toUpperCase()})`}
+          error={form.formState.errors.amount?.message}
+          hint="Zero is a price: the run is delivered for nothing, on purpose."
+        >
+          {(id) => <Input id={id} inputMode="decimal" {...form.register("amount")} />}
+        </FormField>
+      )}
+    </div>
   );
 }
 

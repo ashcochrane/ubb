@@ -341,6 +341,48 @@ describe("what answers a diagnostic", () => {
     });
   });
 
+  it("offers the declaration of a default Pricing Book where the tenant has none (#586)", async () => {
+    // Blocked and advised, for a tenant that bills and one that meters only.
+    // With no default book there is no editor to open, so each offers the
+    // request that declares one (owner's review of #615).
+    const unpriced = await loadBlueprintFixture("fixed-price-unpriced");
+    const metersOnly = await loadBlueprintFixture("fixed-price");
+    const diagnostics = [...unpriced.diagnostics, ...metersOnly.diagnostics];
+
+    expect(diagnostics.map((d) => d.code)).toEqual([
+      "agreed_price_missing",
+      "default_agreed_price_missing_refused_at_start",
+      "default_agreed_price_missing_no_revenue_figure",
+    ]);
+    for (const diagnostic of diagnostics) {
+      const request = diagnostic.remediation_request ?? null;
+      expect(request?.route).toBe("/api/v1/metering/pricing/pricing-books");
+      expect(fixFor(diagnostic)).toEqual({ kind: "request", request });
+    }
+  });
+
+  it("opens the default Pricing Book's editor where the request publishes into it (#586)", () => {
+    // The server names the default book by its id in the publish it offers;
+    // that book's editor is where the console makes the same change.
+    const publish = {
+      method: "POST",
+      route: "/api/v1/metering/pricing/books/0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03/publishes",
+      operation_id: "api_v1_metering_endpoints_declare_book_publish",
+      body: {
+        changes: [{ line: "agreed_price", kind: "add", task_type: "transcode", agreed_price_micros: null }],
+        effective_at: null,
+      },
+    };
+    for (const code of ["agreed_price_missing", "default_agreed_price_missing_refused_at_start"] as const) {
+      expect(
+        fixFor(aDiagnostic({ code, object_kind: "agreed_price", key: "transcode", remediation_request: publish })),
+      ).toEqual({
+        kind: "screen",
+        screen: { to: "/pricing/$bookId", params: { bookId: "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03" } },
+      });
+    }
+  });
+
   it("offers nothing where the diagnostic carries nothing", () => {
     expect(
       fixFor(aDiagnostic({ code: "required_grouping_field_retired", object_kind: "grouping_field", key: "env" })),

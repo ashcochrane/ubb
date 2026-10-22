@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 8;
+export const CATALOGUE_VERSION = 9;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -290,6 +290,27 @@ export const REMEDIATION: Readonly<Record<DiagnosticCode, readonly string[]>> = 
     "A declared path is spelled against the naming of its response shape.",
     "It is emitted exactly as declared. Check it against the client you",
     "call, or correct it with the request below.",
+  ],
+  agreed_price_missing: [
+    "This kind of work is sold at one agreed price, and no Pricing Book",
+    "holds one for it: not your default book, not a Plan's, not a",
+    "customer's own. Every start is refused. Publish one in your default",
+    "Pricing Book with the request below. Where you have no default book,",
+    "the request declares one, and you then publish the price into it.",
+  ],
+  default_agreed_price_missing_refused_at_start: [
+    "This kind of work is sold at one agreed price, and your default",
+    "Pricing Book holds none for it. Customers without their own or a Plan",
+    "price will be refused at start. Publish one in the default book with",
+    "the request below. Where you have no default book, the request",
+    "declares one, and you then publish the price into it.",
+  ],
+  default_agreed_price_missing_no_revenue_figure: [
+    "This kind of work is sold at one agreed price, and your default",
+    "Pricing Book holds none for it. Customers without their own or a Plan",
+    "price will have no authoritative revenue figure. Publish one in the",
+    "default book with the request below. Where you have no default book,",
+    "the request declares one, and you then publish the price into it.",
   ],
 };
 

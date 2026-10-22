@@ -13,7 +13,8 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.book_change_diff_out import BookChangeDiffOut
+  from ..models.book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
+  from ..models.book_rate_change_diff_out import BookRateChangeDiffOut
 
 
 
@@ -33,12 +34,14 @@ class BookPublishOut:
             actor_id (str):
             actor_kind (str):
             book_id (str):
+            closed_agreed_price_ids (list[str]):
             closed_rule_ids (list[str]):
             declaration_status (BookPublishOutDeclarationStatus):
             effective_at (str):
             id (str):
+            opened_agreed_price_ids (list[str]):
             opened_rule_ids (list[str]):
-            diff (list[BookChangeDiffOut] | None | Unset):
+            diff (list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset):
             diff_unavailable_reason (None | str | Unset):
             published_at (None | str | Unset):
      """
@@ -47,12 +50,14 @@ class BookPublishOut:
     actor_id: str
     actor_kind: str
     book_id: str
+    closed_agreed_price_ids: list[str]
     closed_rule_ids: list[str]
     declaration_status: BookPublishOutDeclarationStatus
     effective_at: str
     id: str
+    opened_agreed_price_ids: list[str]
     opened_rule_ids: list[str]
-    diff: list[BookChangeDiffOut] | None | Unset = UNSET
+    diff: list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset = UNSET
     diff_unavailable_reason: None | str | Unset = UNSET
     published_at: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -62,7 +67,8 @@ class BookPublishOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.book_change_diff_out import BookChangeDiffOut
+        from ..models.book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
+        from ..models.book_rate_change_diff_out import BookRateChangeDiffOut
         actor_display = self.actor_display
 
         actor_id = self.actor_id
@@ -70,6 +76,10 @@ class BookPublishOut:
         actor_kind = self.actor_kind
 
         book_id = self.book_id
+
+        closed_agreed_price_ids = self.closed_agreed_price_ids
+
+
 
         closed_rule_ids = self.closed_rule_ids
 
@@ -81,6 +91,10 @@ class BookPublishOut:
 
         id = self.id
 
+        opened_agreed_price_ids = self.opened_agreed_price_ids
+
+
+
         opened_rule_ids = self.opened_rule_ids
 
 
@@ -91,7 +105,12 @@ class BookPublishOut:
         elif isinstance(self.diff, list):
             diff = []
             for diff_type_0_item_data in self.diff:
-                diff_type_0_item = diff_type_0_item_data.to_dict()
+                diff_type_0_item: dict[str, Any]
+                if isinstance(diff_type_0_item_data, BookRateChangeDiffOut):
+                    diff_type_0_item = diff_type_0_item_data.to_dict()
+                else:
+                    diff_type_0_item = diff_type_0_item_data.to_dict()
+
                 diff.append(diff_type_0_item)
 
 
@@ -118,10 +137,12 @@ class BookPublishOut:
             "actor_id": actor_id,
             "actor_kind": actor_kind,
             "book_id": book_id,
+            "closed_agreed_price_ids": closed_agreed_price_ids,
             "closed_rule_ids": closed_rule_ids,
             "declaration_status": declaration_status,
             "effective_at": effective_at,
             "id": id,
+            "opened_agreed_price_ids": opened_agreed_price_ids,
             "opened_rule_ids": opened_rule_ids,
         })
         if diff is not UNSET:
@@ -137,7 +158,8 @@ class BookPublishOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.book_change_diff_out import BookChangeDiffOut
+        from ..models.book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
+        from ..models.book_rate_change_diff_out import BookRateChangeDiffOut
         d = dict(src_dict)
         actor_display = d.pop("actor_display")
 
@@ -146,6 +168,9 @@ class BookPublishOut:
         actor_kind = d.pop("actor_kind")
 
         book_id = d.pop("book_id")
+
+        closed_agreed_price_ids = cast(list[str], d.pop("closed_agreed_price_ids"))
+
 
         closed_rule_ids = cast(list[str], d.pop("closed_rule_ids"))
 
@@ -159,10 +184,13 @@ class BookPublishOut:
 
         id = d.pop("id")
 
+        opened_agreed_price_ids = cast(list[str], d.pop("opened_agreed_price_ids"))
+
+
         opened_rule_ids = cast(list[str], d.pop("opened_rule_ids"))
 
 
-        def _parse_diff(data: object) -> list[BookChangeDiffOut] | None | Unset:
+        def _parse_diff(data: object) -> list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
@@ -173,16 +201,33 @@ class BookPublishOut:
                 diff_type_0 = []
                 _diff_type_0 = data
                 for diff_type_0_item_data in (_diff_type_0):
-                    diff_type_0_item = BookChangeDiffOut.from_dict(diff_type_0_item_data)
+                    def _parse_diff_type_0_item(data: object) -> BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut:
+                        try:
+                            if not isinstance(data, dict):
+                                raise TypeError()
+                            diff_type_0_item_type_0 = BookRateChangeDiffOut.from_dict(data)
 
 
+
+                            return diff_type_0_item_type_0
+                        except (TypeError, ValueError, AttributeError, KeyError):
+                            pass
+                        if not isinstance(data, dict):
+                            raise TypeError()
+                        diff_type_0_item_type_1 = BookAgreedPriceChangeDiffOut.from_dict(data)
+
+
+
+                        return diff_type_0_item_type_1
+
+                    diff_type_0_item = _parse_diff_type_0_item(diff_type_0_item_data)
 
                     diff_type_0.append(diff_type_0_item)
 
                 return diff_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(list[BookChangeDiffOut] | None | Unset, data)
+            return cast(list[BookAgreedPriceChangeDiffOut | BookRateChangeDiffOut] | None | Unset, data)
 
         diff = _parse_diff(d.pop("diff", UNSET))
 
@@ -212,10 +257,12 @@ class BookPublishOut:
             actor_id=actor_id,
             actor_kind=actor_kind,
             book_id=book_id,
+            closed_agreed_price_ids=closed_agreed_price_ids,
             closed_rule_ids=closed_rule_ids,
             declaration_status=declaration_status,
             effective_at=effective_at,
             id=id,
+            opened_agreed_price_ids=opened_agreed_price_ids,
             opened_rule_ids=opened_rule_ids,
             diff=diff,
             diff_unavailable_reason=diff_unavailable_reason,

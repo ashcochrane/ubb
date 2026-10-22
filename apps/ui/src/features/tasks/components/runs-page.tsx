@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { taskStatusLabel } from "@/lib/task-status";
 import { TASK_STATUS_VALUES } from "@/lib/vocabulary";
@@ -49,7 +49,6 @@ export interface RunsPageProps {
  */
 export function RunsPage({ search, onSearchChange, onGoToKinds }: RunsPageProps) {
   const currency = useTenantCurrency();
-  const meteringOnly = useIsMeteringOnly();
   const kinds = useKindsOfWork();
   const runs = useRuns({ task_type: search.task_type, status: search.status });
   const narrowed = search.task_type !== undefined || search.status !== undefined;
@@ -104,7 +103,7 @@ export function RunsPage({ search, onSearchChange, onGoToKinds }: RunsPageProps)
         )
       ) : (
         <Card size="sm" className="gap-0 py-0">
-          <RunsTable runs={runs.rows} currency={currency} meteringOnly={meteringOnly} />
+          <RunsTable runs={runs.rows} currency={currency} />
           <LoadMore
             shownCount={runs.rows.length}
             hasMore={runs.hasMore}

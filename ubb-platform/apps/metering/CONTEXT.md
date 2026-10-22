@@ -250,28 +250,27 @@ _Avoid_: rendering any of the three non-`known` values as an amount — `unknown
 **not_applicable_reason**:
 Why a subject generates no customer revenue at this level, read **only** where `pricing_status` is
 `not_applicable` and never on its own — a status saying a price does not apply without saying why
-sends a reader looking for a number nobody wrote. Two mutually exclusive causes:
-`fixed_task_pricing`, where the event belongs to a Task sold for one agreed price so the revenue is
-the Task's; and `tenant_not_billing`, where the tenant meters and does not bill through UBB at all.
-**Where both are true, POSTURE WINS** — a metering-only tenant is `tenant_not_billing` whatever the
-work's regime, because the concept answers *why no CUSTOMER REVENUE arises* and for that tenant none
-ever does, for a reason unrelated to how the work was sold. ⚠ The argument slice 4 recorded was that
-*no Charge exists anywhere* for such a tenant; #416 made that false — a metering-only tenant's
-delivered fixed-price work does produce a Charge, as a recorded revenue and margin fact rather than
-a collection — and #417 projected it onto a posting, so the counter-example is a row a reader can
-open. **#418 re-took the tie-break against that row and kept it**: `fixed_task_pricing` does not
-claim a Charge exists, it says *the customer revenue for this event sits on the piece of work
-instead*, and for a tenant UBB does not bill there is no customer revenue anywhere — so the more
-specific value would still send a reader to look for a bill nobody raises, while now being half
-true, which is worse than plainly wrong.
-**The regime decides the STATUS and the posture only decides the REASON.** A metering-only tenant's
-event-priced work is priced exactly as it always was; widening `not_applicable` to every posting of
-such a tenant is a different ruling about a different subject and is not this rule's.
+sends a reader looking for a number nobody wrote. **One cause, decided by the pricing regime for
+every tenant** (#553, the owner's C2 ruling; ADR-0021 §5): `fixed_task_pricing`, where the event
+belongs to a Task sold for one agreed price, so its customer revenue is the Task's Charge. The
+tenant's billing mode is not encoded again here: whether UBB collects payment says nothing about
+why an event carries no price of its own, and a metering-only tenant's delivered fixed-price work
+does produce a Charge — a recorded revenue and margin fact rather than a collection.
+⚠ **`tenant_not_billing` WAS THE SECOND VALUE AND IS GONE.** It read *"posture wins"* (slice 4,
+re-taken by #418): a metering-only tenant's fixed-price postings named the tenant's posture instead of
+the regime. #553 superseded the tie-break, removed its only producer, and removed the value in the
+same change — the registry member, the posting's check member and every follower. Every posting
+that held it was rewritten to `fixed_task_pricing` by one migration under a one-time pre-live
+exception (ADR-0021 §5); a sealed Pricing Receipt still holding the old text is history, and still
+reads.
+**The regime decides the STATUS and the REASON.** A metering-only tenant's event-priced work is priced
+exactly as it always was.
 Coined and declared by slice 4 (#151 §17 owed it and nothing had ratified it). Its console consumer
 is `apps/ui/src/lib/customer-price.ts`, not the legacy label adapter its four neighbours live in.
-(`apps/metering/usage/models.py`; `apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`)
-_Avoid_: adding a third value without deciding its tie-break against these two — the pair is closed
-and the posture rule only works because there are exactly two.
+(`apps/metering/pricing/applicability.py`; `apps/metering/usage/models.py`;
+`apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`)
+_Avoid_: re-encoding the tenant's billing mode in a pricing result — the posture is a fact about the
+tenant, read from the tenant; adding a value without a producer in the same change.
 
 **unresolved_reason**:
 Which input was missing when the supplier cost could not be settled, read **only** where
@@ -374,33 +373,46 @@ composite rule is stated once, at `ladder_rank`.
 `apps/metering/pricing/services/pricing_service.py:ladder_rank`)
 
 **Pricing Book**:
-The versioned container of what this tenant **charges** — many Rates, one of which may be the
-tenant default. It is pinned to **neither a supplier nor a currency**: a tenant's price for a unit
-of work does not change because they switched supplier, and a tenant has exactly one currency
-(CUR-1), so a column repeating either was a copy of a decision made elsewhere. A book carrying a
-customer is that customer's override book. (#368; `apps/metering/pricing/models.py:PricingBook`)
+The versioned container of the tenant's **customer prices** — what its customers' work sells for —
+holding two kinds of line: Rates, which price a measured quantity, and **agreed prices**, which price
+a whole delivered unit of work. One book may be the tenant default; a Plan names the book it prices
+its customers from; a book carrying a customer is that customer's own (override) book. It is pinned
+to **neither a supplier nor a currency**: a tenant's price for a unit of work does not change because
+they switched supplier, and a tenant has exactly one currency (CUR-1), so a column repeating either
+was a copy of a decision made elsewhere.
+**A price is something UBB may know whatever the tenant collects through it** (#553, A6; ADR-0021
+§4): Pricing Books take the cost book's metering floor, so a metering-only tenant declares and reads
+them like any other — its prices are recorded for its own margin reporting, collected from nobody.
+(#368; `apps/metering/pricing/models.py:PricingBook`)
 _Avoid_: "rate card" or "price card" — the container is a Pricing Book; expecting it to name a
 provider — a rule that should price one supplier's work differently pins `provider` as a selector,
-which is where that distinction belongs.
+which is where that distinction belongs; reading "price" as "what is collected" — collection is the
+billing product's, and a book says what the work SELLS FOR.
 
-**Work-level price line**:
-The SECOND kind of line a Pricing Book holds (#415): what one whole delivered unit of work of a
-named kind sells for, as one agreed number. A Rate prices a measured QUANTITY; this prices a whole
-piece of work, and the two are lines in the same book so a tenant has one place to look and one
-place to change. It names a DECLARATION — `(kind, task_type)`, the identity `work.TaskType` gives
-itself — rather than a bare word, which is what lets a line written against contained work be
-refused at start while leaving a priced kind of work free to run as a step of ITSELF.
+**Agreed price**:
+The SECOND kind of line a Pricing Book holds (#415; declarable since #553): what one whole delivered
+unit of work of a named kind sells for, as one agreed number, `agreed_price_micros`. A Rate prices a
+measured QUANTITY; this prices a whole piece of work, and the two are lines in the same book so a
+tenant has one place to look and one place to change. The publish act opens one only for a
+declared, live, top-level kind — whatever its current pricing mode, so the price can be in place
+before the kind is switched to it — and is the only writer.
+**Declared, read and retired like a Rate** (ADR-0021 §1–§2): a change names its line
+(`line: agreed_price`; `kind` add | reprice | retire; `task_type`), a draft's diff shows it beside the
+rates, a reprice closes the line and opens its successor in one lineage, and the publish record lists
+the lines it opened and closed (`opened_agreed_price_ids` / `closed_agreed_price_ids`, beside the
+rule ids, which name rates only). `valid_from` is frozen and `valid_to` set once, by a trigger. Zero
+is a price; a negative is refused; at most one is in force per kind per book. Read through
+`GET /pricing/books/{book_id}/agreed-prices`.
 **The ladder inside a book is one step, not three**: a Rate's exact-then-broader-then-default ladder
-is about events, and there is no narrower work-level line to out-rank a broader one and no book-wide
+is about events, and there is no narrower agreed price to out-rank a broader one and no book-wide
 fallback beneath either. What ranks is which BOOK the line came from — the customer's own beats one
 merely selected for them — and `valid_from` breaks the remaining tie.
-It carries **no currency**, on the Pricing Book's own argument one line up.
-(`apps/metering/pricing/models.py:TaskPrice`;
+It carries **no currency**, on the Pricing Book's own argument one entry up.
+(`apps/metering/pricing/models.py:TaskPrice`; `pricing/services/book_service.py`;
 `pricing/services/pricing_service.py:resolve_the_agreed_price`)
-_Avoid_: expecting a route to write one — prices are edited through the book's declare-then-publish
-act and nothing writes this table yet, which the model records as a named residual rather than an
-oversight; and reading it as a floor or a fee on top — an agreed price REPLACES metered revenue for
-that unit of work.
+_Avoid_: "work-level price line" — the old internal name for the public concept; writing a line
+outside the publish act; and reading it as a floor or a fee on top — an agreed price REPLACES
+metered revenue for that unit of work.
 
 **Charge**:
 What one delivered piece of work sold at one agreed price is owed for, once and immutably (#416).
@@ -422,7 +434,9 @@ through an outbox event — a crash between the two would lose revenue for deliv
 nothing to replay from — and the kernel does not call it: the composition layer puts the close and
 the charge together (ADR-001). **It reaches the rails as exactly one posting** — see **Posting
 kind** — which is a projection OF this row and is rebuilt from it if wrong, never the other way
-round.
+round. **And it is in what its unit of work billed** (#553, A9; ADR-0021 §3): the projection adds
+the posting's amount to the top-level Task's billed total, in the same transaction as the posting,
+and to nothing else — never the supplier cost, the event count or the unpriced count.
 (ADR-0013, which carries the whole argument and names every test that holds it;
 `apps/metering/pricing/models.py:Charge`; `pricing/services/charge_service.py`;
 `pricing/migrations/0031`; `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py`;

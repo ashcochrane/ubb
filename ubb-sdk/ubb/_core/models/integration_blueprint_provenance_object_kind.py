@@ -1,6 +1,7 @@
 from enum import Enum
 
 class IntegrationBlueprintProvenanceObjectKind(str, Enum):
+    AGREED_PRICE = "agreed_price"
     EVENT_TYPE = "event_type"
     GROUPING_FIELD = "grouping_field"
     MEASUREMENT = "measurement"

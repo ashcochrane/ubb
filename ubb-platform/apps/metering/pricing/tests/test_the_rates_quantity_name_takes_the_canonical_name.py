@@ -56,9 +56,9 @@ from django.db.migrations.loader import MigrationLoader
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
-from api.v1.schemas import BookChangeIn
+from api.v1.schemas import BookRateChangeIn
 from apps.metering.pricing.models import (
-    CHANGE_ADD, NAMES_ONE_QUANTITY_CHECK, Rate)
+    CHANGE_ADD, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, Rate)
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import a_usage_event_subject
 from apps.platform.event_types.models import Measurement
@@ -116,7 +116,9 @@ ACTIVE_ROW_UNIQUE_KEYS = sorted(
 #: The three published schemas the name appears on — the write, the reprice and
 #: the read. Named rather than discovered: a walk that found two would report
 #: success just as loudly.
-#: ⚠ **`BookChangeIn` STANDS WHERE BOTH IMMEDIATE BODIES STOOD (#367, #368).**
+#: ⚠ **`BookRateChangeIn` STANDS WHERE BOTH IMMEDIATE BODIES STOOD (#367,
+#: #368)** — under that name since #553 split the change body by the kind
+#: of line it is about.
 #: The add-a-rule body was this rename's third published carrier until its
 #: route was deleted, and the immediate reprice body was the second until its
 #: route went the same way — adding, repricing and retiring a rule are all
@@ -124,7 +126,7 @@ ACTIVE_ROW_UNIQUE_KEYS = sorted(
 #: inherited the acts rather than being dropped with the schemas that lost
 #: them: **one write carrier and one read carrier, where there were two of
 #: each**, and no act is uncovered.
-PUBLISHED_SCHEMAS = ("BookChangeIn", "RateOut")
+PUBLISHED_SCHEMAS = ("BookRateChangeIn", "RateOut")
 
 
 @cache
@@ -363,7 +365,6 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
             # about what a component's quantity key is CALLED, and both facts
             # decide only whether a CUSTOMER price applies at all.
             pricing_mode=PRICING_MODE_EVENT_PRICED,
-            tenant_bills_through_ubb=True,
             resolve_declaration=lambda: None,
             resolve_the_cost_rule=lambda key: rate,
             resolve_the_price_rule=lambda key: None,
@@ -417,7 +418,7 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
         the one this claim is about — and there is one, because both immediate
         bodies went with their routes.
         """
-        for name in ("BookChangeIn",):
+        for name in ("BookRateChangeIn",):
             with self.subTest(schema=name):
                 self.assertIn(CANONICAL_COLUMN, schemas()[name]["required"])
 
@@ -453,7 +454,8 @@ class TheStaleWriterIsRefusedRatherThanIgnoredTest(SimpleTestCase):
         from pydantic import ValidationError
 
         with self.assertRaises(ValidationError) as refusal:
-            BookChangeIn(kind=CHANGE_ADD, **{RETIRED_COLUMN: "input_tokens"})
+            BookRateChangeIn(line=LINE_RATE, kind=CHANGE_ADD,
+                             **{RETIRED_COLUMN: "input_tokens"})
 
         missing = {tuple(error["loc"]) for error in refusal.exception.errors()
                    if error["type"] == "missing"}
@@ -461,6 +463,6 @@ class TheStaleWriterIsRefusedRatherThanIgnoredTest(SimpleTestCase):
 
     def test_a_body_carrying_the_canonical_key_is_accepted(self):
         """The control. Without it the test above passes on a broken schema."""
-        payload = BookChangeIn(kind=CHANGE_ADD,
-                               **{CANONICAL_COLUMN: "input_tokens"})
+        payload = BookRateChangeIn(line=LINE_RATE, kind=CHANGE_ADD,
+                                   **{CANONICAL_COLUMN: "input_tokens"})
         self.assertEqual(getattr(payload, CANONICAL_COLUMN), "input_tokens")

@@ -225,26 +225,19 @@ export const PRICING_STATUS_EXPLANATIONS = {
 } as const satisfies Record<PricingStatus, string>;
 
 /**
- * Why a subject generates no customer revenue, in a sentence — and the two
- * sentences answer DIFFERENT questions.
+ * Why a subject generates no customer revenue, in a sentence.
  *
- * This is the pair the receipt has to keep apart. One says the revenue is real
- * and sits somewhere else, so there is a number to go and look at; the other
- * says no Charge was created anywhere, so there is not. A screen that gave both
- * the same words would answer "why is there no price here?" with a shrug in the
- * one case where UBB knows exactly why.
- *
- * ⚠ WHERE BOTH ARE TRUE, POSTURE WINS — the registry's own tie-break. A
- * metering-only tenant is `tenant_not_billing` whatever the job's pricing
- * regime, because naming the regime would imply revenue sits on a Charge that
- * does not exist. Nothing here decides that; the sentences are written so that
- * the value the server sent reads correctly on its own.
+ * The revenue is real and sits somewhere else, so there is a number to go and
+ * look at: the Task's own charge. It is the answer for every workspace (#553):
+ * the regime decides the reason, and whether the workspace bills through UBB
+ * is not encoded again here. The posture value that once sat beside it was
+ * removed with its last producer; a value the server sends that the catalogue
+ * no longer words renders as the token it is (`@/lib/localisation`), never as
+ * this sentence.
  */
 export const NOT_APPLICABLE_REASON_EXPLANATIONS = {
   fixed_task_pricing:
     "This event belongs to a Task sold for one agreed price. The revenue is the Task's and none of it is this event's — the charge to look at is the Task's own.",
-  tenant_not_billing:
-    "This workspace meters usage and does not bill customers through UBB, so no customer charge exists anywhere and there is no price to look at.",
 } as const satisfies Record<NotApplicableReason, string>;
 
 /**

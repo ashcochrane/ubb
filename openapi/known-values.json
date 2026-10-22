@@ -112,7 +112,7 @@
     },
     "configuration_object_kind": {
       "advertised": true,
-      "backend_serves": "7 of 7 values",
+      "backend_serves": "8 of 8 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
@@ -122,7 +122,8 @@
         "measurement",
         "reported_cost_mapping",
         "provider",
-        "grouping_field"
+        "grouping_field",
+        "agreed_price"
       ]
     },
     "control_family": {
@@ -176,7 +177,7 @@
     },
     "diagnostic_code": {
       "advertised": true,
-      "backend_serves": "15 of 15 values",
+      "backend_serves": "18 of 18 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
@@ -194,7 +195,10 @@
         "derived_measurement_unsupported",
         "response_shape_not_declared",
         "response_shape_not_readable_by_target",
-        "source_path_convention_mismatch"
+        "source_path_convention_mismatch",
+        "agreed_price_missing",
+        "default_agreed_price_missing_refused_at_start",
+        "default_agreed_price_missing_no_revenue_figure"
       ]
     },
     "diagnostic_severity": {
@@ -307,12 +311,11 @@
     },
     "not_applicable_reason": {
       "advertised": true,
-      "backend_serves": "2 of 2 values",
+      "backend_serves": "1 of 1 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
-        "fixed_task_pricing",
-        "tenant_not_billing"
+        "fixed_task_pricing"
       ]
     },
     "outcome_reason": {

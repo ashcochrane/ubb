@@ -1,0 +1,234 @@
+{
+  "blueprint": "fixed-price-priced",
+  "configuration_fingerprint": "sha256:f0431428892185022ebe6736de85d362950103d6dcdcbab262fdd71d81f9aa99",
+  "request": {
+    "records": [
+      {
+        "event_type": "reply.sent",
+        "measurements": {
+          "replies": "4"
+        }
+      }
+    ],
+    "grouping_fields": {}
+  },
+  "status": 200,
+  "answer": {
+    "configuration_fingerprint": "sha256:f0431428892185022ebe6736de85d362950103d6dcdcbab262fdd71d81f9aa99",
+    "verified": true,
+    "unexercised_event_types": [],
+    "unexercised_subtask_types": [],
+    "environment": {
+      "discarded": true,
+      "customer_external_id": "ubb-verification",
+      "rules_effective_at": "2026-09-01T12:30:00Z"
+    },
+    "task": {
+      "task_type": "transcode",
+      "start": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "task_type": "transcode",
+        "status": "active",
+        "task_cogs_ceiling_micros": null,
+        "agreed_price_micros": 12500000,
+        "external_task_id": "",
+        "created_at": "2026-09-01T12:30:00Z",
+        "replayed": false
+      },
+      "close": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "parent_task_id": null,
+        "status": "completed",
+        "outcome": "delivered",
+        "replayed": false,
+        "charge_created": true,
+        "total_billed_cost_micros": 12500000,
+        "total_provider_cost_micros": 8000,
+        "unresolved_event_count": 0,
+        "unpriced_event_count": 0,
+        "event_count": 1
+      }
+    },
+    "subtasks": [],
+    "records": [
+      {
+        "event_type": "reply.sent",
+        "subtask_type": null,
+        "acknowledgement": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": 8000,
+          "costing_status": "known",
+          "unresolved_reason": null,
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "not_applicable",
+          "not_applicable_reason": "fixed_task_pricing",
+          "pricing_status_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": 0,
+          "task_total_provider_cost_micros": 8000,
+          "task_total_unresolved_event_count": 0,
+          "task_total_unpriced_event_count": 0,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "trigger_source": null,
+          "stop_bound_micros": null,
+          "stop_measured_micros": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "replies": "4"
+          },
+          "pricing_receipt": {
+            "receipt_schema_version": 2,
+            "pricing_engine_version": "2.2.0",
+            "subject_type": "usage_event",
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "currency": "usd",
+            "costing": {
+              "method": "calculated",
+              "status": "known",
+              "detail": {
+                "components": [
+                  {
+                    "measurement_key": "replies",
+                    "units": "4",
+                    "rate_structure": "per_unit",
+                    "rate_per_unit_micros": 2000,
+                    "unit_quantity": 1,
+                    "fixed_micros": 0,
+                    "micros": 8000
+                  }
+                ],
+                "uncosted_measurement_keys": [],
+                "uncosted_quantities": {},
+                "undeclared_quantities": {},
+                "unresolved_reason": null
+              }
+            },
+            "pricing": {
+              "method": null,
+              "status": "not_applicable",
+              "detail": {
+                "components": [],
+                "pricing_mode": "fixed",
+                "not_applicable_reason": "fixed_task_pricing",
+                "pricing_status_reason": null
+              }
+            },
+            "totals": {
+              "provider_cost_micros": 8000,
+              "billed_cost_micros": null
+            },
+            "provenance": {
+              "cost_rate_ids": {
+                "replies": "00000000-0000-4000-8000-000000000003"
+              },
+              "price_rate_ids": {}
+            }
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "replay": {
+          "event_id": "00000000-0000-4000-8000-000000000002",
+          "new_balance_micros": null,
+          "suspended": false,
+          "provider_cost_micros": 8000,
+          "costing_status": "known",
+          "unresolved_reason": null,
+          "claimed_provider_cost_micros": null,
+          "billed_cost_micros": null,
+          "pricing_status": "not_applicable",
+          "not_applicable_reason": "fixed_task_pricing",
+          "pricing_status_reason": null,
+          "task_id": "00000000-0000-4000-8000-000000000001",
+          "parent_task_id": null,
+          "task_total_billed_cost_micros": null,
+          "task_total_provider_cost_micros": null,
+          "task_total_unresolved_event_count": null,
+          "task_total_unpriced_event_count": null,
+          "stop": false,
+          "stop_reason": null,
+          "stop_scope": null,
+          "trigger_source": null,
+          "stop_bound_micros": null,
+          "stop_measured_micros": null,
+          "ceiling_status": "not_applicable",
+          "ceiling_used_percentage": null,
+          "ceiling_remaining_micros": null,
+          "stop_context": null,
+          "measurements": {
+            "replies": "4"
+          },
+          "pricing_receipt": {
+            "totals": {
+              "billed_cost_micros": null,
+              "provider_cost_micros": 8000
+            },
+            "costing": {
+              "detail": {
+                "components": [
+                  {
+                    "units": "4",
+                    "micros": 8000,
+                    "fixed_micros": 0,
+                    "unit_quantity": 1,
+                    "rate_structure": "per_unit",
+                    "measurement_key": "replies",
+                    "rate_per_unit_micros": 2000
+                  }
+                ],
+                "unresolved_reason": null,
+                "uncosted_quantities": {},
+                "undeclared_quantities": {},
+                "uncosted_measurement_keys": []
+              },
+              "method": "calculated",
+              "status": "known"
+            },
+            "pricing": {
+              "detail": {
+                "components": [],
+                "pricing_mode": "fixed",
+                "not_applicable_reason": "fixed_task_pricing",
+                "pricing_status_reason": null
+              },
+              "method": null,
+              "status": "not_applicable"
+            },
+            "currency": "usd",
+            "provenance": {
+              "cost_rate_ids": {
+                "replies": "00000000-0000-4000-8000-000000000003"
+              },
+              "price_rate_ids": {}
+            },
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "subject_type": "usage_event",
+            "pricing_engine_version": "2.2.0",
+            "receipt_schema_version": 2
+          },
+          "pricing_receipt_subject_type": "usage_event",
+          "uncosted_measurement_keys": [],
+          "pricing_method": null,
+          "grouping_fields": {}
+        },
+        "missing_required_measurement_keys": [],
+        "complete": true
+      }
+    ],
+    "refusal": null
+  }
+}

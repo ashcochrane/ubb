@@ -76,8 +76,10 @@ def tenant_wide_money(tenant_id, *, start_date, end_date):
 ECONOMICS = "/api/v1/metering/analytics/economics"
 
 
-def a_tenant(name="T", *, fields=()):
-    """A metering tenant and a raw key for it.
+def a_tenant(name="T", *, fields=(), products=("metering",), billing_mode=None):
+    """A metering tenant and a raw key for it — or, with `products` and
+    `billing_mode`, a tenant in the posture a module names (#553: the Code
+    Builder's readiness turns on whether the tenant bills through UBB).
 
     `products=["metering"]` is not optional — the one query is product-gated, so
     a tenant without it answers 403 rather than 200, which reads as an auth bug.
@@ -88,7 +90,9 @@ def a_tenant(name="T", *, fields=()):
     scaffolding a second one by hand is what `docs/conventions/testing.md` calls
     out by name.
     """
-    tenant = Tenant.objects.create(name=name, products=["metering"])
+    options = {"billing_mode": billing_mode} if billing_mode else {}
+    tenant = Tenant.objects.create(name=name, products=list(products),
+                                   **options)
     for position, key in enumerate(fields, start=1):
         GroupingField.objects.create(tenant=tenant, key=key,
                                      slot=f"grouping_field_{position}",
@@ -215,7 +219,7 @@ def a_tenant_selling_whole_work(*, products=("metering", "billing"),
         TaskType.objects.create(tenant=tenant, key=SOLD_PER_EVENT, kind=kind,
                                 uncapped=True)
     a_price_for_whole_work(tenant, task_type=SOLD_WHOLE,
-                           amount_micros=price_micros)
+                           agreed_price_micros=price_micros)
     wallet = None
     if balance_micros is not None:
         wallet = Wallet.objects.create(customer=customer,
@@ -385,7 +389,8 @@ class BlueprintRoutes:
             {"provider_key": provider, "key": provider, "is_default": True})
         publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
         draft = self._call("post", publishes, {"changes": [
-            {"kind": kind, "measurement_key": code, "provider": provider,
+            {"line": "rate",
+             "kind": kind, "measurement_key": code, "provider": provider,
              "grouping_fields": grouping_fields or {},
              "rate_per_unit_micros": rate, "unit_quantity": 1}
             for kind, code, rate in rules]})
@@ -394,3 +399,62 @@ class BlueprintRoutes:
     def _markup(self, micro_percent):
         self._call("put", "/api/v1/metering/pricing/default-markup",
                    {"markup_micro_percent": micro_percent})
+
+    # -- the agreed price, declared through the publish act (#553) ------------
+    #
+    # SHARED FROM #553, the first window in which the Code Builder had a priced
+    # fixed-price kind to resolve: its readiness, the renderers' fixtures and
+    # Seam C each declare one the way a tenant does — a Pricing Book, a draft,
+    # its publish — and never by writing the line (ADR-0016 §5).
+
+    def _a_pricing_book(self, key="catalogue", *, is_default=True):
+        """The tenant's Pricing Book under `key`, declared on first use."""
+        for book in self._call(
+                "get", "/api/v1/metering/pricing/pricing-books")["data"]:
+            if book["key"] == key:
+                return book
+        return self._call("post", "/api/v1/metering/pricing/pricing-books",
+                          {"key": key, "name": key, "is_default": is_default})
+
+    def _publish_agreed_price(self, task_type, amount, *, book=None,
+                              kind="add", effective_at=None):
+        """One agreed-price change, declared and published into `book` — the
+        tenant's default unless another is named. `amount` None states none,
+        which is what a retirement is. Returns the publish record."""
+        book = book or self._a_pricing_book()
+        publishes = f"/api/v1/metering/pricing/books/{book['id']}/publishes"
+        change = {"line": "agreed_price", "kind": kind, "task_type": task_type}
+        if amount is not None:
+            change["agreed_price_micros"] = amount
+        body = {"changes": [change]}
+        if effective_at is not None:
+            body["effective_at"] = effective_at.isoformat()
+        draft = self._call("post", publishes, body)
+        return self._call("post", f"{publishes}/{draft['id']}/publish")
+
+    def _a_customer(self, external_id="acme"):
+        return self._call("post", "/api/v1/platform/customers",
+                          {"external_id": external_id})
+
+    def _the_customers_own_book(self, customer_id, *,
+                                measurement_key="input_tokens"):
+        """One customer's own Pricing Book, holding nothing.
+
+        Made by the one route that makes it — declaring an override — whose
+        draft is then discarded, so the book exists and nothing in it is in
+        force until a price is published into it. `measurement_key` names a
+        quantity the configuration has declared, which an override must.
+        """
+        draft = self._call(
+            "post", f"/api/v1/metering/pricing/customers/{customer_id}/overrides",
+            {"measurement_key": measurement_key})
+        self._call("delete", f"/api/v1/metering/pricing/books/"
+                             f"{draft['book_id']}/publishes/{draft['id']}")
+        return {"id": draft["book_id"]}
+
+    def _a_plans_book(self, plan_key="pro"):
+        """A Plan, and the Pricing Book it prices from — which `PlanOut` does
+        not name, so it is found by the key a plan's book is declared under
+        (`BookService.the_book_a_plan_prices_from`)."""
+        self._call("post", "/api/v1/plans", {"key": plan_key, "name": plan_key})
+        return self._a_pricing_book(plan_key, is_default=False)

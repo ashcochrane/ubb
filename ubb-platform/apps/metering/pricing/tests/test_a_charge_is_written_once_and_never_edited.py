@@ -91,7 +91,7 @@ class ChargeTestBase(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
         self.line = a_price_for_whole_work(
-            self.tenant, task_type=SOLD_WHOLE, amount_micros=THE_AGREED_PRICE)
+            self.tenant, task_type=SOLD_WHOLE, agreed_price_micros=THE_AGREED_PRICE)
 
     def _delivered_work(self, **columns):
         return Task.objects.create(
@@ -378,7 +378,7 @@ class ExactlyOneOriginalChargePerPieceOfWorkTest(ChargeTestBase):
         their_customer = Customer.objects.create(tenant=elsewhere,
                                                  external_id="c1")
         their_line = a_price_for_whole_work(
-            elsewhere, task_type=SOLD_WHOLE, amount_micros=THE_AGREED_PRICE)
+            elsewhere, task_type=SOLD_WHOLE, agreed_price_micros=THE_AGREED_PRICE)
         their_work = Task.objects.create(
             tenant=elsewhere, customer=their_customer,
             balance_snapshot_micros=0, task_type=SOLD_WHOLE,

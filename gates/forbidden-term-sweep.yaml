@@ -417,7 +417,13 @@ exclusions:
     # queued `usage.recorded` payload before the field became required. Neither
     # names a retired word, so the number moved for the files existing, and the
     # sites and terms held at 1 in 5.
-    files: 273
+    # 273 → 275 in #553: two migrations — the agreed price's provenance,
+    # lineage and window trigger with the publish record's two lists
+    # (`pricing/0032`), and the rewrite of the removed posture reason under a
+    # one-time lift of the price trigger with the closed set it leaves
+    # (`usage/0047`). Neither names a retired word, so the number moved for
+    # the files existing, and the sites and terms held at 1 in 5.
+    files: 275
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

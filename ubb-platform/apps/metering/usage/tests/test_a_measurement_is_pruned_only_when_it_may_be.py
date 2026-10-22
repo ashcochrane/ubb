@@ -130,7 +130,7 @@ from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.transitions import (
     DATABASE_DEFENDED, RECORD_RULE, columns_declared_into_defended_classes)
 from core.vocabulary import (
-    COSTING_STATUS_NOT_APPLICABLE, NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
+    COSTING_STATUS_NOT_APPLICABLE, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     PRICING_STATUS_NOT_APPLICABLE, PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING)
 
@@ -416,7 +416,7 @@ class ThePredicateIsNotUnresolvedRatherThanIsResolvedTest(TestCase):
         self.assertTrue(self._prunes(committed_posting(
             billed_cost_micros=None,
             pricing_status=PRICING_STATUS_NOT_APPLICABLE,
-            not_applicable_reason=NOT_APPLICABLE_REASON_TENANT_NOT_BILLING)))
+            not_applicable_reason=NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)))
 
     def test_a_not_applicable_cost_does_not_hold_the_measurement(self):
         self.assertTrue(self._prunes(committed_posting(

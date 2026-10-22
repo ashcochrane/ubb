@@ -589,14 +589,18 @@ class TestAGapFailsTheVerdictAndNotTheRequest(VerifyRoutes):
         assert body["task"]["close"]["outcome"] == "cancelled"
 
     def test_a_refused_start_stops_the_run_before_anything_is_recorded(self):
-        """A kind of work sold at one agreed price, for a tenant that bills:
-        the stored configuration carries no agreed price yet, so the start
-        is refused exactly as a tenant's own would be."""
+        """A kind of work sold at one agreed price, for a tenant that bills,
+        priced only in one customer's own book (#586): the Blueprint is
+        complete, because some start can find a price, and the run's customer
+        has no deal — so its start is refused exactly as a tenant's own
+        customer's would be."""
         self._grouping_fields(("environment", "task"))
         self._kinds({"key": "whole", "pricing_mode": "fixed",
                      "uncapped": True})
         self._event_type(provider=PROVIDER)
         self._cost_rules(("add", "input_tokens", 3))
+        their_book = self._the_customers_own_book(self._a_customer()["id"])
+        self._publish_agreed_price("whole", 5_000_000, book=their_book)
         fingerprint = self._fingerprint(task_type="whole")
         body = self._verified(fingerprint, a_record(measurements=THE_SAMPLE),
                               grouping_fields={})

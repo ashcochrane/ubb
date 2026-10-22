@@ -159,7 +159,7 @@ def test_the_walk_finds_the_markers_that_ARE_owed(spec):
     assert len(everything) > 20, (
         "the walk found almost nothing across the whole contract, so the two "
         "absences above prove nothing about books")
-    assert any("/BookChangeIn/" in path for path, _ in everything), (
+    assert any("/BookRateChangeIn/" in path for path, _ in everything), (
         "the body that DECLARES a change to a book carries a governed method "
         "and a governed arithmetic shape (#367). A walk that cannot see those "
         "cannot see one arriving on the four schemas above either")

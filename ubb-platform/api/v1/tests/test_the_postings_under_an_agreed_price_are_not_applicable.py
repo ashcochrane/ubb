@@ -60,7 +60,6 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     MEASUREMENTS_STATUS_NOT_APPLICABLE,
     NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
-    NOT_APPLICABLE_REASON_TENANT_NOT_BILLING,
     PRICING_MODE_FIXED,
     PRICING_RECEIPT_SUBJECT_TYPE_CHARGE,
     PRICING_STATUS_KNOWN,
@@ -341,53 +340,45 @@ class TestAnAgreedPricesPostingsAreNotApplicableRatherThanZero(
 
 
 @pytest.mark.django_db
-class TestPostureWinsWhenBothReasonsApply(AgreedPriceTestBase):
-    """AC 3 — the tie-break, end to end, against the fact that falsified its
-    original argument.
+class TestTheRegimeDecidesTheReasonForEveryTenant(AgreedPriceTestBase):
+    """The C2 ruling (#553, ADR-0021 §5), end to end, for the tenant the old
+    tie-break was about.
 
-    Slice 4 recorded the ruling with the reason *"for a metering-only tenant no
-    Charge is created anywhere"*. #416 made that false on purpose: such a tenant
-    DOES get a Charge, because for them it is a recorded revenue and margin fact
-    rather than a collection, and #417 projected it onto a posting. So the
-    counter-example is now reachable, and the ruling has to stand on the
-    narrower argument that survives — `fixed_task_pricing` says *the customer
-    revenue for this event sits on the piece of work instead*, and for a tenant
-    UBB does not bill there is no customer revenue anywhere to point at.
+    Slice 4 and #418 recorded *"posture wins"*: a metering-only tenant's
+    fixed-price work was `tenant_not_billing`, on the argument that
+    `fixed_task_pricing` would send a reader to look for a bill nobody raises.
+    The ruling that supersedes it separates what that argument joined —
+    whether UBB may KNOW the customer's price is not decided by whether UBB
+    COLLECTS it — so the regime decides the reason for every tenant, and the
+    value that named the posture was removed with its last producer.
 
-    This class builds exactly that tenant: the Charge exists, the bill never
-    will, and the postings say which of those two facts is the reason. Its
-    paired control is `test_the_reason_is_the_one_slice_4_coined_for_this_case`
-    in the class above, which is the identical fixture in the BILLING posture
-    and records the other value — a rule that ignored the posture would satisfy
-    that one and fail here, and a rule that ignored the regime would satisfy
-    neither. Built as two classes rather than one parametrized fixture so a
-    reader never holds two postures in mind at once, which is the shape
-    `test_an_agreed_price_is_pinned_before_the_work_runs.py` settled.
+    This class builds exactly that tenant: a metering-only tenant whose
+    delivered fixed-price work produces a Charge, and whose postings say the
+    revenue sits on it. Its paired control is
+    `test_the_reason_is_the_one_slice_4_coined_for_this_case` in the class
+    above — the identical fixture in the BILLING posture, recording the same
+    value — so a rule that read the posture again would split the two.
     """
 
     PRODUCTS = ["metering"]
     BILLING_MODE = None
 
-    def test_the_posture_reason_is_recorded_and_not_the_regimes(self):
+    def test_the_regimes_reason_is_recorded_whatever_the_posture(self):
         started = self._priced_work()
 
         posting = self._a_metered_posting(started)
 
         assert posting.pricing_status == PRICING_STATUS_NOT_APPLICABLE
         assert (posting.not_applicable_reason
-                == NOT_APPLICABLE_REASON_TENANT_NOT_BILLING)
-        assert (posting.not_applicable_reason
-                != NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
+                == NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
+        receipt = self._receipt_of(posting)
+        assert (receipt["pricing"]["detail"]["not_applicable_reason"]
+                == NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
 
-    def test_the_charge_the_more_specific_reason_would_point_at_does_exist(
-            self):
-        """⚠ THE HALF THAT MAKES THIS A TIE RATHER THAN A ONE-SIDED CASE.
-
-        Without this the class proves only that a metering-only tenant records
-        the posture reason, which a rule that never looked at the regime would
-        also satisfy. What makes the ruling a RULING is that both facts are true
-        at once and the more specific one is declined — so the Charge the other
-        reason would send a reader to has to be shown to be there.
+    def test_the_charge_the_reason_points_at_does_exist(self):
+        """The half that makes the reason true rather than merely uniform: the
+        revenue `fixed_task_pricing` sends a reader to is really there, on the
+        Charge's posting, for a tenant UBB does not bill.
         """
         started = self._priced_work()
         self._a_metered_posting(started)

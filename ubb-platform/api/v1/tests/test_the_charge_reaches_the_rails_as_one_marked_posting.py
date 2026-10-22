@@ -247,7 +247,7 @@ class TestAChargeProjectsOntoExactlyOnePosting(ProjectionTestBase):
         DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
                                  slot="grouping_field_1", scope="task")
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
-                               amount_micros=THE_AGREED_PRICE)
+                               agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(**declared_grouping_values(
             {A_GROUPING_KEY: A_GROUPING_VALUE}))
         metered = self._a_metered_sale(started)

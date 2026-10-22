@@ -39,7 +39,8 @@ from django.test import Client, TestCase
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_ADD, NAMES_ONE_QUANTITY_CHECK, PricingBookPublish, Rate)
+    CHANGE_ADD, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, PricingBookPublish,
+    Rate)
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     cost_book, cost_rate_in_default_book, reconcile_the_rate_table_with,
@@ -362,7 +363,7 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         """
         return self._post(
             f"/api/v1/metering/pricing/books/{self.book}/publishes",
-            {"changes": [{"kind": CHANGE_ADD,
+            {"changes": [{"line": LINE_RATE, "kind": CHANGE_ADD,
                           "measurement_key": measurement_key,
                           "provider": "openai",
                           "rate_per_unit_micros": 5}]})
