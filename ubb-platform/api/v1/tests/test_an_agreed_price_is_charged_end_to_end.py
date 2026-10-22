@@ -12,11 +12,12 @@ The forward-dating cases are here too, because what a start pins is the
 seam's middle: a start before a dated reprice keeps the old price, a start
 after it takes the new one, a run in flight across a reprice keeps its pin,
 and a retired price refuses a billing tenant's start and leaves a metering-only
-tenant's unpriced.
+tenant's unpriced. So is the one write to a table, said at the write: an
+archived Plan, which no route makes while anyone is on the Plan.
 
 That the Charge's adjustment and its posting are one fact — never separately
 durable, never applied twice — is pinned in
-`apps/metering/pricing/tests/test_a_charge_reaches_its_units_billed_total_once.py`.
+`api/v1/tests/test_a_charge_reaches_its_units_billed_total_once.py`.
 """
 import uuid
 from datetime import timedelta
@@ -25,6 +26,7 @@ import pytest
 from django.utils import timezone
 
 from api.v1.tests._helpers import PROVIDER, BlueprintRoutes, a_tenant
+from apps.platform.plans.models import Plan
 from core.vocabulary import USAGE_EVENT_KIND_TASK_CHARGE
 
 SOLD_WHOLE = "transcode"
@@ -185,6 +187,34 @@ class TestTheSeamForATenantThatBillsThroughUbb(_TheSeam):
 
         assert response.status_code == 422, response.content
         assert response.json()["code"] == "fixed_task_price_unresolved"
+
+    def test_an_archived_plans_price_reaches_neither_a_start_nor_readiness(
+            self):
+        """Readiness and the start enumerate the same books (owner's review
+        of #615). A customer on a Plan is priced from its book — the control
+        — and once the Plan is archived neither the start nor the Blueprint
+        finds a price there."""
+        self._publish_agreed_price(SOLD_WHOLE, PRICE,
+                                   book=self._a_plans_book("pro"))
+        self._call("post", "/api/v1/customers/acme/plan", {"plan_key": "pro"})
+        assert self._start()["agreed_price_micros"] == PRICE
+        assert self._resolve(task_type=SOLD_WHOLE, event_types=[EVENT])[
+            "readiness"] == "complete"
+
+        # Written to the row, as the selection's own pin does
+        # (`apps/metering/pricing/tests/test_a_plan_names_the_book_it_prices_
+        # from.py`): the route refuses to archive a Plan anyone is on, so this
+        # holds a defence rather than a path a tenant can walk.
+        Plan.objects.filter(tenant=self.tenant, key="pro").update(
+            archived_at=timezone.now())
+
+        refused = self._send("post", "/api/v1/tasks", {
+            "customer_id": self.customer, "task_type": SOLD_WHOLE,
+            "idempotency_key": "after-the-archival"})
+        assert refused.status_code == 422, refused.content
+        assert refused.json()["code"] == "fixed_task_price_unresolved"
+        assert self._resolve(task_type=SOLD_WHOLE, event_types=[EVENT])[
+            "readiness"] == "blocked"
 
 
 @pytest.mark.django_db

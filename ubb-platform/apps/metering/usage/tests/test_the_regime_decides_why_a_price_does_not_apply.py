@@ -14,7 +14,13 @@ transaction. What this module holds:
   refuses a reason rewrite through every door — the exception was one UPDATE;
 * the removed value cannot be written again: the table's closed set refuses it;
 * a sealed Pricing Receipt that holds it is not rewritten and still reads,
-  through the event route, as the history it is.
+  through the event route, as the history it is — at EVERY receipt schema that
+  could hold it (owner's review of #615). The reason entered a receipt's
+  `pricing.detail` with #351, which wrote schema 1 and descends from the commit
+  that introduced versioning (#349); #603 moved the writer to schema 2 while
+  the producer still lived. So schemas 1 and 2 can hold it. Schema 0 cannot:
+  a legacy receipt predates both the versioning and the value, and no fixture
+  is invented for it.
 
 ⚠ THE MIGRATION IS RUN THROUGH DJANGO'S OWN EXECUTOR, backwards to `0046` and
 forwards again, inside the test's transaction: PostgreSQL runs the DDL
@@ -33,7 +39,10 @@ from django.db.migrations.executor import MigrationExecutor
 
 from api.v1.tests.test_the_postings_under_an_agreed_price_are_not_applicable import (
     AgreedPriceTestBase)
-from apps.metering.pricing.receipts import validate_receipt
+from apps.metering.pricing.receipts import (
+    CANONICAL_QUANTITY_SCHEMA_VERSION, QUANTITY_KEY, SECTIONED_SCHEMA_VERSION,
+    SECTIONS, pricing_mode_of, recorded_quantities, schema_version_of,
+    subject_type_of, validate_receipt)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import DOORS, committed_posting
 from core.transitions import RESOLVE_ONCE
@@ -68,14 +77,34 @@ def _the_trigger_is_enabled():
     return state == "O"
 
 
-def _as_the_old_producer_wrote(posting):
+def _in_schema_one(receipt):
+    """The same receipt in the shape #351 wrote it in: schema 1, whose
+    components hold each quantity as a whole NUMBER where schema 2 holds its
+    canonical text — and nothing else between them differs."""
+    one = copy.deepcopy(receipt)
+    one["receipt_schema_version"] = SECTIONED_SCHEMA_VERSION
+    for section in SECTIONS:
+        for component in one[section]["detail"].get("components", []):
+            component[QUANTITY_KEY] = int(component[QUANTITY_KEY])
+    costing = one["costing"]["detail"]
+    for held in ("uncosted_quantities", "undeclared_quantities"):
+        if held in costing:
+            costing[held] = {key: int(value)
+                             for key, value in costing[held].items()}
+    return one
+
+
+def _as_the_old_producer_wrote(posting, schema=CANONICAL_QUANTITY_SCHEMA_VERSION):
     """A copy of `posting` as the fixed-price branch wrote it before #553: the
-    posture reason on the column AND in its sealed receipt. Inserted, which is
-    the only write the price trigger never sees."""
+    posture reason on the column AND in its sealed receipt, in the receipt
+    `schema` it was written in. Inserted, which is the only write the price
+    trigger never sees."""
     planted = uuid.uuid4()
     receipt = copy.deepcopy(getattr(posting, Posting.RECEIPT_COLUMN))
     receipt["subject_id"] = str(planted)
     receipt["pricing"]["detail"]["not_applicable_reason"] = REMOVED
+    if schema == SECTIONED_SCHEMA_VERSION:
+        receipt = _in_schema_one(receipt)
     columns = {field.attname: getattr(posting, field.attname)
                for field in Posting._meta.concrete_fields
                if field.attname not in ("id", "created_at", "updated_at",
@@ -96,12 +125,16 @@ class TestTheRemovedReasonIsRewrittenOnceUnderALiftedTrigger(
     PRODUCTS = ["metering"]
     BILLING_MODE = None
 
-    def _a_historical_posting(self):
+    def _a_historical_posting(self, schema=CANONICAL_QUANTITY_SCHEMA_VERSION):
         """Back to `0046`, where the value was legal; a posting the old producer
-        would have written; then `0047`, for real."""
-        recorded = self._a_metered_posting(self._priced_work())
+        would have written, its receipt in `schema`; then `0047`, for real.
+        The posting it was copied from is kept, as one written NOW. Its cost
+        is RESOLVED from a declared quantity, so its receipt holds that
+        quantity in a component — the field the two shapes spell differently,
+        and so the one a reader of either has to get right."""
+        self.recorded = self._a_finely_measured_posting(self._priced_work())
         _migrate_to(BEFORE_IT)
-        historical = _as_the_old_producer_wrote(recorded)
+        historical = _as_the_old_producer_wrote(self.recorded, schema)
         assert historical.not_applicable_reason == REMOVED
         _migrate_to(REWRITTEN_BY)
         historical.refresh_from_db()
@@ -136,11 +169,13 @@ class TestTheRemovedReasonIsRewrittenOnceUnderALiftedTrigger(
             assert (historical.not_applicable_reason
                     == NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
 
-    def test_a_sealed_receipt_keeps_the_value_and_still_reads(self):
+    def _reads_as_history(self, schema):
         """RESOLVE_ONCE: the receipt is not rewritten, and nothing reading it
         checks its detail against today's value set — so it reads as history,
         beside a column that says the reason that was always true."""
-        historical = self._a_historical_posting()
+        historical = self._a_historical_posting(schema)
+        sealed = getattr(historical, Posting.RECEIPT_COLUMN)
+        assert schema_version_of(sealed) == schema
 
         response = self.client.get(f"/api/v1/metering/usage/{historical.id}",
                                    **self._auth())
@@ -149,9 +184,34 @@ class TestTheRemovedReasonIsRewrittenOnceUnderALiftedTrigger(
         body = response.json()
         assert body["not_applicable_reason"] == \
             NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
+        # Returned exactly as it was sealed: the historical text unchanged.
+        assert body["pricing_receipt"] == sealed
         assert (body["pricing_receipt"]["pricing"]["detail"]
                 ["not_applicable_reason"]) == REMOVED
-        validate_receipt(getattr(historical, Posting.RECEIPT_COLUMN))
+        # Every reader that dispatches on the shape reads it — the same bag of
+        # quantities as the receipt it was copied from, whichever shape.
+        now = getattr(self.recorded, Posting.RECEIPT_COLUMN)
+        # Not vacuous: the receipt holds a quantity for the readers to read.
+        assert recorded_quantities(now)
+        assert recorded_quantities(sealed) == recorded_quantities(now)
+        assert pricing_mode_of(sealed) == pricing_mode_of(now)
+        assert subject_type_of(sealed) == subject_type_of(now)
+        # And nothing new produces the value: the receipt written today says
+        # the regime's reason.
+        assert now["pricing"]["detail"]["not_applicable_reason"] == \
+            NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
+        return sealed
+
+    def test_a_sealed_schema_two_receipt_keeps_the_value_and_still_reads(self):
+        sealed = self._reads_as_history(CANONICAL_QUANTITY_SCHEMA_VERSION)
+        # The writer's own check is about the shape, never this value.
+        validate_receipt(sealed)
+
+    def test_a_sealed_schema_one_receipt_keeps_the_value_and_still_reads(self):
+        """`validate_receipt` is the WRITER's check, of the one shape written
+        today, so it is not asked of a schema-1 receipt; the readers above,
+        which know every readable shape, are what read it."""
+        self._reads_as_history(SECTIONED_SCHEMA_VERSION)
 
 
 @pytest.mark.django_db

@@ -3592,6 +3592,52 @@
         "title": "InheritedRuleOut",
         "type": "object"
       },
+      "IntegrationBlueprintAgreedPrice": {
+        "description": "What one delivered unit of the selected kind of work sells for where a\ncustomer has no price of their own or from their Plan: the agreed price\nyour default Pricing Book holds, and where it came from.\n\n`pricing_book_key` is that book, `book_version_from` the version its\npublish made it, and the line is in force from `valid_from` until\n`valid_to` (null while open). Shown, never sent: no call carries it, so\nno generated file holds it.",
+        "properties": {
+          "agreed_price_micros": {
+            "title": "Agreed Price Micros",
+            "type": "integer"
+          },
+          "book_version_from": {
+            "title": "Book Version From",
+            "type": "integer"
+          },
+          "pricing_book_key": {
+            "title": "Pricing Book Key",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          },
+          "valid_from": {
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          }
+        },
+        "required": [
+          "task_type",
+          "agreed_price_micros",
+          "pricing_book_key",
+          "book_version_from",
+          "valid_from",
+          "valid_to"
+        ],
+        "title": "IntegrationBlueprintAgreedPrice",
+        "type": "object"
+      },
       "IntegrationBlueprintArgument": {
         "description": "One token of a call, and where its value comes from.\n\n`name` says where the token sits, as one to three segments joined by\ndots. `<field>` is a field of the operation's request, or the credential\n`api_key`; for a field holding an object of declared keys\n(`grouping_fields`, `measurements`) it is one key of that object, carried\nas the literal. `<field>.<key>` is the value under a declared key.\n`<field>.<element>` and `<field>.<key>.<element>` are declared facts\nabout that value \u2014 `task_type.pricing_mode`,\n`measurements.<key>.source_path`. A dot or a percent sign inside a\ndeclared key is percent-encoded in a name (`.` as `%2E`, `%` as `%25`),\nso a name always splits on its dots.\n\nYou do not need the encoding to pair tokens: a key's own token carries the\nkey unencoded in `value`, and every token named under that key follows it\ndirectly in `arguments`. A declared fact is `platform_known` like any\nliteral \u2014 resolved for you, never something to ask the developer for.\n\nExactly one of `value`, `parameter_name` and `environment_variable` is\nset, by `binding_class` \u2014 except a `platform_known` token with\n`configured` false, which has no value yet.",
         "properties": {
@@ -3697,7 +3743,7 @@
         "type": "object"
       },
       "IntegrationBlueprintDiagnostic": {
-        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping and a Grouping Field, and null for a\nkind of work.",
+        "description": "Something that lowers readiness, or advice that does not.\n\nCoded and addressed, with no message: `code` says what is true, and\n`object_kind`, `key` and `field` say of which declaration. `key` is null\nwhere nothing was selected, and is `<event type>:<code>` for a\nMeasurement. `remediation_request` is set for an Event Type, a\nMeasurement, a reported-cost mapping, a Grouping Field and an agreed\nprice, and null for a kind of work.",
         "properties": {
           "code": {
             "enum": [
@@ -3842,7 +3888,7 @@
         "type": "object"
       },
       "IntegrationBlueprintRemediationRequest": {
-        "description": "The API request that fixes a diagnostic, ready to copy.\n\nUBB never sends it. It names the object by its key and carries nothing\nelse of yours: the key is in `route`, or in `body` for an operation that\ndeclares a new object, and every other field of `body` is left empty.\n`body` is null for an operation that takes none.",
+        "description": "The API request that fixes a diagnostic, ready to copy.\n\nUBB never sends it. It names the object by its key and carries nothing\nelse of yours: the key is in `route`, or in `body` for an operation that\ndeclares a new object, and every other field of `body` is left empty.\n`body` is null for an operation that takes none.\n\nAn agreed price's request is the one that names a book: it publishes the\nprice into your default Pricing Book, which `route` names by its id, with\nthe change filled in but its amount; or, where you have no default\nPricing Book, it declares one, with `is_default` set.",
         "properties": {
           "body": {
             "anyOf": [
@@ -7849,8 +7895,18 @@
         "type": "object"
       },
       "ResolvedIntegrationBlueprint": {
-        "description": "What a tenant's integration code must mean, resolved from what the\ntenant has declared.\n\n`schema_version` is the shape of this document. `renderer_contract_version`\nis the renderer contract it was resolved for. `sdk_major_version` is set\nfor the `python_sdk` target and null otherwise.\n\n`configuration_fingerprint` identifies the stored snapshot of exactly this\nresolution \u2014 `sha256:` and 64 hexadecimal characters \u2014 and is null for a\ndraft preview. It is the identity of the resolved contract: the selection,\nthis document's calls, verdicts and diagnostic codes, and the\nconfiguration they were resolved from. A diagnostic's\n`remediation_request` is not part of it. `readiness` is the least ready of\n`calls`.",
+        "description": "What a tenant's integration code must mean, resolved from what the\ntenant has declared.\n\n`schema_version` is the shape of this document. `renderer_contract_version`\nis the renderer contract it was resolved for. `sdk_major_version` is set\nfor the `python_sdk` target and null otherwise.\n\n`configuration_fingerprint` identifies the stored snapshot of exactly this\nresolution \u2014 `sha256:` and 64 hexadecimal characters \u2014 and is null for a\ndraft preview. It is the identity of the resolved contract: the selection,\nthis document's calls, verdicts and diagnostic codes, and the\nconfiguration they were resolved from. A diagnostic's\n`remediation_request` is not part of it. `readiness` is the least ready of\n`calls`.\n\n`agreed_price` is shown beside the calls for a kind of work sold at one\nagreed price, and is null for any other kind and where your default\nPricing Book holds no price for it (a diagnostic then says so). It is read\noff the configuration the fingerprint covers, and it is not a call's: a\ngenerated file never holds it.",
         "properties": {
+          "agreed_price": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IntegrationBlueprintAgreedPrice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "calls": {
             "items": {
               "$ref": "#/components/schemas/IntegrationBlueprintCall"
@@ -7921,7 +7977,8 @@
           "target",
           "readiness",
           "calls",
-          "diagnostics"
+          "diagnostics",
+          "agreed_price"
         ],
         "title": "ResolvedIntegrationBlueprint",
         "type": "object"

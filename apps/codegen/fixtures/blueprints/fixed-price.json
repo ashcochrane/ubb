@@ -3,7 +3,7 @@
   "renderer_contract_version": 3,
   "target": "python_sdk",
   "sdk_major_version": 3,
-  "configuration_fingerprint": "sha256:219b603dc93f1f3bb9d8dc3d4f04acf6ac00ccd3c119f6db4bf185bc76faf78a",
+  "configuration_fingerprint": "sha256:c9dd4489e253ca0e3cbb7003f8b4a42de8922f5413fe2b3d21383184188ec531",
   "readiness": "complete",
   "calls": [
     {
@@ -262,7 +262,17 @@
       "object_kind": "agreed_price",
       "key": "report",
       "field": "agreed_price_micros",
-      "remediation_request": null
+      "remediation_request": {
+        "method": "POST",
+        "route": "/api/v1/metering/pricing/pricing-books",
+        "operation_id": "api_v1_metering_endpoints_declare_pricing_book",
+        "body": {
+          "key": null,
+          "name": null,
+          "is_default": true
+        }
+      }
     }
-  ]
+  ],
+  "agreed_price": null
 }

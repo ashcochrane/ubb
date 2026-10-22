@@ -55,6 +55,28 @@ NO_REVENUE_FIGURE = "default_agreed_price_missing_no_revenue_figure"
 
 THE_SAMPLE = {"input_tokens": "100"}
 
+#: What every agreed-price diagnostic offers where the tenant has NO default
+#: Pricing Book: the declaration of one — there is no book to publish into
+#: until a default exists (owner's review of #615, Seam D).
+DECLARE_A_DEFAULT_BOOK = {
+    "method": "POST", "route": "/api/v1/metering/pricing/pricing-books",
+    "operation_id": "api_v1_metering_endpoints_declare_pricing_book",
+    "body": {"key": None, "name": None, "is_default": True}}
+
+
+def publishing_into(book):
+    """What every agreed-price diagnostic offers where the tenant's default
+    Pricing Book is `book`: the draft that adds the price there, its amount
+    left to fill in."""
+    return {
+        "method": "POST",
+        "route": f"/api/v1/metering/pricing/books/{book['id']}/publishes",
+        "operation_id": "api_v1_metering_endpoints_declare_book_publish",
+        "body": {"changes": [{"line": "agreed_price", "kind": "add",
+                              "task_type": SOLD_WHOLE,
+                              "agreed_price_micros": None}],
+                 "effective_at": None}}
+
 
 class _Routes(BlueprintRoutes):
     """A tenant in the posture `BILLS` names, with one kind of work sold at
@@ -85,10 +107,15 @@ class _Routes(BlueprintRoutes):
 
     def _about_the_price(self, blueprint):
         """Each diagnostic reported over the agreed price, as
-        `(severity, code, object, key, field, request)`."""
+        `(severity, code, object, key, field)`."""
         return [(d["severity"], d["code"], d["object_kind"], d["key"],
-                 d["field"], d["remediation_request"])
+                 d["field"])
                 for d in blueprint["diagnostics"]
+                if d["object_kind"] == "agreed_price"]
+
+    def _requests(self, blueprint):
+        """The request each of those diagnostics offers, in the same order."""
+        return [d["remediation_request"] for d in blueprint["diagnostics"]
                 if d["object_kind"] == "agreed_price"]
 
     def _stored(self, blueprint):
@@ -146,41 +173,49 @@ class TestATenantThatBillsIsBlockedOnlyWhereNoBookHoldsAPrice(_Routes):
 
         assert blueprint["readiness"] == "blocked"
         assert self._the_start(blueprint)["readiness"] == "blocked"
-        # The blocking diagnostic names the object and the field, and links
-        # to the console's Pricing Books rather than offering a request: the
-        # Pricing Book editor is where an agreed price is declared (Seam D).
+        # The blocking diagnostic names the object and the field. With no
+        # default Pricing Book there is no editor to open, so each offers the
+        # request that declares one (Seam D, owner's review of #615).
+        assert self._requests(blueprint) == [DECLARE_A_DEFAULT_BOOK] * 2
         assert self._about_the_price(blueprint) == [
             ("blocking", MISSING, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None),
+             "agreed_price_micros"),
             ("advisory", REFUSED_AT_START, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None)]
+             "agreed_price_micros")]
         # Nothing else lowers it: the start is blocked by the price alone.
         assert [d["code"] for d in blueprint["diagnostics"]
                 if d["severity"] == "blocking"] == [MISSING]
 
     def test_a_price_only_in_a_customers_own_book_completes_it_with_the_advisory(
             self):
-        self._a_price_in_a_customers_own_book()
+        _, own_book = self._a_price_in_a_customers_own_book()
 
         blueprint = self._resolved()
 
         assert blueprint["readiness"] == "complete"
         assert self._about_the_price(blueprint) == [
             ("advisory", REFUSED_AT_START, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None)]
+             "agreed_price_micros")]
+        # Never the customer's book as the fix, though it holds a price.
+        assert self._requests(blueprint) == [DECLARE_A_DEFAULT_BOOK]
+        assert own_book["id"] not in json.dumps(blueprint)
+        assert blueprint["agreed_price"] is None
 
     def test_a_price_only_in_a_plans_book_completes_it_though_nobody_is_on_the_plan(
             self):
         """A Plan's book counts whether or not any customer is on the Plan:
         Plan assignments are never read."""
-        self._a_price_in_a_plans_book()
+        plans_book = self._a_price_in_a_plans_book()
 
         blueprint = self._resolved()
 
         assert blueprint["readiness"] == "complete"
         assert self._about_the_price(blueprint) == [
             ("advisory", REFUSED_AT_START, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None)]
+             "agreed_price_micros")]
+        # Never the Plan's book as the fix either.
+        assert self._requests(blueprint) == [DECLARE_A_DEFAULT_BOOK]
+        assert plans_book["id"] not in json.dumps(blueprint)
 
     def test_a_price_only_in_an_archived_plans_book_is_no_price(self):
         """An archived Plan prices nobody — a start never reaches its book —
@@ -197,6 +232,20 @@ class TestATenantThatBillsIsBlockedOnlyWhereNoBookHoldsAPrice(_Routes):
 
         assert blueprint["readiness"] == "complete"
         assert self._about_the_price(blueprint) == []
+        # The Blueprint SHOWS it, beside its calls (owner's review of #615) —
+        # read back by its fingerprint exactly as it was answered.
+        line = self._the_line_published(published)
+        assert blueprint["agreed_price"] == {
+            "task_type": SOLD_WHOLE, "agreed_price_micros": THE_DEFAULT_PRICE,
+            "pricing_book_key": "catalogue",
+            "book_version_from": self._a_pricing_book()["version"],
+            "valid_from": line["valid_from"], "valid_to": None}
+        read_back = self._call(
+            "get", f"/api/v1/code-builder/blueprints/"
+                   f"{blueprint['configuration_fingerprint']}")
+        assert read_back["agreed_price"] == blueprint["agreed_price"]
+        # And no call carries it: there is nothing for a renderer to write.
+        assert str(THE_DEFAULT_PRICE) not in json.dumps(blueprint["calls"])
         # The price and where it came from are the DEFAULT book's.
         # Its provenance is the book, the version the publish made it and the
         # instant it opened — as the book and its agreed-prices read say.
@@ -239,6 +288,39 @@ class TestATenantThatBillsIsBlockedOnlyWhereNoBookHoldsAPrice(_Routes):
 
         assert self._resolved()["readiness"] == "blocked"
 
+    def test_a_default_book_holding_no_price_is_where_every_fix_publishes(
+            self):
+        """Seam D: where the tenant has a default Pricing Book, every
+        diagnostic offers the publish into THAT book — the one a console
+        opens the editor of — even where a customer's own book holds a
+        price."""
+        book = self._a_pricing_book()
+        _, own_book = self._a_price_in_a_customers_own_book()
+
+        blueprint = self._resolved()
+
+        assert self._requests(blueprint) == [publishing_into(book)]
+        assert own_book["id"] not in json.dumps(blueprint)
+
+    def test_the_request_offered_is_the_fix(self):
+        """Sent as offered, with the amount filled in and published, it is
+        the price the Blueprint was missing: complete, nothing reported."""
+        book = self._a_pricing_book()
+        (offered, _) = self._requests(self._resolved())
+        body = offered["body"]
+        body["changes"][0]["agreed_price_micros"] = THE_DEFAULT_PRICE
+
+        draft = self._call("post", offered["route"],
+                           {name: value for name, value in body.items()
+                            if value is not None})
+        self._call("post", f"/api/v1/metering/pricing/books/{book['id']}/"
+                           f"publishes/{draft['id']}/publish")
+
+        fixed = self._resolved()
+        assert fixed["readiness"] == "complete"
+        assert self._about_the_price(fixed) == []
+        assert fixed["agreed_price"]["agreed_price_micros"] == THE_DEFAULT_PRICE
+
     def _the_line_published(self, published):
         (line_id,) = published["opened_agreed_price_ids"]
         book = self._a_pricing_book()
@@ -263,10 +345,10 @@ class TestATenantThatMetersWithoutBillingIsNeverBlockedByAPrice(_Routes):
         assert blueprint["readiness"] == "complete"
         assert self._about_the_price(blueprint) == [
             ("advisory", NO_REVENUE_FIGURE, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None)]
-        assert self._kept(blueprint) == {
-            "has_any_effective_runtime_agreed_price": False,
-            "default_book_agreed_price": None}
+             "agreed_price_micros")]
+        assert self._requests(blueprint) == [DECLARE_A_DEFAULT_BOOK]
+        # No aggregate: it decides nothing for a tenant that meters only.
+        assert self._kept(blueprint) == {"default_book_agreed_price": None}
 
     def test_a_price_only_in_a_customers_own_book_keeps_the_same_advisory(self):
         """Symmetric with billing: the advisory is about the DEFAULT path, so
@@ -278,9 +360,8 @@ class TestATenantThatMetersWithoutBillingIsNeverBlockedByAPrice(_Routes):
         assert blueprint["readiness"] == "complete"
         assert self._about_the_price(blueprint) == [
             ("advisory", NO_REVENUE_FIGURE, "agreed_price", SOLD_WHOLE,
-             "agreed_price_micros", None)]
-        assert self._kept(blueprint)[
-            "has_any_effective_runtime_agreed_price"] is True
+             "agreed_price_micros")]
+        assert self._kept(blueprint) == {"default_book_agreed_price": None}
 
     def test_a_price_only_in_a_plans_book_keeps_the_same_advisory(self):
         self._a_plan_on_a_tenant_that_no_longer_bills()
@@ -290,8 +371,7 @@ class TestATenantThatMetersWithoutBillingIsNeverBlockedByAPrice(_Routes):
         assert blueprint["readiness"] == "complete"
         assert [code for _, code, *_ in self._about_the_price(blueprint)] == [
             NO_REVENUE_FIGURE]
-        assert self._kept(blueprint)[
-            "has_any_effective_runtime_agreed_price"] is True
+        assert self._kept(blueprint) == {"default_book_agreed_price": None}
 
     def test_a_price_in_the_default_book_is_complete_with_no_advisory(self):
         self._a_price_in_the_default_book()
@@ -302,6 +382,8 @@ class TestATenantThatMetersWithoutBillingIsNeverBlockedByAPrice(_Routes):
         assert self._about_the_price(blueprint) == []
         assert self._kept(blueprint)["default_book_agreed_price"][
             "agreed_price_micros"] == THE_DEFAULT_PRICE
+        assert blueprint["agreed_price"]["agreed_price_micros"] == (
+            THE_DEFAULT_PRICE)
 
 
 # ---------------------------------------------------------------------------
@@ -397,6 +479,64 @@ class TestTheFingerprintMovesWithTheOutcomeAndTheDefaultPriceOnly(_Routes):
                                    kind="reprice")
 
         assert self._fingerprint() != before
+
+
+@pytest.mark.django_db
+class TestAMeteringOnlyFingerprintMovesWithTheDefaultPriceAlone(_Routes):
+    """For a tenant that meters without billing the Blueprint is complete
+    with no price and with one, and the advisory turns on the default book
+    alone — so only the default book's price moves the fingerprint (owner's
+    review of #615): a customer's or a Plan's price, first, repriced or
+    retired, changes nothing a generated file or Verify would do."""
+
+    BILLS = False
+
+    def _fingerprint(self):
+        return self._resolved()["configuration_fingerprint"]
+
+    def test_the_first_price_in_a_customers_own_book_leaves_it(self):
+        before = self._fingerprint()
+
+        self._a_price_in_a_customers_own_book()
+
+        assert self._fingerprint() == before
+
+    def test_the_first_price_in_a_plans_book_leaves_it(self):
+        before = self._fingerprint()
+
+        self._a_plan_on_a_tenant_that_no_longer_bills()
+
+        assert self._fingerprint() == before
+
+    def test_repricing_a_non_default_price_leaves_it(self):
+        _, book = self._a_price_in_a_customers_own_book()
+        before = self._fingerprint()
+
+        self._publish_agreed_price(SOLD_WHOLE, A_CUSTOMERS_PRICE + 1,
+                                   book=book, kind="reprice")
+
+        assert self._fingerprint() == before
+
+    def test_retiring_the_last_non_default_price_leaves_it(self):
+        none_anywhere = self._fingerprint()
+        _, book = self._a_price_in_a_customers_own_book()
+
+        self._publish_agreed_price(SOLD_WHOLE, None, book=book, kind="retire")
+
+        assert self._fingerprint() == none_anywhere
+
+    def test_adding_changing_and_removing_the_default_price_moves_it(self):
+        none_anywhere = self._fingerprint()
+        self._a_price_in_the_default_book()
+        added = self._fingerprint()
+        self._publish_agreed_price(SOLD_WHOLE, THE_DEFAULT_PRICE + 1,
+                                   kind="reprice")
+        changed = self._fingerprint()
+        self._publish_agreed_price(SOLD_WHOLE, None, kind="retire")
+
+        assert len({none_anywhere, added, changed}) == 3
+        # Removed, it is the Blueprint with no price again.
+        assert self._fingerprint() == none_anywhere
 
 
 # ---------------------------------------------------------------------------

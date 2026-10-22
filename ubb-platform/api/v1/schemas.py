@@ -4866,6 +4866,11 @@ class IntegrationBlueprintRemediationRequest(Schema):
     else of yours: the key is in `route`, or in `body` for an operation that
     declares a new object, and every other field of `body` is left empty.
     `body` is null for an operation that takes none.
+
+    An agreed price's request is the one that names a book: it publishes the
+    price into your default Pricing Book, which `route` names by its id, with
+    the change filled in but its amount; or, where you have no default
+    Pricing Book, it declares one, with `is_default` set.
     """
     method: str
     route: str
@@ -4880,8 +4885,8 @@ class IntegrationBlueprintDiagnostic(Schema):
     `object_kind`, `key` and `field` say of which declaration. `key` is null
     where nothing was selected, and is `<event type>:<code>` for a
     Measurement. `remediation_request` is set for an Event Type, a
-    Measurement, a reported-cost mapping and a Grouping Field, and null for a
-    kind of work.
+    Measurement, a reported-cost mapping, a Grouping Field and an agreed
+    price, and null for a kind of work.
     """
     severity: DiagnosticSeverity
     code: DiagnosticCode
@@ -4889,6 +4894,25 @@ class IntegrationBlueprintDiagnostic(Schema):
     key: Optional[str] = None
     field: Optional[str] = None
     remediation_request: Optional[IntegrationBlueprintRemediationRequest] = None
+
+
+class IntegrationBlueprintAgreedPrice(Schema):
+    """What one delivered unit of the selected kind of work sells for where a
+    customer has no price of their own or from their Plan: the agreed price
+    your default Pricing Book holds, and where it came from.
+
+    `pricing_book_key` is that book, `book_version_from` the version its
+    publish made it, and the line is in force from `valid_from` until
+    `valid_to` (null while open). Shown, never sent: no call carries it, so
+    no generated file holds it.
+    """
+    task_type: str
+    agreed_price_micros: int
+    pricing_book_key: str
+    book_version_from: int
+    valid_from: str
+    # Required and nullable (#569's review): null is "still open".
+    valid_to: Optional[str]
 
 
 class ResolvedIntegrationBlueprint(Schema):
@@ -4906,6 +4930,12 @@ class ResolvedIntegrationBlueprint(Schema):
     configuration they were resolved from. A diagnostic's
     `remediation_request` is not part of it. `readiness` is the least ready of
     `calls`.
+
+    `agreed_price` is shown beside the calls for a kind of work sold at one
+    agreed price, and is null for any other kind and where your default
+    Pricing Book holds no price for it (a diagnostic then says so). It is read
+    off the configuration the fingerprint covers, and it is not a call's: a
+    generated file never holds it.
     """
     schema_version: int
     renderer_contract_version: int
@@ -4915,6 +4945,9 @@ class ResolvedIntegrationBlueprint(Schema):
     readiness: IntegrationReadiness
     calls: List[IntegrationBlueprintCall]
     diagnostics: List[IntegrationBlueprintDiagnostic]
+    # Required and nullable (#569's review): null is "no default agreed price
+    # to show", never an absent key.
+    agreed_price: Optional[IntegrationBlueprintAgreedPrice]
 
 
 class IntegrationBlueprintVerificationRecordIn(Schema):

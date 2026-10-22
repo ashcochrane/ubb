@@ -274,10 +274,7 @@ describe("where a fact can be changed", () => {
     const calculated = aCall(known("event_type", "e"), known("event_type.costing_method", "calculated"));
     const reported = aCall(known("event_type", "e"), known("event_type.costing_method", "reported"));
 
-    expect(calculated.arguments[1] && screenFor(calculated.arguments[1], placesOf(calculated)[1] ?? { kind: "field", field: "" })).toEqual({
-      to: "/pricing",
-      owns: "cost_rates",
-    });
+    expect(calculated.arguments[1] && screenFor(calculated.arguments[1], placesOf(calculated)[1] ?? { kind: "field", field: "" })).toEqual({ to: "/pricing" });
     expect(reported.arguments[1] && screenFor(reported.arguments[1], placesOf(reported)[1] ?? { kind: "field", field: "" })).toBeNull();
   });
 
@@ -291,7 +288,7 @@ describe("where a fact can be changed", () => {
       return place ? [screenFor(argument, place)] : [];
     });
 
-    expect(screens.filter((screen) => screen !== null)).toEqual([{ to: "/pricing", owns: "cost_rates" }]);
+    expect(screens.filter((screen) => screen !== null)).toEqual([{ to: "/pricing" }]);
   });
 });
 
@@ -344,10 +341,10 @@ describe("what answers a diagnostic", () => {
     });
   });
 
-  it("points a missing agreed price at the Pricing Books, which carry no request (#586)", async () => {
-    // A billing tenant with no price in any book: blocked, and advised. Both
-    // are about the agreed price, and both are answered on Pricing — where a
-    // Pricing Book's editor declares one — never by a request to copy.
+  it("offers the declaration of a default Pricing Book where the tenant has none (#586)", async () => {
+    // Blocked and advised, for a tenant that bills and one that meters only.
+    // With no default book there is no editor to open, so each offers the
+    // request that declares one (owner's review of #615).
     const unpriced = await loadBlueprintFixture("fixed-price-unpriced");
     const metersOnly = await loadBlueprintFixture("fixed-price");
     const diagnostics = [...unpriced.diagnostics, ...metersOnly.diagnostics];
@@ -358,10 +355,30 @@ describe("what answers a diagnostic", () => {
       "default_agreed_price_missing_no_revenue_figure",
     ]);
     for (const diagnostic of diagnostics) {
-      expect(diagnostic.remediation_request ?? null).toBeNull();
-      expect(fixFor(diagnostic)).toEqual({
+      const request = diagnostic.remediation_request ?? null;
+      expect(request?.route).toBe("/api/v1/metering/pricing/pricing-books");
+      expect(fixFor(diagnostic)).toEqual({ kind: "request", request });
+    }
+  });
+
+  it("opens the default Pricing Book's editor where the request publishes into it (#586)", () => {
+    // The server names the default book by its id in the publish it offers;
+    // that book's editor is where the console makes the same change.
+    const publish = {
+      method: "POST",
+      route: "/api/v1/metering/pricing/books/0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03/publishes",
+      operation_id: "api_v1_metering_endpoints_declare_book_publish",
+      body: {
+        changes: [{ line: "agreed_price", kind: "add", task_type: "transcode", agreed_price_micros: null }],
+        effective_at: null,
+      },
+    };
+    for (const code of ["agreed_price_missing", "default_agreed_price_missing_refused_at_start"] as const) {
+      expect(
+        fixFor(aDiagnostic({ code, object_kind: "agreed_price", key: "transcode", remediation_request: publish })),
+      ).toEqual({
         kind: "screen",
-        screen: { to: "/pricing", owns: "agreed_prices" },
+        screen: { to: "/pricing/$bookId", params: { bookId: "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03" } },
       });
     }
   });

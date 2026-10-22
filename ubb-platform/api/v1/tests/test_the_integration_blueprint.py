@@ -1498,7 +1498,10 @@ class TestTheBlueprintBindsToNoOtherRegistrysSchema:
             "IntegrationBlueprintSelectionIn", "ResolvedIntegrationBlueprint",
             "IntegrationBlueprintCall", "IntegrationBlueprintArgument",
             "IntegrationBlueprintProvenance", "IntegrationBlueprintDiagnostic",
-            "IntegrationBlueprintRemediationRequest", "ProblemOut"}
+            "IntegrationBlueprintRemediationRequest",
+            # The agreed price a Blueprint shows (owner's review of #615): the
+            # Blueprint's own, holding nothing of the Pricing Book's schemas.
+            "IntegrationBlueprintAgreedPrice", "ProblemOut"}
 
 
 # ---------------------------------------------------------------------------
@@ -2077,10 +2080,16 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     #: diagnostic carries a request instead of naming a page.
     WITHOUT_A_SCREEN = {"event_type", "measurement", "reported_cost_mapping",
                         "grouping_field"}
-    #: And the ones it has a screen for: a kind of work's own page, and the
-    #: Pricing Books an agreed price is declared on (#586) — whose publish
-    #: names a book by its row id, which no diagnostic carries.
-    WITH_A_SCREEN = {"task_type", "subtask_type", "agreed_price"}
+    #: And the one object with a screen that carries a request too (#586,
+    #: owner's review of #615): an agreed price. Its request names the book a
+    #: fix belongs to — the publish into the tenant's default Pricing Book,
+    #: which is the book a console opens the editor of, or the declaration of
+    #: one where there is none — so it is the request AND the deep link.
+    A_SCREEN_AND_A_REQUEST = {"agreed_price"}
+    #: The values an agreed price's request fills in that are the contract's
+    #: own and no tenant's: the line and verb of the change, and the flag that
+    #: makes a declared book the default.
+    THE_CONTRACTS_OWN = {"agreed_price", "add", True}
     #: The codes reported over a declaration that is complete, where nothing in
     #: the configuration is the thing to change: valid configuration this Code
     #: Builder version cannot yet render. No request is offered for one: the
@@ -2140,9 +2149,8 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
         bare = {d["object_kind"] for d in diagnostics
                 if not d["remediation_request"]
                 and d["code"] not in self.NOTHING_TO_CHANGE}
-        assert carrying == self.WITHOUT_A_SCREEN
-        assert bare <= self.WITH_A_SCREEN
-        assert "agreed_price" in bare
+        assert carrying == self.WITHOUT_A_SCREEN | self.A_SCREEN_AND_A_REQUEST
+        assert bare <= {"task_type", "subtask_type"}
         # Each reported once over the published Blueprint and once over the
         # draft preview, and never with a request.
         assert sorted(d["code"] for d in diagnostics
@@ -2297,15 +2305,18 @@ class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
                 continue
             checked.add(diagnostic["object_kind"])
             key_parts = set(diagnostic["key"].split(":"))
+            contract = (self.THE_CONTRACTS_OWN
+                        if diagnostic["object_kind"] == "agreed_price"
+                        else set())
             filled = [leaf for leaf in leaves(request["body"])
                       if leaf is not None]
-            assert set(filled) <= key_parts, (diagnostic, filled)
+            assert set(filled) <= key_parts | contract, (diagnostic, filled)
             # The route and the filled leaves are everywhere a value could
             # be; the body's field NAMES are the contract's, not the tenant's.
             carried = " ".join([request["route"], *map(str, filled)])
             for value in tenant_values - key_parts:
                 assert value not in carried, (value, request)
-        assert checked == self.WITHOUT_A_SCREEN
+        assert checked == self.WITHOUT_A_SCREEN | self.A_SCREEN_AND_A_REQUEST
 
 
 # ---------------------------------------------------------------------------

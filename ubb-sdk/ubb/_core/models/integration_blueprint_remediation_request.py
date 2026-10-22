@@ -31,6 +31,11 @@ class IntegrationBlueprintRemediationRequest:
     declares a new object, and every other field of `body` is left empty.
     `body` is null for an operation that takes none.
 
+    An agreed price's request is the one that names a book: it publishes the
+    price into your default Pricing Book, which `route` names by its id, with
+    the change filled in but its amount; or, where you have no default
+    Pricing Book, it declares one, with `is_default` set.
+
         Attributes:
             method (str):
             operation_id (str):

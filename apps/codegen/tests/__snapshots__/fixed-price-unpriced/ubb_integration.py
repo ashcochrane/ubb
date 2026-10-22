@@ -20,14 +20,20 @@
 # diagnostic = "agreed_price_missing" · severity "blocking" · agreed_price "translation" · field "agreed_price_micros"
 # This kind of work is sold at one agreed price, and no Pricing Book
 # holds one for it: not your default book, not a Plan's, not a
-# customer's own. Every start is refused. Publish an agreed price for it
-# on a Pricing Book.
+# customer's own. Every start is refused. Publish one in your default
+# Pricing Book with the request below. Where you have no default book,
+# the request declares one, and you then publish the price into it.
+# The request that fixes it. UBB never sends it for you:
+# remediation_request = {"method":"POST","route":"/api/v1/metering/pricing/pricing-books","operation_id":"api_v1_metering_endpoints_declare_pricing_book","body":{"key":null,"name":null,"is_default":true}}
 
 # diagnostic = "default_agreed_price_missing_refused_at_start" · severity "advisory" · agreed_price "translation" · field "agreed_price_micros"
 # This kind of work is sold at one agreed price, and your default
 # Pricing Book holds none for it. Customers without their own or a Plan
-# price will be refused at start. Publish one in the default book to
-# price them.
+# price will be refused at start. Publish one in the default book with
+# the request below. Where you have no default book, the request
+# declares one, and you then publish the price into it.
+# The request that fixes it. UBB never sends it for you:
+# remediation_request = {"method":"POST","route":"/api/v1/metering/pricing/pricing-books","operation_id":"api_v1_metering_endpoints_declare_pricing_book","body":{"key":null,"name":null,"is_default":true}}
 
 # Resolved from these declarations:
 # task_type = "translation"

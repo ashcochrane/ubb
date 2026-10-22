@@ -234,16 +234,12 @@ export function shownValue(argument: BlueprintArgument, place: TokenPlace): Show
 // ---------------------------------------------------------------------------
 // Where the round trip goes
 
-/**
- * A console screen that owns something the page points at (§11). Pricing owns
- * two things the page points at — the Cost Rates a calculated cost is costed
- * from, and the Pricing Books an agreed price is declared on (#586) — so its
- * link says which.
- */
+/** A console screen that owns something the page points at (§11). */
 export type ConsoleScreen =
   | { readonly to: "/tasks/kinds/$key"; readonly params: { readonly key: string } }
   | { readonly to: "/tasks" }
-  | { readonly to: "/pricing"; readonly owns: "cost_rates" | "agreed_prices" }
+  | { readonly to: "/pricing" }
+  | { readonly to: "/pricing/$bookId"; readonly params: { readonly bookId: string } }
   | { readonly to: "/webhooks" };
 
 function isKindOfWork(objectKind: ConfigurationObjectKind | undefined): boolean {
@@ -274,9 +270,25 @@ export function screenFor(argument: BlueprintArgument, place: TokenPlace): Conso
     return { to: "/tasks" };
   }
   if (place.kind === "fact" && place.element === "costing_method" && argument.value === "calculated") {
-    return { to: "/pricing", owns: "cost_rates" };
+    return { to: "/pricing" };
   }
   return null;
+}
+
+/** The route of a publish into one Pricing Book, as the contract spells it. */
+const A_BOOKS_PUBLISH = /^\/api\/v1\/metering\/pricing\/books\/([^/]+)\/publishes$/;
+
+/**
+ * The Pricing Book a request publishes into, or `null` for a request that does
+ * something else. An agreed price's diagnostic offers the publish into the
+ * tenant's default book — named there by its id, the route's own parameter —
+ * and that book's editor is where the console makes the same change (#586,
+ * owner's review of #615).
+ */
+function theBookItPublishesInto(request: RemediationRequest): string | null {
+  if (request.method !== "POST") return null;
+  const bookId = A_BOOKS_PUBLISH.exec(request.route)?.[1];
+  return bookId === undefined ? null : decodeURIComponent(bookId);
 }
 
 /** What answers a diagnostic. */
@@ -300,13 +312,17 @@ export function fixFor(diagnostic: BlueprintDiagnostic): Fix {
       ? { kind: "screen", screen: { to: "/tasks" } }
       : { kind: "screen", screen: { to: "/tasks/kinds/$key", params: { key } } };
   }
-  if (diagnostic.object_kind === "agreed_price") {
-    // An agreed price is declared on a Pricing Book's editor (#553), reached
-    // from Pricing. The server offers no request: the publish that declares
-    // one names a book by its row id, which a diagnostic never carries (#586).
-    return { kind: "screen", screen: { to: "/pricing", owns: "agreed_prices" } };
-  }
   const request = diagnostic.remediation_request ?? null;
+  if (diagnostic.object_kind === "agreed_price" && request !== null) {
+    // Where the tenant has a default Pricing Book the server offers the
+    // publish into it, and the console opens that book's editor instead. With
+    // none, it offers the declaration of one, which only the request makes.
+    // Never a Plan's book or a customer's own: the server never names one.
+    const bookId = theBookItPublishesInto(request);
+    if (bookId !== null) {
+      return { kind: "screen", screen: { to: "/pricing/$bookId", params: { bookId } } };
+    }
+  }
   return request === null ? { kind: "none" } : { kind: "request", request };
 }
 

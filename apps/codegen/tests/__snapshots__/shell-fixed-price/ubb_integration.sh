@@ -6,7 +6,7 @@
 # renderer_contract_version = 3
 # sdk_major_version = null
 # target = "shell_http"
-# configuration_fingerprint = "sha256:c65051508d614bd9e9500d65ad7e0437dbb7635bc38ae42b07ee29c060083b96"
+# configuration_fingerprint = "sha256:bd623910d7c78c9e489d44652e03091a3f70e0a67c59129ae78e34889c11450b"
 # The fingerprint identifies exactly what this file was resolved from. A
 # different one in the Code Builder means this file is stale.
 
@@ -19,7 +19,10 @@
 # This kind of work is sold at one agreed price, and your default
 # Pricing Book holds none for it. Customers without their own or a Plan
 # price will have no authoritative revenue figure. Publish one in the
-# default book to price them.
+# default book with the request below. Where you have no default book,
+# the request declares one, and you then publish the price into it.
+# The request that fixes it. UBB never sends it for you:
+# remediation_request = {"method":"POST","route":"/api/v1/metering/pricing/pricing-books","operation_id":"api_v1_metering_endpoints_declare_pricing_book","body":{"key":null,"name":null,"is_default":true}}
 
 # Resolved from these declarations:
 # task_type = "report"

@@ -28,7 +28,13 @@ export function ScreenLink({ screen }: { screen: ConsoleScreen }) {
     case "/pricing":
       return (
         <Link to="/pricing" className={LINK}>
-          {screen.owns === "agreed_prices" ? "Pricing Books" : "Cost Rates"}
+          Cost Rates
+        </Link>
+      );
+    case "/pricing/$bookId":
+      return (
+        <Link to="/pricing/$bookId" params={{ bookId: screen.params.bookId }} className={LINK}>
+          Open the default Pricing Book
         </Link>
       );
     case "/webhooks":

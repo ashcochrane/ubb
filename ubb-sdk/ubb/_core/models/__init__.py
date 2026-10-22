@@ -122,6 +122,7 @@ from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGrouping
 from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
 from .inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from .inherited_rule_out import InheritedRuleOut
+from .integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
 from .integration_blueprint_argument import IntegrationBlueprintArgument
 from .integration_blueprint_argument_binding_class import IntegrationBlueprintArgumentBindingClass
 from .integration_blueprint_call import IntegrationBlueprintCall
@@ -507,6 +508,7 @@ __all__ = (
     "InheritedPricingRulePricingMethodType0",
     "InheritedPricingRuleRateStructure",
     "InheritedRuleOut",
+    "IntegrationBlueprintAgreedPrice",
     "IntegrationBlueprintArgument",
     "IntegrationBlueprintArgumentBindingClass",
     "IntegrationBlueprintCall",

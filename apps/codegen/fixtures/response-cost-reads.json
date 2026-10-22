@@ -288,7 +288,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     },
     "shell_http": {
       "schema_version": 1,
@@ -578,7 +579,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     }
   },
   "micros usd": {
@@ -870,7 +872,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     },
     "shell_http": {
       "schema_version": 1,
@@ -1160,7 +1163,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     }
   },
   "minor_units usd": {
@@ -1452,7 +1456,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     },
     "shell_http": {
       "schema_version": 1,
@@ -1742,7 +1747,8 @@
           ]
         }
       ],
-      "diagnostics": []
+      "diagnostics": [],
+      "agreed_price": null
     }
   }
 }

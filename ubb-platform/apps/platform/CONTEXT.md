@@ -1057,7 +1057,10 @@ price in force for the kind; a tenant that meters without billing is never block
 the DEFAULT book holds none, either posture is advised — customers without their own or a Plan price
 will be refused at start (`default_agreed_price_missing_refused_at_start`), or will have no
 authoritative revenue figure (`default_agreed_price_missing_no_revenue_figure`). `complete` promises a
-path a start can price by, not that every customer has one.
+path a start can price by, not that every customer has one. Each diagnostic offers the fix in the
+DEFAULT book — the publish into it, whose editor the console opens, or the declaration of one where
+there is none — and never in a Plan's or a customer's own (owner's review of #615). The Blueprint
+SHOWS the default book's price and where it came from (`agreed_price`), and no call carries it.
 _Avoid_: "incomplete" for the middle state — that word is a measure's status and means a figure is
 partly known; reading a fixed-price kind's readiness off one customer's price.
 
@@ -1067,10 +1070,12 @@ the selection, the Blueprint's machine-readable resolution, and the configuratio
 need to run it — the kinds with what they may spend and how they are sold, each Event Type as
 published (a constant's value included, since #584), the required Grouping Fields, the rules that
 cost and price the selected quantities, the default markup, the tenant fields a sandbox is
-provisioned from, and — for a kind sold at one agreed price only (#586) — whether any book a start
-can price from holds one and the DEFAULT book's price with where it came from: no customer, no Plan
-and no other book's amount, so a deal repriced moves nothing while the first price or the last
-retired does. Its `configuration_fingerprint`
+provisioned from, and — for a kind sold at one agreed price only (#586) — the DEFAULT book's price
+with where it came from, and, only for a tenant that bills through UBB, whether any book a start can
+price from holds one (there it decides `blocked` from `complete`; for a tenant that meters only it
+decides nothing, so it is no part of the identity). No customer, no Plan and no other book's amount:
+a deal repriced moves nothing, the default book's price moves it, and for a billing tenant so do the
+first price anywhere and the last retired. Its `configuration_fingerprint`
 is `sha256:` and the hash of that identity: a **stable identity of the resolved contract**, not a
 hash of everything serialised. It includes which publication each Event Type was resolved from, so
 republishing an unchanged declaration moves it. It excludes what is only presentation — the

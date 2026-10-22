@@ -576,11 +576,13 @@ def test_the_fixtures_cover_what_they_are_named_for():
     # A kind sold at one agreed price (#586): complete and advised for a
     # tenant that meters only; blocked, and advised, for one that bills with
     # no price in any book; complete with nothing reported once its default
-    # book holds one. The price itself is in no call, so in no generated file:
-    # `render` is a function of the Blueprint alone.
+    # book holds one. With no default book, each diagnostic offers the
+    # declaration of one (owner's review of #615). The price is SHOWN beside
+    # the calls and is in no call — the renderer's suite holds that no file
+    # it writes from this document carries it.
     for prefix in ("", _SHELL_PREFIX):
-        assert [d["code"] for d in resolved(f"{prefix}fixed-price")[
-            "diagnostics"]] == [
+        unpriced_metering = resolved(f"{prefix}fixed-price")
+        assert [d["code"] for d in unpriced_metering["diagnostics"]] == [
             "default_agreed_price_missing_no_revenue_figure"]
         unpriced = resolved(f"{prefix}fixed-price-unpriced")
         assert [d["code"] for d in unpriced["diagnostics"]] == [
@@ -588,11 +590,18 @@ def test_the_fixtures_cover_what_they_are_named_for():
             "default_agreed_price_missing_refused_at_start"]
         assert [call["readiness"] for call in unpriced["calls"]] == [
             "blocked", "complete", "complete"]
+        for blueprint in (unpriced_metering, unpriced):
+            assert blueprint["agreed_price"] is None
+            assert {d["remediation_request"]["route"]
+                    for d in blueprint["diagnostics"]} == {
+                "/api/v1/metering/pricing/pricing-books"}
         priced = resolved(f"{prefix}fixed-price-priced")
         assert priced["diagnostics"] == []
         assert literal(priced, "task_type.pricing_mode") == [
             PRICING_MODE_FIXED]
-        assert str(THE_AGREED_PRICE) not in json.dumps(priced)
+        assert priced["agreed_price"]["agreed_price_micros"] == (
+            THE_AGREED_PRICE)
+        assert str(THE_AGREED_PRICE) not in json.dumps(priced["calls"])
     assert literal(resolved("reported-cost"),
                    "provider_cost_micros.amount_representation") == [MAJOR]
     assert literal(resolved("explicit-subtasks"),

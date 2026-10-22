@@ -51,6 +51,13 @@ shapes, so it can change with no change to what the tenant configured or to
 what the code must mean — a registry route gaining a field must not make every
 blocked integration look like a different one.
 
+And the answered Blueprint SHOWS one thing beside its calls that is not a
+call's: the agreed price of a kind sold whole (`agreed_price`, owner's review
+of #615). It is read off the configuration the identity holds, so it is
+covered by the fingerprint without being a second thing hashed, and a
+read-back derives it the same way. No call carries it, so no generated file
+does.
+
 Nothing volatile is in the identity: no row id, no row timestamp, no moment of
 resolution, no wording. And no ORDER that means nothing: the selection, a
 kind's required Grouping Fields, a tenant's products and the rules in force
@@ -113,9 +120,10 @@ from django.utils import timezone
 
 from api.v1 import event_type_endpoints, metering_endpoints, task_endpoints
 from api.v1.schemas import (
-    EventTypeIn, EventTypeUpdateIn, MeasurementIn, ReportedCostMappingIn)
+    BookPublishIn, EventTypeIn, EventTypeUpdateIn, MeasurementIn,
+    PricingBookIn, ReportedCostMappingIn)
 from apps.metering.pricing.models import (
-    CostBook, PricingBook, TenantDefaultMarkup)
+    CHANGE_ADD, LINE_AGREED_PRICE, CostBook, PricingBook, TenantDefaultMarkup)
 from apps.metering.pricing.services.book_service import (
     agreed_prices_in_force_in, rules_in_force_at)
 from apps.metering.pricing.services.pricing_service import (
@@ -648,13 +656,18 @@ _REMEDIATION_REQUEST = "remediation_request"
 def as_answered(content):
     """The Blueprint a stored snapshot was answered as, without its
     fingerprint: the normative half, with each diagnostic given back the
-    request it offered."""
-    blueprint = content[snapshots.IDENTITY][BLUEPRINT]
+    request it offered, and the agreed price it showed — read back off the
+    configuration the snapshot keeps, as the resolution read it."""
+    identity = content[snapshots.IDENTITY]
+    blueprint = identity[BLUEPRINT]
     requests = content[snapshots.PRESENTATION][REMEDIATION_REQUESTS]
     return {**blueprint, "diagnostics": [
         {**diagnostic, _REMEDIATION_REQUEST: request}
         for diagnostic, request in zip(blueprint["diagnostics"], requests,
-                                       strict=True)]}
+                                       strict=True)],
+        AGREED_PRICE: _displayed_agreed_price(
+            identity["configuration"].get("agreed_price"),
+            identity["selection"]["task_type"])}
 
 
 def resolve(tenant, *, target, task_type=None, event_types=(),
@@ -688,8 +701,12 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
         "calls": [call.as_published() for call in resolution.calls],
         "diagnostics": resolution.diagnostics,
     }
+    # What the Blueprint SHOWS beside its calls, and outside what is hashed:
+    # it is read off the configuration below, which the identity holds.
+    answered = {**document, AGREED_PRICE: _displayed_agreed_price(
+        resolution.agreed_price, task_type)}
     if draft_preview:
-        return Resolved(document, None, None)
+        return Resolved(answered, None, None)
 
     identity = {
         "selection": {"target": target, "task_type": task_type,
@@ -711,7 +728,7 @@ def resolve(tenant, *, target, task_type=None, event_types=(),
     presentation = {REMEDIATION_REQUESTS: [
         diagnostic[_REMEDIATION_REQUEST]
         for diagnostic in resolution.diagnostics]}
-    return Resolved(document, identity, presentation)
+    return Resolved(answered, identity, presentation)
 
 
 # ---------------------------------------------------------------------------
@@ -835,17 +852,22 @@ def _agreed_price(resolution, call, key):
     bills, no revenue figure UBB stands behind where it does not.
 
     Every diagnostic here points at the agreed price by the kind it prices,
-    and offers no request: an agreed price is declared on a Pricing Book's
-    editor, which is the console screen a consumer links to, and the request
-    that publishes one names a book by its row id, which a diagnostic never
-    carries.
+    and offers the request that fixes it in the tenant's DEFAULT Pricing Book
+    (`_the_request_that_prices_it`) — the one book every customer without a
+    price of their own or from their Plan meets, so the one a fix belongs to.
+    Never a Plan's book or a customer's own, though one could hold a price:
+    choosing one would be choosing the customer the Blueprint is for.
 
-    Returns what the snapshot keeps: the one tenant-level outcome, and the
-    DEFAULT book's price with where it came from — the price a generated
-    file's run meets when nobody has a deal, and the one Verify materialises.
-    No other book's amount, no customer and no Plan, so repricing one
-    customer's deal moves no fingerprint, while adding the first price
-    anywhere or retiring the last does.
+    Returns what the snapshot keeps (owner's review of #615): the DEFAULT
+    book's price with where it came from — the price a generated file's run
+    meets when nobody has a deal, and the one Verify materialises — for either
+    posture; and, ONLY WHERE THE TENANT BILLS, whether any book holds one,
+    because there and only there that decides `blocked` from `complete`. For a
+    tenant that meters without billing the aggregate decides nothing — the
+    Blueprint is complete either way and the advisory turns on the default
+    book alone — so it is no part of the identity, and a first price in a
+    customer's own book moves no fingerprint. No other book's amount, no
+    customer and no Plan, in either posture.
     """
     tenant = resolution.tenant
     in_force = list(
@@ -855,10 +877,16 @@ def _agreed_price(resolution, call, key):
     in_the_default = next((line for line in in_force
                            if line.pricing_book.is_default), None)
     bills = bills_through_ubb(tenant)
+    # The tenant's one default book (`uq_pricing_book_one_default`), whether
+    # or not it holds a price: the book the remediation targets.
+    request = _the_request_that_prices_it(
+        PricingBook.objects.filter(tenant=tenant, is_default=True).first(),
+        key)
     if bills and not in_force:
         resolution.report(call, DIAGNOSTIC_CODE_AGREED_PRICE_MISSING,
                           CONFIGURATION_OBJECT_KIND_AGREED_PRICE, key,
-                          field=_AGREED_PRICE_FIELD)
+                          field=_AGREED_PRICE_FIELD,
+                          remediation_request=request)
     if in_the_default is None:
         resolution.report(
             call,
@@ -866,9 +894,8 @@ def _agreed_price(resolution, call, key):
             if bills
             else DIAGNOSTIC_CODE_DEFAULT_AGREED_PRICE_MISSING_NO_REVENUE_FIGURE,
             CONFIGURATION_OBJECT_KIND_AGREED_PRICE, key,
-            field=_AGREED_PRICE_FIELD)
-    return {
-        "has_any_effective_runtime_agreed_price": bool(in_force),
+            field=_AGREED_PRICE_FIELD, remediation_request=request)
+    kept = {
         "default_book_agreed_price": None if in_the_default is None else {
             "book_key": in_the_default.pricing_book.key,
             "agreed_price_micros": in_the_default.agreed_price_micros,
@@ -878,6 +905,70 @@ def _agreed_price(resolution, call, key):
                          if in_the_default.valid_to else None),
         },
     }
+    if bills:
+        kept["has_any_effective_runtime_agreed_price"] = bool(in_force)
+    return kept
+
+
+def _the_request_that_prices_it(default_book, key):
+    """The request that puts an agreed price for `key` where every customer
+    without one of their own meets it, ready to copy and never performed.
+
+    **WHERE THE TENANT HAS A DEFAULT PRICING BOOK, A PUBLISH INTO IT**: the
+    draft that adds the price, its amount left to fill in. The route names the
+    book by its id, which is the operation's own parameter — and the book a
+    console opens its editor on (Seam D). Kept beside the identity and never
+    in it, as every request is, so the id moves no fingerprint.
+
+    **WHERE IT HAS NONE, THE DECLARATION OF ONE**: there is no book to publish
+    into until a default exists, so the request that can be made now is the
+    one that makes it — marked default, its key and name left to fill in.
+    """
+    if default_book is not None:
+        return {
+            "method": "POST",
+            "route": (f"/api/v1/metering/pricing/books/"
+                      f"{quote(str(default_book.id), safe='')}/publishes"),
+            "operation_id": _operation_id(
+                metering_endpoints.declare_book_publish),
+            "body": {**dict.fromkeys(BookPublishIn.model_fields),
+                     "changes": [{"line": LINE_AGREED_PRICE,
+                                  "kind": CHANGE_ADD, "task_type": key,
+                                  "agreed_price_micros": None}]},
+        }
+    return {
+        "method": "POST",
+        "route": "/api/v1/metering/pricing/pricing-books",
+        "operation_id": _operation_id(metering_endpoints.declare_pricing_book),
+        "body": {**dict.fromkeys(PricingBookIn.model_fields),
+                 "is_default": True},
+    }
+
+
+#: Where the answered Blueprint shows the selected kind's agreed price.
+AGREED_PRICE = "agreed_price"
+
+
+def _displayed_agreed_price(kept, task_type):
+    """The agreed price a Blueprint SHOWS for a kind sold whole, or `None`
+    (owner's review of #615): the default book's price, with the book, the
+    version that opened the line and its window — read off what the snapshot
+    keeps, so it is what the fingerprint already covers and a read-back answers
+    it exactly as the resolution did.
+
+    Presentation and never a token: no call carries it, so no generated file
+    holds it (B3) and a renderer has nothing to read. `None` for a kind not
+    sold at one agreed price, and where the default book holds none — the
+    diagnostics say so.
+    """
+    price = (kept or {}).get("default_book_agreed_price")
+    if price is None:
+        return None
+    return {"task_type": task_type,
+            "agreed_price_micros": price["agreed_price_micros"],
+            "pricing_book_key": price["book_key"],
+            "book_version_from": price["book_version_from"],
+            "valid_from": price["valid_from"], "valid_to": price["valid_to"]}
 
 
 # ---------------------------------------------------------------------------

@@ -134,7 +134,8 @@ every live Plan, and every customer's own book — every book some start could p
 `plans.queries.pricing_books_of_live_plans`). It never selects or inspects a runtime customer,
 never depends on how many customers there are or which Plan any of them is on, and never picks the
 customer whose price would make it look complete. An archived Plan's book counts for nothing, because
-no start reaches it.
+no start reaches it — readiness and the start enumerate the same paths, and one test holds both
+(`test_an_archived_plans_price_reaches_neither_a_start_nor_readiness`).
 
 - **Blocked** only where the tenant bills through UBB and no such book holds an agreed price in force
   for the kind now: every start would then be refused. Diagnostic `agreed_price_missing`.
@@ -149,26 +150,50 @@ no start reaches it.
   promise every customer's start is admitted.
 
 All three are reported over a new configuration object kind, **`agreed_price`**, keyed by the kind of
-work, with the field `agreed_price_micros`. None offers a request: an agreed price is declared on a
-Pricing Book's editor, which the console links to, and the publish that declares one names a book by
-its row id, which a diagnostic never carries.
+work, with the field `agreed_price_micros`.
 
-**The snapshot keeps the outcome and the default book's price, and nothing customer- or
-Plan-specific.** For a kind sold whole — and only then, so no other snapshot's bytes moved — the
-snapshot's configuration holds `has_any_effective_runtime_agreed_price` and the default book's price
-with where it came from (the book's key, the version that opened the line, `valid_from` and
-`valid_to`). No customer id, no Plan id, no customer count and no other book's amount. So repricing
-one customer's deal or a Plan's price moves no fingerprint while the outcome is unchanged; adding the
-first price anywhere or retiring the last does; and repricing the default book does. No call's token
-carries the price, so no generated file holds one.
+**Each offers the fix in the tenant's DEFAULT Pricing Book** (Seam D, the owner's review of #615).
+Where a default book exists, the diagnostic's `remediation_request` is the publish into it — the
+draft adding the price, its amount left to fill in — and the route names the book by its id, the
+operation's own parameter; the console reads that book off the request and opens its editor
+(`/pricing/$bookId`) in place of the request. Where there is no default book there is no editor to
+open, so the request is the declaration of one (`is_default` set), shown to copy. Never a Plan's book
+or a customer's own, though one may hold a price: naming one would be choosing the customer the
+Blueprint is for. The request is presentation, kept beside the identity and never in it, so the
+book's id moves no fingerprint.
+
+**The snapshot keeps the default book's price, and the aggregate only where it decides readiness**
+(the owner's review of #615). For a kind sold whole — and only then, so no other kind's snapshot moved
+— the configuration holds the default book's price with where it came from (the book's key, the
+version that opened the line, `valid_from` and `valid_to`), for either posture. Whether ANY book holds
+one (`has_any_effective_runtime_agreed_price`) is kept only for a tenant that bills through UBB,
+because there and only there it decides `blocked` from `complete`. For a tenant that meters only, the
+Blueprint is complete with or without a price and the advisory turns on the default book alone, so
+the aggregate decides nothing and is no part of the identity: a first, repriced or retired price in a
+Plan's or a customer's own book moves no fingerprint, and adding, changing or removing the default
+book's price does. For a billing tenant, the first price anywhere and the last retired move it,
+because readiness moves. No customer id, no Plan id, no customer count and no other book's amount, in
+either posture.
+
+**The Blueprint SHOWS the default book's price, and no call carries it** (the owner's review of #615:
+"resolved with provenance" must be visible to the Builder's user, not only present in a stored row).
+The answered Blueprint gains `agreed_price` — the kind, the amount, the default book's key, the
+version that opened the line and its window — required and nullable, null for any other kind and where
+the default book holds none. It is read off the configuration the identity holds, so the fingerprint
+already covers it and a read-back by fingerprint answers it identically; it is never hashed a second
+time, and the document's normative half — which `schema_version` describes — is unchanged. It is no
+call's token, so no generated file holds it: the renderer's suite renders the priced fixtures with
+and without it, and with another amount, and holds the files identical and free of the figure. The
+console's Code Builder shows it beside the verdict.
 
 **Verify materialises the default book's price and picks no other.** The run publishes the kept
 price into its own default book through the act and is charged it on delivery. Where only a Plan's
 or a customer's own book holds one, the run's customer — on no Plan, with no deal — is refused at its
 start where the tenant bills, and Verify answers that real refusal; the advisory said so first.
 
-The renderer contract stays 3 (ADR-0015 §3): nothing a renderer is handed means anything new. The
-renderer catalogue moves 8 → 9 for the three remediation entries.
+The renderer contract stays 3 (ADR-0015 §3): nothing a renderer is handed means anything new — the
+shown price is a field it ignores. The renderer catalogue moves 8 → 9 for the three remediation
+entries.
 
 ### 7. What this supersedes
 
@@ -206,5 +231,8 @@ Named and quoted, with the 2026-10-08 rulings as the evidence:
 | §3 the totals, one fact with the posting | `ubb-platform/api/v1/tests/test_a_charge_reaches_its_units_billed_total_once.py`; end to end for both postures: `test_an_agreed_price_is_charged_end_to_end.py` |
 | §4 the gate | `ubb-platform/api/v1/tests/test_book_api.py` — the `metering_only_can_*` cases and `test_plans_stay_behind_the_billing_product` |
 | §5 the reason, and the one-time rewrite | `ubb-platform/apps/metering/pricing/tests/test_why_a_price_does_not_apply.py`; `ubb-platform/apps/metering/usage/tests/test_the_regime_decides_why_a_price_does_not_apply.py` |
+| §5 a sealed receipt holding the removed value reads, at schemas 1 and 2 (schema 0 predates it) | `ubb-platform/apps/metering/usage/tests/test_the_regime_decides_why_a_price_does_not_apply.py` — `test_a_sealed_schema_one_receipt_keeps_the_value_and_still_reads`, `test_a_sealed_schema_two_receipt_keeps_the_value_and_still_reads` |
+| §6 the metering-only fingerprint, the shown price, Seam D's request | `test_the_blueprint_resolves_an_agreed_price.py` — `TestAMeteringOnlyFingerprintMovesWithTheDefaultPriceAlone`, `test_a_price_in_the_default_book_completes_it_with_no_advisory`, `test_a_default_book_holding_no_price_is_where_every_fix_publishes`, `test_the_request_offered_is_the_fix`; the renderer ignoring the shown price: `apps/codegen/tests/snapshots.test.ts`; the console showing it and opening the book: `features/developers/components/code-builder-page.test.tsx`, `features/developers/lib/blueprint.test.ts` |
+| §6 an archived Plan's book prices neither a start nor readiness | `test_an_agreed_price_is_charged_end_to_end.py` — `test_an_archived_plans_price_reaches_neither_a_start_nor_readiness` |
 | §6 readiness, the snapshot, the fingerprint and Verify | `ubb-platform/api/v1/tests/test_the_blueprint_resolves_an_agreed_price.py`; the census in `test_the_integration_blueprint.py`; the committed fixtures `fixed-price`, `fixed-price-unpriced`, `fixed-price-priced` and their Verify answer (`test_the_renderers_fixtures_are_what_the_platform_answers.py`) |
 | §6 run unmodified on every target | Seam C scenario 11, `tests/code_builder_execution/_scenarios.py` (`FIXED_PRICE`) |

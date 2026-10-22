@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,470 of 2,914 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,471 of 2,915 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2830,16 +2830,17 @@ measurement_key:
     #
     # 2026-10-21, #553 + #586 (window B: an agreed price is published, read and
     # charged; the Code Builder resolves a kind sold at one): 2,408 of 2,850 ->
-    # 2,470 of 2,914 tracked files (`units` 42 files / 119 occurrences -> 43 /
-    # 121, ROSE — read below). 71 files arrived and 7 left. Two arrivals are
+    # 2,471 of 2,915 tracked files (`units` 42 files / 119 occurrences -> 43 /
+    # 121, ROSE — read below). 72 files arrived and 7 left. Two arrivals are
     # migrations, excluded under `historical-migrations` (273 -> 275), so the
-    # exclusions stand at 444. The 69 swept arrivals: ADR-0021; eight platform
+    # exclusions stand at 444. The 70 swept arrivals: ADR-0021; eight platform
     # test modules (the discriminated change, the publish act, the read, the
     # charge end to end, the charge's total once, the window the database
     # holds, the regime's reason and its migration, and a draft declared before
     # a change named its line) and the Code Builder's
-    # readiness module; the SDK's union test, its new read and eleven
+    # readiness module; the SDK's union test, its new read and twelve
     # generated models (the agreed-price change, diff, terms, line and page,
+    # the agreed price a Blueprint shows,
     # and the rate change's six, renamed from `book_change_*`, whose six old
     # files are six of the seven that left); four console files (the
     # agreed-price list, its words, and two test modules); four
@@ -2861,8 +2862,10 @@ measurement_key:
     # figure or not at all. One more came within a doc comment of moving the
     # count: the console's agreed-price form said an amount was "in the
     # currency's" plural of the word (the money sense), and was reworded to the
-    # major unit before staging. (Taken twice: 2,469 of 2,913 before the code
-    # review, which added the module for a draft of the old shape.)
+    # major unit before staging. (Taken three times: 2,469 of 2,913 before the
+    # code review, which added the module for a draft of the old shape; 2,470
+    # of 2,914 before the owner's review of #615, whose shown agreed price is
+    # one more generated SDK model. Neither moved the count of the word.)
 
     - term: units
       retired_as: >-

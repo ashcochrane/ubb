@@ -269,5 +269,13 @@
       ]
     }
   ],
-  "diagnostics": []
+  "diagnostics": [],
+  "agreed_price": {
+    "task_type": "transcode",
+    "agreed_price_micros": 12500000,
+    "pricing_book_key": "catalogue",
+    "book_version_from": 2,
+    "valid_from": "2026-09-01T12:00:00+00:00",
+    "valid_to": null
+  }
 }

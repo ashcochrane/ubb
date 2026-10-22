@@ -14,6 +14,7 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
   from ..models.integration_blueprint_call import IntegrationBlueprintCall
   from ..models.integration_blueprint_diagnostic import IntegrationBlueprintDiagnostic
 
@@ -42,7 +43,14 @@ class ResolvedIntegrationBlueprint:
     `remediation_request` is not part of it. `readiness` is the least ready of
     `calls`.
 
+    `agreed_price` is shown beside the calls for a kind of work sold at one
+    agreed price, and is null for any other kind and where your default
+    Pricing Book holds no price for it (a diagnostic then says so). It is read
+    off the configuration the fingerprint covers, and it is not a call's: a
+    generated file never holds it.
+
         Attributes:
+            agreed_price (IntegrationBlueprintAgreedPrice | None):
             calls (list[IntegrationBlueprintCall]):
             diagnostics (list[IntegrationBlueprintDiagnostic]):
             readiness (ResolvedIntegrationBlueprintReadiness):
@@ -53,6 +61,7 @@ class ResolvedIntegrationBlueprint:
             sdk_major_version (int | None | Unset):
      """
 
+    agreed_price: IntegrationBlueprintAgreedPrice | None
     calls: list[IntegrationBlueprintCall]
     diagnostics: list[IntegrationBlueprintDiagnostic]
     readiness: ResolvedIntegrationBlueprintReadiness
@@ -68,8 +77,15 @@ class ResolvedIntegrationBlueprint:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
         from ..models.integration_blueprint_call import IntegrationBlueprintCall
         from ..models.integration_blueprint_diagnostic import IntegrationBlueprintDiagnostic
+        agreed_price: dict[str, Any] | None
+        if isinstance(self.agreed_price, IntegrationBlueprintAgreedPrice):
+            agreed_price = self.agreed_price.to_dict()
+        else:
+            agreed_price = self.agreed_price
+
         calls = []
         for calls_item_data in self.calls:
             calls_item = calls_item_data.to_dict()
@@ -108,6 +124,7 @@ class ResolvedIntegrationBlueprint:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "agreed_price": agreed_price,
             "calls": calls,
             "diagnostics": diagnostics,
             "readiness": readiness,
@@ -126,9 +143,28 @@ class ResolvedIntegrationBlueprint:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
         from ..models.integration_blueprint_call import IntegrationBlueprintCall
         from ..models.integration_blueprint_diagnostic import IntegrationBlueprintDiagnostic
         d = dict(src_dict)
+        def _parse_agreed_price(data: object) -> IntegrationBlueprintAgreedPrice | None:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                agreed_price_type_0 = IntegrationBlueprintAgreedPrice.from_dict(data)
+
+
+
+                return agreed_price_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(IntegrationBlueprintAgreedPrice | None, data)
+
+        agreed_price = _parse_agreed_price(d.pop("agreed_price"))
+
+
         calls = []
         _calls = d.pop("calls")
         for calls_item_data in (_calls):
@@ -184,6 +220,7 @@ class ResolvedIntegrationBlueprint:
 
 
         resolved_integration_blueprint = cls(
+            agreed_price=agreed_price,
             calls=calls,
             diagnostics=diagnostics,
             readiness=readiness,

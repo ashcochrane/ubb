@@ -117,6 +117,27 @@ describe("rendering", () => {
     }
   });
 
+  it.each(["fixed-price-priced", "shell-fixed-price-priced"])(
+    "ignores the agreed price a Blueprint shows, and writes it into no file: %s",
+    (name) => {
+      // #586, owner's review of #615: the price is SHOWN beside the calls and
+      // is no call's, so a renderer has nothing to read — the same files
+      // without it, and with another amount — and no file holds it.
+      const blueprint = fixture(name);
+      const price = blueprint.agreed_price;
+      if (price == null) throw new Error(`${name} shows no agreed price`);
+      const files = render(blueprint);
+
+      expect(render({ ...blueprint, agreed_price: null })).toEqual(files);
+      expect(
+        render({ ...blueprint, agreed_price: { ...price, agreed_price_micros: price.agreed_price_micros + 1 } }),
+      ).toEqual(files);
+      for (const file of files) {
+        expect(file.contents, `${name}/${file.path}`).not.toContain(String(price.agreed_price_micros));
+      }
+    },
+  );
+
   it("leaves the Blueprint it was given as it found it", () => {
     const blueprint = fixture("explicit-subtasks");
     render(blueprint);

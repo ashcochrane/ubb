@@ -262,7 +262,16 @@
       "object_kind": "agreed_price",
       "key": "translation",
       "field": "agreed_price_micros",
-      "remediation_request": null
+      "remediation_request": {
+        "method": "POST",
+        "route": "/api/v1/metering/pricing/pricing-books",
+        "operation_id": "api_v1_metering_endpoints_declare_pricing_book",
+        "body": {
+          "key": null,
+          "name": null,
+          "is_default": true
+        }
+      }
     },
     {
       "severity": "advisory",
@@ -270,7 +279,17 @@
       "object_kind": "agreed_price",
       "key": "translation",
       "field": "agreed_price_micros",
-      "remediation_request": null
+      "remediation_request": {
+        "method": "POST",
+        "route": "/api/v1/metering/pricing/pricing-books",
+        "operation_id": "api_v1_metering_endpoints_declare_pricing_book",
+        "body": {
+          "key": null,
+          "name": null,
+          "is_default": true
+        }
+      }
     }
-  ]
+  ],
+  "agreed_price": null
 }
