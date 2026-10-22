@@ -261,8 +261,15 @@ describe("a book's pending changes", () => {
     renderPage(STANDARD_PRICING_BOOK);
 
     // Both the rules table and the pending drafts have to be on the screen
-    // before "unchanged" means anything.
+    // before "unchanged" means anything — and the table is not all there until
+    // the declared grouping fields arrive, which is a query of its own: a rule
+    // shows its `tier=premium` pin only once `tier` is known to be declared.
     await screen.findByText("Adds a rule");
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("row").some((row) => row.textContent?.includes("tier=premium")),
+      ).toBe(true),
+    );
     const before = screen
       .getAllByRole("row")
       .map((row) => row.textContent ?? "")
