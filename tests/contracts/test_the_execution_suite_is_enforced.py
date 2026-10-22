@@ -3,10 +3,10 @@
 
 `tests/code_builder_execution/` takes a complete Blueprint through the
 platform's route, renders it with `ubb-codegen`, writes it to disk unpatched
-and runs it as a customer runs it against the real application. It is what
-G25 will name when #184's flip installs that row, and until then this test is
-what holds it armed. A suite like that is worth exactly as much as its place
-in CI, so its enforcement is checked here, the way the renderer suite's is:
+and runs it as a customer runs it against the real application. G25 names
+its tests, installed by #184's flip (#587), and this test is what holds them
+armed. A suite like that is worth exactly as much as its place in CI, so its
+enforcement is checked here, the way the renderer suite's is:
 
 1. **Its step runs unconditionally and can fail the run** — no `if:`, no
    `continue-on-error`, on a workflow with no path filter, in a job of its

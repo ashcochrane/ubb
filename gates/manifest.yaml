@@ -32,11 +32,16 @@ version: 1
 # Every suite here is verified whether or not a gate names it today, so
 # declaring one is a claim that gets checked rather than a convenience.
 #
-# There is no `ui` suite: the console's tests are vitest, and no gate needs a
-# vitest NODE yet. The UI checks that gate today are named as workflow steps
-# below, which is the honest form for them. A slice that needs a vitest node
-# adds the suite kind then, rather than this file carrying a checker nobody has
-# exercised.
+# There is no vitest suite kind: the console's tests and the renderer's
+# (`apps/codegen`) are vitest, and a vitest case is not a node this file can
+# name. Their checks are named as workflow steps below, which is the honest
+# form for a whole suite. Where a row rests on PARTICULAR cases — G23, G24 and
+# G26 on the renderer's — a step alone would stay armed with those cases
+# deleted, so the cases are named by file and title in
+# `tests/contracts/test_the_renderer_suite_is_enforced.py` (`GATE_CASES`), and
+# that module's node is a site of each row (#587). A row that needs more than
+# that adds the suite kind then, rather than this file carrying a checker
+# nobody has exercised.
 suites:
   contracts:
     summary: >-
@@ -1027,29 +1032,82 @@ gates:
       rendered, declared names are preserved, the verdict matches the plan.
     oracle: the spec, the resolved plan and the registry
     source: ADR-0008 §5, #158 §5.2
-    status: owned_by_slice_builder
-    blocked_on: >-
-      The verify stage. The Integration Blueprint contract has landed (#576)
-      and its tests hold the operation-ID half. Both renderers have landed
-      (#577, #578): their suite holds that every declared name is preserved
-      and that each generated call reaches the operation its Blueprint names,
-      and — for the shell target, which has no SDK to refuse an unpublished
-      key — that every key a generated file sends, when run, is one the
-      operation's request publishes in `openapi/v1.json`. #184 lands the
-      rest, and its flip installs this row.
+    status: installed
+    notes: >-
+      TWO HALVES, EACH WHERE WHAT IT CHECKS IS DECIDED. The Blueprint's half
+      runs in the platform suite, through the tenant's routes (#576): every
+      call's `operation_id` is an `api_v1_` operation in the committed
+      `openapi/v1.json`, every argument a call fills is a field its operation
+      publishes, and every remediation request names a real operation at its
+      own route with a body of fields that operation publishes. All four read
+      the operations off the document, so one renamed or removed there turns
+      them red rather than passing against a list. The renderer's half runs in
+      CI's `codegen` job (#577, #578). Its typecheck compiles the renderer
+      against types generated from the same document. Its tests compile or
+      parse every generated file, then run what they rendered on both targets
+      and assert that each request reached the operation its Blueprint named
+      and sent only keys that operation's request publishes — the shell
+      target has no SDK to refuse an unpublished key, and the server drops one
+      in silence and still answers 200 — that every declared name reached the
+      wire unchanged, that the credential is written nowhere, and that the
+      header states the verdict the plan handed it. A vitest case is not a
+      node this manifest can name, so the cases this row rests on are named
+      by file and title in `GATE_CASES`, and the contract node below fails if
+      one is deleted, renamed or silenced. Installed by #184's flip (#587).
+    enforced_by:
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestEveryCallNamesARealOperation::test_every_operation_id_is_in_the_committed_contract
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestEveryCallNamesARealOperation::test_every_bare_argument_is_a_field_its_operation_publishes
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestARemediationRequestNamesTheFixAndCarriesNothingElse::test_each_request_is_a_real_operation_addressed_to_the_object
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestARemediationRequestNamesTheFixAndCarriesNothingElse::test_each_body_is_a_skeleton_of_fields_the_operation_publishes
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_every_case_a_code_builder_gate_rests_on_is_written_to_run
+      - job: codegen
+        step: Codegen typecheck — the renderer compiles against the committed contract
+      - job: codegen
+        step: Codegen tests — every renderer branch, compiled and run
 
   G24:
     statement: Code Builder renderer branches, pinned by snapshot.
     oracle: the committed snapshots
     source: ADR-0008 §5, #158 §5.2
-    status: owned_by_slice_builder
-    blocked_on: >-
-      The flip, and nothing else of this row's own. `ubb-codegen` has landed
-      with both its targets (#577 Python, #578 shell): every branch of each is
-      pinned under `apps/codegen/tests/__snapshots__/`, the shell target's
-      under `shell-<branch>`, and the suite runs in CI's `codegen` job, held
-      armed by `tests/contracts/test_the_renderer_suite_is_enforced.py`.
-      #184's flip installs this row over both.
+    status: installed
+    notes: >-
+      Every branch of both targets is pinned under
+      `apps/codegen/tests/__snapshots__/` as the files `render` returns — a
+      shell branch's under `shell-<branch>` — so a change to what a tenant is
+      handed is read in a diff as the thing itself (#577 Python, #578 shell).
+      A rendered file that differs from its snapshot fails CI's `codegen` job,
+      and so does a snapshot of a file no branch renders any more. The
+      Blueprints the branches are rendered from are committed fixtures, and
+      the platform test below holds each one equal to what the route answers,
+      so a snapshot cannot be pinned over a Blueprint the platform would not
+      produce. The contract nodes hold the job unconditional and able to fail
+      the run, no case silenced, and every case this row rests on written to
+      run (`GATE_CASES`). Installed by #184's flip (#587).
+    enforced_by:
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_renderers_fixtures_are_what_the_platform_answers.py::test_a_committed_blueprint_is_what_the_route_answers
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_ci_runs_the_renderers_suite_and_can_fail_on_it
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_no_renderer_test_is_skipped_or_run_alone
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_every_case_a_code_builder_gate_rests_on_is_written_to_run
+      - job: codegen
+        step: Codegen tests — every renderer branch, compiled and run
 
   G25:
     statement: >-
@@ -1057,26 +1115,68 @@ gates:
       unmodified against a real ephemeral application.
     oracle: the running application
     source: ADR-0008 §5, #158 §5.3
-    status: owned_by_slice_builder
-    blocked_on: >-
-      The flip, and nothing else of this row's own. The execution harness
-      has landed (#582): `tests/code_builder_execution/` seeds a tenant,
-      resolves a Blueprint through its route, renders it with `ubb-codegen`,
-      writes it to disk with a checksum of every file, runs it unmodified as
-      a customer runs it against the real application served by
-      `live_server`, and asserts its records — for both targets, across the
-      standing matrix of shells, with the four minimal-image preflight
-      fixtures. It is the declared suite `code_builder_execution`, run by
-      CI's `code-builder-execution` job and held armed by
-      `tests/contracts/test_the_execution_suite_is_enforced.py`. #583 added
-      its three — a supplier cost read off the response and recorded as COGS
-      with its source on the receipt, a currency read off it that the server
-      refuses, and a cost written as a float that neither target sends —
-      across the standing matrix. #585 added no scenario: both stop
-      scenarios now assert how each stop was applied and what it was
-      measured on, on both targets, and a stop's figures are carried as UBB
-      wrote them on every jq of the standing matrix. #584 and #586 each add
-      theirs; #184's flip installs this row over it.
+    status: installed
+    notes: >-
+      `tests/code_builder_execution/` (#582) seeds a tenant, resolves a
+      Blueprint through its route, renders it with `ubb-codegen`, writes it
+      to disk with a checksum of every file, runs it as a customer runs it
+      against the real application served by `live_server`, and asserts its
+      records — for both targets, across the standing matrix of shells. The
+      checksum is the row's "unmodified": every file is held to what was
+      written before each run and after it, so a file patched, added or
+      removed between rendering and running is refused (ADR-0008 §5, CI may
+      supply the code's runtime inputs and may not repair it). Only a
+      complete artifact runs as a lifecycle; a scaffold or blocked one runs
+      only to show none of its calls that are not ready reaches the
+      application. The scenarios follow the suite's own sections: a
+      representative lifecycle; work crossing its ceiling and a customer
+      reaching its spend Pool, each asserting how the stop was applied and
+      what it was measured on (#585); a call the application refuses; a
+      scaffold, a blocked artifact and a custom response shape failing fast
+      (#582); a supplier cost read off the response with its source on the
+      receipt, a currency the server refuses and a cost written as a float
+      (#583); a decimal quantity and one past a binary float's digits (#603);
+      constants sent as declared (#584); and a kind of work sold at one
+      agreed price declared through the publish act (#586). The four
+      minimal-image fixtures prove preflight refuses before any request, and
+      a stop's figures are carried as UBB wrote them on every jq of the
+      matrix. The suite is run by CI's `code-builder-execution` job, held
+      unconditional and able to fail the run by the contract node below.
+      Installed by #184's flip (#587).
+    enforced_by:
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_every_scenario_runs_unmodified.py::test_a_scenario_runs_unmodified
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_files_are_written_byte_for_byte_as_render_returned_them
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_a_changed_artifact_is_refused_before_the_run_starts
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_a_file_the_run_writes_beside_the_rendered_ones_is_caught
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_only_a_complete_artifact_runs_as_a_lifecycle
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_a_fail_fast_run_that_reaches_a_call_not_ready_fails
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_harness_runs_only_what_was_rendered.py::test_a_python_run_is_given_nothing_of_this_suites_own
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_preflight_refuses_before_any_request.py::test_a_machine_without_a_tool_it_needs_is_refused_before_any_request
+      - suite: code_builder_execution
+        node: >-
+          tests/code_builder_execution/test_the_shell_matrix.py::test_a_stop_figure_is_carried_as_written_on_every_jq
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_execution_suite_is_enforced.py::test_ci_runs_the_execution_suite_and_can_fail_on_it
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_execution_suite_is_enforced.py::test_no_execution_test_is_skipped_or_expected_to_fail
 
   G26:
     statement: >-
@@ -1086,13 +1186,37 @@ gates:
       value lands at its declared scope.
     oracle: "#156 §7"
     source: "#156 §13, #158 §8"
-    status: owned_by_slice_builder
-    blocked_on: >-
-      The flip, and nothing else of this row's own. For both targets the
-      renderer's suite holds the renderer's half of the five over its
-      generated source, fixtures and snapshots (#577 Python, #578 shell),
-      beside the Blueprint's test that no secret reaches a document or a
-      stored row (#576). #184's flip installs this row over both.
+    status: installed
+    notes: >-
+      Each of the five is held where its subject is made. The Blueprint's
+      half runs in the platform suite (#576): with a known value planted in
+      every secret-shaped column the tenant has and in its key, no Blueprint
+      body — resolved, previewed or read back by fingerprint — and no stored
+      snapshot row carries any of them, and the same search over the tenant's
+      own rows finds every one they hold — the key only as its hash — so the
+      check cannot pass over values that were never set. The renderer's half runs in CI's `codegen` job, on both
+      targets (#577 Python, #578 shell): the credential is read from the
+      environment and written into no generated file, even with a secret
+      planted in the Blueprint; nothing in the renderer's fixtures, tests,
+      snapshots or source is shaped like a key, and no fixture carries a value
+      on a secret token; every secret reference's environment line carries
+      its setup instructions; every platform-known value is written as a
+      literal its target reads back as that value; and every runtime value is
+      asked for at the call it is declared for. The cases this row rests on
+      are named in `GATE_CASES`, held by the contract node below. Installed by
+      #184's flip (#587).
+    enforced_by:
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestNoSecretReachesABlueprintOrASnapshot::test_no_secret_value_is_in_any_body_or_any_stored_row
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_the_integration_blueprint.py::TestNoSecretReachesABlueprintOrASnapshot::test_the_search_can_find_a_secret_that_is_there
+      - suite: contracts
+        node: >-
+          tests/contracts/test_the_renderer_suite_is_enforced.py::test_every_case_a_code_builder_gate_rests_on_is_written_to_run
+      - job: codegen
+        step: Codegen tests — every renderer branch, compiled and run
 
   G27:
     statement: >-

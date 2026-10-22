@@ -27,12 +27,18 @@ So its enforcement is checked here, the way the contract suite's own is:
 5. **Its fixtures are held by the platform's suite.** The Blueprints it
    renders are committed files, and the test that holds each one equal to
    what the route answers is collected by the platform suite's defaults.
+6. **Every case a Code Builder gate rests on is written to run** (#587).
+   G23, G24 and G26 name the test step above as a site, and a step names a
+   suite rather than a case: deleting the five secret tests would leave the
+   step, and the row, green. A vitest case is not a node the gate manifest
+   can name, so the cases each of those rows rests on are named here, by
+   file and title, and every row naming the step is held to having them.
 
-Claims 1 to 4 each carry negative controls, through the same predicate the
-real workflow and the real sources are read with. Claim 5 is two readings of
-the tree with a vacuity floor each and no control of its own: what would make
-either pass over nothing is a path that stopped resolving, and both fail on
-that.
+Claims 1 to 4 and 6 each carry negative controls, through the same predicate
+the real workflow and the real sources are read with. Claim 5 is two readings
+of the tree with a vacuity floor each and no control of its own: what would
+make either pass over nothing is a path that stopped resolving, and both fail
+on that.
 """
 
 import ast
@@ -45,6 +51,7 @@ from _helpers import REPO_ROOT
 from tools.gates.enforcement import collection_faults, step_faults
 
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
+MANIFEST = REPO_ROOT / "gates" / "manifest.yaml"
 PACKAGE = REPO_ROOT / "apps" / "codegen"
 
 JOB = "codegen"
@@ -172,6 +179,146 @@ def test_no_renderer_test_is_skipped_or_run_alone():
 
     assert len(read) >= 11, [path.name for path in read]
     assert silenced == []
+
+
+#: The renderer's cases each Code Builder gate rests on, by the file and the
+#: title they are written with. The rows name the test step, which runs every
+#: case; these say WHICH of them a row's claim is made of, so that losing one
+#: fails here rather than leaving the row green (claim 6).
+GATE_CASES = {
+    # #158 §5.2's static layer, on both targets.
+    "G23": (
+        # Parse or compile.
+        ("artifact.test.ts", "compiles, every Python file of it"),
+        ("shell.artifact.test.ts",
+         "parses, every shell file of it, under sh and under bash"),
+        # Every operation the file reaches is the one its Blueprint names,
+        # and every key it sends is one that operation publishes.
+        ("execution.test.ts",
+         "starts, records and closes through the operations the Blueprint names"),
+        ("execution.test.ts",
+         "sends only keys the operation's request publishes"),
+        ("shell.execution.test.ts",
+         "starts, records and closes through the operations the Blueprint names"),
+        ("shell.execution.test.ts",
+         "sends only keys the operation's request publishes: %s, run as its own blocks say"),
+        ("shell.execution.test.ts",
+         "reads these branches' published keys off a contract that has some"),
+        # No real secret appears.
+        ("artifact.test.ts",
+         "reads the credential from the environment and writes it nowhere"),
+        ("shell.artifact.test.ts",
+         "reads the credential from the environment, hands it to curl on "
+         "standard input, and writes it nowhere"),
+        # Declared names are preserved.
+        ("execution.test.ts", "reach the wire exactly as they were declared"),
+        ("shell.execution.test.ts",
+         "reach the wire exactly as they were declared"),
+        # The rendered verdict is the one the plan was handed.
+        ("artifact.test.ts",
+         "states the three versions, the target, the fingerprint and the verdict"),
+        ("shell.artifact.test.ts",
+         "states the three versions, the target, the fingerprint and the verdict"),
+    ),
+    # Every renderer branch of both targets, pinned as the files it returns.
+    "G24": (
+        ("snapshots.test.ts", "renders the files its snapshot holds"),
+        ("snapshots.test.ts", "holds no snapshot of a file it no longer renders"),
+        ("snapshots.test.ts",
+         "are of the branches the tests render, and of no other"),
+        ("snapshots.test.ts", "cover every branch the ticket names"),
+        ("snapshots.test.ts",
+         "cover the same branches for the shell target, and the one only it has"),
+    ),
+    # #156 §7's five secret tests, the renderer's half of each.
+    "G26": (
+        # 1. No secret value in generated source.
+        ("artifact.test.ts",
+         "reads the credential from the environment and writes it nowhere"),
+        ("shell.artifact.test.ts",
+         "reads the credential from the environment, hands it to curl on "
+         "standard input, and writes it nowhere"),
+        ("execution.test.ts",
+         "reads the credential from the environment and nowhere else"),
+        ("shell.execution.test.ts",
+         "reads the credential from the environment and nowhere else"),
+        ("snapshots.test.ts",
+         "writes the same files whatever a secret token carries as a value: %s"),
+        # 2. None in fixtures or snapshots — and the search can find one.
+        ("artifact.test.ts", "nothing under %s is shaped like a key"),
+        ("artifact.test.ts", "can find a key that is there"),
+        ("artifact.test.ts",
+         "no fixture carries a value on a secret token, so none could leak one"),
+        # 3. Every secret reference carries setup instructions.
+        ("artifact.test.ts",
+         "gives every secret reference its setup instructions"),
+        ("shell.artifact.test.ts",
+         "gives every secret reference its setup instructions"),
+        # 4. Every non-secret platform-known value renders consistently.
+        ("artifact.test.ts",
+         "writes every platform-known argument as the literal Python reads "
+         "back unchanged"),
+        ("shell.artifact.test.ts",
+         "writes every platform-known value a call sends as the JSON that means it"),
+        # 5. Every runtime value lands at its declared scope.
+        ("artifact.test.ts",
+         "asks for every runtime value as a required parameter, at the call "
+         "it is declared for"),
+        ("shell.artifact.test.ts",
+         "asks for every runtime value as a name=value parameter, at the call "
+         "it is declared for"),
+    ),
+}
+
+#: A comment line, which can spell a case without being one.
+COMMENT = re.compile(r"^\s*(//|/\*|\*)")
+
+
+def written(title, source):
+    """Is `title` a case `source` writes to run?
+
+    `it("<title>", …)`, or `it.each(<cases>)("<title>", …)` — the two forms
+    the suite uses. A case under a modifier (`it.skip(`, `it.only(`) does not
+    match, and neither does a `describe` of that title or a line of comment.
+    The title is matched as the double-quoted literal the suite writes it as.
+    """
+    code = "\n".join(line for line in source.splitlines()
+                     if not COMMENT.match(line))
+    literal = re.escape(json.dumps(title, ensure_ascii=False))
+    each = r"(?:\.each\((?:[^()]|\([^()]*\))*\))?"
+    return re.search(rf"\bit{each}\(\s*{literal}\s*,", code) is not None
+
+
+def test_every_case_a_code_builder_gate_rests_on_is_written_to_run():
+    """Claim 6. Each case is written to run in a file the step's
+    `vitest run` collects, so deleting, renaming or silencing one is red."""
+    config = (PACKAGE / "vitest.config.ts").read_text(encoding="utf-8")
+    assert 'include: ["tests/**/*.test.ts"]' in config
+
+    missing = []
+    for gate, cases in GATE_CASES.items():
+        assert len(cases) >= 5, gate
+        for file, title in cases:
+            assert file.endswith(".test.ts"), file
+            source = (PACKAGE / "tests" / file).read_text(encoding="utf-8")
+            if not written(title, source):
+                missing.append(f"{gate}: {file}: {title}")
+    assert missing == []
+
+
+def test_the_rows_that_name_the_renderers_tests_are_the_rows_with_cases():
+    """Every gate naming the test step as a site has its cases named above,
+    and no gate has cases named that does not name the step — so a row
+    cannot rest on the suite without saying which of it, and a list cannot
+    outlive the row it was for."""
+    rows = yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))["gates"]
+    naming = sorted(
+        gate for gate, row in rows.items()
+        if {"job": JOB, "step": TESTS} in (row.get("enforced_by") or []))
+
+    assert naming == sorted(GATE_CASES)
+    for gate in naming:
+        assert rows[gate]["status"] == "installed", gate
 
 
 def test_the_shell_tests_have_no_way_to_pass_without_a_shell():
@@ -337,3 +484,28 @@ def test_negative_control_a_silenced_case_is_flagged():
 def test_positive_control_an_ordinary_case_is_not_flagged():
     assert silencers('it("skips nothing and runs only once", () => {})') == []
     assert silencers('it.each(CASES)("refuses %s", () => {})') == []
+
+
+# --- claim 6's controls: a case that is not written to run is not one --------
+
+def test_positive_control_a_case_written_either_way_is_found():
+    assert written("holds it", 'it("holds it", () => {})')
+    assert written("refuses %s", 'it.each(CASES)(\n  "refuses %s",\n  (x) => {})')
+    assert written("scans %s", 'it.each([A, join(B, "c")])("scans %s", (d) => {})')
+    assert written("it's naïve", 'it("it\'s naïve", () => {})')
+
+
+def test_negative_control_a_case_that_is_not_there_is_not_written():
+    assert not written("holds it", 'it("holds something else", () => {})')
+    assert not written("holds it", 'it("holds it, and more", () => {})')
+
+
+def test_negative_control_a_silenced_case_is_not_written():
+    for modifier in ("skip", "only", "todo", "fails"):
+        assert not written("holds it", f'it.{modifier}("holds it", () => {{}})')
+
+
+def test_negative_control_a_describe_or_a_comment_is_not_a_case():
+    assert not written("holds it", 'describe("holds it", () => {})')
+    assert not written("holds it", '// it("holds it", () => {})')
+    assert not written("holds it", '  * it("holds it", () => {})')

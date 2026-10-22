@@ -221,8 +221,9 @@
 # pull-earlier and the landed-owner controls take it. Today they read
 # `slice_builder` and `slice_8`. When the Code Builder lands, only the cutover
 # is left, and those three ERROR at setup with the fixture's own message rather
-# than going vacuous — as designed. What replaces them is #184's flip to
-# decide, not this one.
+# than going vacuous — as designed. #184's flip (#587) decided what replaces
+# them: a synthetic programme in `tmp_path` that declares an earlier and a later
+# slice of its own, recorded under that flip below.
 #
 # THE AUTHORING-DIRECTION BREAKS ARE NAMED HERE AND DELIBERATELY NOT FILED.
 # `oasdiff --baseline 3fe1dbff` reports 33 breaks, 17 already covered and
@@ -240,6 +241,73 @@
 # THIRTEEN operations — §17's figures exactly — and the error file carries ten
 # and twelve, the eleventh path being that breakdown. The cumulative gate was
 # run locally with the pinned binary and is green at 115 breaks, 115 reviewed.
+#
+# The Code Builder's flip (#587) is the seventh a slice makes in its own last
+# ticket, and the first that INSTALLS the rows its slice owned: G23, G24, G25
+# and G26 read `owned_by_slice_builder` until this commit, so setting the flag
+# alone gives exactly four `landed_slice_owns_gate` errors and nothing else.
+# Slices 3 and 7 each installed theirs in an earlier ticket (G19 in #319, G14
+# in #511). The rows were installed over tests the slice's own tickets wrote,
+# and each was shown red on a planted violation before it was claimed: G23 on a
+# record call naming an operation the contract does not publish, and on a shell
+# request carrying a key no operation publishes; G24 on a committed snapshot
+# differing from what its branch renders; G25 on a rendered file patched
+# between writing and running, and on one patched to call an SDK method that
+# does not exist; G26 on a key-shaped value on a fixture's secret token. G23,
+# G24 and G26 rest partly on renderer cases, which a vitest step cannot name,
+# so the cases are named by file and title in the renderer suite's own
+# enforcement test, and that test is a site of each row.
+#
+# Nothing in the ledger was owed. The census was walked by IDENTITY over
+# `git rev-list` from slice 7's flip: twenty-three commits, of which ONE moved
+# the ledger — #574 paid `g2-sdk-stop_behavior`, this slice's only entry,
+# early. Nothing was born and no owner moved, so 40→39 is that one payment and
+# the residual is 39 `slice_8` entries. Per gate: G2 6→5, every other unmoved.
+#
+# THE THREE CONTROLS THE `unlanded` FIXTURE FED NOW RUN ON A SYNTHETIC CHAIN.
+# With only the cutover left there was no unlanded pair to derive, and the
+# landed-owner, deferral and pull-earlier controls errored at setup with the
+# fixture's own message, as slice 7's flip said they would. The fixture is
+# gone. In its place a synthetic programme in `tmp_path` declares two slices of
+# its own beside the shipped ones, neither landed, the second later in the
+# chain, with orders and issues taken past the shipped ones. The controls name
+# those, so no flip can land a slice they depend on and they no longer read how
+# much of the real programme is left. The landed-owner control lands the
+# earlier synthetic slice, which is never `UNLANDED_SLICE`, so its assertion
+# that the owner is not that slice holds unweakened.
+#
+# All twenty-three controls were mutation-checked again, by the method this
+# file's earlier flips settled: an entry RELABELLED rather than reverted, any
+# other cause taken out and nothing else. ALL TWENTY-THREE failed without their
+# cause, and every failure was read: twelve `DID NOT RAISE GatesInvalid`, ten
+# an empty fault set against the code they assert — `{'ledger_grew'}` SIX
+# times, and one each of `{'authorisation_count_wrong'}`,
+# `{'authorisation_inert'}`, `{'debt_deferred'}` and `{'base_unreadable'}` —
+# and one `assert not True` on a comparison holding nothing. Each real-git
+# control failed on an EMPTY set, `{'ledger_grew'}` three times and
+# `{'base_unreadable'}` once. Three more were run for this flip: inverting the
+# pull-earlier control's move fails on `debt_deferred`; pointing the
+# landed-owner control at `UNLANDED_SLICE` fails on its own assertion, in its
+# own words; and the module as it stood at main, under this flag, errors three
+# times at setup with the old fixture's message. The twin mutates
+# `UNLANDED_SLICE`, which is slice 8, so it is untouched by construction for
+# the fourth flip running.
+#
+# THE AUTHORING-DIRECTION BREAKS ARE NAMED HERE AND DELIBERATELY NOT FILED.
+# `oasdiff --baseline 1ce79297` reports 13 breaks, one already covered and
+# TWELVE with no committed entry. All twelve sit on surfaces `api-v1-launch`
+# never published, checked against the tag's own document: SIX from #553, the
+# agreed price joining a Pricing Book change's diff rows on the six operations
+# that answer one, none of whose paths the tag published; FOUR from #603,
+# `measurements` values on the recording request and its batch becoming exact
+# decimal text, a type and a pattern on each, where the tag's recording request
+# carried no `measurements` at all; and TWO from #575, a Measurement's
+# `value_type` and a Grouping Field's `scope` becoming closed sets on write
+# routes the tag did not publish. #553's and #603's are recorded as reviewed
+# comments in `openapi/oasdiff-err-ignore.txt` by their own tickets; #575's two
+# are named here. Filing any of them would be an inert line, and an inert entry
+# turns the cumulative gate red. That gate was run locally with the pinned
+# binary and is green at 116 breaks, 116 reviewed.
 
 version: 1
 
@@ -299,7 +367,7 @@ slices:
     issue: 184
     title: Code Builder
     order: 8
-    landed: false
+    landed: true
 
   slice_8:
     issue: 190

@@ -30,7 +30,8 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
     the Code Builder stores: the immutable snapshot of a resolved Integration Blueprint, addressed
     by its `configuration_fingerprint`, and the withhold list. The Blueprint itself is resolved in
     the composition layer (`api/v1/integration_blueprint.py`), which reads the kernel and metering
-    together.
+    together, and rendered into a tenant's files by `ubb-codegen` (`apps/codegen`), a workspace
+    package outside the Django project that reads nothing but the Blueprint.
 - [Metering](./ubb-platform/apps/metering/CONTEXT.md) — usage recording, provider/billed cost,
   posting metadata, customer margin, and the pricing engine.
 - [Billing](./ubb-platform/apps/billing/CONTEXT.md) — prepaid credit ledger, real-time spend gate,
