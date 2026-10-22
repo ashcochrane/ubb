@@ -154,6 +154,25 @@ All twenty-three went red — and three of them went red for the wrong reason fi
   every failure, do not count them. The exit status alone cannot tell the three
   cases apart.
 
+And two from the Code Builder's flip (#587), the first to leave only one slice
+unlanded behind it and the first to install its rows in the flip itself:
+
+- **A control that needs slices which have not landed declares them itself.**
+  Deriving them from `slices.yaml` cured naming a slice that then lands, but a
+  derived set dwindles: with only the cutover left, the deferral, pull-earlier
+  and landed-owner controls had no pair to run on and errored at setup, as
+  designed. They now run on a synthetic programme in `tmp_path` that declares
+  an earlier and a later slice beside the shipped ones (`chain` in
+  `tests/contracts/test_migration_ledger.py`): the real rules are still in
+  force, and no flip can land what the controls name.
+- **A row resting on particular cases of a suite this file cannot name a node
+  in still names those cases.** A workflow step proves a whole suite runs; it
+  stays armed with any one case deleted. G23, G24 and G26 rest on cases of the
+  renderer's vitest suite, so the cases are named by file and title in
+  `GATE_CASES` (`tests/contracts/test_the_renderer_suite_is_enforced.py`), and
+  two of that module's nodes — every case written to run, and none silenced —
+  are sites of each such row, which the module itself holds.
+
 ## The ledger, and its three rules
 
 Every current violation of an installed gate, as an **individually identified

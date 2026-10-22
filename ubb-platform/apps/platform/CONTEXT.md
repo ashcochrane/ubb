@@ -1120,6 +1120,33 @@ only, Python reads both, and a tenant's own wrapper declares none, so no target 
 renderer defines how to traverse one.
 (`apps/platform/event_types/source_paths.py:SHAPE_REPRESENTATIONS`)
 
+**Diagnostic** (and its **remediation request**):
+One coded statement on a Blueprint about what stands between the tenant's declarations and a
+ready integration, addressed to the declaration it is about and carrying no prose. It is
+`blocking` — it lowers readiness — or `advisory`, which never does. One about an Event Type, a
+Measurement, a reported-cost mapping, a Grouping Field or an agreed price also offers the fix as a
+**remediation request**: the operation, the route and a skeleton body naming the object, for the
+tenant to send themselves. The builder never sends one.
+(`api/v1/integration_blueprint.py`)
+_Avoid_: "error" or "warning" for the two severities; "fix" for the request, which only describes
+the write.
+
+**Renderer** (`ubb-codegen`, and its **renderer catalogue**):
+The pure function that turns a resolved Blueprint into the files a tenant is handed for one target
+— `python_sdk` or `shell_http`. It decides expression, never meaning: it reads nothing but the
+Blueprint it is given, and refuses a document it cannot read rather than guessing. Its catalogue is
+every sentence a generated file may assert and every name a generated file is made of — closed,
+versioned, and the renderer's own rather than the registry's.
+(the repository's `apps/codegen`, outside `ubb-platform/`; ADR-0016, ADR-0017)
+_Avoid_: "template"; calling a catalogue symbol a registry value.
+
+**Call-site block**:
+The few lines of generated code a tenant places in their own, where a call happens: written only
+from the names the module exports, the call's parameters and fixed text, so it holds no value and
+regenerating the module never touches it. Every value the Blueprint resolved lives in the module.
+(ADR-0016 §2)
+_Avoid_: "snippet" or "example", which suggest it may be edited to fit.
+
 ## Cross-cutting primitives
 
 **micros**:
