@@ -16,7 +16,8 @@ from django.db.models.aggregates import Aggregate
 from core import controls
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from core.crossing import ceiling_assessment, ceiling_fields
-from core.vocabulary import TASK_STATUS_KILLED
+from core.vocabulary import (
+    TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work import reasons
@@ -205,6 +206,22 @@ def _rung(declared, beneath):
     if declared == 0:
         return None
     return declared
+
+
+def windows_of_a_unit(windows, *, parent_id, task_type) -> ExpiryWindows:
+    """The pair ONE unit of work runs under, out of a tenant's resolved
+    ladder (``expiry_windows``).
+
+    The unit's altitude comes from its parent link and from nothing else,
+    because one column carries the declared kind at either altitude and the
+    link is the only thing that says which one a row is at (#407); a
+    declaration this tenant does not have — an untyped unit's included —
+    answers with the fallback entry. One rule for both readers: the sweeper
+    asks it per candidate to name which window ran out, and the start
+    response asks it once to publish both (#540).
+    """
+    kind = TASK_TYPE_KIND_SUBTASK if parent_id else TASK_TYPE_KIND_TASK
+    return windows.get((kind, task_type), windows[EXPIRY_LADDER_FALLBACK])
 
 
 class PercentileCont(Aggregate):

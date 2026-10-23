@@ -8,22 +8,9 @@ from django.db.utils import OperationalError, InterfaceError
 from django.utils import timezone
 
 from core.vocabulary import (
-    TASK_STATUS_ACTIVE, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK,
-    TRIGGER_SOURCE_STALE_REAPER)
+    TASK_STATUS_ACTIVE, TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_STALE_REAPER)
 
 logger = logging.getLogger(__name__)
-
-
-def _declaration_of(task):
-    """The key this unit's expiry policy is resolved under — its altitude and
-    the kind of work it declared.
-
-    The altitude comes from the parent link and from nothing else, because one
-    column carries the declared kind at either altitude and the link is the
-    only thing that says which one a row is at (#407).
-    """
-    kind = TASK_TYPE_KIND_SUBTASK if task.parent_id else TASK_TYPE_KIND_TASK
-    return (kind, task.task_type)
 
 
 def _declaring(declaration):
@@ -97,11 +84,11 @@ def _reason_for(task, windows, now):
     the silence instead would say the tenant stopped talking about work that
     had in fact run out of time.
     """
-    from apps.platform.work.queries import EXPIRY_LADDER_FALLBACK
+    from apps.platform.work.queries import windows_of_a_unit
     from apps.platform.work.reasons import ABSOLUTE_DEADLINE, SILENCE_WINDOW
 
-    pair = windows.get(_declaration_of(task),
-                       windows[EXPIRY_LADDER_FALLBACK])
+    pair = windows_of_a_unit(windows, parent_id=task.parent_id,
+                             task_type=task.task_type)
     past_deadline = task.created_at < _deadline_instant(pair.absolute, now)
     return ABSOLUTE_DEADLINE if past_deadline else SILENCE_WINDOW
 

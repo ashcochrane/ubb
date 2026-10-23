@@ -75,6 +75,11 @@ TASK_STATUS_CHOICES = [
 #: declared, instead of on the day somebody remembers a list in this file.
 TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES) - {TASK_STATUS_ACTIVE}
 
+#: THE TWO TERMINAL STATES UBB WRITES, as against the three a caller declares —
+#: the states a unit's stop cause is read under (`Task.stop_cause`, #551),
+#: because they are the states a stop stamps one on.
+UBB_STOPPED_TASK_STATUSES = frozenset({TASK_STATUS_KILLED, TASK_STATUS_EXPIRED})
+
 # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR, held under the same rule
 # stated above the state set — by reference, wording only.
 TASK_TYPE_KIND_CHOICES = [
@@ -902,6 +907,25 @@ class Task(BaseModel):
     @property
     def ceiling_basis(self):
         return controls.ceiling_basis(self.metadata.get(STOP_CAUSE_KEY))
+
+    # WHY, HOW AND UNDER WHICH CONTROL UBB STOPPED THIS UNIT (#551), as the
+    # unit read publishes them — keyed by the concepts' own names, which are
+    # the wire's, and each None where nothing applies.
+    #
+    # ⚠ GATED ON THE STATE, as every reader of these keys is (the paragraph at
+    # `STOP_CAUSE_KEY`). `metadata` is also the caller's own bag, carried from
+    # the start, so a key UBB writes on a stop is a key a caller could have
+    # written first; only a unit UBB stopped — `killed` or `expired` — carries
+    # UBB's answer under it. Everything else answers None for all three,
+    # including contained work its parent's CLOSE withdrew, whose reason is the
+    # caller-side `outcome_reason` beside these and never a stop cause.
+    @property
+    def stop_cause(self):
+        stopped = self.status in UBB_STOPPED_TASK_STATUSES
+        bag = self.metadata if stopped else {}
+        return {STOP_CAUSE_KEY: bag.get(STOP_CAUSE_KEY) or None,
+                STOP_MECHANISM_KEY: bag.get(STOP_MECHANISM_KEY) or None,
+                STOP_CONTROL_FAMILY_KEY: bag.get(STOP_CONTROL_FAMILY_KEY) or None}
 
     def save(self, *args, **kwargs):
         """Guard the immutable declared kind (D7/D8) — ONE guard, because
