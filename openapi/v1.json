@@ -8307,6 +8307,11 @@
       "StartTaskResponse": {
         "description": "What a start registered, or what its key already claimed.\n\n\u26a0 THE REGISTRATION, NOT THE READ. A start answers *which unit of work is\nthis, and did I just create it* \u2014 the identity, the altitude, and the facts\nthe unit pinned. What it deliberately does NOT carry is the cost\nrollups: they are a read's answer, they are all zero on the call that\ncreates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a\ncaller replaying an attempt that has since run up cost.\n\n\u26a0 AND THE DECLARED GROUPING VALUES ARE NOT ECHOED. You just sent them,\nand a start that pinned something else says so by REFUSING rather than by\nhanding back a corrected bag \u2014 so an echo could only ever repeat your own\nrequest back to you. The unit read one call away carries them as UBB holds\nthem, keyed by your own declared key.",
         "properties": {
+          "absolute_deadline_at": {
+            "description": "When this unit of work passes its absolute deadline: its registration plus how long its kind of work may run at all \u2014 the declared kind's own deadline, else the workspace default, else UBB's backstop of six hours. Past it, UBB expires the unit if it is still active. Never null: the absolute deadline cannot be switched off. Resolved when this response was written \u2014 a later change to the declaration or the workspace default reaches work already running.",
+            "title": "Absolute Deadline At",
+            "type": "string"
+          },
           "agreed_price_micros": {
             "anyOf": [
               {
@@ -8341,6 +8346,18 @@
           "replayed": {
             "title": "Replayed",
             "type": "boolean"
+          },
+          "silence_window_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long this unit of work may go without a usage report, counted from its last one, before UBB expires it \u2014 resolved on the same ladder as `absolute_deadline_at` (UBB's backstop is fifteen minutes), and resolved when this response was written. Null where no silence window applies to it. Silence is counted from the last report, so work that has never reported is not measured on it.",
+            "title": "Silence Window Seconds"
           },
           "status": {
             "enum": [
@@ -8380,6 +8397,8 @@
           "task_id",
           "status",
           "created_at",
+          "absolute_deadline_at",
+          "silence_window_seconds",
           "replayed"
         ],
         "title": "StartTaskResponse",
@@ -8815,6 +8834,25 @@
             ],
             "title": "Completed At"
           },
+          "control_family": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ceiling",
+                  "customer_spend_pool",
+                  "wallet_policy",
+                  "admission_control"
+                ],
+                "type": "string",
+                "x-ubb-concept": "control_family"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work.",
+            "title": "Control Family"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -8863,6 +8901,28 @@
               }
             ],
             "title": "Parent Task Id"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "reason_code",
+                "x-ubb-known-values": [
+                  "task_cogs_ceiling",
+                  "customer_spend_pool",
+                  "parent_killed",
+                  "silence_window",
+                  "hard_floor",
+                  "absolute_deadline",
+                  "parent_expired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`).",
+            "title": "Reason Code"
           },
           "reason_detail": {
             "anyOf": [
@@ -8924,6 +8984,27 @@
             "title": "Total Provider Cost Micros",
             "type": "integer"
           },
+          "trigger_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "trigger_source",
+                "x-ubb-known-values": [
+                  "usage_ingest",
+                  "enforcement_patrol",
+                  "parent_cascade",
+                  "pool_crossing",
+                  "stale_reaper",
+                  "charge_projection"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where the stop recorded no mechanism.",
+            "title": "Trigger Source"
+          },
           "unpriced_event_count": {
             "title": "Unpriced Event Count",
             "type": "integer"
@@ -8936,6 +9017,9 @@
         "required": [
           "task_id",
           "status",
+          "reason_code",
+          "trigger_source",
+          "control_family",
           "total_provider_cost_micros",
           "unresolved_event_count",
           "total_billed_cost_micros",
@@ -9004,6 +9088,25 @@
             ],
             "title": "Completed At"
           },
+          "control_family": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ceiling",
+                  "customer_spend_pool",
+                  "wallet_policy",
+                  "admission_control"
+                ],
+                "type": "string",
+                "x-ubb-concept": "control_family"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work.",
+            "title": "Control Family"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
@@ -9052,6 +9155,28 @@
               }
             ],
             "title": "Parent Task Id"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "reason_code",
+                "x-ubb-known-values": [
+                  "task_cogs_ceiling",
+                  "customer_spend_pool",
+                  "parent_killed",
+                  "silence_window",
+                  "hard_floor",
+                  "absolute_deadline",
+                  "parent_expired"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`).",
+            "title": "Reason Code"
           },
           "reason_detail": {
             "anyOf": [
@@ -9106,6 +9231,27 @@
             "title": "Total Provider Cost Micros",
             "type": "integer"
           },
+          "trigger_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "x-ubb-concept": "trigger_source",
+                "x-ubb-known-values": [
+                  "usage_ingest",
+                  "enforcement_patrol",
+                  "parent_cascade",
+                  "pool_crossing",
+                  "stale_reaper",
+                  "charge_projection"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where the stop recorded no mechanism.",
+            "title": "Trigger Source"
+          },
           "unpriced_event_count": {
             "title": "Unpriced Event Count",
             "type": "integer"
@@ -9118,6 +9264,9 @@
         "required": [
           "task_id",
           "status",
+          "reason_code",
+          "trigger_source",
+          "control_family",
           "total_provider_cost_micros",
           "unresolved_event_count",
           "total_billed_cost_micros",
@@ -21471,12 +21620,20 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``StopFired``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the\n                 ``StopFired`` that opened it).\nreason_code / control_family / control_id\n               = WHICH stop line cleared, its family and the row that\n                 declares the control \u2014 the same three the opening half\n                 carried (#458). What CAUSED the clear (a balance that\n                 recovered, the hourly reconcile, an upward repair) is\n                 the ledger row's own bookkeeping (`clear_reason`) and\n                 no longer rides this event: a subscriber is told which\n                 stop lifted, which is the question the pair answers.\nbalance_micros = the balance at clearance, as seen by the clearing lane\n                 (live counter on the fast path, durable balance on the\n                 fallback/reconcile paths; postpaid passes 0).",
+                    "description": "The resume half of the stop/resume pair (#39, spec \u00a7E).\n\nFires the moment the balance re-crosses the floor \u2014 no hysteresis margin,\nno ack latch (decision 4) \u2014 from any clearing path: the ``credit()`` hook\n(fast lane, with a durable-balance fallback when Redis is blind) or the\nhourly reconcile. All paths route through the same ``StopSignalState``\ntransition guard as ``CustomerStopped``; a clear that didn't win the transition\nemits nothing, so resume fires exactly once per episode.\n\nepisode_seq    = the episode this clear closes (pairs with the\n                 ``CustomerStopped`` that opened it).\nreason_code / control_family / control_id\n               = WHICH stop line cleared, its family and the row that\n                 declares the control \u2014 the same three the opening half\n                 carried (#458). What CAUSED the clear (a balance that\n                 recovered, the hourly reconcile, an upward repair) is\n                 the ledger row's own bookkeeping (`clear_reason`) and\n                 no longer rides this event: a subscriber is told which\n                 stop lifted, which is the question the pair answers.\nbalance_micros = the wallet balance at clearance, as seen by the clearing\n                 lane (live counter on the fast path, durable balance on\n                 the fallback/reconcile paths); null where the customer\n                 holds no wallet balance.",
                     "properties": {
                       "balance_micros": {
-                        "default": 0,
-                        "title": "Balance Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The customer's wallet balance, in micros, as the lane that announced this saw it. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
+                        "title": "Balance Micros"
                       },
                       "control_family": {
                         "enum": [
@@ -21538,7 +21695,7 @@
                       "control_family",
                       "control_id"
                     ],
-                    "title": "StopCleared",
+                    "title": "CustomerStopCleared",
                     "type": "object"
                   },
                   "event_id": {
@@ -21622,7 +21779,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the customer whose stop line it is: the billing owner\n              (resolve_billing_owner) for the owner's lines, or a pooled\n              seat for the seat's own Pool level (#459, #609).\nreason_code = WHICH customer-wide stop opened the episode \u2014 the wallet's\n              hard floor or the customer spend pool (#458, slice 6 \u00a79):\n              the ledger line's own word, one of the stop reasons the\n              registry names. Both controls open this same state, and\n              a subscriber is told which by reading, never by parsing.\ncontrol_family / control_id\n            = the family that word belongs to, and the row that declares\n              the control \u2014 the billing profile or tenant configuration\n              that carried the floor, the pool row \u2014 so every stop can\n              be routed to the control that caused it (\u00a715).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq\n              \u2014 per owner per line since #458, so a customer stopped by\n              its pool and by its floor at once holds two independent\n              episodes); the paired ``StopCleared`` carries the same id\n              and the same word, and the stop-context tagging / past-limit\n              report (#41) key on it.\n\nNAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 \u00a75): the\npublished name is the customer's, not the mechanism's, and it is held by\nreference to the generated vocabulary as every name in this module is.",
+                    "description": "Customer-wide stop signal \u2014 the stop half of the stop/resume pair (#39).\n\nEmitted through the ``StopSignalState`` transition guard\n(apps/billing/gating/services/stop_signal_service.py): every lane that\ndetects a floor/cap crossing \u2014 the real-time counter write, the durable\ndrawdown handler, the hourly reconcile \u2014 drives a transition on the\nowner's per-family ledger row, and only the WINNING stop transition emits\nthis event, so a crossing observed by several lanes fires exactly once per\nepisode. The emission commits atomically with the ledger transition (same\ntransaction), so the ledger and the event stream cannot disagree \u2014 a\ncaller's rollback takes both, and the durable lane / reconcile re-drives\nthe missed transition (late, never lost).\n\nowner_id    = the customer whose stop line it is: the billing owner\n              (resolve_billing_owner) for the owner's lines, or a pooled\n              seat for the seat's own Pool level (#459, #609).\nreason_code = WHICH customer-wide stop opened the episode \u2014 the wallet's\n              hard floor or the customer spend pool (#458, slice 6 \u00a79):\n              the ledger line's own word, one of the stop reasons the\n              registry names. Both controls open this same state, and\n              a subscriber is told which by reading, never by parsing.\ncontrol_family / control_id\n            = the family that word belongs to, and the row that declares\n              the control \u2014 the billing profile or tenant configuration\n              that carried the floor, the pool row \u2014 so every stop can\n              be routed to the control that caused it (\u00a715).\nscope       = \"customer\" \u2014 the whole owner is stopped (consumers fan the\n              stop to every task they hold for the owner).\nepisode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq\n              \u2014 per owner per line since #458, so a customer stopped by\n              its pool and by its floor at once holds two independent\n              episodes); the paired ``CustomerStopCleared`` carries the same id\n              and the same word, and the stop-context tagging / past-limit\n              report (#41) key on it.\n\nNAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 \u00a75): the\npublished name is the customer's, not the mechanism's, and it is held by\nreference to the generated vocabulary as every name in this module is.\nSo is this payload's title, which is the class's name and every\ngenerated client's name for the type: it is the event's own name (#554).",
                     "properties": {
                       "control_family": {
                         "enum": [
@@ -21684,7 +21841,7 @@
                       "control_family",
                       "control_id"
                     ],
-                    "title": "StopFired",
+                    "title": "CustomerStopped",
                     "type": "object"
                   },
                   "event_id": {
@@ -21770,8 +21927,16 @@
                   "data": {
                     "properties": {
                       "balance_micros": {
-                        "title": "Balance Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The customer's wallet balance, in micros, as the lane that announced this saw it. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
+                        "title": "Balance Micros"
                       },
                       "customer_id": {
                         "title": "Customer Id",
@@ -23326,9 +23491,17 @@
                         "type": "string"
                       },
                       "task_cogs_ceiling_micros": {
-                        "default": 0,
-                        "title": "Task Cogs Ceiling Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The COGS ceiling this unit of work pinned when it started, in micros \u2014 the bound `total_provider_cost_micros` raced. Null where no ceiling applies to the unit: its kind of work is declared uncapped, or nothing declares one. Never 0, which no ceiling can be.",
+                        "title": "Task Cogs Ceiling Micros"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -23533,9 +23706,17 @@
                         "type": "string"
                       },
                       "task_cogs_ceiling_micros": {
-                        "default": 0,
-                        "title": "Task Cogs Ceiling Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The COGS ceiling this unit of work pinned when it started, in micros \u2014 the bound `total_provider_cost_micros` raced. Null where no ceiling applies to the unit: its kind of work is declared uncapped, or nothing declares one. Never 0, which no ceiling can be.",
+                        "title": "Task Cogs Ceiling Micros"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -23730,9 +23911,17 @@
                         ]
                       },
                       "task_cogs_ceiling_micros": {
-                        "default": 0,
-                        "title": "Task Cogs Ceiling Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The COGS ceiling this unit of work pinned when it started, in micros \u2014 the bound `total_provider_cost_micros` raced. Null where no ceiling applies to the unit: its kind of work is declared uncapped, or nothing declares one. Never 0, which no ceiling can be.",
+                        "title": "Task Cogs Ceiling Micros"
                       },
                       "task_id": {
                         "default": "",
@@ -23932,9 +24121,17 @@
                         ]
                       },
                       "task_cogs_ceiling_micros": {
-                        "default": 0,
-                        "title": "Task Cogs Ceiling Micros",
-                        "type": "integer"
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "default": null,
+                        "description": "The COGS ceiling this unit of work pinned when it started, in micros \u2014 the bound `total_provider_cost_micros` raced. Null where no ceiling applies to the unit: its kind of work is declared uncapped, or nothing declares one. Never 0, which no ceiling can be.",
+                        "title": "Task Cogs Ceiling Micros"
                       },
                       "task_id": {
                         "default": "",
@@ -25112,7 +25309,7 @@
                       "balance_micros",
                       "min_balance_micros"
                     ],
-                    "title": "BalanceCritical",
+                    "title": "WalletBalanceCritical",
                     "type": "object"
                   },
                   "event_id": {
@@ -25225,7 +25422,7 @@
                       "threshold_micros",
                       "suggested_topup_micros"
                     ],
-                    "title": "BalanceLow",
+                    "title": "WalletBalanceLow",
                     "type": "object"
                   },
                   "event_id": {
@@ -25338,7 +25535,7 @@
                       "tenant_id",
                       "customer_id"
                     ],
-                    "title": "BalanceOverage",
+                    "title": "WalletBalanceOverage",
                     "type": "object"
                   },
                   "event_id": {
@@ -25469,7 +25666,7 @@
                       "owner_id",
                       "reason"
                     ],
-                    "title": "SoftFloorCleared",
+                    "title": "WalletPolicySoftFloorCleared",
                     "type": "object"
                   },
                   "event_id": {
@@ -25553,7 +25750,7 @@
               "schema": {
                 "properties": {
                   "data": {
-                    "description": "The soft floor's crossing half (#40, spec \u00a7F) \u2014 the wind-down line.\n\nEmitted through the ``soft_floor`` family of the ``StopSignalState``\ntransition guard when the DURABLE drawdown lane sees the owner's wallet\ncross the resolved soft line \u2014 there is no fast Redis lane for the soft\nfamily (signal latency is outbox latency, accepted by #28). Never a stop:\nacks don't change, events are never tagged, nothing is suspended \u2014 the\ntenant's cue to refuse new top-level task starts while running work\ncompletes (the start-gate enforces the same line server-side with reason\n``soft_floor_reached``).\n\nowner_id = the billing owner (the end customer whose wallet crossed),\nmatching ``StopFired``. soft_min_balance_micros = the RESOLVED soft value\n(the line is -value). episode_seq = the soft_floor family's own episode\nsequence, independent of the hard floor's.\n\nNAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 \u00a75): the\nsoft floor is a Wallet policy setting, so the wallet policy owns the\nevent's namespace, as it does the clearing half's.",
+                    "description": "The soft floor's crossing half (#40, spec \u00a7F) \u2014 the wind-down line.\n\nEmitted through the ``soft_floor`` family of the ``StopSignalState``\ntransition guard when the DURABLE drawdown lane sees the owner's wallet\ncross the resolved soft line \u2014 there is no fast Redis lane for the soft\nfamily (signal latency is outbox latency, accepted by #28). Never a stop:\nacks don't change, events are never tagged, nothing is suspended \u2014 the\ntenant's cue to refuse new top-level task starts while running work\ncompletes (the start-gate enforces the same line server-side with reason\n``soft_floor_reached``).\n\nowner_id = the billing owner (the end customer whose wallet crossed),\nmatching ``CustomerStopped``. soft_min_balance_micros = the RESOLVED soft value\n(the line is -value). episode_seq = the soft_floor family's own episode\nsequence, independent of the hard floor's.\n\nNAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 \u00a75): the\nsoft floor is a Wallet policy setting, so the wallet policy owns the\nevent's namespace, as it does the clearing half's \u2014 and the payload's\ntitle, which is the event's own name (#554).",
                     "properties": {
                       "balance_micros": {
                         "default": 0,
@@ -25588,7 +25785,7 @@
                       "tenant_id",
                       "owner_id"
                     ],
-                    "title": "SoftFloorCrossed",
+                    "title": "WalletPolicySoftFloorCrossed",
                     "type": "object"
                   },
                   "event_id": {

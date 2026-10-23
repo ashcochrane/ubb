@@ -31,11 +31,13 @@ from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSuspended, CustomerStopCleared, SubtaskExpired, TaskExpired, TaskKilled)
+    CustomerStopCleared, CustomerSuspended, SubtaskExpired, TaskExpired, TaskKilled)
+from apps.platform.tenants.models import Tenant
 from apps.platform.work.tasks import reap_stale_tasks
 from api.v1.tests.test_every_stop_names_the_control_that_fired import (
     EveryStopNamesItsControlTestBase)
-from core.vocabulary import TASK_TYPE_KIND_SUBTASK
+from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_PREPAID, TASK_TYPE_KIND_SUBTASK)
 
 CEILING = "task_cogs_ceiling_micros"
 BALANCE = "balance_micros"
@@ -219,7 +221,12 @@ class TheRuleReadsWhoHoldsAWalletTest(StopTestBase):
                          5_000_000)
 
     def test_a_tenant_that_holds_no_prepaid_wallets_says_none(self):
-        for mode in ("postpaid", "meter_only"):
+        """Every mode the tenant column admits but prepaid — read off the
+        column, so a mode added or renamed there is asked here too."""
+        modes = {value for value, _ in
+                 Tenant._meta.get_field("billing_mode").choices}
+        self.assertIn(CUSTOMER_BILLING_MODE_PREPAID, modes)
+        for mode in sorted(modes - {CUSTOMER_BILLING_MODE_PREPAID}):
             with self.subTest(mode=mode):
                 self.tenant.billing_mode = mode
                 self.assertIsNone(announced_balance(

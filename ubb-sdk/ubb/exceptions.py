@@ -52,12 +52,17 @@ class UBBConnectionError(UBBError):
 # type outside `Exception` is the spend stop below, and `test_stop_verdict.py`
 # pins that set at exactly one. #179 §2.4 lists what it carries — the
 # identity, the current state, the expiry time, and the terminal declarations
-# it will accept. The three properties below are the first two, read through
-# the handle rather than copied off it (a second hop, on purpose: the handle
-# is the thing to act on, and the exception must not disagree with it); the
-# accepted declarations ARE the handle's three methods; and the expiry time
-# is not on the wire — the registration does not publish one — so it carries
-# what the wire does.
+# it will accept. The properties below are the identity, the state and the
+# expiry, read through the handle rather than copied off it (a second hop, on
+# purpose: the handle is the thing to act on, and the exception must not
+# disagree with it); the accepted declarations ARE the handle's three methods.
+#
+# ⚠ THE EXPIRY IS TWO WINDOWS, NOT ONE TIME (#540). UBB expires a unit that
+# passes its absolute deadline — an instant, measured from registration — or
+# that goes too long without a usage report — a duration, measured from the
+# last report, which this client cannot see. The registration publishes both
+# (`absolute_deadline_at`, `silence_window_seconds`), resolved when it was
+# written, and this carries both rather than inventing one instant out of them.
 class TaskOutcomeRequired(UBBError):
     """A work block ended cleanly and nothing declared how the work ended.
 
@@ -71,14 +76,22 @@ class TaskOutcomeRequired(UBBError):
     as they would have inside the block.
 
     ``task`` is the handle itself; ``task_id``, ``task_type`` and ``status``
-    (the last state this client saw for it) read straight off it."""
+    (the last state this client saw for it) read straight off it, and so does
+    when UBB will expire the work if nothing declares an ending:
+    ``absolute_deadline_at``, the instant it passes its absolute deadline,
+    and ``silence_window_seconds``, how long it may go without a usage report
+    (``None`` where no silence window applies)."""
     def __init__(self, task: StartedTask):
         self.task = task
+        quiet = (f", or once it goes {task.silence_window_seconds} seconds "
+                 f"without a usage report"
+                 if task.silence_window_seconds is not None else "")
         super().__init__(
             f"Unit of work {task.task_id} left its block without a declared "
             f"outcome. It is still open on UBB's side — nothing was sent and "
-            f"nothing was invented. Call complete(), fail(outcome_reason) or "
-            f"cancel() on it explicitly.")
+            f"nothing was invented — and UBB will expire it once it passes "
+            f"its absolute deadline, {task.absolute_deadline_at}{quiet}. Call "
+            f"complete(), fail(outcome_reason) or cancel() on it explicitly.")
 
     @property
     def task_id(self) -> str:
@@ -91,6 +104,14 @@ class TaskOutcomeRequired(UBBError):
     @property
     def status(self) -> str:
         return self.task.status
+
+    @property
+    def absolute_deadline_at(self) -> str:
+        return self.task.absolute_deadline_at
+
+    @property
+    def silence_window_seconds(self) -> int | None:
+        return self.task.silence_window_seconds
 
 # The spend stop is the ONE type in this SDK outside `Exception`, and it is
 # deliberately not a `UBBError` (#179 §1.4, #421). `UBBStoppedError` used to

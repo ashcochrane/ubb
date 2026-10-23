@@ -423,7 +423,10 @@ exclusions:
     # one-time lift of the price trigger with the closed set it leaves
     # (`usage/0047`). Neither names a retired word, so the number moved for
     # the files existing, and the sites and terms held at 1 in 5.
-    files: 275
+    # 275 → 276 in R10-W2 (#562): one migration — the unit of work's
+    # write-once rule (`work/0028`). It names no retired word, so the number
+    # moved for the file existing, and the sites and terms held at 1 in 5.
+    files: 276
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**
