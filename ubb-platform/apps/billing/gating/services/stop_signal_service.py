@@ -97,7 +97,7 @@ STATE_STOPPED = "stopped"
 STATE_CLEARED = "cleared"
 
 # Clear-cause vocabulary for `StopSignalState.clear_reason` and for
-# SoftFloorCleared.reason on a clearing transition. A balance re-cross via
+# WalletPolicySoftFloorCleared.reason on a clearing transition. A balance re-cross via
 # the credit hook (fast lane or its durable-balance fallback) says
 # balance_recovered; the hourly bottom-line catch-up says reconciled.
 CLEAR_BALANCE_RECOVERED = "balance_recovered"
@@ -113,7 +113,7 @@ CLEAR_BALANCE_REPAIRED = "balance_repaired"
 # `reason` (the crossed event itself carries no reason; the row's line is
 # `LINE_SOFT_FLOOR`).
 # Administrative silent close on an enforcement_mode transition (the live
-# counter's cleanup → close_all_silently) — never rides a StopCleared event
+# counter's cleanup → close_all_silently) — never rides a CustomerStopCleared event
 # (a config flip is not a re-cross).
 CLEAR_ENFORCEMENT_MODE_TRANSITION = "enforcement_mode_transition"
 
@@ -291,7 +291,7 @@ class StopSignalService:
         """
         from apps.platform.customers.models import Customer
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import StopFired, CustomerSuspended
+        from apps.platform.events.schemas import CustomerStopped, CustomerSuspended
 
         if line not in STOP_LINES:
             raise ValueError(f"{line!r} is not a stop line: {STOP_LINES}")
@@ -304,7 +304,7 @@ class StopSignalService:
                                  stop_measured_micros=stop_measured_micros))
             if row is None:
                 return None
-            emit_stamped(row, StopFired(
+            emit_stamped(row, CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(owner.id),
                 scope="customer", episode_seq=row.episode_seq,
                 **control_fields(row)))
@@ -346,7 +346,7 @@ class StopSignalService:
         ``LiveCounter.resume``'s durable gate (D15), which also asks whether
         the OTHER stop line still holds the owner before lifting anything.
         """
-        from apps.platform.events.schemas import StopCleared
+        from apps.platform.events.schemas import CustomerStopCleared
 
         if line not in STOP_LINES:
             raise ValueError(f"{line!r} is not a stop line: {STOP_LINES}")
@@ -354,7 +354,7 @@ class StopSignalService:
             row = _close_line(owner_id, line, clear_reason=clear_reason)
             if row is None:
                 return None
-            emit_stamped(row, StopCleared(
+            emit_stamped(row, CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 scope="customer", episode_seq=row.episode_seq,
                 balance_micros=announced_balance(
@@ -418,14 +418,14 @@ class StopSignalService:
         Customer row is never locked or touched here, so the Customer ->
         StopSignalState lock order holds trivially.
         """
-        from apps.platform.events.schemas import SoftFloorCrossed
+        from apps.platform.events.schemas import WalletPolicySoftFloorCrossed
 
         with transaction.atomic():
             row = _open_line(owner_id, tenant, LINE_SOFT_FLOOR, control_id=None,
                              now=timezone.now(), opening=NO_OPENING_FACTS)
             if row is None:
                 return None
-            emit_stamped(row, SoftFloorCrossed(
+            emit_stamped(row, WalletPolicySoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=int(soft_min_balance_micros),
@@ -446,13 +446,13 @@ class StopSignalService:
         soft floor was UNCONFIGURED mid-episode still clears (there is no
         line left to be past), and the event says so honestly.
         """
-        from apps.platform.events.schemas import SoftFloorCleared
+        from apps.platform.events.schemas import WalletPolicySoftFloorCleared
 
         with transaction.atomic():
             row = _close_line(owner_id, LINE_SOFT_FLOOR, clear_reason=reason)
             if row is None:
                 return None
-            emit_stamped(row, SoftFloorCleared(
+            emit_stamped(row, WalletPolicySoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id), reason=reason,
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=(None if soft_min_balance_micros is None

@@ -24,7 +24,7 @@ from django.test.utils import CaptureQueriesContext
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSuspended, RefundRequested, StopCleared, StopFired, SubtaskExpired,
+    CustomerSuspended, RefundRequested, CustomerStopCleared, CustomerStopped, SubtaskExpired,
     SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.events.tests._helpers import as_it_was_spelled
 from apps.platform.tenants.models import Tenant
@@ -285,9 +285,9 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self.assertEqual(self._payload(row)["reason"], reasons.SILENCE_WINDOW)
 
     def test_the_customer_stop_pair_splits_by_the_tenants_mode(self):
-        pre = self._row(self.prepaid, as_it_was_spelled(StopFired.EVENT_TYPE),
+        pre = self._row(self.prepaid, as_it_was_spelled(CustomerStopped.EVENT_TYPE),
                         reason=MIGRATION.CUSTOMER_WIDE, owner_id="o1")
-        post = self._row(self.postpaid, as_it_was_spelled(StopFired.EVENT_TYPE),
+        post = self._row(self.postpaid, as_it_was_spelled(CustomerStopped.EVENT_TYPE),
                          reason=MIGRATION.CUSTOMER_WIDE, owner_id="o2")
 
         self._forward()
@@ -317,11 +317,11 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self.assertEqual(set(MIGRATION.PAYLOAD_CAUSE_EVENTS), {
             TaskKilled.EVENT_TYPE, TaskExpired.EVENT_TYPE,
             SubtaskKilled.EVENT_TYPE, SubtaskExpired.EVENT_TYPE,
-            as_it_was_spelled(StopFired.EVENT_TYPE),
+            as_it_was_spelled(CustomerStopped.EVENT_TYPE),
             CustomerSuspended.EVENT_TYPE})
         # And the derivation is live: the stop's half WAS renamed.
-        self.assertNotEqual(as_it_was_spelled(StopFired.EVENT_TYPE),
-                            StopFired.EVENT_TYPE)
+        self.assertNotEqual(as_it_was_spelled(CustomerStopped.EVENT_TYPE),
+                            CustomerStopped.EVENT_TYPE)
 
     def test_a_free_text_reason_on_another_event_is_left_as_written(self):
         """`reason` is free text on a refund, and a refund whose reason
@@ -339,7 +339,7 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
         self._row(self.prepaid, "usage.recorded", event_id="e1")
         self._row(self.prepaid, TaskKilled.EVENT_TYPE,
                   reason_code=reasons.TASK_COGS_CEILING)
-        self._row(self.prepaid, as_it_was_spelled(StopCleared.EVENT_TYPE),
+        self._row(self.prepaid, as_it_was_spelled(CustomerStopCleared.EVENT_TYPE),
                   reason="reconciled")
         table = OutboxEvent._meta.db_table
 

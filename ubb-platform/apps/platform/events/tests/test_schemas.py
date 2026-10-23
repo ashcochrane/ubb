@@ -79,14 +79,14 @@ class TestReferralRewardEarnedSchema:
         assert event.EVENT_TYPE == "referral.reward_earned"
 
 
-class TestBalanceLowSchema:
+class TestWalletBalanceLowSchema:
     def test_event_type(self):
-        from apps.platform.events.schemas import BalanceLow
-        assert BalanceLow.EVENT_TYPE == "wallet.balance_low"
+        from apps.platform.events.schemas import WalletBalanceLow
+        assert WalletBalanceLow.EVENT_TYPE == "wallet.balance_low"
 
     def test_fields(self):
-        from apps.platform.events.schemas import BalanceLow
-        event = BalanceLow(
+        from apps.platform.events.schemas import WalletBalanceLow
+        event = WalletBalanceLow(
             tenant_id="t1",
             customer_id="c1",
             balance_micros=-1000000,
@@ -97,14 +97,14 @@ class TestBalanceLowSchema:
         assert event.suggested_topup_micros == 20000000
 
 
-class TestBalanceCriticalSchema:
+class TestWalletBalanceCriticalSchema:
     def test_event_type(self):
-        from apps.platform.events.schemas import BalanceCritical
-        assert BalanceCritical.EVENT_TYPE == "wallet.balance_critical"
+        from apps.platform.events.schemas import WalletBalanceCritical
+        assert WalletBalanceCritical.EVENT_TYPE == "wallet.balance_critical"
 
     def test_fields(self):
-        from apps.platform.events.schemas import BalanceCritical
-        event = BalanceCritical(
+        from apps.platform.events.schemas import WalletBalanceCritical
+        event = WalletBalanceCritical(
             tenant_id="t1",
             customer_id="c1",
             balance_micros=-4500000,
@@ -196,8 +196,8 @@ def test_auto_topup_requires_action_contract():
 
 def test_balance_overage_contract():
     from dataclasses import asdict
-    from apps.platform.events.schemas import BalanceOverage
-    e = BalanceOverage(tenant_id="t", customer_id="c", balance_micros=-500,
+    from apps.platform.events.schemas import WalletBalanceOverage
+    e = WalletBalanceOverage(tenant_id="t", customer_id="c", balance_micros=-500,
                        overage_limit_micros=0, overage_micros=500)
     assert e.EVENT_TYPE == "wallet.balance_overage"
     assert asdict(e)["overage_micros"] == 500
@@ -260,12 +260,12 @@ class TestFromPayload:
 
     def test_roundtrips_the_producer_side(self):
         from dataclasses import asdict
-        from apps.platform.events.schemas import StopFired
+        from apps.platform.events.schemas import CustomerStopped
 
-        produced = StopFired(tenant_id="t1", owner_id="o1", reason_code="floor",
+        produced = CustomerStopped(tenant_id="t1", owner_id="o1", reason_code="floor",
                              control_family="policy", control_id="row",
                              episode_seq=3)
-        assert StopFired.from_payload(asdict(produced)) == produced
+        assert CustomerStopped.from_payload(asdict(produced)) == produced
 
 
 class TestUuidOrStrIds:

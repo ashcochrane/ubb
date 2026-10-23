@@ -14,7 +14,7 @@ control runs the same fan-out over an unmigrated row.
 the commit that adds this module and their ledger entries go with them, after
 which any living file naming one fails the sweep outright with no entry left
 to widen. Every retired name below is read off `MIGRATION.REVERSE` through the
-payload class's own constant — `MIGRATION.REVERSE[StopFired.EVENT_TYPE]` — which
+payload class's own constant — `MIGRATION.REVERSE[CustomerStopped.EVENT_TYPE]` — which
 is also the better assertion: it holds the stored data to the map that moved it
 rather than to a literal that would agree with both until one moved (#457's
 rule for a module written after a rename).
@@ -36,8 +36,8 @@ from django.test.utils import CaptureQueriesContext
 from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSpendPoolThresholdReached, SoftFloorCleared, SoftFloorCrossed,
-    StopCleared, StopFired, UsageRecorded, payload_schema_classes,
+    CustomerSpendPoolThresholdReached, WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
+    CustomerStopCleared, CustomerStopped, UsageRecorded, payload_schema_classes,
 )
 from apps.platform.events.tests._helpers import (
     THE_CATALOGUE_RENAME as MIGRATION, as_it_was_spelled,
@@ -51,8 +51,8 @@ from apps.platform.tenants.models import Tenant
 from core.vocabulary import WEBHOOK_EVENT_TYPE_VALUES
 
 #: The five, by the class that publishes each successor.
-THE_FIVE = (StopFired, StopCleared, SoftFloorCrossed, SoftFloorCleared,
-            CustomerSpendPoolThresholdReached)
+THE_FIVE = (CustomerStopped, CustomerStopCleared, WalletPolicySoftFloorCrossed,
+            WalletPolicySoftFloorCleared, CustomerSpendPoolThresholdReached)
 
 
 def retired(cls):
@@ -117,9 +117,9 @@ class TestSubscriptionsSurviveTheRename:
         self.tenant = Tenant.objects.create(name="Acme")
         self.config = TenantWebhookConfig.objects.create(
             tenant=self.tenant, url="https://example.com/hook",
-            secret="test-secret", event_types=[retired(StopFired)])
+            secret="test-secret", event_types=[retired(CustomerStopped)])
         self.event = OutboxEvent.objects.create(
-            event_type=StopFired.EVENT_TYPE,
+            event_type=CustomerStopped.EVENT_TYPE,
             payload={"tenant_id": str(self.tenant.id), "owner_id": "o1"},
             tenant_id=str(self.tenant.id))
 
@@ -132,7 +132,7 @@ class TestSubscriptionsSurviveTheRename:
         MIGRATION.move_under_the_families(global_apps, None)
 
         self.config.refresh_from_db()
-        assert self.config.event_types == [StopFired.EVENT_TYPE]
+        assert self.config.event_types == [CustomerStopped.EVENT_TYPE]
         deliver_webhook(self.event)
         assert WebhookDeliveryAttempt.objects.filter(success=True).count() == 1
 
@@ -169,14 +169,14 @@ class TestSubscriptionsSurviveTheRename:
         config = TenantWebhookConfig.objects.create(
             tenant=self.tenant, url="https://example.com/both",
             secret="s", event_types=[
-                StopCleared.EVENT_TYPE, retired(StopCleared),
+                CustomerStopCleared.EVENT_TYPE, retired(CustomerStopCleared),
                 UsageRecorded.EVENT_TYPE])
 
         MIGRATION.move_under_the_families(global_apps, None)
 
         config.refresh_from_db()
         assert config.event_types == [
-            StopCleared.EVENT_TYPE, UsageRecorded.EVENT_TYPE]
+            CustomerStopCleared.EVENT_TYPE, UsageRecorded.EVENT_TYPE]
 
     def test_the_wildcard_and_the_empty_subscription_are_untouched(self):
         every = TenantWebhookConfig.objects.create(
@@ -196,7 +196,7 @@ class TestSubscriptionsSurviveTheRename:
     def test_the_rename_reverses_losslessly(self):
         """The map is 1:1 and no old name survives in the catalogue, so a
         rollback restores exactly the subscription it found."""
-        before = [retired(SoftFloorCrossed), UsageRecorded.EVENT_TYPE,
+        before = [retired(WalletPolicySoftFloorCrossed), UsageRecorded.EVENT_TYPE,
                   retired(CustomerSpendPoolThresholdReached)]
         config = TenantWebhookConfig.objects.create(
             tenant=self.tenant, url="https://example.com/round-trip",
@@ -205,7 +205,7 @@ class TestSubscriptionsSurviveTheRename:
         MIGRATION.move_under_the_families(global_apps, None)
         config.refresh_from_db()
         assert config.event_types == [
-            SoftFloorCrossed.EVENT_TYPE, UsageRecorded.EVENT_TYPE,
+            WalletPolicySoftFloorCrossed.EVENT_TYPE, UsageRecorded.EVENT_TYPE,
             CustomerSpendPoolThresholdReached.EVENT_TYPE]
 
         MIGRATION.restore_the_mechanism_names(global_apps, None)
@@ -242,7 +242,7 @@ class TestQueuedEventsSurviveTheRename:
         self.payload = {"tenant_id": str(self.tenant.id), "owner_id": "o1",
                         "episode_seq": 3}
         self.event = OutboxEvent.objects.create(
-            event_type=retired(StopFired), payload=dict(self.payload),
+            event_type=retired(CustomerStopped), payload=dict(self.payload),
             tenant_id=str(self.tenant.id))
 
     @patch("apps.platform.events.webhooks.validate_webhook_url")
@@ -254,12 +254,12 @@ class TestQueuedEventsSurviveTheRename:
         _stub_client(mock_client_class)
         TenantWebhookConfig.objects.create(
             tenant=self.tenant, url="https://example.com/hook",
-            secret="test-secret", event_types=[retired(StopFired)])
+            secret="test-secret", event_types=[retired(CustomerStopped)])
 
         MIGRATION.move_under_the_families(global_apps, None)
 
         self.event.refresh_from_db()
-        assert self.event.event_type == StopFired.EVENT_TYPE
+        assert self.event.event_type == CustomerStopped.EVENT_TYPE
         deliver_webhook(self.event)
         assert WebhookDeliveryAttempt.objects.filter(success=True).count() == 1
 
@@ -313,4 +313,4 @@ class TestQueuedEventsSurviveTheRename:
         MIGRATION.restore_the_mechanism_names(global_apps, None)
 
         self.event.refresh_from_db()
-        assert self.event.event_type == retired(StopFired)
+        assert self.event.event_type == retired(CustomerStopped)

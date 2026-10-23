@@ -170,17 +170,18 @@ def _remint_signal_row(row, tenant):
         emit_stamped)
     from apps.billing.queries import get_customer_soft_min_balance
     from apps.platform.events.schemas import (
-        SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
+        CustomerStopCleared, CustomerStopped, WalletPolicySoftFloorCleared,
+        WalletPolicySoftFloorCrossed)
 
     if row.reason in STOP_LINES:
         control = control_fields(row)
         if row.state == STATE_STOPPED:
-            schema = StopFired(
+            schema = CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 scope="customer", episode_seq=row.episode_seq,
                 re_announcement=True, **control)
         else:
-            schema = StopCleared(
+            schema = CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 scope="customer", episode_seq=row.episode_seq,
                 # The same rule the clearing door applies (#610): null where
@@ -194,13 +195,13 @@ def _remint_signal_row(row, tenant):
         balance = _wallet_balance(row.owner_id)
         soft = get_customer_soft_min_balance(row.owner_id, tenant.id)
         if row.state == STATE_STOPPED:
-            schema = SoftFloorCrossed(
+            schema = WalletPolicySoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 balance_micros=balance,
                 soft_min_balance_micros=soft or 0,
                 episode_seq=row.episode_seq, re_announcement=True)
         else:
-            schema = SoftFloorCleared(
+            schema = WalletPolicySoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 reason=row.clear_reason, balance_micros=balance,
                 soft_min_balance_micros=soft,

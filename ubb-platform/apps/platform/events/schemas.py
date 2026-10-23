@@ -13,7 +13,7 @@ Rules:
 - Breaking changes (renames, removals, type changes) require a new class —
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
-  payloads migrated (`StopFired` / `StopCleared`'s `reason` → `reason_code`,
+  payloads migrated (`CustomerStopped` / `CustomerStopCleared`'s `reason` → `reason_code`,
   #458, `gating/migrations/0014`).
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
   accept ``UUID | str``; construction normalizes to str.
@@ -435,7 +435,7 @@ class ReferralPayoutDue(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceLow(EventSchema):
+class WalletBalanceLow(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_LOW
     tenant_id: str
     customer_id: str
@@ -445,7 +445,7 @@ class BalanceLow(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceCritical(EventSchema):
+class WalletBalanceCritical(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_CRITICAL
     tenant_id: str
     customer_id: str
@@ -553,7 +553,7 @@ class AutoTopUpRequiresAction(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceOverage(EventSchema):
+class WalletBalanceOverage(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_OVERAGE
     tenant_id: str
     customer_id: str
@@ -824,7 +824,7 @@ def terminal_stop_event(status, *, is_contained):
 
 
 @dataclass(frozen=True)
-class StopFired(EventSchema):
+class CustomerStopped(EventSchema):
     """Customer-wide stop signal — the stop half of the stop/resume pair (#39).
 
     Emitted through the ``StopSignalState`` transition guard
@@ -856,13 +856,15 @@ class StopFired(EventSchema):
     episode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq
                   — per owner per line since #458, so a customer stopped by
                   its pool and by its floor at once holds two independent
-                  episodes); the paired ``StopCleared`` carries the same id
+                  episodes); the paired ``CustomerStopCleared`` carries the same id
                   and the same word, and the stop-context tagging / past-limit
                   report (#41) key on it.
 
     NAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 §5): the
     published name is the customer's, not the mechanism's, and it is held by
     reference to the generated vocabulary as every name in this module is.
+    So is this payload's title, which is the class's name and every
+    generated client's name for the type: it is the event's own name (#554).
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED
     tenant_id: str
@@ -880,18 +882,18 @@ class StopFired(EventSchema):
 
 
 @dataclass(frozen=True)
-class StopCleared(EventSchema):
+class CustomerStopCleared(EventSchema):
     """The resume half of the stop/resume pair (#39, spec §E).
 
     Fires the moment the balance re-crosses the floor — no hysteresis margin,
     no ack latch (decision 4) — from any clearing path: the ``credit()`` hook
     (fast lane, with a durable-balance fallback when Redis is blind) or the
     hourly reconcile. All paths route through the same ``StopSignalState``
-    transition guard as ``StopFired``; a clear that didn't win the transition
+    transition guard as ``CustomerStopped``; a clear that didn't win the transition
     emits nothing, so resume fires exactly once per episode.
 
     episode_seq    = the episode this clear closes (pairs with the
-                     ``StopFired`` that opened it).
+                     ``CustomerStopped`` that opened it).
     reason_code / control_family / control_id
                    = WHICH stop line cleared, its family and the row that
                      declares the control — the same three the opening half
@@ -915,12 +917,12 @@ class StopCleared(EventSchema):
     episode_seq: int = 0
     balance_micros: WalletBalanceOnAStop = None
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 
 @dataclass(frozen=True)
-class SoftFloorCrossed(EventSchema):
+class WalletPolicySoftFloorCrossed(EventSchema):
     """The soft floor's crossing half (#40, spec §F) — the wind-down line.
 
     Emitted through the ``soft_floor`` family of the ``StopSignalState``
@@ -933,13 +935,14 @@ class SoftFloorCrossed(EventSchema):
     ``soft_floor_reached``).
 
     owner_id = the billing owner (the end customer whose wallet crossed),
-    matching ``StopFired``. soft_min_balance_micros = the RESOLVED soft value
+    matching ``CustomerStopped``. soft_min_balance_micros = the RESOLVED soft value
     (the line is -value). episode_seq = the soft_floor family's own episode
     sequence, independent of the hard floor's.
 
     NAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 §5): the
     soft floor is a Wallet policy setting, so the wallet policy owns the
-    event's namespace, as it does the clearing half's.
+    event's namespace, as it does the clearing half's — and the payload's
+    title, which is the event's own name (#554).
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CROSSED
     tenant_id: str
@@ -948,12 +951,12 @@ class SoftFloorCrossed(EventSchema):
     soft_min_balance_micros: int = 0
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 
 @dataclass(frozen=True)
-class SoftFloorCleared(EventSchema):
+class WalletPolicySoftFloorCleared(EventSchema):
     """The soft floor's clearing half (#40, spec §F).
 
     Fires when the owner's balance re-crosses the resolved soft line — from
@@ -971,7 +974,7 @@ class SoftFloorCleared(EventSchema):
     soft_min_balance_micros: int | None = None
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 

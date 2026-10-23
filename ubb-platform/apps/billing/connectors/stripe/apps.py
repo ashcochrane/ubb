@@ -8,13 +8,13 @@ class StripeConnectorConfig(AppConfig):
 
     def ready(self):
         from apps.platform.events.registry import handler_registry
-        from apps.platform.events.schemas import BalanceLow
+        from apps.platform.events.schemas import WalletBalanceLow
         from apps.billing.connectors.stripe.handlers import (
             handle_balance_low_stripe,
         )
 
         handler_registry.register(
-            BalanceLow.EVENT_TYPE,
+            WalletBalanceLow.EVENT_TYPE,
             "stripe_connector.auto_topup",
             handle_balance_low_stripe,
             requires_product="billing",

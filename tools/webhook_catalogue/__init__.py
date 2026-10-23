@@ -3,7 +3,9 @@
 G8 in `gates/manifest.yaml`. The catalogue the platform publishes is compared
 against the vocabulary registry — not for membership, which is G2's question,
 but for the SHAPE ADR-0006 §5 fixes: one domain owner, one state entered, cause
-and mechanism in payload fields rather than in the name.
+and mechanism in payload fields rather than in the name — and, since #554, for
+the TITLE each payload is published under, which is its declaring class and
+must be the event's own name (`shape.title_for`).
 
     from tools.webhook_catalogue import assess
     catalogue, errors = assess(repo_root)

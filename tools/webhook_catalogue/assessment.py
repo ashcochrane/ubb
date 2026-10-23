@@ -114,7 +114,10 @@ def assess(repo_root):
     violations = []
     for event in events:
         site = event.site(vocabulary.catalogue_path)
-        found = faults(event.name, site, vocabulary)
+        # The name AND the title it is published under (#554): the declaring
+        # class is the payload schema's title, so it is judged with the name.
+        found = faults(event.name, site, vocabulary,
+                       declaring_class=event.declaring_class)
         if found:
             violations.append(Violation(site=site, found=event.name,
                                         faults=tuple(found)))

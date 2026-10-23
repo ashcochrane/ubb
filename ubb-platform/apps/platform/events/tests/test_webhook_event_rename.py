@@ -23,7 +23,7 @@ from django.test.utils import CaptureQueriesContext
 
 from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import StopFired
+from apps.platform.events.schemas import CustomerStopped
 from apps.platform.events.tests._helpers import (
     as_it_was_spelled, stub_webhook_client as _stub_client)
 from apps.platform.events.webhook_models import (
@@ -129,7 +129,7 @@ class TestSubscriptionsSurviveTheRename:
             tenant=self.tenant, url="https://example.com/mixed",
             secret="s", event_types=[
                 "usage.recorded", "margin.provider_cost_spike",
-                as_it_was_spelled(StopFired.EVENT_TYPE),
+                as_it_was_spelled(CustomerStopped.EVENT_TYPE),
                 "billing.credit_grant_expired"])
 
         MIGRATION.rename_subscriptions(global_apps, None)
@@ -138,7 +138,7 @@ class TestSubscriptionsSurviveTheRename:
         # The customer stop's old name is `0009`'s to move, not this one's.
         assert config.event_types == [
             "usage.recorded", "provider.cost_spike",
-            as_it_was_spelled(StopFired.EVENT_TYPE), "credit_grant.expired"]
+            as_it_was_spelled(CustomerStopped.EVENT_TYPE), "credit_grant.expired"]
 
     def test_the_wildcard_and_the_empty_subscription_are_untouched(self):
         """`["*"]` is all events and `[]` is none (0003's explicit opt-in). Both
@@ -246,11 +246,11 @@ class TestQueuedEventsSurviveTheRename:
         name (`0009` carries it, under its own map), so a sweep that widened
         past the thirteen would break a shipped report."""
         other = OutboxEvent.objects.create(
-            event_type=as_it_was_spelled(StopFired.EVENT_TYPE),
+            event_type=as_it_was_spelled(CustomerStopped.EVENT_TYPE),
             payload={"tenant_id": str(self.tenant.id), "owner_id": "o1"},
             tenant_id=str(self.tenant.id))
 
         MIGRATION.rename_subscriptions(global_apps, None)
 
         other.refresh_from_db()
-        assert other.event_type == as_it_was_spelled(StopFired.EVENT_TYPE)
+        assert other.event_type == as_it_was_spelled(CustomerStopped.EVENT_TYPE)

@@ -400,7 +400,7 @@ class TestBillingOutboxHandler:
         assert WalletTransaction.objects.filter(wallet=bw, transaction_type="USAGE_DEDUCTION").count() == 1
 
 
-class TestBillingHandlerEmitsBalanceLow:
+class TestBillingHandlerEmitsWalletBalanceLow:
     """After wallet deduction, if balance drops below auto-topup threshold,
     emit a balance.low event instead of dispatching a Stripe task."""
 

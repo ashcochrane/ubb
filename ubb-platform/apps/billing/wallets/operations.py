@@ -40,9 +40,9 @@ Design decisions (grilled 2026-07-22, recorded on issue #109):
   and ``credit_top_up`` do NOT run lazy expiry (they never did); every
   consuming/debiting op expires due lots before reading the balance.
 - **Events are module-emitted, winning branch only** (never on replay or
-  refusal). The drawdown tail (``BalanceOverage`` on zero-cross, the #39
+  refusal). The drawdown tail (``WalletBalanceOverage`` on zero-cross, the #39
   floor-stop transition, Tier-1 suspension when enforcement is off,
-  ``BalanceLow`` under the top-up trigger) is suppressed by the ``repair``
+  ``WalletBalanceLow`` under the top-up trigger) is suppressed by the ``repair``
   flag (I12: a back-correction never re-fires signals). Caller-side and
   staying there: the postpaid branch, ``TenantBillingService.accumulate_usage``
   and the spend-pool counters.
@@ -483,9 +483,9 @@ def draw_down_usage(*, customer_id, tenant, usage_event_id, billed_cost_micros,
     ``usage_deduction:{usage_event_id}``.
 
     ``repair=False`` (the live outbox handler) runs the winning-branch tail:
-    ``BalanceOverage`` on zero-cross, the #39 durable floor-stop lane (or the
+    ``WalletBalanceOverage`` on zero-cross, the #39 durable floor-stop lane (or the
     Tier-1 suspension when enforcement is off), the #40 soft-floor crossing,
-    and ``BalanceLow`` under the auto-top-up trigger. A floor episode the
+    and ``WalletBalanceLow`` under the auto-top-up trigger. A floor episode the
     tail opens records ``trigger_source`` (#569) — the mechanism whose
     posting this is: ``usage_ingest`` for a usage report's,
     ``charge_projection`` for a delivered fixed-price unit's Charge.
@@ -538,13 +538,13 @@ def _drawdown_tail(tenant, trigger_source):
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import (
-            BalanceLow, BalanceOverage, CustomerSuspended)
+            WalletBalanceLow, WalletBalanceOverage, CustomerSuspended)
 
         limit = get_customer_min_balance(owner.id, tenant.id)
         if old_balance >= 0 and new_balance < 0:   # I6
             # The zero-crossing EARLY WARNING (Stage D) — a distinct event,
             # deliberately NOT part of the #39 stop/resume pair.
-            write_event(BalanceOverage(
+            write_event(WalletBalanceOverage(
                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                 balance_micros=new_balance, overage_limit_micros=limit,
                 overage_micros=-new_balance))
@@ -616,7 +616,7 @@ def _drawdown_tail(tenant, trigger_source):
         except AutoTopUpConfig.DoesNotExist:
             config = None
         if config and new_balance < config.trigger_threshold_micros:
-            write_event(BalanceLow(
+            write_event(WalletBalanceLow(
                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                 balance_micros=new_balance,
                 threshold_micros=config.trigger_threshold_micros,

@@ -10,6 +10,10 @@ read of the catalogue against the vocabulary registry:
   travels as `reason_code` and `trigger_source`.
 - **Task** — every `task.*` and `subtask.*` event names a `task_status` value,
   so a terminal Task event maps to a status a Task can actually be in.
+- **Title** — every payload's published title, which is its declaring class
+  and the name every generated client gives its type, is the event's own name
+  in Pascal case (#554). #464 renamed five events and kept their classes, and
+  four of those titles went on spelling the retired names they replaced.
 
 **Why this suite and not the platform one.** The gate reads `schemas.py` with
 `ast` and never imports it, so it needs no Django, no settings and no database
@@ -131,6 +135,22 @@ def test_every_task_event_maps_to_a_status_value(shipped):
         + "\n\nADR-0006 §5 names the event for the state entered, so a Task "
           "event whose transition is not a `task_status` value describes "
           "something the Task never became.")
+
+
+def test_every_payload_title_names_its_event(shipped):
+    """G8's title half (#554): the declaring class IS the published title.
+
+    `customer.stopped` was published as `StopFired`, and `StopFired` is what
+    every generated client called its type — the retired `stop.fired`,
+    spelled again where nothing refused it. The catalogue is compared on
+    titles as well as names now, with no ledger debt, because the titles were
+    paid in the commit that installed the comparison.
+    """
+    catalogue, errors = shipped
+    wrong = codes_in(errors, {codes.TITLE_NOT_THE_EVENTS_NAME})
+    assert not wrong, "\n" + "\n".join(str(error) for error in wrong)
+    titles = {event.declaring_class for event in catalogue.events}
+    assert "CustomerStopped" in titles and "StopFired" not in titles
 
 
 def test_the_declared_end_state_obeys_the_rules_it_supplies(shipped):
@@ -322,6 +342,26 @@ def test_negative_control_a_malformed_name_is_refused_once(tmp_path):
         assert [error.code for error in errors] == [codes.NAME_MALFORMED], name
 
 
+def test_negative_control_a_title_spelling_a_retired_name_is_refused(tmp_path):
+    """#554's defect, planted: the event was renamed and its class was not.
+    The name is impeccable; the title still spells the retired one."""
+    errors = rejection(
+        tmp_path, retired=("soft_floor.crossed",),
+        events=(("SoftFloorCrossed", '"wallet_policy.soft_floor_crossed"'),))
+    assert [error.code for error in errors] == [codes.TITLE_NOT_THE_EVENTS_NAME]
+    assert "`WalletPolicySoftFloorCrossed`" in errors[0].message
+    assert "`soft_floor.crossed`" in errors[0].message
+
+
+def test_negative_control_a_title_naming_another_event_is_refused(tmp_path):
+    """No retired name involved: a title is held to its OWN event, not merely
+    kept off the retired list."""
+    errors = rejection(
+        tmp_path, events=(("WalletCredited", '"wallet.balance_low"'),))
+    assert [error.code for error in errors] == [codes.TITLE_NOT_THE_EVENTS_NAME]
+    assert "retires" not in errors[0].message
+
+
 # ---------------------------------------------------------------------------
 # 3. Negative controls for the read itself — the vacuity failure modes, proved
 #    rather than asserted. Each is a way the gate could pass while checking
@@ -431,8 +471,8 @@ def test_negative_control_a_bare_name_from_anywhere_else_is_unreadable(tmp_path)
 
 def test_negative_control_two_classes_claiming_one_name_is_reported(tmp_path):
     errors = rejection(tmp_path, events=(
-        ("First", '"wallet.credited"'),
-        ("Second", '"wallet.credited"'),
+        ("WalletCredited", '"wallet.credited"'),
+        ("WalletCreditedAgain", '"wallet.credited"'),
     ))
     assert [error.code for error in errors] == [codes.DUPLICATE_EVENT_TYPE]
 
@@ -494,8 +534,11 @@ def test_negative_control_an_excuse_keyed_on_the_class_alone_does_not_widen(
     errors = rejection(
         tmp_path, events=(("BillingBalanceLow", '"billing.credited"'),),
         ledger=excusing(("BillingBalanceLow", "billing.balance_low")))
+    # The class kept its name and changed its event, so its title no longer
+    # names what it publishes either (#554) — a third, separate fault.
     assert sorted({error.code for error in errors}) == sorted({
-        codes.OWNER_NOT_A_DOMAIN_OWNER, codes.EXCUSE_NOT_A_VIOLATION})
+        codes.OWNER_NOT_A_DOMAIN_OWNER, codes.TITLE_NOT_THE_EVENTS_NAME,
+        codes.EXCUSE_NOT_A_VIOLATION})
 
 
 def test_negative_control_an_expected_name_must_be_an_end_state_one(tmp_path):

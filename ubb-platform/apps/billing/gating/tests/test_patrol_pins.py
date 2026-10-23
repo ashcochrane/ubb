@@ -54,9 +54,9 @@ from apps.platform.customers.models import Customer
 from apps.platform.events import announcements
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    SoftFloorCrossed,
-    StopCleared,
-    StopFired,
+    WalletPolicySoftFloorCrossed,
+    CustomerStopCleared,
+    CustomerStopped,
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled,
 )
 from apps.platform.work import hooks, reasons
@@ -136,7 +136,7 @@ class TestPin1AmbientRollback:
         assert LiveCounter.read(c.id, t)["stop"] is False
         assert out["flag_realigned"] is True
         assert not OutboxEvent.objects.filter(
-            event_type__in=[StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE]).exists()
+            event_type__in=[CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE]).exists()
         assert not StopSignalState.objects.filter(owner=c).exists()
 
     def test_durably_crossed_position_signals_on_the_next_pass(self):
@@ -147,7 +147,7 @@ class TestPin1AmbientRollback:
         c = _customer(t, balance_micros=-1_000_000)  # floor defaults to 0
         Door.plant_stop(c.id, stop_line(t), ttl=False)  # survived flag
         LiveCounter.reconcile(c.id, t)
-        fired = _events(StopFired.EVENT_TYPE)
+        fired = _events(CustomerStopped.EVENT_TYPE)
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
         assert LiveCounter.read(c.id, t)["stop"] is True
@@ -162,7 +162,7 @@ class TestPin1AmbientRollback:
         out = LiveCounter.reconcile(c.id, t)
         assert LiveCounter.read(c.id, t)["stop"] is True
         assert out["flag_realigned"] is True
-        assert _events(StopFired.EVENT_TYPE).count() == 1  # no re-emission
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1  # no re-emission
 
 
 @pytest.mark.django_db
@@ -180,7 +180,7 @@ class TestPin2EmitFailureCompletes:
         orig_create = OutboxEvent.objects.create
 
         def _create(**kwargs):
-            if kwargs.get("event_type") == StopFired.EVENT_TYPE:
+            if kwargs.get("event_type") == CustomerStopped.EVENT_TYPE:
                 with connection.cursor() as cur:
                     cur.execute("SELECT 1/0")  # DataError; savepoint rollback
             return orig_create(**kwargs)
@@ -197,7 +197,7 @@ class TestPin2EmitFailureCompletes:
         monkeypatch.setattr(OutboxEvent.objects, "create", orig_create)
 
         LiveCounter.reconcile(c.id, t)
-        fired = _events(StopFired.EVENT_TYPE)
+        fired = _events(CustomerStopped.EVENT_TYPE)
         assert fired.count() == 1
         assert fired.get().payload["episode_seq"] == 1
         assert fired.get().payload["re_announcement"] is False  # a fresh drive
@@ -213,7 +213,7 @@ class TestPin3RemintUnannounced:
         _set_status(first, "failed")  # dead-lettered past the retry horizon
 
         assert patrol.remint_unannounced_signals(t) == 1
-        fired = _events(StopFired.EVENT_TYPE)
+        fired = _events(CustomerStopped.EVENT_TYPE)
         assert fired.count() == 2
         fresh = fired.exclude(id=first).get()
         assert fresh.payload["re_announcement"] is True
@@ -236,7 +236,7 @@ class TestPin3RemintUnannounced:
 
         assert patrol.remint_unannounced_signals(t) == 1
 
-        fresh = _events(StopFired.EVENT_TYPE).exclude(id=first).get().payload
+        fresh = _events(CustomerStopped.EVENT_TYPE).exclude(id=first).get().payload
         row = StopSignalState.objects.get(owner=c, reason=stop_line(t))
         assert fresh["control_family"] == original["control_family"] == row.control_family
         assert fresh["control_id"] == original["control_id"] == str(row.control_id)
@@ -248,13 +248,13 @@ class TestPin3RemintUnannounced:
         drive_a_stop(c.id, t)
         # Stamp is pending (in flight) -> the patrol leaves the row alone.
         assert patrol.remint_unannounced_signals(t) == 0
-        assert _events(StopFired.EVENT_TYPE).count() == 1
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1
         # A re-mint's own stamp is also in flight: after one repair, the next
         # pass mints nothing — at most one live announcement per row.
         _set_status(_stamp_of(c, stop_line(t)), "failed")
         assert patrol.remint_unannounced_signals(t) == 1
         assert patrol.remint_unannounced_signals(t) == 0
-        assert _events(StopFired.EVENT_TYPE).count() == 2
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 2
 
     def test_announced_by_skipped_never_remints(self):
         # A tenant with no webhook config has chosen no push channel —
@@ -264,7 +264,7 @@ class TestPin3RemintUnannounced:
         drive_a_stop(c.id, t)
         _set_status(_stamp_of(c, stop_line(t)), "skipped")
         assert patrol.remint_unannounced_signals(t) == 0
-        assert _events(StopFired.EVENT_TYPE).count() == 1
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1
 
     def test_processed_rows_are_left_alone(self):
         t = _tenant()
@@ -277,7 +277,7 @@ class TestPin3RemintUnannounced:
         # A row silently closed by an enforcement-mode transition (#39: a
         # config flip is not a re-cross) has nothing to announce — even when
         # its last real announcement dead-lettered, the patrol skips it
-        # rather than put the administrative reason on a StopCleared.
+        # rather than put the administrative reason on a CustomerStopCleared.
         from apps.billing.gating.services.stop_signal_service import (
             CLEAR_ENFORCEMENT_MODE_TRANSITION, STATE_CLEARED)
         t = _tenant()
@@ -287,8 +287,8 @@ class TestPin3RemintUnannounced:
         StopSignalState.objects.filter(owner=c).update(
             state=STATE_CLEARED, clear_reason=CLEAR_ENFORCEMENT_MODE_TRANSITION)
         assert patrol.remint_unannounced_signals(t) == 0
-        assert not _events(StopCleared.EVENT_TYPE).exists()
-        assert _events(StopFired.EVENT_TYPE).count() == 1
+        assert not _events(CustomerStopCleared.EVENT_TYPE).exists()
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1
 
 
 @pytest.mark.django_db
@@ -310,8 +310,8 @@ class TestPin4BottomLineOnly:
         _set_status(clear_ev, "failed")
 
         assert patrol.remint_unannounced_signals(t) == 1
-        assert _events(StopFired.EVENT_TYPE).count() == 1     # never replayed
-        cleared = _events(StopCleared.EVENT_TYPE)
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1     # never replayed
+        cleared = _events(CustomerStopCleared.EVENT_TYPE)
         assert cleared.count() == 2
         fresh = cleared.exclude(id=clear_ev).get()
         assert fresh.payload["re_announcement"] is True
@@ -329,7 +329,7 @@ class TestPin5SoftFamilyRidesTheSameRails:
                                              soft_min_balance_micros=2_000_000)
         _set_status(_stamp_of(c, LINE_SOFT_FLOOR), "failed")
         assert patrol.remint_unannounced_signals(t) == 1
-        crossed = _events(SoftFloorCrossed.EVENT_TYPE)
+        crossed = _events(WalletPolicySoftFloorCrossed.EVENT_TYPE)
         assert crossed.count() == 2
         fresh = crossed.order_by("created_at").last()
         assert fresh.payload["re_announcement"] is True
@@ -347,8 +347,8 @@ class TestPin5SoftFamilyRidesTheSameRails:
         _set_status(_stamp_of(c, stop_line(t)), "failed")
         _set_status(_stamp_of(c, LINE_SOFT_FLOOR), "failed")
         assert patrol.remint_unannounced_signals(t) == 2
-        assert _events(StopFired.EVENT_TYPE).count() == 2
-        assert _events(SoftFloorCrossed.EVENT_TYPE).count() == 2
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 2
+        assert _events(WalletPolicySoftFloorCrossed.EVENT_TYPE).count() == 2
 
 
 @pytest.mark.django_db

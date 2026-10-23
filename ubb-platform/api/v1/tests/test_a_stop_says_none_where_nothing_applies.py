@@ -31,7 +31,7 @@ from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSuspended, StopCleared, SubtaskExpired, TaskExpired, TaskKilled)
+    CustomerSuspended, CustomerStopCleared, SubtaskExpired, TaskExpired, TaskKilled)
 from apps.platform.work.tasks import reap_stale_tasks
 from api.v1.tests.test_every_stop_names_the_control_that_fired import (
     EveryStopNamesItsControlTestBase)
@@ -148,7 +148,7 @@ class AnAbsentWalletBalanceIsNullTest(StopTestBase):
         LiveCounter.reconcile(self.customer.id, self.tenant)
 
         [suspended] = self._payloads(CustomerSuspended)
-        [cleared] = self._payloads(StopCleared)
+        [cleared] = self._payloads(CustomerStopCleared)
         self.assertIn(BALANCE, suspended)
         self.assertIsNone(suspended[BALANCE])
         self.assertIsNone(cleared[BALANCE])
@@ -160,11 +160,11 @@ class AnAbsentWalletBalanceIsNullTest(StopTestBase):
         pool.cap_micros = 10_000_000
         pool.save(update_fields=["cap_micros"])
         LiveCounter.reconcile(self.customer.id, self.tenant)
-        self._dead_letter(StopCleared)
+        self._dead_letter(CustomerStopCleared)
 
         self.assertEqual(remint_unannounced_signals(self.tenant), 1)
 
-        self.assertIsNone(self._re_minted(StopCleared)[BALANCE])
+        self.assertIsNone(self._re_minted(CustomerStopCleared)[BALANCE])
 
     def test_a_prepaid_floor_stop_publishes_the_balance_it_crossed_at(self):
         """THE REAL FIGURE, unchanged: the drawdown the floor stopped on."""

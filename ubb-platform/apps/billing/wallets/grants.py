@@ -64,7 +64,7 @@ class GrantLedger:
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.billing.wallets.models import CreditGrant, WalletTransaction
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import BalanceLow, CreditGrantExpired
+        from apps.platform.events.schemas import WalletBalanceLow, CreditGrantExpired
 
         assert connection.in_atomic_block
         now = now or timezone.now()
@@ -127,7 +127,7 @@ class GrantLedger:
                 config = AutoTopUpConfig.objects.filter(
                     customer_id=wallet.customer_id, is_enabled=True).first()
                 if config and new_balance < config.trigger_threshold_micros:
-                    write_event(BalanceLow(
+                    write_event(WalletBalanceLow(
                         tenant_id=str(grant.tenant_id),
                         customer_id=str(wallet.customer_id),
                         balance_micros=new_balance,

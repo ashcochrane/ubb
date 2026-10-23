@@ -196,12 +196,33 @@ def load_vocabulary(registry):
 TASK_OWNERS = frozenset({"task", "subtask"})
 
 
-def faults(name, location, vocabulary):
+def title_for(name):
+    """The title a payload declaring ``name`` publishes: the event's own name
+    in Pascal case, owner first — `customer.stop_cleared` → `CustomerStopCleared`.
+
+    ⚠ THE DECLARING CLASS IS THE TITLE (#554). The OpenAPI `webhooks` section
+    renders each payload class through Pydantic, whose schema title is the
+    class's name, and every generated client names its type after that title.
+    So a class name is a public name like the event's own, and #464's renames
+    left four of them spelling the retired names they replaced (`StopFired` on
+    `customer.stopped`) — a reader of the generated type was told the event a
+    subscriber can no longer subscribe to.
+    """
+    return "".join(word[:1].upper() + word[1:]
+                   for word in re.split(r"[._]", name))
+
+
+def faults(name, location, vocabulary, *, declaring_class=None):
     """Every way ``name`` disagrees with ADR-0006 §5. Empty means it complies.
 
     All of them, not the first: an event whose namespace is a product AND whose
     transition carries a cause has two separate things wrong with it, and a
     reader fixing one at a time would need two runs to learn that.
+
+    ``declaring_class`` is the live payload class that publishes the name, and
+    its title is judged with the name (#554); the registry's end state has no
+    class, so it is judged on its name alone. A malformed name renders no
+    title, so it is reported once, as malformed.
     """
     found = []
     if not re.fullmatch(vocabulary.name_pattern, name):
@@ -250,5 +271,17 @@ def faults(name, location, vocabulary):
             f"event announces a Task state that a Task cannot be in. The "
             f"terminal ones are "
             f"{listed(sorted(vocabulary.terminal_task_statuses))}."))
+
+    if declaring_class is not None and declaring_class != title_for(name):
+        spells = [alias for alias in sorted(vocabulary.retired_events)
+                  if title_for(alias) == declaring_class]
+        retired_title = (f" `{declaring_class}` spells `{spells[0]}`, a name "
+                         f"the registry retires." if spells else "")
+        found.append(CatalogueError(
+            E.TITLE_NOT_THE_EVENTS_NAME, location,
+            f"`{name}` is published by `{declaring_class}`, so its payload's "
+            f"title is `{declaring_class}` — and every generated client names "
+            f"its type after that title. It must be the event's own name, "
+            f"`{title_for(name)}`.{retired_title}"))
 
     return found
