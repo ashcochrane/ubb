@@ -199,7 +199,7 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     # Route through the billing owner (Task 3): the drawdown handler reads
     # AutoTopUpConfig off the OWNER's wallet-lock customer (see
-    # apps/billing/wallets/operations.py's BalanceLow emission and
+    # apps/billing/wallets/operations.py's WalletBalanceLow emission and
     # apps/billing/connectors/stripe/handlers.py) — a config saved on a
     # pooled seat would never be found there.
     owner = customer.resolve_billing_owner()

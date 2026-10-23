@@ -27,7 +27,8 @@ from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
+    CustomerStopCleared, CustomerStopped, WalletPolicySoftFloorCleared,
+    WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from core.crossing import month_label_bounds
@@ -70,8 +71,8 @@ class TheTwoStopLinesTest(SignalEpisodesTestBase):
     def test_a_hard_floor_episode_carries_its_control_floor_balance_and_both_instants(self):
         self.assertEqual(self._stop(reasons.HARD_FLOOR), 1)
         self.assertEqual(self._clear(reasons.HARD_FLOOR), 1)
-        fired = OutboxEvent.objects.get(event_type=StopFired.EVENT_TYPE)
-        cleared = OutboxEvent.objects.get(event_type=StopCleared.EVENT_TYPE)
+        fired = OutboxEvent.objects.get(event_type=CustomerStopped.EVENT_TYPE)
+        cleared = OutboxEvent.objects.get(event_type=CustomerStopCleared.EVENT_TYPE)
 
         [row] = self._rows()
         self.assertEqual(row["control_family"], CONTROL_FAMILY_WALLET_POLICY)
@@ -131,7 +132,7 @@ class TheTwoStopLinesTest(SignalEpisodesTestBase):
     def test_the_ledger_closes_a_cleared_episode_whose_clearing_aged_out(self):
         self._stop(reasons.HARD_FLOOR)
         self._clear(reasons.HARD_FLOOR)
-        OutboxEvent.objects.filter(event_type=StopCleared.EVENT_TYPE).delete()
+        OutboxEvent.objects.filter(event_type=CustomerStopCleared.EVENT_TYPE).delete()
         state = StopSignalState.objects.get(owner=self.owner, reason=reasons.HARD_FLOOR)
 
         [row] = self._rows()
@@ -171,8 +172,8 @@ class TheWindDownLineTest(SignalEpisodesTestBase):
         self.assertEqual(StopSignalService.drive_soft_cleared(
             self.owner.id, self.tenant, reason=CLEAR_BALANCE_RECOVERED,
             balance_micros=4_000_000, soft_min_balance_micros=1_000_000), 1)
-        crossed = OutboxEvent.objects.get(event_type=SoftFloorCrossed.EVENT_TYPE)
-        cleared = OutboxEvent.objects.get(event_type=SoftFloorCleared.EVENT_TYPE)
+        crossed = OutboxEvent.objects.get(event_type=WalletPolicySoftFloorCrossed.EVENT_TYPE)
+        cleared = OutboxEvent.objects.get(event_type=WalletPolicySoftFloorCleared.EVENT_TYPE)
 
         [row] = self._rows()
         self.assertEqual(row["control_family"], CONTROL_FAMILY_WALLET_POLICY)

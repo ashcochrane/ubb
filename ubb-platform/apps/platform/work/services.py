@@ -34,7 +34,8 @@ from apps.platform.grouping_fields.models import SLOTS
 from apps.platform.work import hooks, reasons
 from apps.platform.work.models import (
     STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, Task, TaskType)
+    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, UBB_STOP_KEYS,
+    UBB_STOPPED_TASK_STATUSES, Task, TaskType)
 
 logger = logging.getLogger(__name__)
 
@@ -1120,6 +1121,18 @@ class TaskService:
                              STOP_CONTROL_FAMILY_KEY: controls.control_family(reason),
                              STOP_CONTROL_ID_KEY: str(control_id or "")}
             update_fields.append("metadata")
+        elif status in UBB_STOPPED_TASK_STATUSES:
+            # A STOP UBB APPLIES WITH NO CAUSE TO RECORD — the hourly safety
+            # net's silent expiry — KEEPS NONE OF UBB'S STOP KEYS (#551). They
+            # share `metadata` with the caller's own bag from the start, and on
+            # a unit UBB stopped they are UBB's word: written where the stop
+            # has one, removed where it has none, so the unit read can never
+            # publish a caller's planted key as UBB's cause.
+            kept = {key: value for key, value in task.metadata.items()
+                    if key not in UBB_STOP_KEYS}
+            if kept != task.metadata:
+                task.metadata = kept
+                update_fields.append("metadata")
         if declaration is not None:
             task.outcome_reason = declaration.outcome_reason
             task.reason_detail = declaration.reason_detail
@@ -1352,7 +1365,9 @@ class TaskService:
                         # (#328): non-zero here says what it left out, and the
                         # stop is an enforcement trigger, not proof (#603).
                         unresolved_event_count=stopped.unresolved_event_count,
-                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros or 0)
+                        # Null where no ceiling applies (#610): an expiry or a
+                        # customer-wide stop reaches uncapped work too.
+                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros)
                     if stopped.parent_id is not None:
                         outbox = write_event(announcement(
                             subtask_id=str(stopped.id),

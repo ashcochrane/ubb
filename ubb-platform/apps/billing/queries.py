@@ -210,8 +210,8 @@ def signal_episodes(tenant_id, *, owner_ids=None, since=None, until=None) -> lis
     Stops and breaches (#465, slice 6 §14).
 
     THE HISTORY IS THE OUTBOX PAIR, BY CONSTANT; THE LEDGER ROW IS THE
-    BACKSTOP. The two stop lines share one pair (`StopFired` /
-    `StopCleared`) and are told apart by the word each carries (#458); the
+    BACKSTOP. The two stop lines share one pair (`CustomerStopped` /
+    `CustomerStopCleared`) and are told apart by the word each carries (#458); the
     wind-down line has a pair of its own. Every event type is the payload
     class's constant, never a spelled name (#464). An open episode outlives
     outbox retention because the row still says `stopped`, so a row with no
@@ -242,7 +242,8 @@ def signal_episodes(tenant_id, *, owner_ids=None, since=None, until=None) -> lis
         STOP_LINES, family_of_line)
     from apps.platform.events.models import OutboxEvent
     from apps.platform.events.schemas import (
-        CustomerSuspended, SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
+        CustomerStopCleared, CustomerStopped, CustomerSuspended,
+        WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
     from core.crossing import month_label_bounds, spend_pool_stop_line
 
     owners = None if owner_ids is None else [str(o) for o in owner_ids]
@@ -263,8 +264,9 @@ def signal_episodes(tenant_id, *, owner_ids=None, since=None, until=None) -> lis
             "balance_at_crossing_micros": None, "floor_micros": None})
 
     pairs = (
-        (StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE, None),
-        (SoftFloorCrossed.EVENT_TYPE, SoftFloorCleared.EVENT_TYPE, LINE_SOFT_FLOOR),
+        (CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE, None),
+        (WalletPolicySoftFloorCrossed.EVENT_TYPE,
+         WalletPolicySoftFloorCleared.EVENT_TYPE, LINE_SOFT_FLOOR),
     )
     for opened_type, closed_type, fixed_line in pairs:
         for event_type, payload, created_at in _announcements(opened_type, closed_type):

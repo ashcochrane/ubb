@@ -282,11 +282,13 @@ from .task_analytics_out import TaskAnalyticsOut
 from .task_analytics_row import TaskAnalyticsRow
 from .task_detail_out import TaskDetailOut
 from .task_detail_out_ceiling_status import TaskDetailOutCeilingStatus
+from .task_detail_out_control_family_type_0 import TaskDetailOutControlFamilyType0
 from .task_detail_out_grouping_fields import TaskDetailOutGroupingFields
 from .task_detail_out_outcome_reason_type_0 import TaskDetailOutOutcomeReasonType0
 from .task_detail_out_status import TaskDetailOutStatus
 from .task_out import TaskOut
 from .task_out_ceiling_status import TaskOutCeilingStatus
+from .task_out_control_family_type_0 import TaskOutControlFamilyType0
 from .task_out_grouping_fields import TaskOutGroupingFields
 from .task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from .task_out_status import TaskOutStatus
@@ -668,11 +670,13 @@ __all__ = (
     "TaskAnalyticsRow",
     "TaskDetailOut",
     "TaskDetailOutCeilingStatus",
+    "TaskDetailOutControlFamilyType0",
     "TaskDetailOutGroupingFields",
     "TaskDetailOutOutcomeReasonType0",
     "TaskDetailOutStatus",
     "TaskOut",
     "TaskOutCeilingStatus",
+    "TaskOutControlFamilyType0",
     "TaskOutGroupingFields",
     "TaskOutOutcomeReasonType0",
     "TaskOutStatus",

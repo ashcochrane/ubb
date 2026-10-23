@@ -13,8 +13,11 @@ Rules:
 - Breaking changes (renames, removals, type changes) require a new class —
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
-  payloads migrated (`StopFired` / `StopCleared`'s `reason` → `reason_code`,
-  #458, `gating/migrations/0014`).
+  payloads migrated (`CustomerStopped` / `CustomerStopCleared`'s `reason` → `reason_code`,
+  #458, `gating/migrations/0014`); and in the same lane a field that published
+  `0` for "nothing applies" may widen in place to nullable (#610, ADR-0013
+  §5). A class's name is its payload's published title, so a class rename is
+  a rename too (#554).
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
   accept ``UUID | str``; construction normalizes to str.
 - Consumers: ``SchemaClass.from_payload(payload)`` — unknown keys filtered,
@@ -173,6 +176,30 @@ ControlFamily = Annotated[
 #: refuses the other shape).
 CeilingBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
+
+#: A FIGURE THAT DOES NOT APPLY IS NULL, NEVER ZERO (#610, ADR-0013 §5). The
+#: two figures below rode the stop payloads as `0` where nothing applied — an
+#: absent ceiling and a customer with no wallet — and a `0` reads as a real
+#: ceiling of nothing or a wallet emptied to nothing. Each carries a published
+#: description, because the payload's own docstring is shared by the events
+#: that carry the field and a subscriber reads the property, not the class.
+UnitCogsCeiling = Annotated[Optional[int], Field(description=(
+    "The COGS ceiling this unit of work pinned when it started, in micros — "
+    "the bound `total_provider_cost_micros` raced. Null where no ceiling "
+    "applies to the unit: its kind of work is declared uncapped, or nothing "
+    "declares one. Never 0, which no ceiling can be."))]
+
+#: The customer's wallet balance on a customer-wide stop or its clearing, or
+#: null where the customer holds no wallet balance at all — the rule is
+#: billing's (`stop_signal_service.announced_balance`), applied on every lane
+#: that announces one, the patrol's re-mint included.
+WalletBalanceOnAStop = Annotated[Optional[int], Field(description=(
+    "The customer's wallet balance, in micros: the balance the lane that "
+    "announced this measured, or the wallet's own where that lane measured "
+    "none. Null where the customer holds no wallet balance: its tenant "
+    "does not hold prepaid wallets, or it is a pooled seat, whose business's "
+    "wallet funds its spend. 0 is a real balance, never a stand-in for "
+    "none."))]
 
 
 class EventSchema:
@@ -412,7 +439,7 @@ class ReferralPayoutDue(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceLow(EventSchema):
+class WalletBalanceLow(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_LOW
     tenant_id: str
     customer_id: str
@@ -422,7 +449,7 @@ class BalanceLow(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceCritical(EventSchema):
+class WalletBalanceCritical(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_CRITICAL
     tenant_id: str
     customer_id: str
@@ -447,7 +474,9 @@ class CustomerSuspended(EventSchema):
     tenant_id: str
     customer_id: str
     reason: str
-    balance_micros: int
+    #: Null where the customer holds no wallet balance (#610) — still
+    #: required, so every producer says which.
+    balance_micros: WalletBalanceOnAStop
 
 
 @dataclass(frozen=True)
@@ -528,7 +557,7 @@ class AutoTopUpRequiresAction(EventSchema):
 
 
 @dataclass(frozen=True)
-class BalanceOverage(EventSchema):
+class WalletBalanceOverage(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_BALANCE_OVERAGE
     tenant_id: str
     customer_id: str
@@ -686,7 +715,11 @@ class _TerminalStop:
     #: alone: the stop is an enforcement trigger on what resolved, never proof
     #: of where the eventual total lands (#603).
     unresolved_event_count: int = 0
-    task_cogs_ceiling_micros: int = 0
+    #: Null where no ceiling applies (#610): a time window or a customer-wide
+    #: stop reaches uncapped work too, and its announcement read `0` here.
+    #: The fresh announcement and the patrol's re-mint both copy the row's
+    #: column as it stands.
+    task_cogs_ceiling_micros: UnitCogsCeiling = None
     #: Delivery spec §B (#43): True only on a patrol re-mint — a repaired
     #: delivery of the CURRENT state, never a fresh crossing. The re-mint reads
     #: that state off the row, so a unit that was killed re-announces
@@ -795,7 +828,7 @@ def terminal_stop_event(status, *, is_contained):
 
 
 @dataclass(frozen=True)
-class StopFired(EventSchema):
+class CustomerStopped(EventSchema):
     """Customer-wide stop signal — the stop half of the stop/resume pair (#39).
 
     Emitted through the ``StopSignalState`` transition guard
@@ -827,13 +860,15 @@ class StopFired(EventSchema):
     episode_seq = the stop-episode id of THIS LINE (StopSignalState.episode_seq
                   — per owner per line since #458, so a customer stopped by
                   its pool and by its floor at once holds two independent
-                  episodes); the paired ``StopCleared`` carries the same id
+                  episodes); the paired ``CustomerStopCleared`` carries the same id
                   and the same word, and the stop-context tagging / past-limit
                   report (#41) key on it.
 
     NAMED FOR THE STATE THE CUSTOMER ENTERED (#464, ADR-0006 §5): the
     published name is the customer's, not the mechanism's, and it is held by
     reference to the generated vocabulary as every name in this module is.
+    So is this payload's title, which is the class's name and every
+    generated client's name for the type: it is the event's own name (#554).
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED
     tenant_id: str
@@ -851,18 +886,18 @@ class StopFired(EventSchema):
 
 
 @dataclass(frozen=True)
-class StopCleared(EventSchema):
+class CustomerStopCleared(EventSchema):
     """The resume half of the stop/resume pair (#39, spec §E).
 
     Fires the moment the balance re-crosses the floor — no hysteresis margin,
     no ack latch (decision 4) — from any clearing path: the ``credit()`` hook
     (fast lane, with a durable-balance fallback when Redis is blind) or the
     hourly reconcile. All paths route through the same ``StopSignalState``
-    transition guard as ``StopFired``; a clear that didn't win the transition
+    transition guard as ``CustomerStopped``; a clear that didn't win the transition
     emits nothing, so resume fires exactly once per episode.
 
     episode_seq    = the episode this clear closes (pairs with the
-                     ``StopFired`` that opened it).
+                     ``CustomerStopped`` that opened it).
     reason_code / control_family / control_id
                    = WHICH stop line cleared, its family and the row that
                      declares the control — the same three the opening half
@@ -871,9 +906,10 @@ class StopCleared(EventSchema):
                      the ledger row's own bookkeeping (`clear_reason`) and
                      no longer rides this event: a subscriber is told which
                      stop lifted, which is the question the pair answers.
-    balance_micros = the balance at clearance, as seen by the clearing lane
-                     (live counter on the fast path, durable balance on the
-                     fallback/reconcile paths; postpaid passes 0).
+    balance_micros = the wallet balance at clearance, as seen by the clearing
+                     lane (live counter on the fast path, durable balance on
+                     the fallback/reconcile paths); null where the customer
+                     holds no wallet balance.
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOP_CLEARED
     tenant_id: str
@@ -881,16 +917,18 @@ class StopCleared(EventSchema):
     reason_code: ReasonCode
     control_family: ControlFamily
     control_id: str
+    #: Required, like the suspension's (#610): every producer says which —
+    #: a balance, or null where the customer holds none.
+    balance_micros: WalletBalanceOnAStop
     scope: str = "customer"
     episode_seq: int = 0
-    balance_micros: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 
 @dataclass(frozen=True)
-class SoftFloorCrossed(EventSchema):
+class WalletPolicySoftFloorCrossed(EventSchema):
     """The soft floor's crossing half (#40, spec §F) — the wind-down line.
 
     Emitted through the ``soft_floor`` family of the ``StopSignalState``
@@ -903,13 +941,14 @@ class SoftFloorCrossed(EventSchema):
     ``soft_floor_reached``).
 
     owner_id = the billing owner (the end customer whose wallet crossed),
-    matching ``StopFired``. soft_min_balance_micros = the RESOLVED soft value
+    matching ``CustomerStopped``. soft_min_balance_micros = the RESOLVED soft value
     (the line is -value). episode_seq = the soft_floor family's own episode
     sequence, independent of the hard floor's.
 
     NAMED FOR THE CONTROL FAMILY THAT HOLDS THE LINE (#464, ADR-0006 §5): the
     soft floor is a Wallet policy setting, so the wallet policy owns the
-    event's namespace, as it does the clearing half's.
+    event's namespace, as it does the clearing half's — and the payload's
+    title, which is the event's own name (#554).
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_WALLET_POLICY_SOFT_FLOOR_CROSSED
     tenant_id: str
@@ -918,12 +957,12 @@ class SoftFloorCrossed(EventSchema):
     soft_min_balance_micros: int = 0
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 
 @dataclass(frozen=True)
-class SoftFloorCleared(EventSchema):
+class WalletPolicySoftFloorCleared(EventSchema):
     """The soft floor's clearing half (#40, spec §F).
 
     Fires when the owner's balance re-crosses the resolved soft line — from
@@ -941,7 +980,7 @@ class SoftFloorCleared(EventSchema):
     soft_min_balance_micros: int | None = None
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
-    # StopFired.re_announcement).
+    # CustomerStopped.re_announcement).
     re_announcement: bool = False
 
 

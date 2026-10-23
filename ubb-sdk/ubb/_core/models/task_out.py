@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.task_out_ceiling_status import TaskOutCeilingStatus
+from ..models.task_out_control_family_type_0 import TaskOutControlFamilyType0
 from ..models.task_out_outcome_reason_type_0 import TaskOutOutcomeReasonType0
 from ..models.task_out_status import TaskOutStatus
 from ..types import UNSET, Unset
@@ -30,8 +31,14 @@ class TaskOut:
     """ 
         Attributes:
             ceiling_status (TaskOutCeilingStatus):
+            control_family (None | TaskOutControlFamilyType0): Which of the four spend controls UBB's stop came from — for
+                contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where
+                its stop recorded no cause (the hourly safety net's silent expiry).
             created_at (str):
             event_count (int):
+            reason_code (None | str): Why UBB stopped this unit of work: which bound was reached. Null where UBB did not
+                stop it — it is still running, or its caller ended it (see `outcome_reason`) — and where UBB's stop recorded no
+                cause: the hourly safety net expires work nobody reported on silently.
             status (TaskOutStatus):
             task_id (str):
             total_billed_cost_micros (int): What this unit billed, in micros: the sum of the customer prices UBB has
@@ -39,6 +46,8 @@ class TaskOut:
                 close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in
                 `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.
             total_provider_cost_micros (int):
+            trigger_source (None | str): The mechanism that applied UBB's stop to this unit of work. Null where UBB did not
+                stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).
             unpriced_event_count (int):
             unresolved_event_count (int):
             agreed_price_micros (int | None | Unset):
@@ -54,12 +63,15 @@ class TaskOut:
      """
 
     ceiling_status: TaskOutCeilingStatus
+    control_family: None | TaskOutControlFamilyType0
     created_at: str
     event_count: int
+    reason_code: None | str
     status: TaskOutStatus
     task_id: str
     total_billed_cost_micros: int
     total_provider_cost_micros: int
+    trigger_source: None | str
     unpriced_event_count: int
     unresolved_event_count: int
     agreed_price_micros: int | None | Unset = UNSET
@@ -82,9 +94,18 @@ class TaskOut:
         from ..models.task_out_grouping_fields import TaskOutGroupingFields
         ceiling_status = self.ceiling_status.value
 
+        control_family: None | str
+        if isinstance(self.control_family, TaskOutControlFamilyType0):
+            control_family = self.control_family.value
+        else:
+            control_family = self.control_family
+
         created_at = self.created_at
 
         event_count = self.event_count
+
+        reason_code: None | str
+        reason_code = self.reason_code
 
         status = self.status.value
 
@@ -93,6 +114,9 @@ class TaskOut:
         total_billed_cost_micros = self.total_billed_cost_micros
 
         total_provider_cost_micros = self.total_provider_cost_micros
+
+        trigger_source: None | str
+        trigger_source = self.trigger_source
 
         unpriced_event_count = self.unpriced_event_count
 
@@ -159,12 +183,15 @@ class TaskOut:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "ceiling_status": ceiling_status,
+            "control_family": control_family,
             "created_at": created_at,
             "event_count": event_count,
+            "reason_code": reason_code,
             "status": status,
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
             "total_provider_cost_micros": total_provider_cost_micros,
+            "trigger_source": trigger_source,
             "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
         })
@@ -202,9 +229,35 @@ class TaskOut:
 
 
 
+        def _parse_control_family(data: object) -> None | TaskOutControlFamilyType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                control_family_type_0 = TaskOutControlFamilyType0(data)
+
+
+
+                return control_family_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TaskOutControlFamilyType0, data)
+
+        control_family = _parse_control_family(d.pop("control_family"))
+
+
         created_at = d.pop("created_at")
 
         event_count = d.pop("event_count")
+
+        def _parse_reason_code(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        reason_code = _parse_reason_code(d.pop("reason_code"))
+
 
         status = TaskOutStatus(d.pop("status"))
 
@@ -216,6 +269,14 @@ class TaskOut:
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
 
         total_provider_cost_micros = d.pop("total_provider_cost_micros")
+
+        def _parse_trigger_source(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        trigger_source = _parse_trigger_source(d.pop("trigger_source"))
+
 
         unpriced_event_count = d.pop("unpriced_event_count")
 
@@ -325,12 +386,15 @@ class TaskOut:
 
         task_out = cls(
             ceiling_status=ceiling_status,
+            control_family=control_family,
             created_at=created_at,
             event_count=event_count,
+            reason_code=reason_code,
             status=status,
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,
             total_provider_cost_micros=total_provider_cost_micros,
+            trigger_source=trigger_source,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
             agreed_price_micros=agreed_price_micros,

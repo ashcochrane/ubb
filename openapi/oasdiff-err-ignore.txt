@@ -1326,3 +1326,24 @@ POST webhook:usage.recorded added the new required request property `data/pricin
 # deliberate: the value lost its last producer, and `diagnostic_code` is a
 # versioned closed set whose members change in the commit that changes the
 # capability behind them (domain-vocabulary/concepts/code-builder.yaml).
+
+# 2026-10-24 - R10-W2 (#610, #554, #551, #562, #540's expiry): what a stop and
+# a unit of work publish. `customer.stop_cleared`'s `balance_micros` becomes
+# REQUIRED AND NULLABLE - null where the customer holds no wallet balance,
+# never `0` for "none" (ADR-0013 §5) - like `customer.suspended`'s, so every
+# producer says which; `task_cogs_ceiling_micros` on the four terminal stops
+# widens to nullable; seven payload titles become their events' own names
+# (#554); the unit read gains `reason_code`, `trigger_source` and
+# `control_family`, and the start `absolute_deadline_at` and
+# `silence_window_seconds` (required, additive).
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open; #610's body asks for the
+# nullable payload types and its ruling (6353331623) builds both halves here.
+# The authoring comparison (`--baseline origin/main --emit`) reports ONE
+# finding, `POST webhook:customer.stop_cleared the request property
+# data/balance_micros became required`, reviewed and deliberate. It has NO
+# line here: `customer.stop_cleared` arrived after `api-v1-launch` (#464
+# renamed the stop pair), so against the published contract it is no break,
+# and the cumulative gate reports the line as inert (pasted, run and
+# restored, 2026-10-24). The other changes report nothing either way. The
+# break is recorded here, in the PR and in `docs/conventions/django-patterns.md`.

@@ -304,6 +304,16 @@ lane measured against it then). Every `drive_stop` caller states all three, and 
 the transition leaves the opener's standing; the next episode overwrites them as it overwrites
 `control_id`. Every recording acknowledgement that names the episode carries them — never today's
 counter or configuration.
+**The stop pair's balance is null where the customer holds no wallet balance (#610)** —
+`balance_micros` on `customer.suspended` and `customer.stop_cleared`, never `0` for "none"
+(ADR-0013 §5). A customer holds one only where its tenant holds prepaid wallets and it is its own
+billing owner; a postpaid or metering-only customer, and a pooled seat (whose business's wallet
+funds it, and whose own Pool line names the seat, #609), say null. Where one applies, the figure is
+the balance the lane measured at the transition, or the wallet's durable balance where the lane
+measured none — a Pool line's lanes measure spend, and published `0` for a balance nobody had
+read. One rule for both doors and the patrol's re-mint: `stop_signal_service.announced_balance`
+(`api/v1/tests/test_a_stop_says_none_where_nothing_applies.py`). The soft-floor pair keeps an
+integer balance: a soft floor is a line on a wallet, so a balance always applies to one.
 _Avoid_: treating the Redis stop flag as the emission dedup — the flag is fast-lane visibility;
 the ledger is the truth.
 (`apps/billing/gating/services/stop_signal_service.py`)

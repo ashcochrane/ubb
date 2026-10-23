@@ -48,7 +48,9 @@ def _started(**overrides) -> dict:
         "task_id": "task_1", "parent_task_id": None, "task_type": "transcode",
         "status": "active", "task_cogs_ceiling_micros": 5_000_000,
         "agreed_price_micros": None, "external_task_id": "",
-        "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
+        "created_at": "2026-09-02T09:00:00+00:00",
+        "absolute_deadline_at": "2026-09-02T15:00:00+00:00",
+        "silence_window_seconds": 900, "replayed": False,
     }
     body.update(overrides)
     return body
@@ -311,6 +313,36 @@ class TheFiveExitsTest(_ClientCase):
         self.assertEqual(route, CLOSE_ROUTE)
         self.assertEqual(body, {"outcome": vocabulary.TASK_OUTCOME_DELIVERED})
         self.assertFalse(task.is_open)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_the_signal_says_when_ubb_will_expire_the_open_work(self, mock_post):
+        """#179 §2.4's expiry time, carried (#540): the registration publishes
+        both windows UBB expires work on, and the signal reads them through
+        the handle and says them — the work stays open, so how long it stays
+        counted as active is the thing a caller needs to know."""
+        with self.assertRaises(TaskOutcomeRequired) as cm:
+            with self.start(mock_post) as task:
+                pass
+        missing = cm.exception
+        self.assertEqual(missing.absolute_deadline_at,
+                         "2026-09-02T15:00:00+00:00")
+        self.assertEqual(missing.silence_window_seconds, 900)
+        self.assertEqual(task.absolute_deadline_at, missing.absolute_deadline_at)
+        text = str(missing)
+        self.assertIn("2026-09-02T15:00:00+00:00", text)
+        self.assertIn("900 seconds without a usage report", text)
+        # And the safety net a block that reported nothing meets first.
+        self.assertIn("never reported usage once it is an hour old", text)
+
+    @patch("ubb.metering.httpx.Client.post")
+    def test_work_with_no_silence_window_is_told_only_its_deadline(self, mock_post):
+        with self.assertRaises(TaskOutcomeRequired) as cm:
+            with self.start(mock_post, silence_window_seconds=None):
+                pass
+        missing = cm.exception
+        self.assertIsNone(missing.silence_window_seconds)
+        self.assertNotIn("without a usage report", str(missing))
+        self.assertIn(missing.absolute_deadline_at, str(missing))
 
     @patch("ubb.metering.httpx.Client.post")
     def test_a_replayed_start_on_ended_work_owes_no_declaration(self, mock_post):

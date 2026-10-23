@@ -2,7 +2,7 @@ from django.db import models
 
 from core import controls, crossing
 from core.models import BaseModel
-from core.transitions import FROZEN
+from core.transitions import FROZEN, RESOLVE_ONCE, SET_ONCE
 from core.vocabulary import (
     CEILING_BASIS_COST,
     CEILING_BASIS_TIME,
@@ -74,6 +74,11 @@ TASK_STATUS_CHOICES = [
 #: Deriving it is what makes that true of a seventh value on the day it is
 #: declared, instead of on the day somebody remembers a list in this file.
 TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES) - {TASK_STATUS_ACTIVE}
+
+#: THE TWO TERMINAL STATES UBB WRITES, as against the three a caller declares —
+#: the states a unit's stop is read under (`Task.ubb_stop`, #551),
+#: because they are the states a stop stamps one on.
+UBB_STOPPED_TASK_STATUSES = frozenset({TASK_STATUS_KILLED, TASK_STATUS_EXPIRED})
 
 # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR, held under the same rule
 # stated above the state set — by reference, wording only.
@@ -203,6 +208,11 @@ STOP_CAUSE_KEY = "reason_code"
 STOP_MECHANISM_KEY = "trigger_source"
 STOP_CONTROL_FAMILY_KEY = "control_family"
 STOP_CONTROL_ID_KEY = "control_id"
+
+#: All four, for the one place that must treat them as a set: a stop UBB
+#: applies with no cause to record keeps none of them (`TaskService._flip`).
+UBB_STOP_KEYS = (STOP_CAUSE_KEY, STOP_MECHANISM_KEY, STOP_CONTROL_FAMILY_KEY,
+                 STOP_CONTROL_ID_KEY)
 
 
 def _empty_list():
@@ -345,8 +355,8 @@ class TaskType(BaseModel):
     #: operational settings a tenant revises as it learns what its work costs
     #: and how long it takes; freezing them would make the registry unusable
     #: and would say something false about how they are actually used. `Task`'s
-    #: own columns are a separate piece of work with its own migration,
-    #: recorded at `Task.outcome_reason`.
+    #: own columns declare theirs beneath its fields, held by their own rule
+    #: (`work/migrations/0028`, #562).
     transition_classes = {"pricing_mode": FROZEN}
 
     class Meta:
@@ -413,7 +423,9 @@ class Task(BaseModel):
     # one model, one containment level at launch (the parent must itself be
     # parentless; the generic self-FK makes deepening later a validation
     # change, not a remodel). Immutable after creation — a unit is never
-    # re-parented, which is what lets accumulate read it without a lock.
+    # re-parented, which is what lets accumulate read it without a lock. Its
+    # column is declared FROZEN in `transition_classes` below and the database
+    # holds it (#562).
     # Lock-ordering refinement (see core/locking.py): within Task, a
     # transaction that locks both a parent and its child locks the PARENT
     # first (rollup, cascade kill/close, and subtask registration all comply).
@@ -432,7 +444,8 @@ class Task(BaseModel):
     # Immutable after creation for the same reason `parent` is: accumulate_cost
     # reads it without a lock, and a re-typed unit would retroactively change
     # what every already-settled event on it means. "" = untyped (a tenant who
-    # never declared a vocabulary).
+    # never declared a vocabulary). Declared FROZEN below and held by the
+    # database (#562); `save()`'s refusal is the friendly error above it.
     task_type = models.CharField(max_length=64, blank=True, default="", db_index=True)
     # Task-scoped declared values (design D6), bound to slots by the tenant's
     # GroupingField registry and named for it since #276. Inherited by EVERY
@@ -661,46 +674,29 @@ class Task(BaseModel):
     # and never grouped. Merging them would make every distinct provider string
     # its own bucket.
     #
-    # ⚠ THE RULE IS SET_ONCE AND THIS MODEL DECLARES NO `transition_classes`,
-    # WHICH IS A STATED GAP RATHER THAN AN ANSWER. What is allowed to happen to
-    # these two is exactly what the paragraph above says — written once, when
-    # the row enters its terminal state, and never again. `reason_detail` has
-    # exactly one writer, the close; `outcome_reason` has two, the close and a
-    # parent's close cascade, and both are held to write-once by the same rule
-    # from different directions: the guard in `TaskService._flip` refuses a
-    # second transition, and the cascade beside it selects only work still
-    # running, so a row it can reach is by construction one never written.
-    # `docs/conventions/django-patterns.md` asks a model holding economic
-    # facts to say that per column in a `transition_classes` mapping, and THIS
-    # model has never had one: `status`, `parent` and `task_type` all carry
-    # their rule in prose here too, and #407 and #408 each shipped a column
-    # under the same gap. `TaskType` above now declares one, which narrows the
-    # gap to this model rather than closing it.
+    # ⚠ BOTH ARE SET_ONCE, AND THE DATABASE HOLDS IT (#562). What is allowed
+    # to happen to these two is exactly what the paragraph above says —
+    # written once, by the write that enters the terminal state, from `""`,
+    # and never again. `reason_detail` has exactly one writer, the close;
+    # `outcome_reason` has two, the close and a parent's close cascade, and
+    # each writes it in the same UPDATE as the state. The kernel's own guards
+    # already keep that — `TaskService._flip` refuses a second transition, and
+    # the cascade selects only work still running — and ADR-0007 §2 is
+    # explicit that a guard of that kind is not enforcement. So they are
+    # declared in `transition_classes` beneath the fields, with `status`,
+    # `parent_id` and `task_type`, whose rules this model also carried in
+    # prose only until then, and `work/migrations/0028` installs the rule that
+    # holds all five through every door.
     #
-    # It is NOT declared here, and the reason is that declaring is not
-    # enforcing. A column named into a database-defended class owes a trigger
-    # on `ubb_task` and a behavioural test per class through all three doors —
-    # `save()`, `QuerySet.update()` and raw SQL — which is the shape #318 built
-    # for the posting and #414 built one table over, on `ubb_task_type`, in this
-    # same app. Declaring these two without it would put a false statement into
-    # the module whose whole subject is that declarations are true, and
-    # declaring the model's OTHER columns is a separate piece of work with its
-    # own migration. Whichever ticket installs that trigger should take all of
-    # them together; this comment is here so the next reader finds a decision
-    # rather than an omission.
-    #
-    # ⚠ THIS TABLE DOES CARRY A RULE NOW (#415), AND IT IS NOT ONE OF THESE.
+    # ⚠ THIS TABLE CARRIES TWO RULES, AND THE OTHER IS NOT ONE OF THESE.
     # `work/migrations/0022` installs a `BEFORE INSERT` trigger holding
     # contained work to the pricing regime of the work containing it — a
     # cross-row rule about who may be BORN, which no `CHECK` can express
-    # because it reads two rows. It is declared into no transition class and
-    # discharges none of the gap above: a mutability class is a statement
-    # about what may happen to a column AFTER insert, and that trigger never
-    # fires on one. What it does change is the cost of paying this debt — the
-    # `ubb_task` trigger the paragraph above asks for now has a sibling on the
-    # same table, so whoever writes it must address triggers BY NAME and
-    # assert the table's rules as an exact SET rather than indexing into
-    # `pg_trigger`, which promises no order.
+    # because it reads two rows. It is declared into no transition class: a
+    # mutability class is a statement about what may happen to a column AFTER
+    # insert, and that trigger never fires on one. So every test of either
+    # rule addresses it BY NAME and asserts the table's rules as an exact SET,
+    # because `pg_trigger` promises no order.
     outcome_reason = models.CharField(max_length=32, blank=True, default="",
                                       choices=OUTCOME_REASON_CHOICES)
     reason_detail = models.TextField(blank=True, default="")
@@ -739,6 +735,28 @@ class Task(BaseModel):
 
     external_task_id = models.CharField(max_length=255, blank=True, default="")
     completed_at = models.DateTimeField(null=True, blank=True)
+
+    #: WHAT MAY HAPPEN TO EACH DECLARED COLUMN (ADR-0007 §2, #562), kept by a
+    #: `BEFORE UPDATE` trigger on this table (`work/migrations/0028`) rather
+    #: than by the kernel's guards, which no writer outside the kernel meets.
+    #: A unit of work is born once — it is never re-parented or re-typed — and
+    #: ends once: `active` is the one unresolved state, a terminal one never
+    #: moves, and the caller's reason and its sentence are written by the
+    #: write that ends it. The parent is declared as its COLUMN, as the
+    #: Charge's pointers are, because the walk that reads these declarations
+    #: searches a trigger body and a trigger says `NEW.parent_id`.
+    #:
+    #: Every other column is undeclared, and deliberately: the totals, the
+    #: counts, the heartbeat, the announcement stamp and `metadata` all keep
+    #: moving after a unit ends, because a stop is a signal point and not a
+    #: wall.
+    transition_classes = {
+        "status": RESOLVE_ONCE,
+        "parent_id": FROZEN,
+        "task_type": FROZEN,
+        "outcome_reason": SET_ONCE,
+        "reason_detail": SET_ONCE,
+    }
 
     class Meta:
         db_table = "ubb_task"
@@ -894,6 +912,30 @@ class Task(BaseModel):
     @property
     def ceiling_basis(self):
         return controls.ceiling_basis(self.metadata.get(STOP_CAUSE_KEY))
+
+    # UBB'S STOP OF THIS UNIT — WHY, HOW AND UNDER WHICH CONTROL (#551), as the
+    # unit read publishes them: the cause, the mechanism and the family, each
+    # None where nothing applies. Keyed by the concepts' own names, which are
+    # both the metadata keys (#457 put each under its concept's name) and the
+    # wire's, so the read is one spelling rather than a translation.
+    #
+    # ⚠ GATED ON THE STATE, as every reader of these keys is (the paragraph at
+    # `STOP_CAUSE_KEY`). `metadata` is also the caller's own bag, carried from
+    # the start, so a key UBB writes on a stop is a key a caller could have
+    # written first; only a unit UBB stopped — `killed` or `expired` — carries
+    # UBB's answer under it. Everything else answers None for all three,
+    # including contained work its parent's CLOSE withdrew, whose reason is the
+    # caller-side `outcome_reason` beside these and never a stop cause. A stop
+    # UBB applied with no cause to record — the hourly safety net's silent
+    # expiry — carries none of these keys at all (`TaskService._flip` removes
+    # any it finds), so it reads None for all three, never a caller's word.
+    @property
+    def ubb_stop(self):
+        stopped = self.status in UBB_STOPPED_TASK_STATUSES
+        bag = self.metadata if stopped else {}
+        return {STOP_CAUSE_KEY: bag.get(STOP_CAUSE_KEY) or None,
+                STOP_MECHANISM_KEY: bag.get(STOP_MECHANISM_KEY) or None,
+                STOP_CONTROL_FAMILY_KEY: bag.get(STOP_CONTROL_FAMILY_KEY) or None}
 
     def save(self, *args, **kwargs):
         """Guard the immutable declared kind (D7/D8) — ONE guard, because

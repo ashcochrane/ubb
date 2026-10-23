@@ -76,6 +76,21 @@ def refusal_from(door, row, **columns):
     return None
 
 
+def rule_names_on(table):
+    """The names of the rules (non-internal triggers) on ``table``, as a set.
+
+    Every module that addresses a rule BY NAME asserts the table's whole set
+    through this — `pg_trigger` promises no order, and an exact set is what
+    makes a further rule arriving on a table something a person reads (#352).
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT t.tgname FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid = t.tgrelid "
+            "WHERE c.relname = %s AND NOT t.tgisinternal", [table])
+        return {row[0] for row in cursor.fetchall()}
+
+
 def backdate(task, *, created, last_event=None):
     """Age a unit of work into a sweeper's window without a transition.
 

@@ -46,7 +46,7 @@ class AutoTopUpService:
                     customer=customer,
                     # `customer` here is already the billing owner (the
                     # caller locked it via lock_for_billing(owner_id) off a
-                    # BalanceLow event keyed to the owner) — resolving again
+                    # WalletBalanceLow event keyed to the owner) — resolving again
                     # is a no-op for that case and keeps this creation site
                     # correct even if a future caller ever passed a seat.
                     billing_owner_id=customer.resolve_billing_owner().id,

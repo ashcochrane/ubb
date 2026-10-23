@@ -354,7 +354,11 @@ class Server:
                 "task_type": body.get("task_type"), "status": "active",
                 "task_cogs_ceiling_micros": None, "agreed_price_micros": None,
                 "external_task_id": "",
-                "created_at": "2026-09-02T09:00:00+00:00", "replayed": False}
+                "created_at": "2026-09-02T09:00:00+00:00",
+                # Required keys: when UBB expires the unit (#540) — the
+                # backstops, six hours and fifteen minutes.
+                "absolute_deadline_at": "2026-09-02T15:00:00+00:00",
+                "silence_window_seconds": 900, "replayed": False}
         elif path == "/api/v1/metering/usage":
             answer = {"event_id": f"event_{len(self.requests)}",
                       "suspended": False, "costing_status": "known",

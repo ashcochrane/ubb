@@ -4,14 +4,14 @@ from unittest.mock import patch, MagicMock
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.platform.events.schemas import BalanceLow
+from apps.platform.events.schemas import WalletBalanceLow
 from apps.billing.wallets.models import Wallet
 from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 from apps.billing.connectors.stripe.handlers import handle_balance_low_stripe
 
 
 @pytest.mark.django_db
-class TestHandleBalanceLowStripe:
+class TestHandleWalletBalanceLowStripe:
     @pytest.mark.django_db(transaction=True)
     def test_creates_attempt_and_dispatches_task_when_stripe_configured(self):
         tenant = Tenant.objects.create(
@@ -30,7 +30,7 @@ class TestHandleBalanceLowStripe:
             top_up_amount_micros=20_000_000,
         )
 
-        payload = asdict(BalanceLow(
+        payload = asdict(WalletBalanceLow(
             tenant_id=tenant.id,
             customer_id=customer.id,
             balance_micros=3_000_000,
@@ -58,7 +58,7 @@ class TestHandleBalanceLowStripe:
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
         Wallet.objects.create(customer=customer)
 
-        payload = asdict(BalanceLow(
+        payload = asdict(WalletBalanceLow(
             tenant_id=tenant.id,
             customer_id=customer.id,
             balance_micros=3_000_000,
@@ -81,7 +81,7 @@ class TestHandleBalanceLowStripe:
 
         # No AutoTopUpConfig created
 
-        payload = asdict(BalanceLow(
+        payload = asdict(WalletBalanceLow(
             tenant_id=tenant.id,
             customer_id=customer.id,
             balance_micros=3_000_000,
@@ -117,7 +117,7 @@ class TestHandleBalanceLowStripe:
             status="pending",
         )
 
-        payload = asdict(BalanceLow(
+        payload = asdict(WalletBalanceLow(
             tenant_id=tenant.id,
             customer_id=customer.id,
             balance_micros=3_000_000,

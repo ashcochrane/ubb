@@ -26,7 +26,7 @@ from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.events.schemas import StopCleared
+from apps.platform.events.schemas import CustomerStopCleared
 from apps.platform.work import reasons
 
 
@@ -106,7 +106,7 @@ class TestEnforcementSeam:
                     "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200
         from apps.platform.events.models import OutboxEvent
-        cleared = OutboxEvent.objects.filter(event_type=StopCleared.EVENT_TYPE)
+        cleared = OutboxEvent.objects.filter(event_type=CustomerStopCleared.EVENT_TYPE)
         assert cleared.count() == 1  # the resume signal, once, episode 1
         assert cleared.get().payload["episode_seq"] == 1
 

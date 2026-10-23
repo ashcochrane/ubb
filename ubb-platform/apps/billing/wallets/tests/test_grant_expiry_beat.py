@@ -1,5 +1,5 @@
 """F4.3 — expire_credit_grants beat: exactly-once expiry + one-shot warnings,
-sweep fault isolation + soft-delete liveness, BalanceLow on expiry."""
+sweep fault isolation + soft-delete liveness, WalletBalanceLow on expiry."""
 import logging
 import uuid
 from datetime import timedelta
@@ -213,9 +213,9 @@ class TestSweepFaultIsolation:
 
 
 @pytest.mark.django_db
-class TestBalanceLowOnExpiry:
+class TestWalletBalanceLowOnExpiry:
     """Fix 3: an expiry debit that leaves the balance below the auto-top-up
-    trigger emits BalanceLow with the drawdown winning-branch semantics."""
+    trigger emits WalletBalanceLow with the drawdown winning-branch semantics."""
 
     def test_expiry_below_trigger_emits_one_balance_low(self):
         t, c, w = _setup()

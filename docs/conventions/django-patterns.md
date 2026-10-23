@@ -35,7 +35,12 @@ are built on — use them rather than reaching across a boundary directly.
   absence, `events/0010`); and while the pre-live lane is open (ADR-0007 §5) a rename may be made in
   place with its break recorded in the gate's block and its queued payloads migrated (#458's
   `reason` → `reason_code` on the customer stop pair; #464's five event NAMES moved under their
-  families, with every stored subscription and queued row carried by `events/0009`). Every
+  families, with every stored subscription and queued row carried by `events/0009`) — and, in
+  the same lane, a field that published `0` for "nothing applies" may widen in place to
+  nullable, because ADR-0013 §5's *not applicable, never zero* is the field's meaning and the
+  `0` was never a value (#610: `task_cogs_ceiling_micros` on the four terminal stops,
+  `balance_micros` on the customer stop pair; nothing is deployed, so no queued payload is
+  carried). A payload's TITLE is its class name, so renaming a class is a rename too (#554). Every
   class takes its `EVENT_TYPE` from `core.vocabulary` by reference — the catalogue gate reads
   the name through the registry's constant, and a literal or a name from anywhere else is
   refused (#464).

@@ -43,7 +43,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    StopFired, SubtaskKilled, TaskExpired, TaskKilled)
+    CustomerStopped, SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.platform.work.models import (
@@ -221,7 +221,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
         ack = self._record(provider_cost_micros=1_000, bills=2_000_000)
 
         self.assertTrue(ack["stop"])
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["reason_code"], reasons.HARD_FLOOR)
         self.assertEqual(payload["control_family"], CONTROL_FAMILY_WALLET_POLICY)
         self.assertEqual(payload["control_id"], str(profile.id))
@@ -235,7 +235,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
 
         self._record(provider_cost_micros=1_000, bills=2_000_000)
 
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["control_family"], CONTROL_FAMILY_WALLET_POLICY)
         self.assertEqual(payload["control_id"], str(config.id))
 
@@ -249,7 +249,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
         ack = self._record(provider_cost_micros=1_000, bills=2_000_000)
 
         self.assertTrue(ack["stop"])
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["reason_code"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(payload["control_family"],
                          CONTROL_FAMILY_CUSTOMER_SPEND_POOL)
