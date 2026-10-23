@@ -8308,7 +8308,7 @@
         "description": "What a start registered, or what its key already claimed.\n\n\u26a0 THE REGISTRATION, NOT THE READ. A start answers *which unit of work is\nthis, and did I just create it* \u2014 the identity, the altitude, and the facts\nthe unit pinned. What it deliberately does NOT carry is the cost\nrollups: they are a read's answer, they are all zero on the call that\ncreates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a\ncaller replaying an attempt that has since run up cost.\n\n\u26a0 AND THE DECLARED GROUPING VALUES ARE NOT ECHOED. You just sent them,\nand a start that pinned something else says so by REFUSING rather than by\nhanding back a corrected bag \u2014 so an echo could only ever repeat your own\nrequest back to you. The unit read one call away carries them as UBB holds\nthem, keyed by your own declared key.",
         "properties": {
           "absolute_deadline_at": {
-            "description": "When this unit of work passes its absolute deadline: its registration plus how long its kind of work may run at all \u2014 the declared kind's own deadline, else the workspace default, else UBB's backstop of six hours. Past it, UBB expires the unit if it is still active. Never null: the absolute deadline cannot be switched off. Resolved when this response was written \u2014 a later change to the declaration or the workspace default reaches work already running.",
+            "description": "When this unit of work passes its absolute deadline: its registration plus how long its kind of work may run at all \u2014 the declared kind's own deadline, else the workspace default, else UBB's backstop of six hours. UBB expires a unit still active past it. Two further rules move the end: work that has never reported usage is expired once it is an hour old, and where the workspace does not enforce, UBB's hourly safety net does the expiring and never before the unit is an hour old. Never null: the absolute deadline cannot be switched off. Resolved when this response was written \u2014 a later change to the declaration or the workspace default reaches work already running.",
             "title": "Absolute Deadline At",
             "type": "string"
           },
@@ -8356,7 +8356,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long this unit of work may go without a usage report, counted from its last one, before UBB expires it \u2014 resolved on the same ladder as `absolute_deadline_at` (UBB's backstop is fifteen minutes), and resolved when this response was written. Null where no silence window applies to it. Silence is counted from the last report, so work that has never reported is not measured on it.",
+            "description": "How long this unit of work may go without a usage report, counted from its last one, before UBB expires it \u2014 resolved on the same ladder as `absolute_deadline_at` (UBB's backstop is fifteen minutes), and resolved when this response was written. Null where no silence window applies to it. Silence is counted from the last report, so work that has never reported is not measured on it \u2014 it is expired once it is an hour old instead.",
             "title": "Silence Window Seconds"
           },
           "status": {
@@ -8850,7 +8850,7 @@
                 "type": "null"
               }
             ],
-            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work.",
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
             "title": "Control Family"
           },
           "created_at": {
@@ -8921,7 +8921,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`).",
+            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
             "title": "Reason Code"
           },
           "reason_detail": {
@@ -9002,7 +9002,7 @@
                 "type": "null"
               }
             ],
-            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where the stop recorded no mechanism.",
+            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
             "title": "Trigger Source"
           },
           "unpriced_event_count": {
@@ -9104,7 +9104,7 @@
                 "type": "null"
               }
             ],
-            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work.",
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
             "title": "Control Family"
           },
           "created_at": {
@@ -9175,7 +9175,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`).",
+            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
             "title": "Reason Code"
           },
           "reason_detail": {
@@ -9249,7 +9249,7 @@
                 "type": "null"
               }
             ],
-            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where the stop recorded no mechanism.",
+            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
             "title": "Trigger Source"
           },
           "unpriced_event_count": {
@@ -21631,8 +21631,7 @@
                             "type": "null"
                           }
                         ],
-                        "default": null,
-                        "description": "The customer's wallet balance, in micros, as the lane that announced this saw it. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
+                        "description": "The customer's wallet balance, in micros: the balance the lane that announced this measured, or the wallet's own where that lane measured none. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
                         "title": "Balance Micros"
                       },
                       "control_family": {
@@ -21693,7 +21692,8 @@
                       "owner_id",
                       "reason_code",
                       "control_family",
-                      "control_id"
+                      "control_id",
+                      "balance_micros"
                     ],
                     "title": "CustomerStopCleared",
                     "type": "object"
@@ -21935,7 +21935,7 @@
                             "type": "null"
                           }
                         ],
-                        "description": "The customer's wallet balance, in micros, as the lane that announced this saw it. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
+                        "description": "The customer's wallet balance, in micros: the balance the lane that announced this measured, or the wallet's own where that lane measured none. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
                         "title": "Balance Micros"
                       },
                       "customer_id": {

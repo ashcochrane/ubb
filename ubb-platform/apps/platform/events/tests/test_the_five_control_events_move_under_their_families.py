@@ -36,8 +36,9 @@ from django.test.utils import CaptureQueriesContext
 from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSpendPoolThresholdReached, WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
-    CustomerStopCleared, CustomerStopped, UsageRecorded, payload_schema_classes,
+    CustomerSpendPoolThresholdReached, CustomerStopCleared, CustomerStopped,
+    UsageRecorded, WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
+    payload_schema_classes,
 )
 from apps.platform.events.tests._helpers import (
     THE_CATALOGUE_RENAME as MIGRATION, as_it_was_spelled,

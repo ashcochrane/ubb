@@ -39,6 +39,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from apps.platform.work.services import ContainmentRegimeRefused, TaskService
+from apps.platform.work.tests._helpers import rule_names_on
 from core.vocabulary import PRICING_MODE_EVENT_PRICED, PRICING_MODE_FIXED
 
 TABLE = Task._meta.db_table
@@ -332,13 +333,8 @@ class AGreenBoardOverAGuttedRuleIsMeasuredRatherThanArguedTest(
         a rule is on the table. An exact SET rather than a membership test, so
         that a further rule arriving on this table is read by a person before
         the by-name addressing above quietly starts mattering — as #562's did."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            self.assertEqual({row[0] for row in cursor.fetchall()},
-                             {CONTAINMENT_TRIGGER, TRANSITION_TRIGGER})
+        self.assertEqual(rule_names_on(TABLE),
+                         {CONTAINMENT_TRIGGER, TRANSITION_TRIGGER})
 
 
 class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):

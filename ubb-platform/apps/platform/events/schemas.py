@@ -14,7 +14,10 @@ Rules:
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
   payloads migrated (`CustomerStopped` / `CustomerStopCleared`'s `reason` → `reason_code`,
-  #458, `gating/migrations/0014`).
+  #458, `gating/migrations/0014`); and in the same lane a field that published
+  `0` for "nothing applies" may widen in place to nullable (#610, ADR-0013
+  §5). A class's name is its payload's published title, so a class rename is
+  a rename too (#554).
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
   accept ``UUID | str``; construction normalizes to str.
 - Consumers: ``SchemaClass.from_payload(payload)`` — unknown keys filtered,
@@ -191,8 +194,9 @@ UnitCogsCeiling = Annotated[Optional[int], Field(description=(
 #: billing's (`stop_signal_service.announced_balance`), applied on every lane
 #: that announces one, the patrol's re-mint included.
 WalletBalanceOnAStop = Annotated[Optional[int], Field(description=(
-    "The customer's wallet balance, in micros, as the lane that announced "
-    "this saw it. Null where the customer holds no wallet balance: its tenant "
+    "The customer's wallet balance, in micros: the balance the lane that "
+    "announced this measured, or the wallet's own where that lane measured "
+    "none. Null where the customer holds no wallet balance: its tenant "
     "does not hold prepaid wallets, or it is a pooled seat, whose business's "
     "wallet funds its spend. 0 is a real balance, never a stand-in for "
     "none."))]
@@ -913,9 +917,11 @@ class CustomerStopCleared(EventSchema):
     reason_code: ReasonCode
     control_family: ControlFamily
     control_id: str
+    #: Required, like the suspension's (#610): every producer says which —
+    #: a balance, or null where the customer holds none.
+    balance_micros: WalletBalanceOnAStop
     scope: str = "customer"
     episode_seq: int = 0
-    balance_micros: WalletBalanceOnAStop = None
     # Delivery spec §B (#43): True only on a patrol re-mint (see
     # CustomerStopped.re_announcement).
     re_announcement: bool = False

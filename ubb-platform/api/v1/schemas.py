@@ -1646,7 +1646,7 @@ class TaskOut(Schema):
     reason_detail: Optional[str] = None
     #: WHY, HOW AND UNDER WHICH CONTROL UBB STOPPED THIS UNIT (#551) — the
     #: three answers its four terminal webhooks carry, read back off the row
-    #: the stop stamped (`Task.stop_cause`). Three fields because they answer
+    #: the stop stamped (`Task.ubb_stop`). Three fields because they answer
     #: three questions (ADR-0006 §5): the cause, the mechanism that applied
     #: it, and the family of the control whose bound was reached. A
     #: subscriber who missed the webhook, and the run page, read them here.
@@ -1658,15 +1658,17 @@ class TaskOut(Schema):
     reason_code: Optional[ReasonCode] = Field(description=(
         "Why UBB stopped this unit of work: which bound was reached. Null "
         "where UBB did not stop it — it is still running, or its caller ended "
-        "it (see `outcome_reason`)."))
+        "it (see `outcome_reason`) — and where UBB's stop recorded no cause: "
+        "the hourly safety net expires work nobody reported on silently."))
     trigger_source: Optional[TriggerSource] = Field(description=(
         "The mechanism that applied UBB's stop to this unit of work. Null "
-        "where UBB did not stop it, or where the stop recorded no "
-        "mechanism."))
+        "where UBB did not stop it, or where its stop recorded no mechanism "
+        "(the hourly safety net's silent expiry)."))
     control_family: Optional[ControlFamily] = Field(description=(
         "Which of the four spend controls UBB's stop came from — for "
         "contained work stopped with its parent, the parent's. Null where UBB "
-        "did not stop this unit of work."))
+        "did not stop this unit of work, or where its stop recorded no cause "
+        "(the hourly safety net's silent expiry)."))
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
     #:
@@ -1762,7 +1764,7 @@ def task_out(t, keys):
         "reason_detail": t.reason_detail or None,
         # Read on the row, gated on the state there (#551) — one read, not a
         # second spelling of which metadata keys UBB's stop wrote.
-        **t.stop_cause,
+        **t.ubb_stop,
         "total_provider_cost_micros": t.total_provider_cost_micros,
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
@@ -1973,8 +1975,12 @@ class StartTaskResponse(Schema):
         "When this unit of work passes its absolute deadline: its "
         "registration plus how long its kind of work may run at all — the "
         "declared kind's own deadline, else the workspace default, else UBB's "
-        "backstop of six hours. Past it, UBB expires the unit if it is still "
-        "active. Never null: the absolute deadline cannot be switched off. "
+        "backstop of six hours. UBB expires a unit still active past it. Two "
+        "further rules move the end: work that has never reported usage is "
+        "expired once it is an hour old, and where the workspace does not "
+        "enforce, UBB's hourly safety net does the expiring and never before "
+        "the unit is an hour old. Never null: the absolute deadline cannot be "
+        "switched off. "
         "Resolved when this response was written — a later change to the "
         "declaration or the workspace default reaches work already running."))
     silence_window_seconds: Optional[int] = Field(description=(
@@ -1983,7 +1989,8 @@ class StartTaskResponse(Schema):
         "ladder as `absolute_deadline_at` (UBB's backstop is fifteen "
         "minutes), and resolved when this response was written. Null where no "
         "silence window applies to it. Silence is counted from the last "
-        "report, so work that has never reported is not measured on it."))
+        "report, so work that has never reported is not measured on it — it "
+        "is expired once it is an hour old instead."))
     #: THIS CALL FOUND THE KEY ALREADY CLAIMED and wrote nothing: no second
     #: unit, no second ceiling, no second set of totals. A retry after a lost
     #: response is not an error, and everything above describes the unit the

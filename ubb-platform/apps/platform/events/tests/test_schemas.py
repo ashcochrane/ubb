@@ -198,7 +198,7 @@ def test_balance_overage_contract():
     from dataclasses import asdict
     from apps.platform.events.schemas import WalletBalanceOverage
     e = WalletBalanceOverage(tenant_id="t", customer_id="c", balance_micros=-500,
-                       overage_limit_micros=0, overage_micros=500)
+                             overage_limit_micros=0, overage_micros=500)
     assert e.EVENT_TYPE == "wallet.balance_overage"
     assert asdict(e)["overage_micros"] == 500
 
@@ -263,8 +263,8 @@ class TestFromPayload:
         from apps.platform.events.schemas import CustomerStopped
 
         produced = CustomerStopped(tenant_id="t1", owner_id="o1", reason_code="floor",
-                             control_family="policy", control_id="row",
-                             episode_seq=3)
+                                   control_family="policy", control_id="row",
+                                   episode_seq=3)
         assert CustomerStopped.from_payload(asdict(produced)) == produced
 
 

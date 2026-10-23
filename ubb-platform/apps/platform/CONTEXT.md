@@ -734,10 +734,13 @@ carries, read back off the row the stop stamped, so a subscriber who missed the 
 console's run page both learn them. Each is required and nullable: **null where UBB did not stop
 the unit** — it is running, or its own caller ended it, whose word is the **Outcome reason** — and
 read only on a `killed` or `expired` unit, because the metadata they live in is also the caller's
-own bag from the start. Contained work stopped with its parent says `parent_killed` or
+own bag from the start. A stop UBB applies with no cause to record — the hourly safety net's silent
+expiry — keeps none of UBB's stop keys (`TaskService._flip` removes any it finds), so it reads
+null on all three and never a caller's planted word. Contained work stopped with its parent says
+`parent_killed` or
 `parent_expired`, `parent_cascade`, and its parent's family; contained work its parent's CLOSE
 withdrew says null for all three and `parent_closed` as its outcome reason.
-(`apps/platform/work/models.py:Task.stop_cause`; `api/v1/tests/test_a_unit_says_how_it_was_stopped.py`)
+(`apps/platform/work/models.py:Task.ubb_stop`; `api/v1/tests/test_a_unit_says_how_it_was_stopped.py`)
 _Avoid_: reading `outcome_reason` as UBB's stop cause, or this as the caller's — two concepts, two
 fields.
 
@@ -748,8 +751,11 @@ registration plus the resolved **Absolute deadline** — never null, because the
 switched off — and `silence_window_seconds`, the resolved **Silence window**, counted from the last
 usage report and null where the unit has none. Both are RESOLVED when the response is written and
 not pinned, which is the ladders' own rule (a widened window reaches work already running), so a
-replay answers them as they stand then. The SDK's `TaskOutcomeRequired` — a work block that ended
-without declaring an outcome — carries both, read through the handle.
+replay answers them as they stand then. Two fixed rules move the end, and the descriptions state
+them: work that has never reported usage is expired once it is an hour old (the safety net, in
+every posture), and where the workspace does not enforce, only the hourly safety net expires, never
+before the unit is an hour old. The SDK's `TaskOutcomeRequired` — a work block that ended without
+declaring an outcome — carries both windows, read through the handle, and says the hour.
 (`apps/platform/work/queries.py:windows_of_a_unit`; `api/v1/tests/test_a_start_says_when_the_work_expires.py`)
 _Avoid_: `expires_at` for either — neither window alone says when the work will end.
 

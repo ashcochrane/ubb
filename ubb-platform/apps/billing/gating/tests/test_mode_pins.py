@@ -24,8 +24,8 @@ from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
-    CustomerStopCleared, CustomerStopped, UsageRecorded)
+    CustomerStopCleared, CustomerStopped, UsageRecorded,
+    WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 
@@ -110,7 +110,7 @@ class TestOffIsByteForBytePreEnforcement:
         assert not OutboxEvent.objects.filter(event_type__in=[
             CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE,
             WalletPolicySoftFloorCrossed.EVENT_TYPE,
-            WalletPolicySoftFloorCleared.EVENT_TYPE]).exists()                       # no signals
+            WalletPolicySoftFloorCleared.EVENT_TYPE]).exists()  # no signals
 
     def test_tier1_baseline_survives_untouched(self):
         # The pre-enforcement reactions still run in off: durable drawdown,

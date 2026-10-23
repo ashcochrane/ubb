@@ -34,8 +34,8 @@ from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
-    CustomerStopped, UsageRecorded)
+    CustomerStopped, UsageRecorded, WalletPolicySoftFloorCleared,
+    WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant
 
 HARD = 5_000_000  # hard floor: the stop line is -5_000_000

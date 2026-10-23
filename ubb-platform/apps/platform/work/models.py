@@ -76,7 +76,7 @@ TASK_STATUS_CHOICES = [
 TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES) - {TASK_STATUS_ACTIVE}
 
 #: THE TWO TERMINAL STATES UBB WRITES, as against the three a caller declares —
-#: the states a unit's stop cause is read under (`Task.stop_cause`, #551),
+#: the states a unit's stop is read under (`Task.ubb_stop`, #551),
 #: because they are the states a stop stamps one on.
 UBB_STOPPED_TASK_STATUSES = frozenset({TASK_STATUS_KILLED, TASK_STATUS_EXPIRED})
 
@@ -208,6 +208,11 @@ STOP_CAUSE_KEY = "reason_code"
 STOP_MECHANISM_KEY = "trigger_source"
 STOP_CONTROL_FAMILY_KEY = "control_family"
 STOP_CONTROL_ID_KEY = "control_id"
+
+#: All four, for the one place that must treat them as a set: a stop UBB
+#: applies with no cause to record keeps none of them (`TaskService._flip`).
+UBB_STOP_KEYS = (STOP_CAUSE_KEY, STOP_MECHANISM_KEY, STOP_CONTROL_FAMILY_KEY,
+                 STOP_CONTROL_ID_KEY)
 
 
 def _empty_list():
@@ -908,9 +913,11 @@ class Task(BaseModel):
     def ceiling_basis(self):
         return controls.ceiling_basis(self.metadata.get(STOP_CAUSE_KEY))
 
-    # WHY, HOW AND UNDER WHICH CONTROL UBB STOPPED THIS UNIT (#551), as the
-    # unit read publishes them — keyed by the concepts' own names, which are
-    # the wire's, and each None where nothing applies.
+    # UBB'S STOP OF THIS UNIT — WHY, HOW AND UNDER WHICH CONTROL (#551), as the
+    # unit read publishes them: the cause, the mechanism and the family, each
+    # None where nothing applies. Keyed by the concepts' own names, which are
+    # both the metadata keys (#457 put each under its concept's name) and the
+    # wire's, so the read is one spelling rather than a translation.
     #
     # ⚠ GATED ON THE STATE, as every reader of these keys is (the paragraph at
     # `STOP_CAUSE_KEY`). `metadata` is also the caller's own bag, carried from
@@ -918,9 +925,12 @@ class Task(BaseModel):
     # written first; only a unit UBB stopped — `killed` or `expired` — carries
     # UBB's answer under it. Everything else answers None for all three,
     # including contained work its parent's CLOSE withdrew, whose reason is the
-    # caller-side `outcome_reason` beside these and never a stop cause.
+    # caller-side `outcome_reason` beside these and never a stop cause. A stop
+    # UBB applied with no cause to record — the hourly safety net's silent
+    # expiry — carries none of these keys at all (`TaskService._flip` removes
+    # any it finds), so it reads None for all three, never a caller's word.
     @property
-    def stop_cause(self):
+    def ubb_stop(self):
         stopped = self.status in UBB_STOPPED_TASK_STATUSES
         bag = self.metadata if stopped else {}
         return {STOP_CAUSE_KEY: bag.get(STOP_CAUSE_KEY) or None,

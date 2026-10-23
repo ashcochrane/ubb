@@ -63,6 +63,9 @@ class UBBConnectionError(UBBError):
 # last report, which this client cannot see. The registration publishes both
 # (`absolute_deadline_at`, `silence_window_seconds`), resolved when it was
 # written, and this carries both rather than inventing one instant out of them.
+# The message also says UBB's fixed safety net — work that never reported
+# usage is expired once it is an hour old — which the registration's own
+# description states: a block that sent nothing meets that rule first.
 class TaskOutcomeRequired(UBBError):
     """A work block ended cleanly and nothing declared how the work ended.
 
@@ -89,8 +92,9 @@ class TaskOutcomeRequired(UBBError):
         super().__init__(
             f"Unit of work {task.task_id} left its block without a declared "
             f"outcome. It is still open on UBB's side — nothing was sent and "
-            f"nothing was invented — and UBB will expire it once it passes "
-            f"its absolute deadline, {task.absolute_deadline_at}{quiet}. Call "
+            f"nothing was invented. UBB expires open work once it passes "
+            f"its absolute deadline, {task.absolute_deadline_at}{quiet}, and "
+            f"work that never reported usage once it is an hour old. Call "
             f"complete(), fail(outcome_reason) or cancel() on it explicitly.")
 
     @property

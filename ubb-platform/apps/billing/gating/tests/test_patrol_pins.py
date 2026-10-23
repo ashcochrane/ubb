@@ -54,10 +54,10 @@ from apps.platform.customers.models import Customer
 from apps.platform.events import announcements
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    WalletPolicySoftFloorCrossed,
     CustomerStopCleared,
     CustomerStopped,
     SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled,
+    WalletPolicySoftFloorCrossed,
 )
 from apps.platform.work import hooks, reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line

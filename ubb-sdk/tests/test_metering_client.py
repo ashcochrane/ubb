@@ -18,10 +18,11 @@ from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 # is not a surface a value set ships on" — and the hand-written client's own
 # conversion belongs to the ticket that re-cuts the SDK's task surface.
 from ubb.vocabulary import (
-    CEILING_STATUS_INDETERMINATE,
+    CEILING_STATUS_INDETERMINATE, CONTROL_FAMILY_CEILING,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED,
-    TASK_STATUS_KILLED,
+    REASON_CODE_TASK_COGS_CEILING, TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_USAGE_INGEST,
 )
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -749,9 +750,9 @@ class MeteringClientTest(unittest.TestCase):
     def test_list_tasks_url_filters_and_page(self, mock_get):
         from ubb._core.models.task_out import TaskOut
         stopped = self._a_task_row(task_id="task_2", status=TASK_STATUS_KILLED,
-                                   reason_code="task_cogs_ceiling",
-                                   trigger_source="usage_ingest",
-                                   control_family="ceiling")
+                                   reason_code=REASON_CODE_TASK_COGS_CEILING,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                                   control_family=CONTROL_FAMILY_CEILING)
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             "data": [self._a_task_row(), stopped],
             "next_cursor": "abc", "has_more": True,
@@ -772,9 +773,11 @@ class MeteringClientTest(unittest.TestCase):
         self.assertIsInstance(page.data[0], TaskOut)
         # How UBB stopped the second (#551), and nothing on the first.
         self.assertIsNone(page.data[0].reason_code)
-        self.assertEqual(page.data[1].reason_code, "task_cogs_ceiling")
-        self.assertEqual(page.data[1].trigger_source, "usage_ingest")
-        self.assertEqual(page.data[1].control_family, "ceiling")
+        self.assertEqual(page.data[1].reason_code,
+                         REASON_CODE_TASK_COGS_CEILING)
+        self.assertEqual(page.data[1].trigger_source,
+                         TRIGGER_SOURCE_USAGE_INGEST)
+        self.assertEqual(page.data[1].control_family, CONTROL_FAMILY_CEILING)
         self.assertEqual(page.next_cursor, "abc")
         self.assertTrue(page.has_more)
 

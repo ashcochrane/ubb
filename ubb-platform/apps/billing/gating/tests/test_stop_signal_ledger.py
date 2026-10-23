@@ -25,8 +25,8 @@ from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed,
-    CustomerStopCleared, CustomerStopped)
+    CustomerStopCleared, CustomerStopped, WalletPolicySoftFloorCleared,
+    WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import (

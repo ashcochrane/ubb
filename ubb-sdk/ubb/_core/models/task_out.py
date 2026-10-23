@@ -32,11 +32,13 @@ class TaskOut:
         Attributes:
             ceiling_status (TaskOutCeilingStatus):
             control_family (None | TaskOutControlFamilyType0): Which of the four spend controls UBB's stop came from — for
-                contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work.
+                contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where
+                its stop recorded no cause (the hourly safety net's silent expiry).
             created_at (str):
             event_count (int):
             reason_code (None | str): Why UBB stopped this unit of work: which bound was reached. Null where UBB did not
-                stop it — it is still running, or its caller ended it (see `outcome_reason`).
+                stop it — it is still running, or its caller ended it (see `outcome_reason`) — and where UBB's stop recorded no
+                cause: the hourly safety net expires work nobody reported on silently.
             status (TaskOutStatus):
             task_id (str):
             total_billed_cost_micros (int): What this unit billed, in micros: the sum of the customer prices UBB has
@@ -45,7 +47,7 @@ class TaskOut:
                 `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.
             total_provider_cost_micros (int):
             trigger_source (None | str): The mechanism that applied UBB's stop to this unit of work. Null where UBB did not
-                stop it, or where the stop recorded no mechanism.
+                stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).
             unpriced_event_count (int):
             unresolved_event_count (int):
             agreed_price_micros (int | None | Unset):

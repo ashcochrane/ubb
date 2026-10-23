@@ -24,8 +24,8 @@ from django.test.utils import CaptureQueriesContext
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSuspended, RefundRequested, CustomerStopCleared, CustomerStopped, SubtaskExpired,
-    SubtaskKilled, TaskExpired, TaskKilled)
+    CustomerStopCleared, CustomerStopped, CustomerSuspended, RefundRequested,
+    SubtaskExpired, SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.events.tests._helpers import as_it_was_spelled
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons

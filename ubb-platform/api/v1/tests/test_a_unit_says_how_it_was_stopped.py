@@ -22,13 +22,16 @@ from datetime import timedelta
 
 from apps.billing.gating.models import CustomerSpendPool
 from apps.platform.work import reasons
+from apps.platform.work.models import Task
 from apps.platform.work.services import CloseDeclaration, TaskService
-from apps.platform.work.tasks import reap_stale_tasks
+from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from api.v1.tests.test_every_stop_names_the_control_that_fired import (
     EveryStopNamesItsControlTestBase)
 from core.vocabulary import (
     CONTROL_FAMILY_CEILING, CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
-    OUTCOME_REASON_TIMEOUT, TASK_OUTCOME_FAILED, TASK_TYPE_KIND_SUBTASK,
+    OUTCOME_REASON_PARENT_CLOSED, OUTCOME_REASON_TIMEOUT,
+    TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_EXPIRED,
+    TASK_TYPE_KIND_SUBTASK,
     TRIGGER_SOURCE_PARENT_CASCADE, TRIGGER_SOURCE_POOL_CROSSING,
     TRIGGER_SOURCE_STALE_REAPER, TRIGGER_SOURCE_USAGE_INGEST)
 
@@ -138,18 +141,45 @@ class AUnitUBBDidNotStopSaysNoneTest(AUnitReadTestBase):
         body = self._read(f"/api/v1/tasks/{response.json()['task_id']}")
         self.assertEqual(self._stop(body), dict.fromkeys(STOP_FIELDS))
 
+    def test_a_silent_expiry_carries_no_cause_and_no_planted_one(self):
+        """The hourly safety net expires work nobody reported on and records no
+        cause: the unit is `expired`, so it IS read — and what it must not
+        read is a key the caller planted at the start. A stop UBB applies with
+        no cause keeps none of UBB's stop keys (`TaskService._flip`)."""
+        response = self.http_client.post(
+            "/api/v1/tasks", content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+            data={"customer_id": str(self.customer.id),
+                  "idempotency_key": "planted-then-abandoned",
+                  "metadata": {"reason_code": "made_up",
+                               "trigger_source": "made_up",
+                               "control_family": "made_up",
+                               "kept": "the caller's own key"}})
+        self.assertEqual(response.status_code, 200, response.content)
+        unit = Task.objects.get(id=response.json()["task_id"])
+        self._age(unit, created=timedelta(hours=2))
+
+        self.assertEqual(close_abandoned_tasks(), 1)
+
+        unit.refresh_from_db()
+        self.assertEqual(unit.status, TASK_STATUS_EXPIRED)
+        self.assertEqual(unit.metadata, {"kept": "the caller's own key"})
+        body = self._detail(unit)
+        self.assertEqual(self._stop(body), dict.fromkeys(STOP_FIELDS))
+
     def test_contained_work_its_parents_close_withdrew(self):
         """UBB stamps the cascade's mechanism on every row it withdraws, and
         the close is still the caller's ending: the piece's word is
         `parent_closed`, as an outcome reason, and no stop cause."""
         parent = self._unit()
         contained = self._unit(parent=parent)
-        TaskService.close_task(parent.id, CloseDeclaration("delivered"))
+        TaskService.close_task(parent.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
 
         [inside] = self._detail(parent)["subtasks"]
         self.assertEqual(inside["task_id"], str(contained.id))
         self.assertEqual(self._stop(inside), dict.fromkeys(STOP_FIELDS))
-        self.assertEqual(inside["outcome_reason"], "parent_closed")
+        self.assertEqual(inside["outcome_reason"], OUTCOME_REASON_PARENT_CLOSED)
 
     def test_work_its_own_caller_ended(self):
         """The caller's reason is `outcome_reason`, a different concept from

@@ -31,18 +31,20 @@ on a terminal row, and a full-row save re-sending unchanged values.
 """
 import importlib
 
-from django.db import connection
 from django.test import TestCase
 
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
+from apps.platform.work import reasons
 from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
 from apps.platform.work.services import CloseDeclaration, TaskService
-from apps.platform.work.tests._helpers import DOORS, WorkTestBase, refusal_from
+from apps.platform.work.tests._helpers import (
+    DOORS, WorkTestBase, refusal_from, rule_names_on)
 from core.transitions import (
     FROZEN, RESOLVE_ONCE, SET_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
-    OUTCOME_REASON_TIMEOUT, OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR,
+    OUTCOME_REASON_PARENT_CLOSED, OUTCOME_REASON_TIMEOUT,
+    OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED,
     TASK_STATUS_COMPLETED, TASK_STATUS_FAILED, TASK_STATUS_KILLED)
 
@@ -81,7 +83,7 @@ class UnitOfWorkTransitionTestBase(WorkTestBase):
 
     def _killed(self, **kwargs):
         unit = self._task(**kwargs)
-        TaskService.kill_task(unit.id, "task_cogs_ceiling")
+        TaskService.kill_task(unit.id, reasons.TASK_COGS_CEILING)
         unit.refresh_from_db()
         return unit
 
@@ -148,7 +150,7 @@ class AUnitIsBornOnceTest(UnitOfWorkTransitionTestBase):
             lambda: self._task(task_type="transcode"), "task_type",
             task_type="")
 
-    def test_neither_holds_on_a_finished_unit_either(self):
+    def test_a_finished_unit_is_never_re_typed_either(self):
         """The rule is about the column, never the state: a stopped unit is
         no more re-typeable than a running one."""
         self._refused_through_every_door(
@@ -289,13 +291,14 @@ class EverythingElseStillMovesTest(UnitOfWorkTransitionTestBase):
         cascades `parent_closed` onto running contained work, and a kill that
         cascades onto its own."""
         closed, contained = self._a_parent_and_its_contained_work()
-        TaskService.close_task(closed.id, CloseDeclaration("delivered"))
+        TaskService.close_task(closed.id,
+                               CloseDeclaration(TASK_OUTCOME_DELIVERED))
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_CANCELLED)
-        self.assertEqual(contained.outcome_reason, "parent_closed")
+        self.assertEqual(contained.outcome_reason, OUTCOME_REASON_PARENT_CLOSED)
 
         killed, inside = self._a_parent_and_its_contained_work()
-        TaskService.kill_task(killed.id, "task_cogs_ceiling")
+        TaskService.kill_task(killed.id, reasons.TASK_COGS_CEILING)
         inside.refresh_from_db()
         self.assertEqual(inside.status, TASK_STATUS_KILLED)
 
@@ -323,13 +326,8 @@ class TheDeclarationAndTheRuleAreOneClaimTest(TestCase):
     def test_both_rules_on_the_table_are_installed_by_name(self):
         """An exact SET: a third rule arriving here is read by a person before
         any by-name addressing quietly starts mattering."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            self.assertEqual({row[0] for row in cursor.fetchall()},
-                             {TRANSITION_TRIGGER, CONTAINMENT_TRIGGER})
+        self.assertEqual(rule_names_on(TABLE),
+                         {TRANSITION_TRIGGER, CONTAINMENT_TRIGGER})
 
     def test_the_migration_spells_the_unresolved_state_the_registry_names(self):
         """A migration must not import application code, so it spells

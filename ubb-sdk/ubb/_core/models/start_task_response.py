@@ -41,15 +41,18 @@ class StartTaskResponse:
         Attributes:
             absolute_deadline_at (str): When this unit of work passes its absolute deadline: its registration plus how long
                 its kind of work may run at all — the declared kind's own deadline, else the workspace default, else UBB's
-                backstop of six hours. Past it, UBB expires the unit if it is still active. Never null: the absolute deadline
-                cannot be switched off. Resolved when this response was written — a later change to the declaration or the
-                workspace default reaches work already running.
+                backstop of six hours. UBB expires a unit still active past it. Two further rules move the end: work that has
+                never reported usage is expired once it is an hour old, and where the workspace does not enforce, UBB's hourly
+                safety net does the expiring and never before the unit is an hour old. Never null: the absolute deadline cannot
+                be switched off. Resolved when this response was written — a later change to the declaration or the workspace
+                default reaches work already running.
             created_at (str):
             replayed (bool):
             silence_window_seconds (int | None): How long this unit of work may go without a usage report, counted from its
                 last one, before UBB expires it — resolved on the same ladder as `absolute_deadline_at` (UBB's backstop is
                 fifteen minutes), and resolved when this response was written. Null where no silence window applies to it.
-                Silence is counted from the last report, so work that has never reported is not measured on it.
+                Silence is counted from the last report, so work that has never reported is not measured on it — it is expired
+                once it is an hour old instead.
             status (StartTaskResponseStatus):
             task_id (str):
             agreed_price_micros (int | None | Unset):

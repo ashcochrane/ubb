@@ -37,7 +37,8 @@ from apps.platform.work.tasks import reap_stale_tasks
 from api.v1.tests.test_every_stop_names_the_control_that_fired import (
     EveryStopNamesItsControlTestBase)
 from core.vocabulary import (
-    CUSTOMER_BILLING_MODE_PREPAID, TASK_TYPE_KIND_SUBTASK)
+    CUSTOMER_BILLING_MODE_POSTPAID, CUSTOMER_BILLING_MODE_PREPAID,
+    TASK_TYPE_KIND_SUBTASK)
 
 CEILING = "task_cogs_ceiling_micros"
 BALANCE = "balance_micros"
@@ -61,7 +62,7 @@ class StopTestBase(EveryStopNamesItsControlTestBase):
         return payload
 
     def _postpaid(self):
-        self.tenant.billing_mode = "postpaid"
+        self.tenant.billing_mode = CUSTOMER_BILLING_MODE_POSTPAID
         self.tenant.save(update_fields=["billing_mode"])
 
     def _a_blocking_pool(self, cap_micros=1_000_000):
@@ -121,6 +122,21 @@ class AnAbsentCeilingIsNullTest(StopTestBase):
         self.assertEqual(remint_unannounced_kills(self.tenant), 1)
 
         self.assertIsNone(self._re_minted(TaskKilled)[CEILING])
+
+    def test_the_patrols_re_mint_of_an_expiry_publishes_no_ceiling(self):
+        """The re-mint reads the state off the row, so an expired unit's
+        dead-lettered announcement is re-minted as `task.expired` — the
+        other half of the patrol's lane."""
+        self._kind("open-ended", silence_window_seconds=0,
+                   absolute_deadline_seconds=60)
+        unit = self._unit(task_type="open-ended")
+        self._age(unit, created=timedelta(minutes=5))
+        reap_stale_tasks()
+        self._dead_letter(TaskExpired)
+
+        self.assertEqual(remint_unannounced_kills(self.tenant), 1)
+
+        self.assertIsNone(self._re_minted(TaskExpired)[CEILING])
 
     def test_a_real_ceiling_is_published_unchanged_on_both_lanes(self):
         unit = self._unit(ceiling=5_000_000)

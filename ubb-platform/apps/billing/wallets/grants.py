@@ -64,7 +64,7 @@ class GrantLedger:
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.billing.wallets.models import CreditGrant, WalletTransaction
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import WalletBalanceLow, CreditGrantExpired
+        from apps.platform.events.schemas import CreditGrantExpired, WalletBalanceLow
 
         assert connection.in_atomic_block
         now = now or timezone.now()

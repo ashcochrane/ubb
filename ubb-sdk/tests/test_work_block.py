@@ -331,6 +331,8 @@ class TheFiveExitsTest(_ClientCase):
         text = str(missing)
         self.assertIn("2026-09-02T15:00:00+00:00", text)
         self.assertIn("900 seconds without a usage report", text)
+        # And the safety net a block that reported nothing meets first.
+        self.assertIn("never reported usage once it is an hour old", text)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_work_with_no_silence_window_is_told_only_its_deadline(self, mock_post):

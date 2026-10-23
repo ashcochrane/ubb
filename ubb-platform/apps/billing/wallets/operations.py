@@ -538,7 +538,7 @@ def _drawdown_tail(tenant, trigger_source):
         from apps.billing.topups.models import AutoTopUpConfig
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import (
-            WalletBalanceLow, WalletBalanceOverage, CustomerSuspended)
+            CustomerSuspended, WalletBalanceLow, WalletBalanceOverage)
 
         limit = get_customer_min_balance(owner.id, tenant.id)
         if old_balance >= 0 and new_balance < 0:   # I6

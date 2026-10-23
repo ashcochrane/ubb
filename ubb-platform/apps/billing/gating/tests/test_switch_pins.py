@@ -300,7 +300,7 @@ class TestPin9ToggleChoreography:
         c = _customer(t, balance_micros=-1_000_000)  # past the (default 0) floor
         reconcile_tenant_live_counters(str(t.id))
         assert Door.balance(c.id) is None                     # no seed
-        assert _events(CustomerStopped.EVENT_TYPE).count() == 1             # durable lane
+        assert _events(CustomerStopped.EVENT_TYPE).count() == 1  # durable lane
         assert LiveCounter.read(c.id, t)["stop"] is True
 
 

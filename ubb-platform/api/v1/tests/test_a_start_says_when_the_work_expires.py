@@ -28,8 +28,8 @@ from datetime import datetime, timedelta
 
 from django.test import Client, TestCase
 
+from api.v1.tests._helpers import a_tenant
 from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from apps.platform.work.queries import (
     ABSOLUTE_DEADLINE_BACKSTOP_SECONDS, SILENCE_WINDOW_BACKSTOP_SECONDS)
@@ -39,8 +39,7 @@ from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
 class StartExpiryTestBase(TestCase):
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Expiry", products=["metering"])
-        _, self.raw_key = TenantApiKey.create_key(self.tenant)
+        self.tenant, self.raw_key = a_tenant("Expiry")
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
         self.http_client = Client()

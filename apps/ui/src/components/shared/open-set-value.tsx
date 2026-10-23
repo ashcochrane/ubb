@@ -30,17 +30,15 @@
 // is a defect, because two copies drift and the day one of them humanises is
 // the day ADR-0008 §4.3 is reversed by accident.
 //
-// THE FIRST BINDING REACHES ONE READ AND NOT THE UNIT READ, AND THAT IS STATED
-// RATHER THAN PAPERED OVER. `trigger_source` — the mechanism that applied a
-// stop — travels on the four terminal webhook payloads and, since #465 put it
-// on `CeilingEpisodeRow`, on the episode row this console reads. It still does
-// not reach the unit read: `TaskDetailOut` carries no stop cause
-// (`outcome_reason` is the caller's declared verdict, a different closed
-// concept), and `WebhookDeliveryResponse` carries no payload body. So the value
-// is held by reference in the legacy adapter, the rule is proved for it in this
-// component's test, and the run page's "How it ended" section does not render a
-// field the unit read does not publish. A later contract change putting the stop
-// cause on the unit read is nobody's yet; the test header names it as a residual.
+// THE BINDING REACHES THE UNIT READ TOO, SINCE #551. `trigger_source` — the
+// mechanism that applied a stop — travels on the four terminal webhook payloads
+// and, since #465 put it on `CeilingEpisodeRow`, on the episode row this console
+// reads. #551 put it, with the stop's cause (`reason_code`) and family, on the
+// unit read (`TaskDetailOut`), so the run page's "How it ended" section renders
+// both open values through this component — beside `outcome_reason`, the
+// caller's declared verdict, which is a different closed concept. The values
+// are held by reference in the legacy adapter; the rule is proved for them in
+// this component's test and the run page's.
 
 import { Badge } from "@/components/ui/badge";
 import { resolveLabel } from "@/lib/localisation";

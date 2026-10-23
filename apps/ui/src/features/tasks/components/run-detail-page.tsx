@@ -15,7 +15,7 @@ import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config"
 import { readCeiling } from "@/lib/ceiling";
 import { controlFamilyLabel } from "@/lib/control-family";
 import { formatDate, formatEventCount, shortId } from "@/lib/format";
-import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
+import { tenantDefinedLabel } from "@/lib/localisation";
 import { TASK_STATUS_EXPLANATIONS } from "@/lib/task-status";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
@@ -202,7 +202,7 @@ function RunDetailBody({
                   },
                   {
                     label: "Spend control",
-                    value: stop.control_family === null ? ABSENT_LABEL : controlFamilyLabel(stop.control_family),
+                    value: controlFamilyLabel(stop.control_family),
                   },
                 ]
               : []),
