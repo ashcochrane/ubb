@@ -42,6 +42,15 @@ refused this* narrowed to nearly one thing. Twenty columns under ONE rule
 answering with one class word narrows to nothing at all, so that rule names the
 COLUMNS THAT MOVED and every assertion about it names one too.
 
+**#562 made the unit of work the kernel's second declarer.** `Task` declares
+five columns — `status` RESOLVE_ONCE, `parent_id` and `task_type` FROZEN,
+`outcome_reason` and `reason_detail` SET_ONCE — held by one trigger in
+``apps/platform/work/migrations/0028_a_unit_of_work_is_born_once_and_ends_once.py``
+and proved through all three doors in
+``apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py``.
+Until then those rules lived in the model's prose and in the kernel's own
+guards, which is the posture ADR-0007 §2 says is not enforcement.
+
 ⚠ **The paragraphs above narrate the slices, not the tree, and neither counts
 the rules.** "the first columns", "a second trigger", "a third trigger" are this
 module's account of the declarations it was written to explain; six models in
