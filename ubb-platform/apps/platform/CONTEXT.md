@@ -445,6 +445,15 @@ Both invariants are held by `apps/platform/work/tests/test_lifecycle_states.py`
 `TerminalToAnythingIsNeverPermittedTest`). Its lifecycle — start, read, list, the contained-work
 list and close — is at `/api/v1/tasks`, at the root and gated on no product (ADR-0011); what a
 delivered unit of work sold at one agreed price is charged is ADR-0013.
+**A unit of work is born once and ends once, and the database holds both (#562).**
+`Task.transition_classes` declares five columns into ADR-0007 §2's classes — `status` RESOLVE_ONCE
+(`active` is the one unresolved value; a terminal state never moves), `parent_id` and `task_type`
+FROZEN (never re-parented, never re-typed), `outcome_reason` and `reason_detail` SET_ONCE (written by
+the write that ends the work, from nothing, and never again) — and `trg_task_declared_transitions`
+(`work/migrations/0028`) refuses any other move through every door: `save()`,
+`QuerySet.update()`, raw SQL, an admin form. Every other column keeps moving after the work ends,
+because a stop is a signal point and not a wall.
+(`apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py`)
 (`apps/platform/work/models.py:Task`; registry concept `task_status`)
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
 the open bag is labelling only and never attaches a limit.
@@ -629,6 +638,11 @@ on the lanes that apply a stop and the payload's two fields;
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
 one place *the name is the state entered* is falsifiable, the re-mint;
 `apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration)
+**The unit's ceiling rides all four as `task_cogs_ceiling_micros`, null where none applies**
+(#610, ADR-0013 §5: not applicable, never zero). A window or a customer-wide stop reaches uncapped
+work too, and the payload said `0` there — a ceiling of nothing, which no ceiling can be. The fresh
+announcement and the patrol's re-mint both copy the row's column as it stands
+(`api/v1/tests/test_a_stop_says_none_where_nothing_applies.py`, a pin per lane).
 _Avoid_: naming one of these for the ceiling that fired — the cause is a field, and a single
 overloaded event was declined outright (#140 §4.3, ratified by #154 §5.3).
 
@@ -711,6 +725,33 @@ keepalive on reads was rejected outright, because a console listing, a support q
 inspecting stopped work would silently resurrect it.
 (`apps/platform/work/models.py:Task.last_event_at`, written only by
 `TaskService.accumulate_cost`)
+
+**Stop cause (on a unit of work)**:
+Why, how and under which control UBB stopped a unit, as the unit read publishes it (#551):
+`reason_code` (the **Stop reason**), `trigger_source` (the **Trigger source**) and
+`control_family` on `TaskOut` and `TaskDetailOut` — the three answers the **Terminal stop event**
+carries, read back off the row the stop stamped, so a subscriber who missed the webhook and the
+console's run page both learn them. Each is required and nullable: **null where UBB did not stop
+the unit** — it is running, or its own caller ended it, whose word is the **Outcome reason** — and
+read only on a `killed` or `expired` unit, because the metadata they live in is also the caller's
+own bag from the start. Contained work stopped with its parent says `parent_killed` or
+`parent_expired`, `parent_cascade`, and its parent's family; contained work its parent's CLOSE
+withdrew says null for all three and `parent_closed` as its outcome reason.
+(`apps/platform/work/models.py:Task.stop_cause`; `api/v1/tests/test_a_unit_says_how_it_was_stopped.py`)
+_Avoid_: reading `outcome_reason` as UBB's stop cause, or this as the caller's — two concepts, two
+fields.
+
+**Expiry (of a unit of work)**:
+When UBB will expire a unit nobody ends, published on the start response (#540, #179 §2.4) as
+the two windows a sweeper expires on, never one invented instant: `absolute_deadline_at`, the
+registration plus the resolved **Absolute deadline** — never null, because the deadline cannot be
+switched off — and `silence_window_seconds`, the resolved **Silence window**, counted from the last
+usage report and null where the unit has none. Both are RESOLVED when the response is written and
+not pinned, which is the ladders' own rule (a widened window reaches work already running), so a
+replay answers them as they stand then. The SDK's `TaskOutcomeRequired` — a work block that ended
+without declaring an outcome — carries both, read through the handle.
+(`apps/platform/work/queries.py:windows_of_a_unit`; `api/v1/tests/test_a_start_says_when_the_work_expires.py`)
+_Avoid_: `expires_at` for either — neither window alone says when the work will end.
 
 **Silence window**:
 How long a task may go without a usage report before a sweeper expires it. Resolved on a ladder —
