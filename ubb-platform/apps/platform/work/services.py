@@ -1352,7 +1352,9 @@ class TaskService:
                         # (#328): non-zero here says what it left out, and the
                         # stop is an enforcement trigger, not proof (#603).
                         unresolved_event_count=stopped.unresolved_event_count,
-                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros or 0)
+                        # Null where no ceiling applies (#610): an expiry or a
+                        # customer-wide stop reaches uncapped work too.
+                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros)
                     if stopped.parent_id is not None:
                         outbox = write_event(announcement(
                             subtask_id=str(stopped.id),

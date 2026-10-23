@@ -174,6 +174,29 @@ ControlFamily = Annotated[
 CeilingBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
 
+#: A FIGURE THAT DOES NOT APPLY IS NULL, NEVER ZERO (#610, ADR-0013 §5). The
+#: two figures below rode the stop payloads as `0` where nothing applied — an
+#: absent ceiling and a customer with no wallet — and a `0` reads as a real
+#: ceiling of nothing or a wallet emptied to nothing. Each carries a published
+#: description, because the payload's own docstring is shared by the events
+#: that carry the field and a subscriber reads the property, not the class.
+UnitCogsCeiling = Annotated[Optional[int], Field(description=(
+    "The COGS ceiling this unit of work pinned when it started, in micros — "
+    "the bound `total_provider_cost_micros` raced. Null where no ceiling "
+    "applies to the unit: its kind of work is declared uncapped, or nothing "
+    "declares one. Never 0, which no ceiling can be."))]
+
+#: The customer's wallet balance on a customer-wide stop or its clearing, or
+#: null where the customer holds no wallet balance at all — the rule is
+#: billing's (`stop_signal_service.announced_balance`), applied on every lane
+#: that announces one, the patrol's re-mint included.
+WalletBalanceOnAStop = Annotated[Optional[int], Field(description=(
+    "The customer's wallet balance, in micros, as the lane that announced "
+    "this saw it. Null where the customer holds no wallet balance: its tenant "
+    "does not hold prepaid wallets, or it is a pooled seat, whose business's "
+    "wallet funds its spend. 0 is a real balance, never a stand-in for "
+    "none."))]
+
 
 class EventSchema:
     """Base for all payload schemas: the consumer half of the frozen contract
@@ -447,7 +470,9 @@ class CustomerSuspended(EventSchema):
     tenant_id: str
     customer_id: str
     reason: str
-    balance_micros: int
+    #: Null where the customer holds no wallet balance (#610) — still
+    #: required, so every producer says which.
+    balance_micros: WalletBalanceOnAStop
 
 
 @dataclass(frozen=True)
@@ -686,7 +711,11 @@ class _TerminalStop:
     #: alone: the stop is an enforcement trigger on what resolved, never proof
     #: of where the eventual total lands (#603).
     unresolved_event_count: int = 0
-    task_cogs_ceiling_micros: int = 0
+    #: Null where no ceiling applies (#610): a time window or a customer-wide
+    #: stop reaches uncapped work too, and its announcement read `0` here.
+    #: The fresh announcement and the patrol's re-mint both copy the row's
+    #: column as it stands.
+    task_cogs_ceiling_micros: UnitCogsCeiling = None
     #: Delivery spec §B (#43): True only on a patrol re-mint — a repaired
     #: delivery of the CURRENT state, never a fresh crossing. The re-mint reads
     #: that state off the row, so a unit that was killed re-announces
@@ -871,9 +900,10 @@ class StopCleared(EventSchema):
                      the ledger row's own bookkeeping (`clear_reason`) and
                      no longer rides this event: a subscriber is told which
                      stop lifted, which is the question the pair answers.
-    balance_micros = the balance at clearance, as seen by the clearing lane
-                     (live counter on the fast path, durable balance on the
-                     fallback/reconcile paths; postpaid passes 0).
+    balance_micros = the wallet balance at clearance, as seen by the clearing
+                     lane (live counter on the fast path, durable balance on
+                     the fallback/reconcile paths); null where the customer
+                     holds no wallet balance.
     """
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_STOP_CLEARED
     tenant_id: str
@@ -883,7 +913,7 @@ class StopCleared(EventSchema):
     control_id: str
     scope: str = "customer"
     episode_seq: int = 0
-    balance_micros: int = 0
+    balance_micros: WalletBalanceOnAStop = None
     # Delivery spec §B (#43): True only on a patrol re-mint (see
     # StopFired.re_announcement).
     re_announcement: bool = False
