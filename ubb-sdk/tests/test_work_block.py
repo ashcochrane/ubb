@@ -319,7 +319,9 @@ class TheFiveExitsTest(_ClientCase):
         """#179 §2.4's expiry time, carried (#540): the registration publishes
         both windows UBB expires work on, and the signal reads them through
         the handle and says them — the work stays open, so how long it stays
-        counted as active is the thing a caller needs to know."""
+        counted as active is the thing a caller needs to know. Says them as
+        the policy resolved at the start, never as a guaranteed end: UBB
+        enforces the policy as it stands when it checks."""
         with self.assertRaises(TaskOutcomeRequired) as cm:
             with self.start(mock_post) as task:
                 pass
@@ -333,6 +335,10 @@ class TheFiveExitsTest(_ClientCase):
         self.assertIn("900 seconds without a usage report", text)
         # And the safety net a block that reported nothing meets first.
         self.assertIn("never reported usage once it is an hour old", text)
+        # A snapshot of the policy, said as one.
+        self.assertIn("Under the expiry policy resolved when it was started",
+                      text)
+        self.assertIn("a later change to that policy can move its expiry", text)
 
     @patch("ubb.metering.httpx.Client.post")
     def test_work_with_no_silence_window_is_told_only_its_deadline(self, mock_post):

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,922 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,923 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2876,6 +2876,12 @@ measurement_key:
     # door, a stop's nulls on each lane, the unit read's stop cause, the
     # start's expiry) and two generated SDK models (`control_family` on the
     # unit read, one per schema that publishes it).
+    #
+    # 2026-10-25, R10-W2's consultant review: 2,477 of 2,922 -> 2,477 of 2,923
+    # tracked files (`units` UNMOVED). One file arrived, a migration excluded
+    # under `historical-migrations` (276 -> 277): a unit's stop facts and the
+    # expiry policy its start published move onto UBB's own columns
+    # (`work/0029`), so the exclusions stand at 446.
 
     - term: units
       retired_as: >-

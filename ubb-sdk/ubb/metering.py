@@ -412,15 +412,18 @@ class StartedTask:
 
     @property
     def absolute_deadline_at(self) -> str:
-        """When this unit passes its absolute deadline — after which UBB
-        expires it if it is still active — as the registration resolved it."""
+        """This unit's absolute deadline under the expiry policy resolved when
+        it was started — a replay of the start answers the same. UBB enforces
+        the policy as it stands when it checks, so a later configuration
+        change can expire the unit earlier or later than this."""
         return self.result.absolute_deadline_at
 
     @property
     def silence_window_seconds(self) -> int | None:
-        """How long this unit may go without a usage report before UBB
-        expires it, as the registration resolved it; ``None`` where no
-        silence window applies to it."""
+        """How long this unit could go without a usage report before UBB
+        expires it, under the expiry policy resolved when it was started;
+        ``None`` where no silence window applied. Live enforcement may
+        reflect later configuration changes."""
         return self.result.silence_window_seconds
 
     @property

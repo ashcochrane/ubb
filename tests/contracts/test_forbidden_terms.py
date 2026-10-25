@@ -402,7 +402,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 275 -> 276 in R10-W2 (#562): one migration — the unit of work's
         # write-once rule. It names no retired word, so the number moved
         # for the file existing.
-        "historical-migrations": (UNTIL_SLICE_8, 276, 19),
+        # 276 -> 277 in R10-W2's consultant review: one migration — a unit's
+        # stop facts and its start's expiry policy as UBB's own columns. It
+        # names no retired word, so the number moved for the file existing.
+        "historical-migrations": (UNTIL_SLICE_8, 277, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

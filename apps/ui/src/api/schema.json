@@ -8308,7 +8308,7 @@
         "description": "What a start registered, or what its key already claimed.\n\n\u26a0 THE REGISTRATION, NOT THE READ. A start answers *which unit of work is\nthis, and did I just create it* \u2014 the identity, the altitude, and the facts\nthe unit pinned. What it deliberately does NOT carry is the cost\nrollups: they are a read's answer, they are all zero on the call that\ncreates the row, and `GET /api/v1/tasks/{task_id}` is one call away for a\ncaller replaying an attempt that has since run up cost.\n\n\u26a0 AND THE DECLARED GROUPING VALUES ARE NOT ECHOED. You just sent them,\nand a start that pinned something else says so by REFUSING rather than by\nhanding back a corrected bag \u2014 so an echo could only ever repeat your own\nrequest back to you. The unit read one call away carries them as UBB holds\nthem, keyed by your own declared key.",
         "properties": {
           "absolute_deadline_at": {
-            "description": "When this unit of work passes its absolute deadline: its registration plus how long its kind of work may run at all \u2014 the declared kind's own deadline, else the workspace default, else UBB's backstop of six hours. UBB expires a unit still active past it. Two further rules move the end: work that has never reported usage is expired once it is an hour old, and where the workspace does not enforce, UBB's hourly safety net does the expiring and never before the unit is an hour old. Never null: the absolute deadline cannot be switched off. Resolved when this response was written \u2014 a later change to the declaration or the workspace default reaches work already running.",
+            "description": "This unit of work's absolute deadline under the expiry policy resolved when it was started: its registration plus how long its kind of work could then run at all \u2014 the declared kind's own deadline, else the workspace default, else UBB's backstop of six hours. A replay of the start answers this same value. It is a snapshot, not a promise: UBB enforces the policy as it stands when it checks, so a later change to the declaration or the workspace default can expire the unit earlier or later than this. Two further rules can end it sooner: work that has never reported usage is expired once it is an hour old, and where the workspace does not enforce, UBB's hourly safety net does the expiring and never before the unit is an hour old. Never null: the absolute deadline cannot be switched off.",
             "title": "Absolute Deadline At",
             "type": "string"
           },
@@ -8356,7 +8356,7 @@
                 "type": "null"
               }
             ],
-            "description": "How long this unit of work may go without a usage report, counted from its last one, before UBB expires it \u2014 resolved on the same ladder as `absolute_deadline_at` (UBB's backstop is fifteen minutes), and resolved when this response was written. Null where no silence window applies to it. Silence is counted from the last report, so work that has never reported is not measured on it \u2014 it is expired once it is an hour old instead.",
+            "description": "How long this unit of work could go without a usage report, counted from its last one, before UBB expires it \u2014 under the expiry policy resolved when it was started, on the same ladder as `absolute_deadline_at` (UBB's backstop is fifteen minutes). A replay of the start answers this same value; UBB enforces the policy as it stands when it checks, so a later change can move it. Null where no silence window applied when the unit was started. Silence is counted from the last report, so work that has never reported is not measured on it \u2014 it is expired once it is an hour old instead.",
             "title": "Silence Window Seconds"
           },
           "status": {
@@ -8850,7 +8850,7 @@
                 "type": "null"
               }
             ],
-            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's \u2014 as UBB recorded it, never read from anything a caller sends. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
             "title": "Control Family"
           },
           "created_at": {
@@ -8921,7 +8921,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
+            "description": "Why UBB stopped this unit of work: which bound was reached. UBB's own record of the stop \u2014 nothing a caller sends, its `metadata` included, is read here. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
             "title": "Reason Code"
           },
           "reason_detail": {
@@ -9002,7 +9002,7 @@
                 "type": "null"
               }
             ],
-            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
+            "description": "The mechanism that applied UBB's stop to this unit of work, as UBB recorded it \u2014 never read from anything a caller sends. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
             "title": "Trigger Source"
           },
           "unpriced_event_count": {
@@ -9104,7 +9104,7 @@
                 "type": "null"
               }
             ],
-            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
+            "description": "Which of the four spend controls UBB's stop came from \u2014 for contained work stopped with its parent, the parent's \u2014 as UBB recorded it, never read from anything a caller sends. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety net's silent expiry).",
             "title": "Control Family"
           },
           "created_at": {
@@ -9175,7 +9175,7 @@
                 "type": "null"
               }
             ],
-            "description": "Why UBB stopped this unit of work: which bound was reached. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
+            "description": "Why UBB stopped this unit of work: which bound was reached. UBB's own record of the stop \u2014 nothing a caller sends, its `metadata` included, is read here. Null where UBB did not stop it \u2014 it is still running, or its caller ended it (see `outcome_reason`) \u2014 and where UBB's stop recorded no cause: the hourly safety net expires work nobody reported on silently.",
             "title": "Reason Code"
           },
           "reason_detail": {
@@ -9249,7 +9249,7 @@
                 "type": "null"
               }
             ],
-            "description": "The mechanism that applied UBB's stop to this unit of work. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
+            "description": "The mechanism that applied UBB's stop to this unit of work, as UBB recorded it \u2014 never read from anything a caller sends. Null where UBB did not stop it, or where its stop recorded no mechanism (the hourly safety net's silent expiry).",
             "title": "Trigger Source"
           },
           "unpriced_event_count": {

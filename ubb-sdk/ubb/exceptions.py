@@ -61,11 +61,17 @@ class UBBConnectionError(UBBError):
 # passes its absolute deadline — an instant, measured from registration — or
 # that goes too long without a usage report — a duration, measured from the
 # last report, which this client cannot see. The registration publishes both
-# (`absolute_deadline_at`, `silence_window_seconds`), resolved when it was
-# written, and this carries both rather than inventing one instant out of them.
-# The message also says UBB's fixed safety net — work that never reported
-# usage is expired once it is an hour old — which the registration's own
-# description states: a block that sent nothing meets that rule first.
+# (`absolute_deadline_at`, `silence_window_seconds`), and this carries both
+# rather than inventing one instant out of them. The message also says UBB's
+# fixed safety net — work that never reported usage is expired once it is an
+# hour old — which the registration's own description states: a block that
+# sent nothing meets that rule first.
+#
+# ⚠ BOTH ARE THE POLICY AS IT STOOD WHEN THE WORK WAS STARTED, NOT A PROMISE.
+# UBB records the pair at the start and a replay of the start repeats it, but
+# UBB enforces the policy as it stands when it checks — so a later change to
+# the configuration can expire the work earlier or later than these say, and
+# the message says that rather than naming a time as the certain end.
 class TaskOutcomeRequired(UBBError):
     """A work block ended cleanly and nothing declared how the work ended.
 
@@ -80,10 +86,13 @@ class TaskOutcomeRequired(UBBError):
 
     ``task`` is the handle itself; ``task_id``, ``task_type`` and ``status``
     (the last state this client saw for it) read straight off it, and so does
-    when UBB will expire the work if nothing declares an ending:
-    ``absolute_deadline_at``, the instant it passes its absolute deadline,
-    and ``silence_window_seconds``, how long it may go without a usage report
-    (``None`` where no silence window applies)."""
+    the expiry policy resolved when the work was started — what UBB would
+    expire it on if nothing declares an ending: ``absolute_deadline_at``, its
+    absolute deadline under that policy, and ``silence_window_seconds``, how
+    long it could then go without a usage report (``None`` where no silence
+    window applied). UBB enforces the policy as it stands when it checks, so a
+    later configuration change can move the actual expiry: neither is a
+    guaranteed end."""
     def __init__(self, task: StartedTask):
         self.task = task
         quiet = (f", or once it goes {task.silence_window_seconds} seconds "
@@ -92,10 +101,12 @@ class TaskOutcomeRequired(UBBError):
         super().__init__(
             f"Unit of work {task.task_id} left its block without a declared "
             f"outcome. It is still open on UBB's side — nothing was sent and "
-            f"nothing was invented. UBB expires open work once it passes "
-            f"its absolute deadline, {task.absolute_deadline_at}{quiet}, and "
-            f"work that never reported usage once it is an hour old. Call "
-            f"complete(), fail(outcome_reason) or cancel() on it explicitly.")
+            f"nothing was invented. Under the expiry policy resolved when it "
+            f"was started, UBB expires it once it passes its absolute "
+            f"deadline, {task.absolute_deadline_at}{quiet}, and work that "
+            f"never reported usage once it is an hour old; a later change to "
+            f"that policy can move its expiry. Call complete(), "
+            f"fail(outcome_reason) or cancel() on it explicitly.")
 
     @property
     def task_id(self) -> str:
