@@ -42,7 +42,7 @@ from apps.platform.work.queries import (
     ABSOLUTE_DEADLINE_BACKSTOP_SECONDS, EXPIRY_LADDER_FALLBACK,
     SILENCE_WINDOW_BACKSTOP_SECONDS, expiry_windows, task_rollup_by_type,
     task_type_policy)
-from apps.platform.work.services import STOP_CAUSE_KEY, TaskService
+from apps.platform.work.services import TaskService
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 import core.vocabulary as generated
 from core.vocabulary import (
@@ -231,7 +231,7 @@ class TheDeadlineCannotBeRemovedTest(WindowTestBase):
         reap_stale_tasks()
         unit.refresh_from_db()
         self.assertEqual(unit.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(unit.metadata.get(STOP_CAUSE_KEY), reasons.ABSOLUTE_DEADLINE)
+        self.assertEqual(unit.reason_code, reasons.ABSOLUTE_DEADLINE)
 
 
 class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
@@ -250,7 +250,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         # One tenant, one silence, two answers — which is the whole point.
         self.assertEqual(slow.status, TASK_STATUS_ACTIVE)
         self.assertEqual(ordinary.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(ordinary.metadata.get(STOP_CAUSE_KEY),
+        self.assertEqual(ordinary.reason_code,
                          reasons.SILENCE_WINDOW)
 
     def test_a_declared_silence_window_narrows_it_too(self):
@@ -272,7 +272,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         reap_stale_tasks()
         runaway.refresh_from_db()
         self.assertEqual(runaway.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(runaway.metadata.get(STOP_CAUSE_KEY),
+        self.assertEqual(runaway.reason_code,
                          reasons.ABSOLUTE_DEADLINE)
 
     def test_the_announcement_names_the_mechanism_beside_the_cause(self):
@@ -310,7 +310,7 @@ class TheAnnouncingSweeperReadsTheLadderTest(WindowTestBase):
         self._age(unit, created=timedelta(hours=2), reported=timedelta(hours=1))
         reap_stale_tasks()
         unit.refresh_from_db()
-        self.assertEqual(unit.metadata.get(STOP_CAUSE_KEY), reasons.ABSOLUTE_DEADLINE)
+        self.assertEqual(unit.reason_code, reasons.ABSOLUTE_DEADLINE)
 
     def test_work_that_never_reported_is_not_silent(self):
         """Silence is measured from the last report, so a unit that has never

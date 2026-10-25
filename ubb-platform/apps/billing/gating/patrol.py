@@ -360,9 +360,6 @@ def _remint_kill(task, tenant):
     announcement happened to carry."""
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import terminal_stop_event
-    from apps.platform.work.models import (
-        STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-        STOP_MECHANISM_KEY)
 
     announcement = terminal_stop_event(
         task.status, is_contained=task.parent_id is not None)
@@ -370,12 +367,13 @@ def _remint_kill(task, tenant):
         tenant_id=str(tenant.id), customer_id=str(task.customer_id),
         billing_owner_id=str(task.billing_owner_id or ""),
         external_task_id=task.external_task_id,
-        reason_code=task.metadata.get(STOP_CAUSE_KEY, ""),
+        # UBB's own stop columns, never the caller's `metadata` (R10-W2).
+        reason_code=task.reason_code or "",
         # ⚠ AND THE CONTROL IS READ BACK TOO (#458): the family and the id the
         # stopping lane stamped on the row, and the basis derived off the
         # row's own cause — this patrol applied nothing and guesses nothing.
-        control_family=task.metadata.get(STOP_CONTROL_FAMILY_KEY, ""),
-        control_id=task.metadata.get(STOP_CONTROL_ID_KEY, ""),
+        control_family=task.control_family or "",
+        control_id=task.control_id or "",
         ceiling_basis=task.ceiling_basis,
         # ⚠ AND THE MECHANISM IS READ BACK RATHER THAN INVENTED — it is not
         # this patrol, which applied nothing. The lane that DID apply the stop
@@ -383,7 +381,7 @@ def _remint_kill(task, tenant):
         # `_cascade` for a contained piece), so a repaired delivery names the
         # same mechanism the original did. Empty where the row holds none,
         # which is UBB declining to state one rather than guessing.
-        trigger_source=task.metadata.get(STOP_MECHANISM_KEY, ""),
+        trigger_source=task.trigger_source or "",
         total_billed_cost_micros=task.total_billed_cost_micros,
         total_provider_cost_micros=task.total_provider_cost_micros,
         # A re-mint publishes the unit's CURRENT state, so it publishes the

@@ -161,6 +161,13 @@ def expiry_windows(tenant_id) -> dict:
     operator rescues a whole fleet of work about to be reaped for a silence its
     own workload explains. Neither number is an economic fact anything is
     charged against, so nothing depends on it being pinned.
+
+    ⚠ THE START RECORDS WHAT THIS RESOLVED FOR IT, AND ENFORCEMENT NEVER READS
+    THAT RECORD (R10-W2, #540). The start publishes the pair it runs under,
+    and a replay of the start must answer what it said, so `create_task`
+    keeps the pair as resolved at registration on the unit itself
+    (`Task.start_absolute_deadline_seconds` and its sibling, FROZEN). That
+    record is what the start SAID, not a pin: the sweepers still call this.
     """
     from apps.platform.tenants.models import Tenant
 
@@ -217,8 +224,8 @@ def windows_of_a_unit(windows, *, parent_id, task_type) -> ExpiryWindows:
     link is the only thing that says which one a row is at (#407); a
     declaration this tenant does not have — an untyped unit's included —
     answers with the fallback entry. One rule for both readers: the sweeper
-    asks it per candidate to name which window ran out, and the start
-    response asks it once to publish both (#540).
+    asks it per candidate to name which window ran out, and the start asks it
+    once to record the pair its response publishes (#540).
     """
     kind = TASK_TYPE_KIND_SUBTASK if parent_id else TASK_TYPE_KIND_TASK
     return windows.get((kind, task_type), windows[EXPIRY_LADDER_FALLBACK])
@@ -412,16 +419,18 @@ def ceiling_episodes(tenant_id, *, customer_id=None, task_type=None,
     """
     qs = _window(_scoped(tenant_id, customer_id=customer_id, task_type=task_type)
                  .filter(status=TASK_STATUS_KILLED,
-                         **{f"metadata__{STOP_CAUSE_KEY}__in": reasons.CROSSING_REASONS}),
+                         **{f"{STOP_CAUSE_KEY}__in": reasons.CROSSING_REASONS}),
                  "completed_at", since, until)
+    # UBB's own stop columns, never the caller's `metadata` (R10-W2).
     stopped = list(qs.order_by("completed_at", "id").values(
-        "id", "parent_id", "customer_id", "task_type", "metadata",
+        "id", "parent_id", "customer_id", "task_type", STOP_CAUSE_KEY,
+        STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY, STOP_MECHANISM_KEY,
         "task_cogs_ceiling_micros", "total_provider_cost_micros",
         "unresolved_event_count", "completed_at"))
     crossed = _crossing_pairs(tenant_id, [u["id"] for u in stopped])
     rows = []
     for u in stopped:
-        cause = u["metadata"].get(STOP_CAUSE_KEY)
+        cause = u[STOP_CAUSE_KEY]
         crossed_known, crossed_unresolved = crossed.get(str(u["id"]), (None, None))
         rows.append({
             "task_id": str(u["id"]),
@@ -430,10 +439,10 @@ def ceiling_episodes(tenant_id, *, customer_id=None, task_type=None,
             "task_type": u["task_type"],
             "stop_scope": reasons.unit_scope(is_subtask=u["parent_id"] is not None),
             "reason_code": cause,
-            "control_family": u["metadata"].get(STOP_CONTROL_FAMILY_KEY),
-            "control_id": _str_or_none(u["metadata"].get(STOP_CONTROL_ID_KEY)),
+            "control_family": u[STOP_CONTROL_FAMILY_KEY],
+            "control_id": _str_or_none(u[STOP_CONTROL_ID_KEY]),
             "ceiling_basis": controls.ceiling_basis(cause),
-            "trigger_source": _str_or_none(u["metadata"].get(STOP_MECHANISM_KEY)),
+            "trigger_source": _str_or_none(u[STOP_MECHANISM_KEY]),
             "task_cogs_ceiling_micros": u["task_cogs_ceiling_micros"],
             "opened_at": u["completed_at"],
             "crossed_provider_cost_micros": crossed_known,
@@ -501,14 +510,15 @@ def customer_wide_stops_applied(tenant_id, *, since=None, until=None) -> list[di
     """
     qs = _window(_scoped(tenant_id, customer_id=None, task_type=None)
                  .filter(status=TASK_STATUS_KILLED,
-                         **{f"metadata__{STOP_CAUSE_KEY}": reasons.CUSTOMER_SPEND_POOL}),
+                         **{STOP_CAUSE_KEY: reasons.CUSTOMER_SPEND_POOL}),
                  "completed_at", since, until)
     return [{
         "task_id": str(u["id"]),
         "customer_id": str(u["customer_id"]),
         "billing_owner_id": _str_or_none(u["billing_owner_id"]),
-        "reason_code": u["metadata"].get(STOP_CAUSE_KEY),
-        "control_id": _str_or_none(u["metadata"].get(STOP_CONTROL_ID_KEY)),
+        "reason_code": u[STOP_CAUSE_KEY],
+        "control_id": _str_or_none(u[STOP_CONTROL_ID_KEY]),
         "stopped_at": u["completed_at"],
     } for u in qs.order_by("completed_at", "id").values(
-        "id", "customer_id", "billing_owner_id", "metadata", "completed_at")]
+        "id", "customer_id", "billing_owner_id", STOP_CAUSE_KEY,
+        STOP_CONTROL_ID_KEY, "completed_at")]

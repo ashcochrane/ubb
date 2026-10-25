@@ -182,23 +182,22 @@ CEILING_BASIS_CHOICES = [
     (CEILING_BASIS_TIME, "Time"),
 ]
 
-#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT — the
-#: cause, the mechanism, and since #458 the control that fired: its family
-#: and its identity. Four keys and never one merged word (ADR-0006 §5): each
-#: answers a different question — WHY this stopped, WHAT stopped it, WHICH
-#: CONTROL's bound was reached and WHICH ROW declares that control.
+#: THE FOUR FACTS UBB RECORDS WHEN IT STOPS A UNIT — the cause, the
+#: mechanism, and since #458 the control that fired: its family and its
+#: identity. Four and never one merged word (ADR-0006 §5): each answers a
+#: different question — WHY this stopped, WHAT stopped it, WHICH CONTROL's
+#: bound was reached and WHICH ROW declares that control.
 #:
-#: ⚠ THE CAUSE'S KEY IS THE CONCEPT'S OWN NAME, AND EVERY STORED ROW WAS MOVED
-#: ONTO IT ONCE (slice 6 §8, #457). It was spelled for a kill and carried every
-#: other stop too; `work/migrations/0026` renamed it on every unit row holding
-#: it and rewrote the retired values beneath it in the same pass, so no reader
-#: needs the old spelling and none holds it. Named here — beside the column
-#: they are written into — rather than spelled at each write, and read
-#: through these names by the patrol's re-mint, the stop-context tagging and
-#: the retired report. Every reader still gates on the state first: `killed`
-#: means UBB stopped the work on a spend signal and `expired` means nobody
-#: ever told UBB how it ended, and the cause under this key says which bound
-#: was reached in either case.
+#: ⚠ THEY ARE COLUMNS UBB OWNS, NOT KEYS IN THE CALLER'S BAG (R10-W2, #551).
+#: Until then they were keys of these spellings inside `metadata`, which is
+#: also the caller's own bag from the start — so a caller could plant
+#: `reason_code` and only "every terminal path overwrites or scrubs the key"
+#: kept it from reading as UBB's. `work/migrations/0029` moved every stored
+#: stop fact out of `metadata` into the columns below `metadata`, and nothing
+#: a caller sends can reach a column: `metadata` is the caller's bag alone.
+#: Each name is the concept's own (#457 moved the cause onto it), so these
+#: constants name the column and the wire field alike; they are kept for the
+#: historical migrations' tests, which hold the old metadata spelling to them.
 #:
 #: The family and the id are stamped by the kernel on the winning flip
 #: (`TaskService._flip`) and on every cascaded piece (`TaskService._cascade`,
@@ -208,11 +207,6 @@ STOP_CAUSE_KEY = "reason_code"
 STOP_MECHANISM_KEY = "trigger_source"
 STOP_CONTROL_FAMILY_KEY = "control_family"
 STOP_CONTROL_ID_KEY = "control_id"
-
-#: All four, for the one place that must treat them as a set: a stop UBB
-#: applies with no cause to record keeps none of them (`TaskService._flip`).
-UBB_STOP_KEYS = (STOP_CAUSE_KEY, STOP_MECHANISM_KEY, STOP_CONTROL_FAMILY_KEY,
-                 STOP_CONTROL_ID_KEY)
 
 
 def _empty_list():
@@ -701,7 +695,40 @@ class Task(BaseModel):
                                       choices=OUTCOME_REASON_CHOICES)
     reason_detail = models.TextField(blank=True, default="")
 
+    #: THE CALLER'S OWN BAG, carried from the start and returned — and nothing
+    #: else since R10-W2: UBB's stop facts are the four columns below it.
     metadata = models.JSONField(default=dict)
+
+    # WHAT UBB RECORDED WHEN IT STOPPED THIS UNIT (#458, #551) — see
+    # `STOP_CAUSE_KEY` above for the four questions. NULL means UBB recorded
+    # none: the unit is running, its caller ended it, or UBB's stop had no
+    # cause to record (the hourly safety net's silent expiry). Written only by
+    # the kernel — the flip, the cascade and the announcement — and declared
+    # SET_ONCE beneath the fields: a stop UBB recorded is never rewritten. One
+    # exception to "only a stop writes them": a parent's CLOSE cascade stamps
+    # `trigger_source` (`parent_cascade`) on the contained work it withdraws,
+    # the one place a reader can learn containment stopped that piece; the
+    # unit read publishes all four only for `killed` and `expired`
+    # (`Task.ubb_stop`).
+    reason_code = models.CharField(max_length=64, null=True, blank=True)
+    trigger_source = models.CharField(max_length=64, null=True, blank=True)
+    control_family = models.CharField(max_length=64, null=True, blank=True)
+    control_id = models.CharField(max_length=64, null=True, blank=True)
+
+    # THE EXPIRY POLICY RESOLVED WHEN THIS UNIT WAS STARTED, as its start
+    # response published it (#540) — durations, so the instant is `created_at`
+    # plus the first and both halves are fixed. A SNAPSHOT AND NOT ENFORCEMENT:
+    # the sweepers re-resolve the ladder each time they run
+    # (`work.queries.expiry_windows`), so a widened or narrowed window reaches
+    # work already running, and these two say only what the start answered —
+    # which is what a replay of that start must answer again (ADR-0019's "a
+    # replay answers from what it said", and `StartTaskResponse`'s "on a
+    # replay this is the original attempt's number"). Written by
+    # `TaskService.create_task`, declared FROZEN. NULL in the absolute column
+    # only for a row the start did not register (a fixture); the silence
+    # column is NULL also where the answer was "no silence window".
+    start_absolute_deadline_seconds = models.PositiveIntegerField(null=True, blank=True)
+    start_silence_window_seconds = models.PositiveIntegerField(null=True, blank=True)
 
     # THE CALLER'S KEY FOR ONE ATTEMPT, CLAIMED PERMANENTLY (#410).
     #
@@ -737,8 +764,9 @@ class Task(BaseModel):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     #: WHAT MAY HAPPEN TO EACH DECLARED COLUMN (ADR-0007 §2, #562), kept by a
-    #: `BEFORE UPDATE` trigger on this table (`work/migrations/0028`) rather
-    #: than by the kernel's guards, which no writer outside the kernel meets.
+    #: `BEFORE UPDATE` trigger on this table (`work/migrations/0028`, widened by
+    #: `0029` to UBB's stop facts and the start's expiry snapshot) rather than
+    #: by the kernel's guards, which no writer outside the kernel meets.
     #: A unit of work is born once — it is never re-parented or re-typed — and
     #: ends once: `active` is the one unresolved state, a terminal one never
     #: moves, and the caller's reason and its sentence are written by the
@@ -756,6 +784,14 @@ class Task(BaseModel):
         "task_type": FROZEN,
         "outcome_reason": SET_ONCE,
         "reason_detail": SET_ONCE,
+        # UBB's stop facts and the start's expiry snapshot (R10-W2): recorded
+        # once by the kernel, never rewritten (`work/migrations/0029`).
+        "reason_code": SET_ONCE,
+        "trigger_source": SET_ONCE,
+        "control_family": SET_ONCE,
+        "control_id": SET_ONCE,
+        "start_absolute_deadline_seconds": FROZEN,
+        "start_silence_window_seconds": FROZEN,
     }
 
     class Meta:
@@ -911,31 +947,27 @@ class Task(BaseModel):
     # `CEILING_BASIS_CHOICES` above.
     @property
     def ceiling_basis(self):
-        return controls.ceiling_basis(self.metadata.get(STOP_CAUSE_KEY))
+        return controls.ceiling_basis(self.reason_code)
 
     # UBB'S STOP OF THIS UNIT — WHY, HOW AND UNDER WHICH CONTROL (#551), as the
-    # unit read publishes them: the cause, the mechanism and the family, each
-    # None where nothing applies. Keyed by the concepts' own names, which are
-    # both the metadata keys (#457 put each under its concept's name) and the
-    # wire's, so the read is one spelling rather than a translation.
+    # unit read publishes them: the cause, the mechanism and the family, read
+    # off the columns UBB owns and keyed by the concepts' own names, which are
+    # the columns' and the wire's alike.
     #
-    # ⚠ GATED ON THE STATE, as every reader of these keys is (the paragraph at
-    # `STOP_CAUSE_KEY`). `metadata` is also the caller's own bag, carried from
-    # the start, so a key UBB writes on a stop is a key a caller could have
-    # written first; only a unit UBB stopped — `killed` or `expired` — carries
-    # UBB's answer under it. Everything else answers None for all three,
-    # including contained work its parent's CLOSE withdrew, whose reason is the
-    # caller-side `outcome_reason` beside these and never a stop cause. A stop
-    # UBB applied with no cause to record — the hourly safety net's silent
-    # expiry — carries none of these keys at all (`TaskService._flip` removes
-    # any it finds), so it reads None for all three, never a caller's word.
+    # ⚠ AUTHORITY COMES FROM THE COLUMNS, NOT FROM A SCRUB. Nothing a caller
+    # sends can reach them — `metadata` is the caller's bag and these are not
+    # in it — so a caller's own `reason_code` key never reads as UBB's.
+    # THE STATE GATE IS ABOUT MEANING: only a unit UBB stopped — `killed` or
+    # `expired` — answers with them. Contained work its parent's CLOSE withdrew
+    # keeps the cascade's mechanism on its row, and its reason is the caller's
+    # `outcome_reason` beside these, never a stop cause, so it reads None for
+    # all three; so does a silent expiry, whose columns UBB never wrote.
     @property
     def ubb_stop(self):
         stopped = self.status in UBB_STOPPED_TASK_STATUSES
-        bag = self.metadata if stopped else {}
-        return {STOP_CAUSE_KEY: bag.get(STOP_CAUSE_KEY) or None,
-                STOP_MECHANISM_KEY: bag.get(STOP_MECHANISM_KEY) or None,
-                STOP_CONTROL_FAMILY_KEY: bag.get(STOP_CONTROL_FAMILY_KEY) or None}
+        return {STOP_CAUSE_KEY: self.reason_code if stopped else None,
+                STOP_MECHANISM_KEY: self.trigger_source if stopped else None,
+                STOP_CONTROL_FAMILY_KEY: self.control_family if stopped else None}
 
     def save(self, *args, **kwargs):
         """Guard the immutable declared kind (D7/D8) — ONE guard, because

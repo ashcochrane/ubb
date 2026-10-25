@@ -194,8 +194,7 @@ class TheStoppedPayloadCarriesCauseAndMechanismTest(WorkTestBase):
         thing that knows which lane it is, and a repaired delivery names the
         same mechanism only if the applying lane wrote it down.
         """
-        from apps.platform.work.services import STOP_MECHANISM_KEY
 
         self.unit.refresh_from_db()
-        self.assertEqual(self.unit.metadata[STOP_MECHANISM_KEY],
+        self.assertEqual(self.unit.trigger_source,
                          TRIGGER_SOURCE_USAGE_INGEST)

@@ -17,23 +17,35 @@ on its own (`apps/platform/work/tasks.py`):
     that the unit has none.
 
 Both are the ladder `expiry_windows` resolves — the declared kind of work, then
-the workspace default, then UBB's backstop — and both are RESOLVED when the
-response is written rather than pinned, because that is the ladder's own rule:
-widening a window reaches work already running. Each is REQUIRED (#569's rule
+the workspace default, then UBB's backstop — and each is REQUIRED (#569's rule
 for a new response fact), the second NULLABLE.
+
+⚠ **WHAT THE START PUBLISHES IS THE POLICY AS IT STOOD THEN — A SNAPSHOT, AND
+NOT A PROMISE.** The start resolves the ladder once and records the two
+windows on the unit; its response, and every replay of it, answers from that
+record (ADR-0019: a replay answers from what it said). The sweepers do not
+read the record: they resolve the ladder each time they run, because that is
+the ladder's own rule — a changed window reaches work already running. So a
+published `absolute_deadline_at` is the deadline the policy set at the start,
+and the unit can be expired earlier, or later, once the policy changes. The
+last class below drives exactly that case end to end.
 """
 import json
 import uuid
 from datetime import datetime, timedelta
 
 from django.test import Client, TestCase
+from django.utils import timezone
 
 from api.v1.tests._helpers import a_tenant
 from apps.platform.customers.models import Customer
-from apps.platform.work.models import TaskType
+from apps.platform.work import reasons
+from apps.platform.work.models import Task, TaskType
 from apps.platform.work.queries import (
     ABSOLUTE_DEADLINE_BACKSTOP_SECONDS, SILENCE_WINDOW_BACKSTOP_SECONDS)
-from core.vocabulary import TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK
+from apps.platform.work.tasks import reap_stale_tasks
+from core.vocabulary import (
+    TASK_STATUS_EXPIRED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
 
 
 class StartExpiryTestBase(TestCase):
@@ -134,3 +146,61 @@ class AStartPublishesItsExpiryTest(StartExpiryTestBase):
                          first["absolute_deadline_at"])
         self.assertEqual(again["silence_window_seconds"],
                          first["silence_window_seconds"])
+
+
+class AReplayRepeatsTheStartWhileTheSweeperFollowsThePolicyTest(
+        StartExpiryTestBase):
+    """The decisive case for the snapshot, through the public routes: a start,
+    a changed declaration, a replay of the same start, and the sweeper."""
+
+    def _declare(self, **windows):
+        response = self.http_client.put(
+            "/api/v1/task-types", content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+            data={"task_types": [{"key": "transcode",
+                                  "kind": TASK_TYPE_KIND_TASK,
+                                  "uncapped": True, **windows}]})
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_the_replay_answers_the_original_and_the_sweeper_the_live_policy(self):
+        self.tenant.enforcement_mode = "enforcing"
+        self.tenant.save(update_fields=["enforcement_mode"])
+        self._declare(silence_window_seconds=1200, absolute_deadline_seconds=7200)
+
+        # 1. The start, and the two values it published.
+        first = self._start(task_type="transcode", idempotency_key="k-1")
+        self.assertDeadlineAfter(first, 7200)
+        self.assertEqual(first["silence_window_seconds"], 1200)
+
+        # 2. The declaration changes: a far shorter deadline, no silence window.
+        self._declare(silence_window_seconds=0, absolute_deadline_seconds=600)
+
+        # 3. A replay of the same start answers what the start said...
+        again = self._start(task_type="transcode", idempotency_key="k-1")
+        self.assertTrue(again["replayed"])
+        self.assertEqual(again["absolute_deadline_at"],
+                         first["absolute_deadline_at"])
+        self.assertEqual(again["silence_window_seconds"],
+                         first["silence_window_seconds"])
+        # ...while a NEW start of the same kind answers the changed policy, so
+        # the replay's answer is the record's and not a ladder that held still.
+        fresh = self._start(task_type="transcode")
+        self.assertDeadlineAfter(fresh, 600)
+        self.assertIsNone(fresh["silence_window_seconds"])
+
+        # 4. The sweeper enforces the live policy on the running unit: twenty
+        # minutes in, it is past the new ten-minute deadline and well inside
+        # the two hours the start published.
+        Task.objects.filter(id=first["task_id"]).update(
+            created_at=timezone.now() - timedelta(minutes=20))
+
+        self.assertEqual(reap_stale_tasks(), 1)
+
+        read = self.http_client.get(
+            f"/api/v1/tasks/{first['task_id']}",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}").json()
+        self.assertEqual(read["status"], TASK_STATUS_EXPIRED)
+        self.assertEqual(read["reason_code"], reasons.ABSOLUTE_DEADLINE)
+        self.assertLess(timezone.now(),
+                        datetime.fromisoformat(first["absolute_deadline_at"])
+                        - timedelta(minutes=20))

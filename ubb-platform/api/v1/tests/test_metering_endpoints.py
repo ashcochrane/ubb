@@ -9,7 +9,6 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost, declares_a_quantity)
 from apps.platform.work.services import TaskService
 from apps.platform.work import reasons
-from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
@@ -586,7 +585,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(Posting.objects.filter(tenant=self.tenant).count(), 2)
         task.refresh_from_db()
         self.assertEqual(task.status, "killed")
-        self.assertEqual(task.metadata.get(STOP_CAUSE_KEY), reasons.TASK_COGS_CEILING)
+        self.assertEqual(task.reason_code, reasons.TASK_COGS_CEILING)
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(OutboxEvent.objects.filter(
             event_type=TaskKilled.EVENT_TYPE).count(), 1)

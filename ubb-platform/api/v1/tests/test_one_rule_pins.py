@@ -58,7 +58,6 @@ from apps.platform.events.schemas import TaskKilled
 from apps.platform.work.models import Task, TaskType
 from apps.platform.work.services import TaskService
 from apps.platform.work import reasons
-from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     CEILING_STATUS_CEILING_REACHED, CEILING_STATUS_INDETERMINATE,
@@ -183,7 +182,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
         self.assertEqual(task.total_provider_cost_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 15_000_000)
         self.assertEqual(task.status, TASK_STATUS_KILLED)
-        self.assertEqual(task.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
+        self.assertEqual(task.reason_code, reasons.TASK_COGS_CEILING)
 
         # The stop verdict rides the 200; the fan-out event fired exactly once.
         self.assertTrue(body["stop"])

@@ -113,12 +113,14 @@ def _stamp_of(owner, line):
 
 
 def _task(t, c, limit=None, total=0, status="active", parent=None,
-          stamp=None, meta=None):
+          stamp=None, stop=None):
+    """``stop`` is what UBB recorded when it stopped the unit — its own
+    columns, keyed by their names (`STOP_CAUSE_KEY` and siblings)."""
     return Task.objects.create(
         tenant=t, customer=c, parent=parent, status=status,
         balance_snapshot_micros=0, task_cogs_ceiling_micros=limit,
         total_provider_cost_micros=total, billing_owner_id=c.id,
-        announce_outbox_id=stamp, metadata=meta or {})
+        announce_outbox_id=stamp, **(stop or {}))
 
 
 @pytest.mark.django_db
@@ -363,7 +365,7 @@ class TestPin6TaskSweep:
         assert patrol.sweep_over_limit_tasks(t) == 1
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata[STOP_CAUSE_KEY] == reasons.TASK_COGS_CEILING
+        assert task.reason_code == reasons.TASK_COGS_CEILING
         ev = _events(TaskKilled.EVENT_TYPE).get()
         assert ev.payload["task_id"] == str(task.id)
         assert ev.payload["reason_code"] == reasons.TASK_COGS_CEILING
@@ -379,7 +381,7 @@ class TestPin6TaskSweep:
         # by the constant the writer uses, not by the word: both stored keys
         # are addressed through the module that owns them (`STOP_CAUSE_KEY`
         # since #457 renamed it, `STOP_MECHANISM_KEY` since #412).
-        assert (task.metadata[STOP_MECHANISM_KEY]
+        assert (task.trigger_source
                 == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         # Idempotent: the next pass finds nothing active.
         assert patrol.sweep_over_limit_tasks(t) == 0
@@ -456,7 +458,7 @@ class TestPin6TaskSweep:
                      # since #458's migration — but no MECHANISM, which is
                      # what a pre-split row looks like and what this case is
                      # about.
-                     meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+                     stop={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
                            STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
                            STOP_CONTROL_ID_KEY: str(t.id)})
         assert patrol.remint_unannounced_kills(t) == 1
@@ -505,9 +507,9 @@ class TestPin6TaskSweep:
 
         fresh = _events(TaskKilled.EVENT_TYPE).exclude(id=original.id).get().payload
         assert fresh["control_family"] == original.payload["control_family"] \
-            == task.metadata[STOP_CONTROL_FAMILY_KEY] == CONTROL_FAMILY_CEILING
+            == task.control_family == CONTROL_FAMILY_CEILING
         assert fresh["control_id"] == original.payload["control_id"] \
-            == task.metadata[STOP_CONTROL_ID_KEY] == str(t.id)
+            == task.control_id == str(t.id)
         assert fresh["ceiling_basis"] == original.payload["ceiling_basis"] \
             == CEILING_BASIS_COST
 
@@ -526,7 +528,7 @@ class TestPin6TaskSweep:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         _task(t, c, limit=1_000, total=2_000, status="killed", stamp=dead.id,
-              meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+              stop={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
                     STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST})
 
         assert patrol.remint_unannounced_kills(t) == 1
@@ -541,9 +543,9 @@ class TestPin6TaskSweep:
         t = _tenant()
         c = _customer(t, balance_micros=1_000_000)
         parent = _task(t, c, limit=1_000_000, status="killed",
-                       meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
+                       stop={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
         _task(t, c, status="killed", parent=parent,
-              meta={STOP_CAUSE_KEY: reasons.PARENT_KILLED})
+              stop={STOP_CAUSE_KEY: reasons.PARENT_KILLED})
         assert patrol.remint_unannounced_kills(t) == 0
         assert not _events(SubtaskKilled.EVENT_TYPE).exists()
         assert not _events(TaskKilled.EVENT_TYPE).exists()
@@ -628,7 +630,7 @@ class TestTheRemintNamesTheStateTheRowCarries:
             status="failed")
         task = _task(t, c, limit=limit, total=total, status=status,
                      parent=parent, stamp=dead.id,
-                     meta={STOP_CAUSE_KEY: reason,
+                     stop={STOP_CAUSE_KEY: reason,
                            STOP_MECHANISM_KEY: mechanism})
         return task, dead
 
@@ -935,8 +937,8 @@ class TestPatrolBeatAndCounters:
         reconcile_live_ledgers()
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata[STOP_CAUSE_KEY] == reasons.TASK_COGS_CEILING
-        assert (task.metadata[STOP_MECHANISM_KEY]
+        assert task.reason_code == reasons.TASK_COGS_CEILING
+        assert (task.trigger_source
                 == TRIGGER_SOURCE_ENFORCEMENT_PATROL)
         assert get_patrol_stats(tenant_id=t.id)["patrol_sweep_killed_7d"] == 1
         # The signal suite did not run for this tenant: the orphaned flag
@@ -990,7 +992,7 @@ class TestPatrolBeatAndCounters:
             event_type=TaskKilled.EVENT_TYPE, payload={}, tenant_id=t.id,
             status="failed")
         task = _task(t, c, limit=1_000, total=2_000, status="killed",
-                     stamp=dead.id, meta={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
+                     stamp=dead.id, stop={STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})
         reconcile_live_ledgers()
         task.refresh_from_db()
         fresh = _events(TaskKilled.EVENT_TYPE).exclude(id=dead.id).get()

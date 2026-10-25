@@ -21,8 +21,7 @@ import uuid
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import (
-    STOP_CAUSE_KEY, STOP_MECHANISM_KEY, CloseDeclaration, TaskService)
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.work.tests._helpers import WorkTestBase
 from core.vocabulary import (
     OUTCOME_REASON_EXECUTION_FAILED, OUTCOME_REASON_PARENT_CLOSED,
@@ -194,7 +193,7 @@ class KillCascadeTest(WorkTestBase):
         sub_active.refresh_from_db()
         sub_done.refresh_from_db()
         self.assertEqual(sub_active.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub_active.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
+        self.assertEqual(sub_active.reason_code, reasons.PARENT_KILLED)
         self.assertIsNotNone(sub_active.completed_at)
         # Terminal subtasks are left untouched by the cascade.
         self.assertEqual(sub_done.status, TASK_STATUS_COMPLETED)
@@ -276,7 +275,7 @@ class CascadeRecordTest(WorkTestBase):
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_CANCELLED)
         self.assertEqual(contained.outcome_reason, OUTCOME_REASON_PARENT_CLOSED)
-        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
+        self.assertEqual(contained.trigger_source,
                          TRIGGER_SOURCE_PARENT_CASCADE)
         # The parent's own record is untouched by the cascade it caused: the
         # tenant explained the whole thing and explained none of the pieces.
@@ -309,7 +308,7 @@ class CascadeRecordTest(WorkTestBase):
                          OUTCOME_REASON_EXECUTION_FAILED)
         # Not merely a surviving reason — the cascade did not touch the row at
         # all, and the mechanism it stamps is what says so.
-        self.assertNotIn(STOP_MECHANISM_KEY, declared.metadata)
+        self.assertIsNone(declared.trigger_source)
         self.assertEqual(still_running.status, TASK_STATUS_CANCELLED)
         self.assertEqual(still_running.outcome_reason,
                          OUTCOME_REASON_PARENT_CLOSED)
@@ -322,15 +321,15 @@ class CascadeRecordTest(WorkTestBase):
         parent.refresh_from_db()
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_KILLED)
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
+        self.assertEqual(contained.reason_code,
                          reasons.PARENT_KILLED)
-        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
+        self.assertEqual(contained.trigger_source,
                          TRIGGER_SOURCE_PARENT_CASCADE)
         # IT NEVER INHERITS THE PARENT'S CAUSE, and that is the half a report of
         # what really reached a ceiling depends on: this piece crossed nothing
         # of its own.
-        self.assertNotEqual(contained.metadata[STOP_CAUSE_KEY],
-                            parent.metadata[STOP_CAUSE_KEY])
+        self.assertNotEqual(contained.reason_code,
+                            parent.reason_code)
 
     def test_an_expiry_cascade_records_containment_and_its_mechanism(self):
         """A parent's expiry records `parent_expired` on its contained work
@@ -342,9 +341,9 @@ class CascadeRecordTest(WorkTestBase):
 
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
+        self.assertEqual(contained.reason_code,
                          reasons.PARENT_EXPIRED)
-        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY],
+        self.assertEqual(contained.trigger_source,
                          TRIGGER_SOURCE_PARENT_CASCADE)
 
     def test_the_two_rows_of_one_expired_tree_no_longer_disagree(self):
@@ -359,11 +358,11 @@ class CascadeRecordTest(WorkTestBase):
 
         parent.refresh_from_db()
         contained.refresh_from_db()
-        self.assertEqual(parent.metadata[STOP_CAUSE_KEY],
+        self.assertEqual(parent.reason_code,
                          reasons.ABSOLUTE_DEADLINE)
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY],
+        self.assertEqual(contained.reason_code,
                          reasons.PARENT_EXPIRED)
-        self.assertNotEqual(contained.metadata[STOP_CAUSE_KEY],
+        self.assertNotEqual(contained.reason_code,
                             reasons.SILENCE_WINDOW)
 
     def test_the_three_cascades_record_three_different_reasons(self):
@@ -378,7 +377,7 @@ class CascadeRecordTest(WorkTestBase):
             parent, contained = self._a_parent_and_its_contained_work()
             stop(parent.id, reason=reason)
             contained.refresh_from_db()
-            recorded.add(contained.metadata[STOP_CAUSE_KEY])
+            recorded.add(contained.reason_code)
 
         parent, contained = self._a_parent_and_its_contained_work()
         TaskService.close_task(parent.id,
@@ -527,7 +526,7 @@ class AnnounceTest(WorkTestBase):
         self.assertEqual(payload["total_provider_cost_micros"], 11_000_000)
         sub.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
+        self.assertEqual(sub.reason_code, reasons.PARENT_KILLED)
 
 
 class KillPlanTest(WorkTestBase):

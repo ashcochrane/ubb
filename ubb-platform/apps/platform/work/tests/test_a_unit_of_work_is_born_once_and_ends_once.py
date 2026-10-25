@@ -13,6 +13,17 @@ module's migration: the model said what may happen to them and nothing kept it.
   * `outcome_reason` and `reason_detail` are SET_ONCE — written in the same
     write that ends the work, from nothing, and never again.
 
+And six more since `0029` (R10-W2), which widened the same rule rather than
+adding a second one:
+
+  * what UBB recorded when it stopped the unit — `reason_code`,
+    `trigger_source`, `control_family`, `control_id` — is SET_ONCE, from
+    nothing to a value, once: the unit read publishes these as UBB's own
+    assertions (#551), so a rewrite would be a stop UBB never made;
+  * the expiry policy the start published — `start_absolute_deadline_seconds`
+    and `start_silence_window_seconds` — is FROZEN, because a replay of the
+    start answers from it (ADR-0019).
+
 **THE DATABASE KEEPS THEM, NOT THE KERNEL.** `TaskService._flip` already
 refuses a second transition and the cascade already selects only running
 work, which is why nothing in the tree rewrites these columns today; ADR-0007
@@ -31,22 +42,33 @@ on a terminal row, and a full-row save re-sending unchanged values.
 """
 import importlib
 
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
 
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
+from apps.platform.work import queries as work_queries
 from apps.platform.work import reasons
-from apps.platform.work.models import TERMINAL_TASK_STATUSES, Task
-from apps.platform.work.services import CloseDeclaration, TaskService
+from apps.platform.work.models import (
+    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
+    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, UBB_STOPPED_TASK_STATUSES,
+    Task, TaskType)
+from apps.platform.work.services import (
+    CloseDeclaration, TaskService, ceiling_control_id)
 from apps.platform.work.tests._helpers import (
     DOORS, WorkTestBase, refusal_from, rule_names_on)
 from core.transitions import (
     FROZEN, RESOLVE_ONCE, SET_ONCE, columns_declared_into_defended_classes)
 from core.vocabulary import (
+    CONTROL_FAMILY_CEILING, CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
     OUTCOME_REASON_PARENT_CLOSED, OUTCOME_REASON_TIMEOUT,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED,
-    TASK_STATUS_COMPLETED, TASK_STATUS_FAILED, TASK_STATUS_KILLED)
+    TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED, TASK_STATUS_FAILED,
+    TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK,
+    TRIGGER_SOURCE_PARENT_CASCADE, TRIGGER_SOURCE_STALE_REAPER,
+    TRIGGER_SOURCE_USAGE_INGEST)
 
 TABLE = Task._meta.db_table
 
@@ -65,10 +87,26 @@ DECLARED = {
     "task_type": FROZEN,
     "outcome_reason": SET_ONCE,
     "reason_detail": SET_ONCE,
+    STOP_CAUSE_KEY: SET_ONCE,
+    STOP_MECHANISM_KEY: SET_ONCE,
+    STOP_CONTROL_FAMILY_KEY: SET_ONCE,
+    STOP_CONTROL_ID_KEY: SET_ONCE,
+    "start_absolute_deadline_seconds": FROZEN,
+    "start_silence_window_seconds": FROZEN,
 }
+
+#: What UBB recorded when it stopped the unit, and the expiry policy the start
+#: published — the two groups `0029` added.
+STOP_FACTS = (STOP_CAUSE_KEY, STOP_MECHANISM_KEY, STOP_CONTROL_FAMILY_KEY,
+              STOP_CONTROL_ID_KEY)
+SNAPSHOT = ("start_absolute_deadline_seconds", "start_silence_window_seconds")
 
 MIGRATION = importlib.import_module(
     "apps.platform.work.migrations.0028_a_unit_of_work_is_born_once_and_ends_once")
+INSTALLED_BY = ("work", "0028_a_unit_of_work_is_born_once_and_ends_once")
+WIDENING = importlib.import_module(
+    "apps.platform.work.migrations.0029_a_units_stop_and_its_start_are_ubbs_own_record")
+WIDENED_BY = ("work", "0029_a_units_stop_and_its_start_are_ubbs_own_record")
 
 
 def refused_as(column):
@@ -85,6 +123,20 @@ class UnitOfWorkTransitionTestBase(WorkTestBase):
         unit = self._task(**kwargs)
         TaskService.kill_task(unit.id, reasons.TASK_COGS_CEILING)
         unit.refresh_from_db()
+        return unit
+
+    def _stopped_by_ubb(self):
+        """A unit UBB stopped through the announcing seam, so all four of its
+        stop facts are recorded — the mechanism included, which the seam
+        stamps after the flip."""
+        unit = self._task()
+        TaskService.kill_and_announce(
+            unit.id, reasons.TASK_COGS_CEILING, tenant_id=self.tenant.id,
+            customer_id=self.customer.id,
+            trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+            control_id=ceiling_control_id(unit))
+        unit.refresh_from_db()
+        self.assertTrue(all(getattr(unit, column) for column in STOP_FACTS))
         return unit
 
     def _failed(self, reason=OUTCOME_REASON_TIMEOUT, detail="it took too long"):
@@ -215,7 +267,7 @@ class AnEndingIsExplainedOnceTest(UnitOfWorkTransitionTestBase):
     def test_a_stop_nobody_explained_is_never_explained_later(self):
         """`""` on a killed unit is the record that no caller declared
         anything, and that stays true: UBB's own stops record their reason
-        under the OTHER concept, in `metadata`."""
+        under the OTHER concept, in UBB's own `reason_code`."""
         self._refused_through_every_door(
             self._killed, "outcome_reason",
             outcome_reason=OUTCOME_REASON_TIMEOUT)
@@ -259,48 +311,121 @@ class AnEndingIsExplainedOnceTest(UnitOfWorkTransitionTestBase):
             reason_detail="it took too long")
 
 
+class AStopIsRecordedOnceTest(UnitOfWorkTransitionTestBase):
+    """SET_ONCE: what UBB recorded when it stopped the unit — the cause, the
+    mechanism, the control's family and its identity — goes from nothing to a
+    value once and never moves again. No caller writes these (a start's
+    `metadata` is the caller's own bag and never reaches them); this is what
+    keeps every OTHER writer from rewriting a stop UBB made."""
+
+    REWRITES = {
+        STOP_CAUSE_KEY: reasons.SILENCE_WINDOW,
+        STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER,
+        STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
+        STOP_CONTROL_ID_KEY: "another-control",
+    }
+
+    def test_a_recorded_stop_is_never_rewritten(self):
+        for column, value in self.REWRITES.items():
+            with self.subTest(column=column):
+                self._refused_through_every_door(
+                    self._stopped_by_ubb, column, **{column: value})
+
+    def test_a_recorded_stop_is_never_erased(self):
+        for column in STOP_FACTS:
+            with self.subTest(column=column):
+                self._refused_through_every_door(
+                    self._stopped_by_ubb, column, **{column: None})
+
+    def test_the_kernels_own_recording_lands_through_every_door(self):
+        """THE CONTROL, in the kernel's two shapes: the cause, family and
+        control on the write that ends the work, and the mechanism after it —
+        the announcing seam stamps that on a unit already stopped."""
+        self._admitted_through_every_door(
+            self._task, status=TASK_STATUS_KILLED,
+            **{STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+               STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
+               STOP_CONTROL_ID_KEY: str(self.tenant.id)})
+        self._admitted_through_every_door(
+            self._killed, **{STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST})
+
+
+class TheExpiryTheStartPublishedNeverMovesTest(UnitOfWorkTransitionTestBase):
+    """FROZEN: the two windows the start resolved and published (#540) are
+    what a replay of that start answers from. The sweepers never read them —
+    they resolve the live ladder each time they run — so nothing has reason to
+    move them, and a writer that did would make a replay say something the
+    start never said."""
+
+    def test_neither_published_window_is_ever_rewritten(self):
+        for column in SNAPSHOT:
+            with self.subTest(column=column):
+                self._refused_through_every_door(
+                    self._task, column, **{column: 60})
+
+    def test_neither_published_window_is_ever_erased(self):
+        for column in SNAPSHOT:
+            with self.subTest(column=column):
+                self._refused_through_every_door(
+                    self._task, column, **{column: None})
+
+    def test_a_unit_born_without_one_is_never_given_one_later(self):
+        """FROZEN is from insert, as the kind of work is: a row written past
+        the start has no start response to repeat, and none is invented for
+        it afterwards."""
+        def unregistered():
+            return Task.objects.create(
+                tenant=self.tenant, customer=self.customer,
+                balance_snapshot_micros=0)
+        self._refused_through_every_door(
+            unregistered, "start_absolute_deadline_seconds",
+            start_absolute_deadline_seconds=60)
+
+
 class EverythingElseStillMovesTest(UnitOfWorkTransitionTestBase):
     """THE CONTROLS the refusals above are worth nothing without."""
 
     def test_a_finished_unit_keeps_counting(self):
         """A stop is a signal point and not a wall: late events land and count
-        into a terminal unit's totals, and the kernel stamps the announcement
-        and the mechanism on the row after the flip."""
+        into a terminal unit's totals, and the caller's own bag is no part of
+        the rule."""
         self._admitted_through_every_door(
             self._killed,
             total_provider_cost_micros=9_000_000,
             total_billed_cost_micros=12_000_000,
             event_count=7, unresolved_event_count=1,
-            metadata={"trigger_source": "usage_ingest"})
+            metadata={"kept": "the caller's own key"})
 
     def test_re_sending_what_the_row_holds_is_not_a_move(self):
-        """A full-row save writes every column, the five included; the rule
-        judges a CHANGE, so an unchanged value is admitted on a finished unit
-        and on a running one alike."""
-        for make in (self._failed, lambda: self._task(parent=self._task(),
-                                                      task_type="transcode")):
+        """A full-row save writes every column, every declared one included;
+        the rule judges a CHANGE, so an unchanged value is admitted on a
+        finished unit and on a running one alike."""
+        for make in (self._failed, self._stopped_by_ubb,
+                     lambda: self._task(parent=self._task(),
+                                        task_type="transcode")):
             unit = make()
             self._admitted_through_every_door(
                 lambda unit=unit: Task.objects.get(id=unit.id),
-                status=unit.status, parent_id=unit.parent_id,
-                task_type=unit.task_type, outcome_reason=unit.outcome_reason,
-                reason_detail=unit.reason_detail)
+                **{column: getattr(unit, column) for column in DECLARED})
 
     def test_the_kernels_own_endings_still_land(self):
         """Every way the kernel ends work goes through the rule: a close that
         cascades `parent_closed` onto running contained work, and a kill that
-        cascades onto its own."""
+        cascades onto its own — each piece recording the cascade as its
+        mechanism."""
         closed, contained = self._a_parent_and_its_contained_work()
         TaskService.close_task(closed.id,
                                CloseDeclaration(TASK_OUTCOME_DELIVERED))
         contained.refresh_from_db()
         self.assertEqual(contained.status, TASK_STATUS_CANCELLED)
         self.assertEqual(contained.outcome_reason, OUTCOME_REASON_PARENT_CLOSED)
+        self.assertEqual(contained.trigger_source, TRIGGER_SOURCE_PARENT_CASCADE)
 
         killed, inside = self._a_parent_and_its_contained_work()
         TaskService.kill_task(killed.id, reasons.TASK_COGS_CEILING)
         inside.refresh_from_db()
         self.assertEqual(inside.status, TASK_STATUS_KILLED)
+        self.assertEqual(inside.trigger_source, TRIGGER_SOURCE_PARENT_CASCADE)
 
 
 class TheDeclarationAndTheRuleAreOneClaimTest(TestCase):
@@ -308,7 +433,7 @@ class TheDeclarationAndTheRuleAreOneClaimTest(TestCase):
     declared class answers *what may happen to this?* nowhere, and a declared
     class with no rule behind it is the promise nothing keeps."""
 
-    def test_the_model_declares_the_five(self):
+    def test_the_model_declares_the_eleven(self):
         self.assertEqual(Task.transition_classes, DECLARED)
 
     def test_the_database_defends_what_the_model_declares(self):
@@ -334,3 +459,143 @@ class TheDeclarationAndTheRuleAreOneClaimTest(TestCase):
         `active` itself; this is what holds that spelling to the registry's."""
         self.assertEqual(MIGRATION.UNRESOLVED_STATUS, TASK_STATUS_ACTIVE)
         self.assertEqual(MIGRATION.TRIGGER, TRANSITION_TRIGGER)
+
+    def test_the_widening_spells_what_the_code_names(self):
+        """`0029` spells its words for the same reason, and its `WHEN` clause
+        must name every declared column — one it missed would never enter the
+        function, and its refusal could never fire."""
+        self.assertEqual(WIDENING.TRIGGER, TRANSITION_TRIGGER)
+        self.assertEqual(set(WIDENING.WATCHED), set(DECLARED))
+        self.assertEqual(WIDENING.STOP_FACTS, STOP_FACTS)
+        self.assertEqual(set(WIDENING.UBB_STOPPED_STATUSES),
+                         UBB_STOPPED_TASK_STATUSES)
+        self.assertEqual(
+            (WIDENING.CANCELLED, WIDENING.PARENT_CLOSED, WIDENING.PARENT_CASCADE),
+            (TASK_STATUS_CANCELLED, OUTCOME_REASON_PARENT_CLOSED,
+             TRIGGER_SOURCE_PARENT_CASCADE))
+        self.assertEqual((WIDENING.KIND_TASK, WIDENING.KIND_SUBTASK),
+                         (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK))
+        self.assertEqual(
+            (WIDENING.SILENCE_WINDOW_BACKSTOP_SECONDS,
+             WIDENING.ABSOLUTE_DEADLINE_BACKSTOP_SECONDS),
+            (work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS,
+             work_queries.ABSOLUTE_DEADLINE_BACKSTOP_SECONDS))
+
+
+def _migrate_to(target):
+    with connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    MigrationExecutor(connection).migrate([target])
+
+
+class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
+    """`0029` run for real — through Django's own executor, back to `0028` and
+    forward again, inside the test's transaction: PostgreSQL runs the DDL
+    transactionally, so it leaves with the test (`SET CONSTRAINTS ALL
+    IMMEDIATE` first, for the reason `usage`'s #553 module gives). Rows are
+    written as the code before it wrote them: UBB's stop facts as keys of
+    `metadata`, beside the caller's own."""
+
+    CALLERS = {"kept": "the caller's own key"}
+
+    def setUp(self):
+        super().setUp()
+        _migrate_to(INSTALLED_BY)
+        self.before = (MigrationExecutor(connection).loader
+                       .project_state(INSTALLED_BY).apps.get_model("work", "Task"))
+
+    def _row(self, status, metadata, **more):
+        return self.before.objects.create(
+            tenant_id=self.tenant.id, customer_id=self.customer.id,
+            balance_snapshot_micros=0, status=status, metadata=metadata,
+            **more).id
+
+    def _recorded(self, unit_id):
+        unit = Task.objects.get(id=unit_id)
+        return {column: getattr(unit, column) for column in STOP_FACTS}
+
+    def test_ubbs_stops_move_and_the_callers_keys_stay(self):
+        recorded = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+                    STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST,
+                    STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
+                    STOP_CONTROL_ID_KEY: str(self.tenant.id)}
+        killed = self._row(TASK_STATUS_KILLED, {**recorded, **self.CALLERS})
+        expired = self._row(TASK_STATUS_EXPIRED, {
+            STOP_CAUSE_KEY: reasons.SILENCE_WINDOW,
+            STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER,
+            STOP_CONTROL_FAMILY_KEY: "", STOP_CONTROL_ID_KEY: "",
+            **self.CALLERS})
+        container = self._row(TASK_STATUS_COMPLETED, {})
+        withdrawn = self._row(
+            TASK_STATUS_CANCELLED,
+            {STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE, **self.CALLERS},
+            parent_id=container, outcome_reason=OUTCOME_REASON_PARENT_CLOSED)
+        # Rows UBB never stopped: whatever they carry is the caller's.
+        running = self._row(TASK_STATUS_ACTIVE, {**recorded, **self.CALLERS})
+        cancelled = self._row(TASK_STATUS_CANCELLED, {**recorded, **self.CALLERS})
+
+        _migrate_to(WIDENED_BY)
+
+        self.assertEqual(self._recorded(killed), recorded)
+        self.assertEqual(self._recorded(expired), {
+            STOP_CAUSE_KEY: reasons.SILENCE_WINDOW,
+            STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER,
+            STOP_CONTROL_FAMILY_KEY: None, STOP_CONTROL_ID_KEY: None})
+        self.assertEqual(self._recorded(withdrawn), {
+            **dict.fromkeys(STOP_FACTS),
+            STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE})
+        for moved in (killed, expired, withdrawn):
+            self.assertEqual(Task.objects.get(id=moved).metadata, self.CALLERS)
+        for untouched in (running, cancelled):
+            with self.subTest(untouched=untouched):
+                self.assertEqual(self._recorded(untouched),
+                                 dict.fromkeys(STOP_FACTS))
+                self.assertEqual(Task.objects.get(id=untouched).metadata,
+                                 {**recorded, **self.CALLERS})
+
+    def test_the_reverse_puts_every_moved_fact_back(self):
+        bag = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
+               STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST,
+               STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
+               STOP_CONTROL_ID_KEY: str(self.tenant.id), **self.CALLERS}
+        killed = self._row(TASK_STATUS_KILLED, bag)
+        _migrate_to(WIDENED_BY)
+        _migrate_to(INSTALLED_BY)
+        self.assertEqual(self.before.objects.get(id=killed).metadata, bag)
+        _migrate_to(WIDENED_BY)
+
+    def test_every_unit_is_given_the_policy_its_ladder_resolves(self):
+        """The ladder `work.queries.expiry_windows` climbs, at the unit's own
+        altitude — and the same answer that ladder gives today."""
+        self.tenant.task_absolute_deadline_seconds = 7200
+        self.tenant.save(update_fields=["task_absolute_deadline_seconds"])
+        TaskType.objects.create(tenant=self.tenant, key="quiet", uncapped=True,
+                                silence_window_seconds=120)
+        TaskType.objects.create(tenant=self.tenant, key="unwatched",
+                                uncapped=True, silence_window_seconds=0)
+        TaskType.objects.create(tenant=self.tenant, key="piece",
+                                kind=TASK_TYPE_KIND_SUBTASK, uncapped=True,
+                                absolute_deadline_seconds=600)
+        undeclared = self._row(TASK_STATUS_ACTIVE, {})
+        quiet = self._row(TASK_STATUS_ACTIVE, {}, task_type="quiet")
+        unwatched = self._row(TASK_STATUS_KILLED, {}, task_type="unwatched")
+        piece = self._row(TASK_STATUS_ACTIVE, {}, task_type="piece",
+                          parent_id=quiet)
+
+        _migrate_to(WIDENED_BY)
+
+        expected = {
+            undeclared: (7200, work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS),
+            quiet: (7200, 120),
+            unwatched: (7200, None),
+            piece: (600, work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS),
+        }
+        ladder = work_queries.expiry_windows(self.tenant.id)
+        for unit_id, windows in expected.items():
+            unit = Task.objects.get(id=unit_id)
+            live = work_queries.windows_of_a_unit(
+                ladder, parent_id=unit.parent_id, task_type=unit.task_type)
+            with self.subTest(task_type=unit.task_type):
+                self.assertEqual((unit.start_absolute_deadline_seconds,
+                                  unit.start_silence_window_seconds), windows)
+                self.assertEqual((live.absolute, live.silence), windows)

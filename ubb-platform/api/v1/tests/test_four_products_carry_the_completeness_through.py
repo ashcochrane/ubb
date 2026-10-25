@@ -56,7 +56,6 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.platform.work.services import TaskService
-from apps.platform.work.services import STOP_CAUSE_KEY
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE,
@@ -230,7 +229,7 @@ class TestTheWorkUnitTotalIsTheSumOfWhatResolved:
         # back to zero and this test would assert against a unit that never
         # accumulated anything.
         unit.refresh_from_db()
-        unit.metadata = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING}
+        unit.reason_code = reasons.TASK_COGS_CEILING
         unit.status = "killed"
         unit.save()
         _remint_kill(unit, self.tenant)
@@ -697,9 +696,8 @@ class TestStopsAndBreachesAddsUpWhatItHas:
 def row_family_of(unit):
     """The family the kill stamped on the unit — read off the row, by the
     kernel's own key, so the assertion names no family literal."""
-    from apps.platform.work.models import STOP_CONTROL_FAMILY_KEY
 
-    return unit.metadata[STOP_CONTROL_FAMILY_KEY]
+    return unit.control_family
 
 
 @pytest.mark.django_db

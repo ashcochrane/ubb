@@ -37,7 +37,6 @@ from apps.platform.events.schemas import TaskExpired
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from apps.platform.work.services import TaskService
-from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -74,7 +73,7 @@ class TestReaper:
         assert reap_stale_tasks() == 1
         task.refresh_from_db()
         assert task.status == TASK_STATUS_EXPIRED
-        assert task.metadata.get(STOP_CAUSE_KEY) == reasons.SILENCE_WINDOW
+        assert task.reason_code == reasons.SILENCE_WINDOW
         assert self._emitted(task.id)
         payload = OutboxEvent.objects.get(
             event_type=TaskExpired.EVENT_TYPE,
@@ -95,7 +94,7 @@ class TestReaper:
         reap_stale_tasks()
         task.refresh_from_db()
         assert task.status == TASK_STATUS_EXPIRED
-        assert task.metadata.get(STOP_CAUSE_KEY) == reasons.ABSOLUTE_DEADLINE
+        assert task.reason_code == reasons.ABSOLUTE_DEADLINE
 
     def test_skips_never_emitted_task_before_max_age(self):
         t = _tenant()

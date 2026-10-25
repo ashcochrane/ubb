@@ -33,7 +33,6 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
 from apps.platform.work import reasons
-from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.work.services import (
     PARENT_NOT_ACTIVE, SUBTASK_DEPTH_EXCEEDED, CloseDeclaration, TaskService)
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -147,7 +146,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
         sub.refresh_from_db()
         parent.refresh_from_db()
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
+        self.assertEqual(sub.reason_code, reasons.TASK_COGS_CEILING)
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertTrue(body["stop"])
         self.assertEqual(body["stop_reason"], reasons.TASK_COGS_CEILING)
@@ -241,11 +240,11 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         tripping_sub.refresh_from_db()
         sibling_sub.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_KILLED)
-        self.assertEqual(parent.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
+        self.assertEqual(parent.reason_code, reasons.TASK_COGS_CEILING)
         # Containment cuts downward: BOTH subtasks are cascade-killed ...
         self.assertEqual(tripping_sub.status, TASK_STATUS_KILLED)
         self.assertEqual(sibling_sub.status, TASK_STATUS_KILLED)
-        self.assertEqual(sibling_sub.metadata[STOP_CAUSE_KEY], "parent_killed")
+        self.assertEqual(sibling_sub.reason_code, "parent_killed")
         # ... but only the parent announces (the subtasks crossed nothing).
         self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
         self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 0)
@@ -269,7 +268,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
         self.assertEqual(self._events(SubtaskKilled.EVENT_TYPE).count(), 1)
         self.assertEqual(self._events(TaskKilled.EVENT_TYPE).count(), 1)
         sub.refresh_from_db()
-        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
+        self.assertEqual(sub.reason_code, reasons.TASK_COGS_CEILING)
 
 
 @patch("apps.platform.events.tasks.process_single_event")

@@ -28,8 +28,7 @@ from apps.metering.usage.services.stop_context import build_stop_context
 from apps.platform.customers.models import Customer
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import (
-    STOP_CAUSE_KEY, CloseDeclaration, TaskService)
+from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import TASK_OUTCOME_DELIVERED
 
@@ -111,7 +110,7 @@ class UnitContextTest(StopContextTestBase):
         TaskService.kill_task(parent.id, reason=reasons.TASK_COGS_CEILING)
         sub.refresh_from_db()
         parent.refresh_from_db()
-        self.assertEqual(sub.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
+        self.assertEqual(sub.reason_code, reasons.PARENT_KILLED)
         ctx = self._build(sub, dict(NO_VERDICTS, task_not_active=True))
         self.assertEqual(ctx, [{
             "limit": reasons.TASK_COGS_CEILING, "stop_scope": "task",

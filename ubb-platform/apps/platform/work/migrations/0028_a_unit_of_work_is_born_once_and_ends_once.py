@@ -62,9 +62,10 @@ FUNCTION = "ubb_task_declared_transitions"
 #: registry's `TASK_STATUS_ACTIVE`.
 UNRESOLVED_STATUS = "active"
 
-INSTALL = f"""
-CREATE FUNCTION {FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
+#: The five refusals, one block per declared column — a constant of its own
+#: because `0029` widens this rule and builds its function from these blocks
+#: plus its own, so the two migrations cannot spell one refusal two ways.
+REFUSALS = f"""
     IF NEW.parent_id IS DISTINCT FROM OLD.parent_id THEN
         RAISE EXCEPTION
             'parent_id is declared frozen (ADR-0007 §2): a unit of work is '
@@ -118,7 +119,11 @@ BEGIN
             OLD.reason_detail, NEW.reason_detail, OLD.status, NEW.status
             USING ERRCODE = '23000';
     END IF;
+"""
 
+INSTALL = f"""
+CREATE FUNCTION {FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN{REFUSALS}
     RETURN NEW;
 END;
 $$;

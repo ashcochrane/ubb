@@ -61,9 +61,7 @@ from apps.platform.events.schemas import (
     TaskKilled, UsageRecorded)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
-from apps.platform.work.models import (
-    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-    STOP_MECHANISM_KEY, Task, TaskType)
+from apps.platform.work.models import Task, TaskType
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY,
@@ -250,11 +248,11 @@ class ABlockingPoolStopsWorkMidFlight:
         # records the cause, the mechanism and the control.
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
-        self.assertEqual(row.metadata[STOP_CONTROL_FAMILY_KEY],
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.control_family,
                          CONTROL_FAMILY_CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(pool.id))
+        self.assertEqual(row.control_id, str(pool.id))
         payload = self._the_one(TaskKilled)
         self.assertEqual(payload["reason_code"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(payload["trigger_source"], TRIGGER_SOURCE_POOL_CROSSING)
@@ -374,8 +372,8 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         self.assertEqual(self.seat1.suspension_reason, reasons.CUSTOMER_SPEND_POOL)
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
-        self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(default.id))
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.control_id, str(default.id))
         fired = self._the_one(CustomerStopped, owner_id=self.seat1.id)
         self.assertEqual(fired["control_id"], str(default.id))
         self.assertEqual(self._refusal(self._start(self.seat1)),
@@ -401,7 +399,7 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         for unit in (u1, u2):
             row = Task.objects.get(id=unit)
             self.assertEqual(row.status, TASK_STATUS_KILLED, unit)
-            self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(pool.id))
+            self.assertEqual(row.control_id, str(pool.id))
         self.assertEqual(self._events(TaskKilled).count(), 2)
         self.assertEqual({e.payload["trigger_source"] for e in self._events(TaskKilled)},
                          {TRIGGER_SOURCE_POOL_CROSSING})
@@ -590,7 +588,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
         # the tipping report say this report opened them.
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
         context = {entry["limit"]: entry
                    for entry in Posting.objects.get(id=ack["event_id"]).stop_context
                    if entry["stop_scope"] == "customer"}
@@ -654,7 +652,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
         self._both_open(pool)
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
         self.assertEqual(self._the_one(TaskKilled)["control_id"], str(pool.id))
         self.assertTrue(LiveCounter.read(self.customer.id, self.tenant)["stop"])

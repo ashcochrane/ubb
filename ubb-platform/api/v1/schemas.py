@@ -12,7 +12,6 @@ from apps.platform.event_types.exact_decimals import (
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
 from apps.platform.grouping_fields.models import (
     SLOT_CHOICES, SLOT_MAX_LENGTH, SLOTS)
-from apps.platform.work import queries as work_queries
 from apps.platform.work import services as work_services
 from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, RESOLVED_SUPPLIER_COST_MEANING,
@@ -1656,17 +1655,21 @@ class TaskOut(Schema):
     #: ended it, whose word is `outcome_reason` above — so a key never comes
     #: and goes. Each marker sits on the string member of its union.
     reason_code: Optional[ReasonCode] = Field(description=(
-        "Why UBB stopped this unit of work: which bound was reached. Null "
-        "where UBB did not stop it — it is still running, or its caller ended "
-        "it (see `outcome_reason`) — and where UBB's stop recorded no cause: "
-        "the hourly safety net expires work nobody reported on silently."))
+        "Why UBB stopped this unit of work: which bound was reached. UBB's "
+        "own record of the stop — nothing a caller sends, its `metadata` "
+        "included, is read here. Null where UBB did not stop it — it is still "
+        "running, or its caller ended it (see `outcome_reason`) — and where "
+        "UBB's stop recorded no cause: the hourly safety net expires work "
+        "nobody reported on silently."))
     trigger_source: Optional[TriggerSource] = Field(description=(
-        "The mechanism that applied UBB's stop to this unit of work. Null "
-        "where UBB did not stop it, or where its stop recorded no mechanism "
-        "(the hourly safety net's silent expiry)."))
+        "The mechanism that applied UBB's stop to this unit of work, as UBB "
+        "recorded it — never read from anything a caller sends. Null where "
+        "UBB did not stop it, or where its stop recorded no mechanism (the "
+        "hourly safety net's silent expiry)."))
     control_family: Optional[ControlFamily] = Field(description=(
         "Which of the four spend controls UBB's stop came from — for "
-        "contained work stopped with its parent, the parent's. Null where UBB "
+        "contained work stopped with its parent, the parent's — as UBB "
+        "recorded it, never read from anything a caller sends. Null where UBB "
         "did not stop this unit of work, or where its stop recorded no cause "
         "(the hourly safety net's silent expiry)."))
     total_provider_cost_micros: int
@@ -1963,34 +1966,46 @@ class StartTaskResponse(Schema):
     #: an instant; the silence window is measured from the last usage report,
     #: so it is a duration. Each is the ladder `work.queries.expiry_windows`
     #: resolves — the declared kind of work, the workspace default, UBB's
-    #: backstop — and each is RESOLVED WHEN THIS RESPONSE IS WRITTEN rather
-    #: than pinned, because that is the ladder's own rule: widening a window
-    #: reaches work already running. So a replay answers the windows as they
-    #: stand then, and the unit's registration instant is the one fixed term.
+    #: backstop.
+    #:
+    #: ⚠ A SNAPSHOT OF THE POLICY AT THE START, NEVER A PROMISE OF THE END.
+    #: The start resolves the ladder once and records both windows on the unit
+    #: (`start_absolute_deadline_seconds`, `start_silence_window_seconds`, held
+    #: FROZEN by the database), and this response — a replay's included —
+    #: answers from that record, so a replay says what the start said
+    #: (ADR-0019). The sweepers never read the record: they resolve the ladder
+    #: each time they run, because a changed window must reach work already
+    #: running. So the unit can be expired before this deadline or after it
+    #: once the policy changes, and the descriptions say so rather than
+    #: promising an instant enforcement will not keep.
     #:
     #: REQUIRED, each (#569's rule for a new response fact); the deadline is
     #: never null because it cannot be switched off at any rung, and the
     #: silence window is null where the answer is that the unit has none.
     absolute_deadline_at: str = Field(description=(
-        "When this unit of work passes its absolute deadline: its "
-        "registration plus how long its kind of work may run at all — the "
-        "declared kind's own deadline, else the workspace default, else UBB's "
-        "backstop of six hours. UBB expires a unit still active past it. Two "
-        "further rules move the end: work that has never reported usage is "
+        "This unit of work's absolute deadline under the expiry policy "
+        "resolved when it was started: its registration plus how long its "
+        "kind of work could then run at all — the declared kind's own "
+        "deadline, else the workspace default, else UBB's backstop of six "
+        "hours. A replay of the start answers this same value. It is a "
+        "snapshot, not a promise: UBB enforces the policy as it stands when "
+        "it checks, so a later change to the declaration or the workspace "
+        "default can expire the unit earlier or later than this. Two further "
+        "rules can end it sooner: work that has never reported usage is "
         "expired once it is an hour old, and where the workspace does not "
         "enforce, UBB's hourly safety net does the expiring and never before "
         "the unit is an hour old. Never null: the absolute deadline cannot be "
-        "switched off. "
-        "Resolved when this response was written — a later change to the "
-        "declaration or the workspace default reaches work already running."))
+        "switched off."))
     silence_window_seconds: Optional[int] = Field(description=(
-        "How long this unit of work may go without a usage report, counted "
-        "from its last one, before UBB expires it — resolved on the same "
-        "ladder as `absolute_deadline_at` (UBB's backstop is fifteen "
-        "minutes), and resolved when this response was written. Null where no "
-        "silence window applies to it. Silence is counted from the last "
-        "report, so work that has never reported is not measured on it — it "
-        "is expired once it is an hour old instead."))
+        "How long this unit of work could go without a usage report, counted "
+        "from its last one, before UBB expires it — under the expiry policy "
+        "resolved when it was started, on the same ladder as "
+        "`absolute_deadline_at` (UBB's backstop is fifteen minutes). A replay "
+        "of the start answers this same value; UBB enforces the policy as it "
+        "stands when it checks, so a later change can move it. Null where no "
+        "silence window applied when the unit was started. Silence is counted "
+        "from the last report, so work that has never reported is not "
+        "measured on it — it is expired once it is an hour old instead."))
     #: THIS CALL FOUND THE KEY ALREADY CLAIMED and wrote nothing: no second
     #: unit, no second ceiling, no second set of totals. A retry after a lost
     #: response is not an error, and everything above describes the unit the
@@ -2002,12 +2017,16 @@ class StartTaskResponse(Schema):
 def start_task_out(t, *, replayed):
     """`StartTaskResponse`'s serializer — what the caller registered, or what
     its key already claimed."""
-    # The unit's own pair, out of the ladder the sweepers read — one rule for
-    # the response that publishes the windows and the sweepers that act on
-    # them (#540).
-    windows = work_queries.windows_of_a_unit(
-        work_queries.expiry_windows(t.tenant_id), parent_id=t.parent_id,
-        task_type=t.task_type)
+    # THE EXPIRY THE START PUBLISHED, read off the snapshot it took (#540) —
+    # so a replay answers what the original start said, never the ladder as it
+    # stands now (the sweepers read that). A row the start did not register
+    # has no snapshot and no start response to repeat; reaching here with one
+    # is a defect, and it says so rather than inventing a policy.
+    if t.start_absolute_deadline_seconds is None:
+        raise ValueError(
+            f"unit of work {t.id} carries no expiry snapshot: it was not "
+            f"registered through the start, so there is no start response to "
+            f"answer with")
     return {
         "task_id": str(t.id),
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
@@ -2018,8 +2037,9 @@ def start_task_out(t, *, replayed):
         "external_task_id": t.external_task_id,
         "created_at": t.created_at.isoformat(),
         "absolute_deadline_at": (
-            t.created_at + timedelta(seconds=windows.absolute)).isoformat(),
-        "silence_window_seconds": windows.silence,
+            t.created_at
+            + timedelta(seconds=t.start_absolute_deadline_seconds)).isoformat(),
+        "silence_window_seconds": t.start_silence_window_seconds,
         "replayed": replayed,
     }
 
