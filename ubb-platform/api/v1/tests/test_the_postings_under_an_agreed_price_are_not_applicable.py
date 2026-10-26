@@ -52,6 +52,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.measurements import measurements_status_for
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
+from apps.platform.event_types.tests._helpers import publishes_what_it_names
 from apps.platform.tests.test_model_naming import (
     DERIVED_NEVER_STORED, columns_storing_a_derived_fact,
 )
@@ -126,8 +127,12 @@ class AgreedPriceTestBase(ChargeTestBase):
         (`admitted_supplier_cost_source`), so a granularity fixture that stated
         a cost would exercise a shape `POST /usage` refuses. Costing it through
         the declaration is both route-faithful and the only way the declaration
-        is load-bearing rather than decorative.
+        is load-bearing rather than decorative — and the Event Type it names is
+        PUBLISHED with that unit (#568): one with no production declaration is
+        held, costing nothing at all.
         """
+        publishes_what_it_names(self.tenant, SOLD_PER_EVENT,
+                                A_FINELY_DECLARED_QUANTITY)
         recorded = UsageService.record_usage(
             self.tenant, self.customer, f"call-{uuid.uuid4()}",
             event_type=SOLD_PER_EVENT, task_id=task_id,

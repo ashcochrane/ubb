@@ -30,10 +30,12 @@ reports its figure is waiting on that figure whatever the bag says; an Event
 Type that declares no cost at all has nothing for a name to cost. In each of
 those the cost is settled or unsettled for a reason that has nothing to do with
 the name, so the posting's reason cannot be the name — and the hold follows the
-posting's reason by construction, so nothing is held there either. And the
-registry is opt-in (`costing.cost_declaration`): a report against an Event Type
-nobody declared has no declaration for a name to be missing from, and costs the
-way this repository has always costed.
+posting's reason by construction, so nothing is held there either. And a
+report against an Event Type with no production declaration has no set of
+names for one to be missing from: the EVENT TYPE is what is held (#568), once,
+with the whole bag, rather than each of its quantities by name —
+`api/v1/tests/test_an_event_type_nobody_published_is_held.py` is that path
+through both routes.
 
 **The agreement test** at the foot is the one #329 claimed existed and #265's
 module records did not: it records postings through the production path and
@@ -58,6 +60,7 @@ from apps.platform.event_types.models import (
     EventType,
     Measurement,
     QuarantinedKey,
+    UNRECOGNISED_EVENT_TYPE,
     UNRECOGNISED_MEASUREMENT_KEY,
 )
 from apps.platform.event_types.quarantine import (
@@ -76,6 +79,7 @@ from core.vocabulary import (
     SOURCE_KIND_CALLER_SUPPLIED,
     UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
@@ -317,23 +321,28 @@ class TestWhatIsNotHeld:
     """Every case here is a report that costs for a reason other than the
     name, and in each the hold follows the reason: nothing is held."""
 
-    def test_an_undeclared_event_type_holds_nothing_and_costs_as_it_always_did(self):
-        """The registry is opt-in (`cost_declaration`).
-
-        No declaration means no set of names for this one to be missing from,
-        so the quantity resolves against Cost Rates the way every posting did
-        before the registry existed. Holding it would refuse the opt-in.
-        """
+    def test_an_undeclared_event_type_holds_the_event_type_not_its_names(self):
+        """No production declaration means no set of names for these to be
+        missing from (#568). What is held is the Event Type, once, with the
+        whole bag — not a quantity row per name, which would ask the tenant
+        to decide each spelling against a declaration that does not exist.
+        A Cost Rate matches one of the names, and is not consulted."""
         tenant = _tenant()
         customer = _customer(tenant)
         _cost_rate(tenant)
 
-        posting = _posting(_record(tenant, customer, "k1", measurements={
-            DECLARED_QUANTITY: "1000", A_NAME_NOBODY_DECLARED: "40"}))
+        posting = _posting(_record(
+            tenant, customer, "k1", event_type="acme.nobody_declared",
+            measurements={DECLARED_QUANTITY: "1000",
+                          A_NAME_NOBODY_DECLARED: "40"}))
 
         assert posting.costing_status == COSTING_STATUS_UNRESOLVED
-        assert posting.unresolved_reason == UNRESOLVED_REASON_COST_RATE_MISSING
-        assert _held(tenant) == []
+        assert posting.unresolved_reason == \
+            UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED
+        (held,) = _held(tenant)
+        assert held.unrecognised == UNRECOGNISED_EVENT_TYPE
+        assert held.quantities == {DECLARED_QUANTITY: "1000",
+                                   A_NAME_NOBODY_DECLARED: "40"}
 
     def test_a_declared_but_unrated_quantity_is_a_missing_rate_not_a_missing_name(self):
         """The discriminating control: the tenant DID declare this name.
@@ -564,19 +573,15 @@ class TestTheTwoDefinitionsAgree:
         assert self._held_names_in(
             tenant, _the_month_holding(timezone.now())) == set()
 
-    def test_registering_the_name_frees_the_close_and_leaves_the_posting_to_a_replay(self):
-        """What #428 does NOT close, said where it can be read.
-
-        The tenant registers the name; the close is free. The posting is still
-        `unresolved` / `measurement_not_declared` — nothing about a
-        remediation re-costs it. So the two halves agree at ACCEPT, which is
-        the join this ticket builds, and diverge at remediation until
-        something consumes it. A REGISTERED name is reachable by a Resolution
-        Run, which the class below proves; a MAPPED name needs the re-keyed bag
-        only #265's `Replay` carries; and a DISMISSED name returns no replay by
-        design and needs the posting re-costed without it. Neither of the last
-        two has a consumer — UNOWNED RESIDUAL, written in the metering
-        glossary.
+    def test_registering_the_name_frees_the_close_and_its_replay_waits_for_publication(self):
+        """The tenant registers the name; the close is free, because a
+        decision taken is a decision. The registration's replay re-costs the
+        event at once (#473 row 1) — and finds the name still undeclared,
+        because it was declared in a DRAFT, which production never reads
+        (#605). So the posting stays `unresolved` / `measurement_not_declared`
+        until the declaration is published, when a run settles it (the class
+        below). A MAPPED name's replay, and a DISMISSED name's absence of one,
+        are `api/v1/tests/test_a_remediation_does_the_honest_thing_with_a_held_name.py`.
         """
         tenant, postings = self._a_month_of_reports()
         undeclared = postings[0]

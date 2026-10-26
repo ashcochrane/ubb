@@ -240,8 +240,9 @@ costing_status:
 #
 # THE BACKEND CONSUMER IS NOW REAL. The posting carries `unresolved_reason`
 # beside the supplier cost it qualifies, and derives its value set from the
-# generated `core.vocabulary` rather than restating it, so all three values are
-# held by reference and no entry is owed for them.
+# generated `core.vocabulary` rather than restating it, so every value is held
+# by reference — the fourth, `event_type_not_declared` (#568), arrived that way
+# — and no entry is owed for them.
 #
 # THE CONTRACT CONSUMER IS NOW REAL TOO (#323), and the order it waited on is
 # forced rather than preferred: the contract may not advertise a concept's
@@ -258,14 +259,14 @@ costing_status:
 # what `test_every_advertised_concept_reaches_the_contract` refuses.
 #
 # THE CONSOLE IS STILL NOT DECLARED, AND ITS ABSENCE IS THE SAME RULING #316
-# MADE, NOT AN OVERSIGHT. The console DOES render these three values as of
-# #330 — `apps/ui/src/lib/supplier-cost.ts` binds their label keys, and holds
-# all three by reference in doing so. What it does not do is hold them in
+# MADE, NOT AN OVERSIGHT. The console DOES render these values as of #330 —
+# `apps/ui/src/lib/supplier-cost.ts` binds their label keys, and holds every
+# one by reference in doing so. What it does not do is hold them in
 # `apps/ui/src/lib/labels.ts`, and that file is the path every console consumer
 # in this registry names: the console's declared consumer is the legacy label
 # adapter, and a migrated concept leaves its value list there while its wording
 # moves to a module of its own (`tenant_product` is the worked example, #241).
-# Declaring the surface here would therefore report all three missing at a path
+# Declaring the surface here would therefore report every one missing at a path
 # that genuinely holds none, and demand the G2 migration-ledger entry that a
 # ledger which only shrinks (#155 §3.2) could not later be given back. Whoever
 # moves the list into `labels.ts` declares the surface in the same commit.
@@ -295,6 +296,13 @@ unresolved_reason:
     - cost_rate_missing
     # The quantity names a declaration nobody made — the quarantine link.
     - measurement_not_declared
+    # The EVENT TYPE has no production declaration (#568): nobody declared
+    # the key, or it was declared and never published, which recording reads
+    # as the same thing (#605). The input that did not arrive is the Event
+    # Type's published declaration, so the remedy is readable from the value
+    # exactly as it is from the quantity's sibling above — and "declared"
+    # carries the sense that sibling already carries, the last publication's.
+    - event_type_not_declared
   label_key_prefix: unresolved_reason
   consumers:
     - surface: backend

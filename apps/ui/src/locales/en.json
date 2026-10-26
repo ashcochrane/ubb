@@ -250,6 +250,7 @@
   "unit.second": "Second",
   "unit.token": "Token",
   "unresolved_reason.cost_rate_missing": "No matching Cost Rate",
+  "unresolved_reason.event_type_not_declared": "Event Type not declared",
   "unresolved_reason.measurement_not_declared": "Measurement not declared",
   "unresolved_reason.reported_cost_missing": "Supplier cost not reported",
   "usage_event_kind.metered_usage": "Metered usage",

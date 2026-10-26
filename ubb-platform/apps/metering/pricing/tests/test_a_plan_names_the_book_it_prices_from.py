@@ -73,6 +73,7 @@ from apps.metering.pricing.tests._helpers import (
 )
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import EventType
+from apps.platform.event_types.tests._helpers import publishes_what_it_names
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.plans.models import Plan
 from apps.platform.plans.queries import get_pricing_book_for_customer
@@ -294,7 +295,13 @@ class AnEmptyPlanBookAndNoDeclaredRungIsUnknownTest(
         Run never revisits one. Nobody decided anything here, and `unknown` is
         the status a run does revisit — so a posting that was permanently lost
         under the plan's accidental zero is now recoverable.
+
+        The Event Type is PUBLISHED with the quantity, so the cost is one no
+        rate was written for (`cost_rate_missing`) — not one held because
+        nobody published the Event Type (#568), whose price is `unknown` for a
+        reason of its own and would let this pass with the rung's rule broken.
         """
+        publishes_what_it_names(self.tenant, EVENT_TYPE, QUANTITY)
         receipt = self.resolved()
 
         self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_UNKNOWN)
@@ -358,7 +365,10 @@ class AnEmptyPlanBookFallsToTheTenantsDeclaredRungTest(
 
     def test_an_unresolved_cost_is_waived_with_no_amount(self):
         """A margin over a cost UBB never learned is a decided loss, not a
-        queued one — and this is the row a Resolution Run will not revisit."""
+        queued one — and this is the row a Resolution Run will not revisit.
+        Published, so the cost is one no rate was written for rather than one
+        held on the Event Type (#568), which is `unknown` and never waived."""
+        publishes_what_it_names(self.tenant, EVENT_TYPE, QUANTITY)
         receipt = self.resolved()
 
         self.assertEqual(receipt["pricing"]["status"], PRICING_STATUS_WAIVED)

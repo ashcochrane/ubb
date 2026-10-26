@@ -7392,7 +7392,8 @@
                 "enum": [
                   "reported_cost_missing",
                   "cost_rate_missing",
-                  "measurement_not_declared"
+                  "measurement_not_declared",
+                  "event_type_not_declared"
                 ],
                 "type": "string",
                 "x-ubb-concept": "unresolved_reason"
@@ -10390,7 +10391,8 @@
                 "enum": [
                   "reported_cost_missing",
                   "cost_rate_missing",
-                  "measurement_not_declared"
+                  "measurement_not_declared",
+                  "event_type_not_declared"
                 ],
                 "type": "string",
                 "x-ubb-concept": "unresolved_reason"
@@ -10914,7 +10916,8 @@
                 "enum": [
                   "reported_cost_missing",
                   "cost_rate_missing",
-                  "measurement_not_declared"
+                  "measurement_not_declared",
+                  "event_type_not_declared"
                 ],
                 "type": "string",
                 "x-ubb-concept": "unresolved_reason"
@@ -11213,7 +11216,8 @@
                 "enum": [
                   "reported_cost_missing",
                   "cost_rate_missing",
-                  "measurement_not_declared"
+                  "measurement_not_declared",
+                  "event_type_not_declared"
                 ],
                 "type": "string",
                 "x-ubb-concept": "unresolved_reason"
@@ -11379,7 +11383,8 @@
                 "enum": [
                   "reported_cost_missing",
                   "cost_rate_missing",
-                  "measurement_not_declared"
+                  "measurement_not_declared",
+                  "event_type_not_declared"
                 ],
                 "type": "string",
                 "x-ubb-concept": "unresolved_reason"

@@ -547,6 +547,15 @@ SECTIONS = {
 #: spell it the same way.
 RESOLUTION_RUN_KEY = "resolution_run_id"
 
+#: WHICH REMEDIATION COMPLETED A SECTION, where a replay did rather than a run
+#: (#473 row 1, #568) — the held name whose map or register entitled the
+#: replay, by the id of its row. The same "where applicable, what completed
+#: it" the run's key above answers, for the other act that completes one; a
+#: section is completed once, so a record carries at most one of the two for
+#: it. An id and nothing a figure could be taken from, as every provenance
+#: key is.
+HELD_NAME_KEY = "held_name_id"
+
 #: WHICH SOURCE A REPORTED COST WAS ADMITTED UNDER, by value, in the costing
 #: section's `detail` (#179 §3.6, the owner's review of #570's PR #607).
 #:

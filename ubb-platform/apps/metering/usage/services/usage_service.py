@@ -11,12 +11,14 @@ from core.crossing import ceiling_fields
 from core.time_windows import closed_months, month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
-    TRIGGER_SOURCE_USAGE_INGEST, USAGE_EVENT_KIND_METERED_USAGE)
+    TRIGGER_SOURCE_USAGE_INGEST, UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+    USAGE_EVENT_KIND_METERED_USAGE)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     Posting, PostingMeasurement, StopAcknowledgement)
 from apps.platform.event_types.exact_decimals import canonical_quantities
-from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
+from apps.platform.event_types.quarantine import (
+    hold_an_unrecognised_event_type, hold_an_unrecognised_quantity)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.models import SLOTS
@@ -715,7 +717,24 @@ class UsageService:
                     hold_an_unrecognised_quantity(
                         tenant=tenant, event_type_key=inp.event_type,
                         measurement_key=measurement_key, quantity=quantity,
-                        occurred_at=event.effective_at)
+                        occurred_at=event.effective_at, event_id=event.id)
+                # AND THE EVENT TYPE ITSELF, WHERE IT HAS NO PRODUCTION
+                # DECLARATION (#568, #193 §B5) — on the same terms and in the
+                # same write: the spine decided the posting's reason because
+                # the declaration read answered `None` for a key the event
+                # named (nobody declared it, or it was never published, #605),
+                # and this holds the name that reason is about, with the bag
+                # it arrived with. The posting is the record — it keeps the
+                # customer, the key and the unit of work a replay needs — and
+                # this row is what the period close reads and what a tenant
+                # remediates. An event naming no Event Type is never this
+                # reason, so nothing is held for it (#567).
+                if costing.unresolved_reason == \
+                        UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED:
+                    hold_an_unrecognised_event_type(
+                        tenant=tenant, event_type_key=inp.event_type,
+                        quantities=inp.measurements,
+                        occurred_at=event.effective_at, event_id=event.id)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
                     # both totals (the tipping event and everything after a

@@ -34,9 +34,19 @@ from core.vocabulary import (
     TASK_TYPE_KIND_TASK,
     TENANT_PRODUCT_BILLING,
     UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
+
+#: THE TWO REASONS A COST IS UNRESOLVED BECAUSE A NAME IS HELD (#568, #428).
+#: Each waits on a tenant's decision about what a name means — an Event Type
+#: with no production declaration, or a quantity its declaration does not carry
+#: — rather than on configuration or a supplier's figure, and the recording
+#: path holds the name beside the posting. The price follows them: under either,
+#: no customer price is published as known (#473 row 4).
+A_HELD_NAME = frozenset({UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+                         UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED})
 
 #: WHAT COMPUTED THE AMOUNTS ON A RECEIPT — the half of the receipt's version
 #: pair that moves when an amount would come out differently
@@ -52,7 +62,17 @@ from core.vocabulary import (
 #: quantity — computes exactly the amount it did, so no recorded amount would
 #: come out differently and nothing about the earlier receipts is disowned: a
 #: major version would claim otherwise.
-PRICING_ENGINE_VERSION = "2.2.0"
+#:
+#: 2.2.0 → 3.0.0 IN #568 AND #473, and a MAJOR version because that claim is now
+#: the true one. Inputs that were legal under 2.2.0 compute differently: an
+#: event naming an Event Type with no production declaration was costed
+#: against Cost Rates and is now held with no cost and no price; and an event
+#: carrying a quantity its declaration does not carry, which 2.2.0 could price
+#: `known` by a rule matching the spelling or `waived` by a margin, now has an
+#: `unknown` price. A receipt written by 2.x for either holds an amount 3.0.0
+#: would not produce, and the version is what says so — the record itself is
+#: read, never rewritten.
+PRICING_ENGINE_VERSION = "3.0.0"
 
 #: WHERE A RULE CAME FROM — the ladder's MINOR key (#356, #147 §5.1).
 #:
@@ -816,7 +836,7 @@ class PricingService:
     @staticmethod
     def _compute(*, subject, currency, effective_at, measurements,
                  caller_provider_cost, reported_cost_source_kind, pricing_mode,
-                 resolve_declaration,
+                 names_an_event_type, resolve_declaration,
                  resolve_the_cost_rule, resolve_the_price_rule,
                  resolve_markup):
         """The ONE compute spine (#112): cost → status → price → markup rung,
@@ -843,32 +863,49 @@ class PricingService:
         does not undo the spend, it hides it, and the missing margin turns up a
         month later as a gap nobody can account for.
 
-        The four answers, in the order they are asked:
+        The five answers, in the order they are asked:
 
         1. the caller supplied a figure → `known`, and it is that figure
-        2. the Event Type declares no cost at all → `not_applicable`, no amount
+        2. the event names an Event Type with no production declaration —
+           nobody declared it, or it was never published (#605) →
+           `unresolved`, `event_type_not_declared`, the whole bag kept for a
+           replay and no rule consulted (#568)
+        3. the Event Type declares no cost at all → `not_applicable`, no amount
            and no reason, because a design decision is not an outstanding task
-        3. the Event Type declares a *reported* cost and no figure arrived →
+        4. the Event Type declares a *reported* cost and no figure arrived →
            `unresolved`, `reported_cost_missing`
-        4. otherwise the quantities resolve against Cost Rates → `known` and the
+        5. otherwise the quantities resolve against Cost Rates → `known` and the
            sum (**zero is a resolved amount**: a call that genuinely cost
            nothing); or `unresolved`, `measurement_not_declared` where the
            Event Type IS declared and a name on the report is one its
            declaration does not carry (#428), with those quantities recorded
            for the recording path to hold; or `unresolved`, `cost_rate_missing`
-           and the list of quantities that matched no rate
+           and the list of quantities that matched no rate. An event naming NO
+           Event Type reaches this branch with no declaration, and is rated as
+           everything was before the registry (#567).
+
+        Under either answer that HOLDS a name (2, and the first `unresolved` of
+        5) the price is `unknown` and the ladder is not consulted (#473 row 4).
+
+        ``names_an_event_type`` is a plain fact, on `pricing_mode`'s reasoning
+        below: whether the event's key is empty is already in hand, and it is
+        the one thing that tells "no Event Type named" (#567) from "named and
+        not published" (#568) — both of which the declaration read answers
+        `None` for.
 
         **A partly resolved cost is not a resolved cost.** Where any quantity
         matched no rate the amount is `None` and the resolved lines stay in the
         receipt below, which is where the resolved lines live. Storing the partial sum
         is the ambiguity #317's column exists to remove, one layer up.
 
-        **The name is read on the fourth branch and only there (#428).** It is
-        the one branch that looks a name up to cost it; in the other three the
-        cost is settled or outstanding for a reason that has nothing to do with
-        the name, and a reason that named it there would be false about the
-        remedy. The registry is opt-in, so the question is asked only where a
-        published declaration exists to be missing from (#605).
+        **A quantity's name is read on the fifth branch and only there
+        (#428).** It is the one branch that looks a name up to cost it; in the
+        others the cost is settled or outstanding for a reason that has nothing
+        to do with the quantity's name, and a reason that named it there would
+        be false about the remedy. The question is asked only where a published
+        declaration exists to be missing from (#605) — where none does, the
+        Event Type itself is what is held (branch 2), and its names wait with
+        it.
 
         **THE SPINE DECIDES THE STATUSES AND THE RECEIPT RECORDS THEM (#349).**
         Nothing here assembles the stored record by hand: the two sides are
@@ -991,8 +1028,28 @@ class PricingService:
             # have moved on, and the record must not need it.
             reported_source = {
                 REPORTED_COST_SOURCE_KIND_KEY: reported_cost_source_kind}
-        elif (declaration := resolve_declaration()) is not None \
-                and declaration.declares_no_cost:
+        elif (declaration := resolve_declaration()) is None \
+                and names_an_event_type:
+            # THE EVENT TYPE HAS NO PRODUCTION DECLARATION, SO NOTHING HERE
+            # KNOWS WHAT THE CALL WAS (#568, #193 §B5). Nobody declared the
+            # key, or it was declared and never published — which is the same
+            # answer, `None`, from the same read (#605) — so there is no costing
+            # method to follow and no set of names to measure the bag against.
+            # Rating the bag against whatever rules happen to match its
+            # spellings would cost a call as something the tenant never said it
+            # was. So it is held: no cost, no rule consulted, the reason naming
+            # the input that did not arrive, and the whole bag kept by value
+            # below so a replay can cost it once the tenant says what it was.
+            # The recording path holds the NAME beside the posting; the spine
+            # only records why. A key that is EMPTY names no Event Type and is
+            # not this branch (#567): it takes the rate path below as it always
+            # did.
+            costing_method = None
+            computed_micros = 0
+            costing_status = COSTING_STATUS_UNRESOLVED
+            unresolved_reason = UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED
+            uncosted_quantities = dict(measurements)
+        elif declaration is not None and declaration.declares_no_cost:
             # Not an outstanding task. The method is deliberately null through
             # here and the branch below: it names how an amount was arrived at,
             # and neither branch arrives at one.
@@ -1006,10 +1063,10 @@ class PricingService:
             costing_status = COSTING_STATUS_UNRESOLVED
             unresolved_reason = UNRESOLVED_REASON_REPORTED_COST_MISSING
         else:
-            # Calculated, or with no publication at all — the registry is
-            # opt-in and this is how everything recorded against an undeclared
-            # key has always costed. A key declared and never published is one
-            # of those (#605): `resolve_declaration` answers `None` for it.
+            # Calculated, or naming no Event Type at all (#567's ruling: such
+            # an event is outside the hold, and costs against Cost Rates as
+            # everything did before the registry). A key that IS named and has
+            # no publication never reaches here — the hold above took it.
             computed_micros = 0
             uncosted = {}
             undeclared = {}
@@ -1038,12 +1095,10 @@ class PricingService:
             # nothing (`ck_quarantined_key_names_what_it_is_about`) — so it
             # stays on the rate path and reads as it always did.
             #
-            # AND THE PRICE SIDE BELOW IS NOT ASKED. It prices what its rules
-            # match, as it always has; this reason is about the supplier cost,
-            # and a margin over a cost that is unresolved is already waived
-            # by `_priced_by_markup`. Whether an undeclared name may take a
-            # PRICE rule is a customer-revenue question this ticket does not
-            # move.
+            # AND THE PRICE SIDE BELOW IS NOT CONSULTED FOR IT EITHER (#473
+            # row 4). A name the tenant has not yet said the meaning of is
+            # unresolved economics, and a price rule matching its spelling
+            # would publish a `known` price over it — see the price branch.
             declared_codes = (None if declaration is None
                               else declaration.declared_quantity_codes)
             # F2.4's second strict-mode refusal RETIRED WITH ITS INPUT (#272).
@@ -1164,6 +1219,27 @@ class PricingService:
             # tenant (#553, ADR-0021 §5).
             not_applicable_reason = not_applicable_reason_for(
                 sold_for_one_agreed_price=True)
+        elif unresolved_reason in A_HELD_NAME:
+            # ⚠ A HELD NAME IS UNRESOLVED ECONOMICS, AND NO PRICE OVER IT IS
+            # PUBLISHED AS `known` (#473 row 4, ruled 2026-10-22; #568). The
+            # tenant has not yet said what the Event Type, or one of the
+            # quantities, MEANS — and a price rule that happened to match a
+            # spelling, or a margin over the part of the call that did cost,
+            # would put a settled number on a call nobody has described. So
+            # the ladder is not consulted at all, exactly as it is not under
+            # an agreed price: a rule id in the record would say the tenant's
+            # configuration priced this, when nothing did.
+            #
+            # ⚠ `unknown`, AND NOT `waived`. `waived` is a decided loss — a
+            # margin over a cost UBB will never learn — and it is terminal.
+            # This cost is waiting on the tenant's decision, and the remedy is
+            # that decision: a replay re-prices the event from its original
+            # moment, which only an `unknown` price can be completed by (the
+            # price pair's one move is `unknown` to `known`). The reason beside
+            # it is NULL, which is the published reading of "missing input";
+            # the cost's reason says which input.
+            billed, pricing_method = None, None
+            pricing_status = PRICING_STATUS_UNKNOWN
         else:
             for measurement_key, units_val in sorted(measurements.items()):
                 card = resolve_the_price_rule(measurement_key)
@@ -1722,6 +1798,7 @@ def resolve_price(subject, as_of):
         caller_provider_cost=subject.caller_provider_cost,
         reported_cost_source_kind=subject.reported_cost_source_kind,
         pricing_mode=subject.pricing_mode,
+        names_an_event_type=bool(selectors.get("event_type")),
         resolve_declaration=resolve_declaration,
         resolve_the_cost_rule=resolve_the_cost_rule,
         resolve_the_price_rule=resolve_the_price_rule,

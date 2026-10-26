@@ -382,7 +382,7 @@ class TheAbsentReasonIsLegalOnThePublishedContractTest(SimpleTestCase):
                     f"{name}.unresolved_reason refuses the `null` the server "
                     f"returns for every settled posting: {json.dumps(node)}")
 
-    def test_the_reason_still_carries_the_registrys_three_values(self):
+    def test_the_reason_still_carries_every_value_the_registry_declares(self):
         """Admitting `null` must not have cost the enum.
 
         The cheap way to make the test above pass is to stop the concept being

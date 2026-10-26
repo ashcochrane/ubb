@@ -28,6 +28,7 @@ accounts for.
 from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import TestCase
 
@@ -50,6 +51,8 @@ from apps.platform.event_types.quarantine import (
     hold_an_unrecognised_quantity,
     register_the_held_name,
 )
+from apps.platform.event_types.tests._helpers import (
+    held_beside_no_recorded_event)
 from apps.platform.tenants.models import Tenant
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
@@ -111,7 +114,8 @@ def _a_name_nobody_declared(tenant, *, occurred_at=MID_JANUARY,
         defaults={"costing_method": COSTING_METHOD_CALCULATED})
     return hold_an_unrecognised_quantity(
         tenant=tenant, event_type_key=EVENT_TYPE_KEY,
-        measurement_key=held_name, quantity="12", occurred_at=occurred_at)
+        measurement_key=held_name, quantity="12", occurred_at=occurred_at,
+        event_id=uuid4())
 
 
 def _declared(tenant, code):
@@ -297,7 +301,10 @@ class AnUndecidedNameRefusesTheCloseTest(TestCase):
         tenant = _tenant()
         period = _period(tenant)
         held = _a_name_nobody_declared(tenant)
-        register_the_held_name(held, _declared(tenant, "reasoning_tokens"))
+        # The name is held directly, beside no recorded event, so no product
+        # is asked to replay one: what the close reads is the decision.
+        with held_beside_no_recorded_event():
+            register_the_held_name(held, _declared(tenant, "reasoning_tokens"))
 
         TenantBillingService.close_period(period)
 

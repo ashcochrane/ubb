@@ -51,28 +51,40 @@ differently — by whoever wired the close, and the same argument put the join's
 hold on the recording path rather than in the spine, which a Resolution Run
 re-runs over stored receipts.
 
-**What still has no production caller is** :func:`hold_an_unrecognised_event_type`.
-The Event Type registry is opt-in (``costing.cost_declaration``): a report
-against a key nobody declared is recorded and costed against Cost Rates as it
-always was, so nothing on the recording path can find an Event Type
-unrecognised. That is a standing departure from spec §3.4's "held outside the
-record until registered", not decided by #428 and owned by nobody; and the
-:class:`Replay` the two naming remediations return has no consumer either —
-both UNOWNED RESIDUALS, said here rather than left to read as wired.
+**And so is the Event Type half (#568).** :func:`hold_an_unrecognised_event_type`
+is called by ``UsageService._record_core`` too: an event naming an Event Type
+whose ``costing.cost_declaration`` is ``None`` — nobody declared the key, or it
+was declared and never published, which recording reads as the same thing
+(#605) — is recorded as a posting whose cost is ``unresolved``, reason
+``event_type_not_declared``, and whose price is ``unknown``, and the name is
+held beside it in the same write. The hold keys on the read returning nothing,
+never on whether a catalogue row exists, so a never-published key cannot take a
+second path. It is the posting, not this row, that is "the record": spec §3.4's
+"held outside the record until registered" is not adopted, because only a
+posting can carry everything else the call said and a replay needs all of it.
+An event naming NO Event Type names nothing to hold and is outside this (#567).
 
-A report against a key declared and never published takes whatever path an
-undeclared one does (#605): recording reads it as undeclared, so what #568
-makes of that path, it makes of this key too.
+**What a remediation entitles reaches the event (#473 row 1).** Mapping or
+registering a name hands its :class:`Replay` to every consumer registered in
+``hooks.py``, inside the remediation's own transaction; metering's re-costs and
+re-prices the event the name arrived on, from that event's own moment, with
+every answer the tenant has given about that event applied
+(:func:`the_tenants_answers`). Dismissing hands nothing on: a name the tenant
+has said is not economic re-costs nothing (#473 row 2), and the event keeps the
+cost it was recorded with.
 """
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import NamedTuple
 from uuid import UUID
 
+from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import UBBError
 
+from .hooks import hand_on
 from .models import (
     EventType,
     Measurement,
@@ -81,6 +93,7 @@ from .models import (
     RESOLUTION_MAPPED,
     RESOLUTION_REGISTERED,
     RESOLUTION_UNRESOLVED,
+    RESOLUTIONS_NAMING_A_DECLARATION,
     UNRECOGNISED_EVENT_TYPE,
     UNRECOGNISED_MEASUREMENT_KEY,
 )
@@ -176,24 +189,31 @@ class Replay:
     """What re-costing an event needs, and nothing else.
 
     It is the cost key (#193 §B2) — tenant, Event Type, measurement, timestamp
-    — plus the numbers that arrived. No posting identifier travels here: the
-    kernel may not point into a product's tables (ADR-001), and for the case
-    that matters most there is no posting to point at.
+    — plus the numbers that arrived, and the identity of the recorded event
+    they arrived on. The identity is an id and not a relation: the kernel may
+    not depend on a product's tables (ADR-001), and an id is a fact about what
+    arrived rather than a pointer anything here follows.
 
     ``quantities`` is a bag on both branches even though the two branches fill
     it from different places, because what re-costs an event should not have to
     know which kind of repair produced it. On an unrecognised Event Type it is
-    everything the event carried, since nothing else holds it; on an
-    unrecognised quantity it is the single pair that was not costable, since
-    the posting holds the rest.
+    everything the event carried; on an unrecognised quantity it is the single
+    pair that was not costable, keyed by the DECLARED name, since the posting
+    holds the rest.
 
     ``effective_at`` is the moment the event happened. It is never the moment
     it was repaired, and it is a separate name from ``resolved_at`` on purpose
     — one field holding "the time" would be the bug this whole record exists to
     prevent, one rename away.
+
+    ``held_name_id`` is the held row whose remediation entitled this replay:
+    what re-costs the event names it, so an amount a replay completes can be
+    explained by the decision that completed it.
     """
 
     tenant_id: UUID
+    event_id: UUID
+    held_name_id: UUID
     event_type_key: str
     measurement_key: str
     quantities: dict
@@ -205,28 +225,31 @@ class Replay:
 # ---------------------------------------------------------------------------
 
 def hold_an_unrecognised_event_type(*, tenant, event_type_key, quantities,
-                                    occurred_at):
-    """Hold a name that matched no declaration. Raises nothing at the door.
+                                    occurred_at, event_id):
+    """Hold a name that matched no production declaration. Raises nothing at
+    the door.
 
     ``event_type_key`` is written as it arrived: no case folding, no trimming,
     no punctuation tidied. The tenant is about to be asked what this name meant,
     and what they are shown has to be what they sent.
 
     ``quantities`` is the whole measured bag, and it is a required argument
-    rather than an optional one because forgetting it loses the event's
-    numbers permanently. An event UBB cannot place is not recorded as a
-    posting at all (``docs/plans/2026-07-31-provider-supplied-cost-decision.md``
-    §3.4, "held outside the record until registered") — this row is the only
-    thing holding them. Pass ``{}`` for a call that measured nothing.
+    rather than an optional one because this row is the kernel's own account of
+    what the event carried: the posting holds the bag too, and the kernel may
+    not read it (ADR-001), so a repair screen and the ``Replay`` a remediation
+    hands on read it here. Pass ``{}`` for a call that measured nothing.
+
+    ``event_id`` is the recorded event the name arrived on — the posting
+    written in the same savepoint, which a replay re-costs (#568).
     """
     return _hold(tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
                  event_type_key=event_type_key, measurement_key="",
                  quantity="", quantities=_as_text(quantities),
-                 occurred_at=occurred_at)
+                 occurred_at=occurred_at, event_id=event_id)
 
 
 def hold_an_unrecognised_quantity(*, tenant, event_type_key, measurement_key,
-                                  quantity, occurred_at):
+                                  quantity, occurred_at, event_id):
     """Hold a quantity code the matched declaration does not declare.
 
     ``event_type_key`` names a DECLARED Event Type here — the event matched a
@@ -240,11 +263,14 @@ def hold_an_unrecognised_quantity(*, tenant, event_type_key, measurement_key,
     number beside a name nothing matched, and that is what ``quantity`` holds —
     as text, because a numeric column has a scale and the declaration that
     would say which scale is legal for this name is precisely the one missing.
+
+    ``event_id`` is that posting's, for the reason the Event Type hold above
+    carries one.
     """
     return _hold(tenant=tenant, unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
                  event_type_key=event_type_key,
                  measurement_key=measurement_key, quantity=as_sent(quantity),
-                 quantities={}, occurred_at=occurred_at)
+                 quantities={}, occurred_at=occurred_at, event_id=event_id)
 
 
 def _as_text(quantities):
@@ -401,29 +427,39 @@ def _refuse_a_second_remediation(held):
 
 
 def _remediate(held, resolution, declared_key):
-    """Record the decision, then describe the replay it entitles.
+    """Record the decision, then hand on the replay it entitles.
 
     The write is a conditional update rather than a ``save``: it is the point
     at which two concurrent repairs are told apart, and the condition is that
     the row is still unresolved. ``updated_at`` is set by hand because
     ``QuerySet.update`` does not run ``auto_now`` — the same reason
     ``EventType.revise_declaration`` sets it.
+
+    **One transaction with what the decision entitles (#473 row 1).** A
+    remediation naming a declaration hands its :class:`Replay` to every
+    registered consumer (``hooks.hand_on``) before the transaction ends, and a
+    consumer that fails takes the decision with it — a name recorded as mapped
+    whose event was never re-costed would have left the period-close safeguard
+    with nothing ever looking at it again. A dismissal hands nothing on.
     """
     now = timezone.now()
-    moved = (QuarantinedKey.objects.unresolved()
-             .filter(pk=held.pk)
-             .update(resolution=resolution, resolved_key=declared_key,
-                     resolved_at=now, updated_at=now))
-    if not moved:
-        raise AlreadyResolved(held)
+    with transaction.atomic():
+        moved = (QuarantinedKey.objects.unresolved()
+                 .filter(pk=held.pk)
+                 .update(resolution=resolution, resolved_key=declared_key,
+                         resolved_at=now, updated_at=now))
+        if not moved:
+            raise AlreadyResolved(held)
 
-    held.resolution = resolution
-    held.resolved_key = declared_key
-    held.resolved_at = now
+        held.resolution = resolution
+        held.resolved_key = declared_key
+        held.resolved_at = now
 
-    if resolution == RESOLUTION_DISMISSED:
-        return None
-    return _replay(held)
+        if resolution == RESOLUTION_DISMISSED:
+            return None
+        replay = _replay(held)
+        hand_on(replay)
+    return replay
 
 
 def _replay(held):
@@ -443,10 +479,55 @@ def _replay(held):
         # by construction — it is the reason this row exists.
         quantities = {held.resolved_key: held.quantity}
     return Replay(tenant_id=held.tenant_id,
+                  event_id=held.event_id,
+                  held_name_id=held.pk,
                   event_type_key=event_type_key,
                   measurement_key=measurement_key,
                   quantities=quantities,
                   effective_at=held.occurred_at)
+
+
+class TenantsAnswers(NamedTuple):
+    """What the tenant has decided about the held names on ONE recorded event,
+    as the re-keying a re-costing applies (#473 row 1).
+
+    Plain data, for the reason ``costing.py`` gives: the product that re-costs
+    the event needs two facts and has no business holding rows it could save.
+    """
+
+    #: The declared key an unrecognised Event Type was mapped to or registered
+    #: as, or ``None`` where this event's Event Type was never held or is still
+    #: undecided — either way the event's own key is the one to cost under.
+    event_type_key: str | None
+    #: ``{held quantity name: the declared name it now means}`` for every
+    #: quantity on this event the tenant has mapped or registered. A name still
+    #: held, or dismissed, is absent: it keeps its spelling, so a re-costing
+    #: holds it again — which is what keeps an undecided name undecided and a
+    #: dismissed one from being re-costed (#473 row 2).
+    measurement_keys: dict
+
+
+def the_tenants_answers(*, tenant_id, event_id):
+    """Every answer the tenant has given about the held names on one event.
+
+    Asked of the WHOLE event rather than of the one row just remediated,
+    because an event can carry two held names and a re-costing that applied
+    only the latest answer would re-key one and hold the other again — and the
+    first answer would then be lost to every later re-costing, since nothing
+    else records it. One query, on ``ix_quarantined_key_event``.
+    """
+    event_type_key, measurement_keys = None, {}
+    for unrecognised, measurement_key, resolved_key in (
+            QuarantinedKey.objects
+            .filter(tenant_id=tenant_id, event_id=event_id,
+                    resolution__in=RESOLUTIONS_NAMING_A_DECLARATION)
+            .values_list("unrecognised", "measurement_key", "resolved_key")):
+        if unrecognised == UNRECOGNISED_EVENT_TYPE:
+            event_type_key = resolved_key
+        else:
+            measurement_keys[measurement_key] = resolved_key
+    return TenantsAnswers(event_type_key=event_type_key,
+                          measurement_keys=measurement_keys)
 
 
 # ---------------------------------------------------------------------------

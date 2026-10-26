@@ -24,7 +24,8 @@ from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     a_usage_event_subject, cost_rate_in_default_book, declares_a_markup,
     rate_in_default_book)
-from apps.platform.event_types.tests._helpers import declares_a_quantity
+from apps.platform.event_types.tests._helpers import (
+    declares_a_quantity, publishes_what_it_names)
 from core.vocabulary import (
     COSTING_METHOD_REPORTED,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -150,10 +151,13 @@ class TestPricing:
         #272 deleted the magnitude, so the refusal became unexpressible rather
         than relaxed; the event with nothing to price was always accepted and
         still is. It reads as a resolved zero because nothing about it went
-        uncosted — there was nothing to cost.
+        uncosted — there was nothing to cost. Its Event Type is published, with
+        a quantity this call simply did not measure: one nobody published is
+        held before the bag is looked at (#568).
         """
         t = self._t()
         c = Customer.objects.create(tenant=t, external_id="c5")
+        publishes_what_it_names(t, "e", "calls")
         costing = PricingService.price(
             subject=a_usage_event_subject(),
             tenant=t, customer=c,

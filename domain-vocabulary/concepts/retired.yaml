@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,923 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,480 of 2,928 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2882,6 +2882,17 @@ measurement_key:
     # under `historical-migrations` (276 -> 277): a unit's stop facts and the
     # expiry policy its start published move onto UBB's own columns
     # (`work/0029`), so the exclusions stand at 446.
+    #
+    # 2026-10-26, R10-W1 (#568, #473 row 1): 2,477 of 2,923 -> 2,480 of 2,928
+    # tracked files (`units` 43 files / 121 occurrences, UNMOVED). Five files
+    # arrived. Two are migrations, excluded under `historical-migrations`
+    # (277 -> 279): a held name names the event it arrived on
+    # (`event_types/0010`), and an Event Type with no production declaration
+    # becomes a reason a cost is unresolved (`usage/0048`), so the
+    # exclusions stand at 448. The three swept arrivals: the kernel's replay
+    # registry (`event_types/hooks.py`) and two composition-layer test
+    # modules (an Event Type nobody published is held; what a remediation
+    # does with a held name).
 
     - term: units
       retired_as: >-

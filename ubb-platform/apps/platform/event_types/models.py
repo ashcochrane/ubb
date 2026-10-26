@@ -1868,23 +1868,42 @@ class QuarantinedKey(BaseModel):
     quantity = models.TextField(blank=True, default="")
 
     #: The whole measured bag, as it arrived. Event Type rows only, and the
-    #: asymmetry with ``quantity`` above is a merged decision rather than an
-    #: accident.
+    #: asymmetry with ``quantity`` above is about what a REPAIR needs to show.
     #:
-    #: ``docs/plans/2026-07-31-provider-supplied-cost-decision.md`` §3.4 draws
-    #: the line: an event whose Event Type is unknown is **not recorded as a
-    #: usage event** — "held outside the record until registered" — because
-    #: there is nothing to record it *as*. So for that case this row is the
-    #: only thing that holds what arrived, and a row without the numbers would
-    #: make "nothing is discarded" false and the replay uncostable. An event
-    #: whose Event Type is KNOWN is a first-class posting that carries its own
-    #: bag, and copying it here would be storing a fact twice (ADR-0006 §4) —
-    #: which is why that case holds only the single number above, the one thing
-    #: the posting's bag cannot explain on its own.
+    #: ``docs/plans/2026-07-31-provider-supplied-cost-decision.md`` §3.4 drew
+    #: the line at "held outside the record until registered", and #568 does
+    #: not adopt that half: such an event IS recorded, as a posting whose cost
+    #: is unresolved and whose price is unknown, because the posting is the
+    #: only record that can carry everything else the call said — its
+    #: customer, its idempotency key, its unit of work — and a replay needs
+    #: all of it. So the bag is on the posting too. It is here as well because
+    #: this record is the KERNEL'S account of what arrived, and the kernel may
+    #: not read a product's table (ADR-001): the tenant about to decide what a
+    #: name meant is shown the numbers it arrived with from this row alone,
+    #: and the ``Replay`` a remediation hands on carries them. A quantity row
+    #: needs only its one number for the same reason — the rest of that bag
+    #: answers no question about the name.
     #:
     #: Values are text, for the reason ``quantity`` is: a JSON number goes
     #: through a float, and that is the rounding this record exists to refuse.
     quantities = models.JSONField(default=dict, blank=True)
+
+    #: WHICH RECORDED EVENT THE NAME ARRIVED ON (#568, #473) — the id the
+    #: recording's acknowledgement publishes as ``event_id``.
+    #:
+    #: Both kinds of held name now arrive beside a posting written in the same
+    #: savepoint, and a remediation has to reach that posting: a replay
+    #: re-costs THAT event from its own moment, and nothing else here can say
+    #: which one it was — two events can share a tenant, a name and an instant,
+    #: and one row per event is this record's whole shape.
+    #:
+    #: **An identity, not a relation, and it points at no declaration.** A
+    #: foreign key would make the kernel's table depend on a product's
+    #: (ADR-001); the id is a fact about what arrived, and a remediation
+    #: deciding what a NAME meant is still the only thing that resolves this
+    #: row — so the fence ``tests/test_quarantine_invariants.py`` holds, that a
+    #: held name never points at a declaration, is untouched.
+    event_id = models.UUIDField()
 
     #: When the event happened. **The load-bearing column of this record.**
     #: Remediation happens whenever somebody gets round to it, and a cost
@@ -1995,6 +2014,11 @@ class QuarantinedKey(BaseModel):
             models.Index(fields=["tenant", "occurred_at"],
                          condition=models.Q(resolution=RESOLUTION_UNRESOLVED),
                          name="ix_quarantined_key_open"),
+            # What a replay and a Resolution Run ask: every held name on ONE
+            # recorded event, decided or not (#473) — the answers a re-costing
+            # applies are the whole event's, never one row's.
+            models.Index(fields=["tenant", "event_id"],
+                         name="ix_quarantined_key_event"),
         ]
 
     def __str__(self):
@@ -2093,8 +2117,8 @@ class QuarantinedKey(BaseModel):
             return ("quantity", (
                 "names one number on a row about an unrecognised Event Type, "
                 "where no quantity was ever looked up. The bag that arrived "
-                "goes in `quantities`, which is the only place it exists — an "
-                "event UBB cannot place is not recorded as a posting at all."))
+                "goes in `quantities`, the kernel's own account of what the "
+                "event carried."))
         return None
 
     def _resolution_dating_error(self):

@@ -66,16 +66,13 @@ from apps.metering.queries import (
 )
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
-from apps.platform.event_types.models import (
-    EventType, Measurement, MeasurementConcept,
-)
+from apps.platform.event_types.models import Measurement, MeasurementConcept
 from apps.platform.work.models import Task
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     ANALYTICS_MEASURE_RECORDED_EVENTS, ANALYTICS_MEASURE_SUPPLIER_COGS,
-    ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT, COSTING_METHOD_CALCULATED,
-    SOURCE_KIND_CALLER_SUPPLIED, UNIT_CALL, USAGE_EVENT_KIND_METERED_USAGE,
+    ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT, USAGE_EVENT_KIND_METERED_USAGE,
     USAGE_EVENT_KIND_TASK_CHARGE, USAGE_EVENT_KIND_VALUES,
 )
 
@@ -346,22 +343,24 @@ class TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind(
                                      )["amount_micros"]
 
     def _file_the_metered_quantity_under_a_heading(self):
-        """What a tenant does to opt in: declare the Event Type's quantity and
-        file it under a heading of its own.
+        """What a tenant does to opt in: file the Event Type's quantity under
+        a heading of its own.
 
-        Done AFTER the recordings, which the heading allows because it reads
-        its membership live — and which keeps the declaration from changing how
-        the calls above were costed or priced, so both pins stand on one
+        The Event Type is already declared and published with the quantity —
+        the rule pinned to it is a tenant's statement that it prices those
+        calls, and a call naming an unpublished one would be held (#568). The
+        heading is not part of what a publication pins, so filing it here, AFTER
+        the recordings, changes nothing about how the calls were costed or
+        priced; it reads its membership live, so both pins stand on one
         fixture.
         """
         heading = MeasurementConcept.objects.create(tenant=self.tenant,
                                                     key=A_HEADING)
-        event_type = EventType.objects.create(
-            tenant=self.tenant, key=SOLD_PER_EVENT,
-            costing_method=COSTING_METHOD_CALCULATED)
-        Measurement.objects.create(
-            event_type=event_type, code=PRICED_QUANTITY, unit=UNIT_CALL,
-            source_kind=SOURCE_KIND_CALLER_SUPPLIED, concept=heading)
+        filed = Measurement.objects.get(event_type__tenant=self.tenant,
+                                        event_type__key=SOLD_PER_EVENT,
+                                        code=PRICED_QUANTITY)
+        filed.concept = heading
+        filed.save()
 
     def test_the_heading_counts_the_metered_calls_and_never_the_charge(self):
         """One row, holding both calls, and no row at all for the charge — not

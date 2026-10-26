@@ -62,7 +62,7 @@ from django.db.models import Q
 
 from apps.metering.pricing.models import Rate, ResolutionRun
 from apps.metering.pricing.receipts import (
-    RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject, Resolution,
+    HELD_NAME_KEY, RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject, Resolution,
     completed_receipt, pricing_mode_of, recorded_quantities,
     written_in_the_current_shape)
 from apps.metering.pricing.services.cost_settlement import (
@@ -70,9 +70,10 @@ from apps.metering.pricing.services.cost_settlement import (
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
 from apps.metering.pricing.services.pricing_service import (
-    PricingSubject, resolve_price)
+    A_HELD_NAME, PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import SYSTEM, get_current_actor
+from apps.platform.event_types.quarantine import the_tenants_answers
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import cost_total, counts_as_unresolved
 from core.vocabulary import (
@@ -81,6 +82,7 @@ from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
 )
 
 #: THE PAIRS A RUN RECOVERS, WHICH IS EVERY PAIR THERE IS. Read from the
@@ -249,7 +251,8 @@ def execute(*, tenant, selector, actor=None):
 
     costs_settled = prices_resolved = left_unresolved = 0
     for posting_id in taking:
-        settled, resolved = _complete(posting_id, run_id)
+        settled, resolved = _complete(
+            posting_id, provenance={RESOLUTION_RUN_KEY: str(run_id)})
         costs_settled += int(settled)
         prices_resolved += int(resolved)
         left_unresolved += int(not (settled or resolved))
@@ -278,13 +281,18 @@ def execute(*, tenant, selector, actor=None):
         more_to_do=more_to_do)
 
 
-def _complete(posting_id, run_id):
+def _complete(posting_id, *, provenance):
     """Re-resolve one posting and complete whatever was never resolved.
 
     Returns `(a cost settled, a price resolved)`. Each completion is one
     statement through the pair's own door, and the two pairs are independent:
     the cost may settle while the price stays unknown, or the reverse, or both
     may move, or neither.
+
+    ``provenance`` is the cross-reference naming the act that completed it —
+    a run (:data:`RESOLUTION_RUN_KEY`) or a remediation's replay
+    (:data:`HELD_NAME_KEY`, :func:`replay_the_held_event`). The two acts are
+    one completion with a different author, which is why they share this.
 
     ⚠ **THE ROW IS RE-READ UNDER A LOCK, AND THE STATUSES ARE RE-ASKED AFTER
     IT.** The candidate ids were selected a moment ago; between then and now a
@@ -310,7 +318,7 @@ def _complete(posting_id, run_id):
         return False, False
     stored, resolved = evaluation.stored, evaluation.resolved
 
-    settled_cost = _settle_the_cost(posting, stored, resolved, run_id) \
+    settled_cost = _settle_the_cost(posting, stored, resolved, provenance) \
         if "costing" in evaluation.completable else False
     # The stored record moves when the cost settles, and the price completion
     # is computed from what is on the row NOW rather than from the read above —
@@ -320,7 +328,7 @@ def _complete(posting_id, run_id):
     if settled_cost:
         posting.refresh_from_db()
         stored = getattr(posting, Posting.RECEIPT_COLUMN)
-    resolved_price = _resolve_the_price(posting, stored, resolved, run_id) \
+    resolved_price = _resolve_the_price(posting, stored, resolved, provenance) \
         if "pricing" in evaluation.completable else False
 
     return settled_cost, resolved_price
@@ -544,38 +552,49 @@ def _the_record_cannot_account_for_a_completion(posting, stored):
 
     Where either holds, the run examines the posting, completes nothing, and
     reports it still unresolved — which is the true answer about it.
+
+    ⚠ **AN EVENT TYPE HELD WITH NO PRODUCTION DECLARATION KEEPS THE WHOLE BAG
+    (#568), SO ITS EMPTY BAG IS THE CALL'S OWN.** That branch records every
+    quantity the event carried, so a record holding none is one whose event
+    measured none — a fact, and the bag a replay should cost from once the
+    tenant says what the Event Type was — rather than a record that kept
+    nothing. It is exempt from the second guard for exactly that reason.
     """
     if not written_in_the_current_shape(stored):
         return True
     return (posting.costing_status
             == PAIR_BY_SECTION["costing"].unresolved_status
+            and posting.unresolved_reason
+            != UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED
             and not recorded_quantities(stored))
 
 
-def _settle_the_cost(posting, stored, resolved, run_id):
+def _settle_the_cost(posting, stored, resolved, provenance):
     """Settle the supplier cost where the re-resolution now believes one."""
     if resolved["costing"]["status"] != SECTIONS["costing"].settled:
         return False
     outcome = settle_provider_cost(
         posting_id=posting.pk,
         provider_cost_micros=resolved["totals"]["provider_cost_micros"],
-        pricing_receipt=_receipt_completing("costing", stored, resolved, run_id))
+        pricing_receipt=_receipt_completing("costing", stored, resolved,
+                                            provenance))
     return outcome is Settlement.SETTLED
 
 
-def _resolve_the_price(posting, stored, resolved, run_id):
+def _resolve_the_price(posting, stored, resolved, provenance):
     """Resolve the customer price where the re-resolution now decides one."""
     if resolved["pricing"]["status"] != SECTIONS["pricing"].settled:
         return False
     outcome = resolve_customer_price(
         posting_id=posting.pk,
         billed_cost_micros=resolved["totals"]["billed_cost_micros"],
-        pricing_receipt=_receipt_completing("pricing", stored, resolved, run_id))
+        pricing_receipt=_receipt_completing("pricing", stored, resolved,
+                                            provenance))
     return outcome is PriceResolution.RESOLVED
 
 
-def _receipt_completing(section, stored, resolved, run_id):
-    """The stored receipt with one section completed, naming the run that did it.
+def _receipt_completing(section, stored, resolved, provenance):
+    """The stored receipt with one section completed, naming the act that did it.
 
     It asks nothing about the record's shape, and that is the point rather than
     an omission: a posting whose record cannot be completed never reaches here,
@@ -591,7 +610,7 @@ def _receipt_completing(section, stored, resolved, run_id):
             method=side["method"], status=side["status"],
             amount_micros=resolved["totals"][SECTIONS[section].amount_key],
             detail=side["detail"])},
-        provenance={RESOLUTION_RUN_KEY: str(run_id)})
+        provenance=provenance)
 
 
 def _subject_of(posting, stored):
@@ -626,14 +645,20 @@ def _subject_of(posting, stored):
     A receipt written before this field existed answers `None`, and
     `PricingSubject`'s own default is what that becomes: the regime such a
     record was resolved under, since nothing else could produce a price then.
+
+    ⚠ **AND WHAT THE EVENT WAS IS THE TENANT'S ANSWER WHERE A NAME ON IT WAS
+    HELD (#473 row 1, #568)** — see :func:`_what_the_tenant_says_it_was`.
     """
+    event_type, measurements = _what_the_tenant_says_it_was(posting, stored)
+    selectors = {name: getattr(posting, name) for name in Rate.SELECTORS}
+    selectors["event_type"] = event_type
     return PricingSubject(
         receipt_subject=ReceiptSubject(
             subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
             subject_id=str(posting.pk)),
         tenant=posting.tenant, customer=posting.customer,
-        selectors={name: getattr(posting, name) for name in Rate.SELECTORS},
-        measurements=recorded_quantities(stored),
+        selectors=selectors,
+        measurements=measurements,
         currency=posting.currency,
         pricing_mode=(pricing_mode_of(stored) or PRICING_MODE_EVENT_PRICED),
         # A RUN STATES NO PRICE OF ITS OWN, EVER — a recovery inventing one
@@ -642,6 +667,97 @@ def _subject_of(posting, stored):
         # #365 the subject has no such field at all, so the claim is structural
         # and there is nothing left here to pass.
         caller_provider_cost=_the_cost_the_record_holds(posting))
+
+
+class AnswerNamesOneQuantityTwice(ValueError):
+    """Applying the tenant's answers would put two quantities under one
+    declared name on one event.
+
+    A held name mapped onto a name the same event already carries says the
+    call reported that quantity twice, and nothing here may add them or pick
+    one. Raised inside the remediation's transaction by the replay, it refuses
+    the mapping — which is where the tenant can still answer differently.
+    """
+
+
+def _what_the_tenant_says_it_was(posting, stored):
+    """The event's Event Type key and quantities, with every answer the tenant
+    has given about its held names applied (#473 row 1, #568).
+
+    A posting whose cost is held on a name keeps the name AS IT ARRIVED — on
+    its own column and in its receipt's bag — because that is what the call
+    said, and both are read, never rewritten. What the name MEANS is the
+    tenant's answer, recorded on the held row (`quarantine.the_tenants_answers`)
+    and applied here, every time the posting is re-resolved, by the replay a
+    remediation hands on and by every later run alike: an Event Type mapped or
+    registered is costed under the declared key, and a quantity under its
+    declared name. Without this a MAPPED name could never settle — a run
+    re-resolving the spelling would hold it again forever.
+
+    A name still held, or dismissed, has no answer and keeps its spelling, so
+    the spine holds it again: an undecided name stays undecided, and a
+    dismissed one re-costs nothing (#473 row 2). Asked only of a posting whose
+    cost is held on a name, which is the only kind that has held rows.
+    """
+    quantities = recorded_quantities(stored)
+    if posting.unresolved_reason not in A_HELD_NAME:
+        return posting.event_type, quantities
+    answers = the_tenants_answers(tenant_id=posting.tenant_id,
+                                  event_id=posting.pk)
+    renamed = {}
+    for name, quantity in quantities.items():
+        declared = answers.measurement_keys.get(name, name)
+        if declared in renamed:
+            raise AnswerNamesOneQuantityTwice(
+                f"event {posting.pk} would carry two quantities named "
+                f"'{declared}' once its held names are answered, and nothing "
+                f"may add them or choose one. Map the held name to a "
+                f"declaration this event does not already carry, register it, "
+                f"or dismiss it.")
+        renamed[declared] = quantity
+    return (answers.event_type_key or posting.event_type), renamed
+
+
+def replay_the_held_event(replay):
+    """THE CONSUMER OF A REMEDIATION'S REPLAY (#473 row 1, #568).
+
+    Registered with the kernel's replay registry (`event_types/hooks.py`) by
+    this app's `ready()`, so every map and every register hands its
+    :class:`~apps.platform.event_types.quarantine.Replay` here, inside the
+    remediation's own transaction: the decision and what it entitles land
+    together or not at all.
+
+    **IT IS A RUN OF ONE, FROM THE EVENT'S OWN MOMENT.** The posting the name
+    arrived on is re-resolved exactly as a run re-resolves one — at the
+    posting's own instant, never the repair's, from its receipt's bag, with
+    every answer the tenant has given about that event applied — and whatever
+    was never resolved is completed through the two doors, the receipt naming
+    the held name whose remediation completed it (`receipts.HELD_NAME_KEY`).
+    Sharing the run's completion is what keeps a replay and a later run from
+    disagreeing about what a remediated event costs. Where the event still
+    cannot settle — another name on it undecided, no rate at that instant, a
+    declaration not yet published — nothing completes, and a later run will
+    when it can.
+
+    The Replay's own moment is held against the posting's: they were written
+    in one savepoint, so a disagreement is a contradiction in the record, and
+    re-costing either moment would be choosing one.
+    """
+    effective_at = (Posting.objects
+                    .filter(pk=replay.event_id, tenant_id=replay.tenant_id)
+                    .values_list("effective_at", flat=True).first())
+    if effective_at is None:
+        raise Posting.DoesNotExist(
+            f"no recorded event {replay.event_id} for the held name "
+            f"{replay.held_name_id} to replay")
+    if effective_at != replay.effective_at:
+        raise RuntimeError(
+            f"held name {replay.held_name_id} says its event happened at "
+            f"{replay.effective_at.isoformat()} and event {replay.event_id} "
+            f"says {effective_at.isoformat()}; they were written together, "
+            f"and a replay will not pick one")
+    _complete(replay.event_id,
+              provenance={HELD_NAME_KEY: str(replay.held_name_id)})
 
 
 def _the_cost_the_record_holds(posting):

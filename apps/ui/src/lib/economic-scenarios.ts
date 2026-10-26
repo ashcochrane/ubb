@@ -1156,7 +1156,7 @@ export function spendPoolAssessment(terms: SpendPoolTerms): SpendPoolAssessmentS
 export const RECEIPT_SCHEMA_VERSION = 2;
 
 /** The engine that computed it — `pricing_service.PRICING_ENGINE_VERSION`. */
-export const PRICING_ENGINE_VERSION = "2.2.0";
+export const PRICING_ENGINE_VERSION = "3.0.0";
 
 /**
  * The record a delivered unit of work's charge posting carries, as

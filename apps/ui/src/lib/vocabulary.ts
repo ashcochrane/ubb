@@ -1963,6 +1963,7 @@ export const UNRESOLVED_REASON_VALUES = [
   "reported_cost_missing",
   "cost_rate_missing",
   "measurement_not_declared",
+  "event_type_not_declared",
 ] as const;
 
 export type UnresolvedReason = (typeof UNRESOLVED_REASON_VALUES)[number];
@@ -1971,6 +1972,7 @@ export const UNRESOLVED_REASON_LABEL_KEYS = {
   "reported_cost_missing": "unresolved_reason.reported_cost_missing",
   "cost_rate_missing": "unresolved_reason.cost_rate_missing",
   "measurement_not_declared": "unresolved_reason.measurement_not_declared",
+  "event_type_not_declared": "unresolved_reason.event_type_not_declared",
 } as const satisfies Record<UnresolvedReason, string>;
 
 

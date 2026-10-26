@@ -67,6 +67,7 @@ from apps.metering.pricing.tests._helpers import (
     rate_in_default_book,
 )
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import publishes_what_it_names
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -122,7 +123,12 @@ class _ALadderMixin:
     """
 
     def _tenant_and_customer(self):
+        """The tenant every subject here is resolved for, with the Event Type
+        those subjects name published — a call naming one nobody published is
+        held before any rung is asked (#568), and every case here is about the
+        rungs."""
         tenant = Tenant.objects.create(name="T", default_currency="usd")
+        publishes_what_it_names(tenant, EVENT_TYPE, QUANTITY)
         return tenant, Customer.objects.create(tenant=tenant, external_id="c1")
 
     def _build(self, tenant, customer, rungs):

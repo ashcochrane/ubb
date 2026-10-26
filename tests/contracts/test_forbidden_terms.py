@@ -405,7 +405,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 276 -> 277 in R10-W2's consultant review: one migration — a unit's
         # stop facts and its start's expiry policy as UBB's own columns. It
         # names no retired word, so the number moved for the file existing.
-        "historical-migrations": (UNTIL_SLICE_8, 277, 19),
+        # 277 -> 279 in R10-W1 (#568, #473): two migrations — a held name
+        # names its event, and an Event Type with no publication becomes a
+        # reason. Neither names a retired word, so the number moved for the
+        # files existing.
+        "historical-migrations": (UNTIL_SLICE_8, 279, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

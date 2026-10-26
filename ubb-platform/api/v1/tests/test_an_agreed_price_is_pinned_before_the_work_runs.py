@@ -60,6 +60,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import publishes_what_it_names
 from apps.platform.grouping_fields.models import GroupingFieldValue
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -577,6 +578,9 @@ class TestRevenueAndCostResolveAgainstDifferentInstants(AgreedPriceTestBase):
     COST_AFTER = 9_000_000
 
     def _record(self, task_id, at):
+        # A cost is observed only for an Event Type the tenant published:
+        # one with no production declaration is held (#568).
+        publishes_what_it_names(self.tenant, "chat", self.QUANTITY)
         result = UsageService.record_usage(
             self.tenant, self.customer, f"call-{uuid.uuid4()}",
             event_type="chat", task_id=task_id,
