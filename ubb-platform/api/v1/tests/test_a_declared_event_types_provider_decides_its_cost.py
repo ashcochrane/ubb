@@ -15,14 +15,16 @@ named another. The owner's ruling (#184, batch item 8):
 * events naming no Event Type, or one with no publication (#568's), are
   unchanged here.
 
-"Declared" is the production sense (#605): a last publication exists. The
-supplier itself is not pinned by publication, so its key is read as the
-catalogue holds it now.
+"Declared" is the production sense (#605): a last publication exists — and
+the supplier is the one that publication names (the consultant's review of
+#618). A rename, a re-pointing or a retirement since changes nothing recording
+admits or costs until the Event Type is published again
+(`test_a_supplier_edit_takes_effect_only_when_published`).
 """
 import json
 from pathlib import Path
 
-from django.db import connection
+from django.db import connection, transaction
 from django.test import SimpleTestCase
 from django.test.utils import CaptureQueriesContext
 
@@ -35,10 +37,17 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.platform.event_types.models import EventType
 from apps.metering.pricing.services.resolution_run import (
-    TheEventNamedAnotherSupplier)
-from apps.platform.event_types.quarantine import map_to_a_declaration
+    RunSelector, TheEventNamedAnotherSupplier, execute)
+from apps.platform.event_types.quarantine import (
+    PeriodHoldsUnresolvedValues, map_to_a_declaration, refuse_a_silent_close)
+from core.time_windows import month_bounds, utc_day_start
 from core.problems import PROBLEMS, VERDICTS
-from core.vocabulary import COSTING_STATUS_KNOWN
+from core.vocabulary import (
+    COSTING_STATUS_KNOWN,
+    COSTING_STATUS_UNRESOLVED,
+    DECLARATION_STATUS_PUBLISHED,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+)
 
 CHAT = "acme.chat"
 CALLS = "calls"
@@ -93,19 +102,21 @@ class _TheDeclaredProviderDecides:
 
         self.assert_costed_as(ack, DECLARED)
 
-    def test_an_event_pays_one_read_of_its_cost_declaration(self):
-        """#605's expectation, kept through #572. The provider admission reads
-        the declaration on every event naming an Event Type; that same read
-        is handed down to the costing, which asks no second time — so a
-        publish cannot land between an admission and the costing either. The
-        read is the one query on the catalogue that joins the supplier."""
+    def test_an_event_pays_one_read_of_its_publication(self):
+        """#605's expectation, kept through #572. The edge reads the Event
+        Type's publication once, and every question about it answers from
+        that read — whose supplier the call is, whether a figure may arrive,
+        the quantities' value types — and the costing is handed it rather
+        than asking again, so a publish cannot land between an admission and
+        the costing either. The supplier is in the publication, so the read
+        joins nothing."""
         with CaptureQueriesContext(connection) as captured:
             self.send("k1", **self.a_call())
 
         reads = [query["sql"] for query in captured.captured_queries
-                 if '"ubb_event_type"' in query["sql"]
-                 and '"ubb_provider"' in query["sql"]]
+                 if 'FROM "ubb_event_type"' in query["sql"]]
         self.assertEqual(len(reads), 1, reads)
+        self.assertNotIn('"ubb_provider"', reads[0])
 
     def test_a_different_provider_is_refused_by_name(self):
         code, detail = self.refused("k1", **self.a_call(provider=OTHER))
@@ -127,17 +138,30 @@ class _TheDeclaredProviderDecides:
         self.assertEqual(code, PROVIDER_CONFLICTS_WITH_EVENT_TYPE)
         self.assertEqual(self.posting(ack).provider, "")
 
-    def test_a_renamed_supplier_is_known_by_its_new_key(self):
-        """The supplier is not pinned by publication, so its key is read as
-        the catalogue holds it now: the new key is recorded, and the old one
-        is no longer the supplier this Event Type names."""
+    def test_a_supplier_edit_takes_effect_only_when_published(self):
+        """THE DECISIVE CASE (#605; the consultant's review of #618). The
+        supplier governing an Event Type is the one its PUBLICATION names.
+        Every legal live edit — the supplier renamed, the Event Type re-pointed
+        at another, the published one retired — changes nothing recording
+        admits or costs, until the Event Type is published again; then the
+        published supplier governs."""
         self.admin("patch", f"/providers/{DECLARED}", {"key": "openai-eu"})
+        self.admin("patch", f"/event-types/{CHAT}", {"provider_key": OTHER})
+        self.admin("patch", "/providers/openai-eu", {"retired": True})
 
-        ack = self.send("k1", **self.a_call())
-        code, _ = self.refused("k2", **self.a_call(provider=DECLARED))
+        omitted = self.send("k1", **self.a_call())
+        named = self.send("k2", **self.a_call(provider=DECLARED))
+        renamed_code, _ = self.refused("k3", **self.a_call(provider="openai-eu"))
+        repointed_code, _ = self.refused("k4", **self.a_call(provider=OTHER))
 
-        self.assertEqual(self.posting(ack).provider, "openai-eu")
-        self.assertEqual(code, PROVIDER_CONFLICTS_WITH_EVENT_TYPE)
+        self.assert_costed_as(omitted, DECLARED)
+        self.assert_costed_as(named, DECLARED)
+        self.assertEqual(renamed_code, PROVIDER_CONFLICTS_WITH_EVENT_TYPE)
+        self.assertEqual(repointed_code, PROVIDER_CONFLICTS_WITH_EVENT_TYPE)
+
+        self.admin("post", f"/event-types/{CHAT}/publish")
+
+        self.assert_costed_as(self.send("k5", **self.a_call()), OTHER)
 
     def test_an_event_with_no_published_event_type_keeps_what_it_sent(self):
         """Out of #572's reach, by its own scope: naming no Event Type (#567)
@@ -150,10 +174,15 @@ class _TheDeclaredProviderDecides:
         self.assertEqual(self.posting(held).provider, OTHER)
 
     def test_a_retry_is_answered_before_the_supplier_is_asked(self):
-        """Replay wins (#605): the Event Type naming another supplier since
-        cannot refuse a retry of a call already recorded."""
+        """Replay wins (#605): the Event Type PUBLISHED naming another
+        supplier since — re-pointed and published, so a fresh call naming the
+        first supplier is refused — cannot refuse a retry of a call already
+        recorded."""
         first = self.send("k1", **self.a_call(provider=DECLARED))
         self.admin("patch", f"/event-types/{CHAT}", {"provider_key": OTHER})
+        self.admin("post", f"/event-types/{CHAT}/publish")
+        code, _ = self.refused("k2", **self.a_call(provider=DECLARED))
+        self.assertEqual(code, PROVIDER_CONFLICTS_WITH_EVENT_TYPE)
 
         again = self.send("k1", **self.a_call(provider=DECLARED))
 
@@ -198,6 +227,53 @@ class _TheDeclaredProviderDecides:
         posting.refresh_from_db()
         self.assertEqual((posting.costing_status, posting.provider_cost_micros,
                           posting.billed_cost_micros), recorded)
+
+    def test_a_publication_lands_though_one_held_event_cannot_be_answered(
+            self):
+        """THE BOUNDARY (the consultant's review of #618). Two calls held
+        under one key: one named another supplier, one named none. Publishing
+        the key commits the declaration whole; the sibling is answered and
+        costed after it; the refused one stays visibly held, still holding the
+        close — a truthful refusal of that EVENT, never a reason the Event Type
+        cannot be published. A Resolution Run, the retry, answers nothing
+        twice and costs nothing around the held one."""
+        held_key = "acme.chat_v2"
+        refused = self.posting(self.send(
+            "k1", **self.a_call(event_type=held_key, provider=OTHER)))
+        sibling = self.posting(self.send(
+            "k2", **self.a_call(event_type=held_key)))
+
+        self.declared(held_key, quantities=(CALLS,), provider_key=DECLARED)
+
+        self.assertEqual(EventType.objects.get(
+            tenant=self.tenant, key=held_key).declaration_status,
+            DECLARATION_STATUS_PUBLISHED)
+        sibling.refresh_from_db()
+        self.assertEqual(sibling.provider_cost_micros, 3 * COST[DECLARED])
+        self.assertEqual(sibling.billed_cost_micros, 3 * PRICE[DECLARED])
+        refused.refresh_from_db()
+        self.assertEqual((refused.costing_status, refused.unresolved_reason),
+                         (COSTING_STATUS_UNRESOLVED,
+                          UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED))
+        rows = {row.event_id: row for row in self.held()}
+        self.assertTrue(rows[refused.id].is_unresolved)
+        self.assertFalse(rows[sibling.id].is_unresolved)
+        opens, closes = month_bounds(refused.effective_at)
+        with self.assertRaises(PeriodHoldsUnresolvedValues):
+            refuse_a_silent_close(tenant=self.tenant,
+                                  opened_at=utc_day_start(opens),
+                                  closes_at=utc_day_start(closes))
+
+        before = [(row.pk, row.resolution) for row in self.held()]
+        with transaction.atomic():
+            execute(tenant=self.tenant, selector=RunSelector())
+
+        self.assertEqual([(row.pk, row.resolution) for row in self.held()],
+                         before)
+        refused.refresh_from_db()
+        self.assertIsNone(refused.provider_cost_micros)
+        sibling.refresh_from_db()
+        self.assertEqual(sibling.provider_cost_micros, 3 * COST[DECLARED])
 
     def test_a_held_event_whose_supplier_its_declaration_names_replays(self):
         """The control for the case above: published naming the supplier
@@ -245,5 +321,8 @@ class TheRefusalIsNamedOnTheContractTest(SimpleTestCase):
                 RecordUsageRequest.model_fields["provider"].description,
                 published):
             self.assertIn(PROVIDER_CONFLICTS_WITH_EVENT_TYPE, description)
-            self.assertIn("own provider decides", description)
+            self.assertIn("the supplier that publication names decides "
+                          "whose call this is", description)
+            self.assertIn("takes effect when the Event Type is published "
+                          "again", description)
             self.assertIn("never trusted and never replaced", description)

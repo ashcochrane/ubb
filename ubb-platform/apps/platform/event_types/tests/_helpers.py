@@ -57,6 +57,29 @@ def held_beside_no_recorded_event():
         yield
 
 
+@contextmanager
+def held_names_answered_on_commit():
+    """For a test standing in for the broker: the task a publication's
+    doorbell enqueues once it commits (`quarantine.answer_after_the_publication_
+    commits`) runs in-process, as the worker would run it. The commit itself is
+    the caller's to stand in for — `captureOnCommitCallbacks(execute=True)`."""
+    from apps.platform.event_types.tasks import answer_held_names
+    with patch.object(answer_held_names, "delay", new=answer_held_names):
+        yield
+
+
+@contextmanager
+def published_and_committed():
+    """A publication as a request makes one: its transaction commits, and the
+    held names its key answers are answered afterwards."""
+    from django.test import TestCase
+    # The task stands in for the worker for as long as the commit's callbacks
+    # run, so it encloses them: `with A, B` exits B first.
+    with held_names_answered_on_commit(), \
+            TestCase.captureOnCommitCallbacks(execute=True):
+        yield
+
+
 def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
     """The ONE declaration under which a caller may supply the supplier's cost
     directly, on `provider_cost_micros`.

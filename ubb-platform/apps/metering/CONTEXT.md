@@ -307,9 +307,10 @@ catalogue does not carry (#326). The receipt keeps what was not costed — an un
 in `undeclared_quantities`, which the wire's `uncosted_measurement_keys` names, and a held Event
 Type's whole bag in `uncosted_quantities` — so a Resolution Run re-asks the name question rather
 than rating the spelling (`TestWhatARecoveryDoesWithIt` in the same module). **The tenant's
-decision is what settles it** (#473): a publication declaring the name registers it, and mapping it
-to a published declaration answers it — either replays the event from its own moment with the
-answer applied, and a Resolution Run applies the same answers; a dismissal re-costs nothing, then or
+decision is what settles it** (#473): a publication declaring the name registers it once the
+publication commits, and mapping it to a published declaration answers it — either replays the event
+from its own moment with the answer applied, and a Resolution Run answers what publications declare
+first and applies the same answers, never costing around a name still undecided; a dismissal re-costs nothing, then or
 after the name is published; and a declaration with undecided names held beneath it is not deleted
 from under them.
 (`domain-vocabulary/concepts/economics.yaml:unresolved_reason`;

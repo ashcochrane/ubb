@@ -66,11 +66,12 @@ from uuid import uuid4
 
 import pytest
 from django.apps import apps as live_apps
+from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, migrations, transaction
 from django.utils import timezone
 
-from apps.platform.event_types import hooks
+from apps.platform.event_types import hooks, quarantine
 from apps.platform.event_types.models import (
     EventType,
     Measurement,
@@ -89,6 +90,7 @@ from apps.platform.event_types.quarantine import (
     NotYetPublished,
     PeriodHoldsUnresolvedValues,
     QuarantineError,
+    answer_what_publications_declare,
     WrongDeclaration,
     dismiss_as_non_economic,
     hold_an_unrecognised_event_type,
@@ -99,10 +101,12 @@ from apps.platform.event_types.quarantine import (
     unresolved_in_period,
 )
 from apps.platform.event_types.tests._helpers import (
-    held_beside_no_recorded_event)
+    held_beside_no_recorded_event, held_names_answered_on_commit,
+    published_and_committed)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
+    DECLARATION_STATUS_DRAFT,
     DECLARATION_STATUS_PUBLISHED,
     SOURCE_KIND_CALLER_SUPPLIED,
     UNIT_TOKEN,
@@ -150,7 +154,8 @@ def _published(event_type):
     it declares (#568), so a test about a remediation of its own publishes
     BEFORE it holds the name."""
     event_type.refresh_from_db()
-    event_type.publish()
+    with published_and_committed():
+        event_type.publish()
     return event_type
 
 
@@ -906,26 +911,91 @@ class TestOnlyAPublicationAnswersAHeldName:
         declared.refresh_from_db()
         assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
 
-    def test_anything_else_a_consumer_raises_takes_the_publication_back(self):
-        """Not a decision the tenant can take differently, so not one to
-        leave quietly open: it goes up, and the publication with it."""
+    def test_a_replay_that_breaks_leaves_the_name_held_and_the_publication(
+            self):
+        """After the publication has committed nothing may undo it, and one
+        held record that breaks is no reason to leave the names beside it
+        unanswered: it stays held — the close still sees it — and the break
+        is logged."""
         tenant = _tenant()
-        hold_an_unrecognised_event_type(
+        broken = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed", quantities={},
             occurred_at=JANUARY, event_id=uuid4())
-        draft = _event_type(tenant, key="acme.embed")
 
         def breaks(replay):
             raise RuntimeError("a contradiction in the record")
 
-        with patch.object(hooks, "_consumers", [breaks]):
+        with patch.object(hooks, "_consumers", [breaks]), \
+                patch.object(quarantine.logger, "exception") as logged:
+            declared = _published(_event_type(tenant, key="acme.embed"))
+
+        assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
+        broken.refresh_from_db()
+        assert broken.is_unresolved
+        assert [call.args[0] for call in logged.call_args_list] \
+            == ["quarantine.answer_failed"]
+
+    def test_the_publication_answers_nothing_inside_its_own_transaction(self):
+        """Publishing commits the configuration alone; the held names under
+        the key are answered once it has committed — not in the transaction
+        whose length would otherwise grow with them."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        draft = _event_type(tenant, key="acme.embed")
+
+        with TestCase.captureOnCommitCallbacks(execute=False) as callbacks:
+            draft.publish()
+        held.refresh_from_db()
+        assert held.is_unresolved
+        assert EventType.objects.get(pk=draft.pk).declaration_status \
+            == DECLARATION_STATUS_PUBLISHED
+
+        with held_names_answered_on_commit():
+            for callback in callbacks:
+                callback()
+        held.refresh_from_db()
+        assert held.resolution == RESOLUTION_REGISTERED
+
+    def test_a_publication_that_does_not_land_answers_nothing(self):
+        """No partial publication: rolled back, the configuration is gone
+        whole, and its doorbell with it — no held name is answered by a
+        declaration that was never published."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        draft = _event_type(tenant, key="acme.embed")
+
+        with TestCase.captureOnCommitCallbacks(execute=True) as callbacks:
             with pytest.raises(RuntimeError):
                 with transaction.atomic():
-                    _published(draft)
+                    draft.publish()
+                    raise RuntimeError("the change around it fails")
 
-        draft.refresh_from_db()
-        assert draft.declaration_status != DECLARATION_STATUS_PUBLISHED
-        assert QuarantinedKey.objects.get(tenant=tenant).is_unresolved
+        assert callbacks == []
+        assert EventType.objects.get(pk=draft.pk).declaration_status \
+            == DECLARATION_STATUS_DRAFT
+        held.refresh_from_db()
+        assert held.is_unresolved
+
+    def test_answering_again_answers_nothing_twice(self):
+        """The retry is safe: a registered name has had its replay, a
+        dismissed one stays dismissed, and a refused one is asked again."""
+        tenant = _tenant()
+        hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        _published(_event_type(tenant, key="acme.embed"))
+        before = list(QuarantinedKey.objects.values_list(
+            "pk", "resolution", "resolved_at"))
+
+        again = answer_what_publications_declare(tenant_id=tenant.id)
+
+        assert tuple(again) == (0, 0)
+        assert list(QuarantinedKey.objects.values_list(
+            "pk", "resolution", "resolved_at")) == before
 
 
 # ---------------------------------------------------------------------------

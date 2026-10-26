@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,478 of 2,928 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,479 of 2,931 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2919,6 +2919,14 @@ measurement_key:
     # tracked files (`units` UNMOVED). One file arrived, swept: ADR-0022, the
     # record that an event naming an Event Type nobody published is recorded
     # and held, departing from three rows of #146 §3.4.
+    #
+    # 2026-10-26, R10-W1's consultant round: 2,478 of 2,928 -> 2,479 of 2,931
+    # tracked files (`units` UNMOVED). Three files arrived. Two are migrations,
+    # excluded under `historical-migrations` (281 -> 283): a publication keeps
+    # its supplier (`event_types/0012`) and a held price states its reason
+    # (`usage/0050`), so the exclusions stand at 452. One is swept: the kernel
+    # task that answers a publication's held names after it commits
+    # (`event_types/tasks.py`).
 
     - term: units
       retired_as: >-

@@ -62,6 +62,8 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
     PRICING_STATUS_KNOWN,
+    PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED,
+    PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED,
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
@@ -293,6 +295,10 @@ class ADismissedNameReCostsNothingTest(_ATenantWithOneDeclaration):
         recorded = as_recorded(posting)
         self.assertEqual(recorded["unresolved_reason"],
                          UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED)
+        # The price's stated reason is history the dismissal keeps, compared
+        # below with everything else a re-costing would move.
+        self.assertEqual(recorded["pricing_status_reason"],
+                         PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED)
 
         (held,) = self.held()
         dismiss_as_non_economic(held)
@@ -486,9 +492,14 @@ class AnUnresolvedSpellingIsNeverPricedKnownTest(_ATenantWithOneDeclaration):
 
         posting = self.posting(ack)
         for said in (ack, {"pricing_status": posting.pricing_status,
-                           "billed_cost_micros": posting.billed_cost_micros}):
+                           "billed_cost_micros": posting.billed_cost_micros,
+                           "pricing_status_reason":
+                               posting.pricing_status_reason}):
             self.assertEqual(said["pricing_status"], PRICING_STATUS_UNKNOWN)
             self.assertIsNone(said["billed_cost_micros"])
+            # Unknown WITH its stated reason, as ruled — the cost's cause.
+            self.assertEqual(said["pricing_status_reason"],
+                             PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED)
         self.assertIsNone(ack["pricing_method"])
         self.assertEqual(
             posting.pricing_receipt["provenance"]["price_rate_ids"], {})
@@ -513,6 +524,8 @@ class AMarginOverAHeldNameIsNotWaivedTest(OnTheSingleRoute,
             "k1", event_type=CHAT,
             measurements={INPUT: "10", OUTPUT_MISSPELT: "5"}))
         self.assertEqual(posting.pricing_status, PRICING_STATUS_UNKNOWN)
+        self.assertEqual(posting.pricing_status_reason,
+                         PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED)
 
         (held,) = self.held()
         map_to_a_declaration(held, Measurement.objects.get(event_type=chat,
@@ -522,3 +535,4 @@ class AMarginOverAHeldNameIsNotWaivedTest(OnTheSingleRoute,
         self.assertEqual(posting.provider_cost_micros, 1_500)
         self.assertEqual(posting.pricing_status, PRICING_STATUS_KNOWN)
         self.assertEqual(posting.billed_cost_micros, 2_250)
+        self.assertIsNone(posting.pricing_status_reason)

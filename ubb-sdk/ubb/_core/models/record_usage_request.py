@@ -52,11 +52,12 @@ class RecordUsageRequest:
                 zero (`"01.50"` is `"1.5"`). No binary floating-point conversion occurs.
             metadata (RecordUsageRequestMetadata | Unset):
             provider (None | str | Unset): The supplier behind this call, by the key the tenant declared for it. Where the
-                event names an Event Type with a last publication, that Event Type's own provider decides what the call is
-                costed and priced against, and the call is recorded under it: this field may name that provider or be omitted.
-                Any other provider — including one sent for an Event Type that names no supplier — is refused with
-                `provider_conflicts_with_event_type`, never trusted and never replaced. Where the event names no Event Type, or
-                one with no last publication, the provider sent is the one recorded.
+                event names an Event Type with a last publication, the supplier that publication names decides whose call this
+                is: the call is recorded under it and its supplier cost is resolved under it. This field may name that supplier
+                or be omitted. Any other provider — including one sent for an Event Type whose publication names no supplier —
+                is refused with `provider_conflicts_with_event_type`, never trusted and never replaced. A supplier renamed, or
+                an Event Type pointed at another, takes effect when the Event Type is published again. Where the event names no
+                Event Type, or one with no last publication, the provider sent is the one recorded.
             provider_cost_micros (int | None | Unset): The supplier cost of this call (COGS), supplied directly by the
                 caller. Admissible only where the Event Type's last publication declares costing_method `reported` with a
                 reported-cost mapping whose source_kind is `caller_supplied`, and refused anywhere else rather than dropped. A

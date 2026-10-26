@@ -43,7 +43,7 @@ from apps.platform.tenants.tasks import (
 
 from ._helpers import (
     A_JSON_SHAPE, A_PYTHON_SHAPE, BLUEPRINTS, EVENT, INPUT_TOKENS, KIND,
-    SEARCHES, SUBTASK_KIND, BlueprintRoutes as _Routes, a_tenant)
+    PROVIDER, SEARCHES, SUBTASK_KIND, BlueprintRoutes as _Routes, a_tenant)
 
 #: The committed contract, which is what a consumer holds. Two of the checks
 #: below are about it rather than about a response: which inputs the request
@@ -426,6 +426,23 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
             "platform_known", "openai")
         assert supplier["provenance"]["object_kind"] == "provider"
         assert supplier["provenance"]["key"] == "openai"
+
+    def test_the_supplier_is_the_one_its_publication_names(self):
+        """A supplier renamed since the publication is not what the Blueprint
+        names: recording admits and costs under the published key (#572,
+        #605; the consultant's review of #618), so a file generated now names
+        that one — and the rename takes effect when the Event Type is
+        published again."""
+        self._complete_configuration()
+        self._call("patch", f"/api/v1/providers/{PROVIDER}",
+                   {"key": "openai-eu"})
+
+        assert _one(_the_record(self._complete()), "provider")["value"] \
+            == PROVIDER
+
+        self._publish()
+        assert _one(_the_record(self._complete()), "provider")["value"] \
+            == "openai-eu"
 
     def test_an_event_type_with_no_supplier_sends_none(self):
         self._a_kind()

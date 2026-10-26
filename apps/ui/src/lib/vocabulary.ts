@@ -1357,20 +1357,25 @@ export const PRICING_STATUS_LABEL_KEYS = {
 //
 // Why a subject's pricing status applies, where a specific published reason
 // does. Null where none applies. Read beside `pricing_status`, never on its
-// own: an `unknown` price with no reason is one UBB had no input to resolve,
-// while an `unknown` price carrying a reason is one UBB calculated and cannot
-// authoritatively carry.
+// own: an `unknown` price with no reason is one UBB had no input to resolve;
+// an `unknown` price carrying a reason names why no authoritative price exists
+// — one UBB calculated and cannot carry, or one waiting on the tenant to say
+// what a name on the event means.
 //
 // Declared in concepts/economics.yaml.
 
 export const PRICING_STATUS_REASON_VALUES = [
   "negative_price_unsupported",
+  "event_type_not_declared",
+  "measurement_not_declared",
 ] as const;
 
 export type PricingStatusReason = (typeof PRICING_STATUS_REASON_VALUES)[number];
 
 export const PRICING_STATUS_REASON_LABEL_KEYS = {
   "negative_price_unsupported": "pricing_status_reason.negative_price_unsupported",
+  "event_type_not_declared": "pricing_status_reason.event_type_not_declared",
+  "measurement_not_declared": "pricing_status_reason.measurement_not_declared",
 } as const satisfies Record<PricingStatusReason, string>;
 
 

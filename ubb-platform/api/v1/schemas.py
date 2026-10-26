@@ -224,14 +224,15 @@ PROVIDER_RESPONSE_COST_MEANING = (
 #: admit_provider`).
 RECORDED_PROVIDER_MEANING = (
     "The supplier behind this call, by the key the tenant declared for it. "
-    "Where the event names an Event Type with a last publication, that Event "
-    "Type's own provider decides what the call is costed and priced against, "
-    "and the call is recorded under it: this field may name that provider or "
-    "be omitted. Any other provider — including one sent for an Event Type "
-    "that names no supplier — is refused with "
-    "`provider_conflicts_with_event_type`, never trusted and never replaced. "
-    "Where the event names no Event Type, or one with no last publication, the "
-    "provider sent is the one recorded."
+    "Where the event names an Event Type with a last publication, the supplier "
+    "that publication names decides whose call this is: the call is recorded "
+    "under it and its supplier cost is resolved under it. This field may name "
+    "that supplier or be omitted. Any other provider — including one sent for "
+    "an Event Type whose publication names no supplier — is refused with "
+    "`provider_conflicts_with_event_type`, never trusted and never replaced. A "
+    "supplier renamed, or an Event Type pointed at another, takes effect when "
+    "the Event Type is published again. Where the event names no Event Type, "
+    "or one with no last publication, the provider sent is the one recorded."
 )
 #: A verification's sample of the event's currency (owner's review of #608):
 #: published as the field's description because what the sample stands for,
@@ -527,8 +528,9 @@ NotApplicableReason = Annotated[
 
 
 #: WHY A PRICE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603, ADR-0020) —
-#: the registry's closed `pricing_status_reason`, whose one value today is
-#: `negative_price_unsupported` beside an `unknown` price.
+#: the registry's closed `pricing_status_reason`, read beside an `unknown`
+#: price: `negative_price_unsupported`, or the name an event is held on
+#: (`event_type_not_declared`, `measurement_not_declared`, #473 row 4).
 #:
 #: ⚠ REQUIRED AND NULLABLE ON EVERY SURFACE THAT PUBLISHES `pricing_status`
 #: (the owner's amendment, `6279966961`): each carrier declares it

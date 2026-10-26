@@ -35,27 +35,35 @@ tenant reads — the acknowledgement — and what later reads answer from — th
 stored row.
 """
 from datetime import timedelta
+from unittest.mock import patch
 
+from django.db import transaction
 from django.utils import timezone
 
 from api.v1.tests._helpers import (
     DeclaringTenantCase, OnTheBatchRoute, OnTheSingleRoute)
 from apps.metering.pricing.receipts import HELD_NAME_KEY
+from apps.metering.pricing.services.resolution_run import RunSelector, execute
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, rate_in_default_book)
 from apps.platform.event_types.models import (
     RESOLUTION_MAPPED, RESOLUTION_REGISTERED, UNRECOGNISED_EVENT_TYPE,
-    UNRECOGNISED_MEASUREMENT_KEY)
+    UNRECOGNISED_MEASUREMENT_KEY, EventType)
+from apps.platform.event_types.tasks import answer_held_names
 from apps.platform.event_types.quarantine import (
     NotYetPublished, PeriodHoldsUnresolvedValues, map_to_a_declaration,
     refuse_a_silent_close)
+from apps.platform.events.models import OutboxEvent
 from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
+    DECLARATION_STATUS_PUBLISHED,
     PRICING_STATUS_KNOWN,
+    PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED,
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+    WEBHOOK_EVENT_TYPE_USAGE_RECORDED,
 )
 
 #: A key nobody declares.
@@ -93,17 +101,21 @@ class _Holding(DeclaringTenantCase):
 
     def assert_held_with_no_cost_and_no_price(self, ack):
         """The acknowledgement and the stored row say the same thing: no
-        cost, no price, and the reason naming the Event Type."""
+        cost, no price, and on BOTH halves the reason naming the Event Type —
+        an `unknown` price with a stated reason (#473 row 4, as ruled)."""
         posting = self.posting(ack)
         for said in (ack, {column: getattr(posting, column) for column in (
                 "costing_status", "unresolved_reason", "provider_cost_micros",
-                "billed_cost_micros", "pricing_status")}):
+                "billed_cost_micros", "pricing_status",
+                "pricing_status_reason")}):
             self.assertEqual(said["costing_status"], COSTING_STATUS_UNRESOLVED)
             self.assertEqual(said["unresolved_reason"],
                              UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED)
             self.assertIsNone(said["provider_cost_micros"])
             self.assertIsNone(said["billed_cost_micros"])
             self.assertEqual(said["pricing_status"], PRICING_STATUS_UNKNOWN)
+            self.assertEqual(said["pricing_status_reason"],
+                             PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED)
         return posting
 
 
@@ -122,6 +134,15 @@ class _AnEventTypeNobodyPublishedIsHeld:
         self.assertIsNone(ack["pricing_method"])
         self.assertEqual(ack["uncosted_measurement_keys"], [CALLS])
         receipt = posting.pricing_receipt
+        # The reason is the record's, not only the columns': the receipt and
+        # the usage webhook say it too.
+        self.assertEqual(receipt["pricing"]["detail"]["pricing_status_reason"],
+                         PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED)
+        payload = OutboxEvent.objects.get(
+            event_type=WEBHOOK_EVENT_TYPE_USAGE_RECORDED,
+            payload__event_id=str(posting.id)).payload
+        self.assertEqual(payload["pricing_status_reason"],
+                         PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED)
         self.assertEqual(receipt["costing"]["detail"]["components"], [])
         self.assertEqual(receipt["pricing"]["detail"]["components"], [])
         self.assertEqual(receipt["provenance"]["cost_rate_ids"], {})
@@ -204,6 +225,8 @@ class _AnEventTypeNobodyPublishedIsHeld:
         self.assertEqual(row["event_type"], NOBODY)
         self.assertEqual(detail["unresolved_reason"],
                          UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED)
+        self.assertEqual(detail["pricing_status_reason"],
+                         PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED)
 
     def test_a_period_holding_it_does_not_close_silently(self):
         """The safeguard `TenantBillingService.close_period` consults
@@ -243,6 +266,11 @@ class _AnEventTypeNobodyPublishedIsHeld:
         self.assertEqual(posting.provider_cost_micros, 3 * COST_PER_CALL)
         self.assertEqual(posting.pricing_status, PRICING_STATUS_KNOWN)
         self.assertEqual(posting.billed_cost_micros, 3 * PRICE_PER_CALL)
+        # The status and its reason moved together: resolved, and no reason.
+        self.assertIsNone(posting.pricing_status_reason)
+        self.assertIsNone(
+            posting.pricing_receipt["pricing"]["detail"][
+                "pricing_status_reason"])
         self.assertEqual(posting.effective_at, happened_at)
         receipt = posting.pricing_receipt
         self.assertEqual(receipt["provenance"][HELD_NAME_KEY], str(held.pk))
@@ -283,6 +311,36 @@ class _AnEventTypeNobodyPublishedIsHeld:
         self.assertEqual(posting.provider_cost_micros, 3 * COST_PER_CALL)
         self.assertEqual(posting.billed_cost_micros, 3 * PRICE_PER_CALL)
         (held,) = self.held()
+        self.assertEqual(held.resolution, RESOLUTION_REGISTERED)
+
+    def test_a_run_answers_it_when_the_publications_doorbell_went_unheard(
+            self):
+        """The publication commits whether or not its doorbell is heard — a
+        broker that cannot be reached is logged and swallowed — and the held
+        name waits, still holding the close. A Resolution Run answers what
+        publications declare before anything else, so it is the retry."""
+        self.rules()
+        posting = self.assert_held_with_no_cost_and_no_price(self.a_report())
+        self.declared(NOBODY, quantities=(CALLS,), publish=False)
+
+        with self.captureOnCommitCallbacks(execute=True), \
+                patch.object(answer_held_names, "delay",
+                             side_effect=ConnectionError("broker down")):
+            EventType.objects.get(tenant=self.tenant, key=NOBODY).publish()
+
+        self.assertEqual(EventType.objects.get(
+            tenant=self.tenant, key=NOBODY).declaration_status,
+            DECLARATION_STATUS_PUBLISHED)
+        (held,) = self.held()
+        self.assertTrue(held.is_unresolved)
+
+        with transaction.atomic():
+            execute(tenant=self.tenant, selector=RunSelector())
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.provider_cost_micros, 3 * COST_PER_CALL)
+        self.assertEqual(posting.billed_cost_micros, 3 * PRICE_PER_CALL)
+        held.refresh_from_db()
         self.assertEqual(held.resolution, RESOLUTION_REGISTERED)
 
     def test_a_draft_cannot_answer_for_it(self):

@@ -158,9 +158,12 @@ catalogue's rows are the draft; this is the copy `publish` keeps beside the revi
 write, and returning to draft does not rewrite it (#573). It exists so that whatever must keep faith with an
 integration a tenant already deployed reads what that integration was generated against, not what
 is being edited. An Event Type never published has none, and the read answers `None` rather than
-falling back to the draft. It carries only what publication pins: the supplier, the category, a
-quantity's display name and its analytics grouping may each change without a new publication, so
-they are read from the catalogue. It is what production recording reads, for every declaration
+falling back to the draft. It carries only what publication pins: the category, a quantity's display
+name and its analytics grouping may each change without a new publication, so they are read from
+the catalogue. **The supplier is pinned** (#572, #605; the consultant's review of #618): by its
+identity, so re-pointing the Event Type at another Provider — or renaming the Provider — is a
+revision, and the copy keeps the Provider's key, which is what recording compares a call's supplier
+with and costs under. It is what production recording reads, for every declaration
 fact it consumes, through `costing.cost_declaration` (#605), and what the Code Builder resolves
 from. Not on the tenant contract — the tenant routes serve the live declaration.
 (`apps/platform/event_types/publication.py:last_published_declaration`)
@@ -172,11 +175,15 @@ The supplier behind a call — a per-tenant record, optional on an Event Type. I
 a string because supplier cost resolution keys on its identity: a tenant may correct `key` without
 re-attributing historical cost, which parsing the supplier out of an Event Type key would have made
 impossible. Retired, never deleted — `retired_at` stops new use and leaves the past readable.
-**A published Event Type's Provider decides what its calls cost** (#572): an event naming one is
-costed and priced against the supplier that Event Type names now, never the free text its caller
-sends. A caller naming a different supplier is refused, by name
-(`provider_conflicts_with_event_type`); one naming none takes the declared one; and an Event Type
-naming no supplier refuses any. An event naming no Event Type, or one nobody published, keeps the
+**The supplier a published Event Type names decides whose call it is** (#572): an event naming
+one is recorded under that supplier and its supplier cost resolves under it — never under the free
+text its caller sends. A caller naming a different supplier is refused, by name
+(`provider_conflicts_with_event_type`); one naming none takes the published one; and an Event Type
+naming no supplier refuses any. A customer price follows whatever pricing regime and rules apply —
+a rule that selects on a supplier reads this one; an agreed price or a markup does not depend on
+it. **It is the supplier the PUBLICATION names** (#605): renaming the Provider, re-pointing the
+Event Type at another or retiring it changes nothing recording admits or costs until the Event Type
+is published again. An event naming no Event Type, or one nobody published, keeps the
 supplier its caller sent; once held and answered by a published Event Type, one that named no
 supplier is replayed under that Event Type's, and one that named another is refused by name and
 stays held — the edge would have refused it.
@@ -287,8 +294,11 @@ period close over a cost already settled. An event naming no Event Type at all h
 register the name the tenant has declared, or dismiss as non-economic. **A publication is itself a
 registration** (#568: "replays … once the name is declared"): publishing an Event Type registers
 every undecided name held at its key, or beneath it under a code it now carries — the tenant
-declaring the very name that arrived, which is not auto-registration — and **only a publication
-answers a held name**: production reads nothing else (#605), so a draft is refused by name. The
+declaring the very name that arrived, which is not auto-registration — **after the publication
+commits**, each name in a transaction of its own, so one that cannot be answered stays held without
+the declaration being refused (the consultant's review of #618); a Resolution Run answers the same
+names first and is the retry. **Only a publication answers a held name**: production reads nothing
+else (#605), so a draft is refused by name. The
 first two **replay** the held event from its own original moment, never the repair's, with every
 answer on it applied — the Event Type read as the one it was answered by, each held quantity under
 the name it was answered by — completing the cost and the price in the same transaction as the

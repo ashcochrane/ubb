@@ -23,11 +23,14 @@ least of all this one, where a save would rewrite the past.
 
 **What is here is what publication pins, and nothing else.** Each shape below
 carries exactly the elements its model declares in ``PINNED``, and
-``tests/test_publication.py`` holds the two to each other. The supplier, the
-category, a quantity's display name and its analytics grouping are absent on
-purpose: none of them is pinned, so each may change without a new publication,
-and the current value on the catalogue is the right one to read. A copy of them
-here would be a second answer that goes stale the first time one is corrected.
+``tests/test_publication.py`` holds the two to each other — with one element
+kept in a different form from the one pinned: the supplier is pinned by its
+identity and kept by its KEY (``provider_key``), the form recording compares a
+call's supplier with (#572; the consultant's review of #618). The category, a
+quantity's display name and its analytics grouping are absent on purpose: none
+of them is pinned, so each may change without a new publication, and the
+current value on the catalogue is the right one to read. A copy of them here
+would be a second answer that goes stale the first time one is corrected.
 
 **Internal, and what production reads.** Not on the tenant contract: the Event
 Type routes serve the live declaration. What consumes this is production
@@ -39,7 +42,7 @@ composition layer resolving an integration from published configuration.
 from datetime import datetime
 from typing import NamedTuple
 
-from .models import MEASUREMENTS, REPORTED_COST_MAPPING, EventType
+from .models import MEASUREMENTS, PROVIDER_KEY, REPORTED_COST_MAPPING, EventType
 
 
 class PublishedMeasurement(NamedTuple):
@@ -76,6 +79,13 @@ class PublishedDeclaration(NamedTuple):
     costing_method: str
     source_shape_id: str
     source_shape_label: str
+    #: THE SUPPLIER THIS PUBLICATION NAMES, by the key it had when it was
+    #: published — `""` for an Event Type naming none. What recording admits a
+    #: call's supplier against and costs under (#572): a later rename or
+    #: re-pointing is a revision, and takes effect when published (#605).
+    #: `None` only for a copy kept before the supplier was pinned, which
+    #: `event_types/0012` wrote it into.
+    provider_key: str | None
     #: Which publication this is, and when it happened. Both are the row's
     #: own: a revision returns the Event Type to draft and moves neither.
     #: `None` only on `draft_declaration`'s answer, which is no publication.
@@ -99,39 +109,21 @@ def last_published_declaration(*, tenant, key):
     (#605): all three take the path a key nobody declared takes.
 
     One query, on the ``uq_event_type_key`` unique index, and no join: the
-    parts beneath the Event Type are not consulted, because they are the draft.
-    """
-    declaration, _ = last_publication_with(tenant=tenant, key=key)
-    return declaration
-
-
-def last_publication_with(*, tenant, key, current=()):
-    """`key`'s last publication, and what the catalogue holds NOW for elements
-    publication does not pin — in the one query.
-
-    Returns `(PublishedDeclaration or None, {name: value})`. `current` names
-    columns of the Event Type's row, or of one relation along it, by the ORM's
-    own lookup (`provider__key`): an element read live because no publication
-    pins it (the supplier, the category), which is exactly the read this
-    module's docstring says such an element takes. Asked together so a caller
-    needing both pays one indexed query, which is what the recording path's
-    read has always cost (#605). The values are `{}` and the declaration `None`
-    where nothing is published — a key with no production declaration has no
-    elements to answer for either.
+    parts beneath the Event Type are not consulted, because they are the draft
+    — and nor is the supplier, which the copy keeps (``provider_key``).
     """
     if not key:
-        return None, {}
+        return None
     row = (EventType.objects.filter(tenant=tenant, key=key)
            .values_list("published_revision", "published_at",
-                        "published_declaration", *current).first())
+                        "published_declaration").first())
     if row is None:
-        return None, {}
-    published_revision, published_at, pinned, *now = row
+        return None
+    published_revision, published_at, pinned = row
     if pinned is None:
-        return None, {}
-    return (_in_the_reads_shape(pinned, published_revision=published_revision,
-                                published_at=published_at),
-            dict(zip(current, now)))
+        return None
+    return _in_the_reads_shape(pinned, published_revision=published_revision,
+                               published_at=published_at)
 
 
 def draft_declaration(*, tenant, key):
@@ -169,8 +161,12 @@ def _in_the_reads_shape(pinned, *, published_revision, published_at):
     own = dict(pinned)
     measurements = own.pop(MEASUREMENTS)
     mapping = own.pop(REPORTED_COST_MAPPING)
+    # A copy kept before the supplier was pinned carries none; `0012` wrote it
+    # into every one, so `None` is only what a copy written some other way says.
+    supplier = own.pop(PROVIDER_KEY, None)
     return PublishedDeclaration(
         **own,
+        provider_key=supplier,
         published_revision=published_revision,
         published_at=published_at,
         measurements=tuple(

@@ -189,6 +189,8 @@
   "pricing_status.not_applicable": "Not applicable",
   "pricing_status.unknown": "Unknown",
   "pricing_status.waived": "Waived",
+  "pricing_status_reason.event_type_not_declared": "Event Type not declared",
+  "pricing_status_reason.measurement_not_declared": "Measurement not declared",
   "pricing_status_reason.negative_price_unsupported": "Negative price not carried",
   "rate_structure.fixed_component": "Fixed component",
   "rate_structure.per_unit": "Per unit",

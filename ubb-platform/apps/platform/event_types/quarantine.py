@@ -78,13 +78,27 @@ its key is published — and the event keeps the cost it was recorded with.
 Type's last publication (#605), so a map or a register naming a declaration no
 publication carries is refused (:class:`NotYetPublished`) — a name answered by
 a draft would free the period close while nothing could ever cost its event.
-And publishing is itself the tenant declaring the names it carries:
-``EventType.publish`` registers every undecided held name it now declares
-(:func:`register_what_a_publication_declares`) and hands each replay on, in
-the publication's own transaction. That is the tenant's act, through the route
-a tenant declares with; nothing here creates a declaration, so it is not
-auto-registration.
+And publishing is itself the tenant declaring the names it carries: every
+undecided name held at an Event Type's key, or beneath it under a code its
+publication carries, is registered and replayed
+(:func:`answer_what_publications_declare`). That is the tenant's act, through
+the route a tenant declares with; nothing here creates a declaration, so it is
+not auto-registration.
+
+**AFTER the publication commits, and never inside it (the consultant's review
+of #618).** Publishing configuration and replaying historical events are
+different responsibilities: a publication's transaction must not grow with the
+backlog held under its key, and one event that cannot be answered — a call
+that named another supplier, say — must not make a valid declaration
+unpublishable. So ``EventType.publish`` commits the publication alone and rings
+:func:`answer_after_the_publication_commits`, which enqueues the answering once
+the commit lands; each held name is then answered in a transaction of its own,
+and one that cannot be stays visibly held, blocking the close, with the rest
+answered beside it. A Resolution Run answers what publications declare first,
+too, so a run is the tenant's retry whenever the doorbell went unheard — and
+answering again answers nothing twice.
 """
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -98,6 +112,8 @@ from core.exceptions import UBBError
 
 from .hooks import hand_on
 from .publication import last_published_declaration
+
+logger = logging.getLogger(__name__)
 from .models import (
     EventType,
     Measurement,
@@ -186,8 +202,9 @@ class NotYetPublished(QuarantineError):
     (#605). A held name answered by a draft would leave the period close free
     while the event it arrived on could be costed by nothing — re-resolved
     under the answer, it would only be held again, with no row left to say so.
-    Publish the declaration: a publication registers every held name it
-    declares by itself (:func:`register_what_a_publication_declares`).
+    Publish the declaration: a publication answers every held name it
+    declares by itself, once it has committed
+    (:func:`answer_what_publications_declare`).
     """
 
 
@@ -384,45 +401,115 @@ def register_the_held_name(held, declaration):
     return _remediate(held, RESOLUTION_REGISTERED, declared_key)
 
 
-def register_what_a_publication_declares(event_type):
-    """Register every undecided held name ``event_type``'s publication now
-    declares, and hand each replay on (#568: "replays … once the name is
-    declared").
+class Answered(NamedTuple):
+    """What one pass of :func:`answer_what_publications_declare` did."""
 
-    Called by ``EventType.publish`` inside its own transaction, after the
-    publication is written, so it reads the copy just pinned: an Event Type
-    held at this key, and a quantity held beneath it whose code the
-    publication carries. Each is :func:`register_the_held_name` — the same
-    act, the same checks, the same replay — and each in a savepoint of its
-    own, so a NAMED refusal from the replay (:class:`QuarantineError`: a
-    supplier the call named that the Event Type does not, a name the event
-    carries twice) leaves that one name held for the tenant's decision rather
-    than refusing the publication. Anything else is not a decision to leave
-    open, and goes up.
+    #: Names registered, each with its replay handed on.
+    registered: int
+    #: Names a publication answers and which stay held all the same — refused
+    #: by name, or broken — each for the tenant to see and decide.
+    still_held: int
 
-    Undecided names only: a dismissed one stays dismissed (#473 row 2), and a
-    decided one has had its replay.
+
+def answer_what_publications_declare(*, tenant_id, key=None):
+    """Register every undecided held name a PUBLICATION now answers, and
+    hand each replay on — one name at a time (#568: "replays … once the name
+    is declared"; the consultant's review of #618).
+
+    A name is answered where a publication carries it: an Event Type held at
+    a key that is now published, or a quantity held beneath a published Event
+    Type whose publication carries its code. Each is
+    :func:`register_the_held_name` — the same act, the same checks, the same
+    replay — in a transaction of its OWN, so the answering of one never rides
+    on another's: a refusal by name (:class:`QuarantineError` — the call named
+    a supplier the Event Type does not, an answer would carry one quantity
+    twice) leaves that name held for the tenant's decision, and so does
+    anything else a replay breaks on, which is logged; the rest are answered
+    beside it either way.
+
+    **Idempotent, so it is safe to run again.** Undecided names only: a
+    registered one has had its replay, and a dismissed one stays dismissed
+    (#473 row 2). Run by the doorbell a publication rings once it commits
+    (:func:`answer_after_the_publication_commits`) for its own key, and by
+    every Resolution Run for the tenant — the retry, whenever the doorbell
+    went unheard. Never inside a publication's transaction.
     """
-    published = last_published_declaration(tenant=event_type.tenant_id,
-                                           key=event_type.key)
-    declared = {quantity.code for quantity in published.measurements}
-    beneath = {measurement.code: measurement
-               for measurement in event_type.measurements.all()}
-    for held in (QuarantinedKey.objects.unresolved()
-                 .filter(tenant_id=event_type.tenant_id,
-                         event_type_key=event_type.key)
-                 .order_by("occurred_at", "id")):
-        if held.unrecognised == UNRECOGNISED_EVENT_TYPE:
-            declaration = event_type
-        elif held.measurement_key in declared:
-            declaration = beneath[held.measurement_key]
-        else:
+    held_names = QuarantinedKey.objects.unresolved().filter(tenant_id=tenant_id)
+    if key is not None:
+        held_names = held_names.filter(event_type_key=key)
+    answers, registered, still_held = {}, 0, 0
+    for held in held_names.order_by("occurred_at", "id"):
+        if held.event_type_key not in answers:
+            answers[held.event_type_key] = _what_answers(tenant_id,
+                                                         held.event_type_key)
+        declaration = _the_declaration_for(held, *answers[held.event_type_key])
+        if declaration is None:
             continue
         try:
             with transaction.atomic():
                 register_the_held_name(held, declaration)
         except QuarantineError:
-            continue
+            still_held += 1
+        except Exception:
+            # After the publication committed, nothing may undo it, and a
+            # contradiction in one held record is no reason to leave the names
+            # beside it unanswered. The name stays held — the close still sees
+            # it — and the break is told to whoever reads the log.
+            logger.exception("quarantine.answer_failed",
+                             extra={"data": {"held_name_id": str(held.pk)}})
+            still_held += 1
+        else:
+            registered += 1
+    return Answered(registered=registered, still_held=still_held)
+
+
+def _what_answers(tenant_id, key):
+    """The publication at ``key`` and the Event Type row it is the
+    publication of — or `(None, None)` where nothing is published."""
+    published = last_published_declaration(tenant=tenant_id, key=key)
+    if published is None:
+        return None, None
+    return published, EventType.objects.get(tenant_id=tenant_id, key=key)
+
+
+def _the_declaration_for(held, published, event_type):
+    """The declaration a publication answers ``held`` with, or `None`."""
+    if published is None:
+        return None
+    if held.unrecognised == UNRECOGNISED_EVENT_TYPE:
+        return event_type
+    if held.measurement_key not in {quantity.code
+                                    for quantity in published.measurements}:
+        return None
+    # The row the publication pinned; a draft that has withdrawn it since
+    # answers nothing until it is published again.
+    return event_type.measurements.filter(code=held.measurement_key).first()
+
+
+def answer_after_the_publication_commits(*, tenant_id, key):
+    """Ring, once the publication's transaction has committed, for the held
+    names its key answers — and never inside it (the consultant's review of
+    #618).
+
+    The doorbell enqueues :func:`tasks.answer_held_names
+    <apps.platform.event_types.tasks.answer_held_names>`, so a publication's
+    transaction is the configuration alone and its length does not grow with
+    the history held under the key. A broker that cannot be reached is logged
+    and swallowed, exactly as the outbox's doorbell is: a raise here would
+    fail a request whose publication has already committed, and a Resolution
+    Run answers the same names whenever it runs. A publication rolled back
+    rings nothing.
+    """
+    def ring():
+        from .tasks import answer_held_names
+        try:
+            answer_held_names.delay(str(tenant_id), key)
+        except Exception:
+            logger.warning("quarantine.answer_dispatch_failed", exc_info=True,
+                           extra={"data": {"tenant_id": str(tenant_id),
+                                           "key": key}})
+
+    transaction.on_commit(ring)
 
 
 def dismiss_as_non_economic(held):
@@ -598,6 +685,11 @@ class TenantsAnswers(NamedTuple):
     #: could only cost the event with the dismissed name or without it, and
     #: the ruling refuses both (#473 row 2).
     dismissed: bool
+    #: Whether any name on this event is still undecided. A re-costing leaves
+    #: such an event alone too: the decision comes first — a publication
+    #: answering it, or a map — and costing around an undecided name would
+    #: settle the call under a spelling, or a supplier, nobody has answered for.
+    undecided: bool
 
 
 def the_tenants_answers(*, tenant_id, event_id):
@@ -609,14 +701,16 @@ def the_tenants_answers(*, tenant_id, event_id):
     first answer would then be lost to every later re-costing, since nothing
     else records it. One query, on ``ix_quarantined_key_event``.
     """
-    event_type_key, measurement_keys, dismissed = None, {}, False
+    event_type_key, measurement_keys = None, {}
+    dismissed = undecided = False
     for unrecognised, measurement_key, resolution, resolved_key in (
             QuarantinedKey.objects
             .filter(tenant_id=tenant_id, event_id=event_id)
-            .exclude(resolution=RESOLUTION_UNRESOLVED)
             .values_list("unrecognised", "measurement_key", "resolution",
                          "resolved_key")):
-        if resolution == RESOLUTION_DISMISSED:
+        if resolution == RESOLUTION_UNRESOLVED:
+            undecided = True
+        elif resolution == RESOLUTION_DISMISSED:
             dismissed = True
         elif resolution not in RESOLUTIONS_NAMING_A_DECLARATION:
             continue
@@ -626,7 +720,7 @@ def the_tenants_answers(*, tenant_id, event_id):
             measurement_keys[measurement_key] = resolved_key
     return TenantsAnswers(event_type_key=event_type_key,
                           measurement_keys=measurement_keys,
-                          dismissed=dismissed)
+                          dismissed=dismissed, undecided=undecided)
 
 
 # ---------------------------------------------------------------------------

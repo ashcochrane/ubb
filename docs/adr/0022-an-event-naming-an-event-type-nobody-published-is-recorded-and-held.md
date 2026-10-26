@@ -57,10 +57,19 @@ declared and never published — so a draft takes no path of its own. An event n
 holds nothing (#567).
 
 **A publication answers it, and only a publication.** Publishing an Event Type is the tenant
-declaring every name it carries, so `EventType.publish` registers each undecided name held at its
-key, or held beneath it under a code it now carries, and replays the event in the publication's own
-transaction. Mapping a name to a declaration requires that declaration to be published; a draft
-answers for nothing (`NotYetPublished`). A remediation's replay re-costs the event from its own
+declaring every name it carries, so each undecided name held at its key, or held beneath it under a
+code it now carries, is registered and its event replayed. Mapping a name to a declaration requires
+that declaration to be published; a draft answers for nothing (`NotYetPublished`).
+
+**After the publication commits, never inside it** (the consultant's review of #618). Publishing
+configuration and replaying history are different responsibilities: the publication's transaction
+commits the declaration alone, so its length and lock do not grow with the history held under the
+key, and no single held event can make a valid declaration unpublishable. Once it commits, a
+doorbell enqueues the answering (`quarantine.answer_after_the_publication_commits`), and each held
+name is registered and replayed in a transaction of its own: one that cannot be answered stays
+visibly held, still holding the close, with its siblings answered beside it. A Resolution Run
+answers the same names first, so it is the tenant's idempotent retry, and it never costs an event
+around a name still undecided. A remediation's replay re-costs the event from its own
 moment with every answer on it applied, holds any quantity the answer's publication does not carry,
 and refuses — by name, leaving the name held — where the call named a supplier the answer does not.
 Nothing creates a declaration from a held name: never auto-register stands.
@@ -76,8 +85,9 @@ then or after its key is published (#473 row 2).
 - The held posting's reason column is resolve-once history: once a publication answers the name and
   the cost settles, the column is cleared with the settlement; where no rate reaches it yet, it keeps
   saying why it was unresolved when the call arrived, and the held row says the name is decided.
-- A publication is never refused over held history the tenant can still decide: a replay refused by
-  name leaves that one name held and the publication lands; anything else a replay raises is a
-  contradiction in the record, and takes the publication back with it.
+- A publication is never refused over held history: a replay refused by name — a call that named
+  another supplier — or one that breaks leaves that one name held, logged and blocking the close,
+  and the publication stands. A broker that cannot be reached leaves every name waiting for the next
+  Resolution Run, never answered by guesswork.
 - Reversing this means a second store for the call's facts and a second definition of "visible" — the
   cost the two numbered facts above avoid.

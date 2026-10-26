@@ -28,6 +28,8 @@ from core.vocabulary import (
     PRICING_MODE_FIXED,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
+    PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED,
+    PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED,
     PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
@@ -49,6 +51,16 @@ from core.vocabulary import (
 REASONS_A_NAME_IS_HELD = frozenset({
     UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED})
+
+#: THE PRICE'S REASON FOR EACH, held by reference from both concepts — the same
+#: token in two closed registry concepts, mapped explicitly rather than copied
+#: across, so a value renamed on either side breaks here and not silently.
+PRICE_REASON_OF_A_HELD_NAME = {
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED:
+        PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED:
+        PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED,
+}
 
 
 #: WHAT COMPUTED THE AMOUNTS ON A RECEIPT — the half of the receipt's version
@@ -1238,11 +1250,17 @@ class PricingService:
             # This cost is waiting on the tenant's decision, and the remedy is
             # that decision: a replay re-prices the event from its original
             # moment, which only an `unknown` price can be completed by (the
-            # price pair's one move is `unknown` to `known`). The reason beside
-            # it is NULL, which is the published reading of "missing input";
-            # the cost's reason says which input.
+            # price pair's one move is `unknown` to `known`).
+            #
+            # ⚠ AND IT STATES ITS REASON (#473 row 4 as ruled; the consultant's
+            # review of #618): the name it is held on, the cause its cost reason
+            # names, said on the price as ADR-0020 says a negative price's — so
+            # an `unknown` waiting on the tenant is never read as one that is
+            # merely missing input. The door clears it with the resolution.
             billed, pricing_method = None, None
             pricing_status = PRICING_STATUS_UNKNOWN
+            pricing_status_reason = PRICE_REASON_OF_A_HELD_NAME[
+                unresolved_reason]
         else:
             for measurement_key, units_val in sorted(measurements.items()):
                 card = resolve_the_price_rule(measurement_key)

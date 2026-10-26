@@ -24,12 +24,17 @@ refusal is accepted here only if it carries the door's own sentence too — a
 test that could not tell the two apart would be evidence that the table refused
 something, not that it refused a second writer.
 """
-from django.db import IntegrityError, connection, migrations, transaction
+from unittest.mock import patch
+
+from django.db import (
+    DataError, IntegrityError, connection, migrations, transaction)
 from django.db.migrations.loader import MigrationLoader
+from django.db.models import QuerySet
 from django.test import TestCase
 
 from apps.metering.pricing.services.price_resolution import (
-    PRICE_DOOR_SETTING, PriceResolution, resolve_customer_price)
+    PRICE_DOOR_SETTING, PriceResolution, marked_as_the_price_door,
+    resolve_customer_price)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
     DOORS, committed_posting, through_the_queryset)
@@ -151,6 +156,58 @@ class ASecondWriterIsRefusedAtTheTableTest(TestCase):
 
         self.assert_refused_by_the_door_rule(message)
         self.assertEqual(_as_stored(second), (None, PRICING_STATUS_UNKNOWN))
+
+
+class AFailedResolutionLeavesNoMarkBehindTest(TestCase):
+    """The door raising is the door finishing, as far as the mark goes (#557;
+    the consultant's review of #618): a writer after it, in the same outer
+    transaction, is refused all the same — whichever way it failed."""
+
+    def assert_a_writer_after_it_is_refused(self):
+        second = _unknown()
+        message = _refusal(lambda: through_the_queryset(second, **RESOLUTION))
+        self.assertIsNotNone(message, "the mark outlived a failed resolution")
+        self.assertIn(THE_DOORS_REFUSAL, message)
+        self.assertEqual(_as_stored(second), (None, PRICING_STATUS_UNKNOWN))
+
+    def test_a_resolver_that_raises_under_the_mark_clears_it(self):
+        """Python raising before the statement runs. The door's own savepoint
+        is rolled back on the way out, and the mark with it."""
+        first = _unknown()
+
+        with patch.object(QuerySet, "update",
+                          side_effect=RuntimeError("the resolution fails")):
+            with self.assertRaises(RuntimeError):
+                resolve_customer_price(posting_id=first.pk,
+                                       billed_cost_micros=1)
+
+        self.assertEqual(_as_stored(first), (None, PRICING_STATUS_UNKNOWN))
+        self.assert_a_writer_after_it_is_refused()
+
+    def test_the_mark_itself_is_cleared_where_no_savepoint_would(self):
+        """The marker's own guarantee, for a caller with no savepoint round it
+        — the test helper, the measurement script: Python raising under the
+        mark leaves the transaction usable, and the mark is cleared on the way
+        out, not left to a rollback that will not come."""
+        with self.assertRaises(RuntimeError):
+            with marked_as_the_price_door():
+                raise RuntimeError("raised under the mark")
+
+        self.assert_a_writer_after_it_is_refused()
+
+    def test_a_statement_the_database_refuses_takes_the_mark_with_it(self):
+        """The database refusing the marked statement itself — an amount past
+        the money column. The door's savepoint is rolled back and the mark
+        with it; the failure is reported as ITSELF, not as a clear attempted
+        in an aborted transaction."""
+        first = _unknown()
+
+        with self.assertRaises(DataError):
+            resolve_customer_price(posting_id=first.pk,
+                                   billed_cost_micros=2 ** 63)
+
+        self.assertEqual(_as_stored(first), (None, PRICING_STATUS_UNKNOWN))
+        self.assert_a_writer_after_it_is_refused()
 
 
 class TheReverseIsExercisedRatherThanMerelyDeclaredTest(TestCase):

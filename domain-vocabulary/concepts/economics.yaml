@@ -498,15 +498,27 @@ pricing_status_reason:
   summary: >-
     Why a subject's pricing status applies, where a specific published reason
     does. Null where none applies. Read beside `pricing_status`, never on its
-    own: an `unknown` price with no reason is one UBB had no input to resolve,
-    while an `unknown` price carrying a reason is one UBB calculated and cannot
-    authoritatively carry.
+    own: an `unknown` price with no reason is one UBB had no input to resolve;
+    an `unknown` price carrying a reason names why no authoritative price
+    exists — one UBB calculated and cannot carry, or one waiting on the tenant
+    to say what a name on the event means.
   values:
     # UBB calculated a negative customer price but cannot authoritatively carry
     # it: the money rails act on a known price, and a negative one would be
     # dropped, so it is recorded `unknown` — never clamped to zero, dropped or
     # marked `known` — and the computed number is published nowhere as a price.
     - negative_price_unsupported
+    # The event is HELD on a name (#568, #473 row 4): it names an Event Type
+    # with no production declaration, so nobody has said what the call was and
+    # no price over it is published as known. The same token as the cost
+    # side's reason, deliberately — one cause, said on both halves of the pair,
+    # rather than a synonym a reader must map back (the consultant's review of
+    # #618). A replay that resolves the price clears it with the resolution.
+    - event_type_not_declared
+    # Held on a quantity name the event's published Event Type does not carry
+    # (#428, #473 row 4) — the same cause as the cost side's, for the same
+    # reason.
+    - measurement_not_declared
   label_key_prefix: pricing_status_reason
   consumers:
     - surface: backend

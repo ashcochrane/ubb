@@ -7,11 +7,13 @@ deliberately one function returning plain data rather than an ORM row handed
 across: its callers need five facts about a declaration and have no business
 holding a record they could accidentally save.
 
-**Two callers, one query each, asking different questions of the same record.**
+**Two callers asking different questions of the same record, and ONE read.**
 The compute spine asks what a posting's cost status should be. The recording
 edge asks whose supplier the call is (#572), and whether a supplier's figure
-may arrive on the call at all, and on which transport (#324, #570) — once per
-event naming an Event Type, for both questions together.
+may arrive on the call at all, and on which transport (#324, #570). The edge
+reads the publication once per event naming an Event Type
+(:func:`declaration_of` over ``last_published_declaration``) and hands the
+answer down to the spine, so both answer from the same publication (#605).
 
 **Why this lives beside the declaration rather than in the pricer.** *"This
 Event Type carries no cost at all"* is a statement about what the tenant
@@ -21,20 +23,20 @@ the day a third way to declare a cost arrives. The pricer asks; this answers.
 
 **Draft changes do not affect production recording (#605).** Production uses
 the Event Type's last published declaration; changes take effect when they are
-published. Every fact below but one is read off the copy ``publish`` keeps on
-the Event Type's row (#573), through ``publication.last_publication_with``,
-and none of them off the draft — they are one unit, and a read that took one
-from each would let an unpublished edit change half of what production does.
-The one is the supplier, which publication does not pin and so is read as the
-catalogue holds it now — the rule ``publication.py`` states for every unpinned
-element.
+published. EVERY fact below is read off the copy ``publish`` keeps on the Event
+Type's row (#573) and none off the draft — they are one unit, and a read that
+took one from each would let an unpublished edit change half of what
+production does. That includes the supplier (the consultant's review of #618):
+it used to be read live, as an element publication did not pin, and a rename
+or a re-pointing then changed what production admitted and how it costed
+without anybody publishing anything. The publication now pins it and keeps its
+key.
 
 **One query, and it stays one.** The recording path is the hottest write in the
 system, and the published copy is one column on one row, read on the
-``uq_event_type_key`` unique index; its one join is onto the Provider the row
-names, for the supplier's key. The quantities and the mapping beneath the Event
-Type are not consulted, because they are the draft. Nothing is cached: a
-publication must take effect on the next call.
+``uq_event_type_key`` unique index, with no join. The quantities and the
+mapping beneath the Event Type are not consulted, because they are the draft.
+Nothing is cached: a publication must take effect on the next call.
 """
 from typing import NamedTuple
 
@@ -42,7 +44,7 @@ from core.vocabulary import (
     COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_PROVIDER_RESPONSE)
 
-from .publication import last_publication_with
+from .publication import last_published_declaration
 
 
 class CostDeclaration(NamedTuple):
@@ -72,14 +74,13 @@ class CostDeclaration(NamedTuple):
     #: Type with no publication — the first is a tenant's statement, the second
     #: is that there is no production declaration at all.
     declared_quantity_codes: frozenset[str]
-    #: THE SUPPLIER THIS EVENT TYPE NAMES (#572, #193 §B3) — its Provider's key
-    #: as the catalogue holds it NOW, or `""` where the Event Type names none
-    #: (internal work with no supplier, which is a statement and not a gap).
-    #: For a published Event Type this is authoritative: a call is costed and
-    #: priced against it, and a caller naming another is refused at the edge.
-    #: Read live rather than from the publication because the supplier is not
-    #: pinned — a tenant may correct its handle without re-publishing — and
-    #: read in the same query as the rest (`last_publication_with`).
+    #: THE SUPPLIER THE PUBLICATION NAMES (#572, #193 §B3) — the key its
+    #: Provider had when the Event Type was published, or `""` where it names
+    #: none (internal work with no supplier, a statement and not a gap). It
+    #: decides whose call a recording is: the posting records it, supplier
+    #: cost resolves under it, and a caller naming another is refused at the
+    #: edge. Read off the publication like every fact here — a rename or a
+    #: re-pointing takes effect when the Event Type is published again.
     provider_key: str
 
 
@@ -137,8 +138,14 @@ def cost_declaration(*, tenant, key):
     a costing method other than `reported`, no published quantity and no
     published mapping.
     """
-    published, now = last_publication_with(tenant=tenant, key=key,
-                                           current=(PROVIDER_KEY,))
+    return declaration_of(last_published_declaration(tenant=tenant, key=key))
+
+
+def declaration_of(published):
+    """The cost declaration a publication makes — :func:`cost_declaration`'s
+    answer, from a ``PublishedDeclaration`` the caller already read (or
+    `None`). The recording edge reads the publication once and asks both this
+    and the quantities' value types of it."""
     if published is None:
         return None
     mapping = published.reported_cost_mapping
@@ -153,14 +160,10 @@ def cost_declaration(*, tenant, key):
         reported_cost_source_kind=(None if mapping is None
                                    else mapping.source_kind),
         declared_quantity_codes=declared_codes,
-        provider_key=now[PROVIDER_KEY] or "",
+        # `0012` wrote the key into every copy kept before the supplier was
+        # pinned; a copy saying nothing names no supplier.
+        provider_key=published.provider_key or "",
     )
-
-
-#: The lookup that reads a published Event Type's supplier live, by its
-#: Provider's current key — one LEFT JOIN on the row the publication is read
-#: from, and never onto the parts beneath it (which are the draft).
-PROVIDER_KEY = "provider__key"
 
 
 #: The reported-cost sources whose figure reaches UBB on the recording call

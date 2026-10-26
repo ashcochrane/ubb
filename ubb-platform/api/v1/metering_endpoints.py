@@ -65,7 +65,7 @@ from apps.platform.audit.marker import records_audit
 # names a module and a constant after that.
 from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
-    admitted_supplier_cost_source, cost_declaration)
+    admitted_supplier_cost_source, declaration_of)
 from apps.platform.event_types.models import ValueTypeMismatch, quantity_under
 from apps.platform.event_types.publication import last_published_declaration
 from core.vocabulary import (
@@ -230,9 +230,10 @@ def admit_provider(item, declaration):
             raise ProviderConflictsWithEventType(
                 f"provider {item.provider!r} is not the supplier the last "
                 f"publication of Event Type {item.event_type!r} names, which "
-                f"is {declared!r}. A published Event Type's own provider "
-                f"decides what a call is costed and priced against, so a "
-                f"different one is refused rather than trusted or replaced. "
+                f"is {declared!r}. The supplier a published Event Type names "
+                f"decides whose call it is and what its supplier cost resolves "
+                f"under, so a different one is refused rather than trusted or "
+                f"replaced. "
                 f"Omit provider to record the call under {declared!r}; if "
                 f"the call was another supplier's, it belongs to the Event "
                 f"Type that names that supplier, or the Event Type's provider "
@@ -240,9 +241,10 @@ def admit_provider(item, declaration):
         raise ProviderConflictsWithEventType(
             f"provider {item.provider!r} names a supplier, and the last "
             f"publication of Event Type {item.event_type!r} names none — it "
-            f"meters work with no supplier. A published Event Type's own "
-            f"provider decides what a call is costed and priced against, so a "
-            f"supplier it does not name is refused rather than trusted. Omit "
+            f"meters work with no supplier. The supplier a published Event "
+            f"Type names decides whose call it is and what its supplier cost "
+            f"resolves under, so a supplier it does not name is refused rather "
+            f"than trusted. Omit "
             f"provider; if the call is a supplier's, declare that provider on "
             f"the Event Type.")
     return declared
@@ -469,7 +471,7 @@ class QuantityNotAdmissible(ValueError):
     admission: a 422 on the single route, that one item in a batch."""
 
 
-def admit_quantities(tenant, item):
+def admit_quantities(item, published):
     """Refuse a quantity its Event Type's last publication declares whole
     and the caller sent with a fraction (#603, ADR-0020).
 
@@ -486,10 +488,7 @@ def admit_quantities(tenant, item):
     `admit_supplier_cost`'s reasoning: a retry of something already recorded
     is answered first, and a refusal never burns grouping-field keyspace.
     """
-    if not item.measurements:
-        return
-    published = last_published_declaration(tenant=tenant, key=item.event_type)
-    if published is None:
+    if not item.measurements or published is None:
         return
     value_types = {quantity.code: quantity.value_type
                    for quantity in published.measurements}
@@ -535,10 +534,10 @@ def replay_or_record(tenant, customer, item):
        retired since would refuse, is the same event and gets the same answer.
        Found by `UsageService.replay`, the recording path's own lookup — keyed
        by tenant, customer and key, with no body compared.
-    2. **The declaration, read once** (`costing.cost_declaration`) for the two
-       admissions that ask it and for the costing below, which is handed it
-       rather than reading it again (#605) — none for an event naming no Event
-       Type.
+    2. **The publication, read once** (`publication.last_published_declaration`)
+       for every admission below that asks it and for the costing, which is
+       handed its cost declaration (`costing.declaration_of`) rather than
+       reading it again (#605) — none for an event naming no Event Type.
     3. **The provider (#572)**: a published Event Type's own supplier is
        authoritative, so another is refused by name
        (`provider_conflicts_with_event_type`) and an omitted one records under
@@ -572,10 +571,11 @@ def replay_or_record(tenant, customer, item):
     replayed = UsageService.replay(tenant, customer, item.idempotency_key)
     if replayed is not None:
         return replayed
-    declaration = cost_declaration(tenant=tenant, key=item.event_type)
+    published = last_published_declaration(tenant=tenant, key=item.event_type)
+    declaration = declaration_of(published)
     provider = admit_provider(item, declaration)
     admit_supplier_cost(item, declaration)
-    admit_quantities(tenant, item)
+    admit_quantities(item, published)
     dimension_slots = DimensionService.admit(
         tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     return UsageService.record_new_usage(

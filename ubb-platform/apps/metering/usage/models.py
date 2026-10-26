@@ -307,7 +307,10 @@ class Posting(BaseModel):
         max_length=32, choices=NOT_APPLICABLE_REASON_CHOICES,
         null=True, blank=True)
     # WHY THE PRICE STATUS APPLIES, WHERE A PUBLISHED REASON DOES (#603,
-    # ADR-0020). Today one value, read only beside `unknown`:
+    # ADR-0020). Read only beside `unknown`. Since #473 row 4 a posting held on
+    # a name says so here too — `event_type_not_declared` or
+    # `measurement_not_declared`, the cause its cost reason names — and a
+    # replay that resolves the price clears it with the resolution. And
     # `negative_price_unsupported` — UBB calculated a negative customer price
     # exactly and the money rails cannot carry it, so the price is unresolved
     # rather than clamped, dropped or `known`. NULL beside an `unknown` price

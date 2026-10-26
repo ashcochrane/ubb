@@ -246,6 +246,10 @@ export const NOT_APPLICABLE_REASON_EXPLANATIONS = {
  * type, as the two maps above are.
  */
 export const PRICING_STATUS_REASON_EXPLANATIONS = {
+  event_type_not_declared:
+    "The event names an Event Type nobody has published, so nothing says what the call was. It is held until the Event Type is published or the name is mapped, then priced as of when it happened.",
+  measurement_not_declared:
+    "The event carries a quantity its Event Type's publication does not declare, so nothing says what it measures. It is held until the name is declared or mapped, then priced as of when it happened.",
   negative_price_unsupported:
     "UBB calculated a negative price, but the current money rails cannot carry it authoritatively. Nothing was clamped to zero or charged, and no recovery run will resolve it.",
 } as const satisfies Record<PricingStatusReason, string>;

@@ -607,8 +607,8 @@ class MeteringClient:
         the same keys under ``metadata``.
 
         ``provider``: the supplier, and for an ``event_type`` your tenant
-        has published it is that Event Type's own Provider that decides what
-        the call costs and prices against (#572). Omit it, or send that Provider's
+        has published it is the supplier that publication names that decides
+        whose call this is and what its supplier cost resolves under (#572). Omit it, or send that Provider's
         key; any other is refused before anything is recorded —
         ``ProviderConflictsWithEventTypeError``, 422
         ``provider_conflicts_with_event_type`` — and in ``record_batch`` the

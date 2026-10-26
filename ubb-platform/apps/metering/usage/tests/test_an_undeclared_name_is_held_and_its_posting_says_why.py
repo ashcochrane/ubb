@@ -71,7 +71,8 @@ from apps.platform.event_types.quarantine import (
     register_the_held_name,
     unresolved_in_period,
 )
-from apps.platform.event_types.tests._helpers import declares_an_event_type
+from apps.platform.event_types.tests._helpers import (
+    declares_an_event_type, published_and_committed)
 from apps.platform.tenants.models import Tenant
 from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
@@ -601,7 +602,8 @@ class TestTheTwoDefinitionsAgree:
                                   closes_at=closes_at)
 
         declaration.refresh_from_db()
-        declaration.publish()
+        with published_and_committed():
+            declaration.publish()
 
         refuse_a_silent_close(tenant=tenant, opened_at=opened_at,
                               closes_at=closes_at)

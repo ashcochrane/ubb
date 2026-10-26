@@ -81,11 +81,15 @@ held event re-costed from its own moment (`resolution_run.replay_the_held_event`
 `PricingConfig.ready()`) — is that decision's consequence, not a notification about it: a name
 recorded as decided whose event was never re-costed would leave the period-close safeguard with
 nothing looking at it again. So nothing catches there, and decision and replay land together or not
-at all. The one carve: a publication registering the held names it declares does each in a savepoint
-of its own, and a refusal the consumer raises BY NAME (a `QuarantineError` — the call named another
-supplier, an answer would carry one quantity twice) leaves that one name held instead of refusing
-the publication; anything else goes up and takes the publication with it. Choose by asking whether
-the reaction is the fact's consequence (veto) or news about it (notification).
+at all. ⚠ **A publication is not one of those decisions' transactions** (the consultant's review of
+#618): publishing configuration and replaying history are different responsibilities, so
+`EventType.publish` commits the declaration alone and the held names it answers are registered and
+replayed AFTER it commits — a doorbell (`transaction.on_commit` → a Celery task, broker errors
+logged and swallowed, as the outbox's) and every Resolution Run (the retry) — each name in a
+transaction of its own, so one that is refused or breaks stays held while the rest are answered, and
+the publication is never what is vetoed. Choose by asking whether the reaction is the fact's
+consequence (veto, same transaction) or news about it (notification), and keep work that grows with
+history out of a configuration write either way.
 
 ## Locking & concurrency
 

@@ -26,6 +26,8 @@ from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    held_names_answered_on_commit)
 from apps.platform.event_types.models import EventType, QuarantinedKey
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.membership.roles import READ
@@ -507,11 +509,15 @@ class DeclaringTenantCase(TestCase):
                                                 external_id="declaring")
 
     def admin(self, method, path, data=None):
-        """One call to the tenant's catalogue routes, which must succeed."""
-        response = getattr(self.http, method)(
-            f"/api/v1{path}", data=json.dumps(data or {}),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        """One call to the tenant's catalogue routes, which must succeed —
+        committed, as a request commits: what it set going on commit runs (a
+        publication's held names are answered after it, #568)."""
+        with held_names_answered_on_commit(), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = getattr(self.http, method)(
+                f"/api/v1{path}", data=json.dumps(data or {}),
+                content_type="application/json",
+                HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         self.assertLess(response.status_code, 300, response.content)
         return response.json() if response.content else None
 

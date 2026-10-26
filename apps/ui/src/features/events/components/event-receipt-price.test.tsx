@@ -268,11 +268,18 @@ describe("a receipt for an event held for remediation", () => {
     expect(cost).not.toMatch(/[$£€]\s*-?[\d,]/);
   });
 
-  it("leaves the price unknown — never waived, never a figure", async () => {
+  it("leaves the price unknown with its stated reason — never waived, never a figure", async () => {
     renderReceipt(HELD_EVENT_ID);
 
     expect(await screen.findByText("Event receipt")).toBeInTheDocument();
-    expect(priceSectionText()).toContain(pricingStatusLabel("unknown"));
+    expect(priceSectionText()).toContain(
+      `${pricingStatusLabel("unknown")} · ${pricingStatusReasonLabel("event_type_not_declared")}`,
+    );
+    expect(
+      screen.getByText(
+        `${PRICING_STATUS_EXPLANATIONS.unknown} ${PRICING_STATUS_REASON_EXPLANATIONS.event_type_not_declared}`,
+      ),
+    ).toBeInTheDocument();
     expect(priceSectionText()).not.toContain(pricingStatusLabel("waived"));
     expect(priceSectionText()).not.toMatch(/[$£€]\s*-?[\d,]/);
   });

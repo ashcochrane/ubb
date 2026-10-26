@@ -22,9 +22,11 @@ from django.apps import apps as live_apps
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
+from django.utils import timezone
+
 from apps.platform.event_types.models import (
-    DeclarationIncomplete, EventType, Measurement, Provider,
-    ReportedCostMapping,
+    PROVIDER_KEY, DeclarationIncomplete, EventCategory, EventType, Measurement,
+    Provider, ReportedCostMapping,
 )
 from apps.platform.event_types.publication import (
     PublishedDeclaration, PublishedMeasurement, PublishedReportedCostMapping,
@@ -47,6 +49,9 @@ KEY = "acme.embed"
 keep_what_is_published_now = import_module(
     "apps.platform.event_types.migrations."
     "0007_the_last_published_declaration_is_kept").keep_what_is_published_now
+THE_SUPPLIER_MIGRATION = import_module(
+    "apps.platform.event_types.migrations."
+    "0012_a_publication_keeps_its_supplier")
 
 
 def _declared(tenant=None, key=KEY):
@@ -91,32 +96,125 @@ def test_each_shape_carries_exactly_what_its_model_pins():
     """
     lifecycle = ("published_revision", "published_at")
     parts = ("measurements", "reported_cost_mapping")
+    # The one element kept in another form than it is pinned in: the supplier
+    # is pinned by its identity and kept by its key, the form recording reads
+    # (#572; the consultant's review of #618).
+    kept = tuple(PROVIDER_KEY if name == "provider_id" else name
+                 for name in EventType.PINNED)
 
-    assert PublishedDeclaration._fields == (
-        *EventType.PINNED, *lifecycle, *parts)
+    assert PublishedDeclaration._fields == (*kept, *lifecycle, *parts)
     assert PublishedMeasurement._fields == Measurement.PINNED
     assert PublishedReportedCostMapping._fields == ReportedCostMapping.PINNED
 
 
 @pytest.mark.django_db
 def test_what_is_not_pinned_may_change_without_touching_the_publication():
-    """The other half of the same line. A supplier re-filed and a caption
-    corrected reach no generated integration, so neither is a revision — and
-    neither is in the copy, where it would only be a second answer going
-    stale."""
+    """The other half of the same line. A caption corrected and a category
+    re-filed reach no generated integration and no money, so neither is a
+    revision — and neither is in the copy, where it would only be a second
+    answer going stale."""
     published = _published()
     before = _read(published)
 
     quantity = published.measurements.get()
     quantity.display_name = "Prompt tokens"
     quantity.save()
-    published.provider = Provider.objects.create(tenant=published.tenant,
-                                                 key="openai")
+    published.category = EventCategory.objects.create(
+        tenant=published.tenant, key="chat")
     published.save()
 
     assert EventType.objects.get(pk=published.pk).declaration_status \
         == DECLARATION_STATUS_PUBLISHED
     assert _read(published) == before
+
+
+def _supplied(published, key="openai"):
+    """`published`, re-published naming a supplier of its own."""
+    published.provider = Provider.objects.create(tenant=published.tenant,
+                                                 key=key)
+    published.publish()
+    return EventType.objects.get(pk=published.pk)
+
+
+@pytest.mark.django_db
+def test_the_supplier_is_pinned_and_kept_by_its_key():
+    """Re-pointing an Event Type at another supplier is a revision (#572,
+    #605): recording keeps answering under the supplier that was published,
+    until the change is published too."""
+    published = _supplied(_published())
+    assert _read(published).provider_key == "openai"
+
+    published.provider = Provider.objects.create(tenant=published.tenant,
+                                                 key="anthropic")
+    published.save()
+
+    assert EventType.objects.get(pk=published.pk).declaration_status \
+        == DECLARATION_STATUS_DRAFT
+    assert _read(published).provider_key == "openai"
+    published.publish()
+    assert _read(published).provider_key == "anthropic"
+
+
+@pytest.mark.django_db
+def test_a_supplier_renamed_revises_every_declaration_naming_it():
+    """The key is what a publication keeps, so renaming the supplier is a
+    change to each declaration naming it — and takes effect when each is
+    published again. Retiring one is not: what may be attached next is not
+    what a publication says."""
+    published = _supplied(_published())
+    supplier = published.provider
+
+    supplier.retired_at = timezone.now()
+    supplier.save()
+    assert EventType.objects.get(pk=published.pk).declaration_status \
+        == DECLARATION_STATUS_PUBLISHED
+
+    supplier.key = "openai-eu"
+    supplier.save()
+
+    revised = EventType.objects.get(pk=published.pk)
+    assert revised.declaration_status == DECLARATION_STATUS_DRAFT
+    assert _read(revised).provider_key == "openai"
+    revised.publish()
+    assert _read(revised).provider_key == "openai-eu"
+
+
+def _as_before_the_supplier_was_kept(event_type):
+    """The copy as a tree that did not pin the supplier left it."""
+    kept = dict(EventType.objects.get(pk=event_type.pk).published_declaration)
+    kept.pop(PROVIDER_KEY)
+    EventType.objects.filter(pk=event_type.pk).update(
+        published_declaration=kept)
+
+
+@pytest.mark.django_db
+def test_a_copy_kept_before_the_supplier_was_pinned_is_given_the_one_read():
+    """`0012` writes in the supplier recording was reading live the instant
+    before — so nothing an integration sends is answered differently across
+    the migration — and `""` where the Event Type names none."""
+    supplied = _supplied(_published())
+    unsupplied = _published(key="acme.internal")
+    for event_type in (supplied, unsupplied):
+        _as_before_the_supplier_was_kept(event_type)
+    assert _read(supplied).provider_key is None
+
+    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
+
+    assert _read(supplied).provider_key == "openai"
+    assert _read(unsupplied).provider_key == ""
+
+
+@pytest.mark.django_db
+def test_the_supplier_migration_leaves_a_kept_key_alone_and_reverses():
+    supplied = _supplied(_published())
+    Provider.objects.filter(pk=supplied.provider_id).update(key="renamed")
+
+    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
+    assert _read(supplied).provider_key == "openai"
+
+    THE_SUPPLIER_MIGRATION.forget_the_supplier(live_apps, None)
+    assert PROVIDER_KEY not in EventType.objects.get(
+        pk=supplied.pk).published_declaration
 
 
 @pytest.mark.django_db
@@ -168,7 +266,10 @@ def test_a_declaration_already_published_is_given_the_copy_it_would_have():
     _as_before_copies_were_kept(published)
     assert _read(published) is None
 
+    # In the order a migrate runs them: 0007 composes the copy as it knew a
+    # copy, and 0012 then gives it the supplier.
     keep_what_is_published_now(live_apps, None)
+    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
 
     assert _read(published) == kept
 

@@ -381,15 +381,17 @@ export type HeldNameReason = Extract<
  *
  * COMPOSED WHOLE, COST AND PRICE, because the pair IS the state (#473 row 4).
  * The held cost alone is `unknownCost(reason)`; what makes it held is the
- * price beside it, `unknown` and never `waived` or `known`. A held cost beside
- * a `waived` price would say somebody abandoned the charge, and beside a
- * `known` one it would publish economics nobody resolved — so a fixture cannot
- * take the cost and let a default choose the price.
+ * price beside it, `unknown` WITH THE SAME STATED REASON (as ruled; the
+ * consultant's review of #618) and never `waived` or `known`. A held cost
+ * beside a `waived` price would say somebody abandoned the charge, beside a
+ * `known` one it would publish economics nobody resolved, and beside a
+ * reasonless `unknown` it would read as mere missing input — so a fixture
+ * cannot take the cost and let a default choose the price.
  */
 export function heldForRemediation(
   reason: HeldNameReason,
 ): SupplierCostScenario & CustomerPriceScenario {
-  return { ...unknownCost(reason), ...unknownPrice() };
+  return { ...unknownCost(reason), ...unknownPrice(), pricing_status_reason: reason };
 }
 
 // ---------------------------------------------------------------------------

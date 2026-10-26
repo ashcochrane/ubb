@@ -75,7 +75,8 @@ from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import SYSTEM, get_current_actor
 from apps.platform.event_types.costing import cost_declaration
 from apps.platform.event_types.quarantine import (
-    QuarantineError, hold_an_unrecognised_quantity, the_tenants_answers)
+    QuarantineError, answer_what_publications_declare,
+    hold_an_unrecognised_quantity, the_tenants_answers)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import cost_total, counts_as_unresolved
 from core.vocabulary import (
@@ -244,6 +245,15 @@ def execute(*, tenant, selector, actor=None):
     """
     run_id = uuid.uuid4()
 
+    # WHAT A PUBLICATION ANSWERS IS ANSWERED FIRST (#568; the consultant's
+    # review of #618). A publication rings for the held names its key answers
+    # once it commits; a run answers them too, so it is the tenant's retry
+    # whenever that doorbell went unheard — idempotent, one name at a time, and
+    # each replay is the held name's, so it is not counted below. What stays
+    # held after it is left alone by the run (`what_a_run_would_complete`).
+    answer_what_publications_declare(
+        tenant_id=tenant.id, key=selector.selected_event_type or None)
+
     # ONE ID MORE THAN THE BOUND, WHICH IS HOW `more_to_do` IS ANSWERED WITHOUT
     # A SECOND COUNT. A `COUNT(*)` over the same predicate would be a second
     # query answering a question this one already knows.
@@ -388,8 +398,14 @@ def what_a_run_would_complete(posting):
     ⚠ **AN EVENT WITH A DISMISSED NAME ON IT IS LEFT ALONE, FOR GOOD (#473
     row 2).** Re-resolving it could only cost it with the name the tenant said
     was not economic, or without it, and the ruling refuses both — so it is
-    never re-resolved, whatever is declared or published afterwards. The
-    tenant's answers about a held name are read once, here, and handed down.
+    never re-resolved, whatever is declared or published afterwards.
+
+    ⚠ **AND SO IS ONE WITH A NAME STILL UNDECIDED, UNTIL IT IS DECIDED.** The
+    decision comes first — a publication answering the name, or a map — and a
+    re-resolution costing around it would settle the call under a spelling, or
+    under the supplier the call named, that nobody has answered for: the
+    substitution #572 refuses. The tenant's answers about a held name are read
+    once, here, and handed down.
     """
     stored = getattr(posting, Posting.RECEIPT_COLUMN)
     completable = frozenset(
@@ -402,7 +418,7 @@ def what_a_run_would_complete(posting):
                                    event_id=posting.pk)
                if posting.unresolved_reason in REASONS_A_NAME_IS_HELD
                else None)
-    if answers is not None and answers.dismissed:
+    if answers is not None and (answers.dismissed or answers.undecided):
         return None
     return Evaluation(
         completable=completable, stored=stored,

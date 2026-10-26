@@ -62,9 +62,9 @@ bulk; and the test helper that asks whether the RULE admits the move at each
 of ADR-0007 §2's three doors (`usage/tests/_helpers.as_the_price_door`).
 """
 import enum
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
-from django.db import connection, transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.metering.pricing.services.cost_settlement import (
     its_unit_takes_up_the_resolution)
@@ -91,19 +91,34 @@ def marked_as_the_price_door():
     """This door's mark, for the length of its one statement and no longer.
 
     Transaction-local (`set_config(..., true)`), so a mark can never outlive
-    the transaction it was set in, and cleared on the way out whatever
-    happened, so no later statement in the same transaction — a run resolving
-    two hundred postings, say — inherits it.
+    the transaction it was set in — and gone on the way out WHATEVER happened,
+    so no later statement in the same transaction (a run resolving two hundred
+    postings, say) inherits it:
+
+    * the statement finished — the mark is cleared;
+    * Python raised under it — the transaction is still usable, and the mark
+      is cleared the same way;
+    * the DATABASE refused the statement — the (sub)transaction is aborted,
+      and the rollback that must follow reverts this transaction-local
+      setting with everything else. A clear attempted in the aborted
+      transaction would itself fail and report THAT instead of why the
+      statement failed, so it is attempted and its failure suppressed; the
+      door holds its statement in a savepoint of its own for exactly this.
     """
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT set_config(%s, %s, true)",
-                       [PRICE_DOOR_SETTING, PRICE_DOOR_MARK])
+    _set_the_mark(PRICE_DOOR_MARK)
     try:
         yield
-    finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT set_config(%s, '', true)",
-                           [PRICE_DOOR_SETTING])
+    except BaseException:
+        with suppress(DatabaseError):
+            _set_the_mark("")
+        raise
+    _set_the_mark("")
+
+
+def _set_the_mark(value):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT set_config(%s, %s, true)",
+                       [PRICE_DOOR_SETTING, value])
 
 
 class PriceResolution(enum.Enum):

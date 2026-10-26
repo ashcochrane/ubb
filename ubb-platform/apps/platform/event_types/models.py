@@ -100,6 +100,13 @@ REPORTED_COST_MAPPING = "reported_cost_mapping"
 #: publication pins, and `publication.py` reads them back by it.
 MEASUREMENTS = "measurements"
 
+#: The key a publication keeps its supplier under (#572; the consultant's
+#: review of #618). The Event Type pins its Provider's IDENTITY — re-pointing it
+#: is a revision — and the copy keeps the Provider's KEY, because the key is
+#: what recording compares a call's supplier with and costs under;
+#: `publication.py` reads it back by this name.
+PROVIDER_KEY = "provider_key"
+
 #: The two source kinds a REPORTED COST may be declared with. The concept
 #: declares four and they are shared with the quantities beside it; these two
 #: are what survives the narrowing, and the other two are refused below for two
@@ -531,6 +538,15 @@ class Provider(BaseModel):
     Event Type with no Provider is a normal Event Type. A fictitious Provider is
     a defect, not a workaround — it puts a name UBB invented into a tenant's own
     COGS attribution.
+
+    **A rename is a revision of every published declaration naming it (#572,
+    #605; the consultant's review of #618).** A published Event Type's supplier
+    decides whose call it is, and recording compares a call's supplier with the
+    KEY its publication kept — so the key is part of what each of those
+    declarations says, and changing it changes them. Like any change to a
+    declaration it takes effect when the Event Type is published again; until
+    then production records under the key that was published. See
+    :meth:`save`.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -553,6 +569,23 @@ class Provider(BaseModel):
 
     def __str__(self):
         return f"Provider({self.key})"
+
+    def save(self, *args, **kwargs):
+        """A rename revises every published Event Type that names this
+        supplier — see the class docstring.
+
+        Asked of the ROW, as ``EventType.revise_declaration`` asks: an
+        instance loaded before somebody else's rename would otherwise compare
+        against a key that is no longer there. Retiring a supplier revises
+        nothing: what may be attached next is not what a publication says.
+        """
+        renamed = (not self._state.adding and self.pk is not None
+                   and type(self)._base_manager.filter(pk=self.pk)
+                   .exclude(key=self.key).exists())
+        super().save(*args, **kwargs)
+        if renamed:
+            for event_type in self.event_types.all():
+                event_type.revise_declaration()
 
 
 class EventCategory(BaseModel):
@@ -633,11 +666,22 @@ class EventType(PinnedDeclaration, BaseModel):
     #: integration directly: one names the call, the other decides what the
     #: integration must supply.
     #:
-    #: The satellites are deliberately absent. The category reaches no money and
-    #: appears in nothing generated, and the supplier is an input to cost
-    #: resolution rather than to the code a tenant deploys — unpublishing a
-    #: tenant's live integration because they re-filed it under a different
-    #: analytics grouping would be a cost with no benefit on the other side.
+    #: The category is deliberately absent: it reaches no money and appears in
+    #: nothing generated — unpublishing a tenant's live integration because
+    #: they re-filed it under a different analytics grouping would be a cost
+    #: with no benefit on the other side.
+    #:
+    #: ⚠ **THE SUPPLIER IS PINNED, BY ITS IDENTITY (`provider_id`; #572, #605,
+    #: the consultant's review of #618).** It used to be absent beside the
+    #: category, as "an input to cost resolution rather than to the code a
+    #: tenant deploys". #572 made it more than that: a published Event Type's
+    #: supplier decides whose call a recording is, and a call naming another is
+    #: refused — so re-pointing it changes what a deployed integration may send,
+    #: and read live it would let an unpublished edit change what production
+    #: admits and how it costs, which is what #605 removed. Re-pointing is now a
+    #: revision; the copy a publication keeps holds the supplier's KEY
+    #: (:data:`PROVIDER_KEY`), and a Provider rename revises too
+    #: (``Provider.save``).
     #: The structured paths turned out not to fit here, and neither did the
     #: mapping. Both arrived on rows BENEATH the Event Type (#263, #266), and a
     #: tuple of this record's own field names cannot reach them: ``getattr`` on
@@ -646,7 +690,8 @@ class EventType(PinnedDeclaration, BaseModel):
     #: :meth:`revise_declaration`, which each child calls — which is the
     #: obligation the tripwire in ``event_types/tests/test_event_type.py``
     #: carried, now asked of the behaviour rather than of this tuple.
-    PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label")
+    PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label",
+              "provider_id")
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="event_types")
@@ -863,8 +908,20 @@ class EventType(PinnedDeclaration, BaseModel):
         mapping = (ReportedCostMapping._base_manager
                    .filter(event_type_id=self.pk)
                    .values(*ReportedCostMapping.PINNED).first())
+        # The supplier is pinned by its identity and KEPT by its key: the key
+        # is what recording reads (#572), and an id would leave every reader a
+        # query away from it. Read from the Provider's row for the reason the
+        # parts are — a rename since this instance loaded is the key this
+        # publication must keep.
+        own = {name: value for name, value
+               in zip(self.PINNED, self._pinned_declaration())
+               if name != "provider_id"}
+        supplier = ((Provider._base_manager.filter(pk=self.provider_id)
+                     .values_list("key", flat=True).first() or "")
+                    if self.provider_id is not None else "")
         return {
-            **dict(zip(self.PINNED, self._pinned_declaration())),
+            **own,
+            PROVIDER_KEY: supplier,
             MEASUREMENTS: list(measurements),
             REPORTED_COST_MAPPING: mapping,
         }
@@ -960,12 +1017,14 @@ class EventType(PinnedDeclaration, BaseModel):
             self._pinned_as_loaded = self._pinned_declaration()
             self.save()
             # AND A PUBLICATION IS THE TENANT DECLARING THE NAMES IT CARRIES
-            # (#568): every undecided name held at this key, or beneath it
-            # under a code this publication now carries, is registered and
-            # replayed in this same transaction. Imported here because the
-            # quarantine reads these models.
-            from .quarantine import register_what_a_publication_declares
-            register_what_a_publication_declares(self)
+            # (#568) — answered AFTER this commits, never inside it (the
+            # consultant's review of #618): this transaction is the
+            # configuration alone, and the held history under the key is
+            # registered and replayed one name at a time once it has landed.
+            # Imported here because the quarantine reads these models.
+            from .quarantine import answer_after_the_publication_commits
+            answer_after_the_publication_commits(tenant_id=self.tenant_id,
+                                                 key=self.key)
         return self
 
     # -- what makes a change a revision rather than a reinterpretation --------

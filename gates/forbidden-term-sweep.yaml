@@ -440,7 +440,11 @@ exclusions:
     # 280 → 281 in R10-W1 (#557): one migration — a customer price becomes
     # known only through its door (`usage/0049`). It names no retired word,
     # so the number moved for the file existing.
-    files: 281
+    # 281 → 283 in R10-W1's consultant round: two migrations — a publication
+    # keeps its supplier (`event_types/0012`), and a held price states its
+    # reason (`usage/0050`). Neither names a retired word, so the number moved
+    # for the files existing.
+    files: 283
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

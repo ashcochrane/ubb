@@ -51,7 +51,7 @@ from apps.platform.event_types.quarantine import (
     hold_an_unrecognised_quantity,
 )
 from apps.platform.event_types.tests._helpers import (
-    held_beside_no_recorded_event)
+    held_beside_no_recorded_event, published_and_committed)
 from apps.platform.tenants.models import Tenant
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
@@ -305,7 +305,7 @@ class AnUndecidedNameRefusesTheCloseTest(TestCase):
         # The name is held directly, beside no recorded event, so no product
         # is asked to replay one: what the close reads is the decision.
         _declared(tenant, "reasoning_tokens")
-        with held_beside_no_recorded_event():
+        with held_beside_no_recorded_event(), published_and_committed():
             EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY).publish()
         held.refresh_from_db()
         assert not held.is_unresolved

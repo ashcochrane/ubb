@@ -24,10 +24,11 @@ was never re-costed has left the period-close safeguard while the posting stays
 uncosted, and nothing would ever look at it again. So nothing here catches, and
 the remediation (`quarantine._remediate`) runs inside one transaction with the
 consumers: either the decision and its replay both land, or neither does.
-The one carve is the caller's, not this module's: a publication registering the
-held names it declares (`quarantine.register_what_a_publication_declares`)
-gives each its own savepoint and leaves a name a consumer refused BY NAME
-(`QuarantineError`) held, rather than refusing the publication.
+The one carve is the caller's, not this module's: the answering a publication
+sets going once it has committed (`quarantine.answer_what_publications_
+declare`) gives each held name a transaction of its own, so a name a consumer
+refuses or breaks on stays held while the names beside it are answered — and
+the publication, already committed, is never what is vetoed.
 
 Nothing in this module reads or writes a row of its own.
 """
