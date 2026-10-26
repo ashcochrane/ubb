@@ -40,6 +40,10 @@ NAME_MALFORMED = "name_malformed"              # not `<owner>.<transition>` at a
 OWNER_NOT_A_DOMAIN_OWNER = "owner_not_a_domain_owner"  # a product or a mechanism
 TRANSITION_NOT_A_DECLARED_STATE = "transition_not_a_declared_state"  # a cause, or a coinage
 TASK_EVENT_WITHOUT_A_STATUS = "task_event_without_a_status"  # names no `task_status` value
+TITLE_NOT_THE_EVENTS_NAME = "title_not_the_events_name"  # the payload's published title
+                                               # (its declaring class) is not the
+                                               # event's own name in Pascal case
+                                               # (#554)
 
 # --- The excused violations, read from the migration ledger -----------------
 EXCUSE_UNREADABLE = "excuse_unreadable"        # gates/migration-ledger.yaml will not parse

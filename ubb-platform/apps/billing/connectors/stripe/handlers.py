@@ -11,7 +11,7 @@ from django.db import transaction
 
 from apps.billing.locking import lock_for_billing
 from apps.billing.topups.services import AutoTopUpService
-from apps.platform.events.schemas import BalanceLow
+from apps.platform.events.schemas import WalletBalanceLow
 from apps.platform.queries import get_tenant_stripe_account
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def handle_balance_low_stripe(event_id, payload):
     """When balance is low and tenant has Stripe, create auto-topup attempt
     and dispatch charge task."""
-    evt = BalanceLow.from_payload(payload)
+    evt = WalletBalanceLow.from_payload(payload)
     tenant_id = evt.tenant_id
     customer_id = evt.customer_id
 

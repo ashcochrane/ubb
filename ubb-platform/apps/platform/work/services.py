@@ -330,7 +330,7 @@ class CascadeRecord:
     DIFFERENT ACTOR. A tenant's close is a DECLARATION, so what that close
     withdrew records `outcome_reason` — the caller-supplied set, which is where
     `parent_closed` lives. UBB's own two stops record the UBB-produced concept
-    instead, under the metadata key that has always carried it. Tidying the two
+    instead, in the column UBB owns for it (`Task.reason_code`). Tidying the two
     together would put a word meaning *the tenant said so* onto a row about
     which the tenant said nothing, which is the distinction
     `OUTCOME_REASON_CHOICES` and `reasons.PARENT_KILLED` are two concepts for.
@@ -353,8 +353,8 @@ class CascadeRecord:
     _: KW_ONLY
     #: The CALLER-supplied concept, written to the column. Only a close has one.
     outcome_reason: str = ""
-    #: The UBB-PRODUCED concept, written to the stop-cause metadata key. Only
-    #: UBB's own two stops have one.
+    #: The UBB-PRODUCED concept, written to UBB's own `reason_code` column.
+    #: Only UBB's own two stops have one.
     stop_reason: str = ""
 
 
@@ -395,11 +395,11 @@ KILLED_WITH_ITS_PARENT = CascadeRecord(
 EXPIRED_WITH_ITS_PARENT = CascadeRecord(
     TASK_STATUS_EXPIRED, stop_reason=reasons.PARENT_EXPIRED)
 
-#: THE METADATA KEYS UBB'S OWN BOOKKEEPING WRITES ON A STOPPED UNIT live on
-#: the model beside the column they are written into (`models.STOP_CAUSE_KEY`
-#: and its three siblings, #458); this module writes them and every other
-#: reader — the patrol's re-mint, the stop-context tagging, the retired report
-#: — reaches them through either name.
+#: THE FOUR FACTS UBB RECORDS ON A STOPPED UNIT are columns UBB owns
+#: (`Task.reason_code` and its three siblings, #458; out of the caller's
+#: `metadata` since R10-W2, `models.STOP_CAUSE_KEY` names them); this module
+#: writes them and every other reader — the patrol's re-mint, the stop-context
+#: tagging, the two spend-control reports — reads the columns.
 
 
 def ceiling_control_id(task):
@@ -724,7 +724,19 @@ class TaskService:
                 "task (one containment level at launch)")
         if parent is not None and parent.pricing_mode != pricing_mode:
             raise ContainmentRegimeRefused(parent.pricing_mode, pricing_mode)
+        # THE EXPIRY POLICY THIS START PUBLISHES, snapshotted on the row it
+        # creates (#540): what the start response says and what a replay of it
+        # says again. A snapshot, never what the sweepers act on — they
+        # re-resolve the same ladder each time they run, so a changed window
+        # reaches this unit while it runs (`Task.start_absolute_deadline_seconds`).
+        from apps.platform.work.queries import expiry_windows, windows_of_a_unit
+        windows = windows_of_a_unit(
+            expiry_windows(tenant.id),
+            parent_id=parent.id if parent is not None else None,
+            task_type=task_type)
         return Task.objects.create(
+            start_absolute_deadline_seconds=windows.absolute,
+            start_silence_window_seconds=windows.silence,
             tenant=tenant,
             customer=customer,
             parent=parent,
@@ -1068,9 +1080,9 @@ class TaskService:
         the same UPDATE as the state it explains so the two can never come
         apart (#409). It is a separate argument from ``reason`` because they
         are separate concepts with separate owners: ``reason`` is UBB's own
-        stop reason and lands in `metadata`, a declaration is the caller's
-        closed-set outcome reason and its free-text sentence, and they land in
-        columns. Only a close passes one — nothing UBB decides on its own may
+        stop reason and lands in UBB's own columns (with the family and the
+        control's identity), a declaration is the caller's closed-set outcome
+        reason and its free-text sentence, and they land in theirs. Only a close passes one — nothing UBB decides on its own may
         write a field that means *the tenant said so*.
 
         Only the winning transition cascades, and only from a top-level unit:
@@ -1116,10 +1128,15 @@ class TaskService:
         task.completed_at = timezone.now()
         update_fields = ["status", "completed_at", "updated_at"]
         if reason:
-            task.metadata = {**task.metadata, STOP_CAUSE_KEY: reason,
-                             STOP_CONTROL_FAMILY_KEY: controls.control_family(reason),
-                             STOP_CONTROL_ID_KEY: str(control_id or "")}
-            update_fields.append("metadata")
+            # UBB'S OWN COLUMNS, never the caller's `metadata` (R10-W2): the
+            # cause, the family derived from it and the control's identity.
+            # A stop with no cause to record — the hourly safety net's silent
+            # expiry — writes none of them, and they stay NULL.
+            task.reason_code = reason
+            task.control_family = controls.control_family(reason)
+            task.control_id = str(control_id) if control_id else None
+            update_fields += [STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY,
+                              STOP_CONTROL_ID_KEY]
         if declaration is not None:
             task.outcome_reason = declaration.outcome_reason
             task.reason_detail = declaration.reason_detail
@@ -1220,19 +1237,17 @@ class TaskService:
         for child in children:
             child.status = cascade.status
             child.completed_at = now
-            # COPY-ON-WRITE, like `_flip` above: the bag is built whole and
-            # assigned once, never assigned and then reached back into.
-            stamped = {**child.metadata,
-                       STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE}
-            if cascade.stop_reason:
-                stamped[STOP_CAUSE_KEY] = cascade.stop_reason
-                stamped[STOP_CONTROL_FAMILY_KEY] = parent.metadata.get(
-                    STOP_CONTROL_FAMILY_KEY, "")
-                stamped[STOP_CONTROL_ID_KEY] = parent.metadata.get(
-                    STOP_CONTROL_ID_KEY, "")
-            child.metadata = stamped
-            update_fields = ["status", "completed_at", "metadata",
+            # UBB'S OWN COLUMNS, as `_flip` above writes them, and the
+            # caller's `metadata` untouched (R10-W2).
+            child.trigger_source = TRIGGER_SOURCE_PARENT_CASCADE
+            update_fields = ["status", "completed_at", STOP_MECHANISM_KEY,
                              "updated_at"]
+            if cascade.stop_reason:
+                child.reason_code = cascade.stop_reason
+                child.control_family = parent.control_family
+                child.control_id = parent.control_id
+                update_fields += [STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY,
+                                  STOP_CONTROL_ID_KEY]
             if cascade.outcome_reason:
                 child.outcome_reason = cascade.outcome_reason
                 update_fields.append("outcome_reason")
@@ -1342,9 +1357,8 @@ class TaskService:
                         # original announcement and a repaired delivery can
                         # only ever say the same thing. The basis is derived
                         # off the same row's cause.
-                        control_family=stopped.metadata.get(
-                            STOP_CONTROL_FAMILY_KEY, ""),
-                        control_id=stopped.metadata.get(STOP_CONTROL_ID_KEY, ""),
+                        control_family=stopped.control_family or "",
+                        control_id=stopped.control_id or "",
                         ceiling_basis=stopped.ceiling_basis,
                         total_billed_cost_micros=stopped.total_billed_cost_micros,
                         total_provider_cost_micros=stopped.total_provider_cost_micros,
@@ -1352,7 +1366,9 @@ class TaskService:
                         # (#328): non-zero here says what it left out, and the
                         # stop is an enforcement trigger, not proof (#603).
                         unresolved_event_count=stopped.unresolved_event_count,
-                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros or 0)
+                        # Null where no ceiling applies (#610): an expiry or a
+                        # customer-wide stop reaches uncapped work too.
+                        task_cogs_ceiling_micros=stopped.task_cogs_ceiling_micros)
                     if stopped.parent_id is not None:
                         outbox = write_event(announcement(
                             subtask_id=str(stopped.id),
@@ -1375,9 +1391,8 @@ class TaskService:
                     stopped.announce_outbox_id = outbox.id
                     update_fields = ["announce_outbox_id", "updated_at"]
                     if trigger_source:
-                        stopped.metadata = {**stopped.metadata,
-                                            STOP_MECHANISM_KEY: trigger_source}
-                        update_fields.append("metadata")
+                        stopped.trigger_source = trigger_source
+                        update_fields.append(STOP_MECHANISM_KEY)
                     stopped.save(update_fields=update_fields)
             return transitioned
         except Exception:

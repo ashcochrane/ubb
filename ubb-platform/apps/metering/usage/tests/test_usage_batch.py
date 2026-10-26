@@ -18,7 +18,6 @@ from apps.platform.event_types.tests._helpers import (
 from apps.platform.events.models import OutboxEvent
 from apps.platform.work.models import Task
 from apps.platform.work import reasons
-from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 BATCH_URL = "/api/v1/metering/usage/batch"
@@ -256,7 +255,7 @@ class TestBatchOneRuleParity:
         assert Posting.objects.filter(tenant=t).count() == 3
         task.refresh_from_db()
         assert task.status == "killed"
-        assert task.metadata.get(STOP_CAUSE_KEY) == reasons.TASK_COGS_CEILING
+        assert task.reason_code == reasons.TASK_COGS_CEILING
         assert task.total_provider_cost_micros == 1_300
         assert task.total_billed_cost_micros == 1_300
         assert task.event_count == 3

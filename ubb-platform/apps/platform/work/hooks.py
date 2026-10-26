@@ -24,7 +24,7 @@ to it is the product's own concern.
 ⚠ WHAT THE ROW CARRIES AT THAT MOMENT is the state, the cause and the
 control — not yet the announcement. The listeners run inside the flip,
 and the announcing lanes stamp the outbox id and the mechanism
-(`STOP_MECHANISM_KEY`) on the row AFTER the flip returns; a cascaded piece
+(`Task.trigger_source`) on the row AFTER the flip returns; a cascaded piece
 carries its mechanism already, because the cascade writes it in the same
 UPDATE as the state. So a listener reads the transition off the
 `TerminalTransition` it is handed and the row's own columns, and never

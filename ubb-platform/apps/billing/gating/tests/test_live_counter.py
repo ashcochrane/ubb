@@ -28,7 +28,7 @@ from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import StopFired
+from apps.platform.events.schemas import CustomerStopped
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.models import TenantApiKey
 from apps.platform.work import reasons
@@ -287,7 +287,7 @@ class TestStopFlag:
         orig_create = OutboxEvent.objects.create
 
         def _create(**kwargs):
-            if kwargs.get("event_type") == StopFired.EVENT_TYPE:
+            if kwargs.get("event_type") == CustomerStopped.EVENT_TYPE:
                 with connection.cursor() as cur:
                     cur.execute("SELECT 1/0")  # DataError; aborts the ambient tx
             return orig_create(**kwargs)
@@ -306,14 +306,14 @@ class TestStopFlag:
         assert res["stop"] is True and res["stop_reason"] == stop_line(t)
         assert Posting.objects.get(id=res["event_id"]).billed_cost_micros == 6_000_000
         # The ambient transaction stayed usable: the UsageRecorded outbox row
-        # (written AFTER the failed StopFired insert) still landed.
+        # (written AFTER the failed CustomerStopped insert) still landed.
         assert OutboxEvent.objects.filter(
             event_type="usage.recorded", payload__event_id=str(res["event_id"])).exists()
         # The savepoint took the transition down WITH the failed insert: no
         # ledger row, no customer.stopped, no folded suspension — cleanly
         # un-signalled, never "transitioned but unqueued".
         assert not StopSignalState.objects.filter(owner=c).exists()
-        assert not OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).exists()
+        assert not OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).exists()
         c.refresh_from_db()
         assert c.status == "active"
 
@@ -438,8 +438,8 @@ class TestStopPropagation:
             assert msg["data"].decode() == stop_line(t)
             assert pubsub.get_message(timeout=0.2) is None  # exactly one
 
-            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
-            event = OutboxEvent.objects.get(event_type=StopFired.EVENT_TYPE)
+            assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
+            event = OutboxEvent.objects.get(event_type=CustomerStopped.EVENT_TYPE)
             assert event.payload["owner_id"] == str(c.id)
             assert event.payload["reason_code"] == stop_line(t)
             assert event.payload["scope"] == "customer"
@@ -452,7 +452,7 @@ class TestStopPropagation:
         c = self._funded_owner(t)
         LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
-        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+        assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
 
         pubsub = self._subscribe(c.id)
         try:
@@ -461,7 +461,7 @@ class TestStopPropagation:
             out = LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
             assert out["stop"] is True
             assert pubsub.get_message(timeout=0.3) is None
-            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+            assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
         finally:
             pubsub.close()
 
@@ -482,7 +482,7 @@ class TestStopPropagation:
         c = self._funded_owner(t)
         LiveCounter.debit(c.id, t, 19_600_000, now=timezone.now())
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())  # crosses
-        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+        assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
 
         Door.delete_stop(c.id)
 
@@ -493,7 +493,7 @@ class TestStopPropagation:
             msg = pubsub.get_message(timeout=1)
             assert msg is not None and msg["data"].decode() == stop_line(t)
             # Episode still open on the ledger -> the re-set lost the transition.
-            assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+            assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
         finally:
             pubsub.close()
 
@@ -502,7 +502,7 @@ class TestStopPropagation:
         Door.delete_stop(c.id)
         # ...so the next crossing opens episode 2 and emits exactly once more.
         LiveCounter.debit(c.id, t, 500_000, now=timezone.now())
-        fired = OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).order_by("created_at")
+        fired = OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).order_by("created_at")
         assert fired.count() == 2
         assert [e.payload["episode_seq"] for e in fired] == [1, 2]
 
@@ -519,7 +519,7 @@ class TestStopPropagation:
         assert out["stop"] is True
         # The outbox event (a separate best-effort side effect) still fires even
         # though pub/sub publish blew up.
-        assert OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).count() == 1
+        assert OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).count() == 1
 
 
 @pytest.mark.django_db

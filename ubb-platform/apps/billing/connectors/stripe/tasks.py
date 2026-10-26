@@ -50,7 +50,7 @@ def charge_auto_topup_task(attempt_id):
     # Task 8b (sweep): lock/read the PINNED billing owner, not attempt.customer_id.
     # For every auto-topup attempt today `customer_id == billing_owner_id` by
     # construction (create_pending_attempt is only ever called from
-    # handle_balance_low_stripe, which locks the owner id off the BalanceLow
+    # handle_balance_low_stripe, which locks the owner id off the WalletBalanceLow
     # event) — so this was never reachable with a seat id. But every other
     # money-adjacent read in this codebase now trusts the pinned field rather
     # than an invariant living two call frames away, and lock_for_billing's

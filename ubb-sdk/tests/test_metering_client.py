@@ -18,9 +18,11 @@ from ubb.types import PaginatedResponse, BatchItemResult, BatchResult
 # is not a surface a value set ships on" — and the hand-written client's own
 # conversion belongs to the ticket that re-cuts the SDK's task surface.
 from ubb.vocabulary import (
-    CEILING_STATUS_INDETERMINATE,
+    CEILING_STATUS_INDETERMINATE, CONTROL_FAMILY_CEILING,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_COMPLETED, TASK_STATUS_FAILED,
+    REASON_CODE_TASK_COGS_CEILING, TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_USAGE_INGEST,
 )
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.record_usage_response import RecordUsageResponse
@@ -673,7 +675,9 @@ class MeteringClientTest(unittest.TestCase):
             "task_id": "task_1", "parent_task_id": None, "task_type": "render",
             "status": "active", "task_cogs_ceiling_micros": None,
             "agreed_price_micros": None, "external_task_id": "",
-            "created_at": "2026-09-02T09:00:00+00:00", "replayed": False,
+            "created_at": "2026-09-02T09:00:00+00:00",
+            "absolute_deadline_at": "2026-09-02T15:00:00+00:00",
+            "silence_window_seconds": 900, "replayed": False,
         })
         task = self.client.start_task("c1", "k1", task_type="render",
                                       grouping_fields={"region": "eu"})
@@ -690,7 +694,11 @@ class MeteringClientTest(unittest.TestCase):
         row = {
             "task_id": "task_1", "parent_task_id": None, "task_type": "render",
             "status": TASK_STATUS_COMPLETED, "outcome_reason": None,
-            "reason_detail": None, "total_provider_cost_micros": 1_750_000,
+            "reason_detail": None,
+            # UBB did not stop a completed unit, so its stop cause is null
+            # on all three — required keys, present either way (#551).
+            "reason_code": None, "trigger_source": None,
+            "control_family": None, "total_provider_cost_micros": 1_750_000,
             "unresolved_event_count": 1, "total_billed_cost_micros": 2_500_000,
             "unpriced_event_count": 0, "event_count": 12,
             "task_cogs_ceiling_micros": 5_000_000, "agreed_price_micros": None,
@@ -741,8 +749,12 @@ class MeteringClientTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.get")
     def test_list_tasks_url_filters_and_page(self, mock_get):
         from ubb._core.models.task_out import TaskOut
+        stopped = self._a_task_row(task_id="task_2", status=TASK_STATUS_KILLED,
+                                   reason_code=REASON_CODE_TASK_COGS_CEILING,
+                                   trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
+                                   control_family=CONTROL_FAMILY_CEILING)
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
-            "data": [self._a_task_row(), self._a_task_row(task_id="task_2")],
+            "data": [self._a_task_row(), stopped],
             "next_cursor": "abc", "has_more": True,
         })
         page = self.client.list_tasks(cursor="xyz", limit=2, customer_id="c1",
@@ -759,6 +771,13 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual([row.task_id for row in page.data],
                          ["task_1", "task_2"])
         self.assertIsInstance(page.data[0], TaskOut)
+        # How UBB stopped the second (#551), and nothing on the first.
+        self.assertIsNone(page.data[0].reason_code)
+        self.assertEqual(page.data[1].reason_code,
+                         REASON_CODE_TASK_COGS_CEILING)
+        self.assertEqual(page.data[1].trigger_source,
+                         TRIGGER_SOURCE_USAGE_INGEST)
+        self.assertEqual(page.data[1].control_family, CONTROL_FAMILY_CEILING)
         self.assertEqual(page.next_cursor, "abc")
         self.assertTrue(page.has_more)
 

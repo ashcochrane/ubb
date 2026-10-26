@@ -95,6 +95,20 @@ describe("RunDetailPage", () => {
     expect(badge.className).not.toMatch(DRAWN_AS_FAILURE);
     expect(within(ended).getByText(/Not a failure/)).toBeInTheDocument();
     expect(within(ended).queryByText("Reason")).toBeNull();
+    // The reaper's own stop, in the catalogue's words (#551).
+    expect(within(rowBeside(ended, "Stopped because")).getByText("Silence window elapsed")).toBeInTheDocument();
+    expect(within(rowBeside(ended, "Stopped by")).getByText("Stale sweep")).toBeInTheDocument();
+  });
+
+  // #551: the unit read carries why, how and under which control UBB stopped
+  // the work, and this page says all three where the run ended — the rows
+  // the four terminal webhooks carry, which this page could not show before.
+  it("says why, by which mechanism and under which control UBB stopped a run", async () => {
+    await opened(RUN_KILLED_ID);
+    const ended = region("How it ended");
+    expect(within(rowBeside(ended, "Stopped because")).getByText("Task COGS ceiling reached")).toBeInTheDocument();
+    expect(within(rowBeside(ended, "Stopped by")).getByText("Usage ingest")).toBeInTheDocument();
+    expect(within(rowBeside(ended, "Spend control")).getByText("Ceiling")).toBeInTheDocument();
   });
 
   it("says Unknown for a run whose totals nobody knows, and never a zero amount", async () => {
@@ -230,6 +244,11 @@ describe("RunDetailPage", () => {
     expect(
       within(rowBeside(ended, "Reason")).getByText("Upstream provider failed"),
     ).toBeInTheDocument();
+    // Its caller ended it, so there is no stop of UBB's to describe: the
+    // caller's reason is a different concept and stands alone (#551).
+    expect(within(ended).queryByText("Stopped because")).toBeNull();
+    expect(within(ended).queryByText("Stopped by")).toBeNull();
+    expect(within(ended).queryByText("Spend control")).toBeNull();
     const money = region("What it cost and earned");
     expect(
       within(rowBeside(money, "Agreed price")).getByText(

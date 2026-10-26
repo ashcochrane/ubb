@@ -470,8 +470,9 @@ gates:
 
   G8:
     statement: >-
-      Webhook catalogue shape — every event is `<owner>.<past_tense>`, and every
-      terminal Task event maps to a status value.
+      Webhook catalogue shape — every event is `<owner>.<past_tense>`, every
+      terminal Task event maps to a status value, and every payload's published
+      title names its own event.
     oracle: >-
       the vocabulary registry, decomposed into ADR-0006 §5's two halves, against
       the event catalogue in apps/platform/events/schemas.py
@@ -508,6 +509,8 @@ gates:
         node: tests/contracts/test_webhook_catalogue.py::test_every_task_event_maps_to_a_status_value
       - suite: contracts
         node: tests/contracts/test_webhook_catalogue.py::test_the_declared_end_state_obeys_the_rules_it_supplies
+      - suite: contracts
+        node: tests/contracts/test_webhook_catalogue.py::test_every_payload_title_names_its_event
 
   G9:
     statement: >-

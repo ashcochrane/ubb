@@ -33,7 +33,9 @@ from apps.billing.queries import get_billing_config, get_customer_soft_min_balan
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopFired, UsageRecorded
+from apps.platform.events.schemas import (
+    CustomerStopped, UsageRecorded, WalletPolicySoftFloorCleared,
+    WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant
 
 HARD = 5_000_000  # hard floor: the stop line is -5_000_000
@@ -61,15 +63,15 @@ def _drain(t, c, billed):
 
 
 def _crossed():
-    return OutboxEvent.objects.filter(event_type=SoftFloorCrossed.EVENT_TYPE).order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=WalletPolicySoftFloorCrossed.EVENT_TYPE).order_by("created_at")
 
 
 def _cleared():
-    return OutboxEvent.objects.filter(event_type=SoftFloorCleared.EVENT_TYPE).order_by("created_at")
+    return OutboxEvent.objects.filter(event_type=WalletPolicySoftFloorCleared.EVENT_TYPE).order_by("created_at")
 
 
 def _hard_fired():
-    return OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE)
+    return OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE)
 
 
 @pytest.mark.django_db

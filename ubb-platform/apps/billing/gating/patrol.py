@@ -166,34 +166,42 @@ def _remint_signal_row(row, tenant):
     by and the control id the episode recorded, exactly as the original
     announcement did; the patrol derives nothing and guesses nothing."""
     from apps.billing.gating.services.stop_signal_service import (
-        STATE_STOPPED, STOP_LINES, control_fields, emit_stamped)
+        STATE_STOPPED, STOP_LINES, announced_balance, control_fields,
+        emit_stamped)
     from apps.billing.queries import get_customer_soft_min_balance
     from apps.platform.events.schemas import (
-        SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired)
+        CustomerStopCleared, CustomerStopped, WalletPolicySoftFloorCleared,
+        WalletPolicySoftFloorCrossed)
 
-    balance = _owner_balance(row.owner_id, tenant)
     if row.reason in STOP_LINES:
         control = control_fields(row)
         if row.state == STATE_STOPPED:
-            schema = StopFired(
+            schema = CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 scope="customer", episode_seq=row.episode_seq,
                 re_announcement=True, **control)
         else:
-            schema = StopCleared(
+            schema = CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 scope="customer", episode_seq=row.episode_seq,
-                balance_micros=balance, re_announcement=True, **control)
+                # The same rule the clearing door applies (#610): null where
+                # the customer holds no wallet balance, the durable balance
+                # where it does — a re-mint measured nothing of its own.
+                balance_micros=announced_balance(row.owner_id, tenant),
+                re_announcement=True, **control)
     else:
+        # A soft floor is a line on a wallet: its episodes open only on the
+        # wallet pass, so a balance always applies to one.
+        balance = _wallet_balance(row.owner_id)
         soft = get_customer_soft_min_balance(row.owner_id, tenant.id)
         if row.state == STATE_STOPPED:
-            schema = SoftFloorCrossed(
+            schema = WalletPolicySoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 balance_micros=balance,
                 soft_min_balance_micros=soft or 0,
                 episode_seq=row.episode_seq, re_announcement=True)
         else:
-            schema = SoftFloorCleared(
+            schema = WalletPolicySoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
                 reason=row.clear_reason, balance_micros=balance,
                 soft_min_balance_micros=soft,
@@ -201,12 +209,12 @@ def _remint_signal_row(row, tenant):
     emit_stamped(row, schema)
 
 
-def _owner_balance(owner_id, tenant):
-    """The current durable balance riding a re-mint's balance field — the
-    honest CURRENT-state view (postpaid has no spendable balance: 0)."""
+def _wallet_balance(owner_id):
+    """The current durable wallet balance riding a soft-floor re-mint — the
+    honest CURRENT-state view. A stop line's re-mint asks
+    ``announced_balance`` instead, which says null where no wallet balance
+    applies (#610)."""
     from apps.billing.queries import get_customer_balance
-    if tenant.billing_mode == "postpaid":
-        return 0
     return int(get_customer_balance(owner_id))
 
 
@@ -352,9 +360,6 @@ def _remint_kill(task, tenant):
     announcement happened to carry."""
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import terminal_stop_event
-    from apps.platform.work.models import (
-        STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-        STOP_MECHANISM_KEY)
 
     announcement = terminal_stop_event(
         task.status, is_contained=task.parent_id is not None)
@@ -362,12 +367,13 @@ def _remint_kill(task, tenant):
         tenant_id=str(tenant.id), customer_id=str(task.customer_id),
         billing_owner_id=str(task.billing_owner_id or ""),
         external_task_id=task.external_task_id,
-        reason_code=task.metadata.get(STOP_CAUSE_KEY, ""),
+        # UBB's own stop columns, never the caller's `metadata` (R10-W2).
+        reason_code=task.reason_code or "",
         # ⚠ AND THE CONTROL IS READ BACK TOO (#458): the family and the id the
         # stopping lane stamped on the row, and the basis derived off the
         # row's own cause — this patrol applied nothing and guesses nothing.
-        control_family=task.metadata.get(STOP_CONTROL_FAMILY_KEY, ""),
-        control_id=task.metadata.get(STOP_CONTROL_ID_KEY, ""),
+        control_family=task.control_family or "",
+        control_id=task.control_id or "",
         ceiling_basis=task.ceiling_basis,
         # ⚠ AND THE MECHANISM IS READ BACK RATHER THAN INVENTED — it is not
         # this patrol, which applied nothing. The lane that DID apply the stop
@@ -375,14 +381,16 @@ def _remint_kill(task, tenant):
         # `_cascade` for a contained piece), so a repaired delivery names the
         # same mechanism the original did. Empty where the row holds none,
         # which is UBB declining to state one rather than guessing.
-        trigger_source=task.metadata.get(STOP_MECHANISM_KEY, ""),
+        trigger_source=task.trigger_source or "",
         total_billed_cost_micros=task.total_billed_cost_micros,
         total_provider_cost_micros=task.total_provider_cost_micros,
         # A re-mint publishes the unit's CURRENT state, so it publishes the
         # current completeness too (#328) — a repaired delivery that dropped the
         # caveat would say more than the original did.
         unresolved_event_count=task.unresolved_event_count,
-        task_cogs_ceiling_micros=task.task_cogs_ceiling_micros or 0,
+        # The column as it stands, null where no ceiling applies (#610) — the
+        # same read the fresh announcement makes.
+        task_cogs_ceiling_micros=task.task_cogs_ceiling_micros,
         re_announcement=True)
     if task.parent_id is not None:
         outbox = write_event(announcement(

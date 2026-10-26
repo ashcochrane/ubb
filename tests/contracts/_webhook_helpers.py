@@ -186,4 +186,8 @@ def excusing(*entries, expected="wallet.balance_low"):
 
 
 def _class_name(event):
-    return "".join(part.title() for part in event.replace(".", "_").split("_"))
+    """The title a synthetic class publishes ``event`` under — the gate's own
+    rendering (#554), so every control below that is not ABOUT titles declares
+    its events under the title the gate requires, and the two cannot drift."""
+    from tools.webhook_catalogue.shape import title_for
+    return title_for(event)

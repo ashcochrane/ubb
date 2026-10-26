@@ -36,6 +36,22 @@ import type { KindOfWork, RunRow } from "../api/types";
 /** The catalogue's words for why a caller said the work did not deliver. */
 export const outcomeReasonLabel = labelMap(OUTCOME_REASON_LABEL_KEYS);
 
+/** How UBB stopped a run: the three answers the unit read carries (#551). */
+export type UbbStop = Pick<RunRow, "reason_code" | "trigger_source" | "control_family">;
+
+/**
+ * How UBB stopped a run — why, by which mechanism, under which control — or
+ * null where UBB did not stop it. The route answers all three keys on every
+ * run and says null on all three for a run still going or one its caller
+ * ended, whose word is `outcome_reason`: a different concept, never this one.
+ */
+export function ubbStopOf(run: UbbStop): UbbStop | null {
+  const { reason_code, trigger_source, control_family } = run;
+  return reason_code === null && trigger_source === null && control_family === null
+    ? null
+    : { reason_code, trigger_source, control_family };
+}
+
 // ---------------------------------------------------------------------------
 // The list
 

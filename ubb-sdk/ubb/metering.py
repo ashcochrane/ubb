@@ -355,7 +355,8 @@ class StartedTask:
     ``result`` is the whole registration (a ``StartTaskResponse``);
     ``task_id``, ``task_type``, ``parent_task_id``, ``replayed``,
     ``task_cogs_ceiling_micros``, ``agreed_price_micros``,
-    ``external_task_id`` and ``created_at`` read straight off it. ``closed``
+    ``external_task_id``, ``created_at``, ``absolute_deadline_at`` and
+    ``silence_window_seconds`` read straight off it. ``closed``
     is the close's acknowledgement once a declaration has landed, ``None``
     before; ``declared`` is the outcome sent through this handle, or ``None``.
 
@@ -408,6 +409,22 @@ class StartedTask:
     @property
     def created_at(self) -> str:
         return self.result.created_at
+
+    @property
+    def absolute_deadline_at(self) -> str:
+        """This unit's absolute deadline under the expiry policy resolved when
+        it was started — a replay of the start answers the same. UBB enforces
+        the policy as it stands when it checks, so a later configuration
+        change can expire the unit earlier or later than this."""
+        return self.result.absolute_deadline_at
+
+    @property
+    def silence_window_seconds(self) -> int | None:
+        """How long this unit could go without a usage report before UBB
+        expires it, under the expiry policy resolved when it was started;
+        ``None`` where no silence window applied. Live enforcement may
+        reflect later configuration changes."""
+        return self.result.silence_window_seconds
 
     @property
     def status(self) -> str:

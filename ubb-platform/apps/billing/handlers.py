@@ -15,9 +15,9 @@ def handle_usage_recorded_billing(event_id, payload):
     Called by the outbox dispatcher with (event_id, payload) signature.
 
     The wallet movement and its whole winning-branch tail — exactly-once
-    debit, lot consumption, BalanceOverage on zero-cross, the #39/#40
+    debit, lot consumption, WalletBalanceOverage on zero-cross, the #39/#40
     floor-crossing lanes (or the Tier-1 suspension when enforcement is off),
-    and BalanceLow under the auto-top-up trigger — live behind the wallet
+    and WalletBalanceLow under the auto-top-up trigger — live behind the wallet
     seam (``wallet_ops.draw_down_usage``, #109). This handler keeps what is
     caller-side by decision 7: the postpaid branch, the owner resolution,
     billing-period accumulation, and the spend-pool counters.
@@ -72,8 +72,8 @@ def handle_usage_recorded_billing(event_id, payload):
             owner_id = evt.billing_owner_id or str(seat.resolve_billing_owner().id)
             usage_event_id = evt.event_id
             # The whole drawdown — lock, lazy expiry, exactly-once debit, lot
-            # consumption, and the winning-branch tail (BalanceOverage, the
-            # #39/#40 crossing lanes or the Tier-1 suspension, BalanceLow) —
+            # consumption, and the winning-branch tail (WalletBalanceOverage, the
+            # #39/#40 crossing lanes or the Tier-1 suspension, WalletBalanceLow) —
             # lives behind the wallet seam (#109).
             wallet_ops.draw_down_usage(
                 customer_id=owner_id, tenant=tenant,
@@ -109,7 +109,8 @@ def handle_usage_recorded_billing(event_id, payload):
             if eff is not None:
                 count_in_live = same_month(eff, _tz.now())
         if count_in_live:
-            from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
+            from apps.billing.gating.services.customer_spend_pool_service import (
+                CustomerSpendPoolService)
             CustomerSpendPoolService.record_usage_spend(
                 seat, billed_cost_micros, trigger_source=mechanism)
 

@@ -2,7 +2,7 @@
 
 One function turns what the recording transaction already knows into the
 immutable ``Posting.stop_context`` array: the accumulate verdicts (unit
-scope), the unit's kill metadata (late events), and the durable stop-signal
+scope), the unit's recorded stop cause (late events), and the durable stop-signal
 state of the billing owner and, for a pooled seat, of the seat's own Pool
 level (customer scope, read through the ``apps.billing.queries`` contract —
 ADR-001). Both ingest paths — sync record and async settle — call
@@ -42,7 +42,6 @@ Timestamps are stored as ISO-8601 strings, ids as strings — the array must
 be JSON-storable and byte-stable on replay reads.
 """
 from apps.platform.work import reasons
-from apps.platform.work.services import STOP_CAUSE_KEY
 from core.vocabulary import TASK_STATUS_KILLED
 
 # Kill reasons that name a limit episode a late event should point back at —
@@ -92,9 +91,10 @@ def _unit_contexts(task, verdicts, now):
         # ⚠ GATED ON `killed` ALONE, WHICH NOW MEANS ONE THING (#408). A unit
         # UBB stopped on a spend signal is the only one with an episode a late
         # event can point back at; a sweeper's `expired` carries a reason in
-        # the same metadata key and must NOT be read as one, which is exactly
-        # what this gate keeps out.
-        stored_cause = (task.metadata or {}).get(STOP_CAUSE_KEY) \
+        # the same column and must NOT be read as one, which is exactly what
+        # this gate keeps out. The cause is UBB's own column, never the
+        # caller's `metadata` (R10-W2).
+        stored_cause = task.reason_code \
             if task.status == TASK_STATUS_KILLED else None
         if stored_cause == reasons.PARENT_KILLED:
             # The cascade was the PARENT's trip — chase one level up. A
@@ -102,8 +102,8 @@ def _unit_contexts(task, verdicts, now):
             # to the generic task_not_active entry.
             from apps.platform.work.models import Task
             parent = Task.objects.filter(id=task.parent_id).only(
-                "id", "status", "metadata", "completed_at").first()
-            parent_reason = (parent.metadata or {}).get(STOP_CAUSE_KEY) \
+                "id", "status", "reason_code", "completed_at").first()
+            parent_reason = parent.reason_code \
                 if parent is not None \
                 and parent.status == TASK_STATUS_KILLED else None
             if parent_reason in _EPISODE_KILL_REASONS:

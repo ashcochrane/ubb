@@ -31,7 +31,6 @@ admitted moves go through the same three doors, and so does the equal-value
 write, because the trigger's `WHEN` clause is the thing that keeps an
 idempotent re-declaration free.
 """
-from django.db import connection
 from django.test import TestCase
 
 from apps.platform.tenants.models import Tenant
@@ -39,7 +38,8 @@ from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from apps.platform.work.models import TaskType
 from apps.platform.work.queries import declared_task_types, task_type_policy
-from apps.platform.work.tests._helpers import DOORS, refusal_from
+from apps.platform.work.tests._helpers import (
+    DOORS, refusal_from, rule_names_on)
 from core.transitions import FROZEN, columns_declared_into_defended_classes
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_MODE_FIXED, PRICING_MODE_VALUES,
@@ -272,10 +272,4 @@ class TheRegimeIsDeclaredIntoATransitionClassTest(TestCase):
         a rule is on the table. An exact SET rather than a membership test, so
         that a second rule arriving is read by a person before the by-name
         addressing above quietly starts mattering."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            self.assertEqual({row[0] for row in cursor.fetchall()},
-                             {TRANSITION_TRIGGER})
+        self.assertEqual(rule_names_on(TABLE), {TRANSITION_TRIGGER})

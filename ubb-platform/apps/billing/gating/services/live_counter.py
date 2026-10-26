@@ -402,7 +402,9 @@ class LiveCounter:
                     won = LiveCounter._set_stop(
                         owner_id, reasons.CUSTOMER_SPEND_POOL, tenant=tenant,
                         control_id=pool.id,
-                        balance_micros=balance if balance is not None else 0,
+                        # The wallet leg's balance, or None where it did
+                        # not run: never a 0 for a wallet there is not (#610).
+                        balance_micros=balance,
                         opening=opening_facts(
                             trigger_source=TRIGGER_SOURCE_USAGE_INGEST,
                             stop_bound_micros=line,
@@ -470,7 +472,7 @@ class LiveCounter:
                            extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
-    def _set_stop(owner_id, reason, tenant=None, balance_micros=0,
+    def _set_stop(owner_id, reason, tenant=None, balance_micros=None,
                   control_id=None, *, opening):
         """Set the customer-wide cooperative stop flag and fan out two
         best-effort side effects: on the flag's unset->set TRANSITION (SET
@@ -517,8 +519,9 @@ class LiveCounter:
         tenant is optional: a call site without tenant context (there is
         none today, but keeping this defensive) degrades to pub/sub-only
         rather than crashing. balance_micros is the crossing balance the
-        detecting lane saw (prepaid live value; postpaid passes 0) — it rides
-        the folded suspension's CustomerSuspended event. ``reason`` is the
+        detecting lane saw (the prepaid live value), or None where it
+        measured none — the folded suspension's CustomerSuspended event
+        carries ``announced_balance``'s answer for it (#610). ``reason`` is the
         LINE the crossing is on — the stop word the flag carries and the
         ledger keys by — and ``control_id`` the row declaring that line's
         control, recorded on the episode (#458).
@@ -690,7 +693,7 @@ class LiveCounter:
                            extra={"data": {"owner_id": str(owner_id)}})
 
     @staticmethod
-    def resume(owner_id, tenant, *, line, clear_reason, balance_micros=0) -> bool:
+    def resume(owner_id, tenant, *, line, clear_reason, balance_micros=None) -> bool:
         """Lift a stop on ``line``: the clearing trio as ONE op (D2 of the
         #111 grilling) — drive the signal-ledger clearing transition for that
         line (the winner emits ``customer.stop_cleared`` with the episode it closes),
@@ -1108,7 +1111,7 @@ class LiveCounter:
             crossed = past_spend_pool_stop(basis, line)
             realigned, won = LiveCounter._reconcile_transitions(
                 owner_id, tenant, crossed,
-                0,  # spend never rides balance fields
+                None,  # this pass measures spend, never a balance (#610)
                 line=reasons.CUSTOMER_SPEND_POOL,
                 bound_micros=line, measured_micros=basis)
             if crossed and not won:

@@ -43,12 +43,10 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    StopFired, SubtaskKilled, TaskExpired, TaskKilled)
+    CustomerStopped, SubtaskKilled, TaskExpired, TaskKilled)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
-from apps.platform.work.models import (
-    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY, Task,
-    TaskType)
+from apps.platform.work.models import Task, TaskType
 from apps.platform.work.services import TaskService
 from apps.platform.work.tasks import reap_stale_tasks
 from core.vocabulary import (
@@ -145,8 +143,8 @@ class ACeilingStopNamesTheDeclarationTest(EveryStopNamesItsControlTestBase):
         self._record(task_id=str(unit.id), provider_cost_micros=5_000_000)
 
         unit.refresh_from_db()
-        self.assertEqual(unit.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
-        self.assertEqual(unit.metadata[STOP_CONTROL_ID_KEY], str(kind.id))
+        self.assertEqual(unit.control_family, CONTROL_FAMILY_CEILING)
+        self.assertEqual(unit.control_id, str(kind.id))
         self.assertEqual(unit.ceiling_basis, CEILING_BASIS_COST)
 
 
@@ -196,10 +194,10 @@ class ACascadeCarriesTheParentsControlTest(EveryStopNamesItsControlTestBase):
         parent.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_KILLED)
         self.assertEqual(contained.status, TASK_STATUS_KILLED)
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
-        self.assertEqual(contained.metadata[STOP_CONTROL_FAMILY_KEY],
+        self.assertEqual(contained.reason_code, reasons.PARENT_KILLED)
+        self.assertEqual(contained.control_family,
                          CONTROL_FAMILY_CEILING)
-        self.assertEqual(contained.metadata[STOP_CONTROL_ID_KEY], str(kind.id))
+        self.assertEqual(contained.control_id, str(kind.id))
         # A cascade's word is nobody's ceiling: no basis on the contained row.
         self.assertIsNone(contained.ceiling_basis)
         # The parent's announcement is the one signal; the contained piece
@@ -221,7 +219,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
         ack = self._record(provider_cost_micros=1_000, bills=2_000_000)
 
         self.assertTrue(ack["stop"])
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["reason_code"], reasons.HARD_FLOOR)
         self.assertEqual(payload["control_family"], CONTROL_FAMILY_WALLET_POLICY)
         self.assertEqual(payload["control_id"], str(profile.id))
@@ -235,7 +233,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
 
         self._record(provider_cost_micros=1_000, bills=2_000_000)
 
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["control_family"], CONTROL_FAMILY_WALLET_POLICY)
         self.assertEqual(payload["control_id"], str(config.id))
 
@@ -249,7 +247,7 @@ class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
         ack = self._record(provider_cost_micros=1_000, bills=2_000_000)
 
         self.assertTrue(ack["stop"])
-        payload = self._the_one(StopFired)
+        payload = self._the_one(CustomerStopped)
         self.assertEqual(payload["reason_code"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(payload["control_family"],
                          CONTROL_FAMILY_CUSTOMER_SPEND_POOL)

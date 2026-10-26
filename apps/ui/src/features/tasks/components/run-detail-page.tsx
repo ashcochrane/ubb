@@ -6,15 +6,18 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { DetailList } from "@/components/shared/detail-list";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { PageHeader } from "@/components/shared/page-header";
 import { Section } from "@/components/shared/section";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { readCeiling } from "@/lib/ceiling";
+import { controlFamilyLabel } from "@/lib/control-family";
 import { formatDate, formatEventCount, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { TASK_STATUS_EXPLANATIONS } from "@/lib/task-status";
+import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { useRun } from "../api/queries";
 import type { RunDetail } from "../api/types";
@@ -27,6 +30,7 @@ import {
   readCustomerPrice,
   readSupplierCost,
   soldAtOnePrice,
+  ubbStopOf,
   type PriceApplicability,
 } from "../lib/runs";
 import {
@@ -126,6 +130,8 @@ function RunDetailBody({
   const supplierCost = readSupplierCost(detail);
   const customerPrice = readCustomerPrice(detail, applicability);
   const agreedPrice = readAgreedPrice(detail);
+  // UBB's own stop, beside the caller's reason and never instead of it (#551).
+  const stop = ubbStopOf(detail);
   // The route always sends the list (an empty one for a run with nothing in
   // it); the generated type leaves the key optional because the schema gives
   // it a default. Nothing about money is being coalesced here.
@@ -181,6 +187,22 @@ function RunDetailBody({
                         )}
                       </span>
                     ),
+                  },
+                ]
+              : []),
+            ...(stop
+              ? [
+                  {
+                    label: "Stopped because",
+                    value: <OpenSetValue labelKeys={REASON_CODE_LABEL_KEYS} value={stop.reason_code} />,
+                  },
+                  {
+                    label: "Stopped by",
+                    value: <OpenSetValue labelKeys={TRIGGER_SOURCE_LABEL_KEYS} value={stop.trigger_source} />,
+                  },
+                  {
+                    label: "Spend control",
+                    value: controlFamilyLabel(stop.control_family),
                   },
                 ]
               : []),

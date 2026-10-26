@@ -696,18 +696,18 @@ class TestWebhookConfigAPI:
         mechanism's old name gets the refusal rather than a subscription that
         would match nothing forever. The retired name is read off the
         migration that carried it, never spelled."""
-        from apps.platform.events.schemas import StopFired
+        from apps.platform.events.schemas import CustomerStopped
         from apps.platform.events.tests._helpers import as_it_was_spelled
 
-        retired = as_it_was_spelled(StopFired.EVENT_TYPE)
-        assert retired != StopFired.EVENT_TYPE
+        retired = as_it_was_spelled(CustomerStopped.EVENT_TYPE)
+        assert retired != CustomerStopped.EVENT_TYPE
         resp = self.client.post(
             "/api/v1/webhooks/configs",
             data=json.dumps(
                 {
                     "url": "https://example.com/hook",
                     "secret": "a" * 32,
-                    "event_types": [StopFired.EVENT_TYPE, retired],
+                    "event_types": [CustomerStopped.EVENT_TYPE, retired],
                 }
             ),
             content_type="application/json",
@@ -718,7 +718,7 @@ class TestWebhookConfigAPI:
         body = resp.json()
         assert body["code"] == "validation_error"
         assert retired in body["detail"]
-        assert StopFired.EVENT_TYPE not in body["detail"]
+        assert CustomerStopped.EVENT_TYPE not in body["detail"]
         assert TenantWebhookConfig.objects.count() == 0
 
     def test_the_contracts_selector_union_spells_the_catalogues_wildcard(self):

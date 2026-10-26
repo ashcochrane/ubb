@@ -23,7 +23,9 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import SoftFloorCleared, SoftFloorCrossed, StopCleared, StopFired, UsageRecorded
+from apps.platform.events.schemas import (
+    CustomerStopCleared, CustomerStopped, UsageRecorded,
+    WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 
@@ -106,8 +108,9 @@ class TestOffIsByteForBytePreEnforcement:
         assert Door.stop_reason(c.id) is None                     # no flag
         assert not StopSignalState.objects.filter(owner=c).exists()  # no ledger
         assert not OutboxEvent.objects.filter(event_type__in=[
-            StopFired.EVENT_TYPE, StopCleared.EVENT_TYPE, SoftFloorCrossed.EVENT_TYPE,
-            SoftFloorCleared.EVENT_TYPE]).exists()                       # no signals
+            CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE,
+            WalletPolicySoftFloorCrossed.EVENT_TYPE,
+            WalletPolicySoftFloorCleared.EVENT_TYPE]).exists()  # no signals
 
     def test_tier1_baseline_survives_untouched(self):
         # The pre-enforcement reactions still run in off: durable drawdown,
@@ -129,5 +132,5 @@ class TestOffIsByteForBytePreEnforcement:
             event_type="wallet.balance_overage").count() == 1    # early warning
         assert OutboxEvent.objects.filter(
             event_type="customer.suspended").count() == 1
-        assert not OutboxEvent.objects.filter(event_type=StopFired.EVENT_TYPE).exists()
+        assert not OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).exists()
         assert not StopSignalState.objects.filter(owner=c).exists()

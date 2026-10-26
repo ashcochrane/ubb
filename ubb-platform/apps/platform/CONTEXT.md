@@ -445,6 +445,15 @@ Both invariants are held by `apps/platform/work/tests/test_lifecycle_states.py`
 `TerminalToAnythingIsNeverPermittedTest`). Its lifecycle — start, read, list, the contained-work
 list and close — is at `/api/v1/tasks`, at the root and gated on no product (ADR-0011); what a
 delivered unit of work sold at one agreed price is charged is ADR-0013.
+**A unit of work is born once and ends once, and the database holds both (#562).**
+`Task.transition_classes` declares five columns into ADR-0007 §2's classes — `status` RESOLVE_ONCE
+(`active` is the one unresolved value; a terminal state never moves), `parent_id` and `task_type`
+FROZEN (never re-parented, never re-typed), `outcome_reason` and `reason_detail` SET_ONCE (written by
+the write that ends the work, from nothing, and never again) — and `trg_task_declared_transitions`
+(`work/migrations/0028`) refuses any other move through every door: `save()`,
+`QuerySet.update()`, raw SQL, an admin form. Every other column keeps moving after the work ends,
+because a stop is a signal point and not a wall.
+(`apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py`)
 (`apps/platform/work/models.py:Task`; registry concept `task_status`)
 _Avoid_: "run" (the pre-rename name), and the retired label-era "task" sense (a `metadata` value) —
 the open bag is labelling only and never attaches a limit.
@@ -629,6 +638,11 @@ on the lanes that apply a stop and the payload's two fields;
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
 one place *the name is the state entered* is falsifiable, the re-mint;
 `apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration)
+**The unit's ceiling rides all four as `task_cogs_ceiling_micros`, null where none applies**
+(#610, ADR-0013 §5: not applicable, never zero). A window or a customer-wide stop reaches uncapped
+work too, and the payload said `0` there — a ceiling of nothing, which no ceiling can be. The fresh
+announcement and the patrol's re-mint both copy the row's column as it stands
+(`api/v1/tests/test_a_stop_says_none_where_nothing_applies.py`, a pin per lane).
 _Avoid_: naming one of these for the ceiling that fired — the cause is a field, and a single
 overloaded event was declined outright (#140 §4.3, ratified by #154 §5.3).
 
@@ -712,11 +726,53 @@ inspecting stopped work would silently resurrect it.
 (`apps/platform/work/models.py:Task.last_event_at`, written only by
 `TaskService.accumulate_cost`)
 
+**Stop cause (on a unit of work)**:
+Why, how and under which control UBB stopped a unit, as the unit read publishes it (#551):
+`reason_code` (the **Stop reason**), `trigger_source` (the **Trigger source**) and
+`control_family` on `TaskOut` and `TaskDetailOut` — the three answers the **Terminal stop event**
+carries, read back off the row the stop stamped, so a subscriber who missed the webhook and the
+console's run page both learn them. Each is required and nullable: **null where UBB did not stop
+the unit** — it is running, or its own caller ended it, whose word is the **Outcome reason** — and
+read only on a `killed` or `expired` unit. They are **UBB's own record**: four columns on the unit
+(`reason_code`, `trigger_source`, `control_family`, `control_id`) that nothing a caller sends
+reaches — the caller's `metadata` is its own bag, kept as written and never read for them — held
+SET_ONCE by the database (`trg_task_declared_transitions`, widened by `work/migrations/0029`). A
+stop UBB applies with no cause to record — the hourly safety net's silent expiry — records none,
+so it reads null on all three whatever the caller planted. Contained work stopped with its parent says
+`parent_killed` or
+`parent_expired`, `parent_cascade`, and its parent's family; contained work its parent's CLOSE
+withdrew says null for all three and `parent_closed` as its outcome reason.
+(`apps/platform/work/models.py:Task.ubb_stop`; `api/v1/tests/test_a_unit_says_how_it_was_stopped.py`;
+`apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py`)
+_Avoid_: reading `outcome_reason` as UBB's stop cause, or this as the caller's — two concepts, two
+fields.
+
+**Expiry (of a unit of work)**:
+When UBB will expire a unit nobody ends, published on the start response (#540, #179 §2.4) as
+the two windows a sweeper expires on, never one invented instant: `absolute_deadline_at`, the
+registration plus the resolved **Absolute deadline** — never null, because the deadline cannot be
+switched off — and `silence_window_seconds`, the resolved **Silence window**, counted from the last
+usage report and null where the unit has none. Both are the **policy as resolved when the unit was
+started**: the start records the pair on the unit (`start_absolute_deadline_seconds`,
+`start_silence_window_seconds`, FROZEN) and its response — a replay's included — answers from that
+record (ADR-0019). It is a snapshot, not a promise: the sweepers resolve the ladders each time they
+run, because a changed window must reach work already running, so the unit can be expired earlier
+or later than its start said — and the descriptions and the SDK say so. Two fixed rules move the
+end, and the descriptions state
+them: work that has never reported usage is expired once it is an hour old (the safety net, in
+every posture), and where the workspace does not enforce, only the hourly safety net expires, never
+before the unit is an hour old. The SDK's `TaskOutcomeRequired` — a work block that ended without
+declaring an outcome — carries both windows, read through the handle, and says the hour.
+(`apps/platform/work/queries.py:windows_of_a_unit`; `api/v1/tests/test_a_start_says_when_the_work_expires.py`)
+_Avoid_: `expires_at` for either — neither window alone says when the work will end; and reading
+`absolute_deadline_at` as the guaranteed end — enforcement follows the live policy.
+
 **Silence window**:
 How long a task may go without a usage report before a sweeper expires it. Resolved on a ladder —
 the declared **Task type**, then `Tenant.task_stale_seconds`, then UBB's backstop of fifteen
 minutes — and resolved when a sweeper RUNS rather than pinned at registration, so widening it
-rescues work already in flight. `NULL` at a rung means nothing was declared there and the ladder
+rescues work already in flight (the start records the window it published, for its replay — see
+**Expiry** — and no sweeper reads that record). `NULL` at a rung means nothing was declared there and the ladder
 falls through; `0` means that rung declares no window at all, which is a real answer for work that
 is legitimately quiet for hours and can never produce an immortal task because the **Absolute
 deadline** still applies. A **Ceiling** on the `time` basis: its stop is `reason_code:
@@ -760,11 +816,13 @@ the module by `api/v1/tests/test_problem_contract.py`. Which of the four familie
 belongs to is derived in one place, `core/controls.py:FAMILY_BY_REASON` — see **Terminal stop
 event**.
 (`apps/platform/work/reasons.py`; registry concept `reason_code`)
-_Note_: the metadata key that carries it on the row is the concept's own name — `reason_code`,
-`models.STOP_CAUSE_KEY`. It was spelled for a kill until #457, when `work/migrations/0026` moved
+_Note_: the column that carries it on the row is the concept's own name — `reason_code`,
+`models.STOP_CAUSE_KEY`; it was a key of the row's `metadata`, the caller's own bag, until R10-W2
+moved it and its three siblings onto UBB's own columns (`work/migrations/0029`). It was spelled for
+a kill until #457, when `work/migrations/0026` moved
 every stored unit row and queued payload onto it, key and values, in one `RunPython` with a
 stated reason (`apps/platform/work/tests/test_the_stored_stop_cause_is_migrated_once.py`); the
-key carries an **Expired (task)**'s reason too, and every reader gates on the state first. All
+column carries an **Expired (task)**'s reason too, and every reader gates on the state first. All
 three cascades record a reason, and they are not one concept: a close cascade writes
 `outcome_reason: parent_closed` (caller-supplied, so not in this vocabulary at all), while the
 kill and expiry cascades write `parent_killed` and `parent_expired` under this key — each beside
@@ -810,8 +868,8 @@ names none,
 because it repairs the delivery of a stop another mechanism made and the row does not record which.
 Of the mechanisms that stop a UNIT, **`parent_cascade` is the one that reaches no event and never
 will**: a cascade announces nothing, because its parent's own stop is the one signal a customer's
-workers receive, so that mechanism is recorded on each stopped row's metadata instead of on a
-payload. (`charge_projection` reaches no terminal event either, for a different reason: it stops no
+workers receive, so that mechanism is recorded on each stopped row (UBB's own `trigger_source`
+column) instead of on a payload. (`charge_projection` reaches no terminal event either, for a different reason: it stops no
 unit — it opens a customer-wide episode, recorded on the signal ledger and carried on
 acknowledgements.)
 **On a recording acknowledgement (#569)** it names the mechanism of the stop the acknowledgement

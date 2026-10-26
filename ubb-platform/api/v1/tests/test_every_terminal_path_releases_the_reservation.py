@@ -58,8 +58,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
-from apps.platform.work.services import (
-    STOP_CAUSE_KEY, TaskService, ceiling_control_id)
+from apps.platform.work.services import TaskService, ceiling_control_id
 from apps.platform.work.tasks import close_abandoned_tasks, reap_stale_tasks
 from core.vocabulary import (
     OUTCOME_REASON_CUSTOMER_CANCELLED, OUTCOME_REASON_TIMEOUT,
@@ -282,7 +281,7 @@ class AParentsEndReleasesTheContainedWorksTooTest(ReleaseTestBase):
         self.assert_released_by_the_transition(parent, TASK_STATUS_KILLED)
         self.assert_released_by_the_transition(contained, TASK_STATUS_KILLED)
         contained.refresh_from_db()
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
+        self.assertEqual(contained.reason_code, reasons.PARENT_KILLED)
         self.assert_nothing_is_reserved()
 
     def test_an_expiry_reaches_down(self):

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 from typing import Annotated, Any, List, Literal, Optional, Union
 
@@ -676,6 +676,15 @@ ReasonCode = Annotated[
 #: says nothing.
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
+
+#: WHICH OF THE FOUR SPEND CONTROLS A STOP CAME FROM — the registry's closed
+#: `control_family`, spelled here again because a product may not import this
+#: layer (`events/schemas.py::ControlFamily` is the payloads'; the
+#: `CostingStatus` precedent). Closed, so the export writes a real `enum`; on a
+#: nullable carrier the marker sits on the string member. It is on the unit
+#: read beside the two above (#551) and on the Stops and breaches report below.
+ControlFamily = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "control_family"})]
 
 #: WHAT `stop_reason` MAY SAY ON AN ACKNOWLEDGEMENT (#569, ADR-0019 §2). The
 #: registry's known values travel as `x-ubb-known-values` metadata; the one
@@ -1622,7 +1631,7 @@ class TaskOut(Schema):
     #: nobody gave one — on a delivery, because neither field is accepted
     #: there, and on a `killed` or `expired` unit because no caller declared
     #: anything at all. Those two record their reason under the OTHER concept,
-    #: which is a separate field this surface does not serve.
+    #: `reason_code`, served beside it since #551.
     #:
     #: NULLABLE, WHICH IS WHY THE MARKER SITS WHERE IT DOES — the argument
     #: `NotApplicableReason` makes in full. `Optional` renders `anyOf: [string,
@@ -1634,6 +1643,35 @@ class TaskOut(Schema):
     #: concept marker on a `free_text` concept, because there is no value set
     #: to advertise and pretending otherwise would publish an empty promise.
     reason_detail: Optional[str] = None
+    #: WHY, HOW AND UNDER WHICH CONTROL UBB STOPPED THIS UNIT (#551) — the
+    #: three answers its four terminal webhooks carry, read back off the row
+    #: the stop stamped (`Task.ubb_stop`). Three fields because they answer
+    #: three questions (ADR-0006 §5): the cause, the mechanism that applied
+    #: it, and the family of the control whose bound was reached. A
+    #: subscriber who missed the webhook, and the run page, read them here.
+    #:
+    #: REQUIRED AND NULLABLE, each (#569's rule for a new response fact): null
+    #: where UBB did not stop the unit — it is running, or its own caller
+    #: ended it, whose word is `outcome_reason` above — so a key never comes
+    #: and goes. Each marker sits on the string member of its union.
+    reason_code: Optional[ReasonCode] = Field(description=(
+        "Why UBB stopped this unit of work: which bound was reached. UBB's "
+        "own record of the stop — nothing a caller sends, its `metadata` "
+        "included, is read here. Null where UBB did not stop it — it is still "
+        "running, or its caller ended it (see `outcome_reason`) — and where "
+        "UBB's stop recorded no cause: the hourly safety net expires work "
+        "nobody reported on silently."))
+    trigger_source: Optional[TriggerSource] = Field(description=(
+        "The mechanism that applied UBB's stop to this unit of work, as UBB "
+        "recorded it — never read from anything a caller sends. Null where "
+        "UBB did not stop it, or where its stop recorded no mechanism (the "
+        "hourly safety net's silent expiry)."))
+    control_family: Optional[ControlFamily] = Field(description=(
+        "Which of the four spend controls UBB's stop came from — for "
+        "contained work stopped with its parent, the parent's — as UBB "
+        "recorded it, never read from anything a caller sends. Null where UBB "
+        "did not stop this unit of work, or where its stop recorded no cause "
+        "(the hourly safety net's silent expiry)."))
     total_provider_cost_micros: int
     #: HOW MANY OF THIS UNIT'S EVENTS THE TOTAL ABOVE COULD NOT INCLUDE (#328).
     #:
@@ -1727,6 +1765,9 @@ def task_out(t, keys):
         # the marked node is nullable precisely so that shape is expressible.
         "outcome_reason": t.outcome_reason or None,
         "reason_detail": t.reason_detail or None,
+        # Read on the row, gated on the state there (#551) — one read, not a
+        # second spelling of which metadata keys UBB's stop wrote.
+        **t.ubb_stop,
         "total_provider_cost_micros": t.total_provider_cost_micros,
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
@@ -1915,6 +1956,56 @@ class StartTaskResponse(Schema):
     #: and does not overwrite.
     external_task_id: str = ""
     created_at: str
+    #: WHEN UBB WILL EXPIRE THIS UNIT IF NOTHING ENDS IT (#540, #179 §2.4) —
+    #: what the SDK's "this block ended without declaring an outcome" signal
+    #: carries, so a caller that leaves work open learns how long it stays
+    #: counted as active.
+    #:
+    #: ⚠ TWO WINDOWS, AND NEITHER IS ONE INSTANT ON ITS OWN. The absolute
+    #: deadline is measured from registration whatever the work does, so it is
+    #: an instant; the silence window is measured from the last usage report,
+    #: so it is a duration. Each is the ladder `work.queries.expiry_windows`
+    #: resolves — the declared kind of work, the workspace default, UBB's
+    #: backstop.
+    #:
+    #: ⚠ A SNAPSHOT OF THE POLICY AT THE START, NEVER A PROMISE OF THE END.
+    #: The start resolves the ladder once and records both windows on the unit
+    #: (`start_absolute_deadline_seconds`, `start_silence_window_seconds`, held
+    #: FROZEN by the database), and this response — a replay's included —
+    #: answers from that record, so a replay says what the start said
+    #: (ADR-0019). The sweepers never read the record: they resolve the ladder
+    #: each time they run, because a changed window must reach work already
+    #: running. So the unit can be expired before this deadline or after it
+    #: once the policy changes, and the descriptions say so rather than
+    #: promising an instant enforcement will not keep.
+    #:
+    #: REQUIRED, each (#569's rule for a new response fact); the deadline is
+    #: never null because it cannot be switched off at any rung, and the
+    #: silence window is null where the answer is that the unit has none.
+    absolute_deadline_at: str = Field(description=(
+        "This unit of work's absolute deadline under the expiry policy "
+        "resolved when it was started: its registration plus how long its "
+        "kind of work could then run at all — the declared kind's own "
+        "deadline, else the workspace default, else UBB's backstop of six "
+        "hours. A replay of the start answers this same value. It is a "
+        "snapshot, not a promise: UBB enforces the policy as it stands when "
+        "it checks, so a later change to the declaration or the workspace "
+        "default can expire the unit earlier or later than this. Two further "
+        "rules can end it sooner: work that has never reported usage is "
+        "expired once it is an hour old, and where the workspace does not "
+        "enforce, UBB's hourly safety net does the expiring and never before "
+        "the unit is an hour old. Never null: the absolute deadline cannot be "
+        "switched off."))
+    silence_window_seconds: Optional[int] = Field(description=(
+        "How long this unit of work could go without a usage report, counted "
+        "from its last one, before UBB expires it — under the expiry policy "
+        "resolved when it was started, on the same ladder as "
+        "`absolute_deadline_at` (UBB's backstop is fifteen minutes). A replay "
+        "of the start answers this same value; UBB enforces the policy as it "
+        "stands when it checks, so a later change can move it. Null where no "
+        "silence window applied when the unit was started. Silence is counted "
+        "from the last report, so work that has never reported is not "
+        "measured on it — it is expired once it is an hour old instead."))
     #: THIS CALL FOUND THE KEY ALREADY CLAIMED and wrote nothing: no second
     #: unit, no second ceiling, no second set of totals. A retry after a lost
     #: response is not an error, and everything above describes the unit the
@@ -1926,6 +2017,16 @@ class StartTaskResponse(Schema):
 def start_task_out(t, *, replayed):
     """`StartTaskResponse`'s serializer — what the caller registered, or what
     its key already claimed."""
+    # THE EXPIRY THE START PUBLISHED, read off the snapshot it took (#540) —
+    # so a replay answers what the original start said, never the ladder as it
+    # stands now (the sweepers read that). A row the start did not register
+    # has no snapshot and no start response to repeat; reaching here with one
+    # is a defect, and it says so rather than inventing a policy.
+    if t.start_absolute_deadline_seconds is None:
+        raise ValueError(
+            f"unit of work {t.id} carries no expiry snapshot: it was not "
+            f"registered through the start, so there is no start response to "
+            f"answer with")
     return {
         "task_id": str(t.id),
         "parent_task_id": str(t.parent_id) if t.parent_id else None,
@@ -1935,6 +2036,10 @@ def start_task_out(t, *, replayed):
         "agreed_price_micros": t.agreed_price_micros,
         "external_task_id": t.external_task_id,
         "created_at": t.created_at.isoformat(),
+        "absolute_deadline_at": (
+            t.created_at
+            + timedelta(seconds=t.start_absolute_deadline_seconds)).isoformat(),
+        "silence_window_seconds": t.start_silence_window_seconds,
         "replayed": replayed,
     }
 
@@ -4525,15 +4630,12 @@ class PaginatedEventTypes(Paginated[EventTypeOut]):
 # Utilisation and headroom, at `/api/v1/spend-controls/`.
 # ---------------------------------------------------------------------------
 
-#: WHICH OF THE FOUR SPEND CONTROLS A ROW CAME FROM — the registry's closed
-#: `control_family`, spelled here again because a product may not import this
-#: layer (`events/schemas.py::ControlFamily` is the payloads'; the
-#: `CostingStatus` precedent). Closed, so the export writes a real `enum`. It
+#: `ControlFamily` — which of the four spend controls a row came from — is
+#: defined beside `ReasonCode` and `TriggerSource` above, because the unit read
+#: (`TaskOut`, #551) carries it too and is declared before this section. It
 #: discriminates the three episode rows below, sits on the totals row, and
 #: marks the report filter of the same name — the one query parameter in the
 #: contract carrying a concept marker.
-ControlFamily = Annotated[
-    str, Field(json_schema_extra={"x-ubb-concept": "control_family"})]
 
 #: WHAT THE CEILING THAT FIRED BOUNDS — `cost` or `time` — on the Ceiling row,
 #: the same closed pair the four terminal payloads carry; a stop that was not

@@ -18,7 +18,7 @@ from apps.platform.events.schemas import TaskExpired, TaskKilled
 from apps.platform.work import reasons
 from apps.platform.work.models import (
     CEILING_BASIS_CHOICES, STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY,
-    STOP_CONTROL_ID_KEY, STOP_MECHANISM_KEY, Task, TaskType)
+    STOP_CONTROL_ID_KEY, Task, TaskType)
 from apps.platform.work.services import TaskService, ceiling_control_id
 from apps.platform.work.tests._helpers import WorkTestBase
 from core import controls
@@ -62,9 +62,9 @@ class TheFlipStampsTheControlTest(WorkTestBase):
             unit.id, reasons.TASK_COGS_CEILING, control_id="the-declaration")
 
         self.assertTrue(transitioned)
-        self.assertEqual(killed.metadata[STOP_CAUSE_KEY], reasons.TASK_COGS_CEILING)
-        self.assertEqual(killed.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
-        self.assertEqual(killed.metadata[STOP_CONTROL_ID_KEY], "the-declaration")
+        self.assertEqual(killed.reason_code, reasons.TASK_COGS_CEILING)
+        self.assertEqual(killed.control_family, CONTROL_FAMILY_CEILING)
+        self.assertEqual(killed.control_id, "the-declaration")
         self.assertEqual(killed.ceiling_basis, CEILING_BASIS_COST)
 
     def test_an_expiry_on_a_window_is_the_ceilings_on_time(self):
@@ -72,15 +72,15 @@ class TheFlipStampsTheControlTest(WorkTestBase):
         expired, _ = TaskService.expire_task(
             unit.id, reasons.ABSOLUTE_DEADLINE, control_id=str(self.tenant.id))
 
-        self.assertEqual(expired.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
+        self.assertEqual(expired.control_family, CONTROL_FAMILY_CEILING)
         self.assertEqual(expired.ceiling_basis, CEILING_BASIS_TIME)
 
     def test_a_flip_with_no_cause_stamps_no_control(self):
         """The baseline sweeper expires silently and names no bound."""
         unit = self._task()
         expired, _ = TaskService.expire_task(unit.id)
-        for key in (STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY):
-            self.assertNotIn(key, expired.metadata)
+        for column in (STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY):
+            self.assertIsNone(getattr(expired, column))
         self.assertIsNone(expired.ceiling_basis)
 
     def test_a_cascades_word_passed_to_a_flip_directly_is_refused(self):
@@ -100,11 +100,11 @@ class TheFlipStampsTheControlTest(WorkTestBase):
                               control_id="the-parents-declaration")
 
         contained.refresh_from_db()
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
-        self.assertEqual(contained.metadata[STOP_MECHANISM_KEY], "parent_cascade")
-        self.assertEqual(contained.metadata[STOP_CONTROL_FAMILY_KEY],
+        self.assertEqual(contained.reason_code, reasons.PARENT_KILLED)
+        self.assertEqual(contained.trigger_source, "parent_cascade")
+        self.assertEqual(contained.control_family,
                          CONTROL_FAMILY_CEILING)
-        self.assertEqual(contained.metadata[STOP_CONTROL_ID_KEY],
+        self.assertEqual(contained.control_id,
                          "the-parents-declaration")
         self.assertIsNone(contained.ceiling_basis)
 
@@ -117,8 +117,8 @@ class TheFlipStampsTheControlTest(WorkTestBase):
 
         payload = self._events(TaskKilled.EVENT_TYPE).get().payload
         unit.refresh_from_db()
-        self.assertEqual(payload["control_family"], unit.metadata[STOP_CONTROL_FAMILY_KEY])
-        self.assertEqual(payload["control_id"], unit.metadata[STOP_CONTROL_ID_KEY])
+        self.assertEqual(payload["control_family"], unit.control_family)
+        self.assertEqual(payload["control_id"], unit.control_id)
         self.assertEqual(payload["ceiling_basis"], unit.ceiling_basis)
 
 
@@ -135,10 +135,10 @@ class TheWorkModelHoldsTheBasisTest(TestCase):
     def test_the_admin_words_the_basis_and_blanks_a_stop_that_was_not_a_ceilings(self):
         from apps.platform.work.admin import TaskAdmin
         render = TaskAdmin.ceiling_basis
-        self.assertEqual(render(None, Task(metadata={STOP_CAUSE_KEY: reasons.SILENCE_WINDOW})),
+        self.assertEqual(render(None, Task(reason_code=reasons.SILENCE_WINDOW)),
                          "Time")
-        self.assertEqual(render(None, Task(metadata={STOP_CAUSE_KEY: reasons.HARD_FLOOR})), "")
-        self.assertEqual(render(None, Task(metadata={})), "")
+        self.assertEqual(render(None, Task(reason_code=reasons.HARD_FLOOR)), "")
+        self.assertEqual(render(None, Task()), "")
 
 
 class Migration0027StampsEveryStoredRowTest(WorkTestBase):

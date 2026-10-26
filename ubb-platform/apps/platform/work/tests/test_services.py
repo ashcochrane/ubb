@@ -10,8 +10,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work.models import Task
 from apps.platform.work.reasons import PARENT_KILLED, TASK_COGS_CEILING
-from apps.platform.work.services import (
-    STOP_CAUSE_KEY, CloseDeclaration, TaskService)
+from apps.platform.work.services import CloseDeclaration, TaskService
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED)
@@ -209,7 +208,7 @@ class TaskServiceKillTest(TestCase):
         killed, _ = TaskService.kill_task(task.id, reason=TASK_COGS_CEILING)
         self.assertEqual(killed.status, TASK_STATUS_KILLED)
         self.assertIsNotNone(killed.completed_at)
-        self.assertEqual(killed.metadata[STOP_CAUSE_KEY], TASK_COGS_CEILING)
+        self.assertEqual(killed.reason_code, TASK_COGS_CEILING)
 
     def test_kill_task_idempotent(self):
         task = TaskService.create_task(
@@ -323,7 +322,7 @@ class KillAndAnnounceTest(TestCase):
         self.assertTrue(transitioned)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_KILLED)
-        self.assertEqual(task.metadata[STOP_CAUSE_KEY], TASK_COGS_CEILING)
+        self.assertEqual(task.reason_code, TASK_COGS_CEILING)
 
         self.assertEqual(self._events().count(), 1)
         payload = self._events().get().payload
@@ -449,4 +448,4 @@ class KillAndAnnounceTest(TestCase):
         self.assertEqual(parent.announce_outbox_id, self._events().get().id)
         self.assertEqual(child.status, TASK_STATUS_KILLED)
         self.assertIsNone(child.announce_outbox_id)
-        self.assertEqual(child.metadata[STOP_CAUSE_KEY], PARENT_KILLED)
+        self.assertEqual(child.reason_code, PARENT_KILLED)

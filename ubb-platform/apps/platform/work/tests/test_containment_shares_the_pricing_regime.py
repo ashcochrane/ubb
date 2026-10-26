@@ -39,16 +39,19 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from apps.platform.work.services import ContainmentRegimeRefused, TaskService
+from apps.platform.work.tests._helpers import rule_names_on
 from core.vocabulary import PRICING_MODE_EVENT_PRICED, PRICING_MODE_FIXED
 
 TABLE = Task._meta.db_table
 
-#: The rule this module drives, addressed BY NAME. `ubb_task` carries one rule
-#: today and this is it — but `pg_trigger` promises no order, so a second rule
-#: arriving would turn any "the first row" into a coin toss between two rules
-#: holding completely different things (#352).
+#: The rule this module drives, addressed BY NAME. `ubb_task` carries two rules
+#: since #562 — this one, which holds who may be BORN, and
+#: `work/migrations/0028`'s, which holds what may happen to five columns after —
+#: and `pg_trigger` promises no order, so any "the first row" would be a coin
+#: toss between two rules holding completely different things (#352).
 CONTAINMENT_TRIGGER = "trg_task_containment_shares_the_pricing_regime"
 CONTAINMENT_FUNCTION = "ubb_task_containment_shares_the_pricing_regime"
+TRANSITION_TRIGGER = "trg_task_declared_transitions"
 
 #: The word every refusal message must carry. Asserting the COLUMN and not only
 #: that something refused: this table has two mechanisms on it now — a
@@ -328,15 +331,10 @@ class AGreenBoardOverAGuttedRuleIsMeasuredRatherThanArguedTest(
         """The premise every assertion above rests on, asserted rather than
         assumed: a migration that ran is evidence that a file executed, not that
         a rule is on the table. An exact SET rather than a membership test, so
-        that a second rule arriving on this table is read by a person before the
-        by-name addressing above quietly starts mattering."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT t.tgname FROM pg_trigger t "
-                "JOIN pg_class c ON c.oid = t.tgrelid "
-                "WHERE c.relname = %s AND NOT t.tgisinternal", [TABLE])
-            self.assertEqual({row[0] for row in cursor.fetchall()},
-                             {CONTAINMENT_TRIGGER})
+        that a further rule arriving on this table is read by a person before
+        the by-name addressing above quietly starts mattering — as #562's did."""
+        self.assertEqual(rule_names_on(TABLE),
+                         {CONTAINMENT_TRIGGER, TRANSITION_TRIGGER})
 
 
 class OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest(ContainmentRegimeTestBase):

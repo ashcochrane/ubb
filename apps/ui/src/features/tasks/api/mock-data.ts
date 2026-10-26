@@ -33,6 +33,8 @@ import {
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
+import type { ControlFamily, ReasonCode, TriggerSource } from "@/lib/vocabulary";
+
 import type { KindOfWork, RunRow, TaskStatus } from "./types";
 
 export const KIND_EVENT_PRICED_KEY = "document-summary";
@@ -213,7 +215,20 @@ function run(
     Pick<RunRow, "task_id" | "task_type" | "created_at"> &
     ReturnType<typeof totals>,
 ): RunRow {
-  return { status: "completed", ...overrides };
+  return { status: "completed", ...NOT_STOPPED_BY_UBB, ...overrides };
+}
+
+/**
+ * How UBB stopped a run (#551): why, by which mechanism, under which control
+ * — the three the unit read carries, null on all three where UBB did not stop
+ * it (still running, or ended by its caller). That is the factory's default,
+ * so every `killed` and `expired` row below spells its own stop rather than
+ * taking the null by omission.
+ */
+const NOT_STOPPED_BY_UBB = { reason_code: null, trigger_source: null, control_family: null };
+
+function stoppedBy(reason_code: ReasonCode, trigger_source: TriggerSource, control_family: ControlFamily) {
+  return { reason_code, trigger_source, control_family };
 }
 
 // --- Runs ------------------------------------------------------------------
@@ -330,6 +345,9 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_EXPIRED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "expired",
+    // Nobody reported for longer than its silence window, so the reaper
+    // expired it on its time-based ceiling.
+    ...stoppedBy("silence_window", "stale_reaper", "ceiling"),
     ...totals(
       ceilingAssessment("not_applicable", { cost: completeTotal(95_000) }),
       completePriceTotal(190_000),
@@ -355,6 +373,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_KILLED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "killed",
+    ...stoppedBy("task_cogs_ceiling", "usage_ingest", "ceiling"),
     // A lower ceiling than the kind's, asked for at start. The ENFORCEMENT
     // stop fired on the known total crossing it and stands; the ASSESSMENT is
     // indeterminate (#603, ADR-0020 §7), because the two uncosted events may
@@ -374,6 +393,7 @@ export const MOCK_RUNS: readonly RunRow[] = [
     task_id: RUN_REACHED_ID,
     task_type: KIND_EVENT_PRICED_KEY,
     status: "killed",
+    ...stoppedBy("task_cogs_ceiling", "usage_ingest", "ceiling"),
     // Stopped at the same lower ceiling, and every cost it reported is
     // known, so the assessment beside the stop is a conclusion:
     // `ceiling_reached` is concluded only once nothing is unresolved (#603,
@@ -478,6 +498,7 @@ const CONTAINED_UNDER_ACTIVE: readonly RunRow[] = Array.from(
       ...(status === "failed"
         ? { outcome_reason: "upstream_provider_error" as const, reason_detail: "Renderer answered 502" }
         : {}),
+      ...(status === "expired" ? stoppedBy("silence_window", "stale_reaper", "ceiling") : {}),
       // Whole cents each, so no piece reads as a zero it is not. No piece
       // pins a ceiling of its own, so no ceiling applies to any of them.
       ...totals(

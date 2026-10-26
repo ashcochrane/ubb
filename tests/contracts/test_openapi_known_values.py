@@ -1044,7 +1044,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # source), and the typed batch item inherits it. Nullable on both —
     # nothing stopped, or `task_not_active` — so the marker sits on the
     # string member.
-    "trigger_source": Published(7, KNOWN_VALUES),
+    #
+    # #551 — an EIGHTH and NINTH node: the unit read (`TaskOut`, and
+    # `TaskDetailOut` beside it) says which mechanism applied UBB's stop.
+    # Nullable — UBB did not stop the unit — so on the string member.
+    "trigger_source": Published(9, KNOWN_VALUES),
     # WHICH KIND OF POSTING A ROW IS (#417) — two nodes, the usage list row and
     # the detail, which are the two responses that serve a STORED posting back
     # to a reader who did not create it. That is the rule rather than the count:
@@ -1134,7 +1138,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # nullable because a soft-floor marker stopped nothing.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "reason_code": Published(11, KNOWN_VALUES),
+    # +2 in #551: the unit read (`TaskOut`, `TaskDetailOut`) says why UBB
+    # stopped the unit — nullable, so the marker sits on the string member.
+    "reason_code": Published(13, KNOWN_VALUES),
     # WHICH CONTROL A STOP CAME FROM (#458, slice 6 §1, §15) — SIX nodes: the
     # four terminal stop events and the customer stop pair, all in the
     # `webhooks` section, because a control's family is a fact about a stop
@@ -1154,7 +1160,10 @@ CONCEPTS_IN_THE_CONTRACT = {
     # string member of the parameter's nullable union, exactly as on a
     # nullable response field, so the `enum` constrains the word and leaves
     # the absence alone.
-    "control_family": Published(11, ENUM),
+    #
+    # THIRTEEN since #551: the unit read (`TaskOut`, `TaskDetailOut`) says
+    # which control UBB's stop came from, nullable on the string member.
+    "control_family": Published(13, ENUM),
     # WHAT THE CEILING THAT FIRED BOUNDS (#458, slice 6 §15) — FOUR nodes, the
     # four terminal stop events, because only a UNIT's stop can be a ceiling's;
     # the customer pair does not carry it. Closed, and NULLABLE: the marker
@@ -1722,9 +1731,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # AND, SINCE #465, ON ONE READ: the Ceiling row of Stops and breaches.
     # AND, SINCE #569, ON THE RECORDING ACKNOWLEDGEMENT AND ITS TYPED BATCH
     # ITEM: the mechanism that applied the stop the acknowledgement names.
+    # AND, SINCE #551, ON THE UNIT READ: the mechanism of UBB's stop.
     placed("trigger_source",
            events_whose_payload_declares("trigger_source")
-           | {"CeilingEpisodeRow", "RecordUsageResponse", "UsageBatchItemResponse"})
+           | {"CeilingEpisodeRow", "RecordUsageResponse", "UsageBatchItemResponse",
+              "TaskOut", "TaskDetailOut"})
 
     # OUT ONLY, AND ON THE TWO RESPONSES THAT SERVE A STORED POSTING BACK
     # (#417). The rule is *where a reader meets a row it did not create* — the
@@ -1771,25 +1782,29 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # own field name, and on the SIX stop events — the four terminal stops
     # and, since #458 renamed its bare `reason`, the customer stop pair — all
     # derived off the payload classes, the `trigger_source` line's reason.
-    # NOT on the unit read (`TaskOut` / `TaskDetailOut` carry no stop cause —
-    # #454 named that gap as nobody's).
     # AND, SINCE #465, ON THE THREE EPISODE ROWS OF STOPS AND BREACHES — the
     # first read surface to publish a stop.
     # AND, SINCE #569, ON THE TYPED BATCH ITEM, which is the acknowledgement.
+    # AND, SINCE #551, ON THE UNIT READ (`TaskOut` / `TaskDetailOut`): the gap
+    # #454 named as nobody's is closed — a stopped unit says why.
     placed("reason_code",
            {"RecordUsageResponse", "UsageBatchItemResponse",
             "CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
-            "WalletPolicyEpisodeRow"} | events_whose_payload_declares("reason_code"))
+            "WalletPolicyEpisodeRow", "TaskOut", "TaskDetailOut"}
+           | events_whose_payload_declares("reason_code"))
     # WHICH CONTROL FIRED (#458): on every stop event — the same six the
     # cause rides, derived the same way — and, since #465, on the read
     # surface that publishes stops: the three episode rows and the totals
     # row of Stops and breaches, and that report's family FILTER, named by
-    # its path because a query parameter's carrier is the operation.
+    # its path because a query parameter's carrier is the operation —
+    # and, since #551, on the unit read, which says which control UBB's
+    # stop of that unit came from.
     placed("control_family",
            events_whose_payload_declares("control_family")
            | {"CeilingEpisodeRow", "CustomerSpendPoolEpisodeRow",
               "WalletPolicyEpisodeRow", "SpendControlFamilyTotalsRow",
-              "/api/v1/spend-controls/stops-and-breaches"})
+              "/api/v1/spend-controls/stops-and-breaches",
+              "TaskOut", "TaskDetailOut"})
     # WHAT THE CEILING BOUNDED (#458): on the four terminal stops — a
     # customer-wide stop is never a ceiling's, so the pair does not carry it
     # — and, since #465, on the Ceiling row of Stops and breaches.

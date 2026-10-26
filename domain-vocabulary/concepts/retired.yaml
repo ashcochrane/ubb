@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,471 of 2,915 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,923 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2866,6 +2866,22 @@ measurement_key:
     # code review, which added the module for a draft of the old shape; 2,470
     # of 2,914 before the owner's review of #615, whose shown agreed price is
     # one more generated SDK model. Neither moved the count of the word.)
+    #
+    # 2026-10-23, R10-W2 (#562, #610, #554, #551 and #540's expiry line): 2,471
+    # of 2,915 -> 2,477 of 2,922 tracked files (`units` 43 files / 121
+    # occurrences, UNMOVED). Seven files arrived. One is a migration, excluded
+    # under `historical-migrations` (275 -> 276): the unit of work's write-once
+    # rule (`work/0028`), so the exclusions stand at 445. The six swept
+    # arrivals: four platform test modules (the write-once rule through every
+    # door, a stop's nulls on each lane, the unit read's stop cause, the
+    # start's expiry) and two generated SDK models (`control_family` on the
+    # unit read, one per schema that publishes it).
+    #
+    # 2026-10-25, R10-W2's consultant review: 2,477 of 2,922 -> 2,477 of 2,923
+    # tracked files (`units` UNMOVED). One file arrived, a migration excluded
+    # under `historical-migrations` (276 -> 277): a unit's stop facts and the
+    # expiry policy its start published move onto UBB's own columns
+    # (`work/0029`), so the exclusions stand at 446.
 
     - term: units
       retired_as: >-

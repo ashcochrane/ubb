@@ -57,13 +57,11 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerSpendPoolThresholdReached, CustomerSuspended, StopCleared, StopFired,
+    CustomerSpendPoolThresholdReached, CustomerSuspended, CustomerStopCleared, CustomerStopped,
     TaskKilled, UsageRecorded)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
-from apps.platform.work.models import (
-    STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-    STOP_MECHANISM_KEY, Task, TaskType)
+from apps.platform.work.models import Task, TaskType
 from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY,
@@ -250,11 +248,11 @@ class ABlockingPoolStopsWorkMidFlight:
         # records the cause, the mechanism and the control.
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
-        self.assertEqual(row.metadata[STOP_CONTROL_FAMILY_KEY],
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.control_family,
                          CONTROL_FAMILY_CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(pool.id))
+        self.assertEqual(row.control_id, str(pool.id))
         payload = self._the_one(TaskKilled)
         self.assertEqual(payload["reason_code"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(payload["trigger_source"], TRIGGER_SOURCE_POOL_CROSSING)
@@ -262,7 +260,7 @@ class ABlockingPoolStopsWorkMidFlight:
         self.assertEqual(payload["control_id"], str(pool.id))
         self.assertIsNone(payload["ceiling_basis"])
         # The customer-wide signal fired once, on the pool's line.
-        fired = self._the_one(StopFired)
+        fired = self._the_one(CustomerStopped)
         self.assertEqual(fired["reason_code"], reasons.CUSTOMER_SPEND_POOL)
         self.assertEqual(fired["control_id"], str(pool.id))
         # And the next start is refused with the pool's refusal word.
@@ -301,7 +299,7 @@ class ABlockingPoolStopsWorkMidFlight:
 
         self.assertFalse(ack["stop"])
         self.assertEqual(Task.objects.get(id=unit).status, TASK_STATUS_ACTIVE)
-        self.assertFalse(self._events(StopFired).exists())
+        self.assertFalse(self._events(CustomerStopped).exists())
         self.assertFalse(self._events(TaskKilled).exists())
         self.assertFalse(StopSignalState.objects.filter(owner=self.customer).exists())
         # 120% of the pool crossed every configured level.
@@ -374,9 +372,9 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         self.assertEqual(self.seat1.suspension_reason, reasons.CUSTOMER_SPEND_POOL)
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
-        self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(default.id))
-        fired = self._the_one(StopFired, owner_id=self.seat1.id)
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.control_id, str(default.id))
+        fired = self._the_one(CustomerStopped, owner_id=self.seat1.id)
         self.assertEqual(fired["control_id"], str(default.id))
         self.assertEqual(self._refusal(self._start(self.seat1)),
                          AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
@@ -401,11 +399,11 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         for unit in (u1, u2):
             row = Task.objects.get(id=unit)
             self.assertEqual(row.status, TASK_STATUS_KILLED, unit)
-            self.assertEqual(row.metadata[STOP_CONTROL_ID_KEY], str(pool.id))
+            self.assertEqual(row.control_id, str(pool.id))
         self.assertEqual(self._events(TaskKilled).count(), 2)
         self.assertEqual({e.payload["trigger_source"] for e in self._events(TaskKilled)},
                          {TRIGGER_SOURCE_POOL_CROSSING})
-        fired = self._the_one(StopFired, owner_id=self.biz.id)
+        fired = self._the_one(CustomerStopped, owner_id=self.biz.id)
         self.assertEqual(fired["control_id"], str(pool.id))
         for seat in (self.seat1, self.seat2):
             self.assertEqual(self._refusal(self._start(seat)),
@@ -435,7 +433,7 @@ class TwoDeclaredLevelsTest(PoolTestBase):
             [line["control_id"] for line in StopSignalService.open_stop_lines(self.biz.id)],
             [pool.id])
         self.assertTrue(LiveCounter.read(self.biz.id, self.tenant)["stop"])
-        self.assertFalse(self._events(StopCleared).exists())
+        self.assertFalse(self._events(CustomerStopCleared).exists())
         self.assertEqual(self._refusal(self._start(self.seat2)),
                          AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
 
@@ -443,15 +441,15 @@ class TwoDeclaredLevelsTest(PoolTestBase):
         # stand, and it is the pass that lifts it once they no longer do.
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             reconcile_live_ledgers()
-        self.assertEqual(self._events(StopFired, owner_id=self.biz.id).count(), 1)
-        self.assertFalse(self._events(StopCleared).exists())
+        self.assertEqual(self._events(CustomerStopped, owner_id=self.biz.id).count(), 1)
+        self.assertFalse(self._events(CustomerStopCleared).exists())
         now = timezone.now()
         next_month = (now.replace(day=1) + datetime.timedelta(days=40)).replace(day=1)
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             LiveCounter.reconcile(self.biz.id, self.tenant, now=next_month)
         self.biz.refresh_from_db()
         self.assertEqual(self.biz.status, "active")
-        self.assertEqual(self._events(StopCleared, owner_id=self.biz.id).count(), 1)
+        self.assertEqual(self._events(CustomerStopCleared, owner_id=self.biz.id).count(), 1)
 
     def test_both_levels_alert(self):
         self._default_pool(2_000_000, SPEND_POOL_ENFORCE_MODE_ALERT_ONLY)
@@ -559,7 +557,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
     WALLET = 4_000_000
 
     def _both_open(self, pool):
-        announced = self._events(StopFired, owner_id=self.customer.id)
+        announced = self._events(CustomerStopped, owner_id=self.customer.id)
         # Announced ONCE EACH (claim 6): two lines, two announcements.
         self.assertEqual(announced.count(), 2)
         fired = {e.payload["reason_code"]: e.payload for e in announced}
@@ -590,7 +588,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
         # the tipping report say this report opened them.
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
         context = {entry["limit"]: entry
                    for entry in Posting.objects.get(id=ack["event_id"]).stop_context
                    if entry["stop_scope"] == "customer"}
@@ -611,7 +609,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
                 "amount_micros": 20_000_000, "source": "topup",
                 "reference": "tp1", "idempotency_key": "tp1"}), **self._headers())
         self.assertEqual(credited.status_code, 200, credited.content)
-        cleared = self._events(StopCleared, owner_id=self.customer.id)
+        cleared = self._events(CustomerStopCleared, owner_id=self.customer.id)
         self.assertEqual([e.payload["reason_code"] for e in cleared], [reasons.HARD_FLOOR])
         verdict = LiveCounter.read(self.customer.id, self.tenant)
         self.assertTrue(verdict["stop"])
@@ -633,7 +631,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
         self.assertEqual(self.customer.status, "active")
         self.assertEqual(
             sorted(e.payload["reason_code"] for e in
-                   self._events(StopCleared, owner_id=self.customer.id)),
+                   self._events(CustomerStopCleared, owner_id=self.customer.id)),
             sorted([reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL]))
 
     def test_the_drawdown_alone_opens_both_lines_when_the_live_lane_is_off(self):
@@ -654,7 +652,7 @@ class TwoLinesAtOnceTest(PoolTestBase):
         self._both_open(pool)
         row = Task.objects.get(id=unit)
         self.assertEqual(row.status, TASK_STATUS_KILLED)
-        self.assertEqual(row.metadata[STOP_CAUSE_KEY], reasons.CUSTOMER_SPEND_POOL)
-        self.assertEqual(row.metadata[STOP_MECHANISM_KEY], TRIGGER_SOURCE_POOL_CROSSING)
+        self.assertEqual(row.reason_code, reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual(row.trigger_source, TRIGGER_SOURCE_POOL_CROSSING)
         self.assertEqual(self._the_one(TaskKilled)["control_id"], str(pool.id))
         self.assertTrue(LiveCounter.read(self.customer.id, self.tenant)["stop"])

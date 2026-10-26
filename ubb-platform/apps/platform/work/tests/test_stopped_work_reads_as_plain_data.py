@@ -27,7 +27,7 @@ from django.utils import timezone
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import SubtaskKilled, TaskKilled
 from apps.platform.work import queries, reasons
-from apps.platform.work.models import STOP_CAUSE_KEY, Task
+from apps.platform.work.models import Task
 from apps.platform.work.services import (
     CloseDeclaration, TaskService, ceiling_control_id)
 from apps.platform.work.tests._helpers import WorkTestBase
@@ -155,7 +155,7 @@ class CeilingEpisodesTest(StoppedWorkTestBase):
         listed = {row["task_id"] for row in self._episodes()}
         self.assertEqual(listed, {str(parent.id)})
         contained.refresh_from_db()
-        self.assertEqual(contained.metadata[STOP_CAUSE_KEY], reasons.PARENT_KILLED)
+        self.assertEqual(contained.reason_code, reasons.PARENT_KILLED)
 
     def test_each_filter_narrows(self):
         other = Customer.objects.create(tenant=self.tenant, external_id="cust-2")

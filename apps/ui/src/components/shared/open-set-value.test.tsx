@@ -1,20 +1,18 @@
 // The console's rule for an open set, proved on `trigger_source` (#454; slice
 // 6 §18; Testing Decisions claim 15).
 //
-// WHY THE PROOF IS HERE AND NOT ON THE RUN PAGE. The ticket puts
-// `trigger_source` "where the run page says how a unit ended", and the
-// contract still cannot serve THAT page. When this module was written the
-// field travelled on the four terminal webhook payloads (`task.killed`,
+// WHY THE PROOF IS HERE AS WELL AS ON THE RUN PAGE. The ticket puts
+// `trigger_source` "where the run page says how a unit ended", and when this
+// module was written the contract could not serve THAT page: the field
+// travelled on the four terminal webhook payloads (`task.killed`,
 // `task.expired` and their contained-work twins) and on nothing the console
-// read; #465 then put it on `CeilingEpisodeRow`, so Stops and breaches renders
-// it through this component. The run page is still not served:
-// `TaskDetailOut` publishes no stop cause, and the deliveries read
-// (`WebhookDeliveryResponse`) publishes no payload body.
-// The #425 precedent applies: the assertion is delivered where the subject
-// CAN render, and the gap is named. This component is where the rule lives,
-// so this is where it is proved; the values themselves are held by reference
-// in the legacy adapter, which is the ledger's half of the payment. Putting
-// the stop cause on the unit read is a contract change nobody owns yet.
+// read. #465 put it on `CeilingEpisodeRow`, so Stops and breaches renders it
+// through this component, and #551 put the stop cause — `reason_code`,
+// `trigger_source` and `control_family` — on the unit read, so the run page
+// renders all three through it too (`run-detail-page.test.tsx`). This
+// component is where the rule lives, so this is where the rule itself is
+// proved; the values are held by reference in the legacy adapter, which is
+// the ledger's half of the payment.
 //
 // `localisation.test.tsx` proves the lookup's four outcomes in general. What
 // is asserted here is the rendering — the mark, and its absence — on the

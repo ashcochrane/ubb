@@ -52,7 +52,8 @@ from django.utils import timezone
 from apps.platform.tenants.flags import enforcing
 from apps.platform.work import reasons
 from core import controls
-from core.vocabulary import CONTROL_FAMILY_WALLET_POLICY
+from core.vocabulary import (
+    CONTROL_FAMILY_WALLET_POLICY, CUSTOMER_BILLING_MODE_PREPAID)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -96,7 +97,7 @@ STATE_STOPPED = "stopped"
 STATE_CLEARED = "cleared"
 
 # Clear-cause vocabulary for `StopSignalState.clear_reason` and for
-# SoftFloorCleared.reason on a clearing transition. A balance re-cross via
+# WalletPolicySoftFloorCleared.reason on a clearing transition. A balance re-cross via
 # the credit hook (fast lane or its durable-balance fallback) says
 # balance_recovered; the hourly bottom-line catch-up says reconciled.
 CLEAR_BALANCE_RECOVERED = "balance_recovered"
@@ -112,7 +113,7 @@ CLEAR_BALANCE_REPAIRED = "balance_repaired"
 # `reason` (the crossed event itself carries no reason; the row's line is
 # `LINE_SOFT_FLOOR`).
 # Administrative silent close on an enforcement_mode transition (the live
-# counter's cleanup → close_all_silently) — never rides a StopCleared event
+# counter's cleanup → close_all_silently) — never rides a CustomerStopCleared event
 # (a config flip is not a re-cross).
 CLEAR_ENFORCEMENT_MODE_TRANSITION = "enforcement_mode_transition"
 
@@ -164,6 +165,36 @@ def control_fields(row):
     re-mint alike, so the two can only ever say the same thing."""
     return dict(reason_code=row.reason, control_family=row.control_family,
                 control_id=str(row.control_id or ""))
+
+
+def announced_balance(owner_id, tenant, *, measured=None):
+    """The wallet balance a customer-wide stop or its clearing publishes, or
+    None where the customer holds no wallet balance at all (#610) — spelled
+    once for both doors below and the patrol's re-mint, so the fresh pair and
+    a repaired delivery can only ever say the same thing.
+
+    ⚠ NULL, NEVER ZERO, WHERE NO WALLET BALANCE APPLIES (ADR-0013 §5). A
+    customer holds one only where its tenant holds prepaid wallets and it is
+    its own billing owner: a pooled seat has no wallet of its own (its
+    business's funds its spend), and a seat's own Pool line names the seat
+    (#609). Both doors used to publish `0` there — a postpaid customer, a
+    Pool-line stop on one, a seat — which reads as a wallet emptied to nothing.
+
+    ``measured`` is the balance the calling lane saw at the transition (the
+    live counter's, or the drawdown's new balance). A lane that measured none
+    — a Pool line's lanes measure spend, never a balance — gets the wallet's
+    durable balance, which is the honest figure where one applies: `0` there
+    was a balance nobody had read."""
+    if tenant.billing_mode != CUSTOMER_BILLING_MODE_PREPAID:
+        return None
+    from apps.platform.customers.models import Customer
+    customer = Customer.objects.select_related("parent").get(id=owner_id)
+    if customer.resolve_billing_owner().id != customer.id:
+        return None
+    if measured is not None:
+        return int(measured)
+    from apps.billing.queries import get_customer_balance
+    return int(get_customer_balance(owner_id))
 
 
 def _line_row(owner_id, line):
@@ -221,7 +252,7 @@ def _close_line(owner_id, line, *, clear_reason):
 class StopSignalService:
     @staticmethod
     def drive_stop(owner_id, tenant, *, line, control_id, trigger_source,
-                   stop_bound_micros, stop_measured_micros, balance_micros=0):
+                   stop_bound_micros, stop_measured_micros, balance_micros=None):
         """Drive the stop transition for (owner, ``line``) — one of the two
         STOP_LINES, named by the stop word the lane produces.
 
@@ -253,12 +284,14 @@ class StopSignalService:
            registers it — so racing lanes kill once. The pool service owns
            the sweep; this seam owns WHEN it runs.
 
-        ``balance_micros`` rides CustomerSuspended (the balance at the
-        crossing, best available to the detecting lane; postpaid passes 0).
+        ``balance_micros`` is the balance the detecting lane saw at the
+        crossing, or None where it measured none; CustomerSuspended carries
+        ``announced_balance``'s answer for it — null where the customer holds
+        no wallet balance (#610).
         """
         from apps.platform.customers.models import Customer
         from apps.platform.events.outbox import write_event
-        from apps.platform.events.schemas import StopFired, CustomerSuspended
+        from apps.platform.events.schemas import CustomerStopped, CustomerSuspended
 
         if line not in STOP_LINES:
             raise ValueError(f"{line!r} is not a stop line: {STOP_LINES}")
@@ -271,7 +304,7 @@ class StopSignalService:
                                  stop_measured_micros=stop_measured_micros))
             if row is None:
                 return None
-            emit_stamped(row, StopFired(
+            emit_stamped(row, CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(owner.id),
                 scope="customer", episode_seq=row.episode_seq,
                 **control_fields(row)))
@@ -286,7 +319,9 @@ class StopSignalService:
                 owner.save(update_fields=["status", "suspension_reason", "updated_at"])
                 write_event(CustomerSuspended(
                     tenant_id=str(tenant.id), customer_id=str(owner.id),
-                    reason=owner.suspension_reason, balance_micros=int(balance_micros)))
+                    reason=owner.suspension_reason,
+                    balance_micros=announced_balance(
+                        owner.id, tenant, measured=balance_micros)))
             if line == LINE_CUSTOMER_SPEND_POOL:
                 from apps.billing.gating.services.customer_spend_pool_service import (
                     CustomerSpendPoolService)
@@ -296,7 +331,7 @@ class StopSignalService:
             return row.episode_seq
 
     @staticmethod
-    def drive_clear(owner_id, tenant, *, line, clear_reason, balance_micros=0):
+    def drive_clear(owner_id, tenant, *, line, clear_reason, balance_micros=None):
         """Drive the clearing transition for (owner, ``line``).
 
         Returns the episode_seq of the stop it closed when THIS call won
@@ -304,11 +339,14 @@ class StopSignalService:
         nothing (spec §E). The winner flips the row to ``cleared``, records
         why (``clear_reason``) and emits ``customer.stop_cleared`` carrying the closed
         episode, the line's word, family and control id, and the balance at
-        clearance. Un-suspension is deliberately NOT here: it rides
+        clearance — ``announced_balance``'s answer for ``balance_micros``, the
+        balance the clearing lane saw or None where it measured none, so null
+        where the customer holds no wallet balance (#610). Un-suspension is
+        deliberately NOT here: it rides
         ``LiveCounter.resume``'s durable gate (D15), which also asks whether
         the OTHER stop line still holds the owner before lifting anything.
         """
-        from apps.platform.events.schemas import StopCleared
+        from apps.platform.events.schemas import CustomerStopCleared
 
         if line not in STOP_LINES:
             raise ValueError(f"{line!r} is not a stop line: {STOP_LINES}")
@@ -316,10 +354,12 @@ class StopSignalService:
             row = _close_line(owner_id, line, clear_reason=clear_reason)
             if row is None:
                 return None
-            emit_stamped(row, StopCleared(
+            emit_stamped(row, CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 scope="customer", episode_seq=row.episode_seq,
-                balance_micros=int(balance_micros), **control_fields(row)))
+                balance_micros=announced_balance(
+                    owner_id, tenant, measured=balance_micros),
+                **control_fields(row)))
             return row.episode_seq
 
     @staticmethod
@@ -378,14 +418,14 @@ class StopSignalService:
         Customer row is never locked or touched here, so the Customer ->
         StopSignalState lock order holds trivially.
         """
-        from apps.platform.events.schemas import SoftFloorCrossed
+        from apps.platform.events.schemas import WalletPolicySoftFloorCrossed
 
         with transaction.atomic():
             row = _open_line(owner_id, tenant, LINE_SOFT_FLOOR, control_id=None,
                              now=timezone.now(), opening=NO_OPENING_FACTS)
             if row is None:
                 return None
-            emit_stamped(row, SoftFloorCrossed(
+            emit_stamped(row, WalletPolicySoftFloorCrossed(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=int(soft_min_balance_micros),
@@ -406,13 +446,13 @@ class StopSignalService:
         soft floor was UNCONFIGURED mid-episode still clears (there is no
         line left to be past), and the event says so honestly.
         """
-        from apps.platform.events.schemas import SoftFloorCleared
+        from apps.platform.events.schemas import WalletPolicySoftFloorCleared
 
         with transaction.atomic():
             row = _close_line(owner_id, LINE_SOFT_FLOOR, clear_reason=reason)
             if row is None:
                 return None
-            emit_stamped(row, SoftFloorCleared(
+            emit_stamped(row, WalletPolicySoftFloorCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id), reason=reason,
                 balance_micros=int(balance_micros),
                 soft_min_balance_micros=(None if soft_min_balance_micros is None
