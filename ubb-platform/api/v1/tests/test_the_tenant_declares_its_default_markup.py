@@ -38,8 +38,6 @@ import json
 from django.test import Client, TestCase
 
 from apps.metering.pricing.models import TenantDefaultMarkup
-from apps.metering.pricing.services import markup_cache
-from apps.metering.pricing.services.markup_cache import MarkupCache
 from apps.metering.pricing.services.markup_service import MarkupService
 from apps.platform.audit.actions import is_registered_action
 from apps.platform.audit.ledger import record as audit_record
@@ -231,40 +229,10 @@ class BothActsAreRecordedUnderTheirOwnNameTest(_TheRungsRoutesMixin, TestCase):
                                   (WITHDRAWN,)})
 
 
-class WithdrawingThroughTheRouteBumpsTheResolvedCacheTest(
-        _TheRungsRoutesMixin, TestCase):
-    """A withdrawn rung must stop being served IMMEDIATELY, not after a TTL.
-
-    ⚠ **INHERITED FROM THE RECORD #369 DELETED, WHERE IT WAS A MEASURED MONEY
-    LEAK.** `MarkupCache` keys on a per-tenant version held in Redis; the model
-    layer bumps that version from `save()` and `delete()`, so a route that
-    removes a row with `QuerySet.delete()` — which never loads an instance —
-    leaves the version where it was and the L1 keeps answering the withdrawn
-    percentage for the whole TTL window. The route the claim moved off was a
-    customer override, where the stale answer under-priced; here the stale
-    answer prices at all, for a tenant who has said to stop.
-
-    It discriminates: with the route's `rung.delete()` swapped for a queryset
-    delete, the version does not move, `begin_request` re-pins the same number,
-    the L1 entry is still valid and the withdrawn rung is served.
-    """
-
-    def setUp(self):
-        super().setUp()
-        # Module-level L1 + contextvar are in-process state: reset per test,
-        # mirroring apps/metering/pricing/tests/test_markup_cache.py.
-        markup_cache._l1.clear()
-        markup_cache._ctx_versions.set({})
-
-    def test_the_l1_stops_serving_a_withdrawn_rung_within_the_request_boundary(
-            self):
-        self._declare(50_000_000)
-        MarkupCache.begin_request(self.tenant.id)
-        # Populated as the pricing path would, before anything is withdrawn.
-        self.assertEqual(
-            MarkupCache.resolve(self.tenant).markup_micro_percent, 50_000_000)
-
-        self.assertEqual(self._withdraw().json()["status"], "withdrawn")
-
-        MarkupCache.begin_request(self.tenant.id)
-        self.assertIsNone(MarkupCache.resolve(self.tenant))
+# THE CACHE CASE WENT WITH THE CACHE (#556). It pinned that the withdrawal
+# route deleted through the model layer, because `MarkupCache` bumped its
+# version only from `delete()` and a queryset delete left a withdrawn rung
+# served for a TTL. Nothing in production ever read that cache and it is
+# deleted; every read of the rung is a live read of the row, and
+# `test_withdrawing_leaves_the_tenant_with_no_rung_at_all` asserts that read
+# answers nothing the moment the route returns.

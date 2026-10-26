@@ -96,7 +96,7 @@
           },
           "pricing_receipt": {
             "receipt_schema_version": 2,
-            "pricing_engine_version": "2.2.0",
+            "pricing_engine_version": "3.0.0",
             "subject_type": "usage_event",
             "subject_id": "00000000-0000-4000-8000-000000000002",
             "effective_at": "2026-09-01T12:30:00Z",
@@ -225,7 +225,7 @@
             "subject_id": "00000000-0000-4000-8000-000000000002",
             "effective_at": "2026-09-01T12:30:00Z",
             "subject_type": "usage_event",
-            "pricing_engine_version": "2.2.0",
+            "pricing_engine_version": "3.0.0",
             "receipt_schema_version": 2
           },
           "pricing_receipt_subject_type": "usage_event",

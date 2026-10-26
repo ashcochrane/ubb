@@ -45,13 +45,16 @@ import {
 import { ABSENT_LABEL } from "@/lib/localisation";
 import {
   availableMeasurements,
+  heldForRemediation,
   knownCost,
   negativePriceUnsupported,
   priceNotApplicable,
 } from "@/lib/economic-scenarios";
+import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 
 import { correlationId } from "../api/mock-data";
 import type { UsageEventDetail } from "../api/types";
+import { sectionText } from "../test-utils";
 import { EventDetailPage } from "./event-detail-page";
 
 const METERING_ONLY_EVENT_ID = "0b4d7e21-5c68-4a39-9d02-8e1f3a6c7b50";
@@ -112,9 +115,27 @@ const NEGATIVE_PRICE_DETAIL: UsageEventDetail = {
   ...availableMeasurements({ returned_documents: "-3" }),
 };
 
+const HELD_EVENT_ID = "8c1f5e02-7a3d-4b69-9e14-2d6a0b8f3c71";
+
+/**
+ * One posting HELD for remediation (#568): it named an Event Type nobody
+ * published, so UBB costed and priced nothing and holds it until the tenant
+ * says what the name meant. Assembled here for the header's reason — the
+ * events mock never authors this state — and composed whole from
+ * `heldForRemediation`, so the cost and the price cannot come apart.
+ */
+const HELD_DETAIL: UsageEventDetail = {
+  ...METERING_ONLY_DETAIL,
+  id: HELD_EVENT_ID,
+  ...correlationId(HELD_EVENT_ID),
+  ...heldForRemediation("event_type_not_declared"),
+  event_type: "chat.completion.v2",
+};
+
 const DETAILS: Readonly<Record<string, UsageEventDetail>> = {
   [METERING_ONLY_EVENT_ID]: METERING_ONLY_DETAIL,
   [NEGATIVE_PRICE_EVENT_ID]: NEGATIVE_PRICE_DETAIL,
+  [HELD_EVENT_ID]: HELD_DETAIL,
 };
 
 vi.mock("../api/provider", () => ({
@@ -229,5 +250,37 @@ describe("a receipt whose configuration calculated a negative price", () => {
     expect(billed?.textContent ?? "").toContain(ABSENT_LABEL);
     expect(priceSectionText()).not.toMatch(/[$£€]\s*-?[\d,]/);
     expect(screen.getByText("-3")).toBeInTheDocument();
+  });
+});
+
+// #568 / #473 row 4 at the console: a held posting renders AS HELD — the name
+// it waits on, no cost, no price, and never a charge of nothing. The mutation
+// that reddens these and nothing mock-authored: give `heldForRemediation` a
+// `waivedPrice()` where it composes `unknownPrice()`.
+describe("a receipt for an event held for remediation", () => {
+  it("names the undeclared Event Type as the missing input, beside an unresolved cost", async () => {
+    renderReceipt(HELD_EVENT_ID);
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    const cost = sectionText("Supplier cost");
+    expect(cost).toContain(costingStatusLabel("unresolved"));
+    expect(cost).toContain(unresolvedReasonLabel("event_type_not_declared"));
+    expect(cost).not.toMatch(/[$£€]\s*-?[\d,]/);
+  });
+
+  it("leaves the price unknown with its stated reason — never waived, never a figure", async () => {
+    renderReceipt(HELD_EVENT_ID);
+
+    expect(await screen.findByText("Event receipt")).toBeInTheDocument();
+    expect(priceSectionText()).toContain(
+      `${pricingStatusLabel("unknown")} · ${pricingStatusReasonLabel("event_type_not_declared")}`,
+    );
+    expect(
+      screen.getByText(
+        `${PRICING_STATUS_EXPLANATIONS.unknown} ${PRICING_STATUS_REASON_EXPLANATIONS.event_type_not_declared}`,
+      ),
+    ).toBeInTheDocument();
+    expect(priceSectionText()).not.toContain(pricingStatusLabel("waived"));
+    expect(priceSectionText()).not.toMatch(/[$£€]\s*-?[\d,]/);
   });
 });

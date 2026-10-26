@@ -46,10 +46,10 @@ def declaration_named(*, tenant, measurement_key):
 
     `None` means no declaration of this tenant's carries that name, which is
     what makes a rate naming it unwritable. It is never "the quantity does not
-    exist" — a tenant may meter a quantity they have never declared and every
-    such posting costs the way this repository has always costed; what they may
-    not do is write a priced rule against a name their own catalogue does not
-    carry.
+    exist" — a tenant may meter a quantity they have never declared, and such a
+    posting is recorded and the name held for them to decide about (#428,
+    #568); what they may not do is write a priced rule against a name their own
+    catalogue does not carry.
 
     **The earliest declaration wins where several carry the name.** Not the
     newest: a reference that moved every time a tenant declared the same

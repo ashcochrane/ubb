@@ -240,8 +240,9 @@ costing_status:
 #
 # THE BACKEND CONSUMER IS NOW REAL. The posting carries `unresolved_reason`
 # beside the supplier cost it qualifies, and derives its value set from the
-# generated `core.vocabulary` rather than restating it, so all three values are
-# held by reference and no entry is owed for them.
+# generated `core.vocabulary` rather than restating it, so every value is held
+# by reference — the fourth, `event_type_not_declared` (#568), arrived that way
+# — and no entry is owed for them.
 #
 # THE CONTRACT CONSUMER IS NOW REAL TOO (#323), and the order it waited on is
 # forced rather than preferred: the contract may not advertise a concept's
@@ -258,14 +259,14 @@ costing_status:
 # what `test_every_advertised_concept_reaches_the_contract` refuses.
 #
 # THE CONSOLE IS STILL NOT DECLARED, AND ITS ABSENCE IS THE SAME RULING #316
-# MADE, NOT AN OVERSIGHT. The console DOES render these three values as of
-# #330 — `apps/ui/src/lib/supplier-cost.ts` binds their label keys, and holds
-# all three by reference in doing so. What it does not do is hold them in
+# MADE, NOT AN OVERSIGHT. The console DOES render these values as of #330 —
+# `apps/ui/src/lib/supplier-cost.ts` binds their label keys, and holds every
+# one by reference in doing so. What it does not do is hold them in
 # `apps/ui/src/lib/labels.ts`, and that file is the path every console consumer
 # in this registry names: the console's declared consumer is the legacy label
 # adapter, and a migrated concept leaves its value list there while its wording
 # moves to a module of its own (`tenant_product` is the worked example, #241).
-# Declaring the surface here would therefore report all three missing at a path
+# Declaring the surface here would therefore report every one missing at a path
 # that genuinely holds none, and demand the G2 migration-ledger entry that a
 # ledger which only shrinks (#155 §3.2) could not later be given back. Whoever
 # moves the list into `labels.ts` declares the surface in the same commit.
@@ -295,6 +296,13 @@ unresolved_reason:
     - cost_rate_missing
     # The quantity names a declaration nobody made — the quarantine link.
     - measurement_not_declared
+    # The EVENT TYPE has no production declaration (#568): nobody declared
+    # the key, or it was declared and never published, which recording reads
+    # as the same thing (#605). The input that did not arrive is the Event
+    # Type's published declaration, so the remedy is readable from the value
+    # exactly as it is from the quantity's sibling above — and "declared"
+    # carries the sense that sibling already carries, the last publication's.
+    - event_type_not_declared
   label_key_prefix: unresolved_reason
   consumers:
     - surface: backend
@@ -490,15 +498,27 @@ pricing_status_reason:
   summary: >-
     Why a subject's pricing status applies, where a specific published reason
     does. Null where none applies. Read beside `pricing_status`, never on its
-    own: an `unknown` price with no reason is one UBB had no input to resolve,
-    while an `unknown` price carrying a reason is one UBB calculated and cannot
-    authoritatively carry.
+    own: an `unknown` price with no reason is one UBB had no input to resolve;
+    an `unknown` price carrying a reason names why no authoritative price
+    exists — one UBB calculated and cannot carry, or one waiting on the tenant
+    to say what a name on the event means.
   values:
     # UBB calculated a negative customer price but cannot authoritatively carry
     # it: the money rails act on a known price, and a negative one would be
     # dropped, so it is recorded `unknown` — never clamped to zero, dropped or
     # marked `known` — and the computed number is published nowhere as a price.
     - negative_price_unsupported
+    # The event is HELD on a name (#568, #473 row 4): it names an Event Type
+    # with no production declaration, so nobody has said what the call was and
+    # no price over it is published as known. The same token as the cost
+    # side's reason, deliberately — one cause, said on both halves of the pair,
+    # rather than a synonym a reader must map back (the consultant's review of
+    # #618). A replay that resolves the price clears it with the resolution.
+    - event_type_not_declared
+    # Held on a quantity name the event's published Event Type does not carry
+    # (#428, #473 row 4) — the same cause as the cost side's, for the same
+    # reason.
+    - measurement_not_declared
   label_key_prefix: pricing_status_reason
   consumers:
     - surface: backend

@@ -348,6 +348,7 @@ DEPARTING = (
     "0009-a-correction-is-a-further-publish.md",
     "0011-a-unit-of-work-is-a-kernel-concept-at-the-root.md",
     "0014-spend-control-is-four-families-and-the-ceiling-is-a-kernel-concept.md",
+    "0022-an-event-naming-an-event-type-nobody-published-is-recorded-and-held.md",
 )
 
 

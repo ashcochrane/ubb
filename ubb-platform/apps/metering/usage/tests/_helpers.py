@@ -54,6 +54,8 @@ from datetime import timedelta
 from django.db import IntegrityError, connection, models, transaction
 from django.utils import timezone
 
+from apps.metering.pricing.services.price_resolution import (
+    marked_as_the_price_door)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -114,6 +116,17 @@ def through_save(posting, **columns):
 DOORS = (("QuerySet.update()", through_the_queryset),
          ("raw SQL", through_raw_sql),
          ("save()", through_save))
+
+
+#: A statement made under the price door's own mark (#557).
+#:
+#: The price pair's rule admits `unknown` to `known` only on a statement
+#: `resolve_customer_price` marked, so a test asking whether the rule ADMITS
+#: the move through each of the three doors — rather than whether the door
+#: makes it — has to make it under that mark. It is the door's own context
+#: manager, not a copy of it: the setting a test makes is the one the door
+#: makes, and it is cleared on the way out as the door clears it.
+as_the_price_door = marked_as_the_price_door
 
 
 def settle_the_supplier_cost(posting, micros):

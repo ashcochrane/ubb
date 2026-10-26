@@ -72,6 +72,25 @@ backstop (for the reservation, an hourly sweep over terminal work still holding 
 `apps/platform/work/tests/test_every_terminal_path_reaches_the_listeners.py` holds that every
 function writing a terminal status notifies, so a new terminal path cannot forget the channel.
 
+**The replay consumer registry** (`apps/platform/event_types/hooks.py`, #473 row 1, #568) is the
+third, on the same shape — `register_replay_consumer(fn)` in `AppConfig.ready()`, idempotent, every
+consumer called synchronously inside the kernel act's own transaction — and **the deliberate
+opposite of the terminal one: a consumer that raises VETOES the act.** The act is a tenant's decision
+about a held name (a map, a register, or a publication declaring it), and the consumer's work — the
+held event re-costed from its own moment (`resolution_run.replay_the_held_event`, registered in
+`PricingConfig.ready()`) — is that decision's consequence, not a notification about it: a name
+recorded as decided whose event was never re-costed would leave the period-close safeguard with
+nothing looking at it again. So nothing catches there, and decision and replay land together or not
+at all. ⚠ **A publication is not one of those decisions' transactions** (the consultant's review of
+#618): publishing configuration and replaying history are different responsibilities, so
+`EventType.publish` commits the declaration alone and the held names it answers are registered and
+replayed AFTER it commits — a doorbell (`transaction.on_commit` → a Celery task, broker errors
+logged and swallowed, as the outbox's) and every Resolution Run (the retry) — each name in a
+transaction of its own, so one that is refused or breaks stays held while the rest are answered, and
+the publication is never what is vetoed. Choose by asking whether the reaction is the fact's
+consequence (veto, same transaction) or news about it (notification), and keep work that grows with
+history out of a configuration write either way.
+
 ## Locking & concurrency
 
 - Take row locks with `select_for_update` in the canonical global order (Run → Wallet → Customer →
@@ -83,27 +102,25 @@ function writing a terminal status notifies, so a new terminal path cannot forge
 
 ## Caching & invalidation
 
-Hot-path resolves use an in-process L1 cache fronted by a per-tenant Redis **version key**. The
-default rule: writes bump the version key **at the model layer** (in the model's `save`/`delete`), so
-a stale cache can't survive a write. If you add a cached resolve, invalidate the same way — bump a
-version key on write, never trust a TTL alone for correctness. Always keep a live-ORM fallback so
-caching never under-holds money.
+**No resolve on the hot path is cached today** (#556). The rate-card and markup caches were deleted
+because nothing in production ever read them: their one reader, the accept-time estimate, went in
+#239, and recording resolves against the live ORM through `PricingService`. If you add a cache,
+these are the rules it inherits:
 
-**The markup cache is the worked example** — `ubb:markupver:{tenant}`, bumped from
-`TenantDefaultMarkup.save`/`delete`, so no write path can bypass invalidation.
-
-**⚠ There is one exception and it is a better answer, not a lapse: a key that carries the instant it
-answers for needs no invalidation at all** (#356). A pricing rule takes effect from a moment that may
-be in the future, so bumping a version when the change is *published* invalidates at the wrong
-moment, and invalidating at the boundary would need a job running at the effective instant — the one
-thing forward-dated publishing exists to avoid. The rate cache's key therefore includes the as-of
-instant: **a cached resolution answers for the instant it was computed for and for no other**, so
-entries for instants before a new boundary stay correct forever and entries for instants after it
-were never created. Its version key `ubb:cardver:{tenant}` still exists and is still read, but it
-**has no writer at all** — deliberately, and on the record in
-`apps/metering/pricing/services/card_cache.py`, which refuses to add one because a model-layer bump
-would put publish-time invalidation straight back. Reach for this shape when what you are caching is
-a function of time; reach for the version key when it is not.
+- **Invalidate at the model layer.** Front the in-process L1 with a per-tenant Redis **version key**
+  bumped in the model's `save`/`delete`, so no write path can bypass it; never trust a TTL alone for
+  correctness; keep a live-ORM fallback so caching never under-holds money. A route deleting through
+  `QuerySet.delete()` never loads an instance and so never bumps — the deleted markup cache measured
+  exactly that leak (#369).
+- **⚠ A key that carries the instant it answers for needs no invalidation at all** (#356), and it is
+  the better answer when what you cache is a function of time. A pricing rule takes effect from a
+  moment that may be in the future, so bumping a version when the change is *published* invalidates
+  at the wrong moment, and invalidating at the boundary would need a job running at the effective
+  instant — the one thing forward-dated publishing exists to avoid. Keyed on the as-of instant, **a
+  cached resolution answers for the instant it was computed for and for no other**. That holds only
+  while nobody publishes a stale draft, and `core/scheduling.py` says why it cannot promise more.
+  Reach for this shape when the value is a function of time; reach for the version key when it is
+  not.
 
 ## Celery
 
@@ -147,6 +164,17 @@ wire and validate.
   session setting or a temporary drop; both are doors, and ADR-0007 §2's point is that a rule holds
   through every one. #354's is the sandbox tenant, and the tenant table's own `CHECK` is what stops
   the exemption being turned on.
+- **⚠ The one rule that READS a session setting does so to name a writer, not to exempt a case, and
+  it says so.** The price pair's admitted move (`unknown` to `known`) is admitted only on a statement
+  `price_resolution.resolve_customer_price` marked (`usage/migrations/0049`, #557): the
+  transaction-local setting `ubb.price_door`, set by `marked_as_the_price_door` around the door's one
+  `UPDATE` and cleared after. The bullet above still holds for what it is about — a case a rule must
+  hold through is stated positively in the rule. This is a different question with no positive
+  statement available: Postgres cannot see which function issued a statement, so naming the one
+  writer takes a mark. It is a guard against a second writer by ACCIDENT — any code can set the
+  mark, and every setter goes through that one context manager, a search away — and it is not a
+  security boundary. It covers the move, an `UPDATE`; an insert that arrives `known` is the
+  recording path's own pricing, not a resolution.
 - **Declaring is not enforcing, and a declaration must arrive with what keeps it.** The database
   enforcement is gate G19, **installed by slice 3** (#319) and enforced over the *declarations*
   rather than over a list of columns, so a column you declare is judged on the day you declare it; a

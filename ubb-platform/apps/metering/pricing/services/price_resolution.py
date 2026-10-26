@@ -40,22 +40,31 @@ letting reach a period that has closed. `queries.mark_backfill_dirty_period_for_
 Collapsing the last two would throw away exactly the distinction ruling 12c
 exists to draw.
 
-**⚠ THERE IS NO `ast` WALK OVER THE TREE FOR THIS PAIR, AND THE COST SIDE HAS
-ONE.** `pricing/tests/test_cost_settlement.py` walks living backend code and
-fails on any other module writing a cost column, because a second writer cannot
-corrupt a posting — the trigger sees to that — but it can perfectly well resolve
-one, and then "this price is now known" is decided in two places and tested in
-one. That argument holds here word for word, and the walk is not extended in
-this commit: it is a gate over the whole tree with its own vacuity controls and
-its own excused files, and copying it with three columns swapped is the
-duplication `docs/conventions/testing.md` refuses. What this module has instead
-is the database rule, which holds through every door, and being the only caller
-of its own statement. **Extending that walk to a second column set is a
-separable ticket and is recorded here rather than left as an absence.**
+**AND IT IS THE ONLY WRITER, BECAUSE THE TABLE SAYS SO (#557).** The cost side
+has an `ast` walk (`pricing/tests/test_cost_settlement.py`) that fails on any
+other module writing a cost column: the transition trigger stops a second writer
+corrupting a posting, but not resolving one, and then "this price is now known"
+is decided in two places and tested in one. The owner re-scoped the price side's
+answer (#557, `5785065807`): a behavioural or database rule, never a second
+tree walk. So the price pair's trigger (`usage/migrations/0049`) admits the move
+from `unknown` to `known` only on a statement this door has marked — a
+transaction-local setting (:data:`PRICE_DOOR_SETTING`) set to
+:data:`PRICE_DOOR_MARK` immediately before the one `UPDATE` below and cleared
+immediately after. Any other writer, through any door — `save()`, a queryset,
+raw SQL, a data migration — meets the refusal at the table.
+
+It is a rule against a second writer by ACCIDENT, which is the risk the issue
+names; code that sets the mark itself is not accidental, and it is one search
+for the constant away. Every setter goes through
+:func:`marked_as_the_price_door`: this door; the measurement script
+(`scripts/measure_posting_transition_cost.py`), which times this statement in
+bulk; and the test helper that asks whether the RULE admits the move at each
+of ADR-0007 §2's three doors (`usage/tests/_helpers.as_the_price_door`).
 """
 import enum
+from contextlib import contextmanager, suppress
 
-from django.db import transaction
+from django.db import DatabaseError, connection, transaction
 
 from apps.metering.pricing.services.cost_settlement import (
     its_unit_takes_up_the_resolution)
@@ -67,6 +76,49 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
 )
+
+
+#: THE SETTING THE PRICE PAIR'S TRIGGER READS, and the value that is this door
+#: (#557). Named once, here, because the migration that installs the rule
+#: freezes both literals and every reader of them — the door, the measurement
+#: script, the tests — must spell what the table asks for.
+PRICE_DOOR_SETTING = "ubb.price_door"
+PRICE_DOOR_MARK = "resolve_customer_price"
+
+
+@contextmanager
+def marked_as_the_price_door():
+    """This door's mark, for the length of its one statement and no longer.
+
+    Transaction-local (`set_config(..., true)`), so a mark can never outlive
+    the transaction it was set in — and gone on the way out WHATEVER happened,
+    so no later statement in the same transaction (a run resolving two hundred
+    postings, say) inherits it:
+
+    * the statement finished — the mark is cleared;
+    * Python raised under it — the transaction is still usable, and the mark
+      is cleared the same way;
+    * the DATABASE refused the statement — the (sub)transaction is aborted,
+      and the rollback that must follow reverts this transaction-local
+      setting with everything else. A clear attempted in the aborted
+      transaction would itself fail and report THAT instead of why the
+      statement failed, so it is attempted and its failure suppressed; the
+      door holds its statement in a savepoint of its own for exactly this.
+    """
+    _set_the_mark(PRICE_DOOR_MARK)
+    try:
+        yield
+    except BaseException:
+        with suppress(DatabaseError):
+            _set_the_mark("")
+        raise
+    _set_the_mark("")
+
+
+def _set_the_mark(value):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT set_config(%s, %s, true)",
+                       [PRICE_DOOR_SETTING, value])
 
 
 class PriceResolution(enum.Enum):
@@ -140,15 +192,19 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
     # owner's review of #614): the resolved posting moves its unit's billed
     # total and unpriced count, and the two can never become separately
     # durable facts.
+    #
+    # AND IT IS MARKED AS THIS DOOR'S, which is the one thing the table now
+    # admits the move on (#557): the setting is on for this statement only.
     with transaction.atomic():
-        affected = (Posting.objects
-                    .filter(pk=posting_id,
-                            billed_cost_micros__isnull=True,
-                            pricing_status=PRICING_STATUS_UNKNOWN)
-                    .update(billed_cost_micros=billed_cost_micros,
-                            pricing_status=PRICING_STATUS_KNOWN,
-                            pricing_status_reason=None,
-                            **completes_the_record))
+        with marked_as_the_price_door():
+            affected = (Posting.objects
+                        .filter(pk=posting_id,
+                                billed_cost_micros__isnull=True,
+                                pricing_status=PRICING_STATUS_UNKNOWN)
+                        .update(billed_cost_micros=billed_cost_micros,
+                                pricing_status=PRICING_STATUS_KNOWN,
+                                pricing_status_reason=None,
+                                **completes_the_record))
 
         if affected > 1:
             # Unreachable while the filter above names a primary key, and kept

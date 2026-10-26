@@ -65,7 +65,7 @@ from apps.platform.audit.marker import records_audit
 # names a module and a constant after that.
 from apps.metering import queries as metering_queries
 from apps.platform.event_types.costing import (
-    admitted_supplier_cost_source, cost_declaration)
+    admitted_supplier_cost_source, declaration_of)
 from apps.platform.event_types.models import ValueTypeMismatch, quantity_under
 from apps.platform.event_types.publication import last_published_declaration
 from core.vocabulary import (
@@ -174,7 +174,83 @@ def _nothing_admissible(subject):
         f"which is accepted on any event and is never treated as cost.")
 
 
-def admit_supplier_cost(tenant, item):
+#: THE NAMED REFUSAL OF A PROVIDER THE EVENT TYPE DOES NOT DECLARE (#572), as
+#: the error-code catalogue registers it (`openapi/error-codes.json`): a 422 on
+#: the single route, and the same code as a rejected item's verdict on a batch.
+PROVIDER_CONFLICTS_WITH_EVENT_TYPE = "provider_conflicts_with_event_type"
+
+
+class ProviderConflictsWithEventType(ValueError):
+    """A provider named on the call that is not the one its Event Type's
+    publication names (#572, ruled on #184, item 8 of the batch).
+
+    A ``ValueError``, so both routes take it on the lane every other
+    admission does — but it carries a CODE of its own, because the ruling
+    asked for a named refusal: a caller has to be able to tell "you named the
+    wrong supplier" from every other validation failure without parsing
+    prose. :func:`usage_error` reads the code off it.
+    """
+
+    code = PROVIDER_CONFLICTS_WITH_EVENT_TYPE
+
+
+def admit_provider(item, declaration):
+    """The provider this item is recorded and costed under — the published
+    Event Type's own, where there is one — or the refusal of a different one
+    (#572, #193 §B3).
+
+    **For a published Event Type its Provider is authoritative.** Cost
+    resolution keys on the supplier the tenant declared, and a free-text
+    `provider` on the call is the caller's say-so, which UBB used to select
+    rates by while never reading the declaration. So:
+
+    * a provider the declaration names, or none at all, proceeds, and the
+      event is recorded and costed under the declared one (its key as the
+      catalogue holds it now, `CostDeclaration.provider_key`);
+    * any other provider is REFUSED, never silently trusted and never
+      silently replaced — including one sent for an Event Type that declares
+      no supplier, which is a statement that the work has none.
+
+    An event with no published Event Type keeps the provider it sent:
+    naming none is outside this (#567), and one nobody published is held
+    whole for the tenant's decision (#568), its replay costed under the
+    Provider of whatever the tenant says it was.
+
+    **The message says what each answer means and never tells a caller to
+    send the declared value.** The field is a statement about which supplier
+    ran the call, and "send that one instead" would ask a caller who knows
+    better to say otherwise (#570's lesson). Omitting it is always honest;
+    the rest is the declaration's to change.
+    """
+    if declaration is None:
+        return item.provider
+    declared = declaration.provider_key
+    if item.provider and item.provider != declared:
+        if declared:
+            raise ProviderConflictsWithEventType(
+                f"provider {item.provider!r} is not the supplier the last "
+                f"publication of Event Type {item.event_type!r} names, which "
+                f"is {declared!r}. The supplier a published Event Type names "
+                f"decides whose call it is and what its supplier cost resolves "
+                f"under, so a different one is refused rather than trusted or "
+                f"replaced. "
+                f"Omit provider to record the call under {declared!r}; if "
+                f"the call was another supplier's, it belongs to the Event "
+                f"Type that names that supplier, or the Event Type's provider "
+                f"is what needs correcting.")
+        raise ProviderConflictsWithEventType(
+            f"provider {item.provider!r} names a supplier, and the last "
+            f"publication of Event Type {item.event_type!r} names none — it "
+            f"meters work with no supplier. The supplier a published Event "
+            f"Type names decides whose call it is and what its supplier cost "
+            f"resolves under, so a supplier it does not name is refused rather "
+            f"than trusted. Omit "
+            f"provider; if the call is a supplier's, declare that provider on "
+            f"the Event Type.")
+    return declared
+
+
+def admit_supplier_cost(item, declaration):
     """Refuse a supplier cost the Event Type's publication does not admit
     (#324), on a transport it does not admit, or on both at once (#570).
 
@@ -208,18 +284,21 @@ def admit_supplier_cost(tenant, item):
     `replay_or_record` calls it above the grouping-field admission, which
     records novel values against a cardinality cap: a refusal underneath that
     would have spent a tenant's keyspace on a request that was never
-    recorded. Nothing here writes, so going ahead of it is free. And it reads
-    the Event Type's last publication, which may have changed since an event
-    was recorded, so a retry of that event is answered with what was recorded
-    before this is asked (#605).
+    recorded. Nothing here writes, so going ahead of it is free. And the
+    publication it is handed may have changed since an event was recorded, so
+    a retry of that event is answered with what was recorded before this is
+    asked (#605).
 
-    **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** One query, and only on a
-    request that carries the figure — which is precisely the branch on which
-    the compute spine skips the same lookup, so no event pays for it twice. An
-    event that carries no supplier cost reads exactly what it read before. A
-    batch pays it per item that carries one; it is deliberately not memoised
-    across the batch, because a batch item is a whole independent request here
-    and a shared verdict would be the first place they stopped being one.
+    **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** Nothing of its own: it is
+    handed the declaration :func:`replay_or_record` reads once per event
+    naming an Event Type, which the provider admission needs on every such
+    event (#572), and that same read is handed down to the costing, which
+    therefore asks it no second time — one read of the cost declaration per
+    event, as before #572. (`admit_quantities` reads the publication's value
+    types on its own query, as it has since #603.) A batch pays it per item;
+    it is deliberately not memoised across the batch, because a batch item is
+    a whole independent request here and a shared verdict would be the first
+    place they stopped being one.
 
     **EACH REFUSAL HAS ITS OWN MESSAGE**, and every one names what the caller
     may do next rather than only what they may not: it opens with what the
@@ -238,8 +317,7 @@ def admit_supplier_cost(tenant, item):
     carried = _transports_carrying_a_figure(item)
     if not carried:
         return
-    source = admitted_supplier_cost_source(
-        cost_declaration(tenant=tenant, key=item.event_type))
+    source = admitted_supplier_cost_source(declaration)
     admitted = SUPPLIER_COST_TRANSPORTS.get(source)
     if carried == [admitted]:
         return
@@ -269,10 +347,16 @@ def admit_supplier_cost(tenant, item):
         f"when it is published.")
 
 
-def usage_kwargs(item):
+def usage_kwargs(item, *, provider, declaration):
     """The single↔batch pass-through, written ONCE (#112): the field-for-
     field map from a request item (RecordUsageRequest — the single and batch
     items share the schema) onto record_new_usage's keyword surface.
+
+    **THE PROVIDER IS THE ADMITTED ONE, NOT THE ONE SENT (#572).** For a
+    published Event Type it is the declared supplier — `admit_provider` has
+    refused any other — so an omitted provider records and costs under the
+    declaration's, and nothing downstream ever reads the caller's string for
+    such an event.
 
     **EITHER SUPPLIER-COST TRANSPORT IS THE ONE SUPPLIER COST (#570).** A
     figure read off the provider's response and one the caller supplied are
@@ -287,7 +371,11 @@ def usage_kwargs(item):
     owner's review of #570). One amount and no echo means the receipt is the
     only place left that can say which transport carried the figure, so the
     recording core is handed the source kind to keep there by value — never
-    a second amount, and never the transport's own field."""
+    a second amount, and never the transport's own field.
+
+    **AND THE DECLARATION THE ADMISSIONS READ GOES DOWN TO THE COSTING (#605).**
+    The event pays one read of its Event Type's publication, and the
+    admissions and the costing answer from the same one."""
     figure, source = _the_supplier_cost(item)
     return dict(
         idempotency_key=item.idempotency_key,
@@ -297,22 +385,24 @@ def usage_kwargs(item):
         currency=item.currency,
         metadata=item.metadata,
         event_type=item.event_type,
-        provider=item.provider,
+        provider=provider,
         task_id=item.task_id,
         measurements=item.measurements,
         effective_at=item.effective_at,
+        declaration=declaration,
     )
 
 
 def usage_error(e):
     """The ONE recording error map (#112): exception → (code, detail).
-    The specific-before-general order lives HERE and only here —
-    EffectiveAtError (which IS a ValueError, so it must be tested before the
-    generic branch), then plain ValueError — which is also what the two
-    admissions raise (`SupplierCostNotAdmissible`, `DimensionError`), so every
-    refusal `replay_or_record` can raise is mapped here. The single endpoint
-    raises the code as a Problem; the batch wraps the same code in a verdict
-    dict.
+    The specific-before-general order lives HERE and only here — the refusals
+    that carry a NAMED code (`EffectiveAtError`, and since #572
+    `ProviderConflictsWithEventType`; each IS a ValueError, so they must be
+    tested before the generic branch), then plain ValueError — which is also
+    what the other admissions raise (`SupplierCostNotAdmissible`,
+    `QuantityNotAdmissible`, `DimensionError`), so every refusal
+    `replay_or_record` can raise is mapped here. The single endpoint raises
+    the code as a Problem; the batch wraps the same code in a verdict dict.
 
     **A COST UBB CANNOT WORK OUT IS NO LONGER AN ERROR (#320)**, so the branch
     that was first here is gone along with the exception it named and the wire
@@ -320,7 +410,7 @@ def usage_error(e):
     for it; the event is recorded with its cost said to be unresolved, and the
     caller learns that from the 200 body rather than from a 422 that throws the
     charge away."""
-    if isinstance(e, EffectiveAtError):
+    if isinstance(e, (EffectiveAtError, ProviderConflictsWithEventType)):
         return e.code, str(e)
     return "validation_error", str(e)
 
@@ -381,7 +471,7 @@ class QuantityNotAdmissible(ValueError):
     admission: a 422 on the single route, that one item in a batch."""
 
 
-def admit_quantities(tenant, item):
+def admit_quantities(item, published):
     """Refuse a quantity its Event Type's last publication declares whole
     and the caller sent with a fraction (#603, ADR-0020).
 
@@ -398,10 +488,7 @@ def admit_quantities(tenant, item):
     `admit_supplier_cost`'s reasoning: a retry of something already recorded
     is answered first, and a refusal never burns grouping-field keyspace.
     """
-    if not item.measurements:
-        return
-    published = last_published_declaration(tenant=tenant, key=item.event_type)
-    if published is None:
+    if not item.measurements or published is None:
         return
     value_types = {quantity.code: quantity.value_type
                    for quantity in published.measurements}
@@ -438,50 +525,62 @@ def replay_or_record(tenant, customer, item):
     lookup scope. Then, and the order is the point:
 
     1. **REPLAY WINS (#605).** An event already recorded under this key
-       answers its original acknowledgement before either admission below is
-       asked. Both read current configuration — the Event Type's last
-       publication, the Grouping Field registry — and current configuration
-       must not make an already-successful write unreplayable: a retry carrying
-       a figure the publication has stopped admitting, or a grouping value a
-       field retired since would refuse, is the same event and gets the same
-       answer. Found by `UsageService.replay`, the recording path's own lookup
-       — keyed by tenant, customer and key, with no body compared.
-    2. **A supplier cost (#324, #570)** is admissible only on the transport
+       answers its original acknowledgement before any admission below is
+       asked. Each reads current configuration — the Event Type's last
+       publication and its supplier, the Grouping Field registry — and current
+       configuration must not make an already-successful write unreplayable: a
+       retry carrying a figure the publication has stopped admitting, a
+       provider the Event Type has stopped naming, or a grouping value a field
+       retired since would refuse, is the same event and gets the same answer.
+       Found by `UsageService.replay`, the recording path's own lookup — keyed
+       by tenant, customer and key, with no body compared.
+    2. **The publication, read once** (`publication.last_published_declaration`)
+       for every admission below that asks it and for the costing, which is
+       handed its cost declaration (`costing.declaration_of`) rather than
+       reading it again (#605) — none for an event naming no Event Type.
+    3. **The provider (#572)**: a published Event Type's own supplier is
+       authoritative, so another is refused by name
+       (`provider_conflicts_with_event_type`) and an omitted one records under
+       the declared (`admit_provider`).
+    4. **A supplier cost (#324, #570)** is admissible only on the transport
        the Event Type's last publication admits — `provider_cost_micros` for
        a caller-supplied source, `provider_response_cost_micros` for one read
        off the provider's response, never both. Refused rather than dropped: a
-       200 would tell an integrator UBB is using a number it discards. It is a
-       single read, so it goes ahead of the next step at no cost.
-    3. **A quantity's value type (#603)**: `integer` refuses a fraction, by
+       200 would tell an integrator UBB is using a number it discards.
+    5. **A quantity's value type (#603)**: `integer` refuses a fraction, by
        the last publication's declaration of the key (`admit_quantities`). A
        read too, so it also goes ahead of the write below.
-    4. **The grouping-field admission (Task 9) WRITES** — it records novel
+    6. **The grouping-field admission (Task 9) WRITES** — it records novel
        values against each key's cardinality cap — so it comes after the
        refusals above, which would otherwise have burned keyspace on a request
        that was never recorded, and before the recording core, outside its
        retry machinery. A replay never reaches it, so a retry neither
        re-admits nor records a value.
-    5. **The recording core**, for a new event — which refuses one more thing,
+    7. **The recording core**, for a new event — which refuses one more thing,
        by name: an amount its costing computes past the money columns
        (`pricing_service.AmountPastTheMoneyBound`, #603).
 
     Written once, for the reason the adapters around it are: the single route
     and the batch item must take the same steps in the same order, or the
     batch stops being "N sequential singles". Every refusal it raises is a
-    ``ValueError`` — ``SupplierCostNotAdmissible``, ``QuantityNotAdmissible``,
+    ``ValueError`` — ``ProviderConflictsWithEventType``,
+    ``SupplierCostNotAdmissible``, ``QuantityNotAdmissible``,
     ``DimensionError`` and ``AmountPastTheMoneyBound`` are — so each route
     renders all of them through :func:`usage_error`.
     """
     replayed = UsageService.replay(tenant, customer, item.idempotency_key)
     if replayed is not None:
         return replayed
-    admit_supplier_cost(tenant, item)
-    admit_quantities(tenant, item)
+    published = last_published_declaration(tenant=tenant, key=item.event_type)
+    declaration = declaration_of(published)
+    provider = admit_provider(item, declaration)
+    admit_supplier_cost(item, declaration)
+    admit_quantities(item, published)
     dimension_slots = DimensionService.admit(
         tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     return UsageService.record_new_usage(
         tenant=tenant, customer=customer, dimension_slots=dimension_slots,
-        **usage_kwargs(item))
+        **usage_kwargs(item, provider=provider, declaration=declaration))
 
 
 def record_sync_item(tenant, item, customers, task_exists):

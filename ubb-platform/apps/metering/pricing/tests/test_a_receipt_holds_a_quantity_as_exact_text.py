@@ -86,18 +86,22 @@ def as_schema_1(receipt):
 @pytest.mark.django_db
 class TestAWriterEmitsSchemaTwo:
 
-    def test_the_versions_are_the_ones_the_owner_ruled(self):
+    def test_the_versions_are_the_ones_the_rulings_set(self):
+        """The schema pair is the owner's ruling on #603. The engine moved
+        again after it — 2.2.0, #603's, to 3.0.0, #568's — under the rule its
+        own constant states: a held name now computes differently for inputs
+        that were legal before."""
         assert RECEIPT_SCHEMA_VERSION == 2
         assert CANONICAL_QUANTITY_SCHEMA_VERSION == 2
         assert READABLE_SCHEMA_VERSIONS == {0, 1, 2}
-        assert PRICING_ENGINE_VERSION == "2.2.0"
+        assert PRICING_ENGINE_VERSION == "3.0.0"
 
     def test_a_receipt_built_today_holds_its_quantities_as_canonical_text(
             self):
         receipt = a_receipt_resolved_today(Tenant.objects.create(name="R"))
 
         assert receipt["receipt_schema_version"] == 2
-        assert receipt["pricing_engine_version"] == "2.2.0"
+        assert receipt["pricing_engine_version"] == PRICING_ENGINE_VERSION
         held = {c["measurement_key"]: c[QUANTITY_KEY]
                  for name in ("costing", "pricing")
                  for c in receipt[name]["detail"]["components"]}

@@ -4,14 +4,16 @@ that act on it (#320, #605).
 ``Measurement``'s own docstring has said *"nothing rates against these ... slice
 3 wires it"* since the table was created. This is that wire, and it is
 deliberately one function returning plain data rather than an ORM row handed
-across: its callers need four facts about a declaration and have no business
+across: its callers need five facts about a declaration and have no business
 holding a record they could accidentally save.
 
-**Two callers, one query each, asking different questions of the same record.**
+**Two callers asking different questions of the same record, and ONE read.**
 The compute spine asks what a posting's cost status should be. The recording
-edge asks whether a supplier's figure may arrive on the call at all, and on
-which transport (#324, #570) — and only ever when one arrived, which is
-precisely the branch on which the spine never looks the declaration up.
+edge asks whose supplier the call is (#572), and whether a supplier's figure
+may arrive on the call at all, and on which transport (#324, #570). The edge
+reads the publication once per event naming an Event Type
+(:func:`declaration_of` over ``last_published_declaration``) and hands the
+answer down to the spine, so both answer from the same publication (#605).
 
 **Why this lives beside the declaration rather than in the pricer.** *"This
 Event Type carries no cost at all"* is a statement about what the tenant
@@ -21,19 +23,20 @@ the day a third way to declare a cost arrives. The pricer asks; this answers.
 
 **Draft changes do not affect production recording (#605).** Production uses
 the Event Type's last published declaration; changes take effect when they are
-published. Every fact below is read off the copy ``publish`` keeps on the
-Event Type's row (#573), through ``publication.last_published_declaration``,
-and none of them off the draft — the four are one unit, and a read that took
-one from each would let an unpublished edit change half of what production
-does.
+published. EVERY fact below is read off the copy ``publish`` keeps on the Event
+Type's row (#573) and none off the draft — they are one unit, and a read that
+took one from each would let an unpublished edit change half of what
+production does. That includes the supplier (the consultant's review of #618):
+it used to be read live, as an element publication did not pin, and a rename
+or a re-pointing then changed what production admitted and how it costed
+without anybody publishing anything. The publication now pins it and keeps its
+key.
 
 **One query, and it stays one.** The recording path is the hottest write in the
 system, and the published copy is one column on one row, read on the
-``uq_event_type_key`` unique index with no join: the quantities and the mapping
-beneath the Event Type are not consulted, because they are the draft. Nothing
-is cached: a publication must take effect on the next call, and the rate-card
-cache next door exists because rates are read once per *quantity* per event,
-which this is not.
+``uq_event_type_key`` unique index, with no join. The quantities and the
+mapping beneath the Event Type are not consulted, because they are the draft.
+Nothing is cached: a publication must take effect on the next call.
 """
 from typing import NamedTuple
 
@@ -45,7 +48,7 @@ from .publication import last_published_declaration
 
 
 class CostDeclaration(NamedTuple):
-    """The four facts about a published declaration that a cost decision
+    """The five facts about a published declaration that a cost decision
     turns on."""
 
     #: How this Event Type's supplier cost is arrived at — held by reference
@@ -69,8 +72,30 @@ class CostDeclaration(NamedTuple):
     #: not declared here. Empty for a publication carrying no quantity, which
     #: is a different answer from the `None` the whole record is for an Event
     #: Type with no publication — the first is a tenant's statement, the second
-    #: is the registry's opt-in.
+    #: is that there is no production declaration at all.
     declared_quantity_codes: frozenset[str]
+    #: THE SUPPLIER THE PUBLICATION NAMES (#572, #193 §B3) — the key its
+    #: Provider had when the Event Type was published, or `""` where it names
+    #: none (internal work with no supplier, a statement and not a gap). It
+    #: decides whose call a recording is: the posting records it, supplier
+    #: cost resolves under it, and a caller naming another is refused at the
+    #: edge. Read off the publication like every fact here — a rename or a
+    #: re-pointing takes effect when the Event Type is published again.
+    provider_key: str
+
+
+class _NotRead:
+    def __repr__(self):
+        return "DECLARATION_NOT_READ"
+
+
+#: WHAT A CALLER THAT HAS NOT READ THE DECLARATION HANDS ON WHERE ONE IS
+#: EXPECTED. :func:`cost_declaration` answering `None` is an answer — the Event
+#: Type has no production declaration (#605) — so `None` cannot also mean
+#: "nobody asked"; this does. The recording edge reads the declaration once
+#: and hands it down to the pricing spine (#605's one read); a caller that
+#: read none passes this, and the spine reads it itself.
+DECLARATION_NOT_READ = _NotRead()
 
 
 def cost_declaration(*, tenant, key):
@@ -78,9 +103,11 @@ def cost_declaration(*, tenant, key):
     `None` if nothing is published.
 
     `None` is not "no cost" — it is *no production declaration*, which is a
-    different answer and the commoner one. The Event Type registry is opt-in,
-    and reading absence as `not_applicable` would report a design decision
-    nobody made.
+    different answer: reading absence as `not_applicable` would report a design
+    decision nobody made. For a key an event NAMES, `None` is what holds the
+    event (#568): it is recorded with no cost and no price until the tenant
+    says what it was. For an event naming no key, it is simply nothing to read
+    (#567).
 
     **THE LAST PUBLICATION GOVERNS, AND THE DRAFT NEVER DOES (#605).** Until
     #605 this read joined the live rows, and its docstring said *"a draft
@@ -111,7 +138,14 @@ def cost_declaration(*, tenant, key):
     a costing method other than `reported`, no published quantity and no
     published mapping.
     """
-    published = last_published_declaration(tenant=tenant, key=key)
+    return declaration_of(last_published_declaration(tenant=tenant, key=key))
+
+
+def declaration_of(published):
+    """The cost declaration a publication makes — :func:`cost_declaration`'s
+    answer, from a ``PublishedDeclaration`` the caller already read (or
+    `None`). The recording edge reads the publication once and asks both this
+    and the quantities' value types of it."""
     if published is None:
         return None
     mapping = published.reported_cost_mapping
@@ -126,6 +160,9 @@ def cost_declaration(*, tenant, key):
         reported_cost_source_kind=(None if mapping is None
                                    else mapping.source_kind),
         declared_quantity_codes=declared_codes,
+        # `0012` wrote the key into every copy kept before the supplier was
+        # pinned; a copy saying nothing names no supplier.
+        provider_key=published.provider_key or "",
     )
 
 
@@ -161,10 +198,10 @@ def admitted_supplier_cost_source(declaration):
     does not trust it to have refused) nothing is declared to arrive, and the
     answer is `None`.
 
-    `None` for the declaration — no published declaration — is `None` too. The
-    Event Type registry is opt-in and most postings still have no declaration,
-    so this is the commonest answer rather than an error case; what a tenant
-    may not do is assert the supplier's own number against nothing. The
+    `None` for the declaration — no published declaration — is `None` too:
+    an event naming no Event Type, or one nobody published (which is held,
+    #568), has nothing to admit a figure under, and what a tenant may not do is
+    assert the supplier's own number against nothing. The
     refusal itself is the caller's edge to render
     (`api/v1/metering_endpoints.py`), which is where a 422, its wording and
     the field each source is carried on belong; this answers only what the

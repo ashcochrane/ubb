@@ -1233,16 +1233,21 @@ PRICING_STATUS_VALUES = frozenset({
 #
 # Why a subject's pricing status applies, where a specific published reason
 # does. Null where none applies. Read beside `pricing_status`, never on its
-# own: an `unknown` price with no reason is one UBB had no input to resolve,
-# while an `unknown` price carrying a reason is one UBB calculated and cannot
-# authoritatively carry.
+# own: an `unknown` price with no reason is one UBB had no input to resolve; an
+# `unknown` price carrying a reason names why no authoritative price exists —
+# one UBB calculated and cannot carry, or one waiting on the tenant to say what
+# a name on the event means.
 #
 # Declared in concepts/economics.yaml.
 
 PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED = 'negative_price_unsupported'
+PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED = 'event_type_not_declared'
+PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED = 'measurement_not_declared'
 
 PRICING_STATUS_REASON_VALUES = frozenset({
     PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
+    PRICING_STATUS_REASON_EVENT_TYPE_NOT_DECLARED,
+    PRICING_STATUS_REASON_MEASUREMENT_NOT_DECLARED,
 })
 
 
@@ -1745,11 +1750,13 @@ UNIT_KNOWN_VALUES = frozenset({
 UNRESOLVED_REASON_REPORTED_COST_MISSING = 'reported_cost_missing'
 UNRESOLVED_REASON_COST_RATE_MISSING = 'cost_rate_missing'
 UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED = 'measurement_not_declared'
+UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED = 'event_type_not_declared'
 
 UNRESOLVED_REASON_VALUES = frozenset({
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
 })
 
 

@@ -429,7 +429,22 @@ exclusions:
     # 276 → 277 in R10-W2's consultant review: one migration — a unit's stop
     # facts and its start's expiry policy as UBB's own columns (`work/0029`).
     # It names no retired word, so the number moved for the file existing.
-    files: 277
+    # 277 → 279 in R10-W1 (#568, #473): two migrations — a held name names
+    # the recorded event it arrived on (`event_types/0010`), and an Event
+    # Type with no production declaration becomes a reason a cost is
+    # unresolved (`usage/0048`). Neither names a retired word, so the
+    # number moved for the files existing.
+    # 279 → 280 in R10-W1 (#473 row 3): one migration — a declaration is
+    # not deleted from under the names held beneath it (`event_types/0011`).
+    # It names no retired word, so the number moved for the file existing.
+    # 280 → 281 in R10-W1 (#557): one migration — a customer price becomes
+    # known only through its door (`usage/0049`). It names no retired word,
+    # so the number moved for the file existing.
+    # 281 → 283 in R10-W1's consultant round: two migrations — a publication
+    # keeps its supplier (`event_types/0012`), and a held price states its
+    # reason (`usage/0050`). Neither names a retired word, so the number moved
+    # for the files existing.
+    files: 283
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

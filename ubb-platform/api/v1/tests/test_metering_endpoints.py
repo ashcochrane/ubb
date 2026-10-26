@@ -12,26 +12,8 @@ from apps.platform.work import reasons
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
-
-
-def usage_payload(customer, correlation, **fields):
-    """A recording-call body, from a customer and one correlation string.
-
-    THE REASON THIS HELPER EXISTED IS GONE, AND IT IS KEPT ON A WEAKER ONE.
-    It was written to spell a retired word once, in a file already counted
-    against that word's ledger entry, so that no caller elsewhere had to name
-    it and push the entry past its spread ceiling. #411 deleted the field, the
-    entry with it, and the whole recording body now carries exactly one
-    correlation value — so there is nothing left to hide.
-
-    What it still buys is that `correlation` names what the string IS rather
-    than which key it lands under, which is the same service
-    `cost_rate_in_default_book` does one concept along
-    (`apps/metering/pricing/tests/_helpers.py`). That is worth a helper on its
-    own, and it is the only claim this docstring now makes.
-    """
-    return {"customer_id": str(customer.id),
-            "idempotency_key": correlation, **fields}
+# Read from here by other modules since before it moved to the shared helpers.
+from api.v1.tests._helpers import usage_payload  # noqa: F401
 
 
 def declared_grouping_values(values):
@@ -162,9 +144,9 @@ class MeteringProductGatingTest(TestCase):
 #     `apps/metering/pricing/tests/test_a_plan_names_the_book_it_prices_from.py`;
 #   * *the route must delete through the MODEL layer, or `MarkupCache`'s version
 #     key is never bumped and the L1 serves a stale rung for the TTL window* —
-#     a money leak, and true of the surviving withdrawal route for exactly the
-#     same reason. It moved to
-#     `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
+#     a money leak while that cache stood. It moved to
+#     `api/v1/tests/test_the_tenant_declares_its_default_markup.py`, and left
+#     with the cache itself in #556: every read of the rung is a live read now.
 
 
 class UsageEventDetailEndpointTest(TestCase):

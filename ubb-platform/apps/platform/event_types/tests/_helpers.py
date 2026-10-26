@@ -12,8 +12,12 @@ model's own `publish()`, and every test gets the declaration production would
 read. A test that is ABOUT a draft says so: `declares_an_event_type` takes
 `published=False`, the one escape, because it is the general shape.
 """
+from contextlib import contextmanager
+from unittest.mock import patch
+
+from apps.platform.event_types import hooks
 from apps.platform.event_types.models import (
-    EventType, Measurement, ReportedCostMapping)
+    EventType, Measurement, Provider, ReportedCostMapping)
 from apps.platform.event_types.quantities import declaration_named
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_MICROS,
@@ -35,6 +39,45 @@ DECLARED = "declared.call"
 #: declaring a quantity never quietly makes a supplier's own cost admissible —
 #: two fixtures asking for different things must not collide on one key.
 MEASURES = "measured.call"
+
+
+@contextmanager
+def held_beside_no_recorded_event():
+    """For a test whose held names stand beside NO recorded event.
+
+    In production every held name is written in the same savepoint as the
+    posting it arrived on, and a remediation hands its Replay to the product
+    that re-costs that posting (`hooks.py`, #473 row 1) — which refuses a
+    replay naming an event that does not exist, because a held name with no
+    event is a contradiction in the record. A kernel test holds names directly,
+    with an event id of its own invention; inside this, no product is asked to
+    replay one, and the test is about the kernel's half alone.
+    """
+    with patch.object(hooks, "_consumers", []):
+        yield
+
+
+@contextmanager
+def held_names_answered_on_commit():
+    """For a test standing in for the broker: the task a publication's
+    doorbell enqueues once it commits (`quarantine.answer_after_the_publication_
+    commits`) runs in-process, as the worker would run it. The commit itself is
+    the caller's to stand in for — `captureOnCommitCallbacks(execute=True)`."""
+    from apps.platform.event_types.tasks import answer_held_names
+    with patch.object(answer_held_names, "delay", new=answer_held_names):
+        yield
+
+
+@contextmanager
+def published_and_committed():
+    """A publication as a request makes one: its transaction commits, and the
+    held names its key answers are answered afterwards."""
+    from django.test import TestCase
+    # The task stands in for the worker for as long as the commit's callbacks
+    # run, so it encloses them: `with A, B` exits B first.
+    with held_names_answered_on_commit(), \
+            TestCase.captureOnCommitCallbacks(execute=True):
+        yield
 
 
 def declares_a_caller_supplied_cost(tenant, key, *, currency="usd"):
@@ -106,6 +149,61 @@ def declares_a_quantity(tenant, measurement_key, *, key=MEASURES):
         source_kind=SOURCE_KIND_CALLER_SUPPLIED)
     event_type.publish()
     return measurement
+
+
+#: The Event Types :func:`publishes_what_it_names` declared, by `(tenant id,
+#: key)`. Only these grow: an Event Type a test declares itself is the test's to
+#: have meant — a draft, or one missing a quantity on purpose — and is never
+#: touched. Tenant ids are fresh per test, so nothing here leaks between tests.
+_DECLARED_FOR_A_FIXTURE = set()
+
+
+def publishes_what_it_names(tenant, key, *quantities, provider=""):
+    """The Event Type a fixture's rule or recording names, published with the
+    quantities it names (#568) — and naming the supplier the rule pins, where
+    it pins one (#572).
+
+    **THE COMMONEST REASON A TEST NEEDS IT is that it predates the hold.** A
+    call naming an Event Type with no production declaration is held — no
+    cost, no price — until the tenant says what it was, so a fixture pinning a
+    rule to an Event Type, or recording against one, wants it published, as a
+    tenant who wrote that rule would have. Every pricing fixture in the tree
+    named one without declaring it, because nothing asked.
+
+    Declared here only where the test has not declared the key itself; one
+    declared here grows each quantity a later fixture names, and is published
+    again — a tenant adding a priced quantity publishes it. Calculated, because
+    a fixture naming a quantity says nothing about where its cost comes from
+    (`declares_a_quantity`'s reasoning).
+
+    **A rule pinned to a supplier as well says whose calls those are**, and a
+    published Event Type's supplier is authoritative for its calls (#572): so
+    the first supplier a fixture pins is the one the Event Type names, its
+    Provider record declared if the tenant has none at that key. A later rule
+    pinning another supplier to the same Event Type leaves it as it was — two
+    suppliers for one Event Type is two Event Types (`EventType`'s own
+    docstring), and a fixture wanting that says so.
+    """
+    identity = (tenant.id, key)
+    event_type = EventType.objects.filter(tenant=tenant, key=key).first()
+    if event_type is None:
+        event_type = EventType.objects.create(
+            tenant=tenant, key=key, costing_method=COSTING_METHOD_CALCULATED)
+        _DECLARED_FOR_A_FIXTURE.add(identity)
+    elif identity not in _DECLARED_FOR_A_FIXTURE:
+        return event_type
+    if provider and event_type.provider_id is None:
+        event_type.provider, _ = Provider.objects.get_or_create(
+            tenant=tenant, key=provider)
+        event_type.save(update_fields=["provider", "updated_at"])
+    declared = set(event_type.measurements.values_list("code", flat=True))
+    for code in quantities:
+        if code and code not in declared:
+            Measurement.objects.create(
+                event_type=event_type, code=code, unit=UNIT_TOKEN,
+                source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+            declared.add(code)
+    return EventType.objects.get(pk=event_type.pk).publish()
 
 
 def declares_an_event_type(tenant, key, *,

@@ -914,9 +914,10 @@ class TestTheFloor(VerifyRoutes):
 class TestOrdinaryRecordingHasNoVerificationSwitch(VerifyRoutes):
     """#567's ruling: no flag and no environment switch touches the ordinary
     record endpoint. What it does with an Event Type nobody declared is
-    pinned where it always was
-    (`test_an_undeclared_event_type_holds_nothing_and_costs_as_it_always_did`);
-    this pins that nothing here added a way round it."""
+    #568's, pinned in `test_an_event_type_nobody_published_is_held.py` — held,
+    never refused; this pins that nothing here added a way round it, by
+    comparing a flagged call with a plain one and never with what that path
+    answers."""
 
     #: Every field the recording request publishes. Verification added none;
     #: the one added since is #570's transport for a supplier cost read off
@@ -948,7 +949,7 @@ class TestOrdinaryRecordingHasNoVerificationSwitch(VerifyRoutes):
                 "event_type": "never.declared", "provider": PROVIDER,
                 "measurements": THE_SAMPLE, **extra}))
         plain, flagged = bodies
-        for body in bodies:
-            assert body["costing_status"] == "known"
+        assert plain["costing_status"] == flagged["costing_status"]
+        assert plain["unresolved_reason"] == flagged["unresolved_reason"]
         assert plain["provider_cost_micros"] == flagged["provider_cost_micros"]
         assert plain["billed_cost_micros"] == flagged["billed_cost_micros"]

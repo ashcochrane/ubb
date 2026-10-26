@@ -403,11 +403,13 @@
     },
     "pricing_status_reason": {
       "advertised": true,
-      "backend_serves": "1 of 1 values",
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
-        "negative_price_unsupported"
+        "negative_price_unsupported",
+        "event_type_not_declared",
+        "measurement_not_declared"
       ]
     },
     "rate_structure": {
@@ -606,13 +608,14 @@
     },
     "unresolved_reason": {
       "advertised": true,
-      "backend_serves": "3 of 3 values",
+      "backend_serves": "4 of 4 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
         "reported_cost_missing",
         "cost_rate_missing",
-        "measurement_not_declared"
+        "measurement_not_declared",
+        "event_type_not_declared"
       ]
     },
     "usage_event_kind": {

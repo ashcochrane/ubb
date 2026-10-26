@@ -244,13 +244,13 @@ class TheDeclaredMomentSurvivesTheInsertTest(TestCase):
         is the Pricing Book Publish record (2026-07-31 decision, §6.3).
 
         ⚠ **THE SECOND OBSTACLE IS GONE AND THIS PARAGRAPH USED TO SAY IT WAS
-        NOT (#356).** It read that `CardCache.resolve` hardcodes
-        `timezone.now()`, so resolution behind the cache is not time-aware at
-        all, and that §8.3 of that decision assigns making it so to later work.
-        That work is the price resolver: the instant is a parameter of
-        `resolve_price` and of `CardCache.resolve`, and it is part of the cache
-        key, so a cached resolution answers for the moment it was computed for
-        and no other. What is left in the way is the constraint above.
+        NOT (#356).** It read that a rate-card cache's resolve hardcoded
+        `timezone.now()`, so resolution behind the cache was not time-aware at
+        all, and that §8.3 of that decision assigned making it so to later
+        work. That work is the price resolver: the instant is a parameter of
+        `resolve_price`, and the cache that hardcoded the clock is deleted
+        (#556) — nothing in production ever read it. What is left in the way is
+        the constraint above.
 
         What this test pins is the column: a supplied future moment is kept
         rather than overwritten, which is the thing that had to be true first.

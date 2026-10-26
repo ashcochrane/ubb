@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,923 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,479 of 2,931 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2882,6 +2882,51 @@ measurement_key:
     # under `historical-migrations` (276 -> 277): a unit's stop facts and the
     # expiry policy its start published move onto UBB's own columns
     # (`work/0029`), so the exclusions stand at 446.
+    #
+    # 2026-10-26, R10-W1 (#568, #473 row 1): 2,477 of 2,923 -> 2,480 of 2,928
+    # tracked files (`units` 43 files / 121 occurrences, UNMOVED). Five files
+    # arrived. Two are migrations, excluded under `historical-migrations`
+    # (277 -> 279): a held name names the event it arrived on
+    # (`event_types/0010`), and an Event Type with no production declaration
+    # becomes a reason a cost is unresolved (`usage/0048`), so the
+    # exclusions stand at 448. The three swept arrivals: the kernel's replay
+    # registry (`event_types/hooks.py`) and two composition-layer test
+    # modules (an Event Type nobody published is held; what a remediation
+    # does with a held name).
+    #
+    # 2026-10-26, R10-W1 (#473 rows 2-4): 2,480 of 2,928 -> 2,480 of 2,929
+    # tracked files (`units` UNMOVED). One file arrived, a migration excluded
+    # under `historical-migrations` (279 -> 280): a declaration is not
+    # deleted from under the names held beneath it (`event_types/0011`), so
+    # the exclusions stand at 449.
+    #
+    # 2026-10-26, R10-W1 (#572): 2,480 of 2,929 -> 2,481 of 2,930 tracked
+    # files (`units` UNMOVED). One file arrived, swept: the composition
+    # layer's test module for a published Event Type's own supplier deciding
+    # what a call costs. The SDK's new exception is a class in a generated
+    # module that already existed, so no file arrived for it.
+    #
+    # 2026-10-26, R10-W1 (#557, #556): 2,481 of 2,930 -> 2,477 of 2,927
+    # tracked files (`units` UNMOVED). Two files arrived and five left. The
+    # arrivals: a migration excluded under `historical-migrations`
+    # (280 -> 281), a customer price becoming known only through its door
+    # (`usage/0049`), so the exclusions stand at 450; and one swept test
+    # module, the planted second writer. The departures, all swept: the two
+    # dead pricing caches (`card_cache.py`, `markup_cache.py`) and their
+    # three test modules.
+    #
+    # 2026-10-26, R10-W1's review round: 2,477 of 2,927 -> 2,478 of 2,928
+    # tracked files (`units` UNMOVED). One file arrived, swept: ADR-0022, the
+    # record that an event naming an Event Type nobody published is recorded
+    # and held, departing from three rows of #146 §3.4.
+    #
+    # 2026-10-26, R10-W1's consultant round: 2,478 of 2,928 -> 2,479 of 2,931
+    # tracked files (`units` UNMOVED). Three files arrived. Two are migrations,
+    # excluded under `historical-migrations` (281 -> 283): a publication keeps
+    # its supplier (`event_types/0012`) and a held price states its reason
+    # (`usage/0050`), so the exclusions stand at 452. One is swept: the kernel
+    # task that answers a publication's held names after it commits
+    # (`event_types/tasks.py`).
 
     - term: units
       retired_as: >-

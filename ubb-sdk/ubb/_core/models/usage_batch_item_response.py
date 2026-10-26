@@ -47,8 +47,11 @@ class UsageBatchItemResponse:
             accepted (bool):
             pricing_status_reason (None | UsageBatchItemResponsePricingStatusReasonType0): Why `pricing_status` applies,
                 where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
-                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
-                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded.
+                `event_type_not_declared` or `measurement_not_declared` beside `unknown`: the event is held on a name nobody has
+                declared — the same cause its `unresolved_reason` names — so no price over it is published as known until the
+                name is answered, when the price resolves and the reason clears with it. An `unknown` price with a null reason
+                is one UBB had no input to resolve. Always present.
             stop_bound_micros (int | None): The monetary bound the stop named in `stop_reason` was measured against, as it
                 stood when that stop was established. For `task_cogs_ceiling`: the governing unit of work's pinned COGS ceiling
                 — the unit `stop_scope` names, so scope `task` on contained work's report is its parent's. For

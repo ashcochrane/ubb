@@ -28,6 +28,7 @@ accounts for.
 from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
 from unittest.mock import patch
+from uuid import uuid4
 
 from django.test import TestCase
 
@@ -48,8 +49,9 @@ from apps.platform.event_types.quarantine import (
     PeriodHoldsUnresolvedValues,
     dismiss_as_non_economic,
     hold_an_unrecognised_quantity,
-    register_the_held_name,
 )
+from apps.platform.event_types.tests._helpers import (
+    held_beside_no_recorded_event, published_and_committed)
 from apps.platform.tenants.models import Tenant
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
@@ -111,7 +113,8 @@ def _a_name_nobody_declared(tenant, *, occurred_at=MID_JANUARY,
         defaults={"costing_method": COSTING_METHOD_CALCULATED})
     return hold_an_unrecognised_quantity(
         tenant=tenant, event_type_key=EVENT_TYPE_KEY,
-        measurement_key=held_name, quantity="12", occurred_at=occurred_at)
+        measurement_key=held_name, quantity="12", occurred_at=occurred_at,
+        event_id=uuid4())
 
 
 def _declared(tenant, code):
@@ -293,11 +296,19 @@ class AnUndecidedNameRefusesTheCloseTest(TestCase):
         assert period.status == "closed"
 
     def test_a_registered_name_does_not_block_the_close(self):
-        """The other end of the same rule: a decision taken is a decision."""
+        """The other end of the same rule: a decision taken is a decision —
+        here the tenant declaring the name and publishing the declaration,
+        which registers it (#568; only a publication answers a held name)."""
         tenant = _tenant()
         period = _period(tenant)
         held = _a_name_nobody_declared(tenant)
-        register_the_held_name(held, _declared(tenant, "reasoning_tokens"))
+        # The name is held directly, beside no recorded event, so no product
+        # is asked to replay one: what the close reads is the decision.
+        _declared(tenant, "reasoning_tokens")
+        with held_beside_no_recorded_event(), published_and_committed():
+            EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY).publish()
+        held.refresh_from_db()
+        assert not held.is_unresolved
 
         TenantBillingService.close_period(period)
 

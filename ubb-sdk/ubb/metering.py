@@ -606,6 +606,16 @@ class MeteringClient:
         capability that name promised — a caller that sent the old bag sends
         the same keys under ``metadata``.
 
+        ``provider``: the supplier, and for an ``event_type`` your tenant
+        has published it is the supplier that publication names that decides
+        whose call this is and what its supplier cost resolves under (#572). Omit it, or send that Provider's
+        key; any other is refused before anything is recorded —
+        ``ProviderConflictsWithEventTypeError``, 422
+        ``provider_conflicts_with_event_type`` — and in ``record_batch`` the
+        item is rejected with that code. An Event Type nobody published is
+        held for remediation rather than costed (#568): the ack's
+        ``unresolved_reason`` says ``event_type_not_declared``.
+
         ``recorded_at``: when the usage actually happened — a timezone-aware
         datetime or ISO-8601 string (sent as ``effective_at``). A naive datetime
         raises ``UBBValidationError`` client-side, before anything is sent — a

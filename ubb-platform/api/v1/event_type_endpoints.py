@@ -321,8 +321,11 @@ def revise_provider(request, key: str, payload: ProviderUpdateIn):
     There is no delete. Supplier COGS attribution keys on this record's
     identity, so removing one would silently rewrite what historical postings
     say they cost — the failure a finance owner finds a quarter later and
-    cannot repair. Renaming is safe for exactly the same reason the identity is
-    not the key: nothing downstream holds the handle.
+    cannot repair. A rename re-attributes nothing already recorded, and it is
+    a REVISION of every published Event Type naming the supplier (#572, #605):
+    a publication keeps the supplier's key, which is what recording compares a
+    call's supplier with, so the new key takes effect when each is published
+    again.
 
     Retirement records ``provider.retired`` rather than a second
     ``provider.declared``, because it is a commercial decision to stop offering

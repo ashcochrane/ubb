@@ -366,6 +366,35 @@ export function priceNotApplicable(
 }
 
 // ---------------------------------------------------------------------------
+// A posting HELD for remediation — a cost and a price that are one state.
+
+/** The two reasons a posting is held: a name the tenant never declared. */
+export type HeldNameReason = Extract<
+  UnresolvedReason,
+  "event_type_not_declared" | "measurement_not_declared"
+>;
+
+/**
+ * A posting recorded under a name the tenant never declared — an Event Type
+ * nobody published (#568), or a quantity no declaration names — and held until
+ * the tenant says what it meant; a remediation replays it from its own moment.
+ *
+ * COMPOSED WHOLE, COST AND PRICE, because the pair IS the state (#473 row 4).
+ * The held cost alone is `unknownCost(reason)`; what makes it held is the
+ * price beside it, `unknown` WITH THE SAME STATED REASON (as ruled; the
+ * consultant's review of #618) and never `waived` or `known`. A held cost
+ * beside a `waived` price would say somebody abandoned the charge, beside a
+ * `known` one it would publish economics nobody resolved, and beside a
+ * reasonless `unknown` it would read as mere missing input — so a fixture
+ * cannot take the cost and let a default choose the price.
+ */
+export function heldForRemediation(
+  reason: HeldNameReason,
+): SupplierCostScenario & CustomerPriceScenario {
+  return { ...unknownCost(reason), ...unknownPrice(), pricing_status_reason: reason };
+}
+
+// ---------------------------------------------------------------------------
 // `incomplete_total` — an aggregate over those postings, §9.4's other name.
 
 /**
@@ -1156,7 +1185,7 @@ export function spendPoolAssessment(terms: SpendPoolTerms): SpendPoolAssessmentS
 export const RECEIPT_SCHEMA_VERSION = 2;
 
 /** The engine that computed it — `pricing_service.PRICING_ENGINE_VERSION`. */
-export const PRICING_ENGINE_VERSION = "2.2.0";
+export const PRICING_ENGINE_VERSION = "3.0.0";
 
 /**
  * The record a delivered unit of work's charge posting carries, as

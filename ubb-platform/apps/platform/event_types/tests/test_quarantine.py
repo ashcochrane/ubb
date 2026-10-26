@@ -41,9 +41,14 @@ calls it now, and the agreement lives where the production caller is:
 ``apps/metering/usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py``
 records reports through ``UsageService.record_usage`` and compares the period
 close's held names with the posting's own ``unresolved_reason`` in both
-directions. What is still one-sided is the Event Type half —
-:func:`hold_an_unrecognised_event_type` has no production caller, because the
-registry is opt-in — and this module's cases for it remain the only ones.
+directions. The Event Type half has its production caller too since #568 — an
+event naming an Event Type with no production declaration is recorded with no
+cost and no price and its name held beside it — and what that does, through
+both recording routes, to the close and to a replay from the event's own
+moment, is
+``api/v1/tests/test_an_event_type_nobody_published_is_held.py``. This module
+stays the kernel's half alone: every name here is held directly, beside no
+recorded event, and no product is asked to replay one.
 
 The structural half — that a held name can never become a declaration, by
 relation or by identity — is a property of the model registry and of this
@@ -55,12 +60,18 @@ declaration rows either side of every path.
 """
 from datetime import datetime, timedelta, timezone as utc
 from decimal import Decimal
+from importlib import import_module
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
+from django.apps import apps as live_apps
+from django.test import TestCase
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, migrations, transaction
 from django.utils import timezone
 
+from apps.platform.event_types import hooks, quarantine
 from apps.platform.event_types.models import (
     EventType,
     Measurement,
@@ -76,7 +87,10 @@ from apps.platform.event_types.quarantine import (
     AlreadyResolved,
     NotTheHeldName,
     NotThisTenants,
+    NotYetPublished,
     PeriodHoldsUnresolvedValues,
+    QuarantineError,
+    answer_what_publications_declare,
     WrongDeclaration,
     dismiss_as_non_economic,
     hold_an_unrecognised_event_type,
@@ -86,12 +100,26 @@ from apps.platform.event_types.quarantine import (
     register_the_held_name,
     unresolved_in_period,
 )
+from apps.platform.event_types.tests._helpers import (
+    held_beside_no_recorded_event, held_names_answered_on_commit,
+    published_and_committed)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     COSTING_METHOD_CALCULATED,
+    DECLARATION_STATUS_DRAFT,
+    DECLARATION_STATUS_PUBLISHED,
     SOURCE_KIND_CALLER_SUPPLIED,
     UNIT_TOKEN,
 )
+
+
+@pytest.fixture(autouse=True)
+def _the_kernels_half_alone():
+    """Every name here is held directly, beside no recorded event, so no
+    product is asked to replay one (`held_beside_no_recorded_event`). What a
+    replay does to the event is metering's, and is tested there."""
+    with held_beside_no_recorded_event():
+        yield
 
 #: A period, and a repair that happens months after it. Every timestamp below
 #: is an explicit past instant rather than an offset from now, because the one
@@ -120,6 +148,17 @@ def _measurement(event_type, code="prompt_tokens", **kwargs):
     return Measurement.objects.create(event_type=event_type, code=code, **kwargs)
 
 
+def _published(event_type):
+    """The declaration as production reads it (#605) — and only a published
+    one can answer for a held name. ⚠ Publishing also REGISTERS every held name
+    it declares (#568), so a test about a remediation of its own publishes
+    BEFORE it holds the name."""
+    event_type.refresh_from_db()
+    with published_and_committed():
+        event_type.publish()
+    return event_type
+
+
 # ---------------------------------------------------------------------------
 # Accept — nothing is discarded, nothing is zeroed
 # ---------------------------------------------------------------------------
@@ -140,7 +179,8 @@ class TestNothingIsThrownAway:
 
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert held.pk is not None
         assert held.unrecognised == UNRECOGNISED_EVENT_TYPE
@@ -158,7 +198,8 @@ class TestNothingIsThrownAway:
 
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key=as_sent,
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         held.refresh_from_db()
         assert held.event_type_key == as_sent
@@ -179,7 +220,8 @@ class TestNothingIsThrownAway:
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity=awkward,
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         held.refresh_from_db()
         assert held.quantity == awkward
@@ -198,7 +240,8 @@ class TestNothingIsThrownAway:
 
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key=far_too_long,
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         held.refresh_from_db()
         assert held.event_type_key == far_too_long
@@ -220,7 +263,8 @@ class TestNothingIsThrownAway:
             tenant=tenant, event_type_key="acme.embed",
             quantities={"prompt_tokens": 4096,
                         "reasoning_tokens": Decimal("0.000000000000000001")},
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         held.refresh_from_db()
         assert held.quantities == {"prompt_tokens": "4096",
@@ -240,11 +284,13 @@ class TestNothingIsThrownAway:
         absent = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
         zero = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="0",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert absent.quantity == ""
         assert zero.quantity == "0"
@@ -262,7 +308,8 @@ class TestNothingIsThrownAway:
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="12",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert held.unrecognised == UNRECOGNISED_MEASUREMENT_KEY
         assert held.event_type_key == declared.key
@@ -290,13 +337,16 @@ class TestNothingIsThrownAway:
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="12",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == (held,)
 
-        register_the_held_name(held, _measurement(declared,
-                                                  code="reasoning_tokens"))
+        # Resolved the way a tenant resolves it now: declaring the name and
+        # publishing the declaration is the registration (#568).
+        _measurement(declared, code="reasoning_tokens")
+        _published(declared)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == ()
@@ -323,7 +373,8 @@ class TestNothingIsAutoRegistered:
         for _ in range(25):
             hold_an_unrecognised_event_type(
                 tenant=tenant, event_type_key="acme.embed",
-                quantities={}, occurred_at=JANUARY)
+                quantities={}, occurred_at=JANUARY,
+                event_id=uuid4())
 
         assert EventType.objects.count() == 0
         assert Measurement.objects.count() == 0
@@ -343,7 +394,8 @@ class TestNothingIsAutoRegistered:
             hold_an_unrecognised_quantity(
                 tenant=tenant, event_type_key=declared.key,
                 measurement_key="reasonning_tokens", quantity="7",
-                occurred_at=JANUARY)
+                occurred_at=JANUARY,
+                event_id=uuid4())
 
         assert list(declared.measurements.values_list("code", flat=True)) == [
             "prompt_tokens"]
@@ -363,7 +415,8 @@ class TestNothingIsAutoRegistered:
         for moment in moments:
             hold_an_unrecognised_event_type(
                 tenant=tenant, event_type_key="acme.embed",
-                quantities={}, occurred_at=moment)
+                quantities={}, occurred_at=moment,
+                event_id=uuid4())
 
         assert sorted(QuarantinedKey.objects.values_list("occurred_at",
                                                          flat=True)) == moments
@@ -386,6 +439,7 @@ class TestNothingIsAutoRegistered:
         tenant = _tenant()
         declared = _event_type(tenant, key="acme.embed")
         quantity = _measurement(declared, code="prompt_tokens")
+        _published(declared)
 
         def snapshot():
             return (
@@ -397,14 +451,17 @@ class TestNothingIsAutoRegistered:
         before = snapshot()
         mapped = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
         registered = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="prompt_tokens", quantity="7",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
         dismissed = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.healthcheck",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         map_to_a_declaration(mapped, declared)
         register_the_held_name(registered, quantity)
@@ -423,10 +480,11 @@ class TestMappingToAnExistingDeclaration:
 
     def test_the_held_name_records_the_declaration_it_now_means(self):
         tenant = _tenant()
-        declared = _event_type(tenant, key="acme.embed")
+        declared = _published(_event_type(tenant, key="acme.embed"))
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         map_to_a_declaration(held, declared)
 
@@ -439,10 +497,12 @@ class TestMappingToAnExistingDeclaration:
         tenant = _tenant()
         declared = _event_type(tenant)
         quantity = _measurement(declared, code="prompt_tokens")
+        _published(declared)
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="promt_tokens", quantity="41",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         replay = map_to_a_declaration(held, quantity)
 
@@ -463,7 +523,8 @@ class TestMappingToAnExistingDeclaration:
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=mine.key,
             measurement_key="promt_tokens", quantity="41",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
         with pytest.raises(WrongDeclaration):
             map_to_a_declaration(held, somebody_elses)
@@ -477,10 +538,11 @@ class TestMappingToAnExistingDeclaration:
         kept apart because they record different tenant decisions.
         """
         tenant = _tenant()
-        declared = _event_type(tenant, key="acme.embed")
+        declared = _published(_event_type(tenant, key="acme.embed"))
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         with pytest.raises(NotTheHeldName):
             map_to_a_declaration(held, declared)
@@ -496,7 +558,8 @@ class TestMappingToAnExistingDeclaration:
         theirs = _event_type(_tenant("Other"), key="acme.embed")
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         with pytest.raises(NotThisTenants):
             map_to_a_declaration(held, theirs)
@@ -512,7 +575,8 @@ class TestMappingToAnExistingDeclaration:
         quantity = _measurement(_event_type(tenant))
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         with pytest.raises(WrongDeclaration):
             map_to_a_declaration(held, quantity)
@@ -531,11 +595,12 @@ class TestRegisteringTheHeldName:
         already made the declaration by the ordinary route.
         """
         tenant = _tenant()
+        declared = _published(_event_type(tenant, key="acme.embed"))
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
-        declared = _event_type(tenant, key="acme.embed")
         register_the_held_name(held, declared)
 
         held.refresh_from_db()
@@ -545,12 +610,14 @@ class TestRegisteringTheHeldName:
     def test_registering_a_quantity_records_the_code_that_was_declared(self):
         tenant = _tenant()
         declared = _event_type(tenant)
+        quantity = _measurement(declared, code="reasoning_tokens")
+        _published(declared)
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="reasoning_tokens", quantity="41",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
-        quantity = _measurement(declared, code="reasoning_tokens")
         replay = register_the_held_name(held, quantity)
 
         assert replay.measurement_key == "reasoning_tokens"
@@ -566,9 +633,10 @@ class TestRegisteringTheHeldName:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
-        declared = _event_type(tenant, key="acme.embed")
+        declared = _published(_event_type(tenant, key="acme.embed"))
         with pytest.raises(NotTheHeldName):
             register_the_held_name(held, declared)
 
@@ -588,7 +656,8 @@ class TestDismissingAsNonEconomic:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.healthcheck",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert dismiss_as_non_economic(held) is None
 
@@ -611,7 +680,8 @@ class TestAResolutionHappensOnce:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
         dismiss_as_non_economic(held)
 
         declared = _event_type(tenant, key="acme.embed")
@@ -630,7 +700,8 @@ class TestAResolutionHappensOnce:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
         stale = QuarantinedKey.objects.get(pk=held.pk)
         dismiss_as_non_economic(held)
 
@@ -654,8 +725,9 @@ class TestReplayIsFromTheOriginalMoment:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
-        declared = _event_type(tenant, key="acme.embed")
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
+        declared = _published(_event_type(tenant, key="acme.embed"))
 
         replay = map_to_a_declaration(held, declared)
 
@@ -669,8 +741,9 @@ class TestReplayIsFromTheOriginalMoment:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={}, occurred_at=JANUARY)
-        declared = _event_type(tenant, key="acme.embed")
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
+        declared = _published(_event_type(tenant, key="acme.embed"))
 
         replay = map_to_a_declaration(held, declared)
 
@@ -688,12 +761,15 @@ class TestReplayIsFromTheOriginalMoment:
         """
         tenant = _tenant()
         declared = _event_type(tenant)
+        quantity = _measurement(declared)
+        _published(declared)
         held = hold_an_unrecognised_quantity(
             tenant=tenant, event_type_key=declared.key,
             measurement_key="promt_tokens", quantity="0.000000000000000001",
-            occurred_at=JANUARY)
+            occurred_at=JANUARY,
+            event_id=uuid4())
 
-        replay = map_to_a_declaration(held, _measurement(declared))
+        replay = map_to_a_declaration(held, quantity)
 
         assert replay.quantities == {
             "prompt_tokens": "0.000000000000000001"}
@@ -704,12 +780,222 @@ class TestReplayIsFromTheOriginalMoment:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed-v2",
-            quantities={"prompt_tokens": 4096}, occurred_at=JANUARY)
+            quantities={"prompt_tokens": 4096}, occurred_at=JANUARY,
+            event_id=uuid4())
 
-        replay = map_to_a_declaration(held, _event_type(tenant, key="acme.embed"))
+        replay = map_to_a_declaration(
+            held, _published(_event_type(tenant, key="acme.embed")))
 
         assert replay.quantities == {"prompt_tokens": "4096"}
         assert replay.effective_at == JANUARY
+
+
+@pytest.mark.django_db
+class TestOnlyAPublicationAnswersAHeldName:
+    """Production reads an Event Type's last publication and nothing else
+    (#605), so a held name is answered by a publication and only by one —
+    and a publication answers every held name it declares by itself (#568:
+    "replays … once the name is declared"). Kernel-side; what the replay does
+    to the event is metering's, in `api/v1/tests/`."""
+
+    def test_a_draft_cannot_answer_for_a_held_name(self):
+        """Answered by a draft, the name would stop holding the close while
+        its event could be costed by nothing."""
+        tenant = _tenant()
+        draft = _event_type(tenant, key="acme.embed")
+        typo = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embd", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        same = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+
+        with pytest.raises(NotYetPublished):
+            map_to_a_declaration(typo, draft)
+        with pytest.raises(NotYetPublished):
+            register_the_held_name(same, draft)
+
+        assert {row.is_unresolved for row in QuarantinedKey.objects.all()} \
+            == {True}
+
+    def test_a_quantity_the_last_publication_does_not_carry_cannot_answer(self):
+        """Declared beneath a published Event Type after its publication: the
+        catalogue has the row, and production still reads none."""
+        tenant = _tenant()
+        declared = _published(_event_type(tenant))
+        held = hold_an_unrecognised_quantity(
+            tenant=tenant, event_type_key=declared.key,
+            measurement_key="reasoning_tokens", quantity="4",
+            occurred_at=JANUARY, event_id=uuid4())
+
+        with pytest.raises(NotYetPublished):
+            register_the_held_name(
+                held, _measurement(declared, code="reasoning_tokens"))
+
+        held.refresh_from_db()
+        assert held.is_unresolved
+
+    def test_a_publication_registers_exactly_the_held_names_it_declares(self):
+        """The Event Type held at its key, and a quantity held beneath it
+        whose code it now carries — and nothing else: not a quantity it does
+        not carry, not a name another key holds, not another tenant's."""
+        tenant = _tenant()
+        chat = _event_type(tenant, key="acme.chat")
+        _measurement(chat, code="input_tokens")
+        _published(chat)
+        held_type = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        declared_later = hold_an_unrecognised_quantity(
+            tenant=tenant, event_type_key="acme.chat",
+            measurement_key="reasoning_tokens", quantity="4",
+            occurred_at=JANUARY, event_id=uuid4())
+        never_declared = hold_an_unrecognised_quantity(
+            tenant=tenant, event_type_key="acme.chat",
+            measurement_key="cachd_tokens", quantity="2",
+            occurred_at=JANUARY, event_id=uuid4())
+        elsewhere = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.rerank", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        theirs = hold_an_unrecognised_event_type(
+            tenant=_tenant("Other"), event_type_key="acme.embed",
+            quantities={}, occurred_at=JANUARY, event_id=uuid4())
+
+        _published(_event_type(tenant, key="acme.embed"))
+        _measurement(chat, code="reasoning_tokens")
+        _published(chat)
+
+        for row in (held_type, declared_later, never_declared, elsewhere,
+                    theirs):
+            row.refresh_from_db()
+        assert (held_type.resolution, held_type.resolved_key) \
+            == (RESOLUTION_REGISTERED, "acme.embed")
+        assert (declared_later.resolution, declared_later.resolved_key) \
+            == (RESOLUTION_REGISTERED, "reasoning_tokens")
+        assert never_declared.is_unresolved
+        assert elsewhere.is_unresolved
+        assert theirs.is_unresolved
+
+    def test_a_publication_leaves_a_dismissed_name_dismissed(self):
+        """#473 row 2: the tenant said it was never economic, and declaring
+        the same key later does not take that back."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        dismiss_as_non_economic(held)
+
+        _published(_event_type(tenant, key="acme.embed"))
+
+        held.refresh_from_db()
+        assert held.resolution == RESOLUTION_DISMISSED
+
+    def test_a_named_refusal_leaves_the_name_held_and_the_publication_lands(
+            self):
+        """A consumer refusing a replay BY NAME — the event named another
+        supplier, say — leaves that one name for the tenant's decision; the
+        publication is not taken back for it."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+
+        def refuses(replay):
+            raise QuarantineError("the event named another supplier")
+
+        with patch.object(hooks, "_consumers", [refuses]):
+            declared = _published(_event_type(tenant, key="acme.embed"))
+
+        held.refresh_from_db()
+        assert held.is_unresolved
+        declared.refresh_from_db()
+        assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
+
+    def test_a_replay_that_breaks_leaves_the_name_held_and_the_publication(
+            self):
+        """After the publication has committed nothing may undo it, and one
+        held record that breaks is no reason to leave the names beside it
+        unanswered: it stays held — the close still sees it — and the break
+        is logged."""
+        tenant = _tenant()
+        broken = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+
+        def breaks(replay):
+            raise RuntimeError("a contradiction in the record")
+
+        with patch.object(hooks, "_consumers", [breaks]), \
+                patch.object(quarantine.logger, "exception") as logged:
+            declared = _published(_event_type(tenant, key="acme.embed"))
+
+        assert declared.declaration_status == DECLARATION_STATUS_PUBLISHED
+        broken.refresh_from_db()
+        assert broken.is_unresolved
+        assert [call.args[0] for call in logged.call_args_list] \
+            == ["quarantine.answer_failed"]
+
+    def test_the_publication_answers_nothing_inside_its_own_transaction(self):
+        """Publishing commits the configuration alone; the held names under
+        the key are answered once it has committed — not in the transaction
+        whose length would otherwise grow with them."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        draft = _event_type(tenant, key="acme.embed")
+
+        with TestCase.captureOnCommitCallbacks(execute=False) as callbacks:
+            draft.publish()
+        held.refresh_from_db()
+        assert held.is_unresolved
+        assert EventType.objects.get(pk=draft.pk).declaration_status \
+            == DECLARATION_STATUS_PUBLISHED
+
+        with held_names_answered_on_commit():
+            for callback in callbacks:
+                callback()
+        held.refresh_from_db()
+        assert held.resolution == RESOLUTION_REGISTERED
+
+    def test_a_publication_that_does_not_land_answers_nothing(self):
+        """No partial publication: rolled back, the configuration is gone
+        whole, and its doorbell with it — no held name is answered by a
+        declaration that was never published."""
+        tenant = _tenant()
+        held = hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        draft = _event_type(tenant, key="acme.embed")
+
+        with TestCase.captureOnCommitCallbacks(execute=True) as callbacks:
+            with pytest.raises(RuntimeError):
+                with transaction.atomic():
+                    draft.publish()
+                    raise RuntimeError("the change around it fails")
+
+        assert callbacks == []
+        assert EventType.objects.get(pk=draft.pk).declaration_status \
+            == DECLARATION_STATUS_DRAFT
+        held.refresh_from_db()
+        assert held.is_unresolved
+
+    def test_answering_again_answers_nothing_twice(self):
+        """The retry is safe: a registered name has had its replay, a
+        dismissed one stays dismissed, and a refused one is asked again."""
+        tenant = _tenant()
+        hold_an_unrecognised_event_type(
+            tenant=tenant, event_type_key="acme.embed", quantities={},
+            occurred_at=JANUARY, event_id=uuid4())
+        _published(_event_type(tenant, key="acme.embed"))
+        before = list(QuarantinedKey.objects.values_list(
+            "pk", "resolution", "resolved_at"))
+
+        again = answer_what_publications_declare(tenant_id=tenant.id)
+
+        assert tuple(again) == (0, 0)
+        assert list(QuarantinedKey.objects.values_list(
+            "pk", "resolution", "resolved_at")) == before
 
 
 # ---------------------------------------------------------------------------
@@ -724,7 +1010,8 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         with pytest.raises(PeriodHoldsUnresolvedValues) as refusal:
             refuse_a_silent_close(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -742,9 +1029,13 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
-        register_the_held_name(held, _event_type(tenant, key="acme.embed"))
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
+        # Declared and published at the held key: the registration (#568).
+        _published(_event_type(tenant, key="acme.embed"))
 
+        held.refresh_from_db()
+        assert held.resolution == RESOLUTION_REGISTERED
         refuse_a_silent_close(tenant=tenant, opened_at=JANUARY_OPENS,
                               closes_at=JANUARY_CLOSES)
 
@@ -758,7 +1049,8 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.healthcheck",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
         dismiss_as_non_economic(held)
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -775,14 +1067,15 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         held = hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == (held,)
         assert unresolved_in_period(tenant=tenant, opened_at=FEBRUARY_OPENS,
                                     closes_at=FEBRUARY_CLOSES) == ()
 
-        register_the_held_name(held, _event_type(tenant, key="acme.embed"))
+        _published(_event_type(tenant, key="acme.embed"))
         assert timezone.now() > FEBRUARY_CLOSES
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
@@ -794,7 +1087,8 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         hold_an_unrecognised_event_type(
             tenant=_tenant("Other"), event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY)
+            quantities={}, occurred_at=JANUARY,
+            event_id=uuid4())
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == ()
@@ -809,7 +1103,8 @@ class TestAPeriodDoesNotCloseSilently:
         tenant = _tenant()
         hold_an_unrecognised_event_type(
             tenant=tenant, event_type_key="acme.embed",
-            quantities={}, occurred_at=JANUARY_CLOSES)
+            quantities={}, occurred_at=JANUARY_CLOSES,
+            event_id=uuid4())
 
         assert unresolved_in_period(tenant=tenant, opened_at=JANUARY_OPENS,
                                     closes_at=JANUARY_CLOSES) == ()
@@ -912,3 +1207,58 @@ class TestTheHeldRowCannotBeIncoherent:
             row.full_clean()
 
         assert "event_type_key" in invalid.value.message_dict
+
+
+# ---------------------------------------------------------------------------
+# The migration that made a held name name its event (event_types 0010)
+# ---------------------------------------------------------------------------
+
+THE_EVENT_MIGRATION = import_module(
+    "apps.platform.event_types.migrations."
+    "0010_a_held_name_names_the_event_it_arrived_on")
+event_guard = THE_EVENT_MIGRATION.refuse_a_held_name_with_no_event
+
+
+def test_the_event_guard_runs_between_the_column_and_the_rule():
+    """After the column exists, so the rows it reads are the rows the rule
+    will judge; before NOT NULL is added, so its refusal — naming what it
+    found — arrives instead of a bare constraint violation."""
+    operations = THE_EVENT_MIGRATION.Migration.operations
+
+    assert [type(operation) for operation in operations] == [
+        migrations.AddField, migrations.RunPython, migrations.AlterField,
+        migrations.AddIndex]
+    assert operations[1].code is event_guard
+    assert operations[0].name == "event_id"
+
+
+@pytest.mark.django_db
+def test_the_event_guard_lets_a_table_where_every_name_has_its_event_through():
+    hold_an_unrecognised_event_type(
+        tenant=_tenant(), event_type_key="acme.embed", quantities={},
+        occurred_at=JANUARY, event_id=uuid4())
+
+    event_guard(live_apps, None)
+
+
+@pytest.mark.django_db
+def test_the_event_guard_refuses_a_held_name_with_no_event_and_names_it():
+    """Named by everything it takes to find it, with nothing repaired. A row
+    with no event is a state the column now refuses, so the rule is dropped
+    for the rest of this test's transaction, which rolls it back."""
+    tenant = Tenant.objects.create(name="Acme pre-launch")
+    with connection.cursor() as cursor:
+        cursor.execute("ALTER TABLE ubb_quarantined_key "
+                       "ALTER COLUMN event_id DROP NOT NULL")
+    held = hold_an_unrecognised_event_type(
+        tenant=tenant, event_type_key="acme.embed", quantities={},
+        occurred_at=JANUARY, event_id=None)
+
+    with pytest.raises(THE_EVENT_MIGRATION.HeldNameWithoutAnEvent) as refused:
+        event_guard(live_apps, None)
+
+    said = str(refused.value)
+    assert (f"held {UNRECOGNISED_EVENT_TYPE} 'acme.embed' (QuarantinedKey "
+            f"{held.pk}) of tenant {tenant.pk} ('Acme pre-launch')") in said
+    assert "UBB never invents one, and repairs nothing" in said
+    assert QuarantinedKey.objects.get(pk=held.pk).event_id is None

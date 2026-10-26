@@ -39,6 +39,7 @@ from core.vocabulary import (
     COSTING_STATUS_NOT_APPLICABLE,
     COSTING_STATUS_UNRESOLVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
     PRICING_METHOD_MARGIN_OVER_COST,
@@ -238,21 +239,36 @@ class TestTheComputeSpineDecidesTheStatus:
         assert costing.provider_cost_micros == 5_000
         assert costing.unresolved_reason is None
 
-    def test_an_undeclared_event_type_costs_the_way_it_always_did(self):
-        """The registry is opt-in, and absence is not a declaration.
+    def test_an_event_type_nobody_published_is_held_not_costed(self):
+        """An Event Type with no publication is HELD, never costed (#568).
 
-        Nothing in this repository has ever required an Event Type to be
-        declared before recording against it. Reading that absence as *"carries
-        no cost"* would report a design decision nobody made, on every posting
-        of every tenant who has not adopted the registry.
+        This case used to read *"the registry is opt-in, and absence is not a
+        declaration"*, and costed the report against whatever Cost Rate
+        matched its spelling. #193 §B5 rules the other way — accept,
+        quarantine, replay — and #605 made a draft no declaration, so the spine
+        answers for the NAME rather than the spelling: no cost, a reason naming
+        the Event Type, and a Cost Rate that would have matched left unread.
+
+        ⚠ The rate is unpinned on purpose. One pinned to the Event Type goes
+        through the fixture helper that declares and publishes what a rate
+        names — which is how this case once went on passing while asserting
+        the opposite of its own title. Recording holds the name beside the
+        posting (`api/v1/tests/test_an_event_type_nobody_published_is_held.py`).
         """
         tenant = _tenant()
-        _cost_rate(tenant)
+        cost_rate_in_default_book(
+            tenant, provider="openai", event_type="",
+            measurement_key="prompt_tokens", rate_per_unit_micros=5_000,
+            unit_quantity=1_000)
+        assert not EventType.objects.filter(tenant=tenant,
+                                            key=EVENT_TYPE_KEY).exists()
 
         costing = _price(tenant, _customer(tenant))
 
-        assert costing.costing_status == COSTING_STATUS_KNOWN
-        assert costing.provider_cost_micros == 5_000
+        assert costing.costing_status == COSTING_STATUS_UNRESOLVED
+        assert costing.provider_cost_micros is None
+        assert (costing.unresolved_reason
+                == UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED)
 
     def test_a_caller_supplied_figure_needs_no_declaration_at_all(self):
         """WHERE such a figure may be supplied is #324's refusal, which sits at

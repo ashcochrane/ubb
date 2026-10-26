@@ -19,20 +19,26 @@ from pathlib import Path
 from urllib.parse import quote
 
 from django.db.models import JSONField
-from django.test import Client
+from django.test import Client, TestCase
 from django.utils import timezone
 
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
+from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
+from apps.platform.event_types.tests._helpers import (
+    held_names_answered_on_commit)
+from apps.platform.event_types.models import EventType, QuarantinedKey
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.membership.roles import READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
-    ANALYTICS_MEASURE_SUPPLIER_COGS, PRICING_MODE_FIXED,
-    TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+    ANALYTICS_MEASURE_SUPPLIER_COGS, COSTING_METHOD_CALCULATED,
+    MEASUREMENT_VALUE_TYPE_INTEGER, PRICING_MODE_FIXED,
+    SOURCE_KIND_CALLER_SUPPLIED, SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
+    TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK, UNIT_CALL)
 
 #: `domain-vocabulary/concepts/` at the git root — the registry. Four parents
 #: up: tests -> v1 -> api -> ubb-platform -> the root.
@@ -458,3 +464,142 @@ class BlueprintRoutes:
         (`BookService.the_book_a_plan_prices_from`)."""
         self._call("post", "/api/v1/plans", {"key": plan_key, "name": plan_key})
         return self._a_pricing_book(plan_key, is_default=False)
+
+
+# --- Recording against what a tenant declared (#568, #473, #572) ------------
+#
+# THREE ISSUES, ONE SCAFFOLD. Whether an event's Event Type is published, what
+# a remediation does with a name held on it, and whose supplier decides its
+# cost are three modules, and each needs the same thing: a metering tenant
+# that declares its Event Types through its own routes and records through
+# both recording routes. Each module states its own cases; this is only the
+# tenant and the doors. A Django `TestCase`, not a pytest mixin with
+# `setup_method` — `BlueprintRoutes` above is why (a TestCase runs both).
+
+def usage_payload(customer, correlation, **fields):
+    """A recording-call body, from a customer and one correlation string.
+
+    THE REASON THIS HELPER EXISTED IS GONE, AND IT IS KEPT ON A WEAKER ONE.
+    It was written to spell a retired word once, in a file already counted
+    against that word's ledger entry, so that no caller elsewhere had to name
+    it and push the entry past its spread ceiling. #411 deleted the field, the
+    entry with it, and the whole recording body now carries exactly one
+    correlation value — so there is nothing left to hide.
+
+    What it still buys is that `correlation` names what the string IS rather
+    than which key it lands under, which is the same service
+    `cost_rate_in_default_book` does one concept along
+    (`apps/metering/pricing/tests/_helpers.py`). That is worth a helper on its
+    own, and it is the only claim this docstring now makes. It lives here, with
+    the shared helpers, since the route-driving case below needed it
+    (`docs/conventions/testing.md`); `test_metering_endpoints.py` imports it
+    back for the modules that read it from there.
+    """
+    return {"customer_id": str(customer.id),
+            "idempotency_key": correlation, **fields}
+
+
+class DeclaringTenantCase(TestCase):
+    """A metering tenant, one customer, and the routes it declares through."""
+
+    def setUp(self):
+        self.http = Client()
+        self.tenant, self.raw_key = a_tenant(name="Declaring")
+        self.customer = Customer.objects.create(tenant=self.tenant,
+                                                external_id="declaring")
+
+    def admin(self, method, path, data=None):
+        """One call to the tenant's catalogue routes, which must succeed —
+        committed, as a request commits: what it set going on commit runs (a
+        publication's held names are answered after it, #568)."""
+        with held_names_answered_on_commit(), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = getattr(self.http, method)(
+                f"/api/v1{path}", data=json.dumps(data or {}),
+                content_type="application/json",
+                HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertLess(response.status_code, 300, response.content)
+        return response.json() if response.content else None
+
+    def declared(self, key, *, quantities=(), publish=True, provider_key=None):
+        """A calculated Event Type with each quantity beneath it, through the
+        routes a tenant drives — published unless asked otherwise, because a
+        publication is what recording reads (#605)."""
+        self.admin("post", "/event-types", {
+            "key": key, "costing_method": COSTING_METHOD_CALCULATED,
+            "source_shape_id": SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
+            **({"provider_key": provider_key} if provider_key else {})})
+        for code in quantities:
+            self.declares_a_quantity(key, code, publish=False)
+        if publish:
+            self.admin("post", f"/event-types/{key}/publish")
+        return EventType.objects.get(tenant=self.tenant, key=key)
+
+    def declares_a_quantity(self, key, code, *, publish=True):
+        """One more quantity beneath a declared Event Type, through its
+        route — and the Event Type published again, unless asked otherwise,
+        which is what makes the quantity one recording reads (#605)."""
+        self.admin("put", f"/event-types/{key}/measurements/{code}", {
+            "value_type": MEASUREMENT_VALUE_TYPE_INTEGER, "unit": UNIT_CALL,
+            "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+        if publish:
+            self.admin("post", f"/event-types/{key}/publish")
+
+    def read(self, path, **params):
+        response = self.http.get(
+            f"/api/v1/metering{path}", params,
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def held(self):
+        return list(QuarantinedKey.objects.filter(tenant=self.tenant)
+                    .order_by("measurement_key"))
+
+    def posting(self, ack):
+        return Posting.objects.get(id=ack["event_id"])
+
+    def _post(self, path, body):
+        return self.http.post(
+            f"/api/v1/metering{path}", data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+
+class OnTheSingleRoute:
+    """`POST /usage`: a 200 recorded it, a 422 did not."""
+
+    def send(self, correlation, **body):
+        response = self._post(
+            "/usage", usage_payload(self.customer, correlation, **body))
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()
+
+    def refused(self, correlation, **body):
+        """The refusal's `(code, detail)`, and that nothing was recorded."""
+        response = self._post(
+            "/usage", usage_payload(self.customer, correlation, **body))
+        self.assertEqual(response.status_code, 422, response.content)
+        problem = response.json()
+        return problem["code"], problem["detail"]
+
+
+class OnTheBatchRoute:
+    """One item of `POST /usage/batch`: the item's own verdict says which."""
+
+    def _verdict(self, correlation, body):
+        response = self._post("/usage/batch", {"events": [
+            usage_payload(self.customer, correlation, **body)]})
+        self.assertEqual(response.status_code, 200, response.content)
+        (verdict,) = response.json()["results"]
+        return verdict
+
+    def send(self, correlation, **body):
+        verdict = self._verdict(correlation, body)
+        self.assertTrue(verdict.pop("accepted"), verdict)
+        return verdict
+
+    def refused(self, correlation, **body):
+        verdict = self._verdict(correlation, body)
+        self.assertFalse(verdict["accepted"], verdict)
+        return verdict["code"], verdict["detail"]

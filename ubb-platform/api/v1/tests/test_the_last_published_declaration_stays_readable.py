@@ -66,6 +66,9 @@ def _as_served(body):
         costing_method=body["costing_method"],
         source_shape_id=body["source_shape_id"],
         source_shape_label=body["source_shape_label"],
+        # The route serves `null` for an Event Type naming no supplier; the
+        # publication keeps `""`.
+        provider_key=body["provider_key"] or "",
         published_revision=body["published_revision"],
         published_at=datetime.fromisoformat(body["published_at"]),
         measurements=tuple(
@@ -141,6 +144,7 @@ class TestTheLastPublishedDeclarationStaysReadable:
             costing_method="reported",
             source_shape_id="openai.responses.python.v1",
             source_shape_label="",
+            provider_key="",
             published_revision=1,
             published_at=datetime.fromisoformat(body["published_at"]),
             measurements=(

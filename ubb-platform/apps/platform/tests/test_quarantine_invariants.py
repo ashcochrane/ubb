@@ -119,10 +119,17 @@ WRITE_METHODS = frozenset({
 #: own, and holding them is the design (see ``QuarantinedKey.resolved_key``).
 #: What has no line is a surrogate identity — a pointer wearing a column's
 #: clothes.
+#:
+#: ``event_id`` (#568, #473) IS an identity, and it is on the list because of
+#: what it identifies: the recorded EVENT the name arrived on — the posting
+#: written in the same savepoint, which a replay re-costs — and never a
+#: declaration. It cannot resolve a later arrival of the same typo through
+#: anything, because no two events share it; the fence this rule holds is
+#: about the catalogue, and that is untouched.
 HELD_NAME_COLUMNS = frozenset({
     "id", "created_at", "updated_at",
     "unrecognised", "tenant", "event_type_key", "measurement_key",
-    "quantity", "quantities", "occurred_at",
+    "quantity", "quantities", "occurred_at", "event_id",
     "resolution", "resolved_at", "resolved_key",
 })
 

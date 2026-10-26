@@ -21,7 +21,8 @@ from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import Measurement
 from apps.platform.event_types.tests._helpers import (
-    declares_a_caller_supplied_cost, declares_a_quantity)
+    declares_a_caller_supplied_cost, declares_a_quantity,
+    publishes_what_it_names)
 from apps.platform.plans.services import PlanService
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
@@ -89,18 +90,48 @@ def retired_kind_column():
 UNMEASURED_QUANTITY = "a_quantity_no_event_measures"
 
 
-def _rule_in(book, *, provider, event_type, task_type, subtask_type,
-             customer, fields):
-    """The row itself, once the book has been chosen.
+def _the_quantity_it_prices(tenant, fields, *, event_type=None, provider=None):
+    """The declared quantity a rule prices, put in `fields`, and the Event
+    Type it pins published with it.
 
     **A CALLER STILL SAYS `measurement_key=` AND STILL NEVER SEES A COLUMN
-    (#326).** The rate holds the declared record now, so the name is resolved to
-    the declaration here — and declared, once, if the tenant has not declared it
-    already. That keeps every fixture in the tree saying what it means rather
-    than transcribing a two-record setup, and it is why the reference conversion
-    did not have to touch them: what they ask for has not changed, only what it
-    takes to be true. A test that wants a rate NOT backed by a declaration wants
-    the refusal, and asks for it explicitly.
+    (#326).** The rate holds the declared record, so the name is resolved to
+    the declaration here — and declared, once, if the tenant has not declared
+    it already. A test that wants a rate NOT backed by a declaration wants the
+    refusal, and asks for it explicitly.
+
+    **AND A RULE PINNED TO AN EVENT TYPE PRICES CALLS OF ONE THE TENANT
+    PUBLISHED (#568).** A call naming an Event Type with no production
+    declaration is held — no cost, no price — so a rule pinned to one nobody
+    published would price nothing, and the fixture writing it means the one a
+    tenant writing it would have published (`publishes_what_it_names`) —
+    naming the supplier the rule pins, if it pins one (#572), because a
+    published Event Type's supplier decides whose calls it prices.
+
+    Five fixtures below write a rule, and each used to spell the first half
+    itself; one place now, so the second half cannot reach some of them. The
+    Event Type and the supplier default to the rule's own pins in `fields`; a
+    fixture that takes either as a parameter of its own passes it.
+    """
+    if event_type is None:
+        event_type = fields.get("event_type", "")
+    if provider is None:
+        provider = fields.get("provider", "")
+    if "measurement" not in fields:
+        fields["measurement"] = declares_a_quantity(
+            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    if event_type:
+        publishes_what_it_names(tenant, event_type,
+                                fields["measurement"].code,
+                                provider=provider)
+
+
+def _rule_in(book, *, provider, event_type, task_type, subtask_type,
+             customer, fields):
+    """The row itself, once the book has been chosen — the quantity it prices
+    resolved by :func:`_the_quantity_it_prices`, which is what keeps every
+    fixture in the tree saying what it means rather than transcribing the
+    declarations behind a rule.
 
     The slots ride in `fields` rather than being named one by one. Ten of them
     spelled out as keyword defaults was already the longest line in this file
@@ -111,9 +142,8 @@ def _rule_in(book, *, provider, event_type, task_type, subtask_type,
     no kind word anywhere on this path any more: the two doors below pick a
     table, and the entity says which reference belongs to it.
     """
-    if "measurement" not in fields:
-        fields["measurement"] = declares_a_quantity(
-            book.tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    _the_quantity_it_prices(book.tenant, fields, event_type=event_type,
+                            provider=provider)
     return Rate.objects.create(
         tenant=book.tenant, provider=provider, event_type=event_type,
         task_type=task_type, subtask_type=subtask_type, customer=customer,
@@ -164,9 +194,7 @@ def an_override_rule(tenant, customer, **fields):
     # itself would be a second writer of that construction and would keep
     # passing the day the real one changed (#354).
     book = BookService.the_customers_own_book(tenant, customer)
-    if "measurement" not in fields:
-        fields["measurement"] = declares_a_quantity(
-            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, customer=customer, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -190,9 +218,7 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     plan = a_plan(tenant=tenant, key=plan_key)
     PlanService.assign(tenant, customer, plan)
     book = plan.pricing_book
-    if "measurement" not in fields:
-        fields["measurement"] = declares_a_quantity(
-            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -442,9 +468,19 @@ def an_unresolved_posting(tenant, customer, key, *, event_type="chat",
     Recorded rather than constructed, because what a run reads is the receipt
     the engine wrote — the quantities by value, the section statuses, the
     provenance — and a hand-built row would be a fixture agreeing with itself.
+
+    ⚠ **THE EVENT TYPE IT NAMES IS PUBLISHED FIRST, WITH WHAT IT MEASURES
+    (#568)** — unless the test has declared one at that key itself, which is
+    then the test's to have meant. An Event Type with no production
+    declaration is held, with no cost and no price, until the tenant says what
+    it was; this seed is the state a RUN repairs — a cost UBB worked out and a
+    price nothing gave — and a held event is a different state with a
+    different remedy.
     """
     from apps.metering.usage.services.usage_service import UsageService
 
+    if event_type:
+        publishes_what_it_names(tenant, event_type, measures)
     result = UsageService.record_usage(
         tenant, customer, key, event_type=event_type,
         measurements={measures: ONE_CALL}, **fields)
@@ -591,9 +627,7 @@ def cost_rule_in_the_providers_book(tenant, provider, **fields):
         tenant=tenant, provider_key=provider,
         currency=fields.get("currency", tenant.default_currency or "usd"),
         is_default=True, defaults={"key": f"cost-{provider}"[:64]})
-    if "measurement" not in fields:
-        fields["measurement"] = declares_a_quantity(
-            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, cost_book=book,
         book_version_from=book.version, **fields)
@@ -667,9 +701,7 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
     """
     book = PricingBook.objects.create(
         tenant=tenant, key=key, is_default=False)
-    if "measurement" not in fields:
-        fields["measurement"] = declares_a_quantity(
-            tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
+    _the_quantity_it_prices(tenant, fields, provider=provider)
     return Rate.objects.create(
         tenant=tenant, provider=provider, currency=currency,
         pricing_book=book, book_version_from=book.version, **fields)

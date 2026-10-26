@@ -10,6 +10,7 @@ import {
   costNotApplicable,
   endedWorkStop,
   hardFloorStop,
+  heldForRemediation,
   incompleteMeasures,
   incompletePriceTotal,
   incompleteTotal,
@@ -307,6 +308,28 @@ describe("customer price scenarios", () => {
     ].map((scenario) => scenario.pricing_status);
 
     expect([...produced].sort()).toEqual([...PRICING_STATUS_VALUES].sort());
+  });
+});
+
+// #568 / #473 row 4: a held posting is a cost AND a price, composed together.
+describe("a posting held for remediation", () => {
+  it("holds the cost for the name it names and leaves the price unknown with that reason, never waived", () => {
+    for (const reason of [
+      "event_type_not_declared",
+      "measurement_not_declared",
+    ] as const) {
+      const scenario = heldForRemediation(reason);
+
+      expect(scenario).toEqual({
+        ...unknownCost(reason),
+        ...unknownPrice(),
+        pricing_status_reason: reason,
+      });
+      expect(scenario.pricing_status).toBe("unknown");
+      expect(scenario.pricing_status_reason).toBe(reason);
+      expect(scenario.billed_cost_micros).toBeNull();
+      expect(scenario.provider_cost_micros).toBeNull();
+    }
   });
 });
 

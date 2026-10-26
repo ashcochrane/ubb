@@ -11,8 +11,8 @@ the module:
    / ``ubb:spend_pool`` — the #111 DoD explicitly covers the seat counter's
    namespace). Together with rule 2 this also pins "never EVALs the
    module's Lua": the scripts are private constants and the keys they
-   target are unspellable. Other ``ubb:*`` families (idem, cardver,
-   markup…) belong to their own modules and are not this pin's concern.
+   target are unspellable. Other ``ubb:*`` families (idem…) belong to
+   their own modules and are not this pin's concern.
 2. no import of the module's private names (``_client``, key helpers, Lua
    sources) and no use of its test door (``Door`` — D4: TEST-ONLY; tests
    are outside this walk by construction).
@@ -40,8 +40,8 @@ COUNTER_MODULE_LABEL = "apps/billing/gating/services/live_counter.py"
 
 SIGNAL_MODULE_LABEL = "apps/billing/gating/services/stop_signal_service.py"
 
-# The pinned key families. "ubb:stop:" keeps its colon so the idem/cardver
-# style families can never collide; "ubb:stopchan" needs none (no shorter
+# The pinned key families. "ubb:stop:" keeps its colon so the idem-style
+# families can never collide; "ubb:stopchan" needs none (no shorter
 # family shares the prefix).
 KEY_FAMILIES = ("ubb:livebal", "ubb:livespend", "ubb:stop:", "ubb:stopchan",
                 "ubb:spend_pool")
@@ -282,7 +282,7 @@ def test_positive_control_sanctioned_shapes_stay_free():
     assert not _check_snippet(
         "StopSignalState.objects.filter(tenant_id=t).update(state='cleared')\n",
         label=SIGNAL_MODULE_LABEL)
-    # Other ubb: families (idem, cardver, markup…) belong to their modules.
+    # Other ubb: families (idem…) belong to their modules.
     assert not _check_snippet('k = f"ubb:idem:{tenant_id}:{key}"\n')
     # Public-op imports stay free.
     assert not _check_snippet(

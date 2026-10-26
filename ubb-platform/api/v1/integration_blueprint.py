@@ -1006,7 +1006,7 @@ def _record(resolution, key):
     tenant = resolution.tenant
     call = _record_call(resolution)
     live = (EventType.objects.filter(tenant=tenant, key=key)
-            .values("declaration_status", "provider__key").first())
+            .values("declaration_status").first())
     if live is None:
         call.add(_unconfigured("event_type"))
         resolution.report(
@@ -1044,9 +1044,11 @@ def _record(resolution, key):
 
     call.add(_known("event_type.costing_method", declaration.costing_method,
                     declared_by))
-    # The supplier is not pinned by a publication — it may be corrected
-    # without one — so it is the catalogue's current answer.
-    supplier = live["provider__key"]
+    # The supplier the declaration being resolved NAMES — the publication's,
+    # or the draft's on a preview — as recording reads it (#572, #605; the
+    # consultant's review of #618): a publication pins it and keeps its key,
+    # so a supplier renamed or re-pointed since takes effect when published.
+    supplier = declaration.provider_key
     if supplier:
         call.add(_known("provider", supplier, _provenance(
             CONFIGURATION_OBJECT_KIND_PROVIDER, supplier)))

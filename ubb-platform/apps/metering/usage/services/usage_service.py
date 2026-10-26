@@ -11,12 +11,15 @@ from core.crossing import ceiling_fields
 from core.time_windows import closed_months, month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
-    TRIGGER_SOURCE_USAGE_INGEST, USAGE_EVENT_KIND_METERED_USAGE)
+    TRIGGER_SOURCE_USAGE_INGEST, UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+    USAGE_EVENT_KIND_METERED_USAGE)
 from apps.metering.usage.grouping import grouping_fields_for
 from apps.metering.usage.models import (
     Posting, PostingMeasurement, StopAcknowledgement)
+from apps.platform.event_types.costing import DECLARATION_NOT_READ
 from apps.platform.event_types.exact_decimals import canonical_quantities
-from apps.platform.event_types.quarantine import hold_an_unrecognised_quantity
+from apps.platform.event_types.quarantine import (
+    hold_an_unrecognised_event_type, hold_an_unrecognised_quantity)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.grouping_fields.models import SLOTS
@@ -460,13 +463,18 @@ class RecordingInput:
     #: discarded). A recording through either route always states one.
     reported_cost_source_kind: str | None
     now: datetime
+    #: The Event Type's cost declaration as the recording edge read it, handed
+    #: to the pricing spine so the event pays one read (#605) — or
+    #: `DECLARATION_NOT_READ`, and the spine reads it.
+    declaration: object = DECLARATION_NOT_READ
 
     @classmethod
     def gather(cls, *, tenant, customer, idempotency_key,
                metadata, event_type, provider, measurements,
                task_id, caller_provider_cost, claimed_provider_cost,
                effective_at, billing_owner_id, owner_row,
-               now, dimension_slots=None, reported_cost_source_kind=None):
+               now, dimension_slots=None, reported_cost_source_kind=None,
+               declaration=DECLARATION_NOT_READ):
         """The normalization the recording path runs: tenant-currency stamp,
         declared-grouping-field slot fill, and the ``or ""``/``or {}`` defaults
         the posting create relies on. Validation does NOT live here — the
@@ -514,7 +522,8 @@ class RecordingInput:
             owner_row=owner_row, effective_at=effective_at,
             caller_provider_cost=caller_provider_cost,
             reported_cost_source_kind=reported_cost_source_kind,
-            claimed_provider_cost=claimed_provider_cost, now=now)
+            claimed_provider_cost=claimed_provider_cost, now=now,
+            declaration=declaration)
 
 
 # What the recording core hands back: the created event row, the accumulate
@@ -634,7 +643,8 @@ class UsageService:
                     # the reason beside it is the regime's — for every tenant
                     # (#553, `pricing/applicability.py`).
                     pricing_mode=inp.pricing_mode,
-                    as_of=inp.effective_at)
+                    as_of=inp.effective_at,
+                    declaration=inp.declaration)
                 # THE STATUS IS THE SPINE'S ANSWER, CARRIED — NOT RE-DERIVED
                 # (#320). Nothing here re-reads the amount to decide whether it
                 # is known: a second definition of "unresolved" one layer up is
@@ -715,7 +725,24 @@ class UsageService:
                     hold_an_unrecognised_quantity(
                         tenant=tenant, event_type_key=inp.event_type,
                         measurement_key=measurement_key, quantity=quantity,
-                        occurred_at=event.effective_at)
+                        occurred_at=event.effective_at, event_id=event.id)
+                # AND THE EVENT TYPE ITSELF, WHERE IT HAS NO PRODUCTION
+                # DECLARATION (#568, #193 §B5) — on the same terms and in the
+                # same write: the spine decided the posting's reason because
+                # the declaration read answered `None` for a key the event
+                # named (nobody declared it, or it was never published, #605),
+                # and this holds the name that reason is about, with the bag
+                # it arrived with. The posting is the record — it keeps the
+                # customer, the key and the unit of work a replay needs — and
+                # this row is what the period close reads and what a tenant
+                # remediates. An event naming no Event Type is never this
+                # reason, so nothing is held for it (#567).
+                if costing.unresolved_reason == \
+                        UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED:
+                    hold_an_unrecognised_event_type(
+                        tenant=tenant, event_type_key=inp.event_type,
+                        quantities=inp.measurements,
+                        occurred_at=event.effective_at, event_id=event.id)
                 if inp.task_id is not None:
                     # One-rule: the ONE accumulate primitive — always records
                     # both totals (the tipping event and everything after a
@@ -905,7 +932,8 @@ class UsageService:
                          claimed_provider_cost_micros=None,
                          provider="", event_type="", currency=None,
                          metadata=None, task_id=None, measurements=None,
-                         effective_at=None, dimension_slots=None):
+                         effective_at=None, dimension_slots=None,
+                         declaration=DECLARATION_NOT_READ):
         """The recording path (#112) for a key :meth:`replay` found nothing
         under: validation + owner resolve, then the recording core. The keyword
         surface is the input adapter every service-level call site and both
@@ -952,7 +980,11 @@ class UsageService:
         ``reported_cost_source_kind`` is the source that figure was admitted
         under, which the receipt keeps by value so the record says where its
         cost came from after the Event Type's publication has moved on (#179
-        §3.6, #570). Both routes state it with every figure."""
+        §3.6, #570). Both routes state it with every figure.
+
+        ``declaration`` is the Event Type's cost declaration as the route
+        already read it for its admissions, so the costing reads it no second
+        time (#605); a caller that read none leaves it, and the spine reads."""
         now = timezone.now()
         # Billing owner hoisted above pricing: the closed-period guard and the
         # pinned billing_owner_id both key on the same resolver result. The
@@ -985,7 +1017,7 @@ class UsageService:
             claimed_provider_cost=claimed_provider_cost_micros,
             effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,
-            dimension_slots=dimension_slots)
+            dimension_slots=dimension_slots, declaration=declaration)
         try:
             outcome = UsageService._record_core(inp)
         except RecordingConflict as exc:

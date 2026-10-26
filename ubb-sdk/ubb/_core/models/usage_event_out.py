@@ -41,8 +41,11 @@ class UsageEventOut:
             pricing_status (UsageEventOutPricingStatus):
             pricing_status_reason (None | UsageEventOutPricingStatusReasonType0): Why `pricing_status` applies, where a
                 specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
-                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded — an
-                `unknown` price with a null reason is one UBB had no input to resolve. Always present.
+                calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded.
+                `event_type_not_declared` or `measurement_not_declared` beside `unknown`: the event is held on a name nobody has
+                declared — the same cause its `unresolved_reason` names — so no price over it is published as known until the
+                name is answered, when the price resolves and the reason clears with it. An `unknown` price with a null reason
+                is one UBB had no input to resolve. Always present.
             billed_cost_micros (int | None | Unset):
             claimed_provider_cost_micros (int | None | Unset): What the caller believes this call cost. Diagnostic only,
                 recorded as stated and never COGS: it is never rated, never summed into a cost total, and never becomes the

@@ -23,6 +23,9 @@ class TestUsageGroupingFields:
         # (#324). Declared here rather than dropped from the bodies: the
         # amounts are incidental to what this module asserts, but a recording
         # call with no cost at all is not the shape these fixtures exercise.
+        # The bodies name no provider: this Event Type names no supplier, and
+        # a published Event Type's own supplier is the only one a call may
+        # name (#572).
         declares_a_caller_supplied_cost(self.tenant, "completion")
 
     def _api_headers(self):
@@ -36,7 +39,7 @@ class TestUsageGroupingFields:
 
     def _post(self, **extra):
         body = {"customer_id": str(self.customer.id),
-                "idempotency_key": "k1", "provider": "openai",
+                "idempotency_key": "k1",
                 "event_type": "completion", "provider_cost_micros": 1000}
         body.update(extra)
         return self.client.post("/api/v1/metering/usage", data=body,
@@ -71,7 +74,7 @@ class TestUsageGroupingFields:
         r = self.client.post(
             "/api/v1/metering/usage",
             data={"customer_id": str(self.customer.id),
-                  "idempotency_key": "k9", "provider": "openai",
+                  "idempotency_key": "k9",
                   "event_type": "completion", "provider_cost_micros": 1,
                   "grouping_fields": {"model": "c"}},
             content_type="application/json", **self._api_headers())

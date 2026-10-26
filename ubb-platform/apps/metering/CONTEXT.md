@@ -230,8 +230,10 @@ sitting beside the amount, so a `NULL` is never read as a zero. `known` is resol
 decision somebody made** — a margin rule with no supplier cost to take a margin over. **`unknown`
 says no authoritative customer price is recorded for this event**, and its reason says why
 (`pricing_status_reason`, #603, ADR-0020 §4 — required and nullable wherever the status is
-published): `null` when nothing matched and there is no markup rung, `negative_price_unsupported`
-when UBB calculated a negative price the money rails cannot carry in v1. `not_applicable` is a
+published): `null` when nothing matched and there is no markup rung, or when the posting is held
+for a name the tenant never declared (its cost is held too, and the ladder is not consulted — #473
+row 4), `negative_price_unsupported` when UBB calculated a negative price the money rails cannot
+carry in v1. `not_applicable` is a
 subject that generates no customer revenue at this level at all. The distinction between the middle
 two is what a Resolution Run is built on: it repairs what UBB is missing and never touches what
 somebody decided — nor a negative price, which re-resolving would only compute again.
@@ -275,43 +277,49 @@ tenant, read from the tenant; adding a value without a producer in the same chan
 **unresolved_reason**:
 Which input was missing when the supplier cost could not be settled, read **only** where
 `costing_status` is `unresolved` and never on its own — the registry's own summary calls a status
-that says a cost is missing without saying what would settle it a shrug. Three values, each naming
+that says a cost is missing without saying what would settle it a shrug. Four values, each naming
 a remedy: `reported_cost_missing` (an Event Type published as reporting its cost, recorded with no
 supplier figure — what settles it is the figure arriving, and its receipt keeps no quantities);
 `cost_rate_missing` (a quantity matched no Cost Rate in force at the event's moment — what settles
 it is a rate, and a Resolution Run re-costs it from the receipt's `uncosted_quantities`); and
 `measurement_not_declared` (the event matched a published Event Type and carries a name its last
-publication does not carry — what settles it is the tenant deciding what the name meant). **#428
-DECIDED that the third is answered in the compute spine's rating branch and only there**, and that
+publication does not carry — what settles it is the tenant deciding what the name meant); and
+`event_type_not_declared` (the event names an Event Type with no publication — never declared, or
+declared and never published, which read the same, #605 — so there is no declaration to cost it
+from; what settles it is the tenant declaring or mapping the name, #568). **The last two are held
+names** (platform glossary, *Held name*): the report is recorded, its posting carries no cost and
+an `unknown` price — never `waived`, never `known` (#473 row 4) — and the name is held for the
+tenant's decision in the same write. A rule written for the spelling is not consulted. An event
+naming no Event Type at all costs against Cost Rates as before (#567). **#428
+DECIDED that `measurement_not_declared` is answered in the compute spine's rating branch and only
+there**, and that
 the hold follows the reason: a figure the caller supplied, a declaration that reports its cost and
 one that declares none never read a name, so a report on those branches holds nothing even when it
 carries one. The alternative — hold on every branch — was refused because it puts a held row that
 blocks a period close beside a posting whose cost is already settled, and the two records would
-then disagree about what is unaccounted for. The registry is opt-in, so an undeclared Event Type
-has no declaration for a name to be missing from and costs as it always did. One declared and
-never published takes whatever path an undeclared one does, because recording reads only the
-last publication (#605; what that path does is #568's). **The same report
-that writes `measurement_not_declared` holds the name** — see the platform glossary's *Held name*;
-the two records are one write in `UsageService._record_core`, and
+then disagree about what is unaccounted for. **The same report that writes either held-name
+reason holds the name** — the two records are one write in `UsageService._record_core`, and
 `usage/tests/test_an_undeclared_name_is_held_and_its_posting_says_why.py` compares the period
 close's held names with this column over postings recorded through the production path. The name
 comes before the rate: a report carrying both an undeclared name and a declared-but-unrated
 quantity says `measurement_not_declared`, because no rate can be written against a name the
-catalogue does not carry (#326). The receipt keeps the undeclared quantity too
-(`undeclared_quantities`), and the wire's `uncosted_measurement_keys` names it — the one field on
-the ack that can — so a Resolution Run re-asks the name question rather than rating the spelling,
-and settles the posting once the tenant has declared the name beneath its Event Type and a rate
-reaches it (`TestWhatARecoveryDoesWithIt` in the same module). ⚠ What #428 left UNOWNED: a name
-the tenant MAPS to another spelling needs the re-keyed bag only #265's `Replay` carries; a name the
-tenant DISMISSES returns no replay by design and needs the posting re-costed without it; a
-declaration deleted with names held beneath it leaves a run to rate them by spelling; and a PRICE
-rule at the undeclared spelling still prices it, `known` over an unresolved cost. None has a
-consumer or a decision.
+catalogue does not carry (#326). The receipt keeps what was not costed — an undeclared quantity
+in `undeclared_quantities`, which the wire's `uncosted_measurement_keys` names, and a held Event
+Type's whole bag in `uncosted_quantities` — so a Resolution Run re-asks the name question rather
+than rating the spelling (`TestWhatARecoveryDoesWithIt` in the same module). **The tenant's
+decision is what settles it** (#473): a publication declaring the name registers it once the
+publication commits, and mapping it to a published declaration answers it — either replays the event
+from its own moment with the answer applied, and a Resolution Run answers what publications declare
+first and applies the same answers, never costing around a name still undecided; a dismissal re-costs nothing, then or
+after the name is published; and a declaration with undecided names held beneath it is not deleted
+from under them.
 (`domain-vocabulary/concepts/economics.yaml:unresolved_reason`;
 `apps/metering/pricing/services/pricing_service.py:PricingService._compute`;
 `apps/metering/usage/models.py:Posting.unresolved_reason`)
 _Avoid_: reading `cost_rate_missing` for a name the declaration does not carry — that was the
-answer before #428 and was wrong about the remedy; and deriving the reason anywhere but the spine.
+answer before #428 and was wrong about the remedy; costing an event that names an unpublished Event
+Type against rules at its spelling — that was the answer before #568; and deriving the reason
+anywhere but the spine.
 
 **Margin**:
 Realized `billed_cost − provider_cost`, computed on read and never stored.

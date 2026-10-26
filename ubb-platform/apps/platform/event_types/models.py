@@ -100,6 +100,13 @@ REPORTED_COST_MAPPING = "reported_cost_mapping"
 #: publication pins, and `publication.py` reads them back by it.
 MEASUREMENTS = "measurements"
 
+#: The key a publication keeps its supplier under (#572; the consultant's
+#: review of #618). The Event Type pins its Provider's IDENTITY — re-pointing it
+#: is a revision — and the copy keeps the Provider's KEY, because the key is
+#: what recording compares a call's supplier with and costs under;
+#: `publication.py` reads it back by this name.
+PROVIDER_KEY = "provider_key"
+
 #: The two source kinds a REPORTED COST may be declared with. The concept
 #: declares four and they are shared with the quantities beside it; these two
 #: are what survives the narrowing, and the other two are refused below for two
@@ -531,6 +538,15 @@ class Provider(BaseModel):
     Event Type with no Provider is a normal Event Type. A fictitious Provider is
     a defect, not a workaround — it puts a name UBB invented into a tenant's own
     COGS attribution.
+
+    **A rename is a revision of every published declaration naming it (#572,
+    #605; the consultant's review of #618).** A published Event Type's supplier
+    decides whose call it is, and recording compares a call's supplier with the
+    KEY its publication kept — so the key is part of what each of those
+    declarations says, and changing it changes them. Like any change to a
+    declaration it takes effect when the Event Type is published again; until
+    then production records under the key that was published. See
+    :meth:`save`.
     """
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
@@ -553,6 +569,23 @@ class Provider(BaseModel):
 
     def __str__(self):
         return f"Provider({self.key})"
+
+    def save(self, *args, **kwargs):
+        """A rename revises every published Event Type that names this
+        supplier — see the class docstring.
+
+        Asked of the ROW, as ``EventType.revise_declaration`` asks: an
+        instance loaded before somebody else's rename would otherwise compare
+        against a key that is no longer there. Retiring a supplier revises
+        nothing: what may be attached next is not what a publication says.
+        """
+        renamed = (not self._state.adding and self.pk is not None
+                   and type(self)._base_manager.filter(pk=self.pk)
+                   .exclude(key=self.key).exists())
+        super().save(*args, **kwargs)
+        if renamed:
+            for event_type in self.event_types.all():
+                event_type.revise_declaration()
 
 
 class EventCategory(BaseModel):
@@ -633,11 +666,22 @@ class EventType(PinnedDeclaration, BaseModel):
     #: integration directly: one names the call, the other decides what the
     #: integration must supply.
     #:
-    #: The satellites are deliberately absent. The category reaches no money and
-    #: appears in nothing generated, and the supplier is an input to cost
-    #: resolution rather than to the code a tenant deploys — unpublishing a
-    #: tenant's live integration because they re-filed it under a different
-    #: analytics grouping would be a cost with no benefit on the other side.
+    #: The category is deliberately absent: it reaches no money and appears in
+    #: nothing generated — unpublishing a tenant's live integration because
+    #: they re-filed it under a different analytics grouping would be a cost
+    #: with no benefit on the other side.
+    #:
+    #: ⚠ **THE SUPPLIER IS PINNED, BY ITS IDENTITY (`provider_id`; #572, #605,
+    #: the consultant's review of #618).** It used to be absent beside the
+    #: category, as "an input to cost resolution rather than to the code a
+    #: tenant deploys". #572 made it more than that: a published Event Type's
+    #: supplier decides whose call a recording is, and a call naming another is
+    #: refused — so re-pointing it changes what a deployed integration may send,
+    #: and read live it would let an unpublished edit change what production
+    #: admits and how it costs, which is what #605 removed. Re-pointing is now a
+    #: revision; the copy a publication keeps holds the supplier's KEY
+    #: (:data:`PROVIDER_KEY`), and a Provider rename revises too
+    #: (``Provider.save``).
     #: The structured paths turned out not to fit here, and neither did the
     #: mapping. Both arrived on rows BENEATH the Event Type (#263, #266), and a
     #: tuple of this record's own field names cannot reach them: ``getattr`` on
@@ -646,7 +690,8 @@ class EventType(PinnedDeclaration, BaseModel):
     #: :meth:`revise_declaration`, which each child calls — which is the
     #: obligation the tripwire in ``event_types/tests/test_event_type.py``
     #: carried, now asked of the behaviour rather than of this tuple.
-    PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label")
+    PINNED = ("key", "costing_method", "source_shape_id", "source_shape_label",
+              "provider_id")
 
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE,
                                related_name="event_types")
@@ -863,8 +908,20 @@ class EventType(PinnedDeclaration, BaseModel):
         mapping = (ReportedCostMapping._base_manager
                    .filter(event_type_id=self.pk)
                    .values(*ReportedCostMapping.PINNED).first())
+        # The supplier is pinned by its identity and KEPT by its key: the key
+        # is what recording reads (#572), and an id would leave every reader a
+        # query away from it. Read from the Provider's row for the reason the
+        # parts are — a rename since this instance loaded is the key this
+        # publication must keep.
+        own = {name: value for name, value
+               in zip(self.PINNED, self._pinned_declaration())
+               if name != "provider_id"}
+        supplier = ((Provider._base_manager.filter(pk=self.provider_id)
+                     .values_list("key", flat=True).first() or "")
+                    if self.provider_id is not None else "")
         return {
-            **dict(zip(self.PINNED, self._pinned_declaration())),
+            **own,
+            PROVIDER_KEY: supplier,
             MEASUREMENTS: list(measurements),
             REPORTED_COST_MAPPING: mapping,
         }
@@ -959,6 +1016,15 @@ class EventType(PinnedDeclaration, BaseModel):
             # call has just replaced.
             self._pinned_as_loaded = self._pinned_declaration()
             self.save()
+            # AND A PUBLICATION IS THE TENANT DECLARING THE NAMES IT CARRIES
+            # (#568) — answered AFTER this commits, never inside it (the
+            # consultant's review of #618): this transaction is the
+            # configuration alone, and the held history under the key is
+            # registered and replayed one name at a time once it has landed.
+            # Imported here because the quarantine reads these models.
+            from .quarantine import answer_after_the_publication_commits
+            answer_after_the_publication_commits(tenant_id=self.tenant_id,
+                                                 key=self.key)
         return self
 
     # -- what makes a change a revision rather than a reinterpretation --------
@@ -1868,23 +1934,42 @@ class QuarantinedKey(BaseModel):
     quantity = models.TextField(blank=True, default="")
 
     #: The whole measured bag, as it arrived. Event Type rows only, and the
-    #: asymmetry with ``quantity`` above is a merged decision rather than an
-    #: accident.
+    #: asymmetry with ``quantity`` above is about what a REPAIR needs to show.
     #:
-    #: ``docs/plans/2026-07-31-provider-supplied-cost-decision.md`` §3.4 draws
-    #: the line: an event whose Event Type is unknown is **not recorded as a
-    #: usage event** — "held outside the record until registered" — because
-    #: there is nothing to record it *as*. So for that case this row is the
-    #: only thing that holds what arrived, and a row without the numbers would
-    #: make "nothing is discarded" false and the replay uncostable. An event
-    #: whose Event Type is KNOWN is a first-class posting that carries its own
-    #: bag, and copying it here would be storing a fact twice (ADR-0006 §4) —
-    #: which is why that case holds only the single number above, the one thing
-    #: the posting's bag cannot explain on its own.
+    #: ``docs/plans/2026-07-31-provider-supplied-cost-decision.md`` §3.4 drew
+    #: the line at "held outside the record until registered", and #568 does
+    #: not adopt that half: such an event IS recorded, as a posting whose cost
+    #: is unresolved and whose price is unknown, because the posting is the
+    #: only record that can carry everything else the call said — its
+    #: customer, its idempotency key, its unit of work — and a replay needs
+    #: all of it. So the bag is on the posting too. It is here as well because
+    #: this record is the KERNEL'S account of what arrived, and the kernel may
+    #: not read a product's table (ADR-001): the tenant about to decide what a
+    #: name meant is shown the numbers it arrived with from this row alone,
+    #: and the ``Replay`` a remediation hands on carries them. A quantity row
+    #: needs only its one number for the same reason — the rest of that bag
+    #: answers no question about the name.
     #:
     #: Values are text, for the reason ``quantity`` is: a JSON number goes
     #: through a float, and that is the rounding this record exists to refuse.
     quantities = models.JSONField(default=dict, blank=True)
+
+    #: WHICH RECORDED EVENT THE NAME ARRIVED ON (#568, #473) — the id the
+    #: recording's acknowledgement publishes as ``event_id``.
+    #:
+    #: Both kinds of held name now arrive beside a posting written in the same
+    #: savepoint, and a remediation has to reach that posting: a replay
+    #: re-costs THAT event from its own moment, and nothing else here can say
+    #: which one it was — two events can share a tenant, a name and an instant,
+    #: and one row per event is this record's whole shape.
+    #:
+    #: **An identity, not a relation, and it points at no declaration.** A
+    #: foreign key would make the kernel's table depend on a product's
+    #: (ADR-001); the id is a fact about what arrived, and a remediation
+    #: deciding what a NAME meant is still the only thing that resolves this
+    #: row — so the fence ``tests/test_quarantine_invariants.py`` holds, that a
+    #: held name never points at a declaration, is untouched.
+    event_id = models.UUIDField()
 
     #: When the event happened. **The load-bearing column of this record.**
     #: Remediation happens whenever somebody gets round to it, and a cost
@@ -1995,6 +2080,11 @@ class QuarantinedKey(BaseModel):
             models.Index(fields=["tenant", "occurred_at"],
                          condition=models.Q(resolution=RESOLUTION_UNRESOLVED),
                          name="ix_quarantined_key_open"),
+            # What a replay and a Resolution Run ask: every held name on ONE
+            # recorded event, decided or not (#473) — the answers a re-costing
+            # applies are the whole event's, never one row's.
+            models.Index(fields=["tenant", "event_id"],
+                         name="ix_quarantined_key_event"),
         ]
 
     def __str__(self):
@@ -2093,8 +2183,8 @@ class QuarantinedKey(BaseModel):
             return ("quantity", (
                 "names one number on a row about an unrecognised Event Type, "
                 "where no quantity was ever looked up. The bag that arrived "
-                "goes in `quantities`, which is the only place it exists — an "
-                "event UBB cannot place is not recorded as a posting at all."))
+                "goes in `quantities`, the kernel's own account of what the "
+                "event carried."))
         return None
 
     def _resolution_dating_error(self):

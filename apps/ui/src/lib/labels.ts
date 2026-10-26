@@ -329,6 +329,7 @@ export const ingestRejectionLabel = legacyLabelMap({
   effective_at_naive: "Timestamp missing timezone",
   effective_at_too_old: "Timestamp too old",
   not_found: "Unknown customer or task",
+  provider_conflicts_with_event_type: "Provider differs from the Event Type's",
   validation_error: "Validation failed",
 });
 
