@@ -58,8 +58,9 @@ the costing method, the no-cost state, the missing-cost answer and the declared
 quantity names — because the owner ruled them one unit (comment `6041500996`).
 An Event Type declared and never published has no production declaration, so a
 recording against it takes whatever path an undeclared key takes: the cases
-below compare the two outcomes to EACH OTHER, never to what that path happens
-to answer today, because #568 owns it. And a replay answers what was recorded
+below compare the two outcomes to EACH OTHER, never to what that path answers,
+which is #568's — the event is held
+(`api/v1/tests/test_an_event_type_nobody_published_is_held.py`). And a replay answers what was recorded
 BEFORE any of this is asked, so a later publication cannot make a successful
 write unreplayable. Each of those runs on the single route and on a batch item,
 through the tenant's own Event Type routes.
@@ -259,8 +260,8 @@ class TheSupplierCostIsAdmissibleOnlyWhereItIsDeclaredTest(_RecordingCase):
     def test_no_declaration_at_all_refuses_it(self):
         """The commonest shape: a caller who never declared an Event Type.
 
-        The registry is opt-in, so this is not a misconfiguration — it is a
-        tenant who has not adopted it. What they may not do is assert the
+        Not a misconfiguration: such an event is recorded and held until the
+        tenant says what it was (#568). What they may not do is assert the
         supplier's own number against nothing.
         """
         body = self.refused("undeclared", event_type="acme.embed",
@@ -1027,10 +1028,10 @@ class _ANeverPublishedEventTypeIsRecordedAsAnUndeclaredOne:
 
     The ruling is DELEGATION: recording against such a key takes exactly the
     path a key nobody declared takes, with no refusal and no implementation of
-    its own. What that path does is #568's to decide, so nothing here says
-    what it answers — every case records one body against a key nobody
-    declared and the same body against a key declared and never published,
-    and compares the two outcomes to each other.
+    its own. What that path does is #568's — the event is held — so nothing
+    here says what it answers: every case records one body against a key
+    nobody declared and the same body against a key declared and never
+    published, and compares the two outcomes to each other.
 
     Four drafts, one for each way a leaked draft would show: a `reported` one
     admitting a caller-supplied figure, another admitting a figure read off

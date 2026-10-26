@@ -143,7 +143,7 @@ published declaration; changes take effect when they are published** (#605) — 
 recording reads: the costing method (and with it the missing-cost answer), the no-cost state,
 the reported-cost source kind and the declared quantity names. An Event Type declared and never published
 has no production declaration, so recording against it takes the one path a key nobody declared
-takes (what that path does is #568's).
+takes: the event is recorded and **held** (*Held name*, #568).
 (`apps/platform/event_types/models.py:EventType`)
 _Avoid_: treating the free-text event-type string on a posting as this record — an unrecognised
 string is quarantined for later resolution, not silently declared; and saying an edit to an Event
@@ -172,7 +172,16 @@ The supplier behind a call — a per-tenant record, optional on an Event Type. I
 a string because supplier cost resolution keys on its identity: a tenant may correct `key` without
 re-attributing historical cost, which parsing the supplier out of an Event Type key would have made
 impossible. Retired, never deleted — `retired_at` stops new use and leaves the past readable.
-(`apps/platform/event_types/models.py:Provider`)
+**A published Event Type's Provider decides what its calls cost** (#572): an event naming one is
+costed and priced against the supplier that Event Type names now, never the free text its caller
+sends. A caller naming a different supplier is refused, by name
+(`provider_conflicts_with_event_type`); one naming none takes the declared one; and an Event Type
+naming no supplier refuses any. An event naming no Event Type, or one nobody published, keeps the
+supplier its caller sent — and a held one mapped to a published Event Type is replayed under that
+Event Type's.
+(`apps/platform/event_types/models.py:Provider`; `api/v1/metering_endpoints.py:admit_provider`)
+_Avoid_: reading a posting's free-text supplier as the cost key for an event whose Event Type is
+published — the declaration already said who the supplier is.
 
 **Event category**:
 An optional, tenant-defined grouping for Event Types. One level, current rather than
@@ -254,35 +263,43 @@ rate selection; this one relates two declared quantities and reaches nothing but
 
 **Held name (quarantined key)**:
 A name UBB has never seen, kept for the tenant to decide about — accept, quarantine, replay
-(#265). Two kinds, told apart by `unrecognised`: an Event Type nobody declared, which carries the
-whole measured bag because nothing else holds it (spec §3.4, "held outside the record until
-registered"); and a quantity code beneath a DECLARED Event Type whose declaration does not mention
-it, which carries the one number beside that name, as text, because the declaration that would say
-its scale is the one missing. Never auto-registered, enforced at the source and the model registry
-by `apps/platform/tests/test_quarantine_invariants.py`: a held name never points at a declaration
-and nothing points back. Three remediations record three different tenant decisions — map to a
-declaration that exists, register the name the tenant has just declared, dismiss as non-economic —
-and the first two return a `Replay` stamped with the event's original moment, never the repair's.
-A period holding an unresolved name does not close silently: `refuse_a_silent_close` is called by
+(#265, #193 §B5). Two kinds, told apart by `unrecognised`: an **Event Type nobody published** —
+never declared, or declared and never published, which read the same (#605) — carrying the whole
+measured bag because nothing else holds it; and a **quantity code** beneath a published Event Type
+whose last publication does not carry it, carrying the one number beside that name, as text,
+because the declaration that would say its scale is the one missing. Each names the recorded event
+it arrived on. Never auto-registered, enforced at the source and the model registry by
+`apps/platform/tests/test_quarantine_invariants.py`: a held name never points at a declaration and
+nothing points back.
+**Held, not costed.** The event is recorded — accepted — and its posting carries no supplier cost
+and no customer price: the cost is `unresolved`, its reason naming which kind of name is missing
+(metering glossary, *unresolved_reason*), and the price is `unknown` — never `waived`, which would
+say somebody abandoned the charge, and never `known`, which would publish economics nobody
+resolved (#473 row 4). A rule written for the name's spelling is not consulted: a spelling is not a
+declaration. The Event Type kind is held for every event naming an Event Type with no publication
+(#568); the quantity kind for every name the compute spine measured against a published Event
+Type's set and found missing — and, by #428's decision, not a name on a report whose cost a caller
+stated, a supplier reports or the declaration says does not exist, where a held row would block a
+period close over a cost already settled. An event naming no Event Type at all holds nothing
+(#567).
+**Three remediations record three tenant decisions.** Map to a declaration that exists, register
+the name the tenant has since declared, or dismiss as non-economic. The first two **replay** the
+held event from its own original moment, never the repair's, with the tenant's answer applied —
+the Event Type read as the one it was mapped to, each held quantity under the name it was mapped
+to — completing the cost and the price in the same transaction as the decision, so a replay that
+cannot complete takes the decision back with it (#473 row 1). A Resolution Run applies the same
+answers. **A dismissal re-costs nothing** (#473 row 2): the event keeps the spelling it arrived
+with, the name stays undeclared, and no later run prices it under another one.
+**A declaration is not deleted from under its held names** (#473 row 3): an Event Type with an
+undecided held quantity beneath its key cannot be deleted unless a declaration at that key survives
+the same change; deciding the held names is what frees it.
+A period holding an undecided name does not close silently: `refuse_a_silent_close` is called by
 `TenantBillingService.close_period` (#329), placed by `occurred_at`.
-**Which half has a production caller.** The quantity half: since #428 the recording path holds
-every name the compute spine measured against a declared Event Type's set and found missing, in
-the same write as the posting that says `measurement_not_declared` (metering glossary,
-*unresolved_reason*). That is every name on a report the spine rated against Cost Rates, and — by
-#428's decision, not an accident of where the code sits — not a name on a report whose cost a
-caller stated, a supplier reports or the declaration says does not exist: there the posting's
-reason is not the name, and a held row beside it would block a period close over a name whose cost
-is already settled. The Event Type half has none — the registry is opt-in and a report against an
-undeclared Event Type is recorded and costed against Cost Rates (`costing.cost_declaration`); one
-declared and never published takes whatever path an undeclared one does (#605, #568's to decide), so
-§3.4's "not recorded" line describes a posture the registry has not adopted; UNOWNED RESIDUAL, as
-is the consumer of `Replay`, and as is the remediation-time divergence #428 named and did not
-close: a declaration DELETED with names held beneath it leaves a Resolution Run to rate those
-names by spelling while the held rows stay open.
 (`apps/platform/event_types/models.py:QuarantinedKey`; `apps/platform/event_types/quarantine.py`;
-`apps/platform/event_types/tests/test_quarantine.py`)
+`apps/platform/event_types/hooks.py`; `apps/platform/event_types/tests/test_quarantine.py`)
 _Avoid_: a `get_or_create` of a declaration anywhere on this path, and a foreign key from a held
-name to a declaration — both are auto-registration in other clothes.
+name to a declaration — both are auto-registration in other clothes; and pricing a held name at its
+spelling — a rule written for a spelling is not the tenant saying what the name meant.
 
 ## Grouping fields
 
