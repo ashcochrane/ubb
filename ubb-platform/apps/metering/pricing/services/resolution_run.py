@@ -73,6 +73,7 @@ from apps.metering.pricing.services.pricing_service import (
     A_HELD_NAME, PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import SYSTEM, get_current_actor
+from apps.platform.event_types.costing import cost_declaration
 from apps.platform.event_types.quarantine import the_tenants_answers
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import cost_total, counts_as_unresolved
@@ -649,9 +650,10 @@ def _subject_of(posting, stored):
     ⚠ **AND WHAT THE EVENT WAS IS THE TENANT'S ANSWER WHERE A NAME ON IT WAS
     HELD (#473 row 1, #568)** — see :func:`_what_the_tenant_says_it_was`.
     """
-    event_type, measurements = _what_the_tenant_says_it_was(posting, stored)
+    event_type, provider, measurements = _what_the_tenant_says_it_was(
+        posting, stored)
     selectors = {name: getattr(posting, name) for name in Rate.SELECTORS}
-    selectors["event_type"] = event_type
+    selectors.update(event_type=event_type, provider=provider)
     return PricingSubject(
         receipt_subject=ReceiptSubject(
             subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -681,8 +683,9 @@ class AnswerNamesOneQuantityTwice(ValueError):
 
 
 def _what_the_tenant_says_it_was(posting, stored):
-    """The event's Event Type key and quantities, with every answer the tenant
-    has given about its held names applied (#473 row 1, #568).
+    """The event's Event Type key, its supplier and its quantities, with every
+    answer the tenant has given about its held names applied (#473 row 1,
+    #568).
 
     A posting whose cost is held on a name keeps the name AS IT ARRIVED — on
     its own column and in its receipt's bag — because that is what the call
@@ -698,10 +701,18 @@ def _what_the_tenant_says_it_was(posting, stored):
     the spine holds it again: an undecided name stays undecided, and a
     dismissed one re-costs nothing (#473 row 2). Asked only of a posting whose
     cost is held on a name, which is the only kind that has held rows.
+
+    **AN EVENT TYPE ANSWERED IS COSTED UNDER ITS OWN SUPPLIER (#572).** The
+    held event was recorded with whatever provider it sent, because nothing
+    then said whose call it was; the Event Type the tenant now says it was
+    names its supplier, and a published Event Type's supplier is
+    authoritative. Everywhere else the posting's own column is the answer —
+    for a declared Event Type the recording already put the declared supplier
+    there.
     """
     quantities = recorded_quantities(stored)
     if posting.unresolved_reason not in A_HELD_NAME:
-        return posting.event_type, quantities
+        return posting.event_type, posting.provider, quantities
     answers = the_tenants_answers(tenant_id=posting.tenant_id,
                                   event_id=posting.pk)
     renamed = {}
@@ -715,7 +726,13 @@ def _what_the_tenant_says_it_was(posting, stored):
                 f"declaration this event does not already carry, register it, "
                 f"or dismiss it.")
         renamed[declared] = quantity
-    return (answers.event_type_key or posting.event_type), renamed
+    if answers.event_type_key is None:
+        return posting.event_type, posting.provider, renamed
+    answered = cost_declaration(tenant=posting.tenant,
+                                key=answers.event_type_key)
+    return (answers.event_type_key,
+            posting.provider if answered is None else answered.provider_key,
+            renamed)
 
 
 def replay_the_held_event(replay):

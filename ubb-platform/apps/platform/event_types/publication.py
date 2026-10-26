@@ -101,18 +101,37 @@ def last_published_declaration(*, tenant, key):
     One query, on the ``uq_event_type_key`` unique index, and no join: the
     parts beneath the Event Type are not consulted, because they are the draft.
     """
+    declaration, _ = last_publication_with(tenant=tenant, key=key)
+    return declaration
+
+
+def last_publication_with(*, tenant, key, current=()):
+    """`key`'s last publication, and what the catalogue holds NOW for elements
+    publication does not pin — in the one query.
+
+    Returns `(PublishedDeclaration or None, {name: value})`. `current` names
+    columns of the Event Type's row, or of one relation along it, by the ORM's
+    own lookup (`provider__key`): an element read live because no publication
+    pins it (the supplier, the category), which is exactly the read this
+    module's docstring says such an element takes. Asked together so a caller
+    needing both pays one indexed query, which is what the recording path's
+    read has always cost (#605). The values are `{}` and the declaration `None`
+    where nothing is published — a key with no production declaration has no
+    elements to answer for either.
+    """
     if not key:
-        return None
+        return None, {}
     row = (EventType.objects.filter(tenant=tenant, key=key)
            .values_list("published_revision", "published_at",
-                        "published_declaration").first())
+                        "published_declaration", *current).first())
     if row is None:
-        return None
-    published_revision, published_at, pinned = row
+        return None, {}
+    published_revision, published_at, pinned, *now = row
     if pinned is None:
-        return None
-    return _in_the_reads_shape(pinned, published_revision=published_revision,
-                               published_at=published_at)
+        return None, {}
+    return (_in_the_reads_shape(pinned, published_revision=published_revision,
+                                published_at=published_at),
+            dict(zip(current, now)))
 
 
 def draft_declaration(*, tenant, key):

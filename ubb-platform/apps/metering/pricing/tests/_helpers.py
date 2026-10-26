@@ -90,7 +90,7 @@ def retired_kind_column():
 UNMEASURED_QUANTITY = "a_quantity_no_event_measures"
 
 
-def _the_quantity_it_prices(tenant, fields, event_type):
+def _the_quantity_it_prices(tenant, fields, *, event_type, provider):
     """The declared quantity a rule prices, put in `fields`, and the Event
     Type it pins published with it.
 
@@ -104,7 +104,9 @@ def _the_quantity_it_prices(tenant, fields, event_type):
     PUBLISHED (#568).** A call naming an Event Type with no production
     declaration is held — no cost, no price — so a rule pinned to one nobody
     published would price nothing, and the fixture writing it means the one a
-    tenant writing it would have published (`publishes_what_it_names`).
+    tenant writing it would have published (`publishes_what_it_names`) —
+    naming the supplier the rule pins, if it pins one (#572), because a
+    published Event Type's supplier decides whose calls it prices.
 
     Five fixtures below write a rule, and each used to spell the first half
     itself; one place now, so the second half cannot reach some of them.
@@ -114,7 +116,8 @@ def _the_quantity_it_prices(tenant, fields, event_type):
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
     if event_type:
         publishes_what_it_names(tenant, event_type,
-                                fields["measurement"].code)
+                                fields["measurement"].code,
+                                provider=provider)
 
 
 def _rule_in(book, *, provider, event_type, task_type, subtask_type,
@@ -133,7 +136,8 @@ def _rule_in(book, *, provider, event_type, task_type, subtask_type,
     no kind word anywhere on this path any more: the two doors below pick a
     table, and the entity says which reference belongs to it.
     """
-    _the_quantity_it_prices(book.tenant, fields, event_type)
+    _the_quantity_it_prices(book.tenant, fields, event_type=event_type,
+                            provider=provider)
     return Rate.objects.create(
         tenant=book.tenant, provider=provider, event_type=event_type,
         task_type=task_type, subtask_type=subtask_type, customer=customer,
@@ -184,8 +188,9 @@ def an_override_rule(tenant, customer, **fields):
     # itself would be a second writer of that construction and would keep
     # passing the day the real one changed (#354).
     book = BookService.the_customers_own_book(tenant, customer)
-    _the_quantity_it_prices(tenant, fields,
-                            fields.get("event_type", ""))
+    _the_quantity_it_prices(
+        tenant, fields, event_type=fields.get("event_type", ""),
+        provider=fields.get("provider", ""))
     return Rate.objects.create(
         tenant=tenant, customer=customer, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -209,8 +214,9 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     plan = a_plan(tenant=tenant, key=plan_key)
     PlanService.assign(tenant, customer, plan)
     book = plan.pricing_book
-    _the_quantity_it_prices(tenant, fields,
-                            fields.get("event_type", ""))
+    _the_quantity_it_prices(
+        tenant, fields, event_type=fields.get("event_type", ""),
+        provider=fields.get("provider", ""))
     return Rate.objects.create(
         tenant=tenant, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -619,8 +625,9 @@ def cost_rule_in_the_providers_book(tenant, provider, **fields):
         tenant=tenant, provider_key=provider,
         currency=fields.get("currency", tenant.default_currency or "usd"),
         is_default=True, defaults={"key": f"cost-{provider}"[:64]})
-    _the_quantity_it_prices(tenant, fields,
-                            fields.get("event_type", ""))
+    _the_quantity_it_prices(
+        tenant, fields, event_type=fields.get("event_type", ""),
+        provider=fields.get("provider", ""))
     return Rate.objects.create(
         tenant=tenant, cost_book=book,
         book_version_from=book.version, **fields)
@@ -695,7 +702,8 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
     book = PricingBook.objects.create(
         tenant=tenant, key=key, is_default=False)
     _the_quantity_it_prices(tenant, fields,
-                            fields.get("event_type", ""))
+                            event_type=fields.get("event_type", ""),
+                            provider=provider)
     return Rate.objects.create(
         tenant=tenant, provider=provider, currency=currency,
         pricing_book=book, book_version_from=book.version, **fields)

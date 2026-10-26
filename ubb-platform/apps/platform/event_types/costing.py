@@ -4,14 +4,14 @@ that act on it (#320, #605).
 ``Measurement``'s own docstring has said *"nothing rates against these ... slice
 3 wires it"* since the table was created. This is that wire, and it is
 deliberately one function returning plain data rather than an ORM row handed
-across: its callers need four facts about a declaration and have no business
+across: its callers need five facts about a declaration and have no business
 holding a record they could accidentally save.
 
 **Two callers, one query each, asking different questions of the same record.**
 The compute spine asks what a posting's cost status should be. The recording
-edge asks whether a supplier's figure may arrive on the call at all, and on
-which transport (#324, #570) — and only ever when one arrived, which is
-precisely the branch on which the spine never looks the declaration up.
+edge asks whose supplier the call is (#572), and whether a supplier's figure
+may arrive on the call at all, and on which transport (#324, #570) — once per
+event naming an Event Type, for both questions together.
 
 **Why this lives beside the declaration rather than in the pricer.** *"This
 Event Type carries no cost at all"* is a statement about what the tenant
@@ -21,19 +21,20 @@ the day a third way to declare a cost arrives. The pricer asks; this answers.
 
 **Draft changes do not affect production recording (#605).** Production uses
 the Event Type's last published declaration; changes take effect when they are
-published. Every fact below is read off the copy ``publish`` keeps on the
-Event Type's row (#573), through ``publication.last_published_declaration``,
-and none of them off the draft — the four are one unit, and a read that took
-one from each would let an unpublished edit change half of what production
-does.
+published. Every fact below but one is read off the copy ``publish`` keeps on
+the Event Type's row (#573), through ``publication.last_publication_with``,
+and none of them off the draft — they are one unit, and a read that took one
+from each would let an unpublished edit change half of what production does.
+The one is the supplier, which publication does not pin and so is read as the
+catalogue holds it now — the rule ``publication.py`` states for every unpinned
+element.
 
 **One query, and it stays one.** The recording path is the hottest write in the
 system, and the published copy is one column on one row, read on the
-``uq_event_type_key`` unique index with no join: the quantities and the mapping
-beneath the Event Type are not consulted, because they are the draft. Nothing
-is cached: a publication must take effect on the next call, and the rate-card
-cache next door exists because rates are read once per *quantity* per event,
-which this is not.
+``uq_event_type_key`` unique index; its one join is onto the Provider the row
+names, for the supplier's key. The quantities and the mapping beneath the Event
+Type are not consulted, because they are the draft. Nothing is cached: a
+publication must take effect on the next call.
 """
 from typing import NamedTuple
 
@@ -41,11 +42,11 @@ from core.vocabulary import (
     COSTING_METHOD_REPORTED, SOURCE_KIND_CALLER_SUPPLIED,
     SOURCE_KIND_PROVIDER_RESPONSE)
 
-from .publication import last_published_declaration
+from .publication import last_publication_with
 
 
 class CostDeclaration(NamedTuple):
-    """The four facts about a published declaration that a cost decision
+    """The five facts about a published declaration that a cost decision
     turns on."""
 
     #: How this Event Type's supplier cost is arrived at — held by reference
@@ -69,8 +70,17 @@ class CostDeclaration(NamedTuple):
     #: not declared here. Empty for a publication carrying no quantity, which
     #: is a different answer from the `None` the whole record is for an Event
     #: Type with no publication — the first is a tenant's statement, the second
-    #: is the registry's opt-in.
+    #: is that there is no production declaration at all.
     declared_quantity_codes: frozenset[str]
+    #: THE SUPPLIER THIS EVENT TYPE NAMES (#572, #193 §B3) — its Provider's key
+    #: as the catalogue holds it NOW, or `""` where the Event Type names none
+    #: (internal work with no supplier, which is a statement and not a gap).
+    #: For a published Event Type this is authoritative: a call is costed and
+    #: priced against it, and a caller naming another is refused at the edge.
+    #: Read live rather than from the publication because the supplier is not
+    #: pinned — a tenant may correct its handle without re-publishing — and
+    #: read in the same query as the rest (`last_publication_with`).
+    provider_key: str
 
 
 def cost_declaration(*, tenant, key):
@@ -78,9 +88,11 @@ def cost_declaration(*, tenant, key):
     `None` if nothing is published.
 
     `None` is not "no cost" — it is *no production declaration*, which is a
-    different answer and the commoner one. The Event Type registry is opt-in,
-    and reading absence as `not_applicable` would report a design decision
-    nobody made.
+    different answer: reading absence as `not_applicable` would report a design
+    decision nobody made. For a key an event NAMES, `None` is what holds the
+    event (#568): it is recorded with no cost and no price until the tenant
+    says what it was. For an event naming no key, it is simply nothing to read
+    (#567).
 
     **THE LAST PUBLICATION GOVERNS, AND THE DRAFT NEVER DOES (#605).** Until
     #605 this read joined the live rows, and its docstring said *"a draft
@@ -111,7 +123,8 @@ def cost_declaration(*, tenant, key):
     a costing method other than `reported`, no published quantity and no
     published mapping.
     """
-    published = last_published_declaration(tenant=tenant, key=key)
+    published, now = last_publication_with(tenant=tenant, key=key,
+                                           current=(PROVIDER_KEY,))
     if published is None:
         return None
     mapping = published.reported_cost_mapping
@@ -126,7 +139,14 @@ def cost_declaration(*, tenant, key):
         reported_cost_source_kind=(None if mapping is None
                                    else mapping.source_kind),
         declared_quantity_codes=declared_codes,
+        provider_key=now[PROVIDER_KEY] or "",
     )
+
+
+#: The lookup that reads a published Event Type's supplier live, by its
+#: Provider's current key — one LEFT JOIN on the row the publication is read
+#: from, and never onto the parts beneath it (which are the draft).
+PROVIDER_KEY = "provider__key"
 
 
 #: The reported-cost sources whose figure reaches UBB on the recording call
@@ -161,10 +181,10 @@ def admitted_supplier_cost_source(declaration):
     does not trust it to have refused) nothing is declared to arrive, and the
     answer is `None`.
 
-    `None` for the declaration — no published declaration — is `None` too. The
-    Event Type registry is opt-in and most postings still have no declaration,
-    so this is the commonest answer rather than an error case; what a tenant
-    may not do is assert the supplier's own number against nothing. The
+    `None` for the declaration — no published declaration — is `None` too:
+    an event naming no Event Type, or one nobody published (which is held,
+    #568), has nothing to admit a figure under, and what a tenant may not do is
+    assert the supplier's own number against nothing. The
     refusal itself is the caller's edge to render
     (`api/v1/metering_endpoints.py`), which is where a 422, its wording and
     the field each source is carried on belong; this answers only what the

@@ -6950,6 +6950,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier behind this call, by the key the tenant declared for it. Where the event names an Event Type with a last publication, that Event Type's own provider decides what the call is costed and priced against, and the call is recorded under it: this field may name that provider or be omitted. Any other provider \u2014 including one sent for an Event Type that names no supplier \u2014 is refused with `provider_conflicts_with_event_type`, never trusted and never replaced. Where the event names no Event Type, or one with no last publication, the provider sent is the one recorded.",
             "title": "Provider"
           },
           "provider_cost_micros": {

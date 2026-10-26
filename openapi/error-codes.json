@@ -108,6 +108,10 @@
       "status": 409,
       "title": "How a kind of work is sold cannot change"
     },
+    "provider_conflicts_with_event_type": {
+      "status": 422,
+      "title": "The provider is not the one the Event Type names"
+    },
     "rate_limit_exceeded": {
       "status": 429,
       "title": "Rate limit exceeded"
@@ -171,6 +175,7 @@
       "effective_at_naive",
       "effective_at_too_old",
       "not_found",
+      "provider_conflicts_with_event_type",
       "validation_error"
     ],
     "reason_codes": [

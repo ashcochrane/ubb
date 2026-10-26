@@ -216,6 +216,23 @@ PROVIDER_RESPONSE_COST_MEANING = (
     "a second cost: the figure is recorded as the event's supplier cost and "
     "read back as `provider_cost_micros`, and is not echoed under its own name."
 )
+#: WHAT THE RECORDING REQUEST'S `provider` MEANS (#572, ruled on #184, item 8),
+#: published as its description because the rule changes what a caller may
+#: send: a published Event Type's own Provider decides what the call is costed
+#: and priced against, and a different one is refused by name — never
+#: silently trusted and never silently replaced (`metering_endpoints.
+#: admit_provider`).
+RECORDED_PROVIDER_MEANING = (
+    "The supplier behind this call, by the key the tenant declared for it. "
+    "Where the event names an Event Type with a last publication, that Event "
+    "Type's own provider decides what the call is costed and priced against, "
+    "and the call is recorded under it: this field may name that provider or "
+    "be omitted. Any other provider — including one sent for an Event Type "
+    "that names no supplier — is refused with "
+    "`provider_conflicts_with_event_type`, never trusted and never replaced. "
+    "Where the event names no Event Type, or one with no last publication, the "
+    "provider sent is the one recorded."
+)
 #: A verification's sample of the event's currency (owner's review of #608):
 #: published as the field's description because what the sample stands for,
 #: and what Verify does not test, is the reader's to know.
@@ -354,7 +371,8 @@ class RecordUsageRequest(Schema):
     currency: Optional[str] = Field(default=None, max_length=3)
     task_id: Optional[UUID] = None
     event_type: Optional[str] = Field(default=None, max_length=100)
-    provider: Optional[str] = Field(default=None, max_length=100)
+    provider: Optional[str] = Field(default=None, max_length=100,
+                                    description=RECORDED_PROVIDER_MEANING)
     # Declared EVENT-scoped grouping field values (design D1/D6). Keys must be in
     # the tenant's GroupingField registry and declared at event scope; task- and
     # subtask-scoped values are set at the start-gate and inherited, not sent

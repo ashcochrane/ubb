@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,480 of 2,929 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,481 of 2,930 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2899,6 +2899,12 @@ measurement_key:
     # under `historical-migrations` (279 -> 280): a declaration is not
     # deleted from under the names held beneath it (`event_types/0011`), so
     # the exclusions stand at 449.
+    #
+    # 2026-10-26, R10-W1 (#572): 2,480 of 2,929 -> 2,481 of 2,930 tracked
+    # files (`units` UNMOVED). One file arrived, swept: the composition
+    # layer's test module for a published Event Type's own supplier deciding
+    # what a call costs. The SDK's new exception is a class in a generated
+    # module that already existed, so no file arrived for it.
 
     - term: units
       retired_as: >-

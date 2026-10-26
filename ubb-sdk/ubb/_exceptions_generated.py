@@ -180,6 +180,11 @@ class PricingModeFrozenError(ConflictError):
     CODE = 'pricing_mode_frozen'
 
 
+class ProviderConflictsWithEventTypeError(UnprocessableEntityError):
+    STATUS = 422
+    CODE = 'provider_conflicts_with_event_type'
+
+
 class RateLimitExceededError(RateLimitError):
     STATUS = 429
     CODE = 'rate_limit_exceeded'
@@ -266,6 +271,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'method_not_allowed': MethodNotAllowedError,
     'not_found': NotFoundError,
     'pricing_mode_frozen': PricingModeFrozenError,
+    'provider_conflicts_with_event_type': ProviderConflictsWithEventTypeError,
     'rate_limit_exceeded': RateLimitExceededError,
     'service_unavailable': ServiceUnavailableError,
     'stripe_tax_not_active': StripeTaxNotActiveError,
@@ -324,6 +330,7 @@ __all__ = [
     'LastActiveAdminError',
     'LastActiveKeyError',
     'PricingModeFrozenError',
+    'ProviderConflictsWithEventTypeError',
     'RateLimitExceededError',
     'StripeTaxNotActiveError',
     'TaskAlreadyTerminalError',
