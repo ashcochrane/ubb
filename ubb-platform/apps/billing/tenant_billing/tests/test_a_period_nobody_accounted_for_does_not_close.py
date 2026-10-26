@@ -49,7 +49,6 @@ from apps.platform.event_types.quarantine import (
     PeriodHoldsUnresolvedValues,
     dismiss_as_non_economic,
     hold_an_unrecognised_quantity,
-    register_the_held_name,
 )
 from apps.platform.event_types.tests._helpers import (
     held_beside_no_recorded_event)
@@ -297,14 +296,19 @@ class AnUndecidedNameRefusesTheCloseTest(TestCase):
         assert period.status == "closed"
 
     def test_a_registered_name_does_not_block_the_close(self):
-        """The other end of the same rule: a decision taken is a decision."""
+        """The other end of the same rule: a decision taken is a decision —
+        here the tenant declaring the name and publishing the declaration,
+        which registers it (#568; only a publication answers a held name)."""
         tenant = _tenant()
         period = _period(tenant)
         held = _a_name_nobody_declared(tenant)
         # The name is held directly, beside no recorded event, so no product
         # is asked to replay one: what the close reads is the decision.
+        _declared(tenant, "reasoning_tokens")
         with held_beside_no_recorded_event():
-            register_the_held_name(held, _declared(tenant, "reasoning_tokens"))
+            EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY).publish()
+        held.refresh_from_db()
+        assert not held.is_unresolved
 
         TenantBillingService.close_period(period)
 
