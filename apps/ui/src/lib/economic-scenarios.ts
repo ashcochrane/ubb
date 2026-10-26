@@ -366,6 +366,33 @@ export function priceNotApplicable(
 }
 
 // ---------------------------------------------------------------------------
+// A posting HELD for remediation — a cost and a price that are one state.
+
+/** The two reasons a posting is held: a name the tenant never declared. */
+export type HeldNameReason = Extract<
+  UnresolvedReason,
+  "event_type_not_declared" | "measurement_not_declared"
+>;
+
+/**
+ * A posting recorded under a name the tenant never declared — an Event Type
+ * nobody published (#568), or a quantity no declaration names — and held until
+ * the tenant says what it meant; a remediation replays it from its own moment.
+ *
+ * COMPOSED WHOLE, COST AND PRICE, because the pair IS the state (#473 row 4).
+ * The held cost alone is `unknownCost(reason)`; what makes it held is the
+ * price beside it, `unknown` and never `waived` or `known`. A held cost beside
+ * a `waived` price would say somebody abandoned the charge, and beside a
+ * `known` one it would publish economics nobody resolved — so a fixture cannot
+ * take the cost and let a default choose the price.
+ */
+export function heldForRemediation(
+  reason: HeldNameReason,
+): SupplierCostScenario & CustomerPriceScenario {
+  return { ...unknownCost(reason), ...unknownPrice() };
+}
+
+// ---------------------------------------------------------------------------
 // `incomplete_total` — an aggregate over those postings, §9.4's other name.
 
 /**
