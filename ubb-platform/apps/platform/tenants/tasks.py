@@ -224,8 +224,19 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    entry would leave the module green. An ordering that happens to hold
     #    is an ordering nobody chose, and moving a class in a models file is
     #    not a change anyone would expect to break a tenant wipe.
+    #
+    #    ⚠ AND HELD NAMES BEFORE THE DECLARATIONS THEY ARE HELD BENEATH
+    #    (#473 row 3). An Event Type may not be deleted while an undecided
+    #    quantity is held beneath it, and the rule is asked when each delete
+    #    COMMITS — this wipe runs one transaction per model, and the generic
+    #    sweep reaches the Event Type before the held names in its own app. A
+    #    held name is traffic, not configuration, so it goes either way; going
+    #    first is only the order the rule needs. Not insurance like the two
+    #    above: dropping it turns `test_a_full_reset_takes_the_held_names_first`
+    #    red.
     if not keep_config:
-        for label in ("pricing.TaskPrice", "pricing.Rate", "plans.Plan"):
+        for label in ("event_types.QuarantinedKey", "pricing.TaskPrice",
+                      "pricing.Rate", "plans.Plan"):
             model = django_apps.get_model(*label.split("."))
             manager = _wipe_manager(model)
             _wipe(label, lambda m=manager: m.filter(tenant=tenant).delete())

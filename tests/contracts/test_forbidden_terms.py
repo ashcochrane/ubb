@@ -409,7 +409,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # names its event, and an Event Type with no publication becomes a
         # reason. Neither names a retired word, so the number moved for the
         # files existing.
-        "historical-migrations": (UNTIL_SLICE_8, 279, 19),
+        # 279 -> 280 in R10-W1 (#473 row 3): one migration — a declaration
+        # is not deleted from under its held names. It names no retired
+        # word, so the number moved for the file existing.
+        "historical-migrations": (UNTIL_SLICE_8, 280, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

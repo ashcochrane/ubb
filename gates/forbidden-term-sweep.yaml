@@ -434,7 +434,10 @@ exclusions:
     # Type with no production declaration becomes a reason a cost is
     # unresolved (`usage/0048`). Neither names a retired word, so the
     # number moved for the files existing.
-    files: 279
+    # 279 → 280 in R10-W1 (#473 row 3): one migration — a declaration is
+    # not deleted from under the names held beneath it (`event_types/0011`).
+    # It names no retired word, so the number moved for the file existing.
+    files: 280
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

@@ -360,6 +360,13 @@ def dismiss_as_non_economic(held):
     A health check or a debug call is not a costable thing, so there is nothing
     to re-cost — and returning a replay would put a name the tenant has just
     said is not economic back onto the path a cost travels.
+
+    **AND NOTHING RE-COSTS THE EVENT WITHOUT IT (#473 row 2, ruled
+    2026-10-22).** Dismissal answers the period close's question and no other:
+    the event keeps the cost and the price it was recorded with. The name is
+    not an answer `the_tenants_answers` gives, so it keeps its spelling, and
+    every later re-costing holds it again — none drops it from the bag and
+    settles the rest.
     """
     _refuse_a_second_remediation(held)
     _remediate(held, RESOLUTION_DISMISSED, "")
