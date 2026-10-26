@@ -9,14 +9,17 @@ followed from that, and each is a row of #473 with a test of its own here:
   its replay on, and the event it arrived on is re-costed and re-priced from
   its own moment, with every answer the tenant has given about that event
   applied — including a held quantity re-keyed to the declared name it was
-  mapped to, which only the replay carries.
+  mapped to, which the posting's own bag cannot say. A publication that
+  declares a held name registers it by itself, and only a publication can
+  answer one: production reads nothing else (#605).
 
 The owner ruled the other three on 2026-10-22, adopting the close-out report's
 recommendations:
 
 * **Row 2 — dismissal does not re-cost.** A name the tenant says is not
   economic frees the period close, and the event keeps the cost and price it
-  was recorded with: no replay, and no later run re-costs it without the name.
+  was recorded with: no replay, and no later run re-costs it — not without the
+  name, and not with it once its key is published.
 * **Row 3 — deletion is refused while held names depend on it.** An Event Type
   with an undecided quantity held beneath it cannot be deleted, through any
   door; a held name already decided, or held for a reason no declaration
@@ -25,12 +28,17 @@ recommendations:
   whose cost waits on a held name carries an `unknown` price — not one a rule
   matching a spelling produced, and not a `waived` one a margin rung produced.
 
-Every report here is recorded through the public route; the remediations are
-the kernel's own services, which is where a tenant's decision is taken today,
-and no route deletes an Event Type, so row 3 is asked of the ORM's doors.
+Every report here is recorded through the public route, and every
+declaration and publication made through the tenant's own routes; a map and a
+dismissal are the kernel's own services, which is where those decisions are
+taken today, and no route deletes an Event Type, so row 3 is asked of the
+ORM's doors.
 """
+from datetime import timedelta
+
 import pytest
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, connection, migrations, transaction
+from django.db.migrations.loader import MigrationLoader
 
 from api.v1.tests._helpers import DeclaringTenantCase, OnTheSingleRoute
 from apps.metering.pricing.services.resolution_run import (
@@ -41,8 +49,10 @@ from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import EventType, Measurement
+from apps.platform.event_types.models import RESOLUTION_DISMISSED
 from apps.platform.event_types.quarantine import (
-    dismiss_as_non_economic, map_to_a_declaration, refuse_a_silent_close)
+    NotYetPublished, dismiss_as_non_economic, map_to_a_declaration,
+    refuse_a_silent_close)
 from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
@@ -51,11 +61,8 @@ from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
-    MEASUREMENT_VALUE_TYPE_INTEGER,
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN,
-    SOURCE_KIND_CALLER_SUPPLIED,
-    UNIT_CALL,
     UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
     UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED,
 )
@@ -144,27 +151,50 @@ class TheReplayReachesTheEventTest(_ATenantWithOneDeclaration):
                          10 * PRICES[INPUT] + 5 * PRICES[OUTPUT]
                          + 2 * PRICES[CACHED])
 
-    def test_a_run_applies_the_answer_once_the_declaration_is_published(self):
-        """A name mapped to a quantity the tenant has declared only in a DRAFT
-        cannot settle yet — production reads the publication (#605) — so the
-        replay completes nothing. The answer is not lost: once the draft is
-        published, a Resolution Run re-costs the event with the same re-keyed
-        bag, from the same moment. A run that re-resolved the spelling would
-        hold it again forever."""
+    def test_a_name_mapped_to_a_draft_waits_for_the_publication(self):
+        """A quantity the tenant has declared only in a DRAFT answers for
+        nothing — production reads the publication (#605) — so a mapping to
+        it is refused by name, and the name stays held. Published, it is the
+        answer, and the replay settles the event from its own moment."""
         reasoning, misspelt = "reasoning_tokens", "reasonng_tokens"
         cost_rate_in_default_book(self.tenant, measurement_key=reasoning,
                                   unit_quantity=1, rate_per_unit_micros=1_000)
         posting = self.a_report(**{INPUT: "10", misspelt: "4"})
-        self.admin("put", f"/event-types/{CHAT}/measurements/{reasoning}", {
-            "value_type": MEASUREMENT_VALUE_TYPE_INTEGER, "unit": UNIT_CALL,
-            "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+        self.declares_a_quantity(CHAT, reasoning, publish=False)
+
+        with self.assertRaises(NotYetPublished):
+            map_to_a_declaration(self.held_as(misspelt),
+                                 self.declared_as(reasoning))
+        self.assertTrue(self.held_as(misspelt).is_unresolved)
+
+        self.admin("post", f"/event-types/{CHAT}/publish")
+        map_to_a_declaration(self.held_as(misspelt),
+                             self.declared_as(reasoning))
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
+        self.assertEqual(posting.provider_cost_micros,
+                         10 * COSTS[INPUT] + 4 * 1_000)
+
+    def test_a_run_applies_the_answer_the_replay_could_not_settle_on(self):
+        """Mapped while no rate reached the declared name at the event's
+        moment, the replay completes nothing — and the answer is not lost: a
+        Resolution Run, once a rate is in force at that moment, re-costs the
+        event under the same re-keyed bag. A run that re-resolved the spelling
+        would hold the name again forever."""
+        reasoning, misspelt = "reasoning_tokens", "reasonng_tokens"
+        self.declares_a_quantity(CHAT, reasoning)
+        posting = self.a_report(**{INPUT: "10", misspelt: "4"})
 
         map_to_a_declaration(self.held_as(misspelt),
                              self.declared_as(reasoning))
         posting.refresh_from_db()
         self.assertEqual(posting.costing_status, COSTING_STATUS_UNRESOLVED)
 
-        self.admin("post", f"/event-types/{CHAT}/publish")
+        cost_rate_in_default_book(
+            self.tenant, measurement_key=reasoning, unit_quantity=1,
+            rate_per_unit_micros=1_000,
+            valid_from=posting.effective_at - timedelta(days=1))
         with transaction.atomic():
             execute(tenant=self.tenant, selector=RunSelector())
 
@@ -172,6 +202,24 @@ class TheReplayReachesTheEventTest(_ATenantWithOneDeclaration):
         self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
         self.assertEqual(posting.provider_cost_micros,
                          10 * COSTS[INPUT] + 4 * 1_000)
+
+    def test_a_publication_declaring_a_held_quantity_registers_it(self):
+        """The tenant declares the very name that arrived, through the
+        catalogue routes: the publication is the registration, and the event
+        settles from its own moment."""
+        reasoning = "reasoning_tokens"
+        cost_rate_in_default_book(self.tenant, measurement_key=reasoning,
+                                  unit_quantity=1, rate_per_unit_micros=1_000)
+        posting = self.a_report(**{INPUT: "10", reasoning: "4"})
+        self.assertTrue(self.held_as(reasoning).is_unresolved)
+
+        self.declares_a_quantity(CHAT, reasoning)
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
+        self.assertEqual(posting.provider_cost_micros,
+                         10 * COSTS[INPUT] + 4 * 1_000)
+        self.assertEqual(self.held_as(reasoning).resolved_key, reasoning)
 
     def test_a_mapping_onto_a_name_the_event_carries_is_refused_whole(self):
         """The event already reported input tokens; mapping a misspelling
@@ -253,6 +301,45 @@ class ADismissedNameReCostsNothingTest(_ATenantWithOneDeclaration):
 
         self.assertEqual(as_recorded(posting), recorded)
 
+    def test_publishing_a_dismissed_key_later_re_costs_nothing(self):
+        """The tenant dismissed the Event Type and later declares the same
+        key for real. The dismissed call stays dismissed: the publication
+        does not register it, and no run costs it under the new declaration —
+        that would re-cost history the tenant said was never economic."""
+        never = "acme.never_declared"
+        posting = self.posting(self.send("k2", event_type=never,
+                                         measurements={INPUT: "10"}))
+        recorded = as_recorded(posting)
+        (held,) = self.held()
+        dismiss_as_non_economic(held)
+
+        self.declared(never, quantities=(INPUT,))
+        with transaction.atomic():
+            execute(tenant=self.tenant, selector=RunSelector())
+
+        self.assertEqual(as_recorded(posting), recorded)
+        held.refresh_from_db()
+        self.assertEqual(held.resolution, RESOLUTION_DISMISSED)
+
+    def test_declaring_a_dismissed_quantity_later_re_costs_nothing(self):
+        """The same for a quantity: declared and published beneath the
+        Event Type after it was dismissed, it does not reach the call the
+        tenant said it never cost."""
+        reasoning = "reasoning_tokens"
+        cost_rate_in_default_book(self.tenant, measurement_key=reasoning,
+                                  unit_quantity=1, rate_per_unit_micros=1_000)
+        posting = self.a_report(**{INPUT: "10", reasoning: "4"})
+        recorded = as_recorded(posting)
+        dismiss_as_non_economic(self.held_as(reasoning))
+
+        self.declares_a_quantity(CHAT, reasoning)
+        with transaction.atomic():
+            execute(tenant=self.tenant, selector=RunSelector())
+
+        self.assertEqual(as_recorded(posting), recorded)
+        self.assertEqual(self.held_as(reasoning).resolution,
+                         RESOLUTION_DISMISSED)
+
 
 class ADeclarationIsNotDeletedFromUnderItsHeldNamesTest(
         OnTheSingleRoute, DeclaringTenantCase):
@@ -325,6 +412,33 @@ class ADeclarationIsNotDeletedFromUnderItsHeldNamesTest(
                                            quantities=(INPUT,)))
 
         self.assertNotEqual(self.declaration().pk, original)
+
+    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
+        """`docs/conventions/django-patterns.md`: a reverse that a test runs.
+        Asserted by behaviour at both ends — reversed out, the deletion lands;
+        re-applied, the same deletion of another declaration is refused again.
+        Postgres runs the DDL inside this test's transaction, which takes it
+        back, so no other test sees the table without its rule."""
+        migration = MigrationLoader(connection).get_migration(
+            "event_types",
+            "0011_a_declaration_is_not_deleted_from_under_its_held_names")
+        (run_python,) = [operation for operation in migration.operations
+                         if isinstance(operation, migrations.RunPython)]
+
+        with connection.schema_editor() as editor:
+            run_python.reverse_code(None, editor)
+        self.committed(lambda: self.declaration().delete())
+        self.assertIsNone(self.declaration())
+
+        with connection.schema_editor() as editor:
+            run_python.code(None, editor)
+        second = "acme.second"
+        self.declared(second, quantities=(INPUT,))
+        self.send("k2", event_type=second,
+                  measurements={INPUT: "1", OUTPUT_MISSPELT: "1"})
+        with self.assertRaises(IntegrityError):
+            self.committed(lambda: self.declaration(second).delete())
+        self.assertIsNotNone(self.declaration(second))
 
     def test_an_event_type_held_at_a_draft_key_does_not_hold_the_draft(self):
         """An unrecognised EVENT TYPE is held because no publication answers

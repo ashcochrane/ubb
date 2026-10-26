@@ -90,7 +90,7 @@ def retired_kind_column():
 UNMEASURED_QUANTITY = "a_quantity_no_event_measures"
 
 
-def _the_quantity_it_prices(tenant, fields, *, event_type, provider):
+def _the_quantity_it_prices(tenant, fields, *, event_type=None, provider=None):
     """The declared quantity a rule prices, put in `fields`, and the Event
     Type it pins published with it.
 
@@ -109,8 +109,14 @@ def _the_quantity_it_prices(tenant, fields, *, event_type, provider):
     published Event Type's supplier decides whose calls it prices.
 
     Five fixtures below write a rule, and each used to spell the first half
-    itself; one place now, so the second half cannot reach some of them.
+    itself; one place now, so the second half cannot reach some of them. The
+    Event Type and the supplier default to the rule's own pins in `fields`; a
+    fixture that takes either as a parameter of its own passes it.
     """
+    if event_type is None:
+        event_type = fields.get("event_type", "")
+    if provider is None:
+        provider = fields.get("provider", "")
     if "measurement" not in fields:
         fields["measurement"] = declares_a_quantity(
             tenant, fields.pop("measurement_key", UNMEASURED_QUANTITY))
@@ -188,9 +194,7 @@ def an_override_rule(tenant, customer, **fields):
     # itself would be a second writer of that construction and would keep
     # passing the day the real one changed (#354).
     book = BookService.the_customers_own_book(tenant, customer)
-    _the_quantity_it_prices(
-        tenant, fields, event_type=fields.get("event_type", ""),
-        provider=fields.get("provider", ""))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, customer=customer, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -214,9 +218,7 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     plan = a_plan(tenant=tenant, key=plan_key)
     PlanService.assign(tenant, customer, plan)
     book = plan.pricing_book
-    _the_quantity_it_prices(
-        tenant, fields, event_type=fields.get("event_type", ""),
-        provider=fields.get("provider", ""))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, pricing_book=book,
         book_version_from=book.version, **fields)
@@ -625,9 +627,7 @@ def cost_rule_in_the_providers_book(tenant, provider, **fields):
         tenant=tenant, provider_key=provider,
         currency=fields.get("currency", tenant.default_currency or "usd"),
         is_default=True, defaults={"key": f"cost-{provider}"[:64]})
-    _the_quantity_it_prices(
-        tenant, fields, event_type=fields.get("event_type", ""),
-        provider=fields.get("provider", ""))
+    _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, cost_book=book,
         book_version_from=book.version, **fields)
@@ -701,9 +701,7 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
     """
     book = PricingBook.objects.create(
         tenant=tenant, key=key, is_default=False)
-    _the_quantity_it_prices(tenant, fields,
-                            event_type=fields.get("event_type", ""),
-                            provider=provider)
+    _the_quantity_it_prices(tenant, fields, provider=provider)
     return Rate.objects.create(
         tenant=tenant, provider=provider, currency=currency,
         pricing_book=book, book_version_from=book.version, **fields)

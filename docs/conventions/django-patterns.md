@@ -72,6 +72,21 @@ backstop (for the reservation, an hourly sweep over terminal work still holding 
 `apps/platform/work/tests/test_every_terminal_path_reaches_the_listeners.py` holds that every
 function writing a terminal status notifies, so a new terminal path cannot forget the channel.
 
+**The replay consumer registry** (`apps/platform/event_types/hooks.py`, #473 row 1, #568) is the
+third, on the same shape — `register_replay_consumer(fn)` in `AppConfig.ready()`, idempotent, every
+consumer called synchronously inside the kernel act's own transaction — and **the deliberate
+opposite of the terminal one: a consumer that raises VETOES the act.** The act is a tenant's decision
+about a held name (a map, a register, or a publication declaring it), and the consumer's work — the
+held event re-costed from its own moment (`resolution_run.replay_the_held_event`, registered in
+`PricingConfig.ready()`) — is that decision's consequence, not a notification about it: a name
+recorded as decided whose event was never re-costed would leave the period-close safeguard with
+nothing looking at it again. So nothing catches there, and decision and replay land together or not
+at all. The one carve: a publication registering the held names it declares does each in a savepoint
+of its own, and a refusal the consumer raises BY NAME (a `QuarantineError` — the call named another
+supplier, an answer would carry one quantity twice) leaves that one name held instead of refusing
+the publication; anything else goes up and takes the publication with it. Choose by asking whether
+the reaction is the fact's consequence (veto) or news about it (notification).
+
 ## Locking & concurrency
 
 - Take row locks with `select_for_update` in the canonical global order (Run → Wallet → Customer →
@@ -145,6 +160,17 @@ wire and validate.
   session setting or a temporary drop; both are doors, and ADR-0007 §2's point is that a rule holds
   through every one. #354's is the sandbox tenant, and the tenant table's own `CHECK` is what stops
   the exemption being turned on.
+- **⚠ The one rule that READS a session setting does so to name a writer, not to exempt a case, and
+  it says so.** The price pair's admitted move (`unknown` to `known`) is admitted only on a statement
+  `price_resolution.resolve_customer_price` marked (`usage/migrations/0049`, #557): the
+  transaction-local setting `ubb.price_door`, set by `marked_as_the_price_door` around the door's one
+  `UPDATE` and cleared after. The bullet above still holds for what it is about — a case a rule must
+  hold through is stated positively in the rule. This is a different question with no positive
+  statement available: Postgres cannot see which function issued a statement, so naming the one
+  writer takes a mark. It is a guard against a second writer by ACCIDENT — any code can set the
+  mark, and every setter goes through that one context manager, a search away — and it is not a
+  security boundary. It covers the move, an `UPDATE`; an insert that arrives `known` is the
+  recording path's own pricing, not a resolution.
 - **Declaring is not enforcing, and a declaration must arrive with what keeps it.** The database
   enforcement is gate G19, **installed by slice 3** (#319) and enforced over the *declarations*
   rather than over a list of columns, so a column you declare is judged on the day you declare it; a

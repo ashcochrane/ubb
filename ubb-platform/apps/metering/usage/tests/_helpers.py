@@ -49,14 +49,13 @@ default**: a default would be the vacuous version of this check, and the check
 is the one thing a shared helper could quietly stop doing for every caller at
 once.
 """
-from contextlib import contextmanager
 from datetime import timedelta
 
 from django.db import IntegrityError, connection, models, transaction
 from django.utils import timezone
 
 from apps.metering.pricing.services.price_resolution import (
-    PRICE_DOOR_MARK, PRICE_DOOR_SETTING)
+    marked_as_the_price_door)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -119,26 +118,15 @@ DOORS = (("QuerySet.update()", through_the_queryset),
          ("save()", through_save))
 
 
-@contextmanager
-def as_the_price_door():
-    """A statement made under the price door's own mark (#557).
-
-    The price pair's rule admits `unknown` to `known` only on a statement
-    `resolve_customer_price` marked, so a test asking whether the rule ADMITS
-    the move through each of the three doors — rather than whether the door
-    makes it — has to make it under that mark. Built from the door's own
-    constants, so the setting a test makes is the one the table reads; cleared
-    on the way out, as the door clears it.
-    """
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT set_config(%s, %s, true)",
-                       [PRICE_DOOR_SETTING, PRICE_DOOR_MARK])
-    try:
-        yield
-    finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT set_config(%s, '', true)",
-                           [PRICE_DOOR_SETTING])
+#: A statement made under the price door's own mark (#557).
+#:
+#: The price pair's rule admits `unknown` to `known` only on a statement
+#: `resolve_customer_price` marked, so a test asking whether the rule ADMITS
+#: the move through each of the three doors — rather than whether the door
+#: makes it — has to make it under that mark. It is the door's own context
+#: manager, not a copy of it: the setting a test makes is the one the door
+#: makes, and it is cleared on the way out as the door clears it.
+as_the_price_door = marked_as_the_price_door
 
 
 def settle_the_supplier_cost(posting, micros):

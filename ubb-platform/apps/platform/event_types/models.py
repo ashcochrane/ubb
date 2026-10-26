@@ -959,6 +959,13 @@ class EventType(PinnedDeclaration, BaseModel):
             # call has just replaced.
             self._pinned_as_loaded = self._pinned_declaration()
             self.save()
+            # AND A PUBLICATION IS THE TENANT DECLARING THE NAMES IT CARRIES
+            # (#568): every undecided name held at this key, or beneath it
+            # under a code this publication now carries, is registered and
+            # replayed in this same transaction. Imported here because the
+            # quarantine reads these models.
+            from .quarantine import register_what_a_publication_declares
+            register_what_a_publication_declares(self)
         return self
 
     # -- what makes a change a revision rather than a reinterpretation --------

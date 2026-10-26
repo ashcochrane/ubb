@@ -22,7 +22,9 @@ catalogue holds it now.
 import json
 from pathlib import Path
 
+from django.db import connection
 from django.test import SimpleTestCase
+from django.test.utils import CaptureQueriesContext
 
 from api.v1.metering_endpoints import PROVIDER_CONFLICTS_WITH_EVENT_TYPE
 from api.v1.schemas import RecordUsageRequest
@@ -32,6 +34,8 @@ from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, rate_in_default_book)
 from apps.metering.usage.models import Posting
 from apps.platform.event_types.models import EventType
+from apps.metering.pricing.services.resolution_run import (
+    TheEventNamedAnotherSupplier)
 from apps.platform.event_types.quarantine import map_to_a_declaration
 from core.problems import PROBLEMS, VERDICTS
 from core.vocabulary import COSTING_STATUS_KNOWN
@@ -89,6 +93,20 @@ class _TheDeclaredProviderDecides:
 
         self.assert_costed_as(ack, DECLARED)
 
+    def test_an_event_pays_one_read_of_its_cost_declaration(self):
+        """#605's expectation, kept through #572. The provider admission reads
+        the declaration on every event naming an Event Type; that same read
+        is handed down to the costing, which asks no second time — so a
+        publish cannot land between an admission and the costing either. The
+        read is the one query on the catalogue that joins the supplier."""
+        with CaptureQueriesContext(connection) as captured:
+            self.send("k1", **self.a_call())
+
+        reads = [query["sql"] for query in captured.captured_queries
+                 if '"ubb_event_type"' in query["sql"]
+                 and '"ubb_provider"' in query["sql"]]
+        self.assertEqual(len(reads), 1, reads)
+
     def test_a_different_provider_is_refused_by_name(self):
         code, detail = self.refused("k1", **self.a_call(provider=OTHER))
 
@@ -141,12 +159,12 @@ class _TheDeclaredProviderDecides:
 
         self.assertEqual(again["event_id"], first["event_id"])
 
-    def test_a_held_event_type_replays_under_the_supplier_its_answer_names(self):
-        """Recorded while nobody had said what it was, with the provider it
-        sent; once the tenant maps it to an Event Type, that Event Type's
-        supplier is authoritative for the replay as it is for a recording."""
+    def test_a_held_event_naming_no_supplier_replays_under_its_answers(self):
+        """Recorded while nobody had said what it was, naming no supplier;
+        once the tenant maps it to an Event Type, that Event Type's supplier
+        is what it costs under — as an omitted provider is at the edge."""
         posting = self.posting(self.send(
-            "k1", **self.a_call(event_type="acme.chat_v2", provider=OTHER)))
+            "k1", **self.a_call(event_type="acme.chat_v2")))
 
         (held,) = self.held()
         map_to_a_declaration(
@@ -155,6 +173,46 @@ class _TheDeclaredProviderDecides:
         posting.refresh_from_db()
         self.assertEqual(posting.provider_cost_micros, 3 * COST[DECLARED])
         self.assertEqual(posting.billed_cost_micros, 3 * PRICE[DECLARED])
+
+    def test_a_held_event_naming_another_supplier_is_not_answered_by_it(self):
+        """The edge would have refused this call by name; a replay may not
+        cost it under the declared supplier's rules instead — that is the
+        substitution #572 forbids. The mapping is refused by name, and a
+        publication at the key it arrived under, naming the declared
+        supplier, leaves it held too: the name is still the tenant's to
+        decide."""
+        posting = self.posting(self.send(
+            "k1", **self.a_call(event_type="acme.chat_v2", provider=OTHER)))
+        recorded = (posting.costing_status, posting.provider_cost_micros,
+                    posting.billed_cost_micros)
+
+        (held,) = self.held()
+        with self.assertRaises(TheEventNamedAnotherSupplier):
+            map_to_a_declaration(
+                held, EventType.objects.get(tenant=self.tenant, key=CHAT))
+        self.declared("acme.chat_v2", quantities=(CALLS,),
+                      provider_key=DECLARED)
+
+        held.refresh_from_db()
+        self.assertTrue(held.is_unresolved)
+        posting.refresh_from_db()
+        self.assertEqual((posting.costing_status, posting.provider_cost_micros,
+                          posting.billed_cost_micros), recorded)
+
+    def test_a_held_event_whose_supplier_its_declaration_names_replays(self):
+        """The control for the case above: published naming the supplier
+        the call did name, the key is the answer, and the call is costed
+        under that supplier's rules."""
+        posting = self.posting(self.send(
+            "k1", **self.a_call(event_type="acme.chat_v2", provider=OTHER)))
+
+        self.declared("acme.chat_v2", quantities=(CALLS,), provider_key=OTHER)
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.provider_cost_micros, 3 * COST[OTHER])
+        self.assertEqual(posting.billed_cost_micros, 3 * PRICE[OTHER])
+        (held,) = self.held()
+        self.assertFalse(held.is_unresolved)
 
 
 class TheDeclaredProviderDecidesOnTheSingleRouteTest(

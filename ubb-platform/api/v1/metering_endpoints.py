@@ -290,10 +290,13 @@ def admit_supplier_cost(item, declaration):
     **WHAT IT COSTS, STATED RATHER THAN HIDDEN.** Nothing of its own: it is
     handed the declaration :func:`replay_or_record` reads once per event
     naming an Event Type, which the provider admission needs on every such
-    event (#572) — so the two questions share one indexed query. A batch pays
-    it per item; it is deliberately not memoised across the batch, because a
-    batch item is a whole independent request here and a shared verdict would
-    be the first place they stopped being one.
+    event (#572), and that same read is handed down to the costing, which
+    therefore asks it no second time — one read of the cost declaration per
+    event, as before #572. (`admit_quantities` reads the publication's value
+    types on its own query, as it has since #603.) A batch pays it per item;
+    it is deliberately not memoised across the batch, because a batch item is
+    a whole independent request here and a shared verdict would be the first
+    place they stopped being one.
 
     **EACH REFUSAL HAS ITS OWN MESSAGE**, and every one names what the caller
     may do next rather than only what they may not: it opens with what the
@@ -342,7 +345,7 @@ def admit_supplier_cost(item, declaration):
         f"when it is published.")
 
 
-def usage_kwargs(item, *, provider):
+def usage_kwargs(item, *, provider, declaration):
     """The single↔batch pass-through, written ONCE (#112): the field-for-
     field map from a request item (RecordUsageRequest — the single and batch
     items share the schema) onto record_new_usage's keyword surface.
@@ -366,7 +369,11 @@ def usage_kwargs(item, *, provider):
     owner's review of #570). One amount and no echo means the receipt is the
     only place left that can say which transport carried the figure, so the
     recording core is handed the source kind to keep there by value — never
-    a second amount, and never the transport's own field."""
+    a second amount, and never the transport's own field.
+
+    **AND THE DECLARATION THE ADMISSIONS READ GOES DOWN TO THE COSTING (#605).**
+    The event pays one read of its Event Type's publication, and the
+    admissions and the costing answer from the same one."""
     figure, source = _the_supplier_cost(item)
     return dict(
         idempotency_key=item.idempotency_key,
@@ -380,6 +387,7 @@ def usage_kwargs(item, *, provider):
         task_id=item.task_id,
         measurements=item.measurements,
         effective_at=item.effective_at,
+        declaration=declaration,
     )
 
 
@@ -528,7 +536,9 @@ def replay_or_record(tenant, customer, item):
        Found by `UsageService.replay`, the recording path's own lookup — keyed
        by tenant, customer and key, with no body compared.
     2. **The declaration, read once** (`costing.cost_declaration`) for the two
-       admissions that ask it — none for an event naming no Event Type.
+       admissions that ask it and for the costing below, which is handed it
+       rather than reading it again (#605) — none for an event naming no Event
+       Type.
     3. **The provider (#572)**: a published Event Type's own supplier is
        authoritative, so another is refused by name
        (`provider_conflicts_with_event_type`) and an omitted one records under
@@ -570,7 +580,7 @@ def replay_or_record(tenant, customer, item):
         tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     return UsageService.record_new_usage(
         tenant=tenant, customer=customer, dimension_slots=dimension_slots,
-        **usage_kwargs(item, provider=provider))
+        **usage_kwargs(item, provider=provider, declaration=declaration))
 
 
 def record_sync_item(tenant, item, customers, task_exists):

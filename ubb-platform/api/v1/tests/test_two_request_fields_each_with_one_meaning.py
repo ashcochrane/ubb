@@ -458,12 +458,12 @@ class TheClaimedCostIsAcceptedAnywhereTest(_RecordingCase):
                           claimed_provider_cost_micros=CLAIMED)
 
         self.assertEqual(ack["claimed_provider_cost_micros"], CLAIMED)
-        # Compared with the claim and never with what an undeclared key's
-        # path answers, which is #568's to say (#605's delegation).
-        self.assertNotEqual(ack["provider_cost_micros"], CLAIMED,
-                            "the claim became the supplier cost — the two "
-                            "fields have run together, which is the failure "
-                            "this ticket is about")
+        # The undeclared key's path is #568's, and it HOLDS the event: no
+        # supplier cost at all — so the claim did not become one.
+        self.assertIsNone(ack["provider_cost_micros"],
+                          "the claim became the supplier cost — the two "
+                          "fields have run together, which is the failure "
+                          "this ticket is about")
 
     def test_it_is_accepted_beside_an_unresolved_cost(self):
         """The case it exists for: the supplier has not billed yet.

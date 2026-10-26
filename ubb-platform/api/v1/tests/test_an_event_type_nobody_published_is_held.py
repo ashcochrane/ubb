@@ -16,9 +16,11 @@ What it does now, through both recording routes:
   same savepoint and keeping the bag as it arrived, and the posting in every
   read that lists what UBB could not resolve;
 * a period holding it **does not close silently**;
-* and once the tenant says what it was — registers the name, or maps it to a
-  declaration that exists — it **replays from its own moment**, never the
-  repair's.
+* and once the tenant says what it was — **declares the name**, by publishing
+  an Event Type at its key through the routes a tenant declares with, or maps
+  it to a declaration that is published — it **replays from its own moment**,
+  never the repair's. A draft answers for nothing: production reads the
+  publication (#605).
 
 **"No production declaration" is the read returning nothing, and only that**
 (#605's delegation, `#568 6043472550`): nobody declared the key, or it was
@@ -42,10 +44,11 @@ from apps.metering.pricing.receipts import HELD_NAME_KEY
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, rate_in_default_book)
 from apps.platform.event_types.models import (
-    RESOLUTION_MAPPED, RESOLUTION_REGISTERED, UNRECOGNISED_EVENT_TYPE)
+    RESOLUTION_MAPPED, RESOLUTION_REGISTERED, UNRECOGNISED_EVENT_TYPE,
+    UNRECOGNISED_MEASUREMENT_KEY)
 from apps.platform.event_types.quarantine import (
-    PeriodHoldsUnresolvedValues, map_to_a_declaration,
-    refuse_a_silent_close, register_the_held_name)
+    NotYetPublished, PeriodHoldsUnresolvedValues, map_to_a_declaration,
+    refuse_a_silent_close)
 from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
@@ -216,10 +219,12 @@ class _AnEventTypeNobodyPublishedIsHeld:
 
         self.assertEqual(refusal.exception.held, (NOBODY,))
 
-    def test_it_replays_from_its_own_moment_once_the_name_is_registered(self):
-        """The decisive case for "never the repair date". The rules changed
-        between the call and the tenant's decision; the replay costs and
-        prices the call as of when it happened. Stamped with the repair's
+    def test_it_replays_from_its_own_moment_once_the_name_is_declared(self):
+        """The decisive case for "never the repair date", through the routes
+        a tenant declares with: publishing an Event Type at the held key IS
+        the tenant declaring the name, and it registers and replays it. The
+        rules changed between the call and the declaration; the replay costs
+        and prices the call as of when it happened. Stamped with the repair's
         moment it would answer the later rules' figures."""
         happened_at = timezone.now() - timedelta(days=3)
         changed_at = happened_at + timedelta(days=1)
@@ -230,9 +235,9 @@ class _AnEventTypeNobodyPublishedIsHeld:
         posting = self.assert_held_with_no_cost_and_no_price(
             self.a_report(effective_at=happened_at.isoformat()))
 
-        (held,) = self.held()
-        register_the_held_name(held, self.declared(NOBODY, quantities=(CALLS,)))
+        self.declared(NOBODY, quantities=(CALLS,))
 
+        (held,) = self.held()
         posting.refresh_from_db()
         self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
         self.assertEqual(posting.provider_cost_micros, 3 * COST_PER_CALL)
@@ -241,8 +246,8 @@ class _AnEventTypeNobodyPublishedIsHeld:
         self.assertEqual(posting.effective_at, happened_at)
         receipt = posting.pricing_receipt
         self.assertEqual(receipt["provenance"][HELD_NAME_KEY], str(held.pk))
-        held.refresh_from_db()
         self.assertEqual(held.resolution, RESOLUTION_REGISTERED)
+        self.assertEqual(held.resolved_key, NOBODY)
         # And the decision is what the close reads: nothing is held now.
         opens, closes = month_bounds(happened_at)
         refuse_a_silent_close(tenant=self.tenant,
@@ -257,13 +262,92 @@ class _AnEventTypeNobodyPublishedIsHeld:
         posting = self.assert_held_with_no_cost_and_no_price(
             self.a_report(measurements={}))
 
-        (held,) = self.held()
-        register_the_held_name(held, self.declared(NOBODY,
-                                                   quantities=(CALLS,)))
+        self.declared(NOBODY, quantities=(CALLS,))
 
         posting.refresh_from_db()
         self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
         self.assertEqual(posting.provider_cost_micros, 0)
+
+    def test_a_draft_at_the_key_replays_it_the_moment_it_is_published(self):
+        """Declared before the call and never published, so the call was
+        held (#605); the publication, later, is the declaration that answers
+        it."""
+        self.rules()
+        self.declared(NOBODY, quantities=(CALLS,), publish=False)
+        posting = self.assert_held_with_no_cost_and_no_price(self.a_report())
+
+        self.admin("post", f"/event-types/{NOBODY}/publish")
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
+        self.assertEqual(posting.provider_cost_micros, 3 * COST_PER_CALL)
+        self.assertEqual(posting.billed_cost_micros, 3 * PRICE_PER_CALL)
+        (held,) = self.held()
+        self.assertEqual(held.resolution, RESOLUTION_REGISTERED)
+
+    def test_a_draft_cannot_answer_for_it(self):
+        """A mapping to a declaration no publication carries is refused by
+        name: answered by a draft, the name would stop holding the close while
+        nothing could ever cost its event. The name stays held, and the event
+        as recorded."""
+        self.rules()
+        draft = self.declared("acme.meant", quantities=(CALLS,), publish=False)
+        posting = self.assert_held_with_no_cost_and_no_price(self.a_report())
+
+        (held,) = self.held()
+        with self.assertRaises(NotYetPublished):
+            map_to_a_declaration(held, draft)
+
+        held.refresh_from_db()
+        self.assertTrue(held.is_unresolved)
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_UNRESOLVED)
+        self.assertIsNone(posting.provider_cost_micros)
+        self.assertEqual(posting.pricing_status, PRICING_STATUS_UNKNOWN)
+
+    def test_a_quantity_its_declaration_does_not_carry_is_held_as_it_replays(self):
+        """The event was measured against no declaration until the tenant
+        declared its Event Type; a quantity that declaration does not carry
+        is a held name from then on, beside the same event and at its own
+        moment, so the close still sees it. Declaring that quantity too
+        settles the event."""
+        extra, extra_cost, extra_price = "extra_calls", 7, 70
+        self.rules()
+        cost_rate_in_default_book(
+            self.tenant, measurement_key=extra, unit_quantity=1,
+            rate_per_unit_micros=extra_cost)
+        rate_in_default_book(
+            self.tenant, measurement_key=extra, unit_quantity=1,
+            rate_per_unit_micros=extra_price)
+        posting = self.assert_held_with_no_cost_and_no_price(
+            self.a_report(measurements={CALLS: THREE, extra: "2"}))
+
+        self.declared(NOBODY, quantities=(CALLS,))
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_UNRESOLVED)
+        (still_held,) = [row for row in self.held() if row.is_unresolved]
+        self.assertEqual(still_held.unrecognised, UNRECOGNISED_MEASUREMENT_KEY)
+        self.assertEqual((still_held.event_type_key, still_held.measurement_key,
+                          still_held.quantity), (NOBODY, extra, "2"))
+        self.assertEqual(still_held.event_id, posting.id)
+        self.assertEqual(still_held.occurred_at, posting.effective_at)
+        opens, closes = month_bounds(posting.effective_at)
+        with self.assertRaises(PeriodHoldsUnresolvedValues) as refusal:
+            refuse_a_silent_close(tenant=self.tenant,
+                                  opened_at=utc_day_start(opens),
+                                  closes_at=utc_day_start(closes))
+        self.assertEqual(refusal.exception.held, (extra,))
+
+        self.declares_a_quantity(NOBODY, extra)
+
+        posting.refresh_from_db()
+        self.assertEqual(posting.costing_status, COSTING_STATUS_KNOWN)
+        self.assertEqual(posting.provider_cost_micros,
+                         3 * COST_PER_CALL + 2 * extra_cost)
+        self.assertEqual(posting.billed_cost_micros,
+                         3 * PRICE_PER_CALL + 2 * extra_price)
+        self.assertFalse([row for row in self.held() if row.is_unresolved])
 
     def test_it_replays_under_the_declaration_it_is_mapped_to(self):
         """A misspelling mapped to the Event Type it meant is costed under

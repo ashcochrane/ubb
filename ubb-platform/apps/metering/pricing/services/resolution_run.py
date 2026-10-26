@@ -56,7 +56,7 @@ with an outcome saying so.
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from django.db.models import Q
 
@@ -70,11 +70,12 @@ from apps.metering.pricing.services.cost_settlement import (
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
 from apps.metering.pricing.services.pricing_service import (
-    A_HELD_NAME, PricingSubject, resolve_price)
+    REASONS_A_NAME_IS_HELD, PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import SYSTEM, get_current_actor
 from apps.platform.event_types.costing import cost_declaration
-from apps.platform.event_types.quarantine import the_tenants_answers
+from apps.platform.event_types.quarantine import (
+    QuarantineError, hold_an_unrecognised_quantity, the_tenants_answers)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import cost_total, counts_as_unresolved
 from core.vocabulary import (
@@ -85,6 +86,7 @@ from core.vocabulary import (
     PRICING_STATUS_REASON_NEGATIVE_PRICE_UNSUPPORTED,
     UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
 )
+from core.exceptions import UBBError
 
 #: THE PAIRS A RUN RECOVERS, WHICH IS EVERY PAIR THERE IS. Read from the
 #: registry rather than listed here, so a third amount UBB may not have joins a
@@ -252,11 +254,12 @@ def execute(*, tenant, selector, actor=None):
 
     costs_settled = prices_resolved = left_unresolved = 0
     for posting_id in taking:
-        settled, resolved = _complete(
+        completion = _complete(
             posting_id, provenance={RESOLUTION_RUN_KEY: str(run_id)})
-        costs_settled += int(settled)
-        prices_resolved += int(resolved)
-        left_unresolved += int(not (settled or resolved))
+        costs_settled += int(completion.settled_cost)
+        prices_resolved += int(completion.resolved_price)
+        left_unresolved += int(not (completion.settled_cost
+                                    or completion.resolved_price))
 
     # THE ACTOR IS RESOLVED THE WAY THE LEDGER RESOLVES IT, and from the same
     # contextvar the auth seam captured — so this record and the
@@ -282,10 +285,22 @@ def execute(*, tenant, selector, actor=None):
         more_to_do=more_to_do)
 
 
+class Completion(NamedTuple):
+    """What re-resolving one posting did, and what it was answered."""
+
+    settled_cost: bool
+    resolved_price: bool
+    #: The re-resolution it completed from, or `None` where a run leaves the
+    #: posting alone. A replay reads it for the names the answer leaves
+    #: undeclared (:func:`replay_the_held_event`).
+    evaluation: Optional["Evaluation"]
+
+
 def _complete(posting_id, *, provenance):
     """Re-resolve one posting and complete whatever was never resolved.
 
-    Returns `(a cost settled, a price resolved)`. Each completion is one
+    Returns a :class:`Completion` — a cost settled, a price resolved, and the
+    evaluation both were completed from. Each completion is one
     statement through the pair's own door, and the two pairs are independent:
     the cost may settle while the price stays unknown, or the reverse, or both
     may move, or neither.
@@ -316,7 +331,7 @@ def _complete(posting_id, *, provenance):
 
     evaluation = what_a_run_would_complete(posting)
     if evaluation is None:
-        return False, False
+        return Completion(False, False, None)
     stored, resolved = evaluation.stored, evaluation.resolved
 
     settled_cost = _settle_the_cost(posting, stored, resolved, provenance) \
@@ -332,7 +347,7 @@ def _complete(posting_id, *, provenance):
     resolved_price = _resolve_the_price(posting, stored, resolved, provenance) \
         if "pricing" in evaluation.completable else False
 
-    return settled_cost, resolved_price
+    return Completion(settled_cost, resolved_price, evaluation)
 
 
 @dataclass(frozen=True)
@@ -369,6 +384,12 @@ def what_a_run_would_complete(posting):
     It writes nothing and locks nothing. The lock belongs to the caller that is
     about to write — a read taking `FOR UPDATE` over a tenant's backlog would
     block the runs it is reporting on.
+
+    ⚠ **AN EVENT WITH A DISMISSED NAME ON IT IS LEFT ALONE, FOR GOOD (#473
+    row 2).** Re-resolving it could only cost it with the name the tenant said
+    was not economic, or without it, and the ruling refuses both — so it is
+    never re-resolved, whatever is declared or published afterwards. The
+    tenant's answers about a held name are read once, here, and handed down.
     """
     stored = getattr(posting, Posting.RECEIPT_COLUMN)
     completable = frozenset(
@@ -377,9 +398,15 @@ def what_a_run_would_complete(posting):
     if not completable \
             or _the_record_cannot_account_for_a_completion(posting, stored):
         return None
+    answers = (the_tenants_answers(tenant_id=posting.tenant_id,
+                                   event_id=posting.pk)
+               if posting.unresolved_reason in REASONS_A_NAME_IS_HELD
+               else None)
+    if answers is not None and answers.dismissed:
+        return None
     return Evaluation(
         completable=completable, stored=stored,
-        resolved=resolve_price(_subject_of(posting, stored),
+        resolved=resolve_price(_subject_of(posting, stored, answers),
                                posting.effective_at))
 
 
@@ -614,7 +641,7 @@ def _receipt_completing(section, stored, resolved, provenance):
         provenance=provenance)
 
 
-def _subject_of(posting, stored):
+def _subject_of(posting, stored, answers):
     """The posting, as a question for the resolver.
 
     ⚠ **THE COST UBB ALREADY HOLDS IS STATED RATHER THAN RECOMPUTED, AND THAT
@@ -651,7 +678,7 @@ def _subject_of(posting, stored):
     HELD (#473 row 1, #568)** — see :func:`_what_the_tenant_says_it_was`.
     """
     event_type, provider, measurements = _what_the_tenant_says_it_was(
-        posting, stored)
+        posting, stored, answers)
     selectors = {name: getattr(posting, name) for name in Rate.SELECTORS}
     selectors.update(event_type=event_type, provider=provider)
     return PricingSubject(
@@ -671,18 +698,46 @@ def _subject_of(posting, stored):
         caller_provider_cost=_the_cost_the_record_holds(posting))
 
 
-class AnswerNamesOneQuantityTwice(ValueError):
+class AnswerNamesOneQuantityTwice(QuarantineError):
     """Applying the tenant's answers would put two quantities under one
     declared name on one event.
 
     A held name mapped onto a name the same event already carries says the
     call reported that quantity twice, and nothing here may add them or pick
     one. Raised inside the remediation's transaction by the replay, it refuses
-    the mapping — which is where the tenant can still answer differently.
+    the mapping — which is where the tenant can still answer differently. A
+    :class:`QuarantineError`, because it is a remediation refused by name: the
+    kernel's caller names it without importing a product, and a publication
+    leaves such a name held rather than failing.
     """
 
 
-def _what_the_tenant_says_it_was(posting, stored):
+class TheEventNamedAnotherSupplier(QuarantineError):
+    """The held event named a supplier, and the Event Type the tenant says
+    it was names a different one (#572).
+
+    At the recording edge that event would have been refused by name
+    (`provider_conflicts_with_event_type`): a published Event Type's own
+    Provider decides what its calls cost, and a caller's other supplier is
+    never silently trusted or silently substituted. A replay may not do here
+    what the edge refuses — cost a call that said one supplier under another's
+    rules — so the remediation is refused and the name stays held. A held
+    event that named NO supplier is costed under the Event Type's, as an
+    omitted provider is at the edge.
+    """
+
+
+class TheHeldRecordContradictsTheEvent(UBBError):
+    """A held name and the event it arrived on disagree about a fact they
+    were written with together.
+
+    Not a decision the tenant can take differently, so not a
+    :class:`QuarantineError`: a contradiction in the record goes up rather
+    than leaving a name quietly held.
+    """
+
+
+def _what_the_tenant_says_it_was(posting, stored, answers):
     """The event's Event Type key, its supplier and its quantities, with every
     answer the tenant has given about its held names applied (#473 row 1,
     #568).
@@ -697,10 +752,12 @@ def _what_the_tenant_says_it_was(posting, stored):
     declared name. Without this a MAPPED name could never settle — a run
     re-resolving the spelling would hold it again forever.
 
-    A name still held, or dismissed, has no answer and keeps its spelling, so
-    the spine holds it again: an undecided name stays undecided, and a
-    dismissed one re-costs nothing (#473 row 2). Asked only of a posting whose
-    cost is held on a name, which is the only kind that has held rows.
+    A name still held has no answer and keeps its spelling, so the spine holds
+    it again: an undecided name stays undecided. An event with a dismissed name
+    never reaches here (:func:`what_a_run_would_complete`). ``answers`` is
+    :func:`the_tenants_answers` for this event, read by the caller — `None` for
+    a posting whose cost is not held on a name, which is the only kind with
+    held rows.
 
     **AN EVENT TYPE ANSWERED IS COSTED UNDER ITS OWN SUPPLIER (#572).** The
     held event was recorded with whatever provider it sent, because nothing
@@ -711,10 +768,8 @@ def _what_the_tenant_says_it_was(posting, stored):
     there.
     """
     quantities = recorded_quantities(stored)
-    if posting.unresolved_reason not in A_HELD_NAME:
+    if answers is None:
         return posting.event_type, posting.provider, quantities
-    answers = the_tenants_answers(tenant_id=posting.tenant_id,
-                                  event_id=posting.pk)
     renamed = {}
     for name, quantity in quantities.items():
         declared = answers.measurement_keys.get(name, name)
@@ -759,22 +814,56 @@ def replay_the_held_event(replay):
     The Replay's own moment is held against the posting's: they were written
     in one savepoint, so a disagreement is a contradiction in the record, and
     re-costing either moment would be choosing one.
+
+    **A SUPPLIER THE CALL NAMED IS HELD AGAINST THE ANSWER'S (#572).** Where
+    the tenant says the event was an Event Type, that Event Type's own Provider
+    is what it costs under — and a held event that named a DIFFERENT supplier
+    is refused by name (:class:`TheEventNamedAnotherSupplier`), exactly as the
+    recording edge refuses one. Asked here, at the decision, and never by a
+    later run: a Provider's key may be corrected afterwards without
+    re-attributing history.
+
+    **AND THE NAMES THE ANSWER LEAVES UNDECLARED ARE HELD (#568).** An event
+    held on its Event Type was never measured against any declaration; the
+    answer is the first, and a quantity that answer's publication does not
+    carry is a held name exactly as it would have been had the publication
+    existed when the call arrived — held beside the same event, at its own
+    moment, so the period close still sees it.
     """
-    effective_at = (Posting.objects
-                    .filter(pk=replay.event_id, tenant_id=replay.tenant_id)
-                    .values_list("effective_at", flat=True).first())
-    if effective_at is None:
+    posting = (Posting.objects.select_related("tenant")
+               .filter(pk=replay.event_id, tenant_id=replay.tenant_id).first())
+    if posting is None:
         raise Posting.DoesNotExist(
             f"no recorded event {replay.event_id} for the held name "
             f"{replay.held_name_id} to replay")
-    if effective_at != replay.effective_at:
-        raise RuntimeError(
+    if posting.effective_at != replay.effective_at:
+        raise TheHeldRecordContradictsTheEvent(
             f"held name {replay.held_name_id} says its event happened at "
             f"{replay.effective_at.isoformat()} and event {replay.event_id} "
-            f"says {effective_at.isoformat()}; they were written together, "
-            f"and a replay will not pick one")
-    _complete(replay.event_id,
-              provenance={HELD_NAME_KEY: str(replay.held_name_id)})
+            f"says {posting.effective_at.isoformat()}; they were written "
+            f"together, and a replay will not pick one")
+    answers = the_tenants_answers(tenant_id=replay.tenant_id,
+                                  event_id=replay.event_id)
+    if answers.event_type_key is not None and posting.provider:
+        answered = cost_declaration(tenant=replay.tenant_id,
+                                    key=answers.event_type_key)
+        if answered is not None and answered.provider_key != posting.provider:
+            raise TheEventNamedAnotherSupplier(
+                f"event {replay.event_id} named the supplier "
+                f"'{posting.provider}', and '{answers.event_type_key}' names "
+                f"'{answered.provider_key or 'none'}'. A published Event "
+                f"Type's own supplier decides what its calls cost, so this "
+                f"event cannot be answered by it.")
+    completion = _complete(replay.event_id,
+                           provenance={HELD_NAME_KEY: str(replay.held_name_id)})
+    if replay.measurement_key == "" and completion.evaluation is not None:
+        costing = completion.evaluation.resolved["costing"]["detail"]
+        for measurement_key, quantity in \
+                costing["undeclared_quantities"].items():
+            hold_an_unrecognised_quantity(
+                tenant=posting.tenant, event_type_key=answers.event_type_key,
+                measurement_key=measurement_key, quantity=quantity,
+                occurred_at=replay.effective_at, event_id=replay.event_id)
 
 
 def _the_cost_the_record_holds(posting):

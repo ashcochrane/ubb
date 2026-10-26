@@ -70,8 +70,20 @@ registering a name hands its :class:`Replay` to every consumer registered in
 re-prices the event the name arrived on, from that event's own moment, with
 every answer the tenant has given about that event applied
 (:func:`the_tenants_answers`). Dismissing hands nothing on: a name the tenant
-has said is not economic re-costs nothing (#473 row 2), and the event keeps the
-cost it was recorded with.
+has said is not economic re-costs nothing (#473 row 2) — not now, and not after
+its key is published — and the event keeps the cost it was recorded with.
+
+**A held name is answered by a PUBLICATION, and a publication answers it (#568:
+"replays … once the name is declared").** Production reads only an Event
+Type's last publication (#605), so a map or a register naming a declaration no
+publication carries is refused (:class:`NotYetPublished`) — a name answered by
+a draft would free the period close while nothing could ever cost its event.
+And publishing is itself the tenant declaring the names it carries:
+``EventType.publish`` registers every undecided held name it now declares
+(:func:`register_what_a_publication_declares`) and hands each replay on, in
+the publication's own transaction. That is the tenant's act, through the route
+a tenant declares with; nothing here creates a declaration, so it is not
+auto-registration.
 """
 from dataclasses import dataclass
 from datetime import datetime
@@ -85,6 +97,7 @@ from django.utils import timezone
 from core.exceptions import UBBError
 
 from .hooks import hand_on
+from .publication import last_published_declaration
 from .models import (
     EventType,
     Measurement,
@@ -166,6 +179,18 @@ class NotTheHeldName(QuarantineError):
     """
 
 
+class NotYetPublished(QuarantineError):
+    """No publication carries the declaration named, so it cannot answer.
+
+    Recording costs under an Event Type's last publication and never its draft
+    (#605). A held name answered by a draft would leave the period close free
+    while the event it arrived on could be costed by nothing — re-resolved
+    under the answer, it would only be held again, with no row left to say so.
+    Publish the declaration: a publication registers every held name it
+    declares by itself (:func:`register_what_a_publication_declares`).
+    """
+
+
 class PeriodHoldsUnresolvedValues(QuarantineError):
     """The period cannot close silently, because part of it is unaccounted for.
 
@@ -186,11 +211,16 @@ class PeriodHoldsUnresolvedValues(QuarantineError):
 
 @dataclass(frozen=True)
 class Replay:
-    """What re-costing an event needs, and nothing else.
+    """What a remediation entitles: the event to re-cost, and the decision.
 
     It is the cost key (#193 §B2) — tenant, Event Type, measurement, timestamp
     — plus the numbers that arrived, and the identity of the recorded event
-    they arrived on. The identity is an id and not a relation: the kernel may
+    they arrived on. ⚠ The consumer that re-costs (metering's
+    `resolution_run.replay_the_held_event`) reads the ids and the moment: it
+    re-resolves the posting from its own receipt with every answer on the
+    event applied (:func:`the_tenants_answers`), because one row's re-keyed
+    bag would lose the answers given about the event's other names. The key
+    and the bag stay on the record as what this decision said. The identity is an id and not a relation: the kernel may
     not depend on a product's tables (ADR-001), and an id is a fact about what
     arrived rather than a pointer anything here follows.
 
@@ -354,6 +384,47 @@ def register_the_held_name(held, declaration):
     return _remediate(held, RESOLUTION_REGISTERED, declared_key)
 
 
+def register_what_a_publication_declares(event_type):
+    """Register every undecided held name ``event_type``'s publication now
+    declares, and hand each replay on (#568: "replays … once the name is
+    declared").
+
+    Called by ``EventType.publish`` inside its own transaction, after the
+    publication is written, so it reads the copy just pinned: an Event Type
+    held at this key, and a quantity held beneath it whose code the
+    publication carries. Each is :func:`register_the_held_name` — the same
+    act, the same checks, the same replay — and each in a savepoint of its
+    own, so a NAMED refusal from the replay (:class:`QuarantineError`: a
+    supplier the call named that the Event Type does not, a name the event
+    carries twice) leaves that one name held for the tenant's decision rather
+    than refusing the publication. Anything else is not a decision to leave
+    open, and goes up.
+
+    Undecided names only: a dismissed one stays dismissed (#473 row 2), and a
+    decided one has had its replay.
+    """
+    published = last_published_declaration(tenant=event_type.tenant_id,
+                                           key=event_type.key)
+    declared = {quantity.code for quantity in published.measurements}
+    beneath = {measurement.code: measurement
+               for measurement in event_type.measurements.all()}
+    for held in (QuarantinedKey.objects.unresolved()
+                 .filter(tenant_id=event_type.tenant_id,
+                         event_type_key=event_type.key)
+                 .order_by("occurred_at", "id")):
+        if held.unrecognised == UNRECOGNISED_EVENT_TYPE:
+            declaration = event_type
+        elif held.measurement_key in declared:
+            declaration = beneath[held.measurement_key]
+        else:
+            continue
+        try:
+            with transaction.atomic():
+                register_the_held_name(held, declaration)
+        except QuarantineError:
+            continue
+
+
 def dismiss_as_non_economic(held):
     """"This reaches UBB but it never cost anything." Returns no replay.
 
@@ -380,13 +451,14 @@ def _target_key(held, declaration):
     locality, so that the cross-tenant case can never be reported as some
     tidier-sounding mismatch and dismissed as a screen bug.
 
-    **The declaration's lifecycle is deliberately not consulted**, which looks
-    like an omission and is not. A declaration a tenant has just made is
-    ``draft`` by construction, so requiring ``published`` here would make
-    registration — the commonest remediation of the three — impossible until a
-    second, unrelated act. What a replay may legally cost against is a rating
-    question, and rating is slice 3's entire subject (#193 §L); deciding it
-    here would be this slice answering a question the next one owns.
+    **And it must be PUBLISHED (#568, #473), which reverses what this
+    function used to say.** It once refused to consult the lifecycle, because a
+    declaration a tenant has just made is ``draft`` and requiring
+    ``published`` would have made registration wait on a second, unrelated
+    act. #605 made production read only the last publication, so a draft can
+    answer for nothing; and publishing now registers the held names it
+    declares by itself, so the second act is the registration. A quantity is
+    published where its Event Type's last publication carries its code.
     """
     expected = RESOLVES_TO[held.unrecognised]
     if not isinstance(declaration, expected):
@@ -415,6 +487,15 @@ def _target_key(held, declaration):
             f"event matched '{held.event_type_key}'. Declarations are "
             f"Event-Type-local (#193 §C2): the same code beneath two Event "
             f"Types is two independent records.")
+    published = last_published_declaration(
+        tenant=held.tenant_id,
+        key=declared_key if parent_key is None else parent_key)
+    if published is None or (parent_key is not None and declared_key not in {
+            quantity.code for quantity in published.measurements}):
+        raise NotYetPublished(
+            f"no publication carries '{declared_key}', and recording costs "
+            f"under the last publication and never a draft (#605). Publish "
+            f"it: a publication registers the held names it declares.")
     return declared_key
 
 
@@ -512,6 +593,11 @@ class TenantsAnswers(NamedTuple):
     #: holds it again — which is what keeps an undecided name undecided and a
     #: dismissed one from being re-costed (#473 row 2).
     measurement_keys: dict
+    #: Whether the tenant dismissed any name on this event as non-economic. A
+    #: re-costing leaves such an event alone, whatever is published later: it
+    #: could only cost the event with the dismissed name or without it, and
+    #: the ruling refuses both (#473 row 2).
+    dismissed: bool
 
 
 def the_tenants_answers(*, tenant_id, event_id):
@@ -523,18 +609,24 @@ def the_tenants_answers(*, tenant_id, event_id):
     first answer would then be lost to every later re-costing, since nothing
     else records it. One query, on ``ix_quarantined_key_event``.
     """
-    event_type_key, measurement_keys = None, {}
-    for unrecognised, measurement_key, resolved_key in (
+    event_type_key, measurement_keys, dismissed = None, {}, False
+    for unrecognised, measurement_key, resolution, resolved_key in (
             QuarantinedKey.objects
-            .filter(tenant_id=tenant_id, event_id=event_id,
-                    resolution__in=RESOLUTIONS_NAMING_A_DECLARATION)
-            .values_list("unrecognised", "measurement_key", "resolved_key")):
-        if unrecognised == UNRECOGNISED_EVENT_TYPE:
+            .filter(tenant_id=tenant_id, event_id=event_id)
+            .exclude(resolution=RESOLUTION_UNRESOLVED)
+            .values_list("unrecognised", "measurement_key", "resolution",
+                         "resolved_key")):
+        if resolution == RESOLUTION_DISMISSED:
+            dismissed = True
+        elif resolution not in RESOLUTIONS_NAMING_A_DECLARATION:
+            continue
+        elif unrecognised == UNRECOGNISED_EVENT_TYPE:
             event_type_key = resolved_key
         else:
             measurement_keys[measurement_key] = resolved_key
     return TenantsAnswers(event_type_key=event_type_key,
-                          measurement_keys=measurement_keys)
+                          measurement_keys=measurement_keys,
+                          dismissed=dismissed)
 
 
 # ---------------------------------------------------------------------------

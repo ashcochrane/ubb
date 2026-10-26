@@ -10,7 +10,8 @@ from apps.metering.pricing.receipts import (
     MARKUP_TERMS_KEY, PRICING_REGIME_KEY, PRICING_STATUS_REASON_KEY,
     REPORTED_COST_SOURCE_KIND_KEY, ReceiptSubject, Resolution, build_receipt,
 )
-from apps.platform.event_types.costing import cost_declaration
+from apps.platform.event_types.costing import (
+    DECLARATION_NOT_READ, cost_declaration)
 from apps.platform.event_types.exact_decimals import canonical_quantities
 from apps.platform.plans.queries import (
     get_pricing_book_for_customer, pricing_books_of_live_plans)
@@ -45,8 +46,10 @@ from core.vocabulary import (
 #: — rather than on configuration or a supplier's figure, and the recording
 #: path holds the name beside the posting. The price follows them: under either,
 #: no customer price is published as known (#473 row 4).
-A_HELD_NAME = frozenset({UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
-                         UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED})
+REASONS_A_NAME_IS_HELD = frozenset({
+    UNRESOLVED_REASON_EVENT_TYPE_NOT_DECLARED,
+    UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED})
+
 
 #: WHAT COMPUTED THE AMOUNTS ON A RECEIPT — the half of the receipt's version
 #: pair that moves when an amount would come out differently
@@ -1219,7 +1222,7 @@ class PricingService:
             # tenant (#553, ADR-0021 §5).
             not_applicable_reason = not_applicable_reason_for(
                 sold_for_one_agreed_price=True)
-        elif unresolved_reason in A_HELD_NAME:
+        elif unresolved_reason in REASONS_A_NAME_IS_HELD:
             # ⚠ A HELD NAME IS UNRESOLVED ECONOMICS, AND NO PRICE OVER IT IS
             # PUBLISHED AS `known` (#473 row 4, ruled 2026-10-22; #568). The
             # tenant has not yet said what the Event Type, or one of the
@@ -1427,7 +1430,8 @@ class PricingService:
     @staticmethod
     def price(*, subject, tenant, customer, selectors, measurements, currency,
               caller_provider_cost, reported_cost_source_kind=None,
-              pricing_mode=PRICING_MODE_EVENT_PRICED, as_of=None):
+              pricing_mode=PRICING_MODE_EVENT_PRICED, as_of=None,
+              declaration=DECLARATION_NOT_READ):
         """The recording path's adapter over :func:`resolve_price`.
 
         It does two things the seam deliberately does not. It assembles the
@@ -1459,6 +1463,9 @@ class PricingService:
         ``caller_provider_cost`` was admitted under (#570), and the receipt
         keeps it. Both recording routes state it for every figure; a caller
         stating none records `None` beside its figure.
+
+        ``declaration`` is the Event Type's cost declaration as the caller
+        already read it — see :class:`PricingSubject`'s own field.
         """
         return costing_of(resolve_price(
             PricingSubject(
@@ -1467,7 +1474,7 @@ class PricingService:
                 currency=currency,
                 caller_provider_cost=caller_provider_cost,
                 reported_cost_source_kind=reported_cost_source_kind,
-                pricing_mode=pricing_mode),
+                pricing_mode=pricing_mode, declaration=declaration),
             as_of or timezone.now()))
 
 
@@ -1687,6 +1694,15 @@ class PricingSubject:
     #: work the event names, and a recovery run reads it off the receipt it is
     #: re-resolving from, by value, as it was on the day.
     pricing_mode: str = PRICING_MODE_EVENT_PRICED
+    #: THE EVENT TYPE'S COST DECLARATION AS THE RECORDING EDGE ALREADY READ IT
+    #: (#605, #572) — or :data:`DECLARATION_NOT_READ`, and the spine reads it
+    #: itself. The edge reads the publication once for every event naming an
+    #: Event Type, for its own admissions; handing that read down keeps an
+    #: event paying ONE read rather than two, and makes the admissions and the
+    #: costing answer from the same publication — a publish landing between
+    #: two reads could otherwise admit an event under one declaration and cost
+    #: it under another.
+    declaration: Any = DECLARATION_NOT_READ
     # ⚠ THERE IS NO CUSTOMER PRICE ON THIS VALUE, AND THAT IS THE INVARIANT
     # RATHER THAN AN OMISSION (#365). #147 §5.1's ladder arrives closed, with no
     # caller rung on it; the field that used to sit here was not a rung but an
@@ -1771,8 +1787,12 @@ def resolve_price(subject, as_of):
         declaration matters, the same way it decides which cards to resolve. A
         caller-supplied figure needs no declaration, and this is a query per
         recording call on the hottest write path in the system — one the spine
-        simply never asks for on that branch.
+        simply never asks for on that branch. A caller that has already read
+        it hands it on (:class:`PricingSubject.declaration`), and it is not
+        read again.
         """
+        if subject.declaration is not DECLARATION_NOT_READ:
+            return subject.declaration
         return cost_declaration(tenant=tenant, key=selectors.get("event_type"))
 
     def resolve_markup():

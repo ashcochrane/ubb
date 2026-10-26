@@ -72,7 +72,7 @@ django.setup()
 from django.db import connection, transaction  # noqa: E402
 
 from apps.metering.pricing.services.price_resolution import (  # noqa: E402
-    PRICE_DOOR_MARK, PRICE_DOOR_SETTING)
+    marked_as_the_price_door)
 from apps.metering.usage.models import Posting  # noqa: E402
 from core.vocabulary import (  # noqa: E402
     COSTING_METHOD_CALCULATED,
@@ -283,9 +283,7 @@ def _resolve_batch():
     `UPDATE` arrived and every installed run would be refused. Setting it is
     timed with the statement, and costs the same with the rules dropped.
     """
-    with transaction.atomic():
-        _execute("SELECT set_config(%s, %s, true)",
-                 [PRICE_DOOR_SETTING, PRICE_DOOR_MARK])
+    with transaction.atomic(), marked_as_the_price_door():
         _execute(RESOLUTION)
 
 

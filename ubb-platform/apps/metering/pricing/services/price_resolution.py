@@ -55,9 +55,11 @@ raw SQL, a data migration — meets the refusal at the table.
 
 It is a rule against a second writer by ACCIDENT, which is the risk the issue
 names; code that sets the mark itself is not accidental, and it is one search
-for the constant away. The only other setter is
-`scripts/measure_posting_transition_cost.py`, which times this statement in
-bulk and says so.
+for the constant away. Every setter goes through
+:func:`marked_as_the_price_door`: this door; the measurement script
+(`scripts/measure_posting_transition_cost.py`), which times this statement in
+bulk; and the test helper that asks whether the RULE admits the move at each
+of ADR-0007 §2's three doors (`usage/tests/_helpers.as_the_price_door`).
 """
 import enum
 from contextlib import contextmanager
@@ -85,7 +87,7 @@ PRICE_DOOR_MARK = "resolve_customer_price"
 
 
 @contextmanager
-def _marked_as_the_price_door():
+def marked_as_the_price_door():
     """This door's mark, for the length of its one statement and no longer.
 
     Transaction-local (`set_config(..., true)`), so a mark can never outlive
@@ -179,7 +181,7 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
     # AND IT IS MARKED AS THIS DOOR'S, which is the one thing the table now
     # admits the move on (#557): the setting is on for this statement only.
     with transaction.atomic():
-        with _marked_as_the_price_door():
+        with marked_as_the_price_door():
             affected = (Posting.objects
                         .filter(pk=posting_id,
                                 billed_cost_micros__isnull=True,

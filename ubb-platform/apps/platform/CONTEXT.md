@@ -177,8 +177,9 @@ costed and priced against the supplier that Event Type names now, never the free
 sends. A caller naming a different supplier is refused, by name
 (`provider_conflicts_with_event_type`); one naming none takes the declared one; and an Event Type
 naming no supplier refuses any. An event naming no Event Type, or one nobody published, keeps the
-supplier its caller sent — and a held one mapped to a published Event Type is replayed under that
-Event Type's.
+supplier its caller sent; once held and answered by a published Event Type, one that named no
+supplier is replayed under that Event Type's, and one that named another is refused by name and
+stays held — the edge would have refused it.
 (`apps/platform/event_types/models.py:Provider`; `api/v1/metering_endpoints.py:admit_provider`)
 _Avoid_: reading a posting's free-text supplier as the cost key for an event whose Event Type is
 published — the declaration already said who the supplier is.
@@ -282,14 +283,21 @@ Type's set and found missing — and, by #428's decision, not a name on a report
 stated, a supplier reports or the declaration says does not exist, where a held row would block a
 period close over a cost already settled. An event naming no Event Type at all holds nothing
 (#567).
-**Three remediations record three tenant decisions.** Map to a declaration that exists, register
-the name the tenant has since declared, or dismiss as non-economic. The first two **replay** the
-held event from its own original moment, never the repair's, with the tenant's answer applied —
-the Event Type read as the one it was mapped to, each held quantity under the name it was mapped
-to — completing the cost and the price in the same transaction as the decision, so a replay that
-cannot complete takes the decision back with it (#473 row 1). A Resolution Run applies the same
-answers. **A dismissal re-costs nothing** (#473 row 2): the event keeps the spelling it arrived
-with, the name stays undeclared, and no later run prices it under another one.
+**Three remediations record three tenant decisions.** Map to a declaration that is published,
+register the name the tenant has declared, or dismiss as non-economic. **A publication is itself a
+registration** (#568: "replays … once the name is declared"): publishing an Event Type registers
+every undecided name held at its key, or beneath it under a code it now carries — the tenant
+declaring the very name that arrived, which is not auto-registration — and **only a publication
+answers a held name**: production reads nothing else (#605), so a draft is refused by name. The
+first two **replay** the held event from its own original moment, never the repair's, with every
+answer on it applied — the Event Type read as the one it was answered by, each held quantity under
+the name it was answered by — completing the cost and the price in the same transaction as the
+decision, so a replay that cannot complete takes the decision back with it (#473 row 1). An Event
+Type's replay is the event's first measurement against a declaration, so a quantity that
+declaration does not carry is held from then on, beside the same event at its own moment. A
+Resolution Run applies the same answers. **A dismissal re-costs nothing** (#473 row 2): no replay,
+and no later run re-costs the event — not without the name, and not with it once its key is
+published.
 **A declaration is not deleted from under its held names** (#473 row 3): an Event Type with an
 undecided held quantity beneath its key cannot be deleted unless a declaration at that key survives
 the same change; deciding the held names is what frees it.

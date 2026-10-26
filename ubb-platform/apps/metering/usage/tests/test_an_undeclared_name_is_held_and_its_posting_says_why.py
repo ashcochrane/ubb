@@ -60,10 +60,12 @@ from apps.platform.event_types.models import (
     EventType,
     Measurement,
     QuarantinedKey,
+    RESOLUTION_REGISTERED,
     UNRECOGNISED_EVENT_TYPE,
     UNRECOGNISED_MEASUREMENT_KEY,
 )
 from apps.platform.event_types.quarantine import (
+    NotYetPublished,
     PeriodHoldsUnresolvedValues,
     refuse_a_silent_close,
     register_the_held_name,
@@ -573,15 +575,14 @@ class TestTheTwoDefinitionsAgree:
         assert self._held_names_in(
             tenant, _the_month_holding(timezone.now())) == set()
 
-    def test_registering_the_name_frees_the_close_and_its_replay_waits_for_publication(self):
-        """The tenant registers the name; the close is free, because a
-        decision taken is a decision. The registration's replay re-costs the
-        event at once (#473 row 1) — and finds the name still undeclared,
-        because it was declared in a DRAFT, which production never reads
-        (#605). So the posting stays `unresolved` / `measurement_not_declared`
-        until the declaration is published, when a run settles it (the class
-        below). A MAPPED name's replay, and a DISMISSED name's absence of one,
-        are `api/v1/tests/test_a_remediation_does_the_honest_thing_with_a_held_name.py`.
+    def test_the_publication_declaring_the_name_is_what_frees_the_close(self):
+        """A name declared only in a DRAFT answers for nothing — production
+        never reads one (#605) — so registering against it is refused by name,
+        and the close stays refused. Publishing the declaration IS the
+        registration (#568): the name is registered, its replay re-costs the
+        event at once (#473 row 1), and the close is free. A MAPPED name's
+        replay, and a DISMISSED name's absence of one, are
+        `api/v1/tests/test_a_remediation_does_the_honest_thing_with_a_held_name.py`.
         """
         tenant, postings = self._a_month_of_reports()
         undeclared = postings[0]
@@ -589,15 +590,23 @@ class TestTheTwoDefinitionsAgree:
         (held,) = unresolved_in_period(tenant=tenant, opened_at=opened_at,
                                        closes_at=closes_at)
         declaration = EventType.objects.get(tenant=tenant, key=EVENT_TYPE_KEY)
-        register_the_held_name(held, Measurement.objects.create(
+        draft = Measurement.objects.create(
             event_type=declaration, code=A_NAME_NOBODY_DECLARED,
-            unit=UNIT_TOKEN, source_kind=SOURCE_KIND_CALLER_SUPPLIED))
+            unit=UNIT_TOKEN, source_kind=SOURCE_KIND_CALLER_SUPPLIED)
+
+        with pytest.raises(NotYetPublished):
+            register_the_held_name(held, draft)
+        with pytest.raises(PeriodHoldsUnresolvedValues):
+            refuse_a_silent_close(tenant=tenant, opened_at=opened_at,
+                                  closes_at=closes_at)
+
+        declaration.refresh_from_db()
+        declaration.publish()
 
         refuse_a_silent_close(tenant=tenant, opened_at=opened_at,
                               closes_at=closes_at)
-        undeclared.refresh_from_db()
-        assert undeclared.unresolved_reason == \
-            UNRESOLVED_REASON_MEASUREMENT_NOT_DECLARED
+        held.refresh_from_db()
+        assert held.resolution == RESOLUTION_REGISTERED
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ from django.db.models import JSONField
 from django.test import Client, TestCase
 from django.utils import timezone
 
-from api.v1.tests.test_metering_endpoints import usage_payload
 from apps.billing.wallets.models import Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.metering.usage.models import Posting
@@ -475,6 +474,29 @@ class BlueprintRoutes:
 # tenant and the doors. A Django `TestCase`, not a pytest mixin with
 # `setup_method` — `BlueprintRoutes` above is why (a TestCase runs both).
 
+def usage_payload(customer, correlation, **fields):
+    """A recording-call body, from a customer and one correlation string.
+
+    THE REASON THIS HELPER EXISTED IS GONE, AND IT IS KEPT ON A WEAKER ONE.
+    It was written to spell a retired word once, in a file already counted
+    against that word's ledger entry, so that no caller elsewhere had to name
+    it and push the entry past its spread ceiling. #411 deleted the field, the
+    entry with it, and the whole recording body now carries exactly one
+    correlation value — so there is nothing left to hide.
+
+    What it still buys is that `correlation` names what the string IS rather
+    than which key it lands under, which is the same service
+    `cost_rate_in_default_book` does one concept along
+    (`apps/metering/pricing/tests/_helpers.py`). That is worth a helper on its
+    own, and it is the only claim this docstring now makes. It lives here, with
+    the shared helpers, since the route-driving case below needed it
+    (`docs/conventions/testing.md`); `test_metering_endpoints.py` imports it
+    back for the modules that read it from there.
+    """
+    return {"customer_id": str(customer.id),
+            "idempotency_key": correlation, **fields}
+
+
 class DeclaringTenantCase(TestCase):
     """A metering tenant, one customer, and the routes it declares through."""
 
@@ -502,13 +524,20 @@ class DeclaringTenantCase(TestCase):
             "source_shape_id": SOURCE_SHAPE_ID_OPENAI_RESPONSES_PYTHON_V1,
             **({"provider_key": provider_key} if provider_key else {})})
         for code in quantities:
-            self.admin("put", f"/event-types/{key}/measurements/{code}", {
-                "value_type": MEASUREMENT_VALUE_TYPE_INTEGER,
-                "unit": UNIT_CALL,
-                "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+            self.declares_a_quantity(key, code, publish=False)
         if publish:
             self.admin("post", f"/event-types/{key}/publish")
         return EventType.objects.get(tenant=self.tenant, key=key)
+
+    def declares_a_quantity(self, key, code, *, publish=True):
+        """One more quantity beneath a declared Event Type, through its
+        route — and the Event Type published again, unless asked otherwise,
+        which is what makes the quantity one recording reads (#605)."""
+        self.admin("put", f"/event-types/{key}/measurements/{code}", {
+            "value_type": MEASUREMENT_VALUE_TYPE_INTEGER, "unit": UNIT_CALL,
+            "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+        if publish:
+            self.admin("post", f"/event-types/{key}/publish")
 
     def read(self, path, **params):
         response = self.http.get(

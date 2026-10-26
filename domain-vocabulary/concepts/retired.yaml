@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,927 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,478 of 2,928 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2914,6 +2914,11 @@ measurement_key:
     # module, the planted second writer. The departures, all swept: the two
     # dead pricing caches (`card_cache.py`, `markup_cache.py`) and their
     # three test modules.
+    #
+    # 2026-10-26, R10-W1's review round: 2,477 of 2,927 -> 2,478 of 2,928
+    # tracked files (`units` UNMOVED). One file arrived, swept: ADR-0022, the
+    # record that an event naming an Event Type nobody published is recorded
+    # and held, departing from three rows of #146 §3.4.
 
     - term: units
       retired_as: >-

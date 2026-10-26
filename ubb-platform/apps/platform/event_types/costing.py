@@ -83,6 +83,20 @@ class CostDeclaration(NamedTuple):
     provider_key: str
 
 
+class _NotRead:
+    def __repr__(self):
+        return "DECLARATION_NOT_READ"
+
+
+#: WHAT A CALLER THAT HAS NOT READ THE DECLARATION HANDS ON WHERE ONE IS
+#: EXPECTED. :func:`cost_declaration` answering `None` is an answer — the Event
+#: Type has no production declaration (#605) — so `None` cannot also mean
+#: "nobody asked"; this does. The recording edge reads the declaration once
+#: and hands it down to the pricing spine (#605's one read); a caller that
+#: read none passes this, and the spine reads it itself.
+DECLARATION_NOT_READ = _NotRead()
+
+
 def cost_declaration(*, tenant, key):
     """What `key`'s last publication declares about cost for `tenant`, or
     `None` if nothing is published.

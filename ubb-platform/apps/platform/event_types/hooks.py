@@ -24,6 +24,10 @@ was never re-costed has left the period-close safeguard while the posting stays
 uncosted, and nothing would ever look at it again. So nothing here catches, and
 the remediation (`quarantine._remediate`) runs inside one transaction with the
 consumers: either the decision and its replay both land, or neither does.
+The one carve is the caller's, not this module's: a publication registering the
+held names it declares (`quarantine.register_what_a_publication_declares`)
+gives each its own savepoint and leaves a name a consumer refused BY NAME
+(`QuarantineError`) held, rather than refusing the publication.
 
 Nothing in this module reads or writes a row of its own.
 """
