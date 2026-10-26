@@ -49,10 +49,12 @@ overreached on. It refuses an instant a caller *states* in the past. It cannot
 refuse the other way in: a draft declared with no instant takes the moment it
 was declared, and publishing it later writes that now-past moment as the
 boundary. The same check at publish time cannot tell that from the ordinary case,
-because the ordinary case IS a declaration seconds stale. So `card_cache`'s
-standing sentence — that entries for instants before a new boundary stay correct
-forever — is **conditional on nobody publishing a stale draft, and it was
-already conditional before this rail existed**. This module narrows it; it does
+because the ordinary case IS a declaration seconds stale. So the standing
+sentence an instant-keyed cache rests on — that entries for instants before a
+new boundary stay correct forever (`docs/conventions/django-patterns.md`,
+Caching; the rate-card cache that said it is deleted, #556) — is **conditional
+on nobody publishing a stale draft, and it was already conditional before this
+rail existed**. This module narrows it; it does
 not make it true, and #358's split is where the remaining path comes from.
 
 ⚠ **THE OTHER FLOOR IS NOT THIS ONE, AND IT IS NOT HERE.** #360 added *"at or

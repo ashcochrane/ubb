@@ -161,6 +161,7 @@ class CustomerPlanAssignment(BaseModel):
 # `save()` and `delete()`, because a plan's percentage and a customer's plan
 # membership were each read by `MarkupService.resolve` and a cached rung had to
 # be dropped when either moved. That rung is deleted: resolve reads the tenant's
-# declared default and nothing else, and that record bumps the same key from its
-# own model layer. A bump left here would be a write no read depends on, and a
-# reader would take it for evidence that a plan still feeds the ladder.
+# declared default and nothing else. A bump left here would have been a write no
+# read depends on, and a reader would take it for evidence that a plan still
+# feeds the ladder. The cache followed in #556, so this module imports nothing
+# from metering at all, and the boundary gate no longer exempts it.

@@ -56,11 +56,9 @@ PAIR_CHANNELS = {
 # Dev-only management commands exempt from rule 2 (ADR-001 decision 6).
 PLATFORM_FILE_ALLOWLIST = frozenset({
     "apps/platform/tenants/management/commands/seed_dev_data.py",
-    # plans/models.py bumps metering's markup cache version on write. The kernel
-    # owns the Plan; metering owns the cache keyed off it. A lazy, best-effort
-    # import is the narrowest seam that keeps a re-priced plan from serving
-    # stale markup for a full cache TTL.
-    "apps/platform/plans/models.py",
+    # plans/models.py was exempt while it bumped metering's markup cache; the
+    # hook left in #369 and the cache in #556, so the kernel's plan catalog is
+    # held to rule 2 like every other platform module.
 })
 
 _EXCLUDED_DIR_NAMES = {"tests", "migrations", "__pycache__"}

@@ -82,8 +82,9 @@ from apps.metering.pricing.receipts import (
 from apps.metering.pricing.tests._helpers import markup_terms
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
-    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, as_the_price_door, committed_posting,
+    rule_on_the_table, rules_on_the_table, through_raw_sql, through_save,
+    through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
@@ -700,10 +701,13 @@ class ThisRuleGuardsItsOwnColumnAndNoOthersTest(TestCase):
         self.assertEqual(getattr(posting, COST), 7)
 
     def test_the_price_pair_still_resolves_beside_it(self):
+        """Under the price door's mark, which is the only place the price
+        pair's own rule admits the move since #557."""
         posting = _posting(_sealed(), **{
             PRICE: None, PRICING_STATUS: PRICING_STATUS_UNKNOWN})
-        _through_the_queryset(posting, **{
-            PRICE: 9, PRICING_STATUS: PRICING_STATUS_KNOWN})
+        with as_the_price_door():
+            _through_the_queryset(posting, **{
+                PRICE: 9, PRICING_STATUS: PRICING_STATUS_KNOWN})
         posting.refresh_from_db()
         self.assertEqual(getattr(posting, PRICE), 9)
 
@@ -719,14 +723,18 @@ class ThisRuleGuardsItsOwnColumnAndNoOthersTest(TestCase):
         This is the property a merged rule would have removed, and it is the
         reason the receipt's rule is a third trigger rather than a branch in the
         second. It is asserted here rather than argued in the migration.
+
+        Made under the price door's mark (#557): the statement is the door's,
+        and the price pair's rule admits it nowhere else.
         """
         for name, door in DOORS:
             with self.subTest(door=name):
                 posting = _posting(_with_an_unknown_price(), **{
                     PRICE: None, PRICING_STATUS: PRICING_STATUS_UNKNOWN})
-                door(posting, **{PRICE: 4_800,
-                                 PRICING_STATUS: PRICING_STATUS_KNOWN,
-                                 RECEIPT: _receipt()})
+                with as_the_price_door():
+                    door(posting, **{PRICE: 4_800,
+                                     PRICING_STATUS: PRICING_STATUS_KNOWN,
+                                     RECEIPT: _receipt()})
                 posting.refresh_from_db()
                 self.assertEqual(getattr(posting, PRICE), 4_800)
                 self.assertEqual(

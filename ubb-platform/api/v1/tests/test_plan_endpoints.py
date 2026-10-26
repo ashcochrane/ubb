@@ -194,11 +194,9 @@ class TestPlanEndpoints:
     # `Plan.save()` bumped that cache's per-tenant version. The plan supplies no
     # markup rung any more, so nothing a plan write changes can move a resolved
     # markup, and the hook is deleted rather than left bumping a key for a fact
-    # nobody reads. The rung that DOES feed that cache invalidates from its own
-    # model layer, asserted in
-    # `apps/metering/pricing/tests/test_markup_cache.py` and, through the
-    # withdrawal route, in
-    # `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
+    # nobody reads. The cache itself followed in #556 — nothing in production
+    # ever read it — so the one rung left is read live, and withdrawing it is
+    # asserted in `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
 
     def test_patch_noop_payload_records_no_audit(self):
         # Review finding 2: an empty (or migrate_existing-only) PATCH changes

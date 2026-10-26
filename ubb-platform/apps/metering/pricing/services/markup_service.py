@@ -71,10 +71,10 @@ MARKUP_RUNG_TENANT_DEFAULT = "tenant_default"
 class ResolvedMarkup:
     """The markup that applies to one tenant, and where it came from.
 
-    Frozen: instances are shared through the L1 cache and must never be mutated
-    by a caller. ``source`` and ``source_id`` are carried for provenance — they
-    answer "why was this event priced this way" without re-deriving the chain,
-    and the receipt records both beside the percentage itself.
+    Frozen: a value, handed to every caller that resolves the rung, and never
+    mutated by one. ``source`` and ``source_id`` are carried for provenance —
+    they answer "why was this event priced this way" without re-deriving the
+    chain, and the receipt records both beside the percentage itself.
     """
     #: Millionths of a percent: 1_000_000 is 1%. Spelled the way the record it
     #: is read from spells it, and not under the money suffix — `_micros` means
@@ -112,12 +112,12 @@ class ResolvedMarkup:
         """The customer price this rung answers over a basis it is given.
 
         The basis plus the markup taken on it, said once. It is a method rather
-        than two lines at the resolver because the cache's whole contract is
-        that it answers what a live resolve answers, and a sum written at each
-        caller is how two callers come to disagree about what "marked up" meant.
+        than two lines at the resolver because a sum written at each caller is
+        how two callers come to disagree about what "marked up" meant.
 
         The caller decides whether a basis may be marked up at all: an
-        `unresolved` cost is `waived` and never arrives here, and a resolved
+        `unresolved` cost never arrives here — it prices `waived`, or `unknown`
+        where the name it arrived under is held (#473) — and a resolved
         zero IS a basis — a call that genuinely cost nothing, marked up to
         nothing.
         """

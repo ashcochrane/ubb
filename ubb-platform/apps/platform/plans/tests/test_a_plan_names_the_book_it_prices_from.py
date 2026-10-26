@@ -267,15 +267,14 @@ class TheBoundaryTheGateCannotSeeTest(TestCase):
         self.assertIn("apps.metering.pricing.services.pricing_service", readers)
 
     def test_the_plan_catalog_imports_no_metering_module(self):
-        """The kernel side. The one allowlisted exception is the markup cache
-        hook on `plans/models.py`, which predates this ticket and is named in
-        the gate's own file list — so this asserts the SERVICE and the read
-        contract carry nothing new, which is where a shortcut would land.
+        """The kernel side, every module of it. The one exception this used to
+        carve out — the markup cache hook on `plans/models.py` — left in #369,
+        and the cache it bumped in #556, so the models are held too.
         """
         offenders = [
             f"{module}:{lineno} imports {full}"
             for module, lineno, full in self._edges_under(THE_PLAN_CATALOG)
-            if full.startswith(METERING) and module != f"{THE_PLAN_CATALOG}.models"
+            if full.startswith(METERING)
         ]
 
         self.assertEqual(offenders, [], "\n".join([

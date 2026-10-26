@@ -69,8 +69,10 @@ import django  # noqa: E402
 
 django.setup()
 
-from django.db import connection  # noqa: E402
+from django.db import connection, transaction  # noqa: E402
 
+from apps.metering.pricing.services.price_resolution import (  # noqa: E402
+    PRICE_DOOR_MARK, PRICE_DOOR_SETTING)
 from apps.metering.usage.models import Posting  # noqa: E402
 from core.vocabulary import (  # noqa: E402
     COSTING_METHOD_CALCULATED,
@@ -142,6 +144,10 @@ UPDATE ubb_posting SET provider_cost_micros = 42,
 #: from the settlement above, so it fires a different trigger; timing only one
 #: of them and calling the answer "a transition" would let either rule's cost
 #: move without the report noticing.
+#:
+#: ⚠ **Since #557 the table admits it only under the price door's mark**
+#: (`usage/migrations/0049`), so `_resolve_batch` makes it under that mark —
+#: the one setter outside the door itself, and it says so there.
 RESOLUTION = f"""
 UPDATE ubb_posting SET billed_cost_micros = 42,
        pricing_status = '{PRICING_STATUS_KNOWN}'
@@ -270,7 +276,17 @@ def _settle_batch():
 
 
 def _resolve_batch():
-    _execute(RESOLUTION)
+    """The resolution in bulk, under the mark `resolve_customer_price` sets.
+
+    One transaction, because the mark is transaction-local and this script runs
+    in autocommit: set in a statement of its own, it would be gone before the
+    `UPDATE` arrived and every installed run would be refused. Setting it is
+    timed with the statement, and costs the same with the rules dropped.
+    """
+    with transaction.atomic():
+        _execute("SELECT set_config(%s, %s, true)",
+                 [PRICE_DOOR_SETTING, PRICE_DOOR_MARK])
+        _execute(RESOLUTION)
 
 
 def _complete_batch():

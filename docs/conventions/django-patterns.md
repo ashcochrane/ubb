@@ -83,27 +83,25 @@ function writing a terminal status notifies, so a new terminal path cannot forge
 
 ## Caching & invalidation
 
-Hot-path resolves use an in-process L1 cache fronted by a per-tenant Redis **version key**. The
-default rule: writes bump the version key **at the model layer** (in the model's `save`/`delete`), so
-a stale cache can't survive a write. If you add a cached resolve, invalidate the same way — bump a
-version key on write, never trust a TTL alone for correctness. Always keep a live-ORM fallback so
-caching never under-holds money.
+**No resolve on the hot path is cached today** (#556). The rate-card and markup caches were deleted
+because nothing in production ever read them: their one reader, the accept-time estimate, went in
+#239, and recording resolves against the live ORM through `PricingService`. If you add a cache,
+these are the rules it inherits:
 
-**The markup cache is the worked example** — `ubb:markupver:{tenant}`, bumped from
-`TenantDefaultMarkup.save`/`delete`, so no write path can bypass invalidation.
-
-**⚠ There is one exception and it is a better answer, not a lapse: a key that carries the instant it
-answers for needs no invalidation at all** (#356). A pricing rule takes effect from a moment that may
-be in the future, so bumping a version when the change is *published* invalidates at the wrong
-moment, and invalidating at the boundary would need a job running at the effective instant — the one
-thing forward-dated publishing exists to avoid. The rate cache's key therefore includes the as-of
-instant: **a cached resolution answers for the instant it was computed for and for no other**, so
-entries for instants before a new boundary stay correct forever and entries for instants after it
-were never created. Its version key `ubb:cardver:{tenant}` still exists and is still read, but it
-**has no writer at all** — deliberately, and on the record in
-`apps/metering/pricing/services/card_cache.py`, which refuses to add one because a model-layer bump
-would put publish-time invalidation straight back. Reach for this shape when what you are caching is
-a function of time; reach for the version key when it is not.
+- **Invalidate at the model layer.** Front the in-process L1 with a per-tenant Redis **version key**
+  bumped in the model's `save`/`delete`, so no write path can bypass it; never trust a TTL alone for
+  correctness; keep a live-ORM fallback so caching never under-holds money. A route deleting through
+  `QuerySet.delete()` never loads an instance and so never bumps — the deleted markup cache measured
+  exactly that leak (#369).
+- **⚠ A key that carries the instant it answers for needs no invalidation at all** (#356), and it is
+  the better answer when what you cache is a function of time. A pricing rule takes effect from a
+  moment that may be in the future, so bumping a version when the change is *published* invalidates
+  at the wrong moment, and invalidating at the boundary would need a job running at the effective
+  instant — the one thing forward-dated publishing exists to avoid. Keyed on the as-of instant, **a
+  cached resolution answers for the instant it was computed for and for no other**. That holds only
+  while nobody publishes a stale draft, and `core/scheduling.py` says why it cannot promise more.
+  Reach for this shape when the value is a function of time; reach for the version key when it is
+  not.
 
 ## Celery
 

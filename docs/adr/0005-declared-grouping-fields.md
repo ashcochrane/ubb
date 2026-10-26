@@ -172,8 +172,8 @@ load-bearing unique index, which ADR-0007 §1 refuses.)
   not the number of slots, which is why widening to ten changed nothing about that argument. It is
   worth stating what this consequence is worth today: **nothing in production reads that cache.**
   Its one reader was the accept-time estimate deleted in #239, the recording path resolves against
-  live ORM through `PricingService`, and only `invalidate` is still wired. The module is kept for
-  the contract a future reader inherits (`card_cache.py`), and disposing of it is a later ticket's.
+  live ORM through `PricingService`, and only `invalidate` was still wired. The module was kept for
+  the contract a future reader would inherit, until #556 deleted it with its markup twin.
 - **Ten columns, six published.** The rate write surface publishes six slot properties, mapped onto
   the first six columns by `api/v1/schemas.py:SLOT_PROPERTY_COLUMNS`. A rate pinned on slots seven
   through ten can therefore be written server-side and never repriced through the API — a reprice

@@ -162,9 +162,9 @@ class MeteringProductGatingTest(TestCase):
 #     `apps/metering/pricing/tests/test_a_plan_names_the_book_it_prices_from.py`;
 #   * *the route must delete through the MODEL layer, or `MarkupCache`'s version
 #     key is never bumped and the L1 serves a stale rung for the TTL window* —
-#     a money leak, and true of the surviving withdrawal route for exactly the
-#     same reason. It moved to
-#     `api/v1/tests/test_the_tenant_declares_its_default_markup.py`.
+#     a money leak while that cache stood. It moved to
+#     `api/v1/tests/test_the_tenant_declares_its_default_markup.py`, and left
+#     with the cache itself in #556: every read of the rung is a live read now.
 
 
 class UsageEventDetailEndpointTest(TestCase):

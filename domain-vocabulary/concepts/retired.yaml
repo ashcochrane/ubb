@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,481 of 2,930 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,477 of 2,927 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2905,6 +2905,15 @@ measurement_key:
     # layer's test module for a published Event Type's own supplier deciding
     # what a call costs. The SDK's new exception is a class in a generated
     # module that already existed, so no file arrived for it.
+    #
+    # 2026-10-26, R10-W1 (#557, #556): 2,481 of 2,930 -> 2,477 of 2,927
+    # tracked files (`units` UNMOVED). Two files arrived and five left. The
+    # arrivals: a migration excluded under `historical-migrations`
+    # (280 -> 281), a customer price becoming known only through its door
+    # (`usage/0049`), so the exclusions stand at 450; and one swept test
+    # module, the planted second writer. The departures, all swept: the two
+    # dead pricing caches (`card_cache.py`, `markup_cache.py`) and their
+    # three test modules.
 
     - term: units
       retired_as: >-

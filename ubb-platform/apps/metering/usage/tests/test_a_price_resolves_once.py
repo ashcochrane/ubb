@@ -74,8 +74,9 @@ from django.test import TestCase
 
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
-    DOORS, TransitionRefusalMixin, committed_posting, rule_on_the_table,
-    rules_on_the_table, through_raw_sql, through_save, through_the_queryset)
+    DOORS, TransitionRefusalMixin, as_the_price_door, committed_posting,
+    rule_on_the_table, rules_on_the_table, through_raw_sql, through_save,
+    through_the_queryset)
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.transitions import (
@@ -162,10 +163,13 @@ class ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest(
     RESOLUTION = {PRICE: 4_200, STATUS: PRICING_STATUS_KNOWN}
 
     def test_an_unknown_price_resolves_through_every_door(self):
+        """Under the price door's mark (#557): this asks whether the RULE
+        admits the move at each door, and the rule admits it only there."""
         for name, door in DOORS:
             with self.subTest(door=name):
                 posting = _unknown()
-                door(posting, **self.RESOLUTION)
+                with as_the_price_door():
+                    door(posting, **self.RESOLUTION)
                 posting.refresh_from_db()
                 self.assertEqual(
                     (getattr(posting, PRICE), getattr(posting, STATUS),
@@ -180,7 +184,8 @@ class ATriggerRefusingEveryWriteWouldSatisfyTheRefusalsAloneTest(
         by a rule written as if a resolution always carries a positive number.
         """
         posting = _unknown()
-        _through_the_queryset(posting, **{**self.RESOLUTION, PRICE: 0})
+        with as_the_price_door():
+            _through_the_queryset(posting, **{**self.RESOLUTION, PRICE: 0})
         posting.refresh_from_db()
         self.assertEqual(getattr(posting, PRICE), 0)
 
@@ -413,8 +418,9 @@ class TheStatusReasonMovesOnlyWithTheResolutionTest(TransitionRefusalMixin,
         for name, door in DOORS:
             with self.subTest(door=name):
                 posting = _unknown_and_negative()
-                door(posting, **{PRICE: 4_200, STATUS: PRICING_STATUS_KNOWN,
-                                 WHY: None})
+                with as_the_price_door():
+                    door(posting, **{PRICE: 4_200,
+                                     STATUS: PRICING_STATUS_KNOWN, WHY: None})
                 posting.refresh_from_db()
                 self.assertEqual(
                     (getattr(posting, PRICE), getattr(posting, STATUS),

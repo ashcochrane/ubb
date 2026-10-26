@@ -92,22 +92,10 @@ class TenantDefaultMarkup(BaseModel):
     def __str__(self):
         return f"TenantDefaultMarkup({self.tenant_id})"
 
-    # THE CACHE IS INVALIDATED AT THE MODEL LAYER, WHICH IS WHERE THE
-    # CONVENTION PUTS IT (`docs/conventions/django-patterns.md`, Caching): no
-    # write path can bypass a hook here, and the record this rung replaces has
-    # always carried the same pair. A rung declared or withdrawn through a
-    # route and a rung written from a shell both reach the same bump.
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-        MarkupCache.invalidate(self.tenant_id)
-
-    def delete(self, *args, **kwargs):
-        tenant_id = self.tenant_id
-        result = super().delete(*args, **kwargs)
-        from apps.metering.pricing.services.markup_cache import MarkupCache
-        MarkupCache.invalidate(tenant_id)
-        return result
+    # NO CACHE STANDS IN FRONT OF THIS RECORD, SO NOTHING HERE INVALIDATES ONE
+    # (#556). `save()` and `delete()` used to bump `MarkupCache`'s version key;
+    # nothing in production ever read that cache, and it is deleted with its
+    # hooks. Every read of the rung is a live read of this row.
 
 
 #: The check that makes a rate say which quantity it prices, exactly once
