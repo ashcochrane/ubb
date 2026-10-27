@@ -481,3 +481,78 @@ class TheMigrationsReconcileByRefusingTest(_Rows, TestCase):
         self.assertEqual(_stored(table, column, record.pk), "USD")
         _store(table, column, record.pk, ECONOMIC_CURRENCY)
         _migrate_to(app, installer)
+
+
+class TheSourceFactsPairTheirAmountWithTheirCurrencyTest(TestCase):
+    """The one rule over a source fact (#564), proved rather than named.
+
+    `SOURCE_FACTS` above pins each pairing CHECK by name; this proves what
+    each refuses, through every door that skips the writers: a dollar amount
+    beside a foreign code (a relabel — the quarantine undone), and a dollar
+    code with no dollar amount (a dollar subscription that drops out of
+    revenue unnoticed). The admitted pair on either side is the control.
+    """
+
+    def setUp(self):
+        from django.utils import timezone
+
+        from apps.platform.customers.models import Customer
+        from apps.platform.tenants.models import Tenant
+        from apps.subscriptions.models import SubscriptionInvoice
+        from apps.subscriptions.tests._helpers import a_mirrored_subscription
+
+        now = timezone.now()
+        tenant = Tenant.objects.create(name="Mirror", products=["metering", "billing"])
+        customer = Customer.objects.create(tenant=tenant, external_id="m1")
+        self.subscription = a_mirrored_subscription(
+            tenant=tenant, customer=customer, stripe_subscription_id="sub_eur",
+            stripe_product_name="Pro", status="active", amount_micros=None,
+            source_amount_minor=1999, quantity=1, currency="eur",
+            interval="month", current_period_start=now, current_period_end=now,
+            last_synced_at=now)
+        self.invoice = SubscriptionInvoice.objects.create(
+            tenant=tenant, customer=customer, stripe_subscription=self.subscription,
+            stripe_invoice_id="in_eur", amount_paid_micros=None,
+            source_amount_paid_minor=1999, currency="eur",
+            period_start=now, period_end=now, paid_at=now)
+
+    def _doors(self, row, **columns):
+        table = row._meta.db_table
+        sets = ", ".join(f"{column} = %s" for column in columns)
+        return {
+            "QuerySet.update()": lambda: type(row).objects.filter(
+                pk=row.pk).update(**columns),
+            "raw SQL": lambda: connection.cursor().execute(
+                f"UPDATE {table} SET {sets} WHERE id = %s",
+                [*columns.values(), str(row.pk)]),
+        }
+
+    def test_neither_half_of_the_pair_moves_without_the_other(self):
+        cases = {
+            "a dollar amount beside a foreign code": (
+                (self.subscription, "ck_subscription_economic_amount_only_in_usd",
+                 {"amount_micros": 19_990_000}),
+                (self.invoice, "ck_subscription_invoice_economic_amount_only_in_usd",
+                 {"amount_paid_micros": 19_990_000})),
+            "a dollar code with no dollar amount": (
+                (self.subscription, "ck_subscription_economic_amount_only_in_usd",
+                 {"currency": "usd"}),
+                (self.invoice, "ck_subscription_invoice_economic_amount_only_in_usd",
+                 {"currency": "usd"})),
+        }
+        for case, rows in cases.items():
+            for row, check, columns in rows:
+                for door, write in self._doors(row, **columns).items():
+                    with self.subTest(case=case, table=row._meta.db_table, door=door):
+                        with self.assertRaisesRegex(IntegrityError, check):
+                            with transaction.atomic():
+                                write()
+
+    def test_the_admitted_pair_moves_together(self):
+        """THE CONTROL: the same doors, both halves at once."""
+        for row, columns in (
+                (self.subscription, {"currency": "usd", "amount_micros": 19_990_000}),
+                (self.invoice, {"currency": "usd", "amount_paid_micros": 19_990_000})):
+            for door, write in self._doors(row, **columns).items():
+                with self.subTest(table=row._meta.db_table, door=door):
+                    write()
