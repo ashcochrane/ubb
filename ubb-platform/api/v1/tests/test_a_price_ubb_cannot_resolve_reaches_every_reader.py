@@ -156,7 +156,7 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
                     if r.get("reason_code") == self.customer_stop]
         assert episode["itemised"]["billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert episode["itemised"][UNPRICED_EVENT_COUNT_KEY] == 1
-        assert episode["itemised"]["event_count"] == 2
+        assert episode["itemised"]["posting_count"] == 2
 
         totals, = [t for t in body["totals"]
                    if t["control_family"] == self.family]
@@ -182,7 +182,7 @@ class TestShapeOneAReportThatWouldHaveFiveHundredEd:
                     if r.get("reason_code") == self.customer_stop]
         assert episode["itemised"]["billed_cost_micros"] == KNOWN_PRICE_MICROS
         assert episode["itemised"][UNPRICED_EVENT_COUNT_KEY] == 0
-        assert episode["itemised"]["event_count"] == 2
+        assert episode["itemised"]["posting_count"] == 2
 
 
 @pytest.mark.django_db
@@ -292,7 +292,7 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
         TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS, counts_as_event=True)
         TenantBillingService.accumulate_usage(self.tenant, None, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
-        assert period.event_count == 2
+        assert period.recorded_events == 2
         assert period.total_billed_cost_micros == KNOWN_PRICE_MICROS
 
     def test_a_period_whose_first_posting_is_unpriced_still_opens(self):
@@ -307,4 +307,4 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
         assert period.status == "open"
         assert period.total_billed_cost_micros == 0
-        assert period.event_count == 1
+        assert period.recorded_events == 1

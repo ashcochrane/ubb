@@ -55,7 +55,7 @@ export interface RevenueDailyRow {
    * and one that drew a margin through a day the server said had none.
    */
   margin_micros: number | null;
-  event_count: number | null;
+  recorded_events: number | null;
   [FIGURES_KEY]: PlottedFigures;
 }
 
@@ -102,7 +102,7 @@ export function toRevenueWindow(answer: Economics): RevenueWindow {
       provider_cost_micros: statedValue(figures.provider_cost_micros),
       revenue_micros: statedValue(figures.revenue_micros),
       margin_micros: statedValue(figures.margin_micros),
-      event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+      recorded_events: statedValue(figureOn(row, RECORDED_EVENTS)),
       [FIGURES_KEY]: figures,
     };
   });

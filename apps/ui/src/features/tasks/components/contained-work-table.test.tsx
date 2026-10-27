@@ -29,14 +29,14 @@ function piece(ordinal: number, overrides: Partial<RunRow> = {}): RunRow {
     ...ceilingAssessment("not_applicable", { cost: completeTotal(ordinal * 10_000) }),
     total_billed_cost_micros: 0,
     unpriced_event_count: 0,
-    event_count: (ordinal % 3) + 1,
+    recorded_events: (ordinal % 3) + 1,
     created_at: `2026-09-01T14:${String(ordinal % 60).padStart(2, "0")}:00Z`,
     ...overrides,
   };
 }
 
 const THIRTY = Array.from({ length: 30 }, (_, index) => piece(index + 1));
-const EVENTS_OVER_THIRTY = THIRTY.reduce((sum, row) => sum + row.event_count, 0);
+const EVENTS_OVER_THIRTY = THIRTY.reduce((sum, row) => sum + row.recorded_events, 0);
 // 10,000 × (1 + … + 30) = 4,650,000 micros; over the first 25 alone it is 3,250,000.
 const COST_OVER_THIRTY = "$4.65";
 const COST_OVER_THE_SHOWN_TWENTY_FIVE = "$3.25";
@@ -155,7 +155,7 @@ describe("ContainedWorkTable", () => {
   it("says Unknown for a piece whose cost nobody knows, beside a sibling that really cost nothing", async () => {
     const rows = [
       piece(1, { total_provider_cost_micros: 0, unresolved_event_count: 1 }),
-      piece(2, { total_provider_cost_micros: 0, event_count: 0 }),
+      piece(2, { total_provider_cost_micros: 0, recorded_events: 0 }),
       piece(3),
     ];
     renderTable(rows);

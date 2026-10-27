@@ -112,7 +112,7 @@ export interface RevenueCostPoint {
   revenue_micros: number | null;
   provider_micros: number | null;
   margin_micros: number | null;
-  event_count: number | null;
+  recorded_events: number | null;
   [FIGURES_KEY]: PlottedFigures;
 }
 
@@ -193,7 +193,7 @@ export function toRevenueCostSeries(answer: Economics): RevenueCostSeries {
         revenue_micros: statedValue(figures.revenue_micros),
         provider_micros: statedValue(figures.provider_micros),
         margin_micros: statedValue(figures.margin_micros),
-        event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+        recorded_events: statedValue(figureOn(row, RECORDED_EVENTS)),
         [FIGURES_KEY]: figures,
       };
     }),

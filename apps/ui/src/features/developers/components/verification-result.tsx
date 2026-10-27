@@ -191,7 +191,7 @@ function Closed({ close, currency }: { close: CloseTaskResponse; currency: strin
       </div>
       <div>
         <dt className="text-[11px] text-text-muted">Events</dt>
-        <dd>{formatEventCount(close.event_count)}</dd>
+        <dd>{formatEventCount(close.recorded_events)}</dd>
       </div>
       <div>
         <dt className="text-[11px] text-text-muted">Total provider cost</dt>

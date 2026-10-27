@@ -508,7 +508,7 @@ export async function closeTask(
     // work sold that way earns a charge (#416). Not a stub: it is what the
     // route answers for this workspace.
     charge_created: false,
-    event_count: taskEvents.length,
+    recorded_events: taskEvents.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
     unresolved_event_count: countUnresolved(taskEvents),

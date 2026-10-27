@@ -31,7 +31,7 @@ function that answers it, and **Measurements status** reads it first — a charg
 `not_applicable`, never `pruned`.
 **What counts a charge posting and what does not is decided by the ECONOMIC FIELD each measure is
 about**: it is real revenue, so every monetary total includes it or a tenant under-reports what they
-sold; it is not a reported event, so `Task.event_count` and every count of events excludes it or a
+sold; it is not a reported event, so `Task.recorded_events` and every count of events excludes it or a
 per-event average gains a denominator nobody billed. G14's four pins hold it, installed by #511;
 ADR-0013's Consequences say which slice wrote which.
 **A compensating Charge is refused at the projection** — a negative posting would move nothing on
@@ -46,6 +46,18 @@ _Avoid_: the spelling #139 §4.3 gave the second value — it lives in `economic
 table for a migration to name, and nothing else spells it; and reading the kind as a pricing or
 costing method — it says what the row IS, and the **Pricing Receipt** says how its amounts were
 resolved.
+
+**Recorded events** and **posting count** — two counts over the same rows, kept apart by name
+(R10-W4 ruling 1). **Recorded events** counts metered usage events and never a Task Charge's
+projection: the registry's `recorded_events` measure, on the one economic query, on a Task and on
+a billing period. A **posting count** counts the postings a set of totals adds up, whatever their
+kind, so it CAN include a Charge's projection: the itemised events of a spend-control episode and
+their family totals, a seat's and a business's margin, and the monthly cost accumulator. An
+economic measure's figure slot is plain `count`, because the `measure` beside it says what is
+counted. (`apps/metering/queries.py:get_period_totals`, `get_customer_cost_totals`;
+`api/v1/schemas.py:ItemisedEventsOut`; `apps/subscriptions/api/margin_schemas.py:SeatMarginOut`)
+_Avoid_: reading a posting count as a number of reported events — it is a denominator for its own
+totals; and the generic name all of these shared before R10-W4, now a retired alias of the measure.
 
 **Posting measurement**:
 What was measured on a posting — the child record, one-to-one with its parent, holding the detail

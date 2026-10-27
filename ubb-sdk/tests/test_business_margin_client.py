@@ -22,7 +22,7 @@ BUSINESS_MARGIN_FIXTURE = {
         "provider_cost_micros": 300_000,
         "total_revenue_micros": 800_000,
         "gross_margin_micros": 500_000,
-        "event_count": 2,
+        "posting_count": 2,
     },
     "seats": [
         {
@@ -34,7 +34,7 @@ BUSINESS_MARGIN_FIXTURE = {
             "total_revenue_micros": 500_000,
             "gross_margin_micros": 300_000,
             "margin_percentage": 60.0,
-            "event_count": 1,
+            "posting_count": 1,
         },
         {
             "customer_id": "00000000-0000-0000-0000-000000000003",
@@ -45,7 +45,7 @@ BUSINESS_MARGIN_FIXTURE = {
             "total_revenue_micros": 300_000,
             "gross_margin_micros": 200_000,
             "margin_percentage": 66.67,
-            "event_count": 1,
+            "posting_count": 1,
         },
     ],
 }

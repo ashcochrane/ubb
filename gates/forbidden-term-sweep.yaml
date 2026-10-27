@@ -464,7 +464,13 @@ exclusions:
     # states its reason (`wallets/0013`), and a billing period names what
     # it sums (`tenant_billing/0014`). Each RENAMES a column away from a
     # name, so each must spell it; the number moved for the files existing.
-    files: 296
+    # 296 → 300 in R10-W4 (ruling 1): four migrations — a billing period's
+    # count and a unit of work's take `recorded_events`
+    # (`tenant_billing/0015`, `work/0030`), the cost accumulator's takes
+    # `posting_count` (`subscriptions/0019`) and the reward accumulator's
+    # `rewarded_posting_count` (`referrals/0008`). Each RENAMES a column away
+    # from the word that ruling retires, so each must spell it.
+    files: 300
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

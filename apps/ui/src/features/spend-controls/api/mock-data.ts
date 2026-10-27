@@ -129,7 +129,7 @@ export function itemised(events: readonly ItemisedEventRow[]): ItemisedEvents {
   }
   return {
     events: [...events],
-    event_count: events.length,
+    posting_count: events.length,
     billed_cost_micros: billed,
     unpriced_event_count: unpriced,
     provider_cost_micros: provider,
@@ -157,7 +157,7 @@ export function totalsOf(rows: readonly EpisodeRow[]): FamilyTotalsRow[] {
       const block = itemised([...seen.values()]);
       return {
         control_family,
-        event_count: block.event_count,
+        posting_count: block.posting_count,
         billed_cost_micros: block.billed_cost_micros,
         unpriced_event_count: block.unpriced_event_count,
         provider_cost_micros: block.provider_cost_micros,

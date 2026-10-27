@@ -256,7 +256,7 @@ export function figureOn(
   if (entry === undefined) return null;
   const sides = completenessOn(row);
   const value =
-    measure === RECORDED_EVENTS ? entry.event_count : entry.amount_micros;
+    measure === RECORDED_EVENTS ? entry.count : entry.amount_micros;
   return {
     measure,
     status: entry.status,

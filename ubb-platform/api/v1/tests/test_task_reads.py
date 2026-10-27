@@ -1,7 +1,7 @@
 """Task 14: task read endpoints — the per-unit cost receipt.
 
 Reads the materialized rollups the accumulate primitive maintains
-(total_billed_cost_micros, total_provider_cost_micros, event_count) —
+(total_billed_cost_micros, total_provider_cost_micros, recorded_events) —
 never aggregates ubb_posting. GET /tasks lists top-level work only
 (parent__isnull=True); a contained unit's numbers surface in its parent's
 detail view via `subtasks`, and in the containment collection beside it
@@ -50,11 +50,11 @@ class TestTaskReads:
             task_type="invoice_batch", grouping_field_1="eu-west-1",
             task_cogs_ceiling_micros=5_000_000,
             total_provider_cost_micros=2_010_000,
-            total_billed_cost_micros=2_480_000, event_count=412)
+            total_billed_cost_micros=2_480_000, recorded_events=412)
         Task.objects.create(
             tenant=self.tenant, customer=self.customer, parent=parent,
             balance_snapshot_micros=0, task_type="ocr",
-            total_provider_cost_micros=1_740_000, event_count=340)
+            total_provider_cost_micros=1_740_000, recorded_events=340)
         return parent
 
     def test_detail_returns_rollups_and_subtasks(self):

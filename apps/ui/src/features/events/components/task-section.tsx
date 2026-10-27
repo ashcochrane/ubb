@@ -48,7 +48,7 @@ function ClosedTaskTotals({
         items={[
           {
             label: "Events",
-            value: formatEventCount(result.event_count),
+            value: formatEventCount(result.recorded_events),
           },
           {
             label: "Total billed",
@@ -136,7 +136,7 @@ export function TaskSection({ taskId }: { taskId: string }) {
               setConfirmOpen(false);
               toastSuccess(
                 "Task closed",
-                `${taskStatusLabel(res.status)} — ${formatEventCount(res.event_count)} events.`,
+                `${taskStatusLabel(res.status)} — ${formatEventCount(res.recorded_events)} events.`,
               );
             },
             onError: toastOnError("Couldn't close the task"),

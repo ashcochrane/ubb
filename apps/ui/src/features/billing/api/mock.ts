@@ -76,7 +76,7 @@ function measuresForDay(row: MockDailyRow) {
   return measuresFor({
     cost_micros: row.provider_cost_micros,
     revenue_micros: row.revenue_micros,
-    events: row.event_count,
+    events: row.recorded_events,
     unresolved_event_count: row.unresolved_event_count,
     unpriced_event_count: row.unpriced_event_count,
   });

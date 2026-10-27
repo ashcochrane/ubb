@@ -21,14 +21,14 @@ class AccumulateUsageTest(TestCase):
         TenantBillingService.accumulate_usage(self.tenant, 1_000_000, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
         self.assertEqual(period.total_billed_cost_micros, 1_000_000)
-        self.assertEqual(period.event_count, 1)
+        self.assertEqual(period.recorded_events, 1)
 
     def test_accumulate_increments_existing_period(self):
         TenantBillingService.accumulate_usage(self.tenant, 1_000_000, counts_as_event=True)
         TenantBillingService.accumulate_usage(self.tenant, 2_000_000, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
         self.assertEqual(period.total_billed_cost_micros, 3_000_000)
-        self.assertEqual(period.event_count, 2)
+        self.assertEqual(period.recorded_events, 2)
 
 
 class AccumulateUsageRaceTest(TestCase):
@@ -49,7 +49,7 @@ class AccumulateUsageRaceTest(TestCase):
             period_end=date(2026, 2, 1),
             status="closed",
             total_billed_cost_micros=500_000,
-            event_count=1,
+            recorded_events=1,
         )
 
         today = timezone.now().date()
@@ -79,7 +79,7 @@ class AccumulateUsageRaceTest(TestCase):
         # A new open period should exist with the retried amount
         new_period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
         self.assertEqual(new_period.total_billed_cost_micros, 1_000_000)
-        self.assertEqual(new_period.event_count, 1)
+        self.assertEqual(new_period.recorded_events, 1)
 
 
 class CloseBillingPeriodTest(TestCase):
@@ -99,7 +99,7 @@ class CloseBillingPeriodTest(TestCase):
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             total_billed_cost_micros=100_000_000_000,  # $100k
-            event_count=5000,
+            recorded_events=5000,
         )
         TenantBillingService.close_period(period)
         period.refresh_from_db()
@@ -117,7 +117,7 @@ class CloseBillingPeriodTest(TestCase):
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             total_billed_cost_micros=100_000_000,  # $100
-            event_count=10,
+            recorded_events=10,
         )
         TenantBillingService.close_period(period)
         period.refresh_from_db()

@@ -115,12 +115,12 @@ class TestCustomerCostAccumulator:
             tenant=tenant, customer=customer,
             period_start=date(2026, 1, 1), period_end=date(2026, 2, 1),
             total_provider_cost_micros=4_000_000, total_billed_cost_micros=5_000_000,
-            event_count=10,
+            posting_count=10,
         )
         acc.refresh_from_db()
         assert acc.total_provider_cost_micros == 4_000_000
         assert acc.total_billed_cost_micros == 5_000_000
-        assert acc.event_count == 10
+        assert acc.posting_count == 10
 
     def test_accumulator_unique_constraint(self):
         from apps.subscriptions.economics.models import CustomerCostAccumulator
@@ -154,7 +154,7 @@ class TestMarginModels:
         acc = CustomerCostAccumulator.objects.create(
             tenant=t, customer=c, period_start=datetime.date(2026, 6, 1),
             period_end=datetime.date(2026, 7, 1),
-            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
+            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, posting_count=2)
         assert acc.total_provider_cost_micros == 800_000
         cfg = MarginThresholdConfig.objects.create(tenant=t)
         assert cfg.min_margin_pct == 0

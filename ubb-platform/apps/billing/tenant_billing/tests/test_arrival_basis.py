@@ -24,7 +24,7 @@ class TestPlatformFeeArrivalBasis:
         period = TenantBillingService.get_or_create_current_period(t)
         period.refresh_from_db()
         assert period.total_billed_cost_micros == 200
-        assert period.event_count == 2
+        assert period.recorded_events == 2
 
         # One event is effective THIS month, the other is a backfill into the
         # PRIOR month — but both arrived (created_at) this month.
@@ -43,4 +43,4 @@ class TestPlatformFeeArrivalBasis:
         # "correction" away from what accumulate_usage already counted.
         # (Under the old effective basis this would have recomputed to 100/1.)
         assert period.total_billed_cost_micros == 200
-        assert period.event_count == 2
+        assert period.recorded_events == 2

@@ -68,7 +68,7 @@ class TestResnapshotDirtyPeriods:
         CustomerCostAccumulator.objects.create(
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=300, total_billed_cost_micros=900,
-            event_count=2)
+            posting_count=2)
         _aged_marker(t, c, prior_start)
 
         resnapshot_dirty_periods()
@@ -91,7 +91,7 @@ class TestResnapshotDirtyPeriods:
         CustomerCostAccumulator.objects.create(
             tenant=t, customer=c, period_start=prior_start, period_end=cur_start,
             total_provider_cost_micros=500, total_billed_cost_micros=700,
-            event_count=1)
+            posting_count=1)
         _aged_marker(t, c, prior_start)
 
         resnapshot_dirty_periods()

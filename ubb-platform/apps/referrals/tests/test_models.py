@@ -131,4 +131,4 @@ class TestRewardAccumulator:
         )
         acc = ReferralRewardAccumulator.objects.create(referral=referral)
         assert acc.total_earned_micros == 0
-        assert acc.event_count == 0
+        assert acc.rewarded_posting_count == 0

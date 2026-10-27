@@ -218,7 +218,7 @@ function RunDetailBody({
       <Section title="What it cost and earned" description={describeRunTotals(applicability)}>
         <DetailList
           items={[
-            { label: "Events", value: formatEventCount(detail.event_count) },
+            { label: "Events", value: formatEventCount(detail.recorded_events) },
             {
               label: "Supplier cost",
               value: (

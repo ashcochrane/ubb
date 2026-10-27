@@ -32,11 +32,11 @@ class TestTaskAnalytics:
                 tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,
                 task_type="invoice_batch", status="completed",
                 task_cogs_ceiling_micros=50_000,
-                total_provider_cost_micros=cost, event_count=1)
+                total_provider_cost_micros=cost, recorded_events=1)
         Task.objects.create(
             tenant=self.tenant, customer=self.customer, balance_snapshot_micros=0,
             task_type="receipt_scan", status="completed",
-            total_provider_cost_micros=500, event_count=1)
+            total_provider_cost_micros=500, recorded_events=1)
 
     def test_rollup_by_task_type(self):
         self._seed()
@@ -99,7 +99,7 @@ class TestTaskAnalytics:
         Task.objects.create(tenant=self.tenant, customer=self.customer,
                             parent=parent, balance_snapshot_micros=0,
                             task_type="ocr", status="completed",
-                            total_provider_cost_micros=999, event_count=1)
+                            total_provider_cost_micros=999, recorded_events=1)
         r = self._get("/api/v1/metering/analytics/tasks?group_by=subtask_type")
         rows = {x["task_type"]: x for x in r.json()["rows"]}
         assert list(rows) == ["ocr"]

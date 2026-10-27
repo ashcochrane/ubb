@@ -241,7 +241,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `withdraw` | `WithdrawResponse` |
 | `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
-| `get_customer_margin` | `CustomerMarginOut` (full body — adds `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
+| `get_customer_margin` | `CustomerMarginOut` (full body — adds `usage_revenue_micros`, `total_revenue_micros`, a count of the customer's postings, `external_id`, `period`) |
 | `get_margin_by_grouping_field` (was `get_margin_by_dimension` — see §8) | `list[GroupingFieldMarginRow]` |
 | `get_margin_trend` | `list[MarginTrendPointOut]` |
 
@@ -1022,8 +1022,9 @@ elsewhere — on a stop — is a different concept and is unchanged.
 The period's money, published under a "usage cost" name until #516, is
 `TenantBillingPeriodOut.total_billed_cost_micros`: the sum of `billed_cost_micros`
 over the period's postings, a fixed-price unit's charge included. Its count is
-`recorded_events` (the registry's measure; it was `event_count`), every metered usage event, priced or not,
-and never that charge — so the money includes what the count excludes.
+`recorded_events` (the registry's measure; until #619 it was published under the generic count
+name §22 retires), every metered usage event, priced or not, and never that charge — so the money
+includes what the count excludes.
 
 ### Money is in US dollars
 
@@ -1034,6 +1035,28 @@ in another currency is kept as Stripe sent it — `amount_micros` /
 `source_amount_paid_minor` — and left out of revenue; every margin read that could
 have counted one states how many it left out in `foreign_currency_subscription_count`
 (0 when none).
+
+## 22. Each count is named for what it counts (R10-W4 ruling 1 — pre-live)
+
+Eight response fields shared one generic count name, so a reader could not tell
+from the name which rows were counted. Each now carries the name of what it
+counts, and the generic name is retired: the API never publishes it again. The
+regenerated models carry the new attribute names; no amount, row or arithmetic
+changes.
+
+| Model | Now | What it counts |
+|---|---|---|
+| `TaskOut`, `TaskDetailOut`, `CloseTaskResponse` | `recorded_events` | Metered usage events recorded under the unit of work, its contained work's included — never the Charge of a unit sold at one agreed price |
+| `EconomicMeasureOut` | `count` | The count measure's figure; `measure` beside it (`recorded_events`) says what is counted |
+| `ItemisedEventsOut` | `posting_count` | The postings an episode itemises (the rows its totals add up) |
+| `SpendControlFamilyTotalsRow` | `posting_count` | The distinct postings a family's episodes itemise |
+| `SeatMarginOut` | `posting_count` | Every posting the customer has in the window |
+| `BusinessMarginTotals` | `posting_count` | The seats' posting counts added up |
+
+A `posting_count` counts postings of every kind, so it **can include a Task
+Charge's projected posting**; `recorded_events` never does. Read
+`recorded_events` for "how many events were reported", and a `posting_count` only
+as the size of the set its own totals add up.
 
 ## Release checklist (operator)
 

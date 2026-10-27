@@ -50,7 +50,7 @@
         "total_provider_cost_micros": 1250000,
         "unresolved_event_count": 0,
         "unpriced_event_count": 1,
-        "event_count": 1
+        "recorded_events": 1
       }
     },
     "subtasks": [],

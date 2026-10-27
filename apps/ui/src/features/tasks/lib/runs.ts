@@ -83,7 +83,7 @@ export function kindKeysForRuns(kinds: readonly KindOfWork[]): string[] {
 
 /** The five totals a run — or a roll-up over runs — carries, spelled as the wire spells them. */
 export interface RunTotals {
-  readonly event_count: number;
+  readonly recorded_events: number;
   readonly total_provider_cost_micros: number;
   readonly unresolved_event_count: number;
   readonly total_billed_cost_micros: number;
@@ -367,14 +367,14 @@ export interface ContainedTotals extends RunTotals {
 export function containedTotals(contained: readonly RunRow[]): ContainedTotals {
   const totals = {
     count: contained.length,
-    event_count: 0,
+    recorded_events: 0,
     total_provider_cost_micros: 0,
     unresolved_event_count: 0,
     total_billed_cost_micros: 0,
     unpriced_event_count: 0,
   };
   for (const row of contained) {
-    totals.event_count += row.event_count;
+    totals.recorded_events += row.recorded_events;
     totals.total_provider_cost_micros += row.total_provider_cost_micros;
     totals.unresolved_event_count += row.unresolved_event_count;
     totals.total_billed_cost_micros += row.total_billed_cost_micros;

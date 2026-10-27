@@ -81,7 +81,7 @@ class _ADeliverableUnit:
         return {"status": unit.status,
                 "billed": unit.total_billed_cost_micros,
                 "provider": unit.total_provider_cost_micros,
-                "events": unit.event_count,
+                "events": unit.recorded_events,
                 "unpriced": unit.unpriced_event_count}
 
     def _charge_postings(self, task_id):
@@ -104,7 +104,7 @@ class AReplayedCloseAddsNothingTest(RailActivated, _ADeliverableUnit, TestCase):
         self.assertTrue(closed["charge_created"])
         self.assertEqual(closed["total_billed_cost_micros"], THE_AGREED_PRICE)
         self.assertEqual(closed["total_provider_cost_micros"], 0)
-        self.assertEqual(closed["event_count"], 0)
+        self.assertEqual(closed["recorded_events"], 0)
         self.assertEqual(closed["unpriced_event_count"], 0)
         # And the unit as STORED, which every later read answers from: the
         # close reads back only the billed total after the Charge, so a

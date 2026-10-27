@@ -30,7 +30,7 @@ class TaskModelTest(TestCase):
         self.assertEqual(task.status, "active")
         self.assertEqual(task.total_billed_cost_micros, 0)
         self.assertEqual(task.total_provider_cost_micros, 0)
-        self.assertEqual(task.event_count, 0)
+        self.assertEqual(task.recorded_events, 0)
         self.assertIsNone(task.completed_at)
 
     def test_task_str_representation(self):

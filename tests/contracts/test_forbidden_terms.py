@@ -429,7 +429,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 293 -> 294 in R10-W3 (G27): one migration — a money mode needs its
         # payment rail activated first.
         # 294 -> 296 in R10-W3 (#479, #516): two column renames.
-        "historical-migrations": (UNTIL_SLICE_8, 296, 19),
+        # 296 -> 300 in R10-W4 (ruling 1): four column renames, each away
+        # from the word that ruling retires.
+        "historical-migrations": (UNTIL_SLICE_8, 300, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

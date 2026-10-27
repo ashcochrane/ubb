@@ -593,7 +593,7 @@ class MeteringClientTest(unittest.TestCase):
             # than merely present.
             "unresolved_event_count": 3,
             "unpriced_event_count": 0,
-            "event_count": 12,
+            "recorded_events": 12,
             # The declaration echoed back beside the state it produced, and
             # whether this call was the one that performed the close (#409).
             "outcome": TASK_OUTCOME_DELIVERED,
@@ -616,7 +616,7 @@ class MeteringClientTest(unittest.TestCase):
         self.assertEqual(result.total_billed_cost_micros, 2_500_000)
         self.assertEqual(result.total_provider_cost_micros, 1_750_000)
         self.assertEqual(result.unresolved_event_count, 3)
-        self.assertEqual(result.event_count, 12)
+        self.assertEqual(result.recorded_events, 12)
         self.assertIsNone(result.parent_task_id)
 
     @patch("ubb.metering.httpx.Client.post")
@@ -628,7 +628,7 @@ class MeteringClientTest(unittest.TestCase):
             "total_billed_cost_micros": 100, "total_provider_cost_micros": 80,
             "unresolved_event_count": 0,
             "unpriced_event_count": 0,
-            "event_count": 1,
+            "recorded_events": 1,
             "outcome": TASK_OUTCOME_DELIVERED,
             "replayed": False,
             "charge_created": False,
@@ -646,7 +646,7 @@ class MeteringClientTest(unittest.TestCase):
             "task_id": "task_1", "status": TASK_STATUS_FAILED,
             "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
             "unresolved_event_count": 0, "unpriced_event_count": 0,
-            "event_count": 0, "outcome": TASK_OUTCOME_FAILED, "replayed": False,
+            "recorded_events": 0, "outcome": TASK_OUTCOME_FAILED, "replayed": False,
             "charge_created": False,
         })
         self.client.close_task("task_1", TASK_OUTCOME_FAILED,
@@ -700,7 +700,7 @@ class MeteringClientTest(unittest.TestCase):
             "reason_code": None, "trigger_source": None,
             "control_family": None, "total_provider_cost_micros": 1_750_000,
             "unresolved_event_count": 1, "total_billed_cost_micros": 2_500_000,
-            "unpriced_event_count": 0, "event_count": 12,
+            "unpriced_event_count": 0, "recorded_events": 12,
             "task_cogs_ceiling_micros": 5_000_000, "agreed_price_micros": None,
             # The assessment beside the totals (#452): known 1,750,000 of a
             # 5,000,000 ceiling with one event uncosted is `indeterminate`,

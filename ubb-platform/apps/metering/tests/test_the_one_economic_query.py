@@ -145,7 +145,7 @@ class EachMeasureComesFromItsOwnSourceTest(TestCase):
     def test_the_count_excludes_the_charge_posting_kind(self):
         """§10: a Task must not count its own invoice as work."""
         assert measure_of(self._answer(),
-                          ANALYTICS_MEASURE_RECORDED_EVENTS)["event_count"] == 2
+                          ANALYTICS_MEASURE_RECORDED_EVENTS)["count"] == 2
 
     def test_the_count_includes_the_recorded_postings_it_does_not_exclude(self):
         """THE OTHER DIRECTION, and it is the half that makes the first one
@@ -153,7 +153,7 @@ class EachMeasureComesFromItsOwnSourceTest(TestCase):
         above exactly as the right one does."""
         Posting.objects.filter(kind=USAGE_EVENT_KIND_TASK_CHARGE).delete()
         assert measure_of(self._answer(),
-                          ANALYTICS_MEASURE_RECORDED_EVENTS)["event_count"] == 2
+                          ANALYTICS_MEASURE_RECORDED_EVENTS)["count"] == 2
 
     def test_revenue_includes_the_charge_the_count_excluded(self):
         """The same row is not work and IS money, which is the whole reason the
@@ -709,7 +709,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
         assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
                                                         "chat.completion"]
         assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
-                          )["event_count"] == 2
+                          )["count"] == 2
 
     def test_a_quantity_nobody_filed_is_absent_rather_than_a_sentinel(self):
         Measurement.objects.filter(code="prompt_tokens").update(concept=None)
@@ -723,7 +723,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
         assert [row[GROUPED_VALUE_KEY][0] for row in answer["rows"]] == [
             "input_size"]
         assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
-                          )["event_count"] == 1
+                          )["count"] == 1
 
     def test_a_charge_projection_never_reaches_this_heading(self):
         """A charge projection never reaches this axis, and the reason is
@@ -754,7 +754,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
         assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
                                                         "chat.completion"]
         assert measure_of(answer, ANALYTICS_MEASURE_RECORDED_EVENTS
-                          )["event_count"] == 2
+                          )["count"] == 2
         # The premise, so the paragraph fails rather than ages: an Event Type
         # key is what the pair is keyed on, and a projection has none.
         assert charge.event_type == ""
@@ -992,7 +992,7 @@ class WhichClockGovernsARowTest(TestCase):
             assert count[0]["status"] == (
                 MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
             assert count[0]["available_from"] == "2026-06-18"
-            assert count[0]["event_count"] is None, "never a count, never zero"
+            assert count[0]["count"] is None, "never a count, never zero"
 
     def test_a_question_with_no_start_date_is_not_about_all_of_history(self):
         """⚠ AN ABSENT LOWER BOUND IS THE HORIZON, NOT THE BEGINNING OF TIME.
@@ -1062,7 +1062,7 @@ class WhichClockGovernsARowTest(TestCase):
                 MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
             assert entry["available_from"] == "2020-09-16"
             assert entry.get("amount_micros") is None
-            assert entry.get("event_count") is None
+            assert entry.get("count") is None
 
     def test_a_grouped_question_over_a_released_stretch_has_no_row_to_state(
             self):
@@ -1170,7 +1170,7 @@ class TheAnswerKeepsOneShapeWithOrWithoutAFigureTest(TestCase):
     ⚠ **THE WRONG ANSWER THIS RULES OUT IS A UNIT ERROR ON THE ROWS A READER IS
     LEAST ABLE TO CHECK.** Three measures are denominated in micros and the
     fourth is a number of records; a truncated row that nulled `amount_micros`
-    on the count and left `event_count` absent would publish the count's slot as
+    on the count and left `count` absent would publish the count's slot as
     money's, and every state assertion in this module would still pass.
     """
 

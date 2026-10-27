@@ -65,7 +65,7 @@ class RollupTest(WorkTestBase):
         self.assertEqual(unit.id, sub.id)
         self.assertEqual(unit.total_billed_cost_micros, 3_000_000)
         self.assertEqual(unit.total_provider_cost_micros, 2_000_000)
-        self.assertEqual(unit.event_count, 1)
+        self.assertEqual(unit.recorded_events, 1)
         self.assertFalse(any(verdicts.values()))
 
         # Containment: the parent sees everything underneath it — both
@@ -73,7 +73,7 @@ class RollupTest(WorkTestBase):
         parent.refresh_from_db()
         self.assertEqual(parent.total_billed_cost_micros, 3_000_000)
         self.assertEqual(parent.total_provider_cost_micros, 2_000_000)
-        self.assertEqual(parent.event_count, 1)
+        self.assertEqual(parent.recorded_events, 1)
         self.assertIsNotNone(parent.last_event_at)
 
     def test_parent_direct_events_and_rollup_share_the_totals(self):
@@ -86,9 +86,9 @@ class RollupTest(WorkTestBase):
         parent.refresh_from_db()
         sub.refresh_from_db()
         self.assertEqual(parent.total_provider_cost_micros, 3_000_000)
-        self.assertEqual(parent.event_count, 2)
+        self.assertEqual(parent.recorded_events, 2)
         self.assertEqual(sub.total_provider_cost_micros, 2_000_000)
-        self.assertEqual(sub.event_count, 1)
+        self.assertEqual(sub.recorded_events, 1)
 
     def test_killed_subtask_late_events_still_roll_up(self):
         # Killed is a signal point, not a wall — a late event on a killed
@@ -475,7 +475,7 @@ class ContainmentCutsDownwardOnlyTest(WorkTestBase):
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros,
                          rolled_up_before + 6_000_000)
-        self.assertEqual(parent.event_count, 3)
+        self.assertEqual(parent.recorded_events, 3)
         # And the piece that was stopped stayed stopped — the parent going on
         # is not the cascade running backwards.
         contained.refresh_from_db()

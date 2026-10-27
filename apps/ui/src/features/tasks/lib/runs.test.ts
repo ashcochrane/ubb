@@ -38,7 +38,7 @@ function row(overrides: Partial<RunRow> = {}): RunRow {
     ...ceilingAssessment("not_applicable", { cost: completeTotal(0) }),
     total_billed_cost_micros: 0,
     unpriced_event_count: 0,
-    event_count: 0,
+    recorded_events: 0,
     created_at: "2026-09-01T00:00:00Z",
     ...overrides,
   };
@@ -164,7 +164,7 @@ describe("contained work", () => {
     Array.from({ length: count }, (_, index) =>
       row({
         task_id: `piece-${index + 1}`,
-        event_count: (index % 3) + 1,
+        recorded_events: (index % 3) + 1,
         total_provider_cost_micros: (index + 1) * 1_000,
         unresolved_event_count: index % 7 === 0 ? 1 : 0,
         total_billed_cost_micros: (index + 1) * 2_000,
@@ -190,7 +190,7 @@ describe("contained work", () => {
     const many = pieces(30);
     const totals = containedTotals(many);
     expect(totals.count).toBe(30);
-    expect(totals.event_count).toBe(many.reduce((sum, piece) => sum + piece.event_count, 0));
+    expect(totals.recorded_events).toBe(many.reduce((sum, piece) => sum + piece.recorded_events, 0));
     expect(totals.total_provider_cost_micros).toBe(1_000 * (30 * 31) / 2);
     expect(totals.total_billed_cost_micros).toBe(2_000 * (30 * 31) / 2);
     expect(totals.unresolved_event_count).toBe(5);
@@ -200,7 +200,7 @@ describe("contained work", () => {
     // visible rows would answer a different number.
     const shownOnly = containedTotals(foldContainedWork(many, false).shown);
     expect(shownOnly.total_provider_cost_micros).not.toBe(totals.total_provider_cost_micros);
-    expect(shownOnly.event_count).not.toBe(totals.event_count);
+    expect(shownOnly.recorded_events).not.toBe(totals.recorded_events);
   });
 });
 

@@ -54,8 +54,10 @@ window, and fraud checks pass.
 The micro-denominated amount a referrer earns from a referred customer's usage event.
 
 **Reward accumulator**:
-The one-per-referral running total of earnings, referred spend, and event count, updated in real
-time. (`apps/referrals/rewards/models.py:ReferralRewardAccumulator`)
+The one-per-referral running total of earnings, referred spend, and how many postings earned a
+reward (`rewarded_posting_count`, R10-W4 ruling 1 — a posting that earned nothing, hit the cap or
+was skipped is not counted), updated in real time.
+(`apps/referrals/rewards/models.py:ReferralRewardAccumulator`)
 
 **Reward ledger**:
 The immutable, per-period reward record written by batch reconciliation.

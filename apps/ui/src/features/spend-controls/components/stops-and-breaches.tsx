@@ -71,7 +71,7 @@ function FamilyTotalsTable({
                 {controlFamilyLabel(row.control_family)}
               </TableCell>
               <TableCell className="text-right text-[13px] tabular-nums">
-                {row.event_count.toLocaleString()}
+                {row.posting_count.toLocaleString()}
               </TableCell>
               {/* Each total is over exactly the itemised events of the rows
                   shown, each event once per family, and each is the sum of

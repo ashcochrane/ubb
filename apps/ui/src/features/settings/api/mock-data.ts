@@ -252,7 +252,7 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     correlation_id: "corr-4410",
     metadata: {
       period_start: "2026-06-01",
-      event_count: 1_204_118,
+      recorded_events: 1_204_118,
       platform_fee_micros: 92_130_000,
     },
   },

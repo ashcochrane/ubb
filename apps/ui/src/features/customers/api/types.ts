@@ -151,7 +151,7 @@ export function toUsageSeries(answer: Economics): UsageSeries {
         bucket: row.bucket_start ?? "",
         provider_cost_micros: statedValue(figures.provider_cost_micros),
         revenue_micros: statedValue(figures.revenue_micros),
-        event_count: statedValue(figureOn(row, RECORDED_EVENTS)),
+        recorded_events: statedValue(figureOn(row, RECORDED_EVENTS)),
         [FIGURES_KEY]: figures,
       };
     }),
@@ -277,7 +277,7 @@ export interface TimeseriesPoint {
   /** `statedValue` of the figures below — a GAP where the state states none. */
   provider_cost_micros: number | null;
   revenue_micros: number | null;
-  event_count: number | null;
+  recorded_events: number | null;
   /** The figures behind the numbers, each carrying its own day's counts —
    *  because an unresolved cost belongs to the day it fell in. */
   [FIGURES_KEY]: PlottedFigures;

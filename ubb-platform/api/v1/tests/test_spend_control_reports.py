@@ -186,7 +186,7 @@ class ACeilingEpisodeTest(RailActivated, SpendControlReportsTestBase):
         events = row["itemised"]["events"]
         self.assertEqual([(e["event_id"], e["arrived_after"]) for e in events],
                          [(tip["event_id"], False), (late["event_id"], True)])
-        self.assertEqual(row["itemised"]["event_count"], 2)
+        self.assertEqual(row["itemised"]["posting_count"], 2)
         self.assertEqual(row["itemised"]["provider_cost_micros"], 13_000_000)
         self.assertEqual(row["itemised"]["billed_cost_micros"], 9_000_000)
         self.assertEqual(row["itemised"]["unresolved_event_count"], 0)
@@ -194,7 +194,7 @@ class ACeilingEpisodeTest(RailActivated, SpendControlReportsTestBase):
         self.assertIsNone(events[0]["charge_id"])
         [total] = self._report()["totals"]
         self.assertEqual(total, {
-            "control_family": CONTROL_FAMILY_CEILING, "event_count": 2,
+            "control_family": CONTROL_FAMILY_CEILING, "posting_count": 2,
             "billed_cost_micros": 9_000_000, "unpriced_event_count": 0,
             "provider_cost_micros": 13_000_000, "unresolved_event_count": 0})
 
@@ -247,11 +247,11 @@ class AWalletPolicyEpisodeTest(RailActivated, SpendControlReportsTestBase):
         self.assertIsNone(soft["control_id"])
         self.assertEqual(soft["floor_micros"], SOFT)
         self.assertEqual(soft["itemised"]["events"], [])
-        self.assertEqual(soft["itemised"]["event_count"], 0)
+        self.assertEqual(soft["itemised"]["posting_count"], 0)
         self.assertIsNotNone(soft["closed_at"])
         [total] = self._report()["totals"]
         self.assertEqual(total["control_family"], CONTROL_FAMILY_WALLET_POLICY)
-        self.assertEqual(total["event_count"], 2)
+        self.assertEqual(total["posting_count"], 2)
 
 
 class ACustomerSpendPoolEpisodeTest(RailActivated, SpendControlReportsTestBase):
@@ -400,13 +400,13 @@ class TheFiltersTest(RailActivated, SpendControlReportsTestBase):
         # window on the events themselves.
         [again] = self._rows(f"?customer_id={business.id}&since={row['opened_at']}",
                              family=CONTROL_FAMILY_WALLET_POLICY)
-        self.assertEqual(again["itemised"]["event_count"], 2)
+        self.assertEqual(again["itemised"]["posting_count"], 2)
 
     def test_the_totals_cover_exactly_the_rows_shown(self):
         report = self._report(STOPS, f"?control_family={CONTROL_FAMILY_CEILING}")
         self.assertEqual([t["control_family"] for t in report["totals"]],
                          [CONTROL_FAMILY_CEILING])
-        self.assertEqual(report["totals"][0]["event_count"], 2)
+        self.assertEqual(report["totals"][0]["posting_count"], 2)
         self.assertEqual(self._report(STOPS, "?until=2000-01-01T00:00:00Z")["totals"], [])
 
     def test_the_window_is_bounded_and_echoed(self):

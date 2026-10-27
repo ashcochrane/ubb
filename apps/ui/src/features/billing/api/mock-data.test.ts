@@ -66,7 +66,7 @@ describe("buildDailyRows", () => {
       day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       provider_cost_micros: expect.any(Number),
       revenue_micros: expect.any(Number),
-      event_count: expect.any(Number),
+      recorded_events: expect.any(Number),
       unresolved_event_count: expect.any(Number),
       unpriced_event_count: expect.any(Number),
     });

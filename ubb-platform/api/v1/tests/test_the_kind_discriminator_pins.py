@@ -18,7 +18,7 @@ module.
    route, on the event-type axis (`TestTheCountAndTheChargeItMustNotCount` in
    `api/v1/tests/test_the_one_economic_query.py`); this one states it in the
    row's terms, over every kind the registry declares.
-2. `Task.event_count` counts `metered_usage` only — slice 5's.
+2. `Task.recorded_events` counts `metered_usage` only — slice 5's.
 3. The provider and measurement analytics exclude `task_charge` — slice 7's, on
    the one surface they collapsed into, where *excluded* means credited to no
    provider and filed under no heading, and never dropped from the answer.
@@ -36,7 +36,7 @@ measure is about.
 
 ⚠ **PIN 1 IS NOT THE COUNT ON THE PER-CUSTOMER COST TOTALS, AND WHOEVER FINDS
 THAT COUNT FIRST MUST NOT TAKE IT FOR ONE.** `get_customer_cost_totals` carries
-an `event_count`, and it counts every posting including a projection. That is
+a `posting_count`, and it counts every posting including a projection. That is
 NOT pin 1 and must not be read as it, nor "fixed" to agree with it: pin 1 is
 about `recorded_events`, whose own query excludes the charge posting kind, and
 the count that read carries is a denominator for its own totals rather than a
@@ -179,7 +179,7 @@ class TestTheEventsMeasureCountsTheMeteredKindOnly(
 
     def test_the_count_is_the_metered_calls_and_not_the_charge(self):
         assert measure_of(self._counted(), ANALYTICS_MEASURE_RECORDED_EVENTS
-                          )["event_count"] == self.METERED_CALLS
+                          )["count"] == self.METERED_CALLS
 
     def test_the_charge_it_left_out_is_inside_the_same_answer(self):
         """THE VACUITY GUARD, read off the same response as the count. A
@@ -208,8 +208,8 @@ class TestTheEventsMeasureCountsTheMeteredKindOnly(
 
 
 @pytest.mark.django_db
-class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
-    """PIN 2 — `Task.event_count` counts `metered_usage` only.
+class TestAChargePostingDoesNotInflateTheRecordedEvents(ProjectionTestBase):
+    """PIN 2 — `Task.recorded_events` counts `metered_usage` only.
 
     The column is a running counter maintained by `TaskService.accumulate_cost`
     on every metered recording. The projection does not call it, and this is
@@ -218,15 +218,15 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
     for the work.
     """
 
-    def test_delivering_priced_work_leaves_the_event_count_where_it_was(self):
+    def test_delivering_priced_work_leaves_the_recorded_events_where_they_were(self):
         started = self._priced_work()
         self._a_metered_sale(started)
-        before = Task.objects.get(id=started).event_count
+        before = Task.objects.get(id=started).recorded_events
 
         self._close(started)
 
         assert before == 1
-        assert Task.objects.get(id=started).event_count == before
+        assert Task.objects.get(id=started).recorded_events == before
 
     def test_the_projection_is_nonetheless_attributed_to_that_unit_of_work(
             self):
@@ -245,7 +245,7 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
 
         projection = self._projection_of(started)
         assert str(projection.task_id) == str(started)
-        assert Task.objects.get(id=started).event_count == 0
+        assert Task.objects.get(id=started).recorded_events == 0
 
     def test_a_unit_of_work_with_no_metered_calls_still_counts_none(self):
         """The zero case, which is the one a fixed-price tenant lives in. A
@@ -255,13 +255,13 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
 
         self._close(started)
 
-        assert Task.objects.get(id=started).event_count == 0
+        assert Task.objects.get(id=started).recorded_events == 0
 
     def test_the_billed_total_holds_the_charge_and_the_count_does_not(self):
         """⚠ PIN 2'S COST WAS PAID IN #553, AND THIS IS THE CASE THAT SAYS SO.
 
         Until then the counter and the money moved in one statement —
-        `accumulate_cost` writes `event_count` and both running totals together
+        `accumulate_cost` writes `recorded_events` and both running totals together
         — so a projection could not add the revenue without adding to the
         count, and the unit's billed total stayed at what its metered calls
         billed while the agreed price lived only on the Charge. A9 separated
@@ -285,7 +285,7 @@ class TestAChargePostingDoesNotInflateTheEventCount(ProjectionTestBase):
         assert metered.billed_cost_micros is None
         unit = Task.objects.get(id=started)
         assert unit.total_billed_cost_micros == THE_AGREED_PRICE
-        assert unit.event_count == 1
+        assert unit.recorded_events == 1
 
 
 @pytest.mark.django_db
@@ -389,7 +389,7 @@ class TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind(
 
         assert [(row[GROUPED_VALUE_KEY],
                  measure_of(body, ANALYTICS_MEASURE_RECORDED_EVENTS,
-                            row=index)["event_count"])
+                            row=index)["count"])
                 for index, row in enumerate(body["rows"])] == [
             ([A_HEADING, SOLD_PER_EVENT], self.METERED_CALLS)]
 

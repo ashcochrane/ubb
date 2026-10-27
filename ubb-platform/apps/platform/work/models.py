@@ -469,7 +469,11 @@ class Task(BaseModel):
     # total races task_cogs_ceiling_micros.
     total_billed_cost_micros = models.BigIntegerField(default=0)
     total_provider_cost_micros = models.BigIntegerField(default=0)
-    event_count = models.IntegerField(default=0)
+    # EVERY METERED USAGE EVENT RECORDED UNDER THIS UNIT, its contained work's
+    # included, priced or not — and never its Charge's projection, which is
+    # revenue rather than an event anybody reported (G14 pin 2). Published as
+    # `recorded_events` on the Task reads and the close (R10-W4 ruling 1).
+    recorded_events = models.IntegerField(default=0)
     # HOW MANY OF THOSE EVENTS THE PROVIDER TOTAL COULD NOT INCLUDE (#328).
     #
     # Non-zero means the total above is the sum of what resolved and is not

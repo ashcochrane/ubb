@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,503 of 2,968 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,503 of 2,972 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2986,6 +2986,14 @@ measurement_key:
     # subscription (`features/customers/components/subscription-tab.test.tsx`).
     # The console's billing-mode words moved from `src/lib/` to the settings
     # feature's `lib/`, their only reader, and are swept where they landed.
+    #
+    # 2026-10-27, R10-W4 (ruling 1): 2,503 of 2,968 -> 2,503 of
+    # 2,972 tracked files (`units` UNMOVED). Four files arrived, all
+    # migrations excluded under `historical-migrations` (296 -> 300): the
+    # count columns renamed away from the word the ruling retires
+    # (`tenant_billing/0015`, `work/0030`, `subscriptions/0019`,
+    # `referrals/0008`), so the exclusions stand at 469 and nothing swept
+    # moved.
 
     - term: units
       retired_as: >-
@@ -3135,7 +3143,7 @@ total_billed_cost_micros:
     `billed_cost_micros` over its postings. On a billing period it is placed
     by arrival and INCLUDES a fixed-price unit of work's charge, which is
     revenue and which UBB's platform fee is a percentage of — while the
-    period's `event_count` beside it counts metered events only (#563). The
+    period's `recorded_events` beside it counts metered events only (#563). The
     stop payload gives the same sum over one unit of work the same name.
   # A column name rather than a value set, filed here for the reason
   # `live_counter_maintenance_enabled` is: the retired spelling needs an alias

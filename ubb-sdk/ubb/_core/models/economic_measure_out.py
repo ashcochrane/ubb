@@ -76,7 +76,9 @@ class EconomicMeasureOut:
                 for the customer and period it covers and supersedes the revenue derived from priced usage there — the two are
                 never added together. Never a zero standing in for any of these.
             available_from (None | str | Unset):
-            event_count (int | None | Unset):
+            count (int | None | Unset): The count measure's figure: under `recorded_events`, how many metered usage events
+                this row covers, never a Task Charge. Null on the three measures denominated in money, and wherever no figure
+                can be stated.
             unpriced_event_count (int | None | Unset): How many of this row's postings carry a customer price UBB could not
                 resolve, on the revenue measure only. Outside any period a tenant-supplied revenue figure covers, they are what
                 makes the revenue 'incomplete'. Inside one they are counted here as information and make nothing incomplete —
@@ -88,7 +90,7 @@ class EconomicMeasureOut:
     status: EconomicMeasureOutStatus
     amount_micros: int | None | Unset = UNSET
     available_from: None | str | Unset = UNSET
-    event_count: int | None | Unset = UNSET
+    count: int | None | Unset = UNSET
     unpriced_event_count: int | None | Unset = UNSET
     unresolved_event_count: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -114,11 +116,11 @@ class EconomicMeasureOut:
         else:
             available_from = self.available_from
 
-        event_count: int | None | Unset
-        if isinstance(self.event_count, Unset):
-            event_count = UNSET
+        count: int | None | Unset
+        if isinstance(self.count, Unset):
+            count = UNSET
         else:
-            event_count = self.event_count
+            count = self.count
 
         unpriced_event_count: int | None | Unset
         if isinstance(self.unpriced_event_count, Unset):
@@ -143,8 +145,8 @@ class EconomicMeasureOut:
             field_dict["amount_micros"] = amount_micros
         if available_from is not UNSET:
             field_dict["available_from"] = available_from
-        if event_count is not UNSET:
-            field_dict["event_count"] = event_count
+        if count is not UNSET:
+            field_dict["count"] = count
         if unpriced_event_count is not UNSET:
             field_dict["unpriced_event_count"] = unpriced_event_count
         if unresolved_event_count is not UNSET:
@@ -187,14 +189,14 @@ class EconomicMeasureOut:
         available_from = _parse_available_from(d.pop("available_from", UNSET))
 
 
-        def _parse_event_count(data: object) -> int | None | Unset:
+        def _parse_count(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             return cast(int | None | Unset, data)
 
-        event_count = _parse_event_count(d.pop("event_count", UNSET))
+        count = _parse_count(d.pop("count", UNSET))
 
 
         def _parse_unpriced_event_count(data: object) -> int | None | Unset:
@@ -222,7 +224,7 @@ class EconomicMeasureOut:
             status=status,
             amount_micros=amount_micros,
             available_from=available_from,
-            event_count=event_count,
+            count=count,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,
         )

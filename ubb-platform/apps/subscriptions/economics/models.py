@@ -30,7 +30,13 @@ class CustomerCostAccumulator(BaseModel):
     period_end = models.DateField()
     total_provider_cost_micros = models.BigIntegerField(default=0)
     total_billed_cost_micros = models.BigIntegerField(default=0)
-    event_count = models.IntegerField(default=0)
+    # HOW MANY POSTINGS THE TWO TOTALS ABOVE ADD UP — one per `usage.recorded`
+    # event whatever its kind, so a Task Charge's projected posting counts here
+    # as it does in the billed total. The hourly repair takes it from a count
+    # over every posting (`get_per_customer_cost_totals`). It is therefore not
+    # the `recorded_events` measure, and is named for what it counts (R10-W4
+    # ruling 1).
+    posting_count = models.IntegerField(default=0)
     # HOW MANY OF THOSE EVENTS THE PROVIDER TOTAL COULD NOT INCLUDE (#328).
     #
     # The handler adds each event's supplier cost as it arrives, and a cost UBB

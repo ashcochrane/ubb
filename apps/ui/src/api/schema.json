@@ -1117,10 +1117,6 @@
       },
       "BusinessMarginTotals": {
         "properties": {
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "foreign_currency_subscription_count": {
             "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
             "title": "Foreign Currency Subscription Count",
@@ -1128,6 +1124,11 @@
           },
           "gross_margin_micros": {
             "title": "Gross Margin Micros",
+            "type": "integer"
+          },
+          "posting_count": {
+            "description": "The seats' posting counts added up. Each counts every posting in the window, so it can include a Task Charge's projected posting.",
+            "title": "Posting Count",
             "type": "integer"
           },
           "provider_cost_micros": {
@@ -1170,7 +1171,7 @@
           "foreign_currency_subscription_count",
           "total_revenue_micros",
           "gross_margin_micros",
-          "event_count"
+          "posting_count"
         ],
         "title": "BusinessMarginTotals",
         "type": "object"
@@ -1492,10 +1493,6 @@
             "title": "Charge Created",
             "type": "boolean"
           },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "outcome": {
             "enum": [
               "delivered",
@@ -1516,6 +1513,11 @@
               }
             ],
             "title": "Parent Task Id"
+          },
+          "recorded_events": {
+            "description": "How many metered usage events were recorded under this unit of work, its contained work's included, whatever each was priced at. It never counts the Charge of a unit sold at one agreed price: that Charge is revenue, in `total_billed_cost_micros`, not an event anybody reported.",
+            "title": "Recorded Events",
+            "type": "integer"
           },
           "replayed": {
             "title": "Replayed",
@@ -1539,7 +1541,7 @@
             "type": "string"
           },
           "total_billed_cost_micros": {
-            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.",
+            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `recorded_events` or `unpriced_event_count`.",
             "title": "Total Billed Cost Micros",
             "type": "integer"
           },
@@ -1566,7 +1568,7 @@
           "total_provider_cost_micros",
           "unresolved_event_count",
           "unpriced_event_count",
-          "event_count"
+          "recorded_events"
         ],
         "title": "CloseTaskResponse",
         "type": "object"
@@ -2749,7 +2751,7 @@
             ],
             "title": "Available From"
           },
-          "event_count": {
+          "count": {
             "anyOf": [
               {
                 "type": "integer"
@@ -2758,7 +2760,8 @@
                 "type": "null"
               }
             ],
-            "title": "Event Count"
+            "description": "The count measure's figure: under `recorded_events`, how many metered usage events this row covers, never a Task Charge. Null on the three measures denominated in money, and wherever no figure can be stated.",
+            "title": "Count"
           },
           "measure": {
             "enum": [
@@ -4555,16 +4558,17 @@
             "title": "Billed Cost Micros",
             "type": "integer"
           },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/ItemisedEventRow"
             },
             "title": "Events",
             "type": "array"
+          },
+          "posting_count": {
+            "description": "How many postings `events` lists \u2014 the rows the totals beside it add up. A delivered fixed-price unit's Charge projects onto one posting, and the set can include it.",
+            "title": "Posting Count",
+            "type": "integer"
           },
           "provider_cost_micros": {
             "description": "The total supplier cost (COGS) UBB resolved, summed over the events this episode itemises: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
@@ -4582,7 +4586,7 @@
         },
         "required": [
           "events",
-          "event_count",
+          "posting_count",
           "billed_cost_micros",
           "unpriced_event_count",
           "provider_cost_micros",
@@ -8156,10 +8160,6 @@
             "title": "Customer Id",
             "type": "string"
           },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "foreign_currency_subscription_count": {
             "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
             "title": "Foreign Currency Subscription Count",
@@ -8172,6 +8172,11 @@
           "margin_percentage": {
             "title": "Margin Percentage",
             "type": "number"
+          },
+          "posting_count": {
+            "description": "How many postings this customer has in the window the margin covers \u2014 every posting, whatever its kind, so it can include a Task Charge's projected posting. It is not the `recorded_events` measure.",
+            "title": "Posting Count",
+            "type": "integer"
           },
           "provider_cost_micros": {
             "description": "The total supplier cost (COGS) UBB resolved, summed over this customer's events in the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the sum of the resolved costs, and when that count is zero it is complete; one declared to carry no cost adds nothing and is not counted.",
@@ -8220,7 +8225,7 @@
           "total_revenue_micros",
           "gross_margin_micros",
           "margin_percentage",
-          "event_count"
+          "posting_count"
         ],
         "title": "SeatMarginOut",
         "type": "object"
@@ -8257,8 +8262,9 @@
             "type": "string",
             "x-ubb-concept": "control_family"
           },
-          "event_count": {
-            "title": "Event Count",
+          "posting_count": {
+            "description": "How many distinct postings this family's episodes itemise, each counted once. The set can include a Task Charge's projected posting.",
+            "title": "Posting Count",
             "type": "integer"
           },
           "provider_cost_micros": {
@@ -8277,7 +8283,7 @@
         },
         "required": [
           "control_family",
-          "event_count",
+          "posting_count",
           "billed_cost_micros",
           "unpriced_event_count",
           "provider_cost_micros",
@@ -8949,10 +8955,6 @@
             "title": "Created At",
             "type": "string"
           },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "grouping_fields": {
             "additionalProperties": {
               "type": "string"
@@ -9027,6 +9029,11 @@
             ],
             "title": "Reason Detail"
           },
+          "recorded_events": {
+            "description": "How many metered usage events were recorded under this unit of work, its contained work's included, whatever each was priced at. It never counts the Charge of a unit sold at one agreed price: that Charge is revenue, in `total_billed_cost_micros`, not an event anybody reported.",
+            "title": "Recorded Events",
+            "type": "integer"
+          },
           "status": {
             "enum": [
               "active",
@@ -9068,7 +9075,7 @@
             "type": "string"
           },
           "total_billed_cost_micros": {
-            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.",
+            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `recorded_events` or `unpriced_event_count`.",
             "title": "Total Billed Cost Micros",
             "type": "integer"
           },
@@ -9116,7 +9123,7 @@
           "unresolved_event_count",
           "total_billed_cost_micros",
           "unpriced_event_count",
-          "event_count",
+          "recorded_events",
           "ceiling_status",
           "created_at"
         ],
@@ -9203,10 +9210,6 @@
             "title": "Created At",
             "type": "string"
           },
-          "event_count": {
-            "title": "Event Count",
-            "type": "integer"
-          },
           "grouping_fields": {
             "additionalProperties": {
               "type": "string"
@@ -9281,6 +9284,11 @@
             ],
             "title": "Reason Detail"
           },
+          "recorded_events": {
+            "description": "How many metered usage events were recorded under this unit of work, its contained work's included, whatever each was priced at. It never counts the Charge of a unit sold at one agreed price: that Charge is revenue, in `total_billed_cost_micros`, not an event anybody reported.",
+            "title": "Recorded Events",
+            "type": "integer"
+          },
           "status": {
             "enum": [
               "active",
@@ -9315,7 +9323,7 @@
             "type": "string"
           },
           "total_billed_cost_micros": {
-            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.",
+            "description": "What this unit billed, in micros: the sum of the customer prices UBB has resolved for its events and, for a unit sold at one agreed price that delivered, its Charge \u2014 included from the close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in `total_provider_cost_micros`, `recorded_events` or `unpriced_event_count`.",
             "title": "Total Billed Cost Micros",
             "type": "integer"
           },
@@ -9363,7 +9371,7 @@
           "unresolved_event_count",
           "total_billed_cost_micros",
           "unpriced_event_count",
-          "event_count",
+          "recorded_events",
           "ceiling_status",
           "created_at"
         ],

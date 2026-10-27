@@ -22,7 +22,7 @@ class TaskAdmin(admin.ModelAdmin):
     # apart from a cost that was reached.
     list_display = ("id", "customer", "status", "total_billed_cost_micros",
                     "total_provider_cost_micros", "unresolved_event_count",
-                    "ceiling_assessment", "ceiling_basis", "event_count",
+                    "ceiling_assessment", "ceiling_basis", "recorded_events",
                     "created_at")
     list_filter = ("status", "tenant")
     search_fields = ("id", "external_task_id")

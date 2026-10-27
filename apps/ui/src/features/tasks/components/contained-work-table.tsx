@@ -105,7 +105,7 @@ export function ContainedWorkTable({
                 <RunStatusBadge status={row.status} />
               </TableCell>
               <TableCell className="text-right text-[12px]">
-                {formatEventCount(row.event_count)}
+                {formatEventCount(row.recorded_events)}
               </TableCell>
               <TableCell className="text-right text-[12px]">
                 <SupplierCostReadingView reading={readSupplierCost(row)} currency={currency} />
@@ -139,7 +139,7 @@ export function ContainedWorkTable({
               )}
             </TableCell>
             <TableCell className="text-right text-[12px]">
-              {formatEventCount(totals.event_count)}
+              {formatEventCount(totals.recorded_events)}
             </TableCell>
             <TableCell className="text-right text-[12px]">
               <SupplierCostReadingView reading={readSupplierCost(totals)} currency={currency} />

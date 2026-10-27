@@ -62,7 +62,7 @@ _LEDGER_COLUMNS = (
     ("unresolved_event_count", UNRESOLVED_EVENT_COUNT_KEY),
     ("total_billed_cost_micros", "billed_cost_micros"),
     ("unpriced_event_count", UNPRICED_EVENT_COUNT_KEY),
-    ("event_count", "event_count"),
+    ("posting_count", "posting_count"),
 )
 
 #: The ledger's answer for a customer that has no postings in the period at all

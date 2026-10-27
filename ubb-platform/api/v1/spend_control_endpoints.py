@@ -150,7 +150,7 @@ def _itemised(events):
     price = _pair_total_of(events, CUSTOMER_PRICE)
     supplier = _pair_total_of(events, SUPPLIER_COST)
     return ItemisedEventsOut(
-        events=events, event_count=len(events),
+        events=events, posting_count=len(events),
         billed_cost_micros=price["billed_cost_micros"],
         unpriced_event_count=price[UNPRICED_EVENT_COUNT_KEY],
         provider_cost_micros=supplier["provider_cost_micros"],
@@ -333,7 +333,7 @@ def _totals(rows):
         events = list(by_family[family].values())
         block = _itemised(events)
         out.append(SpendControlFamilyTotalsRow(
-            control_family=family, event_count=block.event_count,
+            control_family=family, posting_count=block.posting_count,
             billed_cost_micros=block.billed_cost_micros,
             unpriced_event_count=block.unpriced_event_count,
             provider_cost_micros=block.provider_cost_micros,

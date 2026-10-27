@@ -1714,8 +1714,8 @@ TENANT_PRODUCT_VALUES = frozenset({
 # `billed_cost_micros` over its postings. On a billing period it is placed by
 # arrival and INCLUDES a fixed-price unit of work's charge, which is revenue
 # and which UBB's platform fee is a percentage of — while the period's
-# `event_count` beside it counts metered events only (#563). The stop payload
-# gives the same sum over one unit of work the same name.
+# `recorded_events` beside it counts metered events only (#563). The stop
+# payload gives the same sum over one unit of work the same name.
 #
 # Declared in concepts/retired.yaml.
 #

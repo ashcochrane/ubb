@@ -621,7 +621,7 @@ gates:
   G14:
     statement: >-
       The four `kind` discriminator pins — `recorded_events` counting
-      `metered_usage` only; `Task.event_count` counting `metered_usage` only;
+      `metered_usage` only; `Task.recorded_events` counting `metered_usage` only;
       the provider and measurement analytics excluding `task_charge`; and
       revenue and monetary totals including both kinds, per their economic
       fields.
@@ -648,9 +648,11 @@ gates:
       provider and filed under no measurement heading. The charge's revenue
       still reaches the answer, on the provider axis's `not_applicable` row,
       because the one query drops no money silently (#189 §5).
-      The per-customer cost totals carry an `event_count` that counts every
+      The per-customer cost totals carry a `posting_count` that counts every
       posting including a projection. That count is a denominator for its own
-      totals rather than a claim about what was reported, and it is not pin 1.
+      totals rather than a claim about what was reported, and it is not pin 1
+      — which is why R10-W4 (ruling 1) gave it a name of its own rather than
+      leaving it to share one with the measure.
     enforced_by:
       # Pin 1 — `recorded_events` counts `metered_usage` only.
       - suite: platform
@@ -659,15 +661,15 @@ gates:
         node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheEventsMeasureCountsTheMeteredKindOnly::test_the_charge_it_left_out_is_inside_the_same_answer
       - suite: platform
         node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheEventsMeasureCountsTheMeteredKindOnly::test_every_kind_the_registry_declares_is_in_scope
-      # Pin 2 — `Task.event_count` counts `metered_usage` only.
+      # Pin 2 — `Task.recorded_events` counts `metered_usage` only.
       - suite: platform
-        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_delivering_priced_work_leaves_the_event_count_where_it_was
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheRecordedEvents::test_delivering_priced_work_leaves_the_recorded_events_where_they_were
       - suite: platform
-        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_projection_is_nonetheless_attributed_to_that_unit_of_work
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheRecordedEvents::test_the_projection_is_nonetheless_attributed_to_that_unit_of_work
       - suite: platform
-        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_a_unit_of_work_with_no_metered_calls_still_counts_none
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheRecordedEvents::test_a_unit_of_work_with_no_metered_calls_still_counts_none
       - suite: platform
-        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheEventCount::test_the_billed_total_holds_the_charge_and_the_count_does_not
+        node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestAChargePostingDoesNotInflateTheRecordedEvents::test_the_billed_total_holds_the_charge_and_the_count_does_not
       # Pin 3 — the provider and measurement analytics exclude `task_charge`.
       - suite: platform
         node: ubb-platform/api/v1/tests/test_the_kind_discriminator_pins.py::TestTheProviderAndMeasurementAnalyticsExcludeTheChargeKind::test_no_provider_is_credited_with_the_charge

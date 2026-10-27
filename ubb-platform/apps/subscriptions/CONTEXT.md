@@ -77,8 +77,10 @@ it remembers is `apps/subscriptions/economics/alerting.py`; the report is
 (`apps/subscriptions/economics/models.py:CustomerEconomics`)
 
 **Cost accumulator**:
-The per-customer, per-month running total of provider/billed cost and event count, incremented from
-`usage.recorded`. (`apps/subscriptions/economics/models.py:CustomerCostAccumulator`)
+The per-customer, per-month running total of provider/billed cost and of the postings those totals
+add up (`posting_count`, R10-W4 ruling 1 — every posting whatever its kind, a Task Charge's projection
+included, so it is not the `recorded_events` measure), incremented from `usage.recorded`.
+(`apps/subscriptions/economics/models.py:CustomerCostAccumulator`)
 
 **Revenue mode** — **RETIRED, AND THE TERM IS NOT REPLACED** (#497, slice 7 §9):
 A per-customer switch deciding whether billed usage counted as revenue in the margin calculation,

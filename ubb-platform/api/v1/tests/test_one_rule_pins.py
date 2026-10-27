@@ -694,7 +694,7 @@ class Pin7TwoHundredAlwaysTest(RailActivated, OneRulePinTestBase):
         # Every report recorded: 3 singles + 2 batch items.
         self.assertEqual(Posting.objects.count(), 5)
         task.refresh_from_db()
-        self.assertEqual(task.event_count, 5)
+        self.assertEqual(task.recorded_events, 5)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -810,7 +810,7 @@ class Pin16LabelFallbackRemovedTest(RailActivated, OneRulePinTestBase):
         self.assertEqual(event.metadata, {"task": str(task.id)})  # labels only
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
-        self.assertEqual(task.event_count, 0)
+        self.assertEqual(task.recorded_events, 0)
         self.assertEqual(self._limit_events().count(), 0)
 
 

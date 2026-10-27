@@ -82,7 +82,7 @@ export function RunsTable({
               </TableCell>
               <TableCell className="text-[12px]">{formatDate(run.created_at)}</TableCell>
               <TableCell className="text-right text-[12px]">
-                {formatEventCount(run.event_count)}
+                {formatEventCount(run.recorded_events)}
               </TableCell>
               <TableCell className="text-right text-[12px]">
                 <SupplierCostReadingView reading={readSupplierCost(run)} currency={currency} />
