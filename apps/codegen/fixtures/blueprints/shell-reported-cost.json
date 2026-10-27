@@ -3,7 +3,7 @@
   "renderer_contract_version": 3,
   "target": "shell_http",
   "sdk_major_version": null,
-  "configuration_fingerprint": "sha256:70f62a24078a72afe888468009d502613f08855551e4bb61b55d407e2be828d3",
+  "configuration_fingerprint": "sha256:277b9d02cc96093ad92ce7c640ec50b1d2cfc77f9c03533761403f1077acafa4",
   "readiness": "complete",
   "calls": [
     {

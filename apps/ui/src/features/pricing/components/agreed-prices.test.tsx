@@ -11,7 +11,6 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  METERING_ONLY_BILLING_MODE,
   readMockTenantConfig,
   writeMockTenantConfig,
 } from "@/hooks/use-tenant-config";
@@ -33,7 +32,7 @@ afterEach(() => writeMockTenantConfig(ORIGINAL_CONFIG));
 function meteringOnly() {
   writeMockTenantConfig({
     ...ORIGINAL_CONFIG,
-    billing_mode: METERING_ONLY_BILLING_MODE,
+    billing_mode: "external",
     products: ["metering"],
   });
 }

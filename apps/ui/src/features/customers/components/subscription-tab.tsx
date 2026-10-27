@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useHasRole } from "@/hooks/use-current-role";
-import { formatDate, formatMicros, formatShortDate } from "@/lib/format";
+import { formatDate, formatShortDate } from "@/lib/format";
 import { planIntervalLabel, subscriptionStatusLabel } from "@/lib/labels";
 
 import {
@@ -49,25 +49,11 @@ import {
   type SeatsForm,
   type SubscribeForm,
 } from "../lib/schemas";
+import { mirroredAmount } from "../lib/helpers";
 
 // Every lifecycle verb here (subscribe / pause / resume / cancel / set seats)
 // is floored at WRITE server-side (platform_endpoints @role_floor(WRITE)).
 const WRITE_HINT = "Requires the Write role.";
-
-/**
- * A mirrored Stripe amount as it can honestly be shown.
- *
- * `null` is not zero and not unknown-for-now: it is a subscription or invoice
- * Stripe holds in a currency UBB does not admit (#564, ADR-0023). UBB keeps it
- * and leaves it out of revenue, and converts nothing — so there is no dollar
- * figure to draw, and the line says where the money is instead of inventing one.
- */
-export function mirroredAmount(amountMicros: number | null, currency: string): string {
-  if (amountMicros === null) {
-    return `In ${currency.toUpperCase() || "another currency"} — left out of revenue (UBB accepts US dollars only)`;
-  }
-  return formatMicros(amountMicros, currency);
-}
 
 export function SubscriptionTab({
   customerId,

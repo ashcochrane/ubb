@@ -437,6 +437,6 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     resource_type: "tenant",
     resource_id: "tenant-acme",
     correlation_id: "corr-0001",
-    metadata: { billing_mode: "meter_only", default_currency: "usd" },
+    metadata: { billing_mode: "external", default_currency: "usd" },
   },
 ];

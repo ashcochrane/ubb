@@ -10,19 +10,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  BILLING_MODES,
-  billingModeDescription,
-  billingModeLabel,
-  type BillingMode,
-} from "@/lib/labels";
+import { BILLING_MODE_DESCRIPTIONS, billingModeLabel } from "@/lib/billing-mode";
+import { BILLING_MODES, type BillingMode } from "@/lib/labels";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
 
 const MODE_CONSEQUENCE: Record<BillingMode, string> = {
-  meter_only:
+  external:
     "UBB stops moving money: no wallets, no spend gates — usage tracking, cost, and margin only.",
   prepaid:
     "Customers will hold prepaid credit; usage draws balances down in real time and spend-control floors apply.",
@@ -89,7 +85,7 @@ export function BillingModeCard({
                   {isCurrent && <Badge variant="secondary">Current</Badge>}
                 </p>
                 <p className="max-w-md text-[13px] text-muted-foreground">
-                  {billingModeDescription(mode)}
+                  {BILLING_MODE_DESCRIPTIONS[mode]}
                 </p>
                 {blocked && (
                   <p className="mt-1 text-[12px] text-muted-foreground">

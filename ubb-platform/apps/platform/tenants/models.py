@@ -12,8 +12,12 @@ from core.currency_policy import (
 )
 from core.models import BaseModel
 from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_EXTERNAL,
     CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID,
+    CUSTOMER_BILLING_MODE_VALUES,
+    TENANT_POSTURE_FULL_BILLING,
+    TENANT_POSTURE_METERING_ONLY,
     TENANT_PRODUCT_METERING,
     TENANT_PRODUCT_VALUES,
 )
@@ -43,15 +47,24 @@ from core.vocabulary import (
 # this model cannot hold a second copy of a value that drifts from it. The
 # English stays here: label wording is not registry content (ADR-0008 §4).
 #
-# "meter_only" is the one entry still spelled out. The registry declares the
-# END-STATE name for it, which is a different word, and renaming the value a
-# tenant's API responses carry is a later slice's job (a migration-ledger entry,
-# #201) — not something to slip into the slice that installs the gates.
+# All three by reference since slice 8 (R10-W3): the mode that meters and
+# never bills is `external`, which says where the billing happens — the fact a
+# tenant is choosing between — where the retired word said what UBB does not do.
 BILLING_MODE_CHOICES = [
-    ("meter_only", "Meter only"),
+    (CUSTOMER_BILLING_MODE_EXTERNAL, "External billing"),
     (CUSTOMER_BILLING_MODE_PREPAID, "Prepaid credits"),
     (CUSTOMER_BILLING_MODE_POSTPAID, "Postpaid"),
 ]
+
+#: WHETHER UBB CREATES THIS TENANT'S CUSTOMER CHARGES AT ALL — the registry's
+#: `tenant_posture`, DERIVED from the billing mode and never stored (ADR-0006 §4):
+#: a second writable copy could disagree with the first. Served read-only on
+#: the tenant config so a caller need not reconstruct this mapping.
+TENANT_POSTURE_OF = {
+    CUSTOMER_BILLING_MODE_EXTERNAL: TENANT_POSTURE_METERING_ONLY,
+    CUSTOMER_BILLING_MODE_PREPAID: TENANT_POSTURE_FULL_BILLING,
+    CUSTOMER_BILLING_MODE_POSTPAID: TENANT_POSTURE_FULL_BILLING,
+}
 
 # Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
 # positions (#42, spec §G; `advisory` retired, mapped to `off` by migration
@@ -84,7 +97,8 @@ class Tenant(BaseModel):
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
     billing_mode = models.CharField(
-        max_length=20, choices=BILLING_MODE_CHOICES, default="meter_only", db_index=True
+        max_length=20, choices=BILLING_MODE_CHOICES,
+        default=CUSTOMER_BILLING_MODE_EXTERNAL, db_index=True
     )
     default_currency = models.CharField(max_length=3, default="usd")
     charges_enabled = models.BooleanField(default=False)
@@ -221,6 +235,14 @@ class Tenant(BaseModel):
             # column this rule most needs: the config route refuses another,
             # and the admin form edits every column without it.
             usd_only_check("default_currency", "ck_tenant_default_currency_usd"),
+            # The closed set at the database (ADR-0002): `choices=` is a form
+            # courtesy, and neither the admin form nor `QuerySet.update()` is
+            # held by it.
+            models.CheckConstraint(
+                condition=models.Q(
+                    billing_mode__in=sorted(CUSTOMER_BILLING_MODE_VALUES)),
+                name="ck_tenant_billing_mode_known",
+            ),
             models.UniqueConstraint(
                 fields=["parent_tenant"],
                 condition=models.Q(is_sandbox=True),
@@ -248,6 +270,11 @@ class Tenant(BaseModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def tenant_posture(self):
+        """The registry's derived posture for this tenant's billing mode."""
+        return TENANT_POSTURE_OF[self.billing_mode]
 
     def clean(self):
         from django.core.exceptions import ValidationError

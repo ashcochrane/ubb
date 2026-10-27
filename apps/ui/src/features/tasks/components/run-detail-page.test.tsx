@@ -2,7 +2,6 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
-  METERING_ONLY_BILLING_MODE,
   readMockTenantConfig,
   writeMockTenantConfig,
 } from "@/hooks/use-tenant-config";
@@ -285,7 +284,7 @@ describe("RunDetailPage", () => {
   it("does not say owed to a workspace that meters without billing", async () => {
     const original = readMockTenantConfig();
     try {
-      writeMockTenantConfig({ ...original, billing_mode: METERING_ONLY_BILLING_MODE });
+      writeMockTenantConfig({ ...original, billing_mode: "external" });
       await opened(RUN_ACTIVE_ID);
       // The billing mode is the tenant config's, a query of its own that may
       // answer after the heading does — so wait for the reading it decides,

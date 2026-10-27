@@ -20,7 +20,7 @@ class MarginServiceTest(TestCase):
 
     def test_billed_usage_is_revenue_and_the_margin_is_what_is_left_of_it(self):
         """⚠ **THIS CASE ASSERTED THE OPPOSITE UNTIL #497, AND ITS NAME SAID
-        SO.** It was `test_meter_only_margin_is_billed_minus_provider`, and the
+        SO.** It was the metering-only posture's margin test, and the
         margin it asserted was the NEGATIVE of the cost: this tenant's billing
         mode resolved its customer away from billed usage, so a million micros
         of resolved customer price was struck out of the revenue on the way

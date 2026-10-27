@@ -5,7 +5,7 @@ from ubb.client import UBBClient
 
 CONFIG_FIXTURE = {
     "name": "TestTenant",
-    "billing_mode": "meter_only",
+    "billing_mode": "external",
     "products": ["metering"],
     "default_currency": "usd",
     "stripe_connected_account_id": "acct_test",

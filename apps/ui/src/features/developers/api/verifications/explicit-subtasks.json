@@ -1,6 +1,6 @@
 {
   "blueprint": "explicit-subtasks",
-  "configuration_fingerprint": "sha256:fd28843c291a67a499b69b2587cb4a178b797ef8e14730a060d2f405e075bf1c",
+  "configuration_fingerprint": "sha256:08c46b70ab5b419db55558e2d57c0ad1313b75d5812518ab0a482908cf46a88a",
   "request": {
     "records": [
       {
@@ -19,7 +19,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:fd28843c291a67a499b69b2587cb4a178b797ef8e14730a060d2f405e075bf1c",
+    "configuration_fingerprint": "sha256:08c46b70ab5b419db55558e2d57c0ad1313b75d5812518ab0a482908cf46a88a",
     "verified": false,
     "unexercised_event_types": [],
     "unexercised_subtask_types": [],

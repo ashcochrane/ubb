@@ -49,6 +49,7 @@ function config(defaultCeiling: number | null, containedDefault: number | null =
   return {
     name: "Acme AI",
     billing_mode: "prepaid",
+    tenant_posture: "full_billing",
     products: ["metering", "billing"],
     default_currency: "usd",
     stripe_connected_account_id: "acct_test",

@@ -1345,6 +1345,16 @@ CONCEPTS_IN_THE_CONTRACT = {
     "diagnostic_severity": Published(1, ENUM),    # each diagnostic
     "diagnostic_code": Published(1, ENUM),        # each diagnostic
     "configuration_object_kind": Published(2, ENUM),  # provenance + diagnostic
+    # R10-W3 (slice 8's ledger) — THE TENANT'S BILLING MODE TAKES ITS FINAL
+    # WORD, AND THE POSTURE DERIVED FROM IT IS SERVED BESIDE IT. Two G4 debts
+    # paid in one commit, for #498's reason: the posture is a function of the
+    # mode (ADR-0006 §4), so publishing one without the other would publish
+    # half a sentence. The mode is written and read, so it is in and out —
+    # nullable on the way in, where `null` means "leave this alone", so its
+    # marker sits on the union's string member. The posture is read only:
+    # never stored, so there is nothing a caller could write.
+    "customer_billing_mode": Published(2, ENUM),  # TenantConfigIn + Out
+    "tenant_posture": Published(1, ENUM),         # TenantConfigOut
 }
 
 
@@ -1885,6 +1895,12 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("diagnostic_code", {"IntegrationBlueprintDiagnostic"})
     placed("configuration_object_kind", {"IntegrationBlueprintProvenance",
                                          "IntegrationBlueprintDiagnostic"})
+
+    # The tenant's own billing mode is written where the tenant writes its
+    # configuration and read where it reads it, beside `tenant_product`; the
+    # posture is derived from it, so it is only ever read.
+    placed("customer_billing_mode", {"TenantConfigIn", "TenantConfigOut"})
+    placed("tenant_posture", {"TenantConfigOut"})
 
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
@@ -2731,6 +2747,13 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # set needs from a backend is authority over the whole set rather than a
     # path to every member — which is the ruling `measurements_status` has
     # carried since it was coined. One entry out, one step down.
-    assert len(_entries(programme)) >= 3, (
+    # 3 -> 1 in R10-W3 (slice 8's ledger): `customer_billing_mode` and
+    # `tenant_posture`, TWO in one commit for #498's reason — the posture is
+    # derived from the mode, so they are one sentence. Both paid at the
+    # tenant model, which now holds the mode's three values by reference
+    # with a `CHECK` beside them and derives the posture from a total map,
+    # and both marked on the tenant configuration in the same commit. Two
+    # entries out, two steps down.
+    assert len(_entries(programme)) >= 1, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

@@ -27,7 +27,7 @@ read the live counter's ``resume`` makes before it lifts anything).
 
 Suspension folds into the stop lines (spec §D): the durable active->suspended
 flip and its ``CustomerSuspended`` emission ride the winning STOP transition —
-prepaid/meter_only in every enforcement-on mode (the Tier-1 baseline
+prepaid/external in every enforcement-on mode (the Tier-1 baseline
 suspension, unchanged), postpaid only when ``enforcing`` (D13). The
 suspension records the stop that opened it, in that stop's own word (§9).
 Floor-stop and suspension therefore can never disagree or double-fire. The

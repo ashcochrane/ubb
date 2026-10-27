@@ -82,7 +82,7 @@ class TenantConfigEndpointTest(TestCase):
             stripe_connected_account_id="acct_cfg",
             platform_fee_percentage=1.00,
             products=["metering"],
-            billing_mode="meter_only",
+            billing_mode="external",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="cfg-test")
 
@@ -98,7 +98,7 @@ class TenantConfigEndpointTest(TestCase):
         for key in ("billing_mode", "products",
                     "stripe_connected_account_id", "is_active"):
             self.assertIn(key, body, f"missing key: {key}")
-        self.assertEqual(body["billing_mode"], "meter_only")
+        self.assertEqual(body["billing_mode"], "external")
         self.assertIn("metering", body["products"])
         # The strict cost-coverage setting left this response in #321 — the
         # wall it armed is gone, so there is nothing here to read back.
@@ -402,7 +402,7 @@ class TenantConfigEndpointTest(TestCase):
         bc.save(update_fields=["soft_min_balance_micros"])
         response = self.http_client.patch(
             "/api/v1/tenant/config",
-            data=json.dumps({"billing_mode": "meter_only"}),
+            data=json.dumps({"billing_mode": "external"}),
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
@@ -418,7 +418,7 @@ class TenantConfigEndpointTest(TestCase):
         bc.save(update_fields=["min_balance_micros"])
         response = self.http_client.patch(
             "/api/v1/tenant/config",
-            data=json.dumps({"billing_mode": "meter_only"}),
+            data=json.dumps({"billing_mode": "external"}),
             content_type="application/json", **self._auth(),
         )
         self.assertEqual(response.status_code, 200)
@@ -468,7 +468,7 @@ class TenantConfigEndpointTest(TestCase):
     def test_patch_omitting_the_admission_bound_leaves_it_unchanged(self):
         self.tenant.max_task_starts_per_minute = 30
         self.tenant.save(update_fields=["max_task_starts_per_minute"])
-        response = self._patch({"billing_mode": "meter_only"})
+        response = self._patch({"billing_mode": "external"})
         self.assertEqual(response.status_code, 200, response.content)
         self.tenant.refresh_from_db()
         self.assertEqual(self.tenant.max_task_starts_per_minute, 30)

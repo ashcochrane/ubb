@@ -9662,7 +9662,13 @@
           "billing_mode": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "external",
+                  "prepaid",
+                  "postpaid"
+                ],
+                "type": "string",
+                "x-ubb-concept": "customer_billing_mode"
               },
               {
                 "type": "null"
@@ -9791,8 +9797,14 @@
             "type": "boolean"
           },
           "billing_mode": {
+            "enum": [
+              "external",
+              "prepaid",
+              "postpaid"
+            ],
             "title": "Billing Mode",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "customer_billing_mode"
           },
           "default_currency": {
             "title": "Default Currency",
@@ -9881,11 +9893,21 @@
           "stripe_connected_account_id": {
             "title": "Stripe Connected Account Id",
             "type": "string"
+          },
+          "tenant_posture": {
+            "enum": [
+              "metering_only",
+              "full_billing"
+            ],
+            "title": "Tenant Posture",
+            "type": "string",
+            "x-ubb-concept": "tenant_posture"
           }
         },
         "required": [
           "name",
           "billing_mode",
+          "tenant_posture",
           "products",
           "default_currency",
           "stripe_connected_account_id",

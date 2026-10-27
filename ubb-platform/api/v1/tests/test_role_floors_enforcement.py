@@ -251,7 +251,7 @@ class RoleFloorEnforcementTest(TestCase):
 
     def test_seed_command_owner_email_yields_admin_invitation(self):
         call_command("seed_dev_data", "--stripe-account", "acct_test",
-                     "--tenant-name", "SeedCo", "--billing-mode", "meter_only",
+                     "--tenant-name", "SeedCo", "--billing-mode", "external",
                      "--owner-email", "founder@seedco.com")
         tenant = Tenant.objects.get(name="SeedCo")
         inv = Invitation.objects.get(tenant=tenant, email="founder@seedco.com")

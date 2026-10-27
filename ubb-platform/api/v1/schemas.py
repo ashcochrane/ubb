@@ -4089,10 +4089,23 @@ class TaskTypeRegistryOut(Schema):
 TenantProduct = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "tenant_product"})]
 
+#: WHAT UBB DOES ABOUT MONEY FOR A TENANT'S CUSTOMERS — the registry's
+#: `customer_billing_mode`, `closed`, so the export writes its `enum`.
+CustomerBillingMode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "customer_billing_mode"})]
+
+#: WHETHER UBB CREATES THE TENANT'S CUSTOMER CHARGES AT ALL — the registry's
+#: `tenant_posture`, derived from the billing mode and served read-only.
+TenantPosture = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "tenant_posture"})]
+
 
 class TenantConfigOut(Schema):
     name: str
-    billing_mode: str
+    billing_mode: CustomerBillingMode
+    #: Derived from `billing_mode` and never stored (ADR-0006 §4), served so a
+    #: caller need not reconstruct the mapping.
+    tenant_posture: TenantPosture
     products: list[TenantProduct]
     default_currency: str
     stripe_connected_account_id: str
@@ -4131,7 +4144,7 @@ class TenantConfigOut(Schema):
 
 
 class TenantConfigIn(Schema):
-    billing_mode: Optional[str] = None
+    billing_mode: Optional[CustomerBillingMode] = None
     products: Optional[list[TenantProduct]] = None
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).

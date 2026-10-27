@@ -1371,3 +1371,20 @@ POST webhook:usage.recorded added the new required request property `data/pricin
 GET /api/v1/me/subscription-invoices response property `data/items/amount_paid_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
 GET /api/v1/subscriptions/customers/{customer_id}/invoices response property `data/items/amount_paid_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
 GET /api/v1/subscriptions/customers/{customer_id}/subscription response property `amount_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+
+# 2026-10-27 - R10-W3 (slice 8's 13 ledger entries): the tenant's billing mode
+# takes its final word. The mode that meters and bills elsewhere is `external`
+# (the registry's `customer_billing_mode`, `domain-vocabulary/concepts/
+# economics.yaml`), and the tenant config publishes the closed set as an enum
+# with its marker, beside the derived, read-only `tenant_posture` (required,
+# additive; ADR-0006 §4). A tenant's response carries `external` where it
+# carried the retired spelling — the public break the ledger's reason named —
+# and a request naming the retired spelling is refused `invalid_config`.
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open, and the entries' owner was
+# slice 8. `PATCH /tenant/config` predates `api-v1-launch`, so the authoring
+# comparison and the cumulative gate report the same one finding, reviewed and
+# deliberate, pasted from `--emit`. The response's enum is not a finding either
+# way (oasdiff raises none for a response enum added), so the value rename is
+# recorded here and in the PR rather than by a line.
+PATCH /api/v1/tenant/config request property `billing_mode/anyOf[subschema #1]/` was restricted to a list of enum values

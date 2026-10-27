@@ -6,7 +6,7 @@
 # renderer_contract_version = 3
 # sdk_major_version = null
 # target = "shell_http"
-# configuration_fingerprint = "sha256:5e85dd0c48cb813883466ed91b300df0c385eff0437d85a15761d252039e18de"
+# configuration_fingerprint = "sha256:39a55083aa1051d52737ecd72dc28fb7c2aa5db33cb77403620f5bd98d9fecfa"
 # The fingerprint identifies exactly what this file was resolved from. A
 # different one in the Code Builder means this file is stale.
 

@@ -33,11 +33,11 @@ class Command(BaseCommand):
         parser.add_argument(
             "--billing-mode",
             default="postpaid",
-            choices=["meter_only", "prepaid", "postpaid"],
+            choices=["external", "prepaid", "postpaid"],
             help=(
                 "Tenant billing mode (default: postpaid). "
                 "Use 'postpaid' or 'prepaid' to enable J2 subscription billing. "
-                "'meter_only' = J1 cost-attribution only."
+                "'external' = J1 cost-attribution only."
             ),
         )
         parser.add_argument(
@@ -58,7 +58,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         billing_mode = options["billing_mode"]
         # Products required for J2 (billing, incl. subscriptions as a billing
-        # capability) when not meter_only.
+        # capability) when not external.
         if billing_mode in ("prepaid", "postpaid"):
             products = ["metering", "billing"]
         else:
@@ -219,9 +219,9 @@ class Command(BaseCommand):
         self.stdout.write(
             f'# SDK quickstart — see ubb-sdk/README.md for the full Journey-1 happy path\n')
 
-        # ---- Journey 2 endpoints (only meaningful when billing_mode != meter_only) ----
+        # ---- Journey 2 endpoints (only meaningful when billing_mode != external) ----
         self.stdout.write("=" * 60)
-        if billing_mode == "meter_only":
+        if billing_mode == "external":
             self.stdout.write("Journey 2 (subscriptions + seats) is NOT enabled.")
             self.stdout.write(
                 "Re-run with --billing-mode postpaid to enable J2 (adds billing+subscriptions).\n")

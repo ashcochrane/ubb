@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,487 of 2,948 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,491 of 2,953 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2949,6 +2949,18 @@ measurement_key:
     # are swept: the foreign-currency quarantine's route tests, the outbound
     # rail's refusal tests, the mirror migration's test and the console's
     # test of a quarantined amount.
+    #
+    # 2026-10-27, R10-W3 (slice 8's ledger): 2,487 of 2,948 -> 2,491 of
+    # 2,953 tracked files (`units` UNMOVED). Six files arrived and one
+    # left. One arrival is a migration excluded under
+    # `historical-migrations` (292 -> 293): a tenant that bills elsewhere is
+    # `external` (`tenants/0029`), so the exclusions stand at 462. Five are
+    # swept: the route test of the final word, the console's billing-mode
+    # labels (`src/lib/billing-mode.ts`) and three SDK models the
+    # regenerated core added for the closed set and the derived posture.
+    # The one that left is swept too: the console's test of a quarantined
+    # amount, which moved into the customers feature's helper tests with the
+    # helper it tests (a component file may export only components).
 
     - term: units
       retired_as: >-

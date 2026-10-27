@@ -1,6 +1,6 @@
 {
   "blueprint": "blocked",
-  "configuration_fingerprint": "sha256:520766fc0887a3846420c72700579d3797f5bf0d96fff2aa0ced84aff9fdc508",
+  "configuration_fingerprint": "sha256:bbdbc88ca35cba5526d76a4c79a045f9bfc0250d40a185f3832c29cffa52d2ff",
   "request": {
     "records": [
       {
@@ -18,6 +18,6 @@
     "title": "Conflict",
     "status": 409,
     "code": "conflict",
-    "detail": "the Blueprint stored under 'sha256:520766fc0887a3846420c72700579d3797f5bf0d96fff2aa0ced84aff9fdc508' is blocked, and only a complete one generates code that records: resolve it again once its diagnostics are fixed"
+    "detail": "the Blueprint stored under 'sha256:bbdbc88ca35cba5526d76a4c79a045f9bfc0250d40a185f3832c29cffa52d2ff' is blocked, and only a complete one generates code that records: resolve it again once its diagnostics are fixed"
   }
 }

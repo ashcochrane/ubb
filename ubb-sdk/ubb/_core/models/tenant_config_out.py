@@ -8,7 +8,9 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_config_out_billing_mode import TenantConfigOutBillingMode
 from ..models.tenant_config_out_products_item import TenantConfigOutProductsItem
+from ..models.tenant_config_out_tenant_posture import TenantConfigOutTenantPosture
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -26,12 +28,13 @@ class TenantConfigOut:
     """ 
         Attributes:
             automatic_tax_enabled (bool):
-            billing_mode (str):
+            billing_mode (TenantConfigOutBillingMode):
             default_currency (str):
             is_active (bool):
             name (str):
             products (list[TenantConfigOutProductsItem]):
             stripe_connected_account_id (str):
+            tenant_posture (TenantConfigOutTenantPosture):
             default_subtask_cogs_ceiling_micros (int | None | Unset):
             default_task_cogs_ceiling_micros (int | None | Unset):
             enforcement_mode (str | Unset):  Default: 'off'.
@@ -42,12 +45,13 @@ class TenantConfigOut:
      """
 
     automatic_tax_enabled: bool
-    billing_mode: str
+    billing_mode: TenantConfigOutBillingMode
     default_currency: str
     is_active: bool
     name: str
     products: list[TenantConfigOutProductsItem]
     stripe_connected_account_id: str
+    tenant_posture: TenantConfigOutTenantPosture
     default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
     enforcement_mode: str | Unset = 'off'
@@ -64,7 +68,7 @@ class TenantConfigOut:
     def to_dict(self) -> dict[str, Any]:
         automatic_tax_enabled = self.automatic_tax_enabled
 
-        billing_mode = self.billing_mode
+        billing_mode = self.billing_mode.value
 
         default_currency = self.default_currency
 
@@ -80,6 +84,8 @@ class TenantConfigOut:
 
 
         stripe_connected_account_id = self.stripe_connected_account_id
+
+        tenant_posture = self.tenant_posture.value
 
         default_subtask_cogs_ceiling_micros: int | None | Unset
         if isinstance(self.default_subtask_cogs_ceiling_micros, Unset):
@@ -122,6 +128,7 @@ class TenantConfigOut:
             "name": name,
             "products": products,
             "stripe_connected_account_id": stripe_connected_account_id,
+            "tenant_posture": tenant_posture,
         })
         if default_subtask_cogs_ceiling_micros is not UNSET:
             field_dict["default_subtask_cogs_ceiling_micros"] = default_subtask_cogs_ceiling_micros
@@ -147,7 +154,10 @@ class TenantConfigOut:
         d = dict(src_dict)
         automatic_tax_enabled = d.pop("automatic_tax_enabled")
 
-        billing_mode = d.pop("billing_mode")
+        billing_mode = TenantConfigOutBillingMode(d.pop("billing_mode"))
+
+
+
 
         default_currency = d.pop("default_currency")
 
@@ -166,6 +176,11 @@ class TenantConfigOut:
 
 
         stripe_connected_account_id = d.pop("stripe_connected_account_id")
+
+        tenant_posture = TenantConfigOutTenantPosture(d.pop("tenant_posture"))
+
+
+
 
         def _parse_default_subtask_cogs_ceiling_micros(data: object) -> int | None | Unset:
             if data is None:
@@ -221,6 +236,7 @@ class TenantConfigOut:
             name=name,
             products=products,
             stripe_connected_account_id=stripe_connected_account_id,
+            tenant_posture=tenant_posture,
             default_subtask_cogs_ceiling_micros=default_subtask_cogs_ceiling_micros,
             default_task_cogs_ceiling_micros=default_task_cogs_ceiling_micros,
             enforcement_mode=enforcement_mode,

@@ -453,7 +453,11 @@ exclusions:
     # kept as Stripe sent it and quarantined (`subscriptions/0018`), and a
     # billing period states its currency (`tenant_billing/0013`). Neither
     # names a retired word, so the number moved for the files existing.
-    files: 292
+    # 292 → 293 in R10-W3 (slice 8's ledger): one migration — a tenant that
+    # bills elsewhere is `external` (`tenants/0029`). It moves stored rows OFF
+    # the retired spelling, so it must name it — the case this rule exists
+    # for: a migration describes the database as it stood, and is never edited.
+    files: 293
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

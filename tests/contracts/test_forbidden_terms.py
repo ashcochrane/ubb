@@ -424,7 +424,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # retired word, so the number moved for the files existing.
         # 290 -> 292 in R10-W3 (#564, #565): two migrations — the mirror keeps
         # what Stripe sent, and a billing period states its currency.
-        "historical-migrations": (UNTIL_SLICE_8, 292, 19),
+        # 292 -> 293 in R10-W3 (slice 8's ledger): one migration — a tenant
+        # that bills elsewhere is `external`.
+        "historical-migrations": (UNTIL_SLICE_8, 293, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

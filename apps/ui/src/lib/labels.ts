@@ -40,6 +40,7 @@ import {
   CEILING_STATUS_VALUES,
   CONTROL_FAMILY_VALUES,
   COSTING_METHOD_VALUES,
+  CUSTOMER_BILLING_MODE_VALUES,
   COSTING_STATUS_VALUES,
   PRICING_METHOD_VALUES,
   PRICING_MODE_VALUES,
@@ -52,6 +53,7 @@ import {
   TRIGGER_SOURCE_KNOWN_VALUES,
   USAGE_EVENT_KIND_VALUES,
   WEBHOOK_EVENT_TYPE_VALUES,
+  type CustomerBillingMode,
   type TenantProduct,
 } from "@/lib/vocabulary";
 
@@ -83,23 +85,13 @@ function legacyLabelMap(map: Record<string, string>) {
 // ---------------------------------------------------------------------------
 // Tenant / workspace
 
-export const BILLING_MODES = ["meter_only", "prepaid", "postpaid"] as const;
-export type BillingMode = (typeof BILLING_MODES)[number];
-
-export const billingModeLabel = legacyLabelMap({
-  meter_only: "Meter only",
-  prepaid: "Prepaid credits",
-  postpaid: "Postpaid",
-});
-
-export const billingModeDescription = legacyLabelMap({
-  meter_only:
-    "Track usage, provider cost, and margin. No money movement in UBB.",
-  prepaid:
-    "Customers hold prepaid credit; usage draws the balance down in real time.",
-  postpaid:
-    "Usage accrues per period and is pushed to Stripe as invoice line items at period close.",
-});
+// The registry's billing modes, held BY REFERENCE (slice 8, R10-W3).
+// `domain-vocabulary/` names this file as the console's consumer of
+// `customer_billing_mode`, so the names stay here; their words are the
+// catalogue's, bound in `@/lib/billing-mode` beside the console's own
+// explanatory copy, which is also where the derived posture is held.
+export const BILLING_MODES = CUSTOMER_BILLING_MODE_VALUES;
+export type BillingMode = CustomerBillingMode;
 
 // The registry's three, held BY REFERENCE (#241). `domain-vocabulary/` names
 // this file as the console's consumer of `tenant_product`, which is why the

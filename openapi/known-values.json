@@ -160,10 +160,15 @@
       ]
     },
     "customer_billing_mode": {
-      "advertised": false,
-      "backend_serves": "2 of 3 values",
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "external",
+        "prepaid",
+        "postpaid"
+      ]
     },
     "declaration_status": {
       "advertised": true,
@@ -563,10 +568,14 @@
       ]
     },
     "tenant_posture": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "metering_only",
+        "full_billing"
+      ]
     },
     "tenant_product": {
       "advertised": true,

@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { billingModeLabel } from "@/lib/billing-mode";
 import { labelMap } from "@/lib/localisation";
 import {
   TENANT_PRODUCT_LABEL_KEYS,
@@ -36,7 +37,8 @@ describe("ProductsPage", () => {
 
     expect(await screen.findByText("Billing mode")).toBeInTheDocument();
     expect(screen.getByText("Current")).toBeInTheDocument();
-    expect(screen.getByText("Prepaid credits")).toBeInTheDocument();
+    // The catalogue's word for the mode, never a second copy of it (slice 8).
+    expect(screen.getByText(billingModeLabel("prepaid"))).toBeInTheDocument();
 
     // EXACTLY the declared products: every one of them present, and no fourth
     // toggle beside them, so an extra row fails as loudly as a missing one.
@@ -82,7 +84,7 @@ describe("ProductsPage", () => {
       "true",
     );
     expect(
-      screen.getByText(/switch to Meter only first/i),
+      screen.getByText(/switch to External billing first/i),
     ).toBeInTheDocument();
   });
 

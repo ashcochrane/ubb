@@ -80,7 +80,7 @@ STATUS_LAPSED = "lapsed"
 
 
 def repair_live_balances(tenant):
-    """Run the §D repair across every wallet owner of a prepaid/meter_only
+    """Run the §D repair across every wallet owner of a prepaid/external
     enforcing tenant, one isolated pass per owner, and return the patrol
     outcome counts ({repaired, repaired_micros, repair_lapsed})."""
     from apps.billing.gating.patrol import (OUTCOME_REPAIR_LAPSED,

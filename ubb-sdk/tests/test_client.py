@@ -252,7 +252,7 @@ class TenantConfigClientTest(unittest.TestCase):
 
     CONFIG_FIXTURE = {
         "name": "TestTenant",
-        "billing_mode": "meter_only",
+        "billing_mode": "external",
         "products": ["metering"],
         "default_currency": "usd",
         "stripe_connected_account_id": "acct_test",
@@ -272,7 +272,7 @@ class TenantConfigClientTest(unittest.TestCase):
         result = self.client.get_tenant_config()
         self.client.metering._request.assert_called_once_with("get", "/api/v1/tenant/config")
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["billing_mode"], "meter_only")
+        self.assertEqual(result["billing_mode"], "external")
         self.assertIn("metering", result["products"])
 
     def test_update_tenant_config_sends_only_non_none_fields(self):

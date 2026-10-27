@@ -7,6 +7,7 @@ import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { PRODUCTS } from "@/lib/labels";
+import { CUSTOMER_BILLING_MODE_VALUES } from "@/lib/vocabulary";
 import {
   applyMockUndeclaredWorkCeilings,
   readMockTenantConfig,
@@ -104,7 +105,7 @@ export async function updateTenantConfig(
     next.products = normalized;
   }
   if (patch.billing_mode != null) {
-    if (!["meter_only", "prepaid", "postpaid"].includes(patch.billing_mode)) {
+    if (!(CUSTOMER_BILLING_MODE_VALUES as readonly string[]).includes(patch.billing_mode)) {
       throw invalidConfig(`Unknown billing mode: ${patch.billing_mode}`);
     }
     next.billing_mode = patch.billing_mode;

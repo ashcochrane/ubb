@@ -2,7 +2,6 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  METERING_ONLY_BILLING_MODE,
   readMockTenantConfig,
   writeMockTenantConfig,
 } from "@/hooks/use-tenant-config";
@@ -183,7 +182,7 @@ describe("RunsPage", () => {
     // those are priced event by event for the workspace's own reporting.
     const original = readMockTenantConfig();
     try {
-      writeMockTenantConfig({ ...original, billing_mode: METERING_ONLY_BILLING_MODE });
+      writeMockTenantConfig({ ...original, billing_mode: "external" });
       renderRuns();
       await loaded();
       const rows = bodyRows();

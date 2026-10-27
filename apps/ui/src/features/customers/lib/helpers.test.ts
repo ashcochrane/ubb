@@ -8,6 +8,7 @@ import { mockCustomerList } from "../api/mock-data";
 import {
   filterMarginRows,
   microsToUnits,
+  mirroredAmount,
   parseAlertLevels,
   shortId,
   sortMarginRows,
@@ -202,5 +203,22 @@ describe("suppliedPeriod", () => {
   it("answers null for a month it cannot read", () => {
     expect(suppliedPeriod("", "")).toBeNull();
     expect(suppliedPeriod("2026-13", "")).toBeNull();
+  });
+});
+
+// A mirrored Stripe amount is drawn as it can honestly be shown (#564).
+describe("mirroredAmount", () => {
+  it("draws a dollar amount as money", () => {
+    expect(mirroredAmount(199_000_000, "usd")).toMatch(/\$199(\.00)?/);
+  });
+
+  it("draws a quarantined amount as where the money is, never as a figure", () => {
+    const shown = mirroredAmount(null, "eur");
+    expect(shown).toBe("In EUR — left out of revenue (UBB accepts US dollars only)");
+    expect(shown).not.toMatch(/[0-9]/);
+  });
+
+  it("says another currency where Stripe named none", () => {
+    expect(mirroredAmount(null, "")).toContain("In another currency");
   });
 });

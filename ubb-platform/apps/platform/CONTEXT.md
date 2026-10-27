@@ -25,7 +25,7 @@ _Avoid_: "module", "service" when you mean an enabled product; a behavior postur
 — products gate ACCESS (403s), and a posture is a column of its own.
 
 **billing_mode**:
-A tenant's revenue posture — `meter_only` (default), `prepaid`, or `postpaid`; `prepaid`/`postpaid`
+A tenant's revenue posture — `external` (default), `prepaid`, or `postpaid`; `prepaid`/`postpaid`
 require the billing product. (`apps/platform/tenants/models.py:BILLING_MODE_CHOICES`)
 
 **enforcement_mode**:

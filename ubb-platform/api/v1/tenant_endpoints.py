@@ -463,6 +463,7 @@ def _config_out(t):
     return {
         "name": t.name,
         "billing_mode": t.billing_mode,
+        "tenant_posture": t.tenant_posture,
         "products": t.products,
         "default_currency": t.default_currency,
         "stripe_connected_account_id": t.stripe_connected_account_id,
@@ -539,6 +540,14 @@ def update_tenant_config(request, payload: TenantConfigIn):
     if payload.automatic_tax_enabled is not None:
         t.automatic_tax_enabled = payload.automatic_tax_enabled
     if payload.billing_mode is not None:
+        # The closed set, refused by name before any write — the database's
+        # CHECK holds it too, and a refusal is never left to surface as one.
+        from core.vocabulary import CUSTOMER_BILLING_MODE_VALUES
+        if payload.billing_mode not in CUSTOMER_BILLING_MODE_VALUES:
+            raise Problem(
+                "invalid_config",
+                f"billing_mode must be one of "
+                f"{sorted(CUSTOMER_BILLING_MODE_VALUES)}")
         t.billing_mode = payload.billing_mode
     if payload.products is not None:
         t.products = payload.products

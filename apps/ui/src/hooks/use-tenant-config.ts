@@ -1,5 +1,6 @@
 // The console bootstrap: GET /api/v1/tenant/config carries the two fields
-// that gate the whole UI — `billing_mode` (meter_only | prepaid | postpaid)
+// that gate the whole UI — `billing_mode` (external | prepaid | postpaid), and
+// the `tenant_posture` the server derives from it —
 // and `products` (metering | billing | referrals — the closed set the
 // contract enumerates) — plus enforcement posture, floors, and the workspace
 // currency. There is no console "/me" endpoint; this is the source of truth.
@@ -10,7 +11,11 @@ import { tenantApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 import type { TenantSchemas } from "@/api/types";
 import { API_PROVIDER, mockDelay } from "@/lib/api-provider";
-import type { TenantProduct } from "@/lib/vocabulary";
+import type {
+  CustomerBillingMode,
+  TenantPosture,
+  TenantProduct,
+} from "@/lib/vocabulary";
 
 export type TenantConfig = TenantSchemas["TenantConfigOut"];
 
@@ -21,6 +26,7 @@ export type TenantConfig = TenantSchemas["TenantConfigOut"];
 let mockTenantConfig: TenantConfig = {
   name: "Acme AI",
   billing_mode: "prepaid",
+  tenant_posture: "full_billing",
   products: ["metering", "billing", "referrals"],
   default_currency: "usd",
   stripe_connected_account_id: "acct_mock123",
@@ -39,8 +45,23 @@ let mockTenantConfig: TenantConfig = {
 };
 
 /** Mock-mode only: current mock workspace config (returns a copy). */
+/**
+ * Mock-mode only: the posture the SERVER derives from the billing mode, so a
+ * mock (or a test) that switches the mode reads the posture that goes with it
+ * — the server's mapping, restated for the stand-in that imitates it. Nothing
+ * outside mock mode reconstructs it: the console reads `tenant_posture`.
+ */
+const MOCK_POSTURE_OF: Record<CustomerBillingMode, TenantPosture> = {
+  external: "metering_only",
+  prepaid: "full_billing",
+  postpaid: "full_billing",
+};
+
 export function readMockTenantConfig(): TenantConfig {
-  return { ...mockTenantConfig };
+  return {
+    ...mockTenantConfig,
+    tenant_posture: MOCK_POSTURE_OF[mockTenantConfig.billing_mode],
+  };
 }
 
 /** Mock-mode only: replace the mock workspace config (used by feature mocks). */
@@ -127,9 +148,9 @@ export function useTenantCurrency(): string {
  * grants, and the floor fields themselves — are inert under this mode and
  * should explain their absence rather than render as live controls.
  *
- * Deliberately a NARROWER flag than `billing_mode` itself (which other call
- * sites branch on directly, e.g. `=== "meter_only"`) — this only ever means
- * "the wallet isn't the billing mechanism," never anything about meter_only.
+ * Deliberately a NARROWER flag than the posture (`isMeteringOnly` below) —
+ * this only ever means "the wallet isn't the billing mechanism," never
+ * anything about whether UBB bills at all.
  */
 export function isPostpaid(config: TenantConfig | undefined): boolean {
   return config?.billing_mode === "postpaid";
@@ -142,20 +163,6 @@ export function useIsPostpaid(): boolean {
 }
 
 /**
- * The posture in which a workspace meters and never bills, as the wire spells
- * it today.
- *
- * ⚠ SPELLED HERE AND NOWHERE NEW. The value is a retired word (slice 8 renames
- * it to `external`, the fact a tenant is actually choosing) with a console
- * ledger seat that is a CEILING on how many files may carry it — so a feature
- * that needs to ask the question imports this predicate rather than comparing
- * the string itself, and the rename becomes one line here instead of one per
- * caller. This file already carried the word, which is why the predicate lives
- * beside `isPostpaid` rather than in the feature that first needed it (#423).
- */
-export const METERING_ONLY_BILLING_MODE: TenantConfig["billing_mode"] = "meter_only";
-
-/**
  * Whether the workspace meters without billing.
  *
  * The posture decides what a declaration DOES rather than what it says: a
@@ -164,7 +171,9 @@ export const METERING_ONLY_BILLING_MODE: TenantConfig["billing_mode"] = "meter_o
  * Deliberately the sibling of `isPostpaid` above and just as narrow.
  */
 export function isMeteringOnly(config: TenantConfig | undefined): boolean {
-  return config?.billing_mode === METERING_ONLY_BILLING_MODE;
+  // The posture the server derives and serves (slice 8): read, never
+  // reconstructed from the billing mode here.
+  return config?.tenant_posture === ("metering_only" satisfies TenantPosture);
 }
 
 /** Metering-only posture as a hook; false while config is loading. */

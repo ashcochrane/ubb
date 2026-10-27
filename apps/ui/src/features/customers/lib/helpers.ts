@@ -1,5 +1,6 @@
 // Pure helpers for the customers feature (no React, no IO).
 
+import { formatMicros } from "@/lib/format";
 import { wholeDaysBetween } from "@/lib/supplied-revenue";
 
 import type { CustomerEconomics } from "../api/types";
@@ -164,4 +165,19 @@ export function suppliedPeriod(
     partial: opens > firstOfMonth,
     months,
   };
+}
+
+/**
+ * A mirrored Stripe amount as it can honestly be shown.
+ *
+ * `null` is not zero and not unknown-for-now: it is a subscription or invoice
+ * Stripe holds in a currency UBB does not admit (#564, ADR-0023). UBB keeps it
+ * and leaves it out of revenue, and converts nothing — so there is no dollar
+ * figure to draw, and the line says where the money is instead of inventing one.
+ */
+export function mirroredAmount(amountMicros: number | null, currency: string): string {
+  if (amountMicros === null) {
+    return `In ${currency.toUpperCase() || "another currency"} — left out of revenue (UBB accepts US dollars only)`;
+  }
+  return formatMicros(amountMicros, currency);
 }

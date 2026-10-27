@@ -6,9 +6,9 @@ from apps.platform.tenants.models import Tenant
 
 @pytest.mark.django_db
 class TestTenantBillingMode:
-    def test_default_is_meter_only(self):
+    def test_default_is_external(self):
         t = Tenant.objects.create(name="T", products=["metering"])
-        assert t.billing_mode == "meter_only"
+        assert t.billing_mode == "external"
 
     def test_prepaid_requires_billing_product(self):
         t = Tenant(name="T", products=["metering"], billing_mode="prepaid")
@@ -24,8 +24,8 @@ class TestTenantBillingMode:
         t = Tenant(name="T", products=["metering", "billing"], billing_mode="prepaid")
         t.full_clean(exclude=["branding_config", "metadata"])  # no raise
 
-    def test_meter_only_with_billing_product_allowed(self):
-        t = Tenant(name="T", products=["metering", "billing"], billing_mode="meter_only")
+    def test_external_with_billing_product_allowed(self):
+        t = Tenant(name="T", products=["metering", "billing"], billing_mode="external")
         t.full_clean(exclude=["branding_config", "metadata"])  # no raise
 
     def test_default_currency_defaults_to_usd(self):
