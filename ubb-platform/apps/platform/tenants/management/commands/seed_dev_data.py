@@ -3,9 +3,14 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.platform.tenants.models import (
+    MONEY_MODES,
     PaymentRailNotActivated,
     Tenant,
     TenantApiKey,
+)
+from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_EXTERNAL,
+    CUSTOMER_BILLING_MODE_VALUES,
 )
 from apps.platform.customers.models import Customer
 
@@ -36,8 +41,8 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--billing-mode",
-            default="external",
-            choices=["external", "prepaid", "postpaid"],
+            default=CUSTOMER_BILLING_MODE_EXTERNAL,
+            choices=sorted(CUSTOMER_BILLING_MODE_VALUES),
             help=(
                 "Tenant billing mode (default: external = J1 cost-attribution "
                 "only). 'postpaid' or 'prepaid' enable J2 subscription billing, "
@@ -73,7 +78,7 @@ class Command(BaseCommand):
         billing_mode = options["billing_mode"]
         # Products required for J2 (billing, incl. subscriptions as a billing
         # capability) when not external.
-        if billing_mode in ("prepaid", "postpaid"):
+        if billing_mode in MONEY_MODES:
             products = ["metering", "billing"]
         else:
             products = ["metering"]
@@ -235,7 +240,7 @@ class Command(BaseCommand):
 
         # ---- Journey 2 endpoints (only meaningful when billing_mode != external) ----
         self.stdout.write("=" * 60)
-        if billing_mode == "external":
+        if billing_mode == CUSTOMER_BILLING_MODE_EXTERNAL:
             self.stdout.write("Journey 2 (subscriptions + seats) is NOT enabled.")
             self.stdout.write(
                 "Re-run with --billing-mode postpaid to enable J2 (adds billing+subscriptions).\n")

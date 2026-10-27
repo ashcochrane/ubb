@@ -363,10 +363,12 @@ declare its kind before it ships. **#227 settled it by taking story 15's other
 way out** — the field is not public, so no concept is owed and the reason is
 under test rather than written down; see the entry for #227 below.
 
-And one entry has **no positive owner**: `meter_only` is owed by slice 8 because
-no slice's issue says it rebuilds `customer_billing_mode`, and the mode's
-siblings gate on payment-rail activation, which is slice 8's. That is #205's
-residue in a new place — an owner nobody chose — and it wants an owner's eye.
+And one entry had **no positive owner**: `meter_only` was owed by slice 8
+because no slice's issue said it rebuilds `customer_billing_mode`, and the
+mode's siblings gate on payment-rail activation, which is slice 8's. That was
+#205's residue in a new place — an owner nobody chose — and slice 8 paid it in
+R10-W3, beside the rail activation (G27) that made it slice 8's: the mode is
+`external`, and its five sweep entries left the ledger in that commit.
 
 **#227 then installed G2 and G3 and seeded fifty-four — the whole re-model
 stated from the consumers' side.** `domain-vocabulary/consumers.yaml` had

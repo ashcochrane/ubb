@@ -1354,8 +1354,9 @@ POST webhook:usage.recorded added the new required request property `data/pricin
 # on the tenant's and the widget's invoice lists - become REQUIRED AND NULLABLE:
 # null where Stripe holds the subscription or issued the invoice in a currency
 # UBB does not admit, because there is no FX and so no dollar amount to state.
-# Null here is "cannot be known", the one case the owner's ruling 5 leaves for a
-# null; every other read beside them states its figure. The two tenant reads
+# Null here is "no such figure exists" (§0.4 B: nothing is converted, so a euro
+# amount has no dollar value to state); every other read beside them states its
+# figure, and ruling 5's count is never null. The two tenant reads
 # also gain Stripe's own integer (`source_amount_minor`,
 # `source_amount_paid_minor`, required, additive), and every revenue and margin
 # read gains `foreign_currency_subscription_count` (required, never null).

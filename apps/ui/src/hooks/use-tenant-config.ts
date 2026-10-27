@@ -44,7 +44,6 @@ let mockTenantConfig: TenantConfig = {
   max_task_starts_per_minute: 60,
 };
 
-/** Mock-mode only: current mock workspace config (returns a copy). */
 /**
  * Mock-mode only: the posture the SERVER derives from the billing mode, so a
  * mock (or a test) that switches the mode reads the posture that goes with it
@@ -57,6 +56,7 @@ const MOCK_POSTURE_OF: Record<CustomerBillingMode, TenantPosture> = {
   postpaid: "full_billing",
 };
 
+/** Mock-mode only: current mock workspace config (returns a copy). */
 export function readMockTenantConfig(): TenantConfig {
   return {
     ...mockTenantConfig,

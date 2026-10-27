@@ -33,7 +33,7 @@ about FX, which v1 deliberately does not have — never an edit to that table.
 
 from django.db import models
 
-from core.exceptions import StripeFatalError
+from core.exceptions import StripeFatalError, UBBError
 
 #: THE CURRENCY UBB v1's ECONOMICS ARE DENOMINATED IN. Lowercase, the casing
 #: every currency column in the tree uses and the payment rail's own.
@@ -68,8 +68,12 @@ FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING = (
 SOURCE_CURRENCY_COLUMNS = "SOURCE_CURRENCY_COLUMNS"
 
 
-class UnsupportedCurrency(ValueError):
-    """A non-USD currency offered at one of UBB's own economic doors."""
+class UnsupportedCurrency(UBBError, ValueError):
+    """A non-USD currency offered at one of UBB's own economic doors.
+
+    A `UBBError`, as every domain refusal is (`docs/conventions/coding-
+    standards.md`), and still a `ValueError`: the recording path's validation
+    lane reads a malformed value as one, and this is one."""
 
     code = UNSUPPORTED_CURRENCY
 
@@ -104,8 +108,11 @@ class CurrencyDisagreement(StripeFatalError):
 
 
 def the_rails_currency(record, currency, agreeing=None):
-    """The currency an outbound money call sends: read off ``record``, the
-    authoritative monetary object it draws on (ADR-0023 §7, #565).
+    """The currency money on the rail is in: read off ``record``, the
+    authoritative monetary object — what an outbound call draws on (ADR-0023
+    §7, #565), or the Stripe object an inbound amount arrives on (a session,
+    a dispute, a refund, a charge), which is never scaled by the tenant's
+    setting (§0.4 B).
 
     ``agreeing`` maps every other record the same amount is drawn against or
     credited to, by what it is, to its currency. The call is refused — never
@@ -122,7 +129,8 @@ def the_rails_currency(record, currency, agreeing=None):
             f"({ECONOMIC_CURRENCY!r} only); nothing was sent")
     sending = admit_currency(currency)
     for other, theirs in (agreeing or {}).items():
-        if not is_admitted(theirs) or admit_currency(theirs) != sending:
+        # One admitted currency, so admitting both IS agreeing.
+        if not is_admitted(theirs):
             raise CurrencyDisagreement(
                 f"{record} is in {sending!r} and {other} is in {theirs!r}: "
                 f"UBB never sends an amount in one currency against a "

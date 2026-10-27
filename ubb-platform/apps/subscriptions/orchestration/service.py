@@ -152,19 +152,21 @@ class SubscriptionOrchestrator:
                 setattr(plan, product_field, product.id)
                 plan.save(update_fields=[product_field, "updated_at"])
 
+            # A plan has no currency of its own: its access and seat fees are
+            # the tenant's catalog, so the tenant row is the record the
+            # Price's currency is read off (#565) — and the amount is
+            # converted in that same currency.
+            currency = the_rails_currency(
+                f"tenant {plan.tenant_id}'s plan catalog",
+                plan.tenant.default_currency)
             price = stripe_call(
                 stripe.Price.create,
                 api_key=api_key,
                 retryable=True,
                 idempotency_key=f"plan-price-{axis}-{plan.id}",
                 product=getattr(plan, product_field),
-                unit_amount=micros_to_cents(amount_micros),
-                # A plan has no currency of its own: its access and seat fees
-                # are the tenant's catalog, so the tenant row is the record
-                # the Price's currency is read off (#565).
-                currency=the_rails_currency(
-                    f"tenant {plan.tenant_id}'s plan catalog",
-                    plan.tenant.default_currency),
+                unit_amount=micros_to_cents(amount_micros, currency),
+                currency=currency,
                 recurring={"interval": plan.interval, "usage_type": "licensed"},
                 stripe_account=connected,
             )
@@ -456,16 +458,16 @@ class SubscriptionOrchestrator:
         version = plan.pricing_version
 
         for axis, new_fee, fee_field, product_field, price_field in changed_provisioned:
+            currency = the_rails_currency(
+                f"tenant {tenant.id}'s plan catalog", tenant.default_currency)
             price = stripe_call(
                 stripe.Price.create,
                 api_key=api_key,
                 retryable=True,
                 idempotency_key=f"plan-price-{axis}-{plan.id}-v{version}",
                 product=getattr(plan, product_field),
-                unit_amount=micros_to_cents(new_fee),
-                currency=the_rails_currency(
-                    f"tenant {tenant.id}'s plan catalog",
-                    tenant.default_currency),
+                unit_amount=micros_to_cents(new_fee, currency),
+                currency=currency,
                 recurring={"interval": plan.interval, "usage_type": "licensed"},
                 stripe_account=connected,
             )

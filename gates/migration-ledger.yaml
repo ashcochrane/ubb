@@ -292,9 +292,10 @@ entries:
   # then cleared all five in one commit. The webhook events repeat G8's owners
   # exactly, because one event cannot be owed by two slices.
   #
-  # ONE ENTRY HAS NO POSITIVE OWNER: `meter_only` is slice 8 by default, and its
-  # reason says so. It is #205's residue in a new place — an owner slice that
-  # nobody chose — and it is written down rather than smoothed over.
+  # ONE ENTRY HAD NO POSITIVE OWNER: `meter_only` was slice 8's by default, and
+  # its reason said so — #205's residue in a new place, an owner slice nobody
+  # chose, written down rather than smoothed over. Slice 8 PAID it in R10-W3,
+  # with the payment-rail activation that made it slice 8's.
 
   # `g7-backend-budget` WAS HERE AND IS PAID (#469, the fold). It stood at
   # 2 files — the billing glossary's entry named by the retired family word

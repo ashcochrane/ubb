@@ -318,6 +318,7 @@ class TestTopUpGrants:
         event.data.object.customer = "cus_g1"
         event.data.object.client_reference_id = str(a.id)
         event.data.object.amount_total = 100  # cents -> 1_000_000 micros
+        event.data.object.currency = "usd"
         event.data.object.id = "cs_g1"
         event.data.object.payment_intent = None
         handle_checkout_completed(event)
@@ -371,6 +372,7 @@ class TestClawbackCascade:
         event.data.object.charge = "ch_d1"
         event.data.object.status = "lost"
         event.data.object.amount = 2000  # cents -> 20_000_000 micros
+        event.data.object.currency = "usd"
         event.account = "acct_d1"
         handle_charge_dispute_closed(event)
 
@@ -423,7 +425,7 @@ class TestClawbackCascade:
         g = _make_grant(w, t, kind="paid", amount=20_000_000,
                         source="checkout", source_reference=str(attempt.id))
 
-        refund = MagicMock(id="re_r1", amount=1000)  # 10_000_000 micros
+        refund = MagicMock(id="re_r1", amount=1000, currency="usd")  # 10_000_000 micros
         charge = MagicMock(id="ch_r1", amount_refunded=1000)
         charge.refunds.data = [refund]
         event = MagicMock()

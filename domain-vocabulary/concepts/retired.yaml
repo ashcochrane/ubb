@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,502 of 2,967 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,503 of 2,968 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2979,6 +2979,13 @@ measurement_key:
     # its select and both their tests, the two route-level test modules, and
     # two SDK models the regenerated core added for the reason on the
     # credit and debit bodies.
+    #
+    # 2026-10-27, R10-W3 (the window's review): 2,502 of 2,967 -> 2,503 of
+    # 2,968 tracked files (`units` UNMOVED). One file arrived and one moved.
+    # The arrival is swept: the console's rendering test of a quarantined
+    # subscription (`features/customers/components/subscription-tab.test.tsx`).
+    # The console's billing-mode words moved from `src/lib/` to the settings
+    # feature's `lib/`, their only reader, and are swept where they landed.
 
     - term: units
       retired_as: >-

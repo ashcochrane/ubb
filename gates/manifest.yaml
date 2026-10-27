@@ -1257,7 +1257,8 @@ gates:
       trigger for the writes that never call `clean()`. The activation's five
       evidence columns are declared FROZEN and held by
       `trg_payment_rail_activation_declared_transitions` (G19's mechanism);
-      there is no delete or revoke path, and disabling the flag stops new
+      there is no delete or revoke path — the table refuses every DELETE
+      (`trg_payment_rail_activation_is_kept`) — and disabling the flag stops new
       use without scanning a tenant already in a money mode (ruling 2).
       Fixtures are rail-ready only by asking (`RailActivated`,
       `rail_activated`), and the nodes below build their own activations or
@@ -1310,6 +1311,9 @@ gates:
       - suite: platform
         node: >-
           ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::TheAdminHasNoDeleteOrRevokePathTest::test_the_delete_page_is_forbidden_and_the_row_survives
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::NoDoorDeletesAnActivationTest::test_the_evidence_survives_every_door_that_deletes
 
 # --- Obligations that are not gates -----------------------------------------
 #

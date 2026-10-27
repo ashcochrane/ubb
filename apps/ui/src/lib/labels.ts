@@ -88,8 +88,9 @@ function legacyLabelMap(map: Record<string, string>) {
 // The registry's billing modes, held BY REFERENCE (slice 8, R10-W3).
 // `domain-vocabulary/` names this file as the console's consumer of
 // `customer_billing_mode`, so the names stay here; their words are the
-// catalogue's, bound in `@/lib/billing-mode` beside the console's own
-// explanatory copy, which is also where the derived posture is held.
+// catalogue's, bound in `features/settings/lib/billing-mode` beside the
+// console's own explanatory copy, which is also where the derived posture is
+// held. A component takes the canonical type from `@/lib/vocabulary`.
 export const BILLING_MODES = CUSTOMER_BILLING_MODE_VALUES;
 export type BillingMode = CustomerBillingMode;
 

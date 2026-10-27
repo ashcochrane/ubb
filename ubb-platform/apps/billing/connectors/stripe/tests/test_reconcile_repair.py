@@ -20,7 +20,7 @@ def test_reconcile_repairs_uncredited_succeeded_pi():
                    metadata={"topup_attempt_id": str(a.id)})
     listing = MagicMock()
     listing.auto_paging_iter.return_value = [pi]
-    mock_charge = MagicMock(status="succeeded", amount=2000, refunded=False)
+    mock_charge = MagicMock(status="succeeded", amount=2000, currency="usd", refunded=False)
     with patch("apps.billing.connectors.stripe.tasks.stripe.PaymentIntent.list", return_value=listing), \
          patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve", return_value=mock_charge):
         reconcile_topups_with_stripe()

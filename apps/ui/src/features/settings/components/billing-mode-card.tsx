@@ -10,14 +10,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BILLING_MODE_DESCRIPTIONS, billingModeLabel } from "@/lib/billing-mode";
-import { BILLING_MODES, type BillingMode } from "@/lib/labels";
+import { BILLING_MODES } from "@/lib/labels";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
+import type { CustomerBillingMode } from "@/lib/vocabulary";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
+import {
+  BILLING_MODE_DESCRIPTIONS,
+  billingModeLabel,
+  tenantPostureLabel,
+} from "../lib/billing-mode";
 
-const MODE_CONSEQUENCE: Record<BillingMode, string> = {
+const MODE_CONSEQUENCE: Record<CustomerBillingMode, string> = {
   external:
     "UBB stops moving money: no wallets, no spend gates — usage tracking, cost, and margin only.",
   prepaid:
@@ -34,7 +39,7 @@ export function BillingModeCard({
   isAdmin: boolean;
 }) {
   const mutation = useUpdateTenantConfig();
-  const [pendingMode, setPendingMode] = React.useState<BillingMode | null>(
+  const [pendingMode, setPendingMode] = React.useState<CustomerBillingMode | null>(
     null,
   );
   const billingEnabled = config.products.includes("billing");
@@ -83,6 +88,13 @@ export function BillingModeCard({
                 <p className="flex items-center gap-2 text-sm font-medium">
                   {billingModeLabel(mode)}
                   {isCurrent && <Badge variant="secondary">Current</Badge>}
+                  {/* The posture the server derives from the mode (never
+                      stored) — whether UBB creates customer charges at all. */}
+                  {isCurrent && (
+                    <Badge variant="outline">
+                      {tenantPostureLabel(config.tenant_posture)}
+                    </Badge>
+                  )}
                 </p>
                 <p className="max-w-md text-[13px] text-muted-foreground">
                   {BILLING_MODE_DESCRIPTIONS[mode]}

@@ -6,8 +6,8 @@
 // derived from it — `@/lib/products` is the pattern. It replaces two
 // hand-written maps in `@/lib/labels` that fell back to the humaniser (slice 8).
 //
-// It sits in `lib/` because two features render these words: the settings
-// cards, and the hooks layer below every feature.
+// It sits in the settings feature's `lib/` because only the settings cards
+// render these words; it moves to `src/lib/` the day a second feature does.
 
 import { labelMap } from "@/lib/localisation";
 import {

@@ -20,9 +20,11 @@
 import {
   completePriceTotal,
   completeTotal,
+  dollarSubscription,
   incompletePriceTotal,
   incompleteTotal,
   measuresFor,
+  quarantinedSubscription,
   type PriceTotalScenario,
 } from "@/lib/economic-scenarios";
 
@@ -586,15 +588,31 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
 // ---------------------------------------------------------------------------
 // Usage tab
 
+/**
+ * One subscription in dollars, and one Stripe holds in euros — QUARANTINED
+ * (#564): kept as Stripe sent it, with no dollar amount, and left out of
+ * every revenue figure, which is why `economicAnswer` below counts it on
+ * every answer. Composed from the scenario module so the null cannot be
+ * written without the currency that explains it.
+ */
 export const MOCK_SUBSCRIPTIONS: Record<string, StripeSubscriptionOut> = {
   [CUS_ACME]: {
     id: "8f65f0d7-0000-4000-8000-000000000601",
     stripe_subscription_id: "sub_mock_acme",
     stripe_product_name: "UBB Platform — Pro",
     status: "active",
-    amount_micros: 199_000_000,
-    currency: "usd",
-    source_amount_minor: 19_900,
+    ...dollarSubscription(19_900),
+    interval: "month",
+    current_period_start: "2026-07-01T00:00:00Z",
+    current_period_end: "2026-08-01T00:00:00Z",
+    last_synced_at: "2026-07-24T06:10:00Z",
+  },
+  [CUS_NOVA]: {
+    id: "8f65f0d7-0000-4000-8000-000000000602",
+    stripe_subscription_id: "sub_mock_nova_eur",
+    stripe_product_name: "UBB Platform — Pro (EU)",
+    status: "active",
+    ...quarantinedSubscription("eur", 18_900),
     interval: "month",
     current_period_start: "2026-07-01T00:00:00Z",
     current_period_end: "2026-08-01T00:00:00Z",
@@ -711,7 +729,10 @@ export function economicAnswer({
     basis: "recorded",
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
-    foreign_currency_subscription_count: 0,
+    // Every answer here covers the whole roster, so each states the
+    // subscriptions it left out — the mock's quarantined one (#564).
+    foreign_currency_subscription_count: Object.values(MOCK_SUBSCRIPTIONS)
+      .filter((subscription) => subscription.amount_micros === null).length,
     rows,
     context: [],
   } as unknown as Economics;

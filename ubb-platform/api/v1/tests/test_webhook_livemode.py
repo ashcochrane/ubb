@@ -89,6 +89,7 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
         session.customer = "cus_same"
         session.client_reference_id = None
         session.amount_total = 100  # $1
+        session.currency = "usd"
         session.id = f"cs_lm_{livemode}"
         session.payment_intent = None
         return event

@@ -66,7 +66,7 @@ def handle_usage_recorded_billing(event_id, payload):
     if billed_cost_micros is None:
         TenantBillingService.accumulate_usage(
             tenant, None, counts_as_event=counts_as_event)
-    if billed_cost_micros is not None:
+    else:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
         mechanism = _the_mechanism_for(kind)

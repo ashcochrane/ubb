@@ -9,7 +9,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { billingModeLabel } from "@/lib/billing-mode";
 import { PRODUCTS, type Product } from "@/lib/labels";
 import type { CustomerBillingMode } from "@/lib/vocabulary";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
@@ -17,6 +16,7 @@ import { PRODUCT_DESCRIPTIONS, productLabel } from "@/lib/products";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
+import { billingModeLabel } from "../lib/billing-mode";
 
 export function ProductsCard({
   config,

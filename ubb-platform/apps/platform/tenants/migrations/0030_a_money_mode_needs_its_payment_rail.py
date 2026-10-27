@@ -13,7 +13,11 @@ and the database's half of the rule.
 2. **`trg_payment_rail_activation_declared_transitions`** — the five evidence
    columns are declared `FROZEN` (ADR-0007 §2): an activation is historical
    evidence and is never rewritten (the owner's ruling 2). `enabled` is left
-   out on purpose — it is the operational switch.
+   out on purpose — it is the operational switch. Beside it,
+   **`trg_payment_rail_activation_is_kept`** refuses every `DELETE`: "no
+   delete or revoke path" is a property of the table, not only of the admin
+   (`PostingMeasurement`'s `BEFORE DELETE` rule is the precedent). A rail is
+   withdrawn by its flag.
 3. **`trg_tenant_money_mode_needs_its_rail`** — the backstop on `ubb_tenant`:
    a row may not ENTER `prepaid` or `postpaid` — be inserted in one, or have
    its mode or its environment change while in one — unless the rail has an
@@ -45,6 +49,8 @@ from django.db import migrations, models
 
 FREEZE_TRIGGER = "trg_payment_rail_activation_declared_transitions"
 FREEZE_FUNCTION = "ubb_payment_rail_activation_declared_transitions"
+KEEP_TRIGGER = "trg_payment_rail_activation_is_kept"
+KEEP_FUNCTION = "ubb_payment_rail_activation_is_kept"
 BACKSTOP_TRIGGER = "trg_tenant_money_mode_needs_its_rail"
 BACKSTOP_FUNCTION = "ubb_tenant_money_mode_needs_its_rail"
 
@@ -85,6 +91,21 @@ BEFORE UPDATE ON ubb_payment_rail_activation
 FOR EACH ROW
 EXECUTE FUNCTION {FREEZE_FUNCTION}();
 
+CREATE FUNCTION {KEEP_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION
+        'a payment rail activation is never deleted: it is evidence of an '
+        'approval that happened (ADR-0008 6). Disable the rail with its '
+        'flag instead.'
+        USING ERRCODE = '23000';
+END;
+$$;
+
+CREATE TRIGGER {KEEP_TRIGGER}
+BEFORE DELETE ON ubb_payment_rail_activation
+FOR EACH ROW
+EXECUTE FUNCTION {KEEP_FUNCTION}();
+
 CREATE FUNCTION {BACKSTOP_FUNCTION}() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     wanted text := CASE WHEN NEW.is_sandbox THEN 'test' ELSE 'live' END;
@@ -123,6 +144,8 @@ EXECUTE FUNCTION {BACKSTOP_FUNCTION}();
 UNINSTALL = f"""
 DROP TRIGGER {BACKSTOP_TRIGGER} ON ubb_tenant;
 DROP FUNCTION {BACKSTOP_FUNCTION}();
+DROP TRIGGER {KEEP_TRIGGER} ON ubb_payment_rail_activation;
+DROP FUNCTION {KEEP_FUNCTION}();
 DROP TRIGGER {FREEZE_TRIGGER} ON ubb_payment_rail_activation;
 DROP FUNCTION {FREEZE_FUNCTION}();
 """

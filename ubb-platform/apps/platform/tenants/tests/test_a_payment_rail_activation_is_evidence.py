@@ -154,6 +154,31 @@ class AnActivationIsEvidenceWhenRecordedTest(TestCase):
         _recorded(environment=PAYMENT_RAIL_ENVIRONMENT_TEST)  # the other one is fine
 
 
+class NoDoorDeletesAnActivationTest(TestCase):
+    """"No delete or revoke path" (ruling 2) is the table's, not only the
+    admin's: every door that could erase the evidence is refused, and the
+    row survives. A rail is withdrawn by its flag (the freeze's control)."""
+
+    def test_the_evidence_survives_every_door_that_deletes(self):
+        activation = _recorded()
+        doors = {
+            "Model.delete()": lambda: PaymentRailActivation.objects.get(
+                pk=activation.pk).delete(),
+            "QuerySet.delete()": lambda: PaymentRailActivation.objects.filter(
+                pk=activation.pk).delete(),
+            "raw SQL": lambda: connection.cursor().execute(
+                "DELETE FROM ubb_payment_rail_activation WHERE id = %s",
+                [str(activation.pk)]),
+        }
+        for door, delete in doors.items():
+            with self.subTest(door=door):
+                with self.assertRaisesRegex(IntegrityError, "never deleted"):
+                    with transaction.atomic():
+                        delete()
+                self.assertTrue(PaymentRailActivation.objects.filter(
+                    pk=activation.pk).exists())
+
+
 class TheAdminHasNoDeleteOrRevokePathTest(TestCase):
     """The admin is where an approver records an activation and turns its
     flag. It never deletes one, and never edits what was approved."""

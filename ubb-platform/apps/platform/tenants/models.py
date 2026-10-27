@@ -156,7 +156,8 @@ class PaymentRailActivation(BaseModel):
     `trg_payment_rail_activation_declared_transitions` through every door
     (the owner's ruling 2). The flag, `enabled`, is the operational switch:
     turning it off stops any tenant ENTERING a money mode on this rail and
-    environment, and deletes nothing — there is no delete or revoke path,
+    environment, and deletes nothing — there is no delete or revoke path:
+    the table refuses every `DELETE` (`trg_payment_rail_activation_is_kept`),
     the admin grants no delete permission, and nothing scans the tenants
     already in one.
 

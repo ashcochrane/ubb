@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { billingModeLabel } from "@/lib/billing-mode";
 import { labelMap } from "@/lib/localisation";
 import {
   TENANT_PRODUCT_LABEL_KEYS,
@@ -9,6 +8,7 @@ import {
   type TenantProduct,
 } from "@/lib/vocabulary";
 
+import { billingModeLabel, tenantPostureLabel } from "../lib/billing-mode";
 import { renderWithQuery } from "../test-utils";
 import { ProductsPage } from "./products-page";
 
@@ -39,6 +39,8 @@ describe("ProductsPage", () => {
     expect(screen.getByText("Current")).toBeInTheDocument();
     // The catalogue's word for the mode, never a second copy of it (slice 8).
     expect(screen.getByText(billingModeLabel("prepaid"))).toBeInTheDocument();
+    // The posture the server derives from it, in the catalogue's words.
+    expect(screen.getByText(tenantPostureLabel("full_billing"))).toBeInTheDocument();
 
     // EXACTLY the declared products: every one of them present, and no fourth
     // toggle beside them, so an extra row fails as loudly as a missing one.

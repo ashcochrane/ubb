@@ -33,21 +33,21 @@ from core.vocabulary import (
 BOTH_ENVIRONMENTS = (PAYMENT_RAIL_ENVIRONMENT_LIVE, PAYMENT_RAIL_ENVIRONMENT_TEST)
 
 
-def activate_the_rail(*environments, enabled=True):
-    """Record the tenant money rail's activation in each environment named.
+def activate_the_rail():
+    """Record the tenant money rail's activation in both environments.
 
     Idempotent per environment — an activation is one row per rail and
     environment, and its evidence is frozen, so a second ask returns the first.
+    A test about one environment, or a disabled rail, records its own.
     """
     activations = []
-    for environment in environments or BOTH_ENVIRONMENTS:
+    for environment in BOTH_ENVIRONMENTS:
         activation, _ = PaymentRailActivation.objects.get_or_create(
             rail=TENANT_MONEY_RAIL, environment=environment,
             defaults={
                 "activated_at": timezone.now(),
                 "approved_by": "a test that asked for the rail",
                 "evidence": "test fixture: activation requested by name (G27)",
-                "enabled": enabled,
             })
         activations.append(activation)
     return activations

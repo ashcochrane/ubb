@@ -280,17 +280,17 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
         # counts whatever it was priced at, and a Task Charge never does —
         # its money stays in the total beside this count.
         event_count=Count("id", filter=Q(kind=USAGE_EVENT_KIND_METERED_USAGE)),
-        **cost_total_annotations(CUSTOMER_PRICE, key="total_cost"),
+        **cost_total_annotations(CUSTOMER_PRICE, key="total_billed_cost"),
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
     )
     # One call per pair. Each touches only its own two keys, so the order is
     # immaterial and neither can consume the other's count.
-    totals = carry_cost_total(CUSTOMER_PRICE, aggregated, key="total_cost")
+    totals = carry_cost_total(CUSTOMER_PRICE, aggregated, key="total_billed_cost")
     totals = carry_cost_total(SUPPLIER_COST, totals,
                               key="total_provider_cost_micros")
 
     return {
-        "total_billed_cost_micros": totals["total_cost"],
+        "total_billed_cost_micros": totals["total_billed_cost"],
         UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
         "event_count": totals["event_count"] or 0,
         "total_provider_cost_micros": totals["total_provider_cost_micros"],

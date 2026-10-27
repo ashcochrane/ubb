@@ -2,7 +2,7 @@
 //
 // Identity lives in `@/lib/vocabulary` (generated from `domain-vocabulary/`),
 // expression in `@/locales` reached through `@/lib/localisation` — the
-// `@/lib/billing-mode` pattern. It sits in `lib/` because two features ask an
+// `@/lib/products` pattern. It sits in `src/lib/` because two features ask an
 // operator for one: the billing credit/debit forms, and a customer's adjust
 // dialogs. The field was `reason_code` until #479; that is the stop cause's
 // name, a different concept, and the console renders that one elsewhere.

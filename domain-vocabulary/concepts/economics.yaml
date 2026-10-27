@@ -20,8 +20,8 @@ customer_billing_mode:
   label_key_prefix: customer_billing_mode
   retired_aliases:
     # `meter_only` said what UBB does NOT do. `external` says where the billing
-    # actually happens, which is the fact a tenant is choosing between. The
-    # rename is owned by a later slice; the registry states the destination now.
+    # actually happens, which is the fact a tenant is choosing between. Slice 8
+    # made the rename (R10-W3); the alias stays so the sweep refuses the old word.
     - meter_only
   consumers:
     - surface: backend
@@ -57,10 +57,11 @@ tenant_posture:
     - surface: backend
       path: ubb-platform/apps/platform/tenants/models.py
     # The console holds the posture where it renders it (slice 8): the
-    # catalogue's words, by the generated label keys. The legacy adapter
-    # never rendered it and has nothing to re-export.
+    # catalogue's words, by the generated label keys, on the settings
+    # feature's billing-mode card. The legacy adapter never rendered it and
+    # has nothing to re-export.
     - surface: console
-      path: apps/ui/src/lib/billing-mode.ts
+      path: apps/ui/src/features/settings/lib/billing-mode.ts
     - surface: openapi
       path: openapi/v1.json
 
