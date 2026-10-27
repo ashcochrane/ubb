@@ -105,14 +105,12 @@ const CODE_MESSAGES: Record<string, string> = {
   feature_not_enabled: "This product isn't enabled for your workspace.",
   not_found: "That resource no longer exists.",
   conflict: "This conflicts with something that already exists.",
-  currency_locked:
-    "The workspace currency is locked because money has already been recorded.",
   last_active_key:
     "You can't revoke the last active API key — rotate it instead.",
   invalid_cursor: "This page reference has expired. Reload the list.",
   validation_error: "Some fields are invalid.",
   invalid_config: "This configuration is invalid.",
-  unsupported_currency: "That currency isn't supported.",
+  unsupported_currency: "UBB accepts US dollars only.",
   stripe_tax_not_active:
     "Stripe Tax isn't active on the connected Stripe account.",
   insufficient_balance: "The balance is too low for this operation.",

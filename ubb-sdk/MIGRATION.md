@@ -74,7 +74,7 @@ Family parents: `BadRequestError` (400), `ForbiddenError` (403),
 `InternalServerError` (500), `ServiceUnavailableError` (503).
 
 Per-code leaves include `InsufficientBalanceError`, `WouldOverdrawError`,
-`CurrencyLockedError`, `LastActiveKeyError`, `LastActiveAdminError` (under
+`LastActiveKeyError`, `LastActiveAdminError` (under
 `ConflictError`); `BillingPeriodClosedError`, `InvalidConfigError`,
 `UnsupportedCurrencyError`, `ValidationError`, the three `EffectiveAt*Error`
 (under `UnprocessableEntityError`); `FeatureNotEnabledError` (under
@@ -107,6 +107,14 @@ would otherwise answer 200 to a call that changed nothing. Drop the argument;
 `get_tenant_config()` no longer returns the field either. **What to do instead:
 nothing.** A tenant part-way through declaring their cost rates gets their
 events recorded, with the gaps named on the 200.
+
+**`CurrencyLockedError` is gone too.** It was raised when a tenant tried to
+change `default_currency` after money existed. UBB v1 admits US dollars only, so
+a tenant cannot leave USD by any path and there is no lock left to report: a
+non-USD `default_currency` — or a non-USD `currency` anywhere you send money —
+is `UnsupportedCurrencyError` (422), and re-sending `usd` is a 200. An `except
+CurrencyLockedError:` block fails at import for the reason above. **What to do
+instead: catch `UnsupportedCurrencyError`, or send `usd`.**
 
 The admission verdict `cost_coverage_required` goes with it. The start-gate
 call no longer refuses a start because a spend ceiling was requested without

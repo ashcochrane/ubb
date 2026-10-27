@@ -16,11 +16,6 @@ import type {
   TenantInvoice,
 } from "./types";
 
-/** Money already exists for this tenant, so the currency is locked (CUR-1). */
-export const CURRENCY_LOCKED = true;
-export const CURRENCY_LOCK_REASON =
-  "Wallet transactions already exist for this workspace, so the currency can no longer change.";
-
 // A `HAS_ACTIVE_COST_CARDS` flag sat here for the coverage toggle's mock
 // refusal. Both went in #321 with the setting itself — a fixture for a rule
 // nothing enforces is a rule a reader will assume still exists.

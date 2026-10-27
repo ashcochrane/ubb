@@ -5,6 +5,11 @@ from django.core.cache import cache
 from django.db import models
 
 from apps.platform.membership.roles import ADMIN, ROLE_CHOICES
+from core.currency_policy import (
+    UnsupportedCurrency,
+    admit_currency,
+    usd_only_check,
+)
 from core.models import BaseModel
 from core.vocabulary import (
     CUSTOMER_BILLING_MODE_POSTPAID,
@@ -27,10 +32,12 @@ from core.vocabulary import (
 # it switched on (#149 §6) — there is one recording core, so there is nothing
 # for a tenant to choose between.
 
-# CUR-1's SUPPORTED_CURRENCIES now lives in ``core.money``, beside the table
-# that says how many minor units each of them has — one place, both facts about
-# a currency. It sat here only because the 1/100 minor unit was hard-coded at
-# twenty sites and the list was the cheapest way to keep them all true.
+# WHICH CURRENCY A TENANT MAY HOLD IS NOT THIS MODEL'S ANSWER, AND IT IS NOT
+# `core.money`'s EITHER. That module's table says which currencies UBB can
+# REPRESENT; `core.currency_policy` says which one its economics ADMIT, and in
+# v1 that is US dollars only (ADR-0023). `clean` below asks the policy, and
+# `ck_tenant_default_currency_usd` holds every write that never calls it — the
+# admin form is a door, and so is `QuerySet.update()`.
 
 # The canonical tokens come from the registry via `core.vocabulary` (#200), so
 # this model cannot hold a second copy of a value that drifts from it. The
@@ -210,6 +217,10 @@ class Tenant(BaseModel):
     class Meta:
         db_table = "ubb_tenant"
         constraints = [
+            # UBB v1 is USD-only (ADR-0023). The tenant's currency is the
+            # column this rule most needs: the config route refuses another,
+            # and the admin form edits every column without it.
+            usd_only_check("default_currency", "ck_tenant_default_currency_usd"),
             models.UniqueConstraint(
                 fields=["parent_tenant"],
                 condition=models.Q(is_sandbox=True),
@@ -253,6 +264,13 @@ class Tenant(BaseModel):
             raise ValidationError(
                 {"billing_mode": f"billing_mode '{self.billing_mode}' requires 'billing' in products."}
             )
+        # UBB v1 is USD-only (ADR-0023). Every door that saves a tenant —
+        # the config route, a sandbox, the admin form, a seed — reaches this,
+        # and the CHECK above holds the writes that never call `save()`.
+        try:
+            self.default_currency = admit_currency(self.default_currency)
+        except UnsupportedCurrency as refused:
+            raise ValidationError({"default_currency": str(refused)})
         if self.backfill_window_days is not None and not (0 <= self.backfill_window_days <= 60):
             raise ValidationError(
                 {"backfill_window_days": "backfill_window_days must be between 0 and 60."}

@@ -295,6 +295,22 @@ class TestTheCurrencyIsPinnedAndDisagreementFails:
         """The second sanctioned way to pin it: no fixed code, a structured path
         instead. There is nothing to disagree with, so the supplier's own answer
         stands."""
+        assert pin_currency("", "usd") == "usd"
+
+    def test_a_supplier_returned_currency_is_represented_here_and_admitted_at_the_door(self):
+        """#555's eighth drift site, and the line ADR-0023 draws through it.
+
+        This function defines what a GENERATED integration does in the
+        tenant's own code, and its job is representation: it names the
+        currency the supplier actually reported, so the amount beside it is
+        converted from that currency's own minor unit and never mis-scaled.
+        Admission is not its job and is not decided here. The code travels to
+        UBB with the amount, and the recording routes' one policy refuses
+        anything but US dollars — `test_a_foreign_currency_sample_is_the_
+        recordings_refusal` in `api/v1/tests/test_verifying_a_blueprint.py`
+        holds that end. A second copy of "USD only" here would be a second
+        policy, in a file the renderer mirrors into every tenant's code.
+        """
         assert pin_currency("", "gbp") == "gbp"
 
     def test_a_supplier_returned_currency_ubb_cannot_hold_is_refused(self):

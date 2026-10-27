@@ -12,10 +12,6 @@
       "status": 409,
       "title": "Conflict"
     },
-    "currency_locked": {
-      "status": 409,
-      "title": "Currency locked"
-    },
     "effective_at_before_scheduled_boundary": {
       "status": 422,
       "title": "effective_at is before the book's latest scheduled boundary"
@@ -176,6 +172,7 @@
       "effective_at_too_old",
       "not_found",
       "provider_conflicts_with_event_type",
+      "unsupported_currency",
       "validation_error"
     ],
     "reason_codes": [

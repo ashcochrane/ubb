@@ -4136,8 +4136,8 @@ class TenantConfigIn(Schema):
     # because nothing on the recording path was ever deferred). Omit =
     # unchanged. Never a contract change — only the latency profile.
     live_counter_maintenance_enabled: Optional[bool] = None
-    # CUR-1: lowercase ISO code from core.money.SUPPORTED_CURRENCIES
-    # (2-decimal only); 409 once any money exists for the tenant.
+    # UBB v1 is USD-only (ADR-0023): `usd` in any case is admitted and
+    # stored lowercase; any other code is `unsupported_currency`.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     # Spend-safety defaults. Omitting a key leaves it unchanged.
     # min_balance_micros is the allowed overdraft magnitude (>= 0; cannot be

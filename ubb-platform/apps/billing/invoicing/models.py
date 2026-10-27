@@ -1,5 +1,6 @@
 from django.db import models
 
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 
 
@@ -103,8 +104,13 @@ class CustomerUsageInvoice(BaseModel):
 
     class Meta:
         db_table = "ubb_customer_usage_invoice"
-        constraints = [models.UniqueConstraint(
-            fields=["customer", "period_start"], name="uq_usage_invoice_customer_period")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["customer", "period_start"],
+                name="uq_usage_invoice_customer_period"),
+            # UBB v1 is USD-only (ADR-0023).
+            usd_only_check("currency", "ck_usage_invoice_currency_usd"),
+        ]
 
     def __str__(self):
         return f"UsageInvoice({self.customer_id}: {self.period_start} {self.status})"

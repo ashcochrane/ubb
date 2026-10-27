@@ -52,16 +52,17 @@ class TenantConfigAutomaticTaxTest(unittest.TestCase):
         )
 
     def test_update_tenant_config_sends_default_currency(self):
-        """CUR-1: the default_currency kwarg is passed through (and only when given)."""
-        fixture = {**CONFIG_FIXTURE, "default_currency": "eur"}
+        """The default_currency kwarg is passed through as given (and only
+        when given): the server is what admits it, US dollars only."""
+        fixture = {**CONFIG_FIXTURE, "default_currency": "usd"}
         mock_resp = MagicMock(status_code=200, json=lambda: fixture)
         self.client.metering._request = MagicMock(return_value=mock_resp)
-        result = self.client.update_tenant_config(default_currency="eur")
+        result = self.client.update_tenant_config(default_currency="USD")
         self.client.metering._request.assert_called_once_with(
             "patch", "/api/v1/tenant/config",
-            json={"default_currency": "eur"},
+            json={"default_currency": "USD"},
         )
-        self.assertEqual(result["default_currency"], "eur")
+        self.assertEqual(result["default_currency"], "usd")
 
     def test_update_tenant_config_omits_default_currency_when_not_given(self):
         mock_resp = MagicMock(status_code=200, json=lambda: CONFIG_FIXTURE)

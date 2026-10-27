@@ -80,11 +80,6 @@ class BillingPeriodClosedError(UnprocessableEntityError):
     CODE = 'billing_period_closed'
 
 
-class CurrencyLockedError(ConflictError):
-    STATUS = 409
-    CODE = 'currency_locked'
-
-
 class EffectiveAtBeforeScheduledBoundaryError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'effective_at_before_scheduled_boundary'
@@ -247,7 +242,6 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'bad_request': BadRequestError,
     'billing_period_closed': BillingPeriodClosedError,
     'conflict': ConflictError,
-    'currency_locked': CurrencyLockedError,
     'effective_at_before_scheduled_boundary': EffectiveAtBeforeScheduledBoundaryError,
     'effective_at_in_future': EffectiveAtInFutureError,
     'effective_at_in_past': EffectiveAtInPastError,
@@ -310,7 +304,6 @@ __all__ = [
     'InternalServerError',
     'ServiceUnavailableError',
     'BillingPeriodClosedError',
-    'CurrencyLockedError',
     'EffectiveAtBeforeScheduledBoundaryError',
     'EffectiveAtInFutureError',
     'EffectiveAtInPastError',

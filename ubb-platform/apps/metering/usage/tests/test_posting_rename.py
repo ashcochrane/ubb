@@ -35,32 +35,14 @@ than left silent, because the exclusion is the shape a reader will look for.
 
 ---
 
-**THE CURRENCY CHECK CONSTRAINT DOES NOT EXIST, AND THIS TICKET DOES NOT
-INVENT ONE.** The spec hands slice 2 "the posting's currency CHECK constraint"
-and argues it is safe because "non-conforming input is rejected at the API door,
-so no real posting is ever blocked by it". Measured against the tree, both
-halves are wrong:
-
-* **There is no such constraint to carry.** None of the eight currency columns
-  has ever had one. `CHECK (currency = 'USD')` is a *sketch* in the measurement
-  vocabulary decision (§7.1), never built — no model declares it, no migration
-  adds it, and no `RunSQL` anywhere in `usage/migrations/` writes one. A rename
-  cannot make a constraint survive that was never there. (One CHECK in the tree
-  does touch a column named `currency`, and it is not this rule wearing another
-  name — see `test_no_stamped_currency_column_carries_a_check_constraint`.)
-* **The API door does not enforce it.** `test_omitted_currency_defaults_to_
-  tenant_currency` in `api/v1/tests/test_metering_endpoints.py` records a
-  posting at `currency='eur'` through the public endpoint and asserts a 200,
-  because the recording path stamps `Tenant.default_currency` and that field
-  accepts any three-letter code. Adding the constraint would turn that green
-  200 into a database error — a real posting blocked by it, which is the exact
-  outcome the spec's safety argument says cannot happen.
-
-So the currency column rides along with its `usd` default and its `varchar(3)`
-width and nothing else, which is what `TheCurrencyColumnRodeAlongTest` pins.
-**Adding the constraint is not deferred here — it is unbuildable until the
-USD-only rule reaches the door**, and that is nobody's ticket today. It joins
-the others as an unowned gap rather than being smuggled in under a rename.
+**THE CURRENCY COLUMN RODE ALONG UNCONSTRAINED, AND #555 PAID THAT DEBT.**
+This ticket carried `currency` with its `usd` default and its width and
+nothing else, because the USD-only rule had not reached the door and a
+`CHECK` would have blocked real postings. #555 brought the rule to every
+door and to the database together (ADR-0023): `ck_posting_currency_usd`
+now holds this column, and `apps/platform/tests/test_v1_is_usd_only.py`
+holds every currency column in the tree — which retired the unowned-column
+inventory this module used to keep.
 """
 from django.db import connection
 from django.db import migrations as operations
@@ -102,78 +84,6 @@ CARRIED_INDEXES = (
     "idx_usage_stop_context",
 )
 DELIBERATELY_DROPPED = ("idx_usage_dim_attribution",)
-
-#: The other currency columns, by table. **This ticket does not claim them.**
-#: One decision hands their constraints to the cutover decision and that
-#: document assigns them to no slice, so the gap is recorded by name here rather
-#: than silently inherited — see the module docstring for why the posting's own
-#: is in the same position.
-#:
-#: Seven was the spec's own denominator, taken from the measurement vocabulary
-#: decision's §7.3 table, and it was the seven columns that default to `usd` the
-#: way the posting's does. **FOUR ARE LEFT (#496)** — three paid below, by the
-#: same rule each time: two in #368, and the recurring revenue profile's when
-#: slice 7 deleted the model outright. **The tree holds others that were
-#: deliberately never listed**:
-#: `ReportedCostMapping.currency` is a DECLARED pin rather than a stamped copy
-#: (it defaults to `''`, and #266 landed it in this same slice), and
-#: `StripeSubscription` and `SubscriptionInvoice` mirror the payment rail's own
-#: field. None is a copy of the tenant's frozen choice, which is what §7.3's
-#: list is about.
-#:
-#: ⚠ **AND `ubb_cost_book.currency` DOES NOT JOIN THIS LIST, WHICH IS THE TEST
-#: THE LIST'S OWN RULE HAD TO PASS (#368).** A cost book declares the currency
-#: its supplier bills in: the column has **no default**, and
-#: `ck_cost_book_names_its_currency` refuses the empty string. It is the
-#: `ReportedCostMapping` shape exactly — a declaration, not a stamped copy of a
-#: choice made elsewhere — so admitting it here would be recording a debt that
-#: is not owed, which is the mirror of the failure this list exists to prevent.
-UNOWNED_CURRENCY_COLUMNS = (
-    # ⚠ **THE RULE TABLE'S ENTRY FOLLOWED ITS RENAME RATHER THAN BEING DELETED
-    # (#367).** Slice 4 moved this table to the name a rule's own name asks for.
-    # A rename moves a table; it does not touch the column — the rule's currency
-    # is still an unconstrained `usd`-defaulted copy of the tenant's frozen
-    # choice, and this list exists to say so. Deleting the line would have
-    # retired a live gap by spelling, which is the opposite of what the list is
-    # for.
-    #
-    # ⚠⚠ **#367 HANDED THAT DISAGREEMENT FORWARD AND #368 RESOLVED IT, WITH
-    # TWO LINES DELETED AND THIS ONE KEPT.** Ticket 21 read *"All three of this
-    # slice's lines are deleted — two renamed tables and one deleted table"*;
-    # #367's note answered that a rename discharges nothing, and asked whoever
-    # landed the split to decide rather than delete by default. Measured on the
-    # commit: the tripwire fired on exactly TWO of the three, and this line was
-    # not one of them.
-    #
-    #   * `ubb_rate_card_assignment` — the table is DELETED, so the line goes.
-    #   * `ubb_rate_card_container` — the container split, and the Pricing Book
-    #     it became **has no currency column at all**. That is #367's own
-    #     escape clause reached the strong way: the gap is not constrained, it
-    #     is gone, because a tenant has exactly one currency (CUR-1) and a
-    #     column repeating it was the copy this list is about. The line goes.
-    #   * `ubb_rate` — **stays.** A rule still carries a `usd`-defaulted
-    #     currency nobody owns. Nothing in #368 touches it, and deleting it
-    #     because a ticket's arithmetic expected three would be exactly the
-    #     retire-a-gap-by-spelling the note above refuses. It is handed
-    #     forward, unpaid and named.
-    #
-    # ⚠ **AND `ubb_customer_revenue_profile` LEFT ON `ubb_rate_card_assignment`'s
-    # TERMS (#496).** Slice 7 deleted the recurring revenue profile outright, so
-    # the gap is not constrained, it is gone — the strong form of #367's own
-    # escape clause, reached for the third time in this list.
-    #
-    # ⚠ **`TenantSuppliedRevenue`, WHICH REPLACED IT, DOES NOT INHERIT THE
-    # LINE.** Its currency has no default at all: it arrives from the caller
-    # with the figure it belongs to and is refused unless the platform supports
-    # it, which makes it a STATED fact rather than a stamped copy of the
-    # tenant's frozen choice. That is the `ReportedCostMapping` position the
-    # note above already draws, and admitting it here would record a debt that
-    # is not owed.
-    "ubb_rate",                      # Rate
-    "ubb_wallet",                    # Wallet
-    "ubb_credit_grant",              # CreditGrant
-    "ubb_customer_usage_invoice",    # CustomerUsageInvoice
-)
 
 #: Operations that would cost rows, keys or indexes. `AlterModelTable`,
 #: `RenameModel` and `RenameField` are renames; these are not, and none of them
@@ -472,10 +382,10 @@ class TheNeighboursMovedWithItTest(TestCase):
 
 
 class TheCurrencyColumnRodeAlongTest(TestCase):
-    """Slice 2's only currency column, and what it does and does not carry.
+    """Slice 2's only currency column survived the rename.
 
-    Read the module docstring first: the CHECK constraint the spec hands this
-    ticket does not exist and cannot be written truthfully today.
+    What holds its VALUE is #555's, and is asserted where every currency
+    column is (`apps/platform/tests/test_v1_is_usd_only.py`).
     """
 
     def test_the_column_survived_the_rename_on_the_new_table(self):
@@ -509,84 +419,6 @@ class TheCurrencyColumnRodeAlongTest(TestCase):
 
         self.assertEqual(Posting._meta.get_field("currency").default, "usd")
         self.assertEqual(posting.currency, "usd")
-
-    def test_no_stamped_currency_column_carries_a_check_constraint(self):
-        """The finding, pinned so it cannot be quietly assumed away.
-
-        This is what makes the module docstring's first claim checkable rather
-        than a note. The day somebody builds the USD-only rule — at the door
-        first, then in the database — this goes red and names the tables that
-        moved, which is the right moment to revisit who owns the others.
-
-        Scoped to the columns §7.3's table is about, and the exclusion is
-        the interesting part. `ubb_reported_cost_mapping` DOES carry a CHECK
-        touching `currency` — `ck_reported_cost_currency_pinned_once`, landed by
-        #266 in this same slice — and it is not a counter-example: it is an XOR
-        between a pinned code and a path to read one from, on a column that
-        DECLARES which currency a supplier reports in. It constrains the shape
-        of a declaration, not the value of a stamped copy. Widening this test to
-        every table would make it fail on that and teach the next reader the
-        wrong lesson.
-        """
-        tables = [NEW_TABLE, *UNOWNED_CURRENCY_COLUMNS]
-        with connection.cursor() as cur:
-            cur.execute("""
-                SELECT c.conrelid::regclass::text, c.conname
-                FROM pg_constraint c
-                JOIN pg_attribute a
-                  ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
-                WHERE c.contype = 'c'
-                  AND a.attname = 'currency'
-                  AND c.conrelid::regclass::text = ANY(%s)
-            """, [tables])
-            found = sorted(f"{table}.{name}" for table, name in cur.fetchall())
-
-        self.assertEqual(found, [], "a currency CHECK constraint now exists — "
-                                    "see this module's docstring")
-
-    def test_the_unowned_columns_are_not_touched_by_this_ticket(self):
-        """Recorded as a gap, not claimed.
-
-        The vacuity risk is the point: if one of these tables were renamed or
-        dropped from under the list, "this ticket did not touch it" would pass
-        by naming nothing. So each is resolved against the live catalogue first.
-
-        **This test is MEANT to go red when a later slice does its job**, which
-        is the same shape as `test_every_seeded_entry_is_still_a_real_violation`
-        in `apps/platform/tests/test_model_naming.py`: a record of a debt that
-        must be edited when the debt is paid, so paying it and recording the
-        payment are one act rather than two.
-
-        **IT HAS NOW FIRED ONCE AND THE COUNT IN ITS NAME WENT WITH IT (#368).**
-        Two of the seven were paid in the commit that split the container: the
-        assignment table was deleted outright, and the container's own line
-        went because the Pricing Book it became has no currency column at all.
-        Five are left. The failure message says what to do about it, because a
-        tripwire whose message reads as "restore the table" would be worse than
-        no tripwire at all — and the list's own comment records why the rule
-        table's line was NOT one of the two, which is the half a ticket's
-        arithmetic got wrong.
-        """
-        stale = (
-            "this list records the unowned currency-constraint gap as it stood "
-            "at #269. If a later slice deleted or rebuilt the table, the fix is "
-            "to DELETE the line from UNOWNED_CURRENCY_COLUMNS in this module — "
-            "not to restore the table. Slice 4 is expected to do exactly that "
-            "to ubb_rate_card_assignment."
-        )
-        with connection.cursor() as cur:
-            for table in UNOWNED_CURRENCY_COLUMNS:
-                with self.subTest(table=table):
-                    self.assertIsNotNone(
-                        _table_of(table), f"{table} no longer exists — {stale}")
-                    cur.execute("""
-                        SELECT count(*) FROM information_schema.columns
-                        WHERE table_name = %s AND column_name = 'currency'
-                    """, [table])
-                    self.assertEqual(
-                        cur.fetchone()[0], 1,
-                        f"{table} lost its currency column — {stale}")
-
 
 class TheHistoryStillReplaysTest(TestCase):
     """A rename migration is worthless if the chain in front of it cannot run.

@@ -1,5 +1,6 @@
 from django.db import models
 
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 from core.transitions import RECORD_RULE
@@ -41,6 +42,8 @@ class Wallet(SoftDeleteMixin, BaseModel):
 
     class Meta:
         db_table = "ubb_wallet"
+        # UBB v1 is USD-only (ADR-0023).
+        constraints = [usd_only_check("currency", "ck_wallet_currency_usd")]
 
     def save(self, *args, **kwargs):
         # Self-healing negative_since: stamp on entering negative territory,
@@ -190,6 +193,8 @@ class CreditGrant(BaseModel):
                 & models.Q(remaining_micros__lte=models.F("granted_micros")),
                 name="ck_grant_remaining_bounds",
             ),
+            # UBB v1 is USD-only (ADR-0023).
+            usd_only_check("currency", "ck_credit_grant_currency_usd"),
         ]
 
     def __str__(self):

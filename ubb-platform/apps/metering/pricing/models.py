@@ -11,6 +11,7 @@ from apps.platform.grouping_fields.models import SLOT_CHOICES
 # import is the `SLOT_CHOICES` line above doing the same job for the same
 # reason, and ADR-001 permits a product reading the kernel.
 from apps.platform.work.models import TASK_TYPE_KIND_CHOICES
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.money import round_charge
 from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE, SET_ONCE
@@ -478,6 +479,8 @@ class Rate(BaseModel):
                          name="idx_rate_lookup"),
         ]
         constraints = [
+            # UBB v1 is USD-only (ADR-0023).
+            usd_only_check("currency", "ck_rate_currency_usd"),
             # ONE ACTIVE RULE PER IDENTITY PER BOOK — NOW TWO CONSTRAINTS,
             # BECAUSE ONE OVER BOTH COLUMNS WOULD ENFORCE NOTHING (#368).
             #
@@ -1107,6 +1110,9 @@ class Charge(BaseModel):
     class Meta:
         db_table = "ubb_charge"
         constraints = [
+            # UBB v1 is USD-only (ADR-0023). The column is FROZEN as well, so
+            # this is the rule a charge is BORN under.
+            usd_only_check("currency", "ck_charge_currency_usd"),
             # EXACTLY ONE ORIGINAL CHARGE PER PIECE OF WORK, FOR ALL TIME.
             #
             # This is the acceptance criterion as a database rule rather than as
@@ -1225,10 +1231,15 @@ class CostBook(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "key"], name="uq_cost_book_tenant_key"),
+            # One default per supplier. `currency` left this key (#555): it
+            # promised a default per currency, which USD-only refuses.
             models.UniqueConstraint(
-                fields=["tenant", "provider_key", "currency"],
+                fields=["tenant", "provider_key"],
                 condition=models.Q(is_default=True),
                 name="uq_cost_book_one_default_per_provider"),
+            # UBB v1 is USD-only (ADR-0023): the supplier's currency is
+            # declared, and the only one a declaration may name is USD.
+            usd_only_check("currency", "ck_cost_book_currency_usd"),
             models.CheckConstraint(
                 condition=~models.Q(currency=""),
                 name=NAMES_ITS_CURRENCY_CHECK),

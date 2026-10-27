@@ -16,6 +16,13 @@ SUBSCRIPTION_STATUS_CHOICES = [
 
 class StripeSubscription(BaseModel):
     """Read-only mirror of a Stripe subscription on the tenant's Connected Account."""
+
+    #: `currency` is what Stripe SENT, never what UBB admitted, so no USD
+    #: `CHECK` covers it (ADR-0023): a connected account may hold a
+    #: subscription in a currency UBB never admitted, and the mirror keeps
+    #: that truthfully so the quarantine can exclude it visibly (#564).
+    SOURCE_CURRENCY_COLUMNS = ("currency",)
+
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="stripe_subscriptions"
     )
@@ -52,6 +59,11 @@ class StripeSubscription(BaseModel):
 
 class SubscriptionInvoice(BaseModel):
     """Synced from Stripe — tracks each paid invoice for revenue attribution."""
+
+    #: What Stripe sent, and spared the USD `CHECK` for the subscription's
+    #: reason above (ADR-0023, #564).
+    SOURCE_CURRENCY_COLUMNS = ("currency",)
+
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="subscription_invoices"
     )

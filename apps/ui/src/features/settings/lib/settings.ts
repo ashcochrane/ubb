@@ -12,30 +12,6 @@ import type {
 } from "../api/types";
 
 // ---------------------------------------------------------------------------
-// Currencies — the supported 2-decimal set (PATCH config default_currency).
-
-export const SUPPORTED_CURRENCIES: { code: string; name: string }[] = [
-  { code: "usd", name: "US Dollar" },
-  { code: "eur", name: "Euro" },
-  { code: "gbp", name: "British Pound" },
-  { code: "aud", name: "Australian Dollar" },
-  { code: "cad", name: "Canadian Dollar" },
-  { code: "chf", name: "Swiss Franc" },
-  { code: "nzd", name: "New Zealand Dollar" },
-  { code: "sgd", name: "Singapore Dollar" },
-  { code: "hkd", name: "Hong Kong Dollar" },
-  { code: "sek", name: "Swedish Krona" },
-  { code: "nok", name: "Norwegian Krone" },
-  { code: "dkk", name: "Danish Krone" },
-  { code: "pln", name: "Polish Zloty" },
-  { code: "czk", name: "Czech Koruna" },
-  { code: "mxn", name: "Mexican Peso" },
-  { code: "brl", name: "Brazilian Real" },
-  { code: "inr", name: "Indian Rupee" },
-  { code: "zar", name: "South African Rand" },
-];
-
-// ---------------------------------------------------------------------------
 // Money input conversion — inputs are entered in currency units, the API
 // speaks integer micros.
 

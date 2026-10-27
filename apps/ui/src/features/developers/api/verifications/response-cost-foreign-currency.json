@@ -66,11 +66,11 @@
     "refusal": {
       "operation_id": "api_v1_metering_endpoints_record_usage",
       "problem": {
-        "type": "https://ubb.dev/errors/validation_error",
-        "title": "Validation error",
+        "type": "https://ubb.dev/errors/unsupported_currency",
+        "title": "Unsupported currency",
         "status": 422,
-        "code": "validation_error",
-        "detail": "currency mismatch: event currency 'eur' does not match tenant currency 'usd' (per-tenant single currency; multi-currency/FX is not supported)"
+        "code": "unsupported_currency",
+        "detail": "unsupported currency 'eur': UBB v1 admits US dollars only ('usd') and converts nothing — there is no FX, so no other currency can enter its economics"
       }
     }
   }

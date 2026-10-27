@@ -404,6 +404,14 @@ class TestTheDataPassItself(TestCase):
             {(self.customer.id, 100_000_000), (other.id, 200_000_000)})
 
     def test_the_reverse_rebuilds_a_profile_from_the_rows_it_made(self):
+        # This migration ran before UBB v1's USD CHECK on supplied revenue
+        # (ADR-0023), when a profile could hold another currency. Lifting it
+        # inside this test's transaction is that state again; the rollback
+        # puts it back.
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE ubb_tenant_supplied_revenue DROP "
+                           "CONSTRAINT ck_supplied_revenue_currency_usd")
         self.plant(recurring_amount_micros=500_000_000, currency="gbp",
                    effective_from=datetime.date(2026, 4, 1),
                    effective_to=datetime.date(2026, 6, 1))

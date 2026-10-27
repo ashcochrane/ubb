@@ -88,9 +88,9 @@ def test_set_seats_refreshes_mirror_without_webhook():
 
 
 @pytest.mark.django_db
-def test_ensure_plan_provisioned_uses_tenant_currency():
-    t = Tenant.objects.create(name="EUR", products=["metering", "billing"],
-        stripe_connected_account_id="acct_T", charges_enabled=True, default_currency="eur")
+def test_ensure_plan_provisioned_prices_in_the_tenants_currency():
+    t = Tenant.objects.create(name="USD", products=["metering", "billing"],
+        stripe_connected_account_id="acct_T", charges_enabled=True, default_currency="usd")
     plan = a_plan(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month")
     with patch("apps.subscriptions.orchestration.service.stripe.Product.create",
@@ -100,7 +100,7 @@ def test_ensure_plan_provisioned_uses_tenant_currency():
         SubscriptionOrchestrator.ensure_plan_provisioned(plan)
     assert mpr.call_count == 2
     for _, kw in mpr.call_args_list:
-        assert kw["currency"] == "eur"
+        assert kw["currency"] == t.default_currency == "usd"
 
 
 @pytest.mark.django_db

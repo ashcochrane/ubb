@@ -475,12 +475,10 @@ class UBBClient:
         server preflights the connected account's Stripe Tax status when the
         tenant is charge-ready and rejects with 422 if Tax is not active.
 
-        ``default_currency`` is a lowercase ISO code (e.g. ``"eur"``); only
-        2-decimal currencies are accepted (zero-decimal currencies like jpy
-        are rejected with 422 until minor-unit support lands), and the server
-        refuses the change with 409 once any money exists for the tenant
-        (wallet transactions, provisioned plan prices, pushed usage invoices
-        or Stripe subscriptions) — set it before billing anything.
+        ``default_currency`` is US dollars (``"usd"``, in any case): UBB v1
+        admits no other currency and converts none, so any other code is
+        refused with ``UnsupportedCurrencyError`` (422) and the tenant's
+        currency is unchanged.
         """
         metering = self._require_metering()
         body = {}

@@ -33,6 +33,7 @@ from apps.platform.event_types.models import (
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_MICROS,
+    AMOUNT_REPRESENTATION_MINOR_UNITS,
     COSTING_METHOD_CALCULATED,
     COSTING_METHOD_REPORTED,
     DECLARATION_STATUS_DRAFT,
@@ -212,7 +213,7 @@ class TestAnIncompleteDeclarationStaysInDraft:
         declared.refresh_from_db()
         declared.publish()
 
-        mapping.currency = "gbp"
+        mapping.amount_representation = AMOUNT_REPRESENTATION_MINOR_UNITS
         mapping.save()
 
         assert EventType.objects.get(pk=declared.pk).declaration_status \

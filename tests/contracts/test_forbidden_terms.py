@@ -419,7 +419,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # publication keeps its supplier, and a held price states its reason.
         # Neither names a retired word, so the number moved for the files
         # existing.
-        "historical-migrations": (UNTIL_SLICE_8, 283, 19),
+        # 283 -> 290 in R10-W3 (#555): seven migrations — UBB v1's USD
+        # CHECKs, one per app owning a currency column. None names a
+        # retired word, so the number moved for the files existing.
+        "historical-migrations": (UNTIL_SLICE_8, 290, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

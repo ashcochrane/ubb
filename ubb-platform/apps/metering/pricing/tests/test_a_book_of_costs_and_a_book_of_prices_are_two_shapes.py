@@ -90,13 +90,19 @@ def test_a_cost_book_that_names_no_currency_is_refused_at_the_database():
     currency its supplier bills in. That is what keeps this column off the
     unowned-currency-column list: it is a declaration, not a stamped copy of
     the tenant's own frozen choice.
+
+    ⚠ TWO RULES HOLD THE COLUMN SINCE #555, and the blank breaks both: this
+    check, and UBB v1's USD one (`ck_cost_book_currency_usd`, ADR-0023), which
+    admits exactly one value and so subsumes "not blank". Which of the two the
+    database names first is its own ordering, so either is the refusal.
     """
     t = _tenant()
 
     with pytest.raises(IntegrityError) as caught:
         CostBook.objects.create(tenant=t, key="k", provider_key="openai")
 
-    assert NAMES_ITS_CURRENCY_CHECK in str(caught.value)
+    assert any(rule in str(caught.value)
+               for rule in (NAMES_ITS_CURRENCY_CHECK, "ck_cost_book_currency_usd"))
 
 
 def test_the_provider_agnostic_cost_book_is_still_writable():

@@ -7,16 +7,19 @@ owns the conversion between the two, and the rules for when a division is
 allowed to lose a fraction.
 
 Before this module existed, "a currency has a hundred minor units" was written
-out twenty times across eleven files as a bare ``10_000``. That is why
-``SUPPORTED_CURRENCIES`` admits two-decimal currencies only: not a product
-decision, but the cost of changing twenty sites at once
-(``tenants/models.py`` CUR-1). With the assumption in one table, admitting yen
-becomes a data change here plus a live money test in that currency.
+out twenty times across eleven files as a bare ``10_000``. With the assumption
+in one table, representing yen becomes a data change here plus a live money
+test in that currency.
 
-**The currency parameter is not decorative.** v1 is single-currency in
-practice, but a helper that dropped the parameter would rebuild exactly the
-coupling this module exists to delete. The restriction is meant to become a
-choice; today it is a constraint.
+**This table is REPRESENTATION, never policy.** It gives the minor unit of
+each currency it knows, which is what lets UBB read a source fact in euros
+honestly. Which currency UBB's economics ADMIT is ``core.currency_policy``'s
+answer — US dollars only in v1 (ADR-0023) — and shrinking this table to say so
+would confuse the two.
+
+**The currency parameter is not decorative.** v1 admits one currency, but a
+helper that dropped the parameter would rebuild exactly the coupling this
+module exists to delete.
 
 The four rules (``docs/plans/2026-07-30-money-model-decision.md`` §5.2, with
 R1's tie direction amended by #603 — ADR-0020):
@@ -73,9 +76,9 @@ def fits_a_money_column(amount_micros: int) -> bool:
 
 # ISO 4217 minor-unit exponent per currency: 2 means the minor unit is a
 # hundredth (cents), 0 means the currency has no minor unit (yen), 3 means a
-# thousandth (dinars). CUR-1 admits two-decimal currencies only — see the
-# module docstring for why, and `test_money.py` for the test that makes
-# admitting any other kind a conscious act.
+# thousandth (dinars). The table knows two-decimal currencies only — see the
+# module docstring, and `test_money.py` for the test that makes representing
+# any other kind a conscious act.
 #
 # Zero- and three-decimal currencies are NOT merely absent from this table:
 # three-decimal ones carry Stripe's own rule that amounts round to the nearest
@@ -87,16 +90,16 @@ _MINOR_UNIT_EXPONENT = {
     "pln": 2, "czk": 2, "mxn": 2, "brl": 2, "inr": 2, "zar": 2,
 }
 
-# CUR-1: the currencies a tenant may hold. One table, one place — a currency is
-# supported exactly when this module knows its minor unit, which is the whole
-# point of keeping the two facts together.
+# The currencies UBB can REPRESENT: exactly those whose minor unit this module
+# knows. Not the currencies a tenant may hold — UBB v1 admits US dollars only,
+# and `core.currency_policy` is where that is asked (ADR-0023).
 SUPPORTED_CURRENCIES = frozenset(_MINOR_UNIT_EXPONENT)
 
 # The currency to name where no tenant is in scope — request-schema validation
-# runs before a tenant is resolved, and a Stripe object's own currency is
-# unbounded (a connected account may hold subscriptions in currencies UBB never
-# admitted). Sites that use this are honest about assuming the platform default
-# rather than silently defaulting inside the helpers.
+# runs before a tenant is resolved. It is the policy's economic currency
+# (`core.currency_policy.ECONOMIC_CURRENCY`; `test_currency_policy.py` holds
+# the two equal), and sites that use it are honest about assuming it rather
+# than silently defaulting inside the helpers.
 DEFAULT_CURRENCY = "usd"
 
 

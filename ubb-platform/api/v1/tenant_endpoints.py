@@ -483,42 +483,6 @@ def _config_out(t):
     }
 
 
-def _currency_locked_reason(t):
-    """Why default_currency may no longer change, or None if it still may.
-
-    CUR-1: once ANY money object exists for the tenant the currency is pinned
-    forever. The currency of a provisioned Stripe Price is NOT stored locally
-    (only the price id is), so a later cross-check against a changed tenant
-    currency is impossible — the only safe rule is "no change once money
-    exists". The five conditions cover every way money enters the system:
-    wallet ledger rows, provisioned subscription-plan Prices, usage invoices
-    pushed to Stripe, mirrored Stripe subscriptions, and ACTIVE rate cards —
-    cards are currency-pinned, so a currency change would silently stop every
-    card from matching and collapse COGS to the markup fallback (the exact
-    meter-only failure rate cards exist to prevent).
-    """
-    from django.db.models import Q
-    from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.billing.wallets.models import WalletTransaction
-    from apps.metering.pricing.models import Rate
-    from apps.platform.plans.models import Plan
-    from apps.subscriptions.models import StripeSubscription
-
-    if WalletTransaction.objects.filter(wallet__customer__tenant=t).exists():
-        return "wallet transactions exist"
-    if Plan.objects.filter(tenant=t).exclude(
-            stripe_access_price_id="", stripe_seat_price_id="").exists():
-        return "a billing plan has provisioned Stripe Prices"
-    if CustomerUsageInvoice.objects.filter(tenant=t).filter(
-            Q(status__in=["pushing", "pushed"]) | ~Q(stripe_invoice_id="")).exists():
-        return "a usage invoice has been pushed to Stripe"
-    if StripeSubscription.objects.filter(tenant=t).exists():
-        return "Stripe subscriptions exist"
-    if Rate.objects.filter(tenant=t, valid_to__isnull=True).exists():
-        return "active rate cards exist (cards are currency-pinned)"
-    return None
-
-
 @tenant_router.get("/config", response=TenantConfigOut)
 @role_floor(READ)
 def get_tenant_config(request):
@@ -530,29 +494,17 @@ def get_tenant_config(request):
 @records_audit("tenant.config_changed")
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
-    from core.money import SUPPORTED_CURRENCIES
+    from core.currency_policy import UnsupportedCurrency, admit_currency
     t = request.auth.tenant
     new_currency = None
+    # UBB v1 is USD-only (ADR-0023): the one policy answers, so a tenant
+    # can never leave US dollars and there is no lock left to keep — the
+    # currency lock retired with it (#555; the owner's ruling 4).
     if payload.default_currency is not None:
-        new_currency = payload.default_currency.strip().lower()
-        if new_currency not in SUPPORTED_CURRENCIES:
-            raise Problem(
-                "unsupported_currency",
-                f"unsupported currency {new_currency!r}: only "
-                "2-decimal currencies are supported (a zero- or "
-                "three-decimal currency needs a live Stripe money test "
-                "in that currency before it can be admitted); allowed: "
-                f"{', '.join(sorted(SUPPORTED_CURRENCIES))}")
-        if new_currency != (t.default_currency or "usd").lower():
-            reason = _currency_locked_reason(t)
-            if reason is not None:
-                raise Problem(
-                    "currency_locked",
-                    "default_currency cannot change once money "
-                    f"exists for this tenant ({reason}); existing "
-                    "wallets, Stripe Prices and invoices are "
-                    "denominated in the current currency and there "
-                    "is no FX/multi-currency support")
+        try:
+            new_currency = admit_currency(payload.default_currency)
+        except UnsupportedCurrency as refused:
+            raise Problem(refused.code, str(refused))
     if payload.automatic_tax_enabled is True and not t.automatic_tax_enabled:
         # F5.3 preflight: only when the tenant is charge-ready can we ask
         # Stripe whether Tax is actually configured on the connected account.

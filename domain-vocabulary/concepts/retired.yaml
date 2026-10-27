@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,479 of 2,931 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,483 of 2,942 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    43 files, 121 occurrences
+    #     units    42 files, 120 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -2927,6 +2927,19 @@ measurement_key:
     # (`usage/0050`), so the exclusions stand at 452. One is swept: the kernel
     # task that answers a publication's held names after it commits
     # (`event_types/tasks.py`).
+    #
+    # 2026-10-27, R10-W3 (#555): 2,479 of 2,931 -> 2,483 of 2,942 tracked
+    # files, and `units` 43/121 -> 42/120 — the case of an occurrence
+    # LEAVING the tree, with no exclusion count but the migrations' moving.
+    # Eleven files arrived. Seven are migrations excluded under
+    # `historical-migrations` (283 -> 290), UBB v1's USD `CHECK`s, so the
+    # exclusions stand at 459; four are swept: the one currency policy
+    # (`core/currency_policy.py`), its test, the database's test of it
+    # (`apps/platform/tests/test_v1_is_usd_only.py`) and ADR-0023. The
+    # occurrence that left is the surviving "currency minor units" sense,
+    # in a comment on `tenants/models.py` that said where the minor-unit
+    # table lives; it was rewritten to say which module ADMITS a currency,
+    # and the table's own docstring already names the minor unit.
 
     - term: units
       retired_as: >-

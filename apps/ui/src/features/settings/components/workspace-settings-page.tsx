@@ -53,7 +53,7 @@ export function WorkspaceSettingsPage({
           role.
         </p>
       )}
-      <WorkspaceCard config={cfg} isAdmin={isAdmin} />
+      <WorkspaceCard config={cfg} />
       <CostTaxCard config={cfg} isAdmin={isAdmin} />
       <SpendControlCard config={cfg} isAdmin={isAdmin} />
       <MarginAlertCard isAdmin={isAdmin} />

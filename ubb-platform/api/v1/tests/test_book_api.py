@@ -138,11 +138,11 @@ class TheTwoBooksAreDeclaredSeparatelyTest(_ABookApiMixin, TestCase):
 
         self.assertEqual(r.status_code, 409, r.content)
 
-    def test_a_cost_book_may_not_declare_another_tenants_currency(self):
+    def test_a_cost_book_may_not_declare_another_currency(self):
         r = self._a_cost_book(currency="eur")
 
         self.assertEqual(r.status_code, 422, r.content)
-        self.assertIn("does not match tenant currency", r.json()["detail"])
+        self.assertEqual(r.json()["code"], "unsupported_currency")
 
 
 class ABookGainsRulesByPublishingTest(_ABookApiMixin, TestCase):

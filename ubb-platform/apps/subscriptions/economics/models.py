@@ -1,4 +1,5 @@
 from django.db import models
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.transitions import RECORD_RULE
 from core.vocabulary import (
@@ -326,6 +327,10 @@ class TenantSuppliedRevenue(BaseModel):
             models.CheckConstraint(
                 condition=models.Q(source_reference__regex=r"\S"),
                 name="ck_supplied_revenue_says_where_it_came_from"),
+            # UBB v1 is USD-only (ADR-0023). The tenant STATES this figure
+            # through UBB's own door, so it is admitted money, not a source
+            # fact an integration sent.
+            usd_only_check("currency", "ck_supplied_revenue_currency_usd"),
         ]
 
     def __str__(self):

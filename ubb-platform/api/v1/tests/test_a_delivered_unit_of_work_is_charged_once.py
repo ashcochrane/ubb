@@ -386,14 +386,14 @@ class TestWhatTheChargeCarries(ChargeTestBase):
         three reasons §11 gives for the pinned price not being the canonical
         record. A price list does not need one — the book's own argument is that
         a tenant has exactly one currency — but a movement of money is a fact
-        about a currency and records it."""
-        self.tenant.default_currency = "eur"
-        self.tenant.save(update_fields=["default_currency"])
+        about a currency and records it: the tenant's, which UBB v1 holds to
+        US dollars (ADR-0023)."""
         started = self._priced_work()
 
         self._close(started)
 
-        assert self._charges_against(started).get().currency == "eur"
+        assert self._charges_against(started).get().currency \
+            == self.tenant.default_currency == "usd"
         assert not any(field.name == "currency"
                        for field in Task._meta.get_fields())
 

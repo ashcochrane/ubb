@@ -265,7 +265,7 @@ class TestSupportedCurrencies:
             "sek", "nok", "dkk", "pln", "czk", "mxn", "brl", "inr", "zar",
         })
 
-    def test_every_admitted_currency_is_two_decimal(self):
+    def test_every_represented_currency_is_two_decimal(self):
         """Why every routed site is byte-identical to the literal it replaced.
 
         Admitting a currency with a different minor unit is a real behaviour
@@ -274,7 +274,7 @@ class TestSupportedCurrencies:
         for currency in SUPPORTED_CURRENCIES:
             assert minor_units(currency) == 10_000
 
-    def test_default_currency_is_admitted(self):
+    def test_default_currency_is_represented(self):
         assert DEFAULT_CURRENCY in SUPPORTED_CURRENCIES
 
     def test_the_table_and_the_multiplier_agree(self):

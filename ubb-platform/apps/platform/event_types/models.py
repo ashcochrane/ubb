@@ -55,7 +55,7 @@ from django.utils import timezone
 
 from core.exceptions import UBBError
 from core.models import BaseModel
-from core.money import SUPPORTED_CURRENCIES
+from core.currency_policy import ECONOMIC_CURRENCY, is_admitted, usd_only_check
 from core.vocabulary import (
     AMOUNT_REPRESENTATION_VALUES,
     COSTING_METHOD_REPORTED,
@@ -1667,17 +1667,19 @@ class ReportedCostMapping(DeclarationPart, BaseModel):
                         AMOUNT_REPRESENTATION_VALUES)),
                 name="ck_reported_cost_amount_representation",
             ),
-            # EXACTLY ONE of the two ways to pin the currency. The half of the
-            # rule that never moves, which is why it is here and the code's own
-            # validity is not: WHICH currencies UBB can hold is a table in
-            # `core.money` that grows, and a constraint over it would make
-            # admitting a currency a schema migration. That a cost denominated
-            # twice, or not at all, is meaningless is true whatever that table
-            # says.
+            # EXACTLY ONE of the two ways to pin the currency. That a cost
+            # denominated twice, or not at all, is meaningless is true whatever
+            # currency UBB admits.
             models.CheckConstraint(
                 condition=(models.Q(currency="") ^ models.Q(currency_path=[])),
                 name="ck_reported_cost_currency_pinned_once",
             ),
+            # WHICH code may be pinned: UBB v1's one currency (ADR-0023), or
+            # none at all when a path names it instead. A supplier-returned
+            # currency is held to the same rule where it lands — the recording
+            # routes refuse any other.
+            usd_only_check("currency", "ck_reported_cost_currency_usd",
+                           or_blank=True),
         ]
 
     def __str__(self):
@@ -1758,11 +1760,10 @@ class ReportedCostMapping(DeclarationPart, BaseModel):
                 f"{', '.join(sorted(REPORTED_COST_SOURCE_KINDS))}.")
 
     def _currency_error(self):
-        """Pinned exactly once, and pinned to something UBB can hold.
+        """Pinned exactly once, and pinned to the one currency UBB admits.
 
-        The 'exactly once' half is also a database constraint; this is the
-        courtesy that says which of the two mistakes was made. The 'can hold'
-        half is only here, because the table it reads grows.
+        Both halves are also database constraints; this is the courtesy that
+        says which mistake was made.
         """
         pinned = bool(self.currency)
         by_path = bool(self.currency_path)
@@ -1777,15 +1778,15 @@ class ReportedCostMapping(DeclarationPart, BaseModel):
                     "reported cost with no currency is a number an invoice "
                     "reader cannot compare to anything, and UBB will not "
                     "assume its own default on a tenant's behalf.")
-        if pinned and self.currency not in SUPPORTED_CURRENCIES:
-            if self.currency.lower() in SUPPORTED_CURRENCIES:
-                return (f"'{self.currency}' is a currency UBB holds, spelled "
-                        f"in capitals. UBB spells currency codes in lower "
-                        f"case throughout — write '{self.currency.lower()}'.")
-            return (f"'{self.currency}' is not a currency UBB can hold: it "
-                    f"knows no minor unit for it, so an amount in it could "
-                    f"never reach the payment rail. The currencies it holds "
-                    f"are {', '.join(sorted(SUPPORTED_CURRENCIES))}.")
+        if pinned and self.currency != ECONOMIC_CURRENCY:
+            if is_admitted(self.currency):
+                return (f"'{self.currency}' is the currency UBB admits, "
+                        f"spelled differently. UBB spells currency codes in "
+                        f"lower case throughout — write '{ECONOMIC_CURRENCY}'.")
+            return (f"'{self.currency}' is not a currency UBB admits: UBB v1 "
+                    f"is US dollars only ('{ECONOMIC_CURRENCY}') and converts "
+                    f"nothing, so a cost reported in another currency could "
+                    f"never enter its economics (ADR-0023).")
         return None
 
     def _collect_path_error(self, errors, field, segments, obligation):

@@ -10,7 +10,8 @@ from ninja import Router
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from core.exceptions import MisalignedAmount
-from core.money import SUPPORTED_CURRENCIES, assert_aligned
+from core.currency_policy import UnsupportedCurrency, admit_currency
+from core.money import assert_aligned
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS, closed_months
 from core.vocabulary import (
@@ -264,12 +265,12 @@ def record_supplied_revenue(request, customer_id: UUID,
             "validation_error",
             "source_reference says where the number came from and may not be "
             "blank — it is part of what makes the figure readable")
-    currency = payload.currency.strip().lower()
-    if currency not in SUPPORTED_CURRENCIES:
-        raise Problem(
-            "unsupported_currency",
-            f"unsupported currency {currency!r}; allowed: "
-            f"{', '.join(sorted(SUPPORTED_CURRENCIES))}")
+    # The tenant STATES this figure through UBB's own door, so it is admitted
+    # money and the one policy decides it (ADR-0023).
+    try:
+        currency = admit_currency(payload.currency)
+    except UnsupportedCurrency as refused:
+        raise Problem(refused.code, str(refused))
     try:
         assert_aligned(payload.amount_micros, currency)
     except MisalignedAmount as misaligned:
