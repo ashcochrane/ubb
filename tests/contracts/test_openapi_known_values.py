@@ -1355,6 +1355,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # never stored, so there is nothing a caller could write.
     "customer_billing_mode": Published(2, ENUM),  # TenantConfigIn + Out
     "tenant_posture": Published(1, ENUM),         # TenantConfigOut
+    # R10-W3 (#479) — WHY A WALLET MOVED BY HAND, coined and marked in one
+    # commit, so it never owed a G4 debt and the seeding's floor does not
+    # move (`outcome_reason`'s precedent). Two request nodes, the credit
+    # body and the debit body; nullable on the way in, where `null` records
+    # no reason, so the marker sits on the union's string member. No read
+    # publishes it.
+    "movement_reason": Published(2, ENUM),  # CreditRequest + DebitRequest
 }
 
 
@@ -1902,6 +1909,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("customer_billing_mode", {"TenantConfigIn", "TenantConfigOut"})
     placed("tenant_posture", {"TenantConfigOut"})
 
+    # Why money moved by hand: said by the operator on the two bodies that
+    # move it, and on nothing else (#479).
+    placed("movement_reason", {"CreditRequest", "DebitRequest"})
+
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
     # placement nobody stated still passed here — the count map beside it says
@@ -2034,15 +2045,14 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
 #: movement's categorisation a registry concept is a decision, so neither is
 #: taken in a ticket about the stop cause. This inventory is the record until
 #: #479 lands.
-PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {
-    "/components/schemas/CreditRequest/properties/reason_code":
-        "The wallet movement's own categorisation, a hand-validated closed set "
-        "(`REASON_CODES`) with no registry concept — shares the stop cause's "
-        "name by coincidence and admits none of its values.",
-    "/components/schemas/DebitRequest/properties/reason_code":
-        "The same set on the debit body, for the same reason: a caller says "
-        "why money moved, not which bound stopped work.",
-}
+#:
+#: ⚠ #479 LANDED IN R10-W3 AND BOTH ENTRIES LEFT. The wallet's field is
+#: `movement_reason` now, the registry's own closed concept, marked on both
+#: bodies — so neither property shares an advertised concept's name any
+#: more. The inventory is kept EMPTY rather than deleted: the equality
+#: above is what turns the next collision red, and an empty set is the only
+#: state in which it has nowhere to hide.
+PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {}
 
 
 def test_every_name_collision_carries_a_real_reason():

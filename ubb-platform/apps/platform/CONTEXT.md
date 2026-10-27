@@ -25,8 +25,40 @@ _Avoid_: "module", "service" when you mean an enabled product; a behavior postur
 — products gate ACCESS (403s), and a posture is a column of its own.
 
 **billing_mode**:
-A tenant's revenue posture — `external` (default), `prepaid`, or `postpaid`; `prepaid`/`postpaid`
-require the billing product. (`apps/platform/tenants/models.py:BILLING_MODE_CHOICES`)
+What UBB does about money for a tenant's customers — the registry's `customer_billing_mode`:
+`external` (the default: the tenant bills its customers elsewhere and UBB meters), or `prepaid` /
+`postpaid`, the two **money modes**, in which UBB moves the money. A money mode requires the
+billing product and an activated payment rail for the tenant's environment.
+(`apps/platform/tenants/models.py:BILLING_MODE_CHOICES`, `MONEY_MODES`)
+_Avoid_: naming the mode for what UBB does NOT do — the word slice 8 retired (R10-W3); `external`
+says where the billing happens, which is the choice a tenant is making.
+
+**Tenant posture**:
+Whether UBB creates a tenant's customer charges at all — `metering_only` for `external`,
+`full_billing` for a money mode. DERIVED from the billing mode and never stored (ADR-0006 §4);
+served read-only beside it so a caller need not rebuild the mapping.
+(`apps/platform/tenants/models.py:Tenant.tenant_posture`)
+_Avoid_: a writable posture column — a second copy of the answer is the one that drifts.
+
+**Payment rail activation**:
+The recorded evidence that a payment rail (v1 has one, `stripe`) was approved to move money in
+one environment — `test` or `live` — by a named approver, with when and on what evidence; and,
+beside it, the **flag** that lets the rail be used. The evidence is immutable history; the flag
+is the operational switch. ADR-0008 §6; G27.
+(`apps/platform/tenants/models.py:PaymentRailActivation`)
+_Avoid_: deleting or revoking an activation — it records an approval that happened; disable the
+flag instead. Reading a `live` activation as readiness for a sandbox, whose money moves in
+`test`; or one rail's activation as readiness for another.
+
+**A money mode needs its rail activated first (G27).** A tenant may not ENTER `prepaid` or
+`postpaid` — be created in one, or move into one, or change environment while in one — without an
+enabled activation of its rail for its environment: a sandbox's is `test`, every other tenant's
+`live`. A sandbox of a money-mode tenant without the `test` activation is refused, never created
+`external` instead. Disabling a rail stops new entry and touches no tenant already in a money
+mode. One domain rule answers every door, by name (`payment_rail_not_activated`), and the
+database holds the writes that skip it.
+(`apps/platform/tenants/models.py:refuse_a_money_mode_without_its_rail`;
+`tenants/migrations/0030`)
 
 **enforcement_mode**:
 The single Tier-2 spend-control switch on a tenant — two positions: `off` (byte-for-byte
@@ -1241,6 +1273,24 @@ regenerating the module never touches it. Every value the Blueprint resolved liv
 _Avoid_: "snippet" or "example", which suggest it may be edited to fit.
 
 ## Cross-cutting primitives
+
+**Economic currency (USD only)**:
+The one currency UBB's economics hold — US dollars in v1 (ADR-0023), decided by one policy for
+every door and held by a `CHECK` on every economic column, a tenant's `default_currency`
+included. Two rules, not one: explicit non-USD money or configuration through UBB's OWN doors is
+**refused** (`unsupported_currency`); a foreign-currency **source fact** from an external
+integration — a Stripe subscription or invoice — is **kept as the source sent it and
+quarantined**: left out of every USD aggregate, and counted on each revenue or margin read it was
+left out of (subscriptions glossary, *Quarantined subscription*). Nothing is converted or
+relabelled. (`core/currency_policy.py`)
+_Avoid_: reading the minor-unit table as the admitted set — it is representation (which currencies
+UBB can read), not policy; a "currency lock" — with one admitted currency there is nothing to
+lock (retired in R10-W3).
+
+**An outbound money call states its record's currency.** Every call that moves money through
+Stripe reads the currency off the authoritative record it moves money for — the wallet, the usage
+invoice, the billing period, the plan catalog — and refuses a disagreement on its own; none
+states a currency of its own (#565). (`core/currency_policy.py:the_rails_currency`)
 
 **micros**:
 The universal money unit — one-millionth of a currency unit; all money is stored and computed in

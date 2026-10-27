@@ -621,11 +621,11 @@ class TestMoneyRules:
         result = wallet_ops.debit(
             customer_id=c.id, tenant=t, amount_micros=1_000_000,
             idempotency_key=str(uuid.uuid4()),
-            audit=wallet_ops.Audit(actor="ops@t.co", reason_code="correction",
+            audit=wallet_ops.Audit(actor="ops@t.co", movement_reason="correction",
                                    reference="ref-1"))
         txn = WalletTransaction.objects.get(pk=result.transaction_id)
         assert txn.actor == "ops@t.co"
-        assert txn.reason_code == "correction"
+        assert txn.movement_reason == "correction"
         assert txn.reference_id == "ref-1"
         assert txn.description == "External debit"
 

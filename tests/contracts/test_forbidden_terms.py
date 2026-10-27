@@ -428,7 +428,8 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # that bills elsewhere is `external`.
         # 293 -> 294 in R10-W3 (G27): one migration — a money mode needs its
         # payment rail activated first.
-        "historical-migrations": (UNTIL_SLICE_8, 294, 19),
+        # 294 -> 296 in R10-W3 (#479, #516): two column renames.
+        "historical-migrations": (UNTIL_SLICE_8, 296, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

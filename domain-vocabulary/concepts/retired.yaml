@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,494 of 2,957 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,502 of 2,967 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2969,6 +2969,16 @@ measurement_key:
     # exclusions stand at 463. Three are swept: G27's route and door tests,
     # the activation record's tests, and the fixture capability a test asks
     # for by name (`tenants/tests/_rails.py`).
+    #
+    # 2026-10-27, R10-W3 (#479, #516, #563): 2,494 of 2,957 -> 2,502 of
+    # 2,967 tracked files (`units` UNMOVED). Ten files arrived. Two are
+    # migrations excluded under `historical-migrations` (294 -> 296): a
+    # wallet movement states its reason (`wallets/0013`) and a billing
+    # period names what it sums (`tenant_billing/0014`), so the exclusions
+    # stand at 465. Eight are swept: the console's movement-reason module,
+    # its select and both their tests, the two route-level test modules, and
+    # two SDK models the regenerated core added for the reason on the
+    # credit and debit bodies.
 
     - term: units
       retired_as: >-
@@ -3110,3 +3120,30 @@ idempotency_key:
       path: ubb-sdk/ubb/metering.py
     - surface: openapi
       path: openapi/v1.json
+
+total_billed_cost_micros:
+  kind: free_text
+  summary: >-
+    What a tenant's customers were billed over a scope: the sum of
+    `billed_cost_micros` over its postings. On a billing period it is placed
+    by arrival and INCLUDES a fixed-price unit of work's charge, which is
+    revenue and which UBB's platform fee is a percentage of — while the
+    period's `event_count` beside it counts metered events only (#563). The
+    stop payload gives the same sum over one unit of work the same name.
+  # A column name rather than a value set, filed here for the reason
+  # `live_counter_maintenance_enabled` is: the retired spelling needs an alias
+  # the sweep can refuse, and an alias needs a concept to hang on. #516's
+  # ruling asked for exactly this — "a ledger or registry note, so the old
+  # spelling cannot survive" — and a registry alias is the one of the two that
+  # outlives a ledger entry being paid.
+  retired_aliases:
+    # "Usage cost" read like a supplier's cost and hid that fixed-price revenue
+    # is inside it. An aggregate is named for what it aggregates (#516).
+    - total_usage_cost_micros
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/tenant_billing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/components/tenant-billing-page.tsx

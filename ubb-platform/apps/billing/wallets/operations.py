@@ -26,7 +26,7 @@ Design decisions (grilled 2026-07-22, recorded on issue #109):
   ``transaction.on_commit(LiveCounter.credit)`` for POSITIVE deltas only
   (mandatory — the MIN-merge reconcile cannot re-raise a missed credit;
   a missed debit is absorbed by the MIN-merge, so debits never mirror).
-- **Audit is a caller-passed value.** ``Audit`` (actor, reason_code,
+- **Audit is a caller-passed value.** ``Audit`` (actor, movement_reason,
   reference, description) is stamped onto the ledger row atomically with the
   money movement; automated paths pass nothing. The platform audit ledger
   (ADR-004 ``audit_record``) stays with the HTTP handlers, gated on
@@ -75,7 +75,7 @@ class Audit:
     """Caller-supplied attribution stamped onto the ledger row atomically with
     the money movement. Automated paths pass nothing (the defaults)."""
     actor: str = ""
-    reason_code: str = ""
+    movement_reason: str = ""
     reference: str = ""
     description: str = ""
 
@@ -117,7 +117,7 @@ class _Move:
     description: str
     reference_id: str = ""
     usage_event_id: object = None
-    reason_code: str = ""
+    movement_reason: str = ""
     actor: str = ""
     mint: object = None    # fn(wallet, txn) — same-savepoint lot creation
     settle: object = None  # fn(wallet, txn) — post-balance grant bookkeeping
@@ -170,7 +170,7 @@ def _execute(*, customer_id, tenant, key, run_expiry, prepare, on_replay,
                     reference_id=move.reference_id,
                     idempotency_key=key,
                     usage_event_id=move.usage_event_id or None,
-                    reason_code=move.reason_code,
+                    movement_reason=move.movement_reason,
                     actor=move.actor,
                 )
                 if move.mint is not None:
@@ -243,7 +243,7 @@ def debit(*, customer_id, tenant, amount_micros, idempotency_key,
         return _Move(txn_type="DEBIT", amount_micros=-amount_micros,
                      description=audit.description or "External debit",
                      reference_id=audit.reference,
-                     reason_code=audit.reason_code, actor=audit.actor,
+                     movement_reason=audit.movement_reason, actor=audit.actor,
                      settle=settle)
 
     return _execute(customer_id=customer_id, tenant=tenant, key=idempotency_key,
@@ -263,7 +263,7 @@ def credit(*, customer_id, tenant, amount_micros, idempotency_key,
         return _Move(txn_type="ADJUSTMENT", amount_micros=amount_micros,
                      description=audit.description or "Credit",
                      reference_id=audit.reference,
-                     reason_code=audit.reason_code, actor=audit.actor)
+                     movement_reason=audit.movement_reason, actor=audit.actor)
 
     return _execute(customer_id=customer_id, tenant=tenant, key=idempotency_key,
                     run_expiry=False, prepare=prepare, on_replay=_replayed)

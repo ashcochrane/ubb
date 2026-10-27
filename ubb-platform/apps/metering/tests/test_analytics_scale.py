@@ -70,7 +70,7 @@ class BoundaryEquivalenceTest(TestCase):
     def test_period_totals_counts_exactly_the_half_open_window(self):
         totals = queries.get_period_totals(self.tenant.id, date(2026, 6, 1), date(2026, 7, 1))
         self.assertEqual(totals["event_count"], 2)
-        self.assertEqual(totals["total_cost_micros"], 2_000_000)
+        self.assertEqual(totals["total_billed_cost_micros"], 2_000_000)
 
     def test_period_totals_edges_land_in_adjacent_windows(self):
         # The May last-microsecond event belongs to May's window only...

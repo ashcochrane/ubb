@@ -16,6 +16,14 @@ An append-only row recording one balance movement (its signed amount and resulti
 exactly-once per idempotency key. (`apps/billing/wallets/models.py:WalletTransaction`)
 _Avoid_: mutating a balance without writing a ledger entry.
 
+**Movement reason**:
+Why money moved through a wallet BY HAND — the registry's closed `movement_reason`: `correction`,
+`goodwill`, `chargeback`, `write_off`, `migration` or `other` — stated by the operator on a manual
+credit or debit and stored on its ledger entry; an automated movement records none (#479).
+(`apps/billing/wallets/models.py:WalletTransaction.movement_reason`)
+_Avoid_: `reason_code` — that is why work was STOPPED (the stop cause), a different published
+concept, and the two shared the name until #479.
+
 **Wallet operation (wallet op)**:
 A named, exactly-once money movement on a wallet — debit, credit, withdraw, usage refund,
 drawdown, grant mint/void, top-up credit — applied through the single wallet-operations seam,
@@ -522,6 +530,27 @@ one.
 
 **failed_permanent**:
 A usage invoice parked after exhausting its retries; emits `usage_invoice.push_failed_permanent`.
+
+**Billing period (tenant)**:
+One calendar month of a tenant's usage on UBB's own books, closed once, from which the platform
+fee is taken. (`apps/billing/tenant_billing/models.py:TenantBillingPeriod`)
+
+**Total billed cost (of a billing period)**:
+What the tenant's customers were billed in the period: the sum of `billed_cost_micros` over its
+postings, placed by arrival — a fixed-price unit's Task Charge INCLUDED, because that is revenue
+and the platform fee is a percentage of it. Named for what it sums (#516); the stop payload uses
+the same name for the same sum over one unit of work.
+(`TenantBillingPeriod.total_billed_cost_micros`)
+_Avoid_: "usage cost" — it reads like a supplier cost and hides the fixed-price revenue inside.
+
+**Event count (of a billing period)**:
+Every metered usage event recorded in the period, whatever it was priced at — unpriced and
+zero-priced included — and never a Task Charge, which is synthetic revenue rather than an event
+the tenant recorded (#563). So the period's money INCLUDES what its count EXCLUDES. Both writers —
+the live accumulator and the close's reconcile — decide it from the posting's kind and nothing
+else. (`TenantBillingPeriod.event_count`)
+_Avoid_: deciding what counts from a price, a pricing status or a Task link — metered usage under
+a running unit of work carries a Task too.
 
 **Platform fee**:
 UBB's own charge to the tenant, computed per-product at the tenant's own period close. The

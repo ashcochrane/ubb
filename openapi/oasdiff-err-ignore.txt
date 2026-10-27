@@ -1388,3 +1388,21 @@ GET /api/v1/subscriptions/customers/{customer_id}/subscription response property
 # way (oasdiff raises none for a response enum added), so the value rename is
 # recorded here and in the PR rather than by a line.
 PATCH /api/v1/tenant/config request property `billing_mode/anyOf[subschema #1]/` was restricted to a list of enum values
+
+# 2026-10-27 - R10-W3 (#516): a billing period's money is named for what it
+# sums. `TenantBillingPeriodOut.total_usage_cost_micros` held the sum of
+# `billed_cost_micros` over the period's postings, placed by arrival - what the
+# tenant's customers were billed, a fixed-price unit's charge included - and
+# "usage cost" said neither. The ruling renames it `total_billed_cost_micros`,
+# the name and meaning the stop payload already gives the same sum over one
+# unit of work; the column moved by `RenameField` (`tenant_billing/0014`), and
+# the registry retires the old spelling as an alias of the new
+# (`domain-vocabulary/concepts/retired.yaml`), so the sweep refuses it on every
+# living surface. The SDK model regenerates with the new name.
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open, and #190 owns the ruling.
+# `GET /tenant/billing-periods` predates `api-v1-launch`, so the authoring
+# comparison and the cumulative gate report the same one finding, reviewed and
+# deliberate, pasted from `--emit`. The response's new property is additive and
+# not a finding either way.
+GET /api/v1/tenant/billing-periods removed the required property `data/items/total_usage_cost_micros` from the response with the `200` status

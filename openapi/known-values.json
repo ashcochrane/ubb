@@ -314,6 +314,20 @@
       "kind": "tenant_defined",
       "representation": "none"
     },
+    "movement_reason": {
+      "advertised": true,
+      "backend_serves": "6 of 6 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "correction",
+        "goodwill",
+        "chargeback",
+        "write_off",
+        "migration",
+        "other"
+      ]
+    },
     "not_applicable_reason": {
       "advertised": true,
       "backend_serves": "1 of 1 values",
@@ -587,6 +601,12 @@
         "billing",
         "referrals"
       ]
+    },
+    "total_billed_cost_micros": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
     },
     "trigger_source": {
       "advertised": true,

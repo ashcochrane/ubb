@@ -32,7 +32,15 @@ class TenantBillingPeriod(BaseModel):
         default="open",
         db_index=True,
     )
-    total_usage_cost_micros = models.BigIntegerField(default=0)
+    #: Σ `billed_cost_micros` over the period's postings, placed by ARRIVAL
+    #: (#516) — Task Charges included, because fixed-price revenue is
+    #: revenue and UBB's platform fee is a percentage of this. Named for
+    #: what it aggregates since #516, which retired the "usage cost" name.
+    total_billed_cost_micros = models.BigIntegerField(default=0)
+    #: Every real `metered_usage` event recorded in the period, priced or
+    #: not — and never a Task Charge, which is synthetic revenue rather
+    #: than an event the tenant recorded (#563). So the money above
+    #: includes what this count excludes, deliberately.
     event_count = models.BigIntegerField(default=0)
     platform_fee_micros = models.BigIntegerField(default=0)
     #: THE CURRENCY THIS PERIOD'S MONEY IS IN, stamped from the tenant when

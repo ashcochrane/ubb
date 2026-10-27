@@ -16,7 +16,7 @@ not is the dangerous one.
 ⚠ **A CORRECTION TO THE SLICE'S OWN SPEC, MEASURED RATHER THAN ASSUMED.** The
 spec files shape 3 as *"a silently wrong number — no exception, no log line"*,
 and in this repository it is not silent: both accumulator columns
-(`TenantBillingPeriod.total_usage_cost_micros` and `CustomerCostAccumulator`'s
+(`TenantBillingPeriod.total_billed_cost_micros` and `CustomerCostAccumulator`'s
 pair) are **NOT NULL**, so Postgres refuses the write and the failure surfaces
 as an `IntegrityError` inside an outbox handler — a poisoned retry loop rather
 than a quiet total. The defect is real and the repair is unchanged; what is
@@ -232,7 +232,7 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
         from apps.billing.handlers import handle_usage_recorded_billing
         handle_usage_recorded_billing("e1", self._payload(None, PRICING_STATUS_UNKNOWN))
         assert not TenantBillingPeriod.objects.filter(
-            tenant=self.tenant, total_usage_cost_micros__gt=0).exists()
+            tenant=self.tenant, total_billed_cost_micros__gt=0).exists()
 
     def test_a_resolved_price_still_accumulates(self):
         """The control. Every assertion above is about something NOT happening,
@@ -242,14 +242,14 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
         handle_usage_recorded_billing(
             "e1", self._payload(KNOWN_PRICE_MICROS, PRICING_STATUS_KNOWN))
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
-        assert period.total_usage_cost_micros == KNOWN_PRICE_MICROS
+        assert period.total_billed_cost_micros == KNOWN_PRICE_MICROS
 
 
 @pytest.mark.django_db
 class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
     """Tenant billing's accumulation — null propagation into a running total.
 
-    `F("total_usage_cost_micros") + None` is not a Python error. It compiles to
+    `F("total_billed_cost_micros") + None` is not a Python error. It compiles to
     SQL, and SQL propagates `NULL` through addition, so one unpriced posting
     makes this `UPDATE` write `NULL` over a tenant's running period total.
 
@@ -273,11 +273,11 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
             name="T", products=["metering", "billing"], billing_mode="postpaid")
 
     def test_an_unresolved_price_leaves_the_running_total_a_number(self):
-        TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS)
-        TenantBillingService.accumulate_usage(self.tenant, None)
+        TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS, counts_as_event=True)
+        TenantBillingService.accumulate_usage(self.tenant, None, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
-        assert period.total_usage_cost_micros is not None
-        assert period.total_usage_cost_micros == KNOWN_PRICE_MICROS
+        assert period.total_billed_cost_micros is not None
+        assert period.total_billed_cost_micros == KNOWN_PRICE_MICROS
 
     def test_the_event_is_still_counted_though_its_price_is_not_added(self):
         """⚠ WHY THIS COALESCES RATHER THAN RETURNING EARLY.
@@ -289,11 +289,11 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
         dividing spend by events would get an answer wrong by exactly the
         postings UBB could not price.
         """
-        TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS)
-        TenantBillingService.accumulate_usage(self.tenant, None)
+        TenantBillingService.accumulate_usage(self.tenant, KNOWN_PRICE_MICROS, counts_as_event=True)
+        TenantBillingService.accumulate_usage(self.tenant, None, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
         assert period.event_count == 2
-        assert period.total_usage_cost_micros == KNOWN_PRICE_MICROS
+        assert period.total_billed_cost_micros == KNOWN_PRICE_MICROS
 
     def test_a_period_whose_first_posting_is_unpriced_still_opens(self):
         """The other half of what an early return broke.
@@ -303,8 +303,8 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
         billing period at all — and the next priced posting would have opened
         one that silently began mid-month.
         """
-        TenantBillingService.accumulate_usage(self.tenant, None)
+        TenantBillingService.accumulate_usage(self.tenant, None, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
         assert period.status == "open"
-        assert period.total_usage_cost_micros == 0
+        assert period.total_billed_cost_micros == 0
         assert period.event_count == 1

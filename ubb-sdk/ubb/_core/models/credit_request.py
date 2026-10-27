@@ -8,7 +8,9 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.credit_request_movement_reason_type_0 import CreditRequestMovementReasonType0
 from ..types import UNSET, Unset
+from typing import cast
 
 
 
@@ -29,7 +31,9 @@ class CreditRequest:
             reference (str):
             source (str):
             actor (str | Unset):  Default: ''.
-            reason_code (str | Unset):  Default: ''.
+            movement_reason (CreditRequestMovementReasonType0 | None | Unset): Why this money moved by hand — one of the
+                registry's movement reasons. Optional: omit it, or send null, to record none. Stored on the wallet transaction
+                for the audit trail.
      """
 
     amount_micros: int
@@ -38,7 +42,7 @@ class CreditRequest:
     reference: str
     source: str
     actor: str | Unset = ''
-    reason_code: str | Unset = ''
+    movement_reason: CreditRequestMovementReasonType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -58,7 +62,13 @@ class CreditRequest:
 
         actor = self.actor
 
-        reason_code = self.reason_code
+        movement_reason: None | str | Unset
+        if isinstance(self.movement_reason, Unset):
+            movement_reason = UNSET
+        elif isinstance(self.movement_reason, CreditRequestMovementReasonType0):
+            movement_reason = self.movement_reason.value
+        else:
+            movement_reason = self.movement_reason
 
 
         field_dict: dict[str, Any] = {}
@@ -72,8 +82,8 @@ class CreditRequest:
         })
         if actor is not UNSET:
             field_dict["actor"] = actor
-        if reason_code is not UNSET:
-            field_dict["reason_code"] = reason_code
+        if movement_reason is not UNSET:
+            field_dict["movement_reason"] = movement_reason
 
         return field_dict
 
@@ -94,7 +104,25 @@ class CreditRequest:
 
         actor = d.pop("actor", UNSET)
 
-        reason_code = d.pop("reason_code", UNSET)
+        def _parse_movement_reason(data: object) -> CreditRequestMovementReasonType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                movement_reason_type_0 = CreditRequestMovementReasonType0(data)
+
+
+
+                return movement_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(CreditRequestMovementReasonType0 | None | Unset, data)
+
+        movement_reason = _parse_movement_reason(d.pop("movement_reason", UNSET))
+
 
         credit_request = cls(
             amount_micros=amount_micros,
@@ -103,7 +131,7 @@ class CreditRequest:
             reference=reference,
             source=source,
             actor=actor,
-            reason_code=reason_code,
+            movement_reason=movement_reason,
         )
 
 

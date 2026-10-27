@@ -4,6 +4,7 @@ from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 from core.transitions import RECORD_RULE
+from core.vocabulary import MOVEMENT_REASON_VALUES
 
 
 WALLET_TXN_TYPES = [
@@ -83,9 +84,12 @@ class WalletTransaction(BaseModel):
     idempotency_key = models.CharField(max_length=500, blank=True, null=True, db_index=True)
     usage_event_id = models.UUIDField(null=True, blank=True, db_index=True)
     # Phase 1 attribution for manual adjustments (the debit/credit escape hatch):
-    # reason_code categorizes the movement; actor is the caller-supplied operator
-    # or system identity. Blank on automated (usage/top-up/refund/...) txns.
-    reason_code = models.CharField(max_length=32, blank=True, default="", db_index=True)
+    # movement_reason categorises the movement — the registry's closed set,
+    # held below by `ck_wallet_transaction_movement_reason_known` — and actor
+    # is the caller-supplied operator or system identity. Both blank on
+    # automated (usage/top-up/refund/...) txns. Named `reason_code` until
+    # #479: that is the stop cause's public name, a different concept.
+    movement_reason = models.CharField(max_length=32, blank=True, default="", db_index=True)
     actor = models.CharField(max_length=255, blank=True, default="")
 
     class Meta:
@@ -99,6 +103,12 @@ class WalletTransaction(BaseModel):
                 fields=["wallet", "idempotency_key"],
                 condition=models.Q(idempotency_key__isnull=False),
                 name="uq_wallet_txn_idempotency",
+            ),
+            # The registry's set, or none recorded (an automated movement).
+            models.CheckConstraint(
+                condition=models.Q(movement_reason="")
+                | models.Q(movement_reason__in=sorted(MOVEMENT_REASON_VALUES)),
+                name="ck_wallet_transaction_movement_reason_known",
             ),
         ]
 

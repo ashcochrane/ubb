@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { problemMessage } from "@/api/problem";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { FormField } from "@/components/shared/form-field";
+import { MovementReasonSelect } from "@/components/shared/movement-reason-select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -31,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { OpenSetValue } from "@/components/shared/open-set-value";
 import { formatMicros } from "@/lib/format";
+import { movementReasonToSend } from "@/lib/movement-reason";
 import { AFFORDABILITY_REASON_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { useAffordability, useCreditWallet, useDebitWallet } from "../api/queries";
@@ -69,7 +71,7 @@ export function AdjustDialog({
       amount: "",
       reference: "",
       source: isCredit ? "console" : "",
-      reason_code: "",
+      movement_reason: "",
       allow_negative: false,
     },
   });
@@ -91,7 +93,7 @@ export function AdjustDialog({
             reference: values.reference,
             source: values.source,
             actor: "",
-            reason_code: values.reason_code,
+            movement_reason: movementReasonToSend(values.movement_reason),
           })
         : await debit.mutateAsync({
             customer_id: externalId,
@@ -99,7 +101,7 @@ export function AdjustDialog({
             idempotency_key: idempotencyKey,
             reference: values.reference,
             actor: "",
-            reason_code: values.reason_code,
+            movement_reason: movementReasonToSend(values.movement_reason),
             allow_negative: values.allow_negative,
           });
       setConfirmOpen(false);
@@ -157,11 +159,13 @@ export function AdjustDialog({
             </FormField>
           )}
           <FormField
-            label="Reason code"
-            error={form.formState.errors.reason_code?.message}
-            hint="Optional short machine code (32 chars max)."
+            label="Reason (optional)"
+            error={form.formState.errors.movement_reason?.message}
+            hint="Why this money moved — recorded on the ledger entry."
           >
-            {(id) => <Input id={id} {...form.register("reason_code")} />}
+            {(id) => (
+              <MovementReasonSelect id={id} {...form.register("movement_reason")} />
+            )}
           </FormField>
           {!isCredit && (
             <div className="space-y-1">

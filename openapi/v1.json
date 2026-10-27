@@ -1851,11 +1851,26 @@
             "title": "Idempotency Key",
             "type": "string"
           },
-          "reason_code": {
-            "default": "",
-            "maxLength": 32,
-            "title": "Reason Code",
-            "type": "string"
+          "movement_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "correction",
+                  "goodwill",
+                  "chargeback",
+                  "write_off",
+                  "migration",
+                  "other"
+                ],
+                "type": "string",
+                "x-ubb-concept": "movement_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this money moved by hand \u2014 one of the registry's movement reasons. Optional: omit it, or send null, to record none. Stored on the wallet transaction for the audit trail.",
+            "title": "Movement Reason"
           },
           "reference": {
             "maxLength": 500,
@@ -2527,11 +2542,26 @@
             "title": "Idempotency Key",
             "type": "string"
           },
-          "reason_code": {
-            "default": "",
-            "maxLength": 32,
-            "title": "Reason Code",
-            "type": "string"
+          "movement_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "correction",
+                  "goodwill",
+                  "chargeback",
+                  "write_off",
+                  "migration",
+                  "other"
+                ],
+                "type": "string",
+                "x-ubb-concept": "movement_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this money moved by hand \u2014 one of the registry's movement reasons. Optional: omit it, or send null, to record none. Stored on the wallet transaction for the audit trail.",
+            "title": "Movement Reason"
           },
           "reference": {
             "maxLength": 500,
@@ -9606,6 +9636,7 @@
       "TenantBillingPeriodOut": {
         "properties": {
           "event_count": {
+            "description": "Every metered usage event recorded in this period, whatever it was priced at \u2014 unpriced and zero-priced events included. It EXCLUDES the synthetic charge for a unit of work sold at one agreed price, whose money `total_billed_cost_micros` includes.",
             "title": "Event Count",
             "type": "integer"
           },
@@ -9629,8 +9660,9 @@
             "title": "Status",
             "type": "string"
           },
-          "total_usage_cost_micros": {
-            "title": "Total Usage Cost Micros",
+          "total_billed_cost_micros": {
+            "description": "What the tenant's customers were billed in this period: the sum of `billed_cost_micros` over the period's postings, placed by when UBB received them. It INCLUDES the charge for a unit of work sold at one agreed price, which is revenue, so it can include money that `event_count` does not count an event for. The same name and meaning as the stop payload's sum over one unit of work. UBB's platform fee is a percentage of it.",
+            "title": "Total Billed Cost Micros",
             "type": "integer"
           }
         },
@@ -9639,7 +9671,7 @@
           "period_start",
           "period_end",
           "status",
-          "total_usage_cost_micros",
+          "total_billed_cost_micros",
           "event_count",
           "platform_fee_micros"
         ],

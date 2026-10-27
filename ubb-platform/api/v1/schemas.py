@@ -22,8 +22,8 @@ from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.problems import ProblemOut
 from core.vocabulary import (
-    GROUPING_FIELD_SCOPE_EVENT, PRICING_MODE_EVENT_PRICED,
-    RATE_STRUCTURE_PER_UNIT,
+    GROUPING_FIELD_SCOPE_EVENT, MOVEMENT_REASON_VALUES,
+    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT,
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_VALUES,
     TASK_TYPE_KIND_TASK)
 
@@ -1357,7 +1357,26 @@ class ReadyResponse(Schema):
     checks: dict[str, str]
 
 
-REASON_CODES = ("correction", "goodwill", "chargeback", "write_off", "migration", "other")
+#: WHY A WALLET MOVED BY HAND — the registry's closed `movement_reason`
+#: (#479). Not the stop's `reason_code`: that is why work was stopped, a
+#: different published concept, and the two shared this field's old name.
+#: The `enum` is written at export and validates nothing, so the route
+#: refuses an unknown value itself (`_a_known_movement_reason`).
+MovementReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "movement_reason"})]
+
+_MOVEMENT_REASON_DESCRIPTION = (
+    "Why this money moved by hand — one of the registry's movement reasons. "
+    "Optional: omit it, or send null, to record none. Stored on the wallet "
+    "transaction for the audit trail.")
+
+
+def _a_known_movement_reason(value):
+    if value is not None and value not in MOVEMENT_REASON_VALUES:
+        raise ValueError(
+            f"movement_reason must be one of {sorted(MOVEMENT_REASON_VALUES)}, "
+            f"or omitted")
+    return value
 
 
 class DebitRequest(Schema):
@@ -1371,17 +1390,16 @@ class DebitRequest(Schema):
     # Debit respects the customer's overdraft floor by default (like drawdown);
     # allow_negative=true forces a correction past it (logged as forced_overdraw).
     allow_negative: bool = False
-    # Attribution (Phase 1): reason_code categorizes the adjustment; actor is
-    # who/what initiated it. Optional today; recommended on every manual move.
-    reason_code: str = Field(default="", max_length=32)
+    # Attribution (Phase 1): movement_reason categorises the adjustment; actor
+    # is who/what initiated it. Optional today; recommended on every manual move.
+    movement_reason: Optional[MovementReason] = Field(
+        default=None, description=_MOVEMENT_REASON_DESCRIPTION)
     actor: str = Field(default="", max_length=255)
 
-    @field_validator("reason_code")
+    @field_validator("movement_reason")
     @classmethod
-    def reason_code_valid(cls, v):
-        if v and v not in REASON_CODES:
-            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
-        return v
+    def movement_reason_known(cls, v):
+        return _a_known_movement_reason(v)
 
 
 class CreditRequest(Schema):
@@ -1392,15 +1410,14 @@ class CreditRequest(Schema):
     # Required — see DebitRequest.idempotency_key.
     idempotency_key: str = Field(min_length=1, max_length=500)
     # Attribution (Phase 1) — see DebitRequest.
-    reason_code: str = Field(default="", max_length=32)
+    movement_reason: Optional[MovementReason] = Field(
+        default=None, description=_MOVEMENT_REASON_DESCRIPTION)
     actor: str = Field(default="", max_length=255)
 
-    @field_validator("reason_code")
+    @field_validator("movement_reason")
     @classmethod
-    def reason_code_valid(cls, v):
-        if v and v not in REASON_CODES:
-            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
-        return v
+    def movement_reason_known(cls, v):
+        return _a_known_movement_reason(v)
 
 
 class DebitCreditResponse(Schema):
@@ -4234,8 +4251,19 @@ class TenantBillingPeriodOut(Schema):
     period_start: str
     period_end: str
     status: str
-    total_usage_cost_micros: int
-    event_count: int
+    total_billed_cost_micros: int = Field(description=(
+        "What the tenant's customers were billed in this period: the sum of "
+        "`billed_cost_micros` over the period's postings, placed by when UBB "
+        "received them. It INCLUDES the charge for a unit of work sold at one "
+        "agreed price, which is revenue, so it can include money that "
+        "`event_count` does not count an event for. The same name and "
+        "meaning as the stop payload's sum over one unit of work. UBB's "
+        "platform fee is a percentage of it."))
+    event_count: int = Field(description=(
+        "Every metered usage event recorded in this period, whatever it was "
+        "priced at — unpriced and zero-priced events included. It EXCLUDES "
+        "the synthetic charge for a unit of work sold at one agreed price, "
+        "whose money `total_billed_cost_micros` includes."))
     platform_fee_micros: int
 
 
@@ -4246,7 +4274,7 @@ def tenant_billing_period_out(p):
         "period_start": p.period_start.isoformat(),
         "period_end": p.period_end.isoformat(),
         "status": p.status,
-        "total_usage_cost_micros": p.total_usage_cost_micros,
+        "total_billed_cost_micros": p.total_billed_cost_micros,
         "event_count": p.event_count,
         "platform_fee_micros": p.platform_fee_micros,
     }

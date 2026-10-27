@@ -4,6 +4,7 @@ from core.exceptions import NegativeKnownPriceRefused
 from apps.platform.events.schemas import CustomerDeleted, UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
+from core.vocabulary import USAGE_EVENT_KIND_METERED_USAGE
 
 logger = logging.getLogger("ubb.events")
 
@@ -33,10 +34,11 @@ def handle_usage_recorded_billing(event_id, payload):
     # comparison read the payload's legacy billed field, which was typed `int`
     # while the column filling it went nullable — so the first posting UBB could
     # not price would have taken this handler down, and an outbox handler that
-    # raises retries with backoff rather than failing a request. Nothing below
-    # applies to an event with no resolved price: there is no amount to draw
-    # down, none to accumulate, and none to count towards the owner's live
-    # spend.
+    # raises retries with backoff rather than failing a request. Nothing in
+    # the priced branch below applies to an event with no resolved price:
+    # there is no amount to draw down and none to count towards the owner's
+    # live spend. The PERIOD still counts it (#563): an unpriced event is an
+    # event the tenant recorded, and only its money is absent.
     #
     # ⚠ AND THE `> 0` THAT RODE WITH IT IS GONE (#603 ruling 9). It was a
     # 2026-02 missing-value guard with no sign reason (`6069675803` §A), and it
@@ -51,10 +53,23 @@ def handle_usage_recorded_billing(event_id, payload):
     # negative money on the rails, which v1 does not carry (ADR-0020 §5).
     if billed_cost_micros is not None and billed_cost_micros < 0:
         raise NegativeKnownPriceRefused(evt.event_id, "the billing rails")
+    # WHAT THIS POSTING IS, read once from the canonical `Posting.kind`
+    # (#563; the owner's §0.4 D). The payload deliberately carries no kind
+    # (`charge_projection.py`), and nothing else may stand in for one — not
+    # the pricing status, not a Task link: metered usage recorded against a
+    # running unit of work carries a Task too. The period counts every
+    # metered event, priced or not, and never a Task Charge, whose money it
+    # keeps; the mechanism a stop records is read off the same kind.
+    from apps.metering.queries import get_posting_kind
+    kind = get_posting_kind(evt.event_id)
+    counts_as_event = kind == USAGE_EVENT_KIND_METERED_USAGE
+    if billed_cost_micros is None:
+        TenantBillingService.accumulate_usage(
+            tenant, None, counts_as_event=counts_as_event)
     if billed_cost_micros is not None:
         from apps.platform.customers.models import Customer
         seat = Customer.objects.get(id=evt.customer_id)
-        mechanism = _the_mechanism_of(evt.event_id)
+        mechanism = _the_mechanism_for(kind)
         # Postpaid has no wallet to draw down. The pool's stop/suspension —
         # in every mode since #459 — rides the StopSignalState transition
         # guard from the fast lane at the crossing, the seat-level compare in
@@ -82,7 +97,8 @@ def handle_usage_recorded_billing(event_id, payload):
                 trigger_source=mechanism)
 
         # Shared tail — control + attribution stay on the SEAT:
-        TenantBillingService.accumulate_usage(tenant, billed_cost_micros)
+        TenantBillingService.accumulate_usage(
+            tenant, billed_cost_micros, counts_as_event=counts_as_event)
         # Pool policy, the SEAT level (slice 6 §4): the seat's counter is
         # incremented once per posting in EVERY mode — a delivered
         # fixed-price unit's Charge reaches this tail as one posting and is
@@ -115,7 +131,7 @@ def handle_usage_recorded_billing(event_id, payload):
                 seat, billed_cost_micros, trigger_source=mechanism)
 
 
-def _the_mechanism_of(posting_id):
+def _the_mechanism_for(kind):
     """The mechanism a stop this drawdown opens records (#569), read off the
     posting's kind because the payload deliberately carries none: a
     delivered fixed-price unit's Charge is the projection's
@@ -124,11 +140,10 @@ def _the_mechanism_of(posting_id):
     lane — the live debit or this drawdown — finds its crossing). One
     mechanism value for the projection, never a cause: the cause stays the
     floor's or the Pool's word."""
-    from apps.metering.queries import get_posting_kind
     from core.vocabulary import (TRIGGER_SOURCE_CHARGE_PROJECTION,
                                  TRIGGER_SOURCE_USAGE_INGEST,
                                  USAGE_EVENT_KIND_TASK_CHARGE)
-    if get_posting_kind(posting_id) == USAGE_EVENT_KIND_TASK_CHARGE:
+    if kind == USAGE_EVENT_KIND_TASK_CHARGE:
         return TRIGGER_SOURCE_CHARGE_PROJECTION
     return TRIGGER_SOURCE_USAGE_INGEST
 

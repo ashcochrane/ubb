@@ -114,7 +114,7 @@ def debit(request, payload: DebitRequest):
             idempotency_key=payload.idempotency_key,
             allow_negative=payload.allow_negative,
             audit=wallet_ops.Audit(actor=payload.actor,
-                                   reason_code=payload.reason_code,
+                                   movement_reason=payload.movement_reason or "",
                                    reference=payload.reference))
         if result.outcome == "applied":
             # An idempotent replay skips this, so it fires once per real debit.
@@ -126,7 +126,7 @@ def debit(request, payload: DebitRequest):
                 metadata={"customer_id": payload.customer_id,
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
-                          "reason_code": payload.reason_code,
+                          "movement_reason": payload.movement_reason,
                           "reference": payload.reference,
                           "transaction_id": result.transaction_id})
     # Raised OUTSIDE the atomic: the refusal's lazy-expiry side effects commit
@@ -170,7 +170,7 @@ def credit(request, payload: CreditRequest):
             amount_micros=payload.amount_micros,
             idempotency_key=payload.idempotency_key,
             audit=wallet_ops.Audit(actor=payload.actor,
-                                   reason_code=payload.reason_code,
+                                   movement_reason=payload.movement_reason or "",
                                    reference=payload.reference,
                                    description=f"Credit: {payload.source}"))
         if result.outcome == "applied":
@@ -184,7 +184,7 @@ def credit(request, payload: CreditRequest):
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "source": payload.source,
-                          "reason_code": payload.reason_code,
+                          "movement_reason": payload.movement_reason,
                           "transaction_id": result.transaction_id})
 
     return {"new_balance_micros": result.balance_micros,

@@ -91,6 +91,7 @@ from core.vocabulary import (
     RESERVED_GROUPING_AXIS_PROVIDER,
     RESERVED_GROUPING_AXIS_SUBTASK_TYPE,
     RESERVED_GROUPING_AXIS_TASK_TYPE,
+    USAGE_EVENT_KIND_METERED_USAGE,
     USAGE_EVENT_KIND_TASK_CHARGE,
 )
 from apps.platform.grouping_fields.models import RESERVED_KEYS, SLOT_CHOICES
@@ -164,8 +165,11 @@ class PeriodTotals(TypedDict):
     #: halves of the margin can now be incomplete, and each says so with its
     #: own count: each is the sum of what resolved, complete when its count
     #: is zero.
-    total_cost_micros: int
+    #: Σ `billed_cost_micros`, Task Charges included (#516's name).
+    total_billed_cost_micros: int
     unpriced_event_count: int
+    #: Every `metered_usage` posting, priced or not, and never a Task
+    #: Charge (#563) — decided by `Posting.kind` and nothing else.
     event_count: int
     #: What the SUPPLIER charged, and how much of it UBB has learned. The pair
     #: travels together for the reason `core.cost_totals` states: a bare sum
@@ -272,7 +276,10 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
         **{f"{field}__gte": utc_day_start(period_start),
            f"{field}__lt": utc_day_start(period_end)},
     ).aggregate(
-        event_count=Count("id"),
+        # The canonical kind, and only it (#563; §0.4 D): a metered event
+        # counts whatever it was priced at, and a Task Charge never does —
+        # its money stays in the total beside this count.
+        event_count=Count("id", filter=Q(kind=USAGE_EVENT_KIND_METERED_USAGE)),
         **cost_total_annotations(CUSTOMER_PRICE, key="total_cost"),
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
     )
@@ -283,7 +290,7 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
                               key="total_provider_cost_micros")
 
     return {
-        "total_cost_micros": totals["total_cost"],
+        "total_billed_cost_micros": totals["total_cost"],
         UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
         "event_count": totals["event_count"] or 0,
         "total_provider_cost_micros": totals["total_provider_cost_micros"],

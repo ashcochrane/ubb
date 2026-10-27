@@ -460,7 +460,11 @@ exclusions:
     # 293 → 294 in R10-W3 (G27): one migration — a money mode needs its
     # payment rail activated first (`tenants/0030`). It names no retired
     # word, so the number moved for the file existing.
-    files: 294
+    # 294 → 296 in R10-W3 (#479, #516): two migrations — a wallet movement
+    # states its reason (`wallets/0013`), and a billing period names what
+    # it sums (`tenant_billing/0014`). Each RENAMES a column away from a
+    # name, so each must spell it; the number moved for the files existing.
+    files: 296
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

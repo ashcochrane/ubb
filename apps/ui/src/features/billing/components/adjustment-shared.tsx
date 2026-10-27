@@ -4,6 +4,7 @@
 import type { UseFormRegisterReturn } from "react-hook-form";
 
 import { FormField } from "@/components/shared/form-field";
+import { MovementReasonSelect } from "@/components/shared/movement-reason-select";
 import { Input } from "@/components/ui/input";
 import { formatMicros } from "@/lib/format";
 
@@ -84,13 +85,13 @@ export function AdjustmentSharedFields({
 export function OptionalFields({
   isAdmin,
   actor,
-  reasonCode,
+  movementReason,
   errors,
 }: {
   isAdmin: boolean;
   actor: RegisteredInput;
-  reasonCode: RegisteredInput;
-  errors: { actor?: string; reasonCode?: string };
+  movementReason: RegisteredInput;
+  errors: { actor?: string; movementReason?: string };
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -98,11 +99,11 @@ export function OptionalFields({
         {(id) => <Input id={id} disabled={!isAdmin} {...actor} />}
       </FormField>
       <FormField
-        label="Reason code (optional)"
-        error={errors.reasonCode}
-        hint="Short code for reporting, up to 32 characters."
+        label="Reason (optional)"
+        error={errors.movementReason}
+        hint="Why this money moved — recorded on the ledger entry."
       >
-        {(id) => <Input id={id} disabled={!isAdmin} {...reasonCode} />}
+        {(id) => <MovementReasonSelect id={id} disabled={!isAdmin} {...movementReason} />}
       </FormField>
     </div>
   );

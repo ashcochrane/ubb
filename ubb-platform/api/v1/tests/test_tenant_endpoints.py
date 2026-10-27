@@ -22,7 +22,7 @@ class TenantBillingPeriodsEndpointTest(TestCase):
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="closed",
-            total_usage_cost_micros=50_000_000_000,
+            total_billed_cost_micros=50_000_000_000,
             event_count=1000,
             platform_fee_micros=500_000_000,
         )
@@ -35,7 +35,7 @@ class TenantBillingPeriodsEndpointTest(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(len(body["data"]), 1)
-        self.assertEqual(body["data"][0]["total_usage_cost_micros"], 50_000_000_000)
+        self.assertEqual(body["data"][0]["total_billed_cost_micros"], 50_000_000_000)
 
     def test_unauthenticated_returns_401(self):
         response = self.http_client.get("/api/v1/tenant/billing-periods")
@@ -54,7 +54,7 @@ class TenantInvoicesEndpointTest(TestCase):
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="invoiced",
-            total_usage_cost_micros=50_000_000_000,
+            total_billed_cost_micros=50_000_000_000,
             platform_fee_micros=500_000_000,
         )
         TenantInvoice.objects.create(

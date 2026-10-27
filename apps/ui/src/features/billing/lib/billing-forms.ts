@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+import { movementReasonField } from "@/lib/movement-reason";
+
 import type { PostpaidConfig, PostpaidConfigIn } from "../api/types";
 
 // ---------------------------------------------------------------------------
@@ -99,7 +101,7 @@ export const creditFormSchema = z.object({
   reference: z.string().min(1, "Required").max(500),
   source: z.string().min(1, "Required").max(255),
   actor: z.string().max(255),
-  reason_code: z.string().max(32),
+  movement_reason: movementReasonField,
 });
 
 export type CreditFormValues = z.infer<typeof creditFormSchema>;
@@ -109,7 +111,7 @@ export const debitFormSchema = z.object({
   amount: currencyAmountField({ min: 0 }).refine((v) => Number(v) > 0, "Must be more than 0"),
   reference: z.string().min(1, "Required").max(500),
   actor: z.string().max(255),
-  reason_code: z.string().max(32),
+  movement_reason: movementReasonField,
   allow_negative: z.boolean(),
 });
 

@@ -99,7 +99,7 @@ class TestBillingOutboxHandler:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
-        assert period.total_usage_cost_micros == 5_000_000
+        assert period.total_billed_cost_micros == 5_000_000
 
     def test_usage_deduction_idempotency_key(self):
         """WalletTransaction should have idempotency_key based on outbox event ID."""
@@ -596,10 +596,14 @@ class TestBillingHandlerEmitsCustomerSuspended:
 @pytest.mark.django_db
 class TestAKnownZeroPriceIsAPrice:
     """#603 ruling 9: the handler's `> 0` gate is gone. A known zero is
-    counted in the period, and moves no money because there is none to move;
-    an unpriced posting carries nothing. A known price is never negative — a
-    negative one is `unknown` with its reason — so neither branch is a sign
-    rule."""
+    counted in the period, and moves no money because there is none to move.
+    A known price is never negative — a negative one is `unknown` with its
+    reason — so neither branch is a sign rule.
+
+    #563: an UNPRICED metered posting is counted too — it is an event the
+    tenant recorded, and only its money is absent. Whether a posting counts
+    is read off its `kind`, so each case hands the handler a real posting
+    rather than an id nothing stands behind."""
 
     def _tenant_and_wallet(self):
         tenant = Tenant.objects.create(
@@ -613,11 +617,17 @@ class TestAKnownZeroPriceIsAPrice:
 
     def _handle(self, tenant, customer, **amounts):
         from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.metering.usage.models import Posting
+        posting = Posting.objects.create(
+            tenant=tenant, customer=customer,
+            idempotency_key=f"posting-{uuid.uuid4()}",
+            billed_cost_micros=amounts.get("billed_cost_micros"),
+            pricing_status=amounts.get("pricing_status", "known"))
         event = OutboxEvent.objects.create(
             event_type="usage.recorded",
             payload=asdict(UsageRecorded(
                 pricing_status_reason=None, tenant_id=tenant.id,
-                customer_id=customer.id, event_id=str(uuid.uuid4()),
+                customer_id=customer.id, event_id=str(posting.id),
                 **amounts)),
             tenant_id=tenant.id)
         handle_usage_recorded_billing(str(event.id), event.payload)
@@ -629,18 +639,19 @@ class TestAKnownZeroPriceIsAPrice:
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
         assert period.event_count == 1
-        assert period.total_usage_cost_micros == 0
+        assert period.total_billed_cost_micros == 0
         wallet.refresh_from_db()
         assert wallet.balance_micros == 10_000_000
         assert not WalletTransaction.objects.filter(wallet=wallet).exists()
 
-    def test_an_unpriced_posting_carries_nothing_and_raises_nothing(self):
+    def test_an_unpriced_posting_is_counted_and_moves_no_money(self):
         tenant, customer, wallet = self._tenant_and_wallet()
 
         self._handle(tenant, customer, cost_micros=None,
                      billed_cost_micros=None, pricing_status="unknown")
 
-        assert not TenantBillingPeriod.objects.filter(tenant=tenant).exists()
+        period = TenantBillingPeriod.objects.get(tenant=tenant)
+        assert (period.event_count, period.total_billed_cost_micros) == (1, 0)
         assert not WalletTransaction.objects.filter(wallet=wallet).exists()
 
     def test_a_negative_known_price_is_refused_by_name_and_moves_nothing(self):

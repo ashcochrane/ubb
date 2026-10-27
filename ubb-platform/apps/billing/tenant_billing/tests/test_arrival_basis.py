@@ -19,11 +19,11 @@ class TestPlatformFeeArrivalBasis:
         c = Customer.objects.create(tenant=t, external_id="c1")
 
         # Live accumulator counted both events when they ARRIVED (now).
-        TenantBillingService.accumulate_usage(t, 100)
-        TenantBillingService.accumulate_usage(t, 100)
+        TenantBillingService.accumulate_usage(t, 100, counts_as_event=True)
+        TenantBillingService.accumulate_usage(t, 100, counts_as_event=True)
         period = TenantBillingService.get_or_create_current_period(t)
         period.refresh_from_db()
-        assert period.total_usage_cost_micros == 200
+        assert period.total_billed_cost_micros == 200
         assert period.event_count == 2
 
         # One event is effective THIS month, the other is a backfill into the
@@ -42,5 +42,5 @@ class TestPlatformFeeArrivalBasis:
         # Arrival basis: the backdated event STAYS in this period — no drift
         # "correction" away from what accumulate_usage already counted.
         # (Under the old effective basis this would have recomputed to 100/1.)
-        assert period.total_usage_cost_micros == 200
+        assert period.total_billed_cost_micros == 200
         assert period.event_count == 2

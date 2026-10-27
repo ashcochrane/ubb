@@ -183,7 +183,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
         tenant = _tenant()
         period = _period(tenant)
         TenantBillingPeriod.objects.filter(id=period.id).update(
-            total_usage_cost_micros=999_999, event_count=7)
+            total_billed_cost_micros=999_999, event_count=7)
         _a_cost_ubb_learned(tenant)
         _a_name_nobody_declared(tenant)
 
@@ -191,7 +191,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
             TenantBillingService.close_period(period)
 
         period.refresh_from_db()
-        assert period.total_usage_cost_micros == 999_999
+        assert period.total_billed_cost_micros == 999_999
         assert period.event_count == 7
 
         # The control: with the name decided, the same call DOES reconcile —
@@ -201,7 +201,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
         TenantBillingService.close_period(period)
 
         period.refresh_from_db()
-        assert period.total_usage_cost_micros == 1_000_000
+        assert period.total_billed_cost_micros == 1_000_000
         assert period.event_count == 1
 
     def test_the_guard_is_asked_with_the_periods_own_bounds(self):
