@@ -4,6 +4,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.subscriptions.tests.test_sync import FakeStripeSub, _licensed_item
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 def _sub_event(account, sub_id, customer, status, *, items):
@@ -82,7 +83,7 @@ class TestHandleSubscriptionUpdated:
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_upd",
             stripe_product_name="Pro", status="active",
@@ -112,7 +113,7 @@ class TestHandleSubscriptionUpdated:
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_flags",
             stripe_product_name="Pro", status="active",
@@ -157,7 +158,7 @@ class TestHandleSubscriptionDeleted:
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_del",
             stripe_product_name="Pro", status="active",

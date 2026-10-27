@@ -9,6 +9,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPostpaidClose:
     def test_close_pushes_postpaid_customer(self):
@@ -54,6 +55,7 @@ def _seq_ids():
     return f
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPostpaidReconcile:
     PS = datetime.date(2026, 6, 1)

@@ -16,11 +16,6 @@ import type {
   TenantInvoice,
 } from "./types";
 
-/** Money already exists for this tenant, so the currency is locked (CUR-1). */
-export const CURRENCY_LOCKED = true;
-export const CURRENCY_LOCK_REASON =
-  "Wallet transactions already exist for this workspace, so the currency can no longer change.";
-
 // A `HAS_ACTIVE_COST_CARDS` flag sat here for the coverage toggle's mock
 // refusal. Both went in #321 with the setting itself — a fixture for a rule
 // nothing enforces is a rule a reader will assume still exists.
@@ -118,8 +113,8 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_start: "2026-07-01",
     period_end: "2026-07-31",
     status: "open",
-    total_usage_cost_micros: 1_412_380_000,
-    event_count: 918_240,
+    total_billed_cost_micros: 1_412_380_000,
+    recorded_events: 918_240,
     platform_fee_micros: 70_620_000,
   },
   {
@@ -127,8 +122,8 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_start: "2026-06-01",
     period_end: "2026-06-30",
     status: "invoiced",
-    total_usage_cost_micros: 1_842_550_000,
-    event_count: 1_204_118,
+    total_billed_cost_micros: 1_842_550_000,
+    recorded_events: 1_204_118,
     platform_fee_micros: 92_130_000,
   },
   {
@@ -136,8 +131,8 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_start: "2026-05-01",
     period_end: "2026-05-31",
     status: "invoiced",
-    total_usage_cost_micros: 1_260_040_000,
-    event_count: 861_772,
+    total_billed_cost_micros: 1_260_040_000,
+    recorded_events: 861_772,
     platform_fee_micros: 63_000_000,
   },
   {
@@ -145,8 +140,8 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_start: "2026-04-01",
     period_end: "2026-04-30",
     status: "closed",
-    total_usage_cost_micros: 604_910_000,
-    event_count: 402_331,
+    total_billed_cost_micros: 604_910_000,
+    recorded_events: 402_331,
     platform_fee_micros: 30_250_000,
   },
 ];
@@ -442,6 +437,6 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     resource_type: "tenant",
     resource_id: "tenant-acme",
     correlation_id: "corr-0001",
-    metadata: { billing_mode: "meter_only", default_currency: "usd" },
+    metadata: { billing_mode: "external", default_currency: "usd" },
   },
 ];

@@ -17,7 +17,8 @@ from apps.billing.connectors.stripe.invoice_routing import (
 )
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from core.locking import lock_customer
-from core.money import DEFAULT_CURRENCY, from_minor
+from core.currency_policy import the_rails_currency
+from core.money import from_minor
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,13 @@ def handle_checkout_completed(event):
             extra={"data": {"session_id": getattr(session, "id", None)}},
         )
         return
+    # Scaled by the currency the SESSION states, never the tenant's setting
+    # (§0.4 B): UBB opened it in the wallet's currency, so any other is
+    # refused rather than credited at a guessed scale.
     amount_micros = from_minor(
         session.amount_total,
-        (customer.tenant.default_currency or DEFAULT_CURRENCY).lower())
+        the_rails_currency(f"Stripe checkout session {getattr(session, 'id', None)}",
+                           getattr(session, "currency", None)))
 
     # Task 7: the credit must land on the billing OWNER, never the
     # Stripe-matched `customer` above (which can be a pooled seat). When a
@@ -308,8 +313,12 @@ def handle_charge_dispute_closed(event):
     from apps.billing.wallets import operations as wallet_ops
 
     tenant = attempt.customer.tenant
-    amount_micros = from_minor(  # Stripe minor units -> micros
-        dispute.amount, (tenant.default_currency or DEFAULT_CURRENCY).lower())
+    # Stripe's minor units -> micros, in the currency the DISPUTE states
+    # (§0.4 B) — never the tenant's setting; any other is refused.
+    amount_micros = from_minor(
+        dispute.amount,
+        the_rails_currency(f"Stripe dispute on charge {charge_id}",
+                           getattr(dispute, "currency", None)))
 
     # Task 8a: this clawback moves money OUT. The original top-up's credit
     # landed on the billing OWNER (Task 7); clawing it back from the seat
@@ -412,8 +421,6 @@ def handle_charge_refunded(event):
             "refusing to claw back rather than risk debiting the seat")
     owner_id = attempt.billing_owner_id
 
-    currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
-
     with transaction.atomic():
         # One commit for the whole refund list (parity with the pre-#109
         # single transaction); each refund is its own exactly-once wallet op
@@ -426,7 +433,10 @@ def handle_charge_refunded(event):
                 continue
             wallet_ops.claw_back_stripe_refund(
                 customer_id=owner_id, tenant=tenant,
-                amount_micros=from_minor(refund_amount, currency),
+                # In the currency each REFUND states (§0.4 B).
+                amount_micros=from_minor(refund_amount, the_rails_currency(
+                    f"Stripe refund {refund_id}",
+                    getattr(refund, "currency", None))),
                 refund_id=refund_id, attempt_id=attempt.id)
 
 

@@ -998,6 +998,37 @@ MEASUREMENTS_STATUS_VALUES = frozenset({
 # generator lost.
 
 
+# --- movement_reason ---------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Why money moved through a wallet by hand — a credit or debit an operator made
+# outside the automated paths. It answers "why did this ledger movement
+# happen?", which is a different question from why work was stopped
+# (`reason_code`): the two shared one public name until #479, and ADR-0006 §2
+# does not let two concepts share one. Closed: the route refuses any other
+# value by name, and the ledger column holds the same set beside the empty
+# string an automated movement records.
+#
+# Declared in concepts/economics.yaml.
+
+MOVEMENT_REASON_CORRECTION = 'correction'
+MOVEMENT_REASON_GOODWILL = 'goodwill'
+MOVEMENT_REASON_CHARGEBACK = 'chargeback'
+MOVEMENT_REASON_WRITE_OFF = 'write_off'
+MOVEMENT_REASON_MIGRATION = 'migration'
+MOVEMENT_REASON_OTHER = 'other'
+
+MOVEMENT_REASON_VALUES = frozenset({
+    MOVEMENT_REASON_CORRECTION,
+    MOVEMENT_REASON_GOODWILL,
+    MOVEMENT_REASON_CHARGEBACK,
+    MOVEMENT_REASON_WRITE_OFF,
+    MOVEMENT_REASON_MIGRATION,
+    MOVEMENT_REASON_OTHER,
+})
+
+
 # --- not_applicable_reason ---------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -1671,6 +1702,26 @@ TENANT_PRODUCT_VALUES = frozenset({
     TENANT_PRODUCT_BILLING,
     TENANT_PRODUCT_REFERRALS,
 })
+
+
+# --- total_billed_cost_micros ------------------------------------------------
+#
+# free_text — Not vocabulary. Recorded here so that "is this a value set?" is
+# answered once, in data, rather than re-litigated by whoever next wants to add
+# an enum to it.
+#
+# What a tenant's customers were billed over a scope: the sum of
+# `billed_cost_micros` over its postings. On a billing period it is placed by
+# arrival and INCLUDES a fixed-price unit of work's charge, which is revenue
+# and which UBB's platform fee is a percentage of — while the period's
+# `event_count` beside it counts metered events only (#563). The stop payload
+# gives the same sum over one unit of work the same name.
+#
+# Declared in concepts/retired.yaml.
+#
+# No constants: this kind declares no values by construction. The section is
+# here so that fact is visible, rather than looking like a concept the
+# generator lost.
 
 
 # --- trigger_source ----------------------------------------------------------

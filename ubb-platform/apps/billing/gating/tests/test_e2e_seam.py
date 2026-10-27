@@ -30,6 +30,7 @@ from apps.platform.events.schemas import CustomerStopCleared
 from apps.platform.work import reasons
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestEnforcementSeam:
     def setup_method(self):

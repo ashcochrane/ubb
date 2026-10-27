@@ -29,6 +29,7 @@ from apps.billing.stripe.services.stripe_service import (
 )
 from apps.platform.plans.models import Plan
 from apps.platform.queries import get_tenant_stripe_account
+from apps.platform.tenants.models import refuse_a_rail_operation_while_it_is_closed
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
@@ -37,9 +38,10 @@ from apps.subscriptions.stripe.items import (
     _period_end,
     _period_start,
     _product_name,
-    _sum_items,
+    mirrored_amounts,
 )
-from core.money import DEFAULT_CURRENCY, from_minor
+from core.currency_policy import is_admitted, the_rails_currency
+from core.money import from_minor, to_minor
 
 
 class OrchestrationError(Exception):
@@ -79,6 +81,30 @@ def _period_fallback_end(start, interval):
     month = (start.month - 1 + months) % 12 + 1
     day = min(start.day, calendar.monthrange(year, month)[1])
     return start.replace(year=year, month=month, day=day)
+
+
+def _restate_from_its_line_items(mirror):
+    """A UBB-provisioned subscription's money after one of its own line items
+    moved: both columns, from the items UBB priced (#564).
+
+    Those items are in UBB's one currency by construction — UBB provisioned
+    them from the tenant's catalog — so the economic amount is their sum and
+    Stripe's integer is that sum in the currency's minor unit, exactly. A
+    quarantined mirror has no item UBB priced and never reaches here; if one
+    did, it is refused rather than given a dollar amount.
+    """
+    if not is_admitted(mirror.currency):
+        raise OrchestrationError(
+            f"subscription {mirror.stripe_subscription_id} is held in "
+            f"{mirror.currency!r}, which UBB never priced")
+    amount = sum(li.unit_amount_micros * li.quantity
+                 for li in mirror.line_items.all())
+    minor, remainder = to_minor(amount, mirror.currency)
+    if remainder:
+        raise OrchestrationError(
+            f"subscription {mirror.stripe_subscription_id}'s items sum to "
+            f"{amount} micros, which is not a whole cent")
+    mirror.amount_micros, mirror.source_amount_minor = amount, minor
 
 
 class SubscriptionOrchestrator:
@@ -127,14 +153,21 @@ class SubscriptionOrchestrator:
                 setattr(plan, product_field, product.id)
                 plan.save(update_fields=[product_field, "updated_at"])
 
+            # A plan has no currency of its own: its access and seat fees are
+            # the tenant's catalog, so the tenant row is the record the
+            # Price's currency is read off (#565) — and the amount is
+            # converted in that same currency.
+            currency = the_rails_currency(
+                f"tenant {plan.tenant_id}'s plan catalog",
+                plan.tenant.default_currency)
             price = stripe_call(
                 stripe.Price.create,
                 api_key=api_key,
                 retryable=True,
                 idempotency_key=f"plan-price-{axis}-{plan.id}",
                 product=getattr(plan, product_field),
-                unit_amount=micros_to_cents(amount_micros),
-                currency=(plan.tenant.default_currency or "usd").lower(),
+                unit_amount=micros_to_cents(amount_micros, currency),
+                currency=currency,
                 recurring={"interval": plan.interval, "usage_type": "licensed"},
                 stripe_account=connected,
             )
@@ -167,6 +200,7 @@ class SubscriptionOrchestrator:
 
         tenant = plan.tenant
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
 
         owner = customer.resolve_billing_owner()
         connected = get_tenant_stripe_account(tenant.id)
@@ -223,6 +257,7 @@ class SubscriptionOrchestrator:
         """Push a new seat quantity to Stripe with proration + update the mirror row."""
         tenant = plan.tenant
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         connected = get_tenant_stripe_account(tenant.id)
 
         item = (
@@ -252,10 +287,11 @@ class SubscriptionOrchestrator:
         item.save(update_fields=["quantity", "updated_at"])
 
         mirror = item.stripe_subscription
-        mirror.amount_micros = sum(li.unit_amount_micros * li.quantity for li in mirror.line_items.all())
+        _restate_from_its_line_items(mirror)
         mirror.quantity = new_seats
         mirror.last_synced_at = timezone.now()
-        mirror.save(update_fields=["amount_micros", "quantity", "last_synced_at", "updated_at"])
+        mirror.save(update_fields=["amount_micros", "source_amount_minor", "quantity",
+                                   "last_synced_at", "updated_at"])
         return item
 
     # -- lifecycle verbs (F5.4) -----------------------------------------------
@@ -344,6 +380,7 @@ class SubscriptionOrchestrator:
         bills normally again whichever state it was in.
         """
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         owner = customer.resolve_billing_owner()
         mirror = cls._find_active_mirror(owner)
         connected = get_tenant_stripe_account(tenant.id)
@@ -415,6 +452,7 @@ class SubscriptionOrchestrator:
             return plan
 
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         connected = get_tenant_stripe_account(tenant.id)
         api_key = api_key_for_tenant(tenant)
 
@@ -425,14 +463,16 @@ class SubscriptionOrchestrator:
         version = plan.pricing_version
 
         for axis, new_fee, fee_field, product_field, price_field in changed_provisioned:
+            currency = the_rails_currency(
+                f"tenant {tenant.id}'s plan catalog", tenant.default_currency)
             price = stripe_call(
                 stripe.Price.create,
                 api_key=api_key,
                 retryable=True,
                 idempotency_key=f"plan-price-{axis}-{plan.id}-v{version}",
                 product=getattr(plan, product_field),
-                unit_amount=micros_to_cents(new_fee),
-                currency=(tenant.default_currency or "usd").lower(),
+                unit_amount=micros_to_cents(new_fee, currency),
+                currency=currency,
                 recurring={"interval": plan.interval, "usage_type": "licensed"},
                 stripe_account=connected,
             )
@@ -477,11 +517,10 @@ class SubscriptionOrchestrator:
             touched_mirrors[item.stripe_subscription_id] = item.stripe_subscription
 
         for mirror in touched_mirrors.values():
-            mirror.amount_micros = sum(
-                li.unit_amount_micros * li.quantity for li in mirror.line_items.all()
-            )
+            _restate_from_its_line_items(mirror)
             mirror.last_synced_at = timezone.now()
-            mirror.save(update_fields=["amount_micros", "last_synced_at", "updated_at"])
+            mirror.save(update_fields=["amount_micros", "source_amount_minor",
+                                       "last_synced_at", "updated_at"])
 
     # -- internals -----------------------------------------------------------
 
@@ -524,10 +563,19 @@ class SubscriptionOrchestrator:
     @classmethod
     @transaction.atomic
     def _persist_mirror(cls, tenant, owner, plan, sub) -> StripeSubscription:
-        currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
-        amount_micros, seat_qty, interval = _sum_items(sub, currency)
+        """The mirror of a subscription UBB just provisioned, from Stripe's own
+        answer — read through `mirrored_amounts`, as every mirror writer is."""
+        money = mirrored_amounts(sub)
+        if money.amount_micros is None:
+            # UBB priced this subscription itself, in the tenant's catalog; a
+            # Stripe answer in a currency UBB never admits is a disagreement,
+            # refused rather than mirrored as revenue (#564, #565). A webhook
+            # for it still mirrors the truth, quarantined.
+            raise OrchestrationError(
+                f"Stripe answered subscription {sub['id']} in "
+                f"{money.currency!r}; UBB priced it in US dollars only")
         start = _period_start(sub) or timezone.now()
-        end = _period_end(sub) or _period_fallback_end(start, interval)
+        end = _period_end(sub) or _period_fallback_end(start, money.interval)
 
         mirror, _ = StripeSubscription.objects.update_or_create(
             stripe_subscription_id=sub["id"],
@@ -536,10 +584,11 @@ class SubscriptionOrchestrator:
                 "customer": owner,
                 "stripe_product_name": _product_name(sub) or plan.name,
                 "status": sub.get("status", "active"),
-                "amount_micros": amount_micros,
-                "currency": sub.get("currency", "usd"),
-                "interval": interval,
-                "quantity": seat_qty,
+                "amount_micros": money.amount_micros,
+                "currency": money.currency,
+                "source_amount_minor": money.source_amount_minor,
+                "interval": money.interval,
+                "quantity": money.seat_qty,
                 "current_period_start": start,
                 "current_period_end": end,
                 "last_synced_at": timezone.now(),
@@ -580,7 +629,7 @@ class SubscriptionOrchestrator:
                     "axis": axis,
                     "stripe_price_id": price_id,
                     "unit_amount_micros": from_minor(
-                        price.get("unit_amount") or 0, currency),
+                        price.get("unit_amount") or 0, money.currency),
                     "quantity": it.get("quantity", 1) or 1,
                     "plan": plan,
                 },

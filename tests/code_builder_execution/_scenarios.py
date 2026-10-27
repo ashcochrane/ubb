@@ -892,8 +892,8 @@ def _a_currency_the_server_refuses(outcome: Outcome) -> None:
     assert outcome.tenant.tenant.default_currency.lower() == "usd"
     # Sent — the file refuses no currency UBB holds — and refused there.
     assert RECORD_USAGE in ran.requests, ran
-    _refused(outcome, ran, status=422, code="validation_error")
-    assert "currency mismatch" in ran.stderr, ran
+    _refused(outcome, ran, status=422, code="unsupported_currency")
+    assert "US dollars only" in ran.stderr, ran
     # Nothing recorded for it: no Posting at all.
     assert outcome.postings() == {}, ran
     assert not Posting.objects.filter(tenant=outcome.tenant.tenant).exists()

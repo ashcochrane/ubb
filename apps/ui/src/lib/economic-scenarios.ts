@@ -1390,3 +1390,42 @@ export function suppliedRevenueKnown(
 export function suppliedRevenueUnknown(): SuppliedRevenueScenario {
   return { pricing_status: "unknown", totals: [] };
 }
+
+// ---------------------------------------------------------------------------
+// A Stripe amount UBB keeps but cannot add — the quarantined subscription
+// (#564, ADR-0023 §7).
+
+/**
+ * A mirrored Stripe subscription's money, with the fact that decides whether
+ * it is money UBB can add.
+ *
+ * The economic amount is `null` EXACTLY when the source currency is not the
+ * one UBB admits: there is no FX, so no dollar figure exists, and a renderer
+ * that read `null` as zero would put a euro subscription into revenue as
+ * nothing at all — the silent gap this module exists to make unwritable. The
+ * source integer is always present, in the source currency's minor unit.
+ */
+export interface MirroredAmountScenario {
+  readonly amount_micros: number | null;
+  readonly currency: string;
+  readonly source_amount_minor: number;
+}
+
+/** A subscription in US dollars: Stripe's integer in cents, and the money it is. */
+export function dollarSubscription(cents: number): MirroredAmountScenario {
+  return { amount_micros: cents * 10_000, currency: "usd", source_amount_minor: cents };
+}
+
+/**
+ * A subscription Stripe holds in a currency UBB does not admit: kept exactly
+ * as Stripe sent it, with no dollar amount, and left out of revenue.
+ *
+ * Both arguments are required: a default currency would be the relabel #564
+ * forbids, and a default integer a source figure nobody sent.
+ */
+export function quarantinedSubscription(
+  currency: string,
+  sourceAmountMinor: number,
+): MirroredAmountScenario {
+  return { amount_micros: null, currency, source_amount_minor: sourceAmountMinor };
+}

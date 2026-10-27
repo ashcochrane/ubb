@@ -39,6 +39,7 @@ from api.v1.tests.test_every_stop_names_the_control_that_fired import (
 from core.vocabulary import (
     CUSTOMER_BILLING_MODE_POSTPAID, CUSTOMER_BILLING_MODE_PREPAID,
     TASK_TYPE_KIND_SUBTASK)
+from apps.platform.tenants.tests._rails import RailActivated
 
 CEILING = "task_cogs_ceiling_micros"
 BALANCE = "balance_micros"
@@ -71,7 +72,7 @@ class StopTestBase(EveryStopNamesItsControlTestBase):
             cap_micros=cap_micros, enforce_mode="blocking")
 
 
-class AnAbsentCeilingIsNullTest(StopTestBase):
+class AnAbsentCeilingIsNullTest(RailActivated, StopTestBase):
     """Item 1 — every lane that reaches an uncapped unit, and the re-mint."""
 
     def test_an_expiry_of_uncapped_work_publishes_no_ceiling(self):
@@ -150,7 +151,7 @@ class AnAbsentCeilingIsNullTest(StopTestBase):
         self.assertEqual(self._re_minted(TaskKilled)[CEILING], 5_000_000)
 
 
-class AnAbsentWalletBalanceIsNullTest(StopTestBase):
+class AnAbsentWalletBalanceIsNullTest(RailActivated, StopTestBase):
     """Item 2 — the customer stop pair, on every lane that announces it."""
 
     def test_a_postpaid_customers_pool_stop_and_its_clearing_publish_no_balance(self):
@@ -218,7 +219,7 @@ class AnAbsentWalletBalanceIsNullTest(StopTestBase):
         self.assertNotIn(suspended[BALANCE], (None, 0))
 
 
-class TheRuleReadsWhoHoldsAWalletTest(StopTestBase):
+class TheRuleReadsWhoHoldsAWalletTest(RailActivated, StopTestBase):
     """`announced_balance` is the one rule both doors and the re-mint apply;
     the customers no lane above reaches cheaply are asked of it directly."""
 

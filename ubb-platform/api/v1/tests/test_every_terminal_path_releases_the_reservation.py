@@ -66,6 +66,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE,
     TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED,
     TASK_STATUS_FAILED, TASK_STATUS_KILLED, TRIGGER_SOURCE_STALE_REAPER)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: A ceiling one usage report trips, so the recording lane's kill and the
 #: patrol's sweep each have something to fire on.
@@ -164,7 +165,7 @@ class ReleaseTestBase(TestCase):
         self.assertEqual(open_reservations_micros(self.customer.id), 0)
 
 
-class TheTenantsCloseReleasesTest(ReleaseTestBase):
+class TheTenantsCloseReleasesTest(RailActivated, ReleaseTestBase):
     """One case per declarable outcome — the three states a close enters."""
 
     def test_a_declared_delivery(self):
@@ -195,7 +196,7 @@ class TheTenantsCloseReleasesTest(ReleaseTestBase):
         self.assertEqual(self._reservation(unit).released_at, first)
 
 
-class UbbsOwnStopsReleaseTest(ReleaseTestBase):
+class UbbsOwnStopsReleaseTest(RailActivated, ReleaseTestBase):
     """The three kills and the three expiries, each through the lane that
     applies it."""
 
@@ -262,7 +263,7 @@ class UbbsOwnStopsReleaseTest(ReleaseTestBase):
         self.assert_nothing_is_reserved()
 
 
-class AParentsEndReleasesTheContainedWorksTooTest(ReleaseTestBase):
+class AParentsEndReleasesTheContainedWorksTooTest(RailActivated, ReleaseTestBase):
     """The three cascades: the parent's own reservation on the parent's
     transition, and the planted row on the contained piece through the
     cascade's own call."""
@@ -296,7 +297,7 @@ class AParentsEndReleasesTheContainedWorksTooTest(ReleaseTestBase):
         self.assert_nothing_is_reserved()
 
 
-class TheBackstopSweepTest(ReleaseTestBase):
+class TheBackstopSweepTest(RailActivated, ReleaseTestBase):
     """A sweep over terminal work holding an open reservation — the trivial
     backstop #139 named: a beat, idempotent, releasing and logging."""
 

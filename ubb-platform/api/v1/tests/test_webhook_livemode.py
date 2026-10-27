@@ -23,6 +23,8 @@ from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
+from apps.subscriptions.stripe.items import MirroredAmount
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 ACCT = "acct_shared_1"
 
@@ -87,6 +89,7 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
         session.customer = "cus_same"
         session.client_reference_id = None
         session.amount_total = 100  # $1
+        session.currency = "usd"
         session.id = f"cs_lm_{livemode}"
         session.payment_intent = None
         return event
@@ -117,8 +120,8 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
         sub.get = lambda k, d=None: {"currency": "usd", "status": "active"}.get(k, d)
         from django.utils import timezone as djtz
         now = djtz.now()
-        with patch("apps.subscriptions.api.webhooks._sum_items",
-                   return_value=(1_000_000, 1, "month")), \
+        with patch("apps.subscriptions.api.webhooks.mirrored_amounts",
+                   return_value=MirroredAmount("usd", 100, 1_000_000, 1, "month")), \
              patch("apps.subscriptions.api.webhooks._period_start", return_value=now), \
              patch("apps.subscriptions.api.webhooks._period_end", return_value=now), \
              patch("apps.subscriptions.api.webhooks._product_name", return_value="Plan"):
@@ -138,7 +141,7 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
             (self.live, self.live_customer, "sub_shared"),
             (self.sandbox, self.sb_customer, "sub_shared_sb"),
         ):
-            sub = StripeSubscription.objects.create(
+            sub = a_mirrored_subscription(
                 tenant=tenant, customer=customer, stripe_subscription_id=sub_id,
                 status="active", amount_micros=0, currency="usd", interval="month",
                 current_period_start=now, current_period_end=now, last_synced_at=now)

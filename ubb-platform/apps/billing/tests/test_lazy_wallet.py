@@ -30,26 +30,6 @@ class TestLazyWalletCreation:
         assert wallet.balance_micros == 0
         assert wallet.currency == "usd"  # CUR-1: lowercase everywhere
 
-    def test_lazy_wallet_gets_tenant_currency_lowercase(self):
-        """CUR-1: a lazily-created wallet is born in the TENANT's currency."""
-        tenant = self._make_tenant(default_currency="eur")
-        customer = Customer.objects.create(tenant=tenant, external_id="c_eur")
-
-        with transaction.atomic():
-            wallet, _ = lock_for_billing(customer.id)
-
-        assert wallet.currency == "eur"
-
-    def test_lazy_wallet_lowercases_legacy_uppercase_tenant_currency(self):
-        """Even a legacy uppercase tenant value lands lowercase on the wallet."""
-        tenant = self._make_tenant(default_currency="EUR")
-        customer = Customer.objects.create(tenant=tenant, external_id="c_EUR")
-
-        with transaction.atomic():
-            wallet, _ = lock_for_billing(customer.id)
-
-        assert wallet.currency == "eur"
-
     def test_wallet_model_default_is_lowercase_usd(self):
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c_def")
@@ -62,6 +42,15 @@ class TestLazyWalletCreation:
         from django.apps import apps as global_apps
         from apps.billing.wallets.models import CreditGrant
 
+        # `0007` ran long before UBB v1's USD CHECKs (ADR-0023), on rows that
+        # could still hold `USD`. Lifting both inside this test's transaction
+        # is that state again; the rollback puts them back.
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("ALTER TABLE ubb_wallet DROP CONSTRAINT "
+                           "ck_wallet_currency_usd")
+            cursor.execute("ALTER TABLE ubb_credit_grant DROP CONSTRAINT "
+                           "ck_credit_grant_currency_usd")
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c_mig")
         wallet = Wallet.objects.create(customer=customer, currency="USD")

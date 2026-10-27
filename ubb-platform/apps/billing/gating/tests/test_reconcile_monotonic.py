@@ -36,6 +36,7 @@ def _durable_event(t, c, billed, n):
         provider_cost_micros=billed, billed_cost_micros=billed)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReconcileMonotonic:
     def setup_method(self):

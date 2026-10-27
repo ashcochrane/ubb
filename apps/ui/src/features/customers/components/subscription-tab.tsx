@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useHasRole } from "@/hooks/use-current-role";
-import { formatDate, formatMicros, formatShortDate } from "@/lib/format";
+import { formatDate, formatShortDate } from "@/lib/format";
 import { planIntervalLabel, subscriptionStatusLabel } from "@/lib/labels";
 
 import {
@@ -49,6 +49,7 @@ import {
   type SeatsForm,
   type SubscribeForm,
 } from "../lib/schemas";
+import { mirroredAmount } from "../lib/helpers";
 
 // Every lifecycle verb here (subscribe / pause / resume / cancel / set seats)
 // is floored at WRITE server-side (platform_endpoints @role_floor(WRITE)).
@@ -204,7 +205,7 @@ function ActiveSubscriptionCard({
             { label: "Product", value: subscription.stripe_product_name },
             {
               label: "Amount",
-              value: `${formatMicros(subscription.amount_micros, subscription.currency)} · ${planIntervalLabel(subscription.interval)}`,
+              value: `${mirroredAmount(subscription.amount_micros, subscription.currency)} · ${planIntervalLabel(subscription.interval)}`,
             },
             {
               label: "Current period",
@@ -357,7 +358,7 @@ function InvoicesCard({ customerId }: { customerId: string }) {
                       {formatShortDate(invoice.period_end)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatMicros(invoice.amount_paid_micros, invoice.currency)}
+                      {mirroredAmount(invoice.amount_paid_micros, invoice.currency)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-[12px]">
                       {formatDate(invoice.paid_at)}

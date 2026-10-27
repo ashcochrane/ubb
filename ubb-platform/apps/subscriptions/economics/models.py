@@ -1,4 +1,5 @@
 from django.db import models
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.transitions import RECORD_RULE
 from core.vocabulary import (
@@ -139,6 +140,12 @@ class CustomerEconomics(BaseModel):
     # NOT NULL for the same reason its sibling is — a snapshot is never
     # null-skipped, so what travels is the count rather than a null.
     unpriced_event_count = models.IntegerField(default=0)
+    # HOW MANY SUBSCRIPTIONS THE FROZEN SUBSCRIPTION REVENUE LEFT OUT (#564):
+    # those in a currency UBB does not admit, quarantined and never
+    # converted. A third count, about a third set — subscriptions, not
+    # postings — and NOT NULL like its siblings: UBB always knows how many it
+    # left out, and 0 means none.
+    foreign_currency_subscription_count = models.IntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
     total_revenue_micros = models.BigIntegerField(default=0)
     # THE SWITCH'S TWIN WAS HERE AND IS GONE (#497, slice 7 §9), with the
@@ -326,6 +333,10 @@ class TenantSuppliedRevenue(BaseModel):
             models.CheckConstraint(
                 condition=models.Q(source_reference__regex=r"\S"),
                 name="ck_supplied_revenue_says_where_it_came_from"),
+            # UBB v1 is USD-only (ADR-0023). The tenant STATES this figure
+            # through UBB's own door, so it is admitted money, not a source
+            # fact an integration sent.
+            usd_only_check("currency", "ck_supplied_revenue_currency_usd"),
         ]
 
     def __str__(self):

@@ -3,7 +3,6 @@ import * as React from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  METERING_ONLY_BILLING_MODE,
   readMockTenantConfig,
   writeMockTenantConfig,
 } from "@/hooks/use-tenant-config";
@@ -41,7 +40,7 @@ async function asMeteringOnly(run: () => Promise<void>) {
   const original = readMockTenantConfig();
   writeMockTenantConfig({
     ...original,
-    billing_mode: METERING_ONLY_BILLING_MODE,
+    billing_mode: "external",
     products: ["metering"],
   });
   try {

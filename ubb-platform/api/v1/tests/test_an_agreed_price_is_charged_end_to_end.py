@@ -28,6 +28,7 @@ from django.utils import timezone
 from api.v1.tests._helpers import PROVIDER, BlueprintRoutes, a_tenant
 from apps.platform.plans.models import Plan
 from core.vocabulary import USAGE_EVENT_KIND_TASK_CHARGE
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 SOLD_WHOLE = "transcode"
 PRICE = 8_000_000
@@ -52,6 +53,9 @@ class _TheSeam(BlueprintRoutes):
     BILLING_MODE = None
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         super().setup_method()
         self.tenant, self.raw_key = a_tenant(products=self.PRODUCTS,
                                              billing_mode=self.BILLING_MODE)

@@ -107,6 +107,7 @@ def _agg(total=500_000, lines=None):
                         return_value=(total, lines if lines is not None else [("", total)]))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestCrashPairMatrix:
     """A crash between any two push steps must RESUME, never recreate (I1/I2/I4)."""
@@ -185,6 +186,7 @@ class TestCrashPairMatrix:
         assert OutboxEvent.objects.filter(event_type="usage_invoice.pushed").count() == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRetryAfterKeyExpiry:
     def test_repush_after_key_expiry_resumes_not_recreates(self):
@@ -207,6 +209,7 @@ class TestRetryAfterKeyExpiry:
         assert rec.status == "pushed" and rec.stripe_invoice_id == "in_1"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRetryBounds:
     def test_attempts_cap_flips_terminal_with_exactly_one_alert(self):
@@ -281,6 +284,7 @@ class TestRetryBounds:
         assert events.first().payload["push_attempts"] == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestFrozenLineSnapshot:
     """Important-3: line_index identity is positional over the aggregation sort,
@@ -360,6 +364,7 @@ class TestFrozenLineSnapshot:
             == [("prod_a", 600_000), ("prod_b", 400_000)]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSnapshotDivergenceTripwire:
     """F4.2 review Fix 1b: every claim of an ALREADY-frozen snapshot (frozen in
@@ -421,6 +426,7 @@ class TestSnapshotDivergenceTripwire:
         assert rec.status == "pushed"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReconcileSelection:
     def test_terminal_rows_untouched(self):
@@ -456,6 +462,7 @@ class TestReconcileSelection:
         assert m.retrieve.call_count == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestOwnerFirstKeying:
     def test_pooled_seat_push_keys_row_on_business(self):
@@ -501,6 +508,7 @@ class TestOwnerFirstKeying:
         assert m.create.call_count == 1  # I1: one invoice, despite two callers
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestMigrationRules:
     def _migration(self):
@@ -534,6 +542,7 @@ class TestMigrationRules:
         assert biz_rec.status == "failed_permanent"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSkippedRowRecovery:
     def test_charge_ready_flip_recovers_not_charge_ready_row(self):
@@ -580,6 +589,7 @@ class TestSkippedRowRecovery:
         m.create.assert_not_called()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRepushCommand:
     def test_refuses_seat_keyed_rows(self):

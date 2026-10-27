@@ -74,7 +74,7 @@ Family parents: `BadRequestError` (400), `ForbiddenError` (403),
 `InternalServerError` (500), `ServiceUnavailableError` (503).
 
 Per-code leaves include `InsufficientBalanceError`, `WouldOverdrawError`,
-`CurrencyLockedError`, `LastActiveKeyError`, `LastActiveAdminError` (under
+`LastActiveKeyError`, `LastActiveAdminError` (under
 `ConflictError`); `BillingPeriodClosedError`, `InvalidConfigError`,
 `UnsupportedCurrencyError`, `ValidationError`, the three `EffectiveAt*Error`
 (under `UnprocessableEntityError`); `FeatureNotEnabledError` (under
@@ -107,6 +107,14 @@ would otherwise answer 200 to a call that changed nothing. Drop the argument;
 `get_tenant_config()` no longer returns the field either. **What to do instead:
 nothing.** A tenant part-way through declaring their cost rates gets their
 events recorded, with the gaps named on the 200.
+
+**`CurrencyLockedError` is gone too.** It was raised when a tenant tried to
+change `default_currency` after money existed. UBB v1 admits US dollars only, so
+a tenant cannot leave USD by any path and there is no lock left to report: a
+non-USD `default_currency` — or a non-USD `currency` anywhere you send money —
+is `UnsupportedCurrencyError` (422), and re-sending `usd` is a 200. An `except
+CurrencyLockedError:` block fails at import for the reason above. **What to do
+instead: catch `UnsupportedCurrencyError`, or send `usd`.**
 
 The admission verdict `cost_coverage_required` goes with it. The start-gate
 call no longer refuses a start because a spend ceiling was requested without
@@ -973,6 +981,59 @@ family, and it is now `UBBValidationError`, a `UBBError`.
   `422 effective_at_naive` (`EffectiveAtNaiveError`).
 
 ---
+
+## 21. Slice 8's money door: USD only, the billing mode's final word, the rail, and three names (R10-W3 — pre-live)
+
+Pre-live changes from one window (#190's W3), each recorded in the contract's
+suppression files as reviewed. None of them changes what UBB records about usage.
+
+### A tenant that bills elsewhere is `external`
+
+`TenantConfigOut.billing_mode` answers `external`, `prepaid` or `postpaid`, and a
+request naming the retired spelling is refused `invalid_config`. The read also
+carries `tenant_posture` (`metering_only` or `full_billing`), derived from the mode
+and never stored — read it rather than reconstructing the mapping.
+
+### A money mode needs its payment rail activated first
+
+Setting `billing_mode` to `prepaid` or `postpaid` — and creating the sandbox of a
+tenant in one, including by minting a test key — is refused **409**
+`payment_rail_not_activated` (`PaymentRailNotActivatedError`) until the Stripe rail
+has an enabled activation for the environment: `test` for a sandbox, `live`
+otherwise. An activation is recorded by its approver, not through the API.
+
+While a rail is closed (its flag off), a tenant already in a money mode keeps its
+mode but starts no new money on it: a top-up, a subscription started, resumed or
+re-priced, and a seat-quantity change are refused **409**
+`payment_rail_not_activated` (`PaymentRailNotActivatedError`), before anything
+reaches Stripe. Pausing or cancelling is never refused.
+
+### A wallet movement's reason is `movement_reason`
+
+`BillingClient.credit` and `BillingClient.debit` take `movement_reason=` (one of
+`ubb.vocabulary.MOVEMENT_REASON_VALUES`, or `None` for none) in place of
+`reason_code=`. **A raw-HTTP caller must send `movement_reason`**: a body still
+naming `reason_code` is refused 422 `validation_error`, naming the new field, and
+moves nothing — it is neither dropped nor read as an alias. `reason_code`
+elsewhere — on a stop — is a different concept and is unchanged.
+
+### A billing period's money is `total_billed_cost_micros`, and its count is metered events
+
+The period's money, published under a "usage cost" name until #516, is
+`TenantBillingPeriodOut.total_billed_cost_micros`: the sum of `billed_cost_micros`
+over the period's postings, a fixed-price unit's charge included. Its count is
+`recorded_events` (the registry's measure; it was `event_count`), every metered usage event, priced or not,
+and never that charge — so the money includes what the count excludes.
+
+### Money is in US dollars
+
+A tenant's `default_currency` is `usd`, and a non-USD currency on any of UBB's own
+economic doors is refused `unsupported_currency`. A Stripe subscription or invoice
+in another currency is kept as Stripe sent it — `amount_micros` /
+`amount_paid_micros` are `None`, with the amount in `source_amount_minor` /
+`source_amount_paid_minor` — and left out of revenue; every margin read that could
+have counted one states how many it left out in `foreign_currency_subscription_count`
+(0 when none).
 
 ## Release checklist (operator)
 

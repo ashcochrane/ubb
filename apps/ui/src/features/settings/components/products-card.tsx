@@ -9,12 +9,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import { PRODUCTS, billingModeLabel, type Product } from "@/lib/labels";
+import { PRODUCTS, type Product } from "@/lib/labels";
+import type { CustomerBillingMode } from "@/lib/vocabulary";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 import { PRODUCT_DESCRIPTIONS, productLabel } from "@/lib/products";
 
 import { useUpdateTenantConfig } from "../api/queries";
 import type { TenantConfig } from "../api/types";
+import { billingModeLabel } from "../lib/billing-mode";
 
 export function ProductsCard({
   config,
@@ -90,7 +92,8 @@ export function ProductsCard({
                 {billingLockedByMode && (
                   <p className="mt-1 text-[12px] text-muted-foreground">
                     In use by the {billingModeLabel(config.billing_mode)}{" "}
-                    billing mode — switch to Meter only first.
+                    billing mode — switch to{" "}
+                    {billingModeLabel("external" satisfies CustomerBillingMode)} first.
                   </p>
                 )}
               </div>

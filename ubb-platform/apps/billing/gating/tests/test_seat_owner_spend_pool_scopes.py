@@ -42,6 +42,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSeatOwnerSpendPoolScopes:
     def setup_method(self):

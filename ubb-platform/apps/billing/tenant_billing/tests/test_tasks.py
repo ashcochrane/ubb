@@ -18,16 +18,16 @@ class AccumulateUsageTest(TestCase):
         )
 
     def test_accumulate_creates_period_if_none(self):
-        TenantBillingService.accumulate_usage(self.tenant, 1_000_000)
+        TenantBillingService.accumulate_usage(self.tenant, 1_000_000, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
-        self.assertEqual(period.total_usage_cost_micros, 1_000_000)
+        self.assertEqual(period.total_billed_cost_micros, 1_000_000)
         self.assertEqual(period.event_count, 1)
 
     def test_accumulate_increments_existing_period(self):
-        TenantBillingService.accumulate_usage(self.tenant, 1_000_000)
-        TenantBillingService.accumulate_usage(self.tenant, 2_000_000)
+        TenantBillingService.accumulate_usage(self.tenant, 1_000_000, counts_as_event=True)
+        TenantBillingService.accumulate_usage(self.tenant, 2_000_000, counts_as_event=True)
         period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
-        self.assertEqual(period.total_usage_cost_micros, 3_000_000)
+        self.assertEqual(period.total_billed_cost_micros, 3_000_000)
         self.assertEqual(period.event_count, 2)
 
 
@@ -48,7 +48,7 @@ class AccumulateUsageRaceTest(TestCase):
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="closed",
-            total_usage_cost_micros=500_000,
+            total_billed_cost_micros=500_000,
             event_count=1,
         )
 
@@ -70,15 +70,15 @@ class AccumulateUsageRaceTest(TestCase):
             TenantBillingService, "get_or_create_current_period",
             side_effect=mock_get_or_create,
         ):
-            TenantBillingService.accumulate_usage(self.tenant, 1_000_000)
+            TenantBillingService.accumulate_usage(self.tenant, 1_000_000, counts_as_event=True)
 
         # The closed Jan period should be untouched
         jan_period.refresh_from_db()
-        self.assertEqual(jan_period.total_usage_cost_micros, 500_000)
+        self.assertEqual(jan_period.total_billed_cost_micros, 500_000)
 
         # A new open period should exist with the retried amount
         new_period = TenantBillingPeriod.objects.get(tenant=self.tenant, status="open")
-        self.assertEqual(new_period.total_usage_cost_micros, 1_000_000)
+        self.assertEqual(new_period.total_billed_cost_micros, 1_000_000)
         self.assertEqual(new_period.event_count, 1)
 
 
@@ -98,7 +98,7 @@ class CloseBillingPeriodTest(TestCase):
             tenant=self.tenant,
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
-            total_usage_cost_micros=100_000_000_000,  # $100k
+            total_billed_cost_micros=100_000_000_000,  # $100k
             event_count=5000,
         )
         TenantBillingService.close_period(period)
@@ -116,7 +116,7 @@ class CloseBillingPeriodTest(TestCase):
             tenant=self.tenant,
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
-            total_usage_cost_micros=100_000_000,  # $100
+            total_billed_cost_micros=100_000_000,  # $100
             event_count=10,
         )
         TenantBillingService.close_period(period)

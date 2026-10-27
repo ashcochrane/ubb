@@ -249,8 +249,9 @@ class BookGatingTest(TestCase):
 
 
 class CostBookCurrencyPinTest(TestCase):
-    """CUR-1: a cost book is pinned to the tenant's currency (422 on mismatch)
-    and its rules take that currency, so the book is the single place it is set.
+    """A cost book is declared in UBB v1's one currency (ADR-0023, #555) —
+    another is `unsupported_currency` — and its rules take that currency, so
+    the book is the single place it is set.
 
     ⚠ **ONLY THE COST BOOK ASKS THIS NOW (#368).** A Pricing Book has no
     currency column at all, so there is nothing on it to pin — the same fact
@@ -272,24 +273,20 @@ class CostBookCurrencyPinTest(TestCase):
             "/api/v1/metering/pricing/cost-books",
             data=json.dumps(body), content_type="application/json", **self._auth())
 
-    def test_create_book_with_mismatched_currency_returns_422(self):
+    def test_create_book_in_another_currency_returns_422(self):
+        from apps.metering.pricing.models import CostBook
         resp = self._post({**COST_BOOK, "currency": "eur"})
         self.assertEqual(resp.status_code, 422, resp.content)
-        self.assertEqual(resp.json()["code"], "validation_error")
-        self.assertIn("does not match tenant currency", resp.json()["detail"])
+        self.assertEqual(resp.json()["code"], "unsupported_currency")
+        self.assertIn("US dollars only", resp.json()["detail"])
+        self.assertFalse(CostBook.objects.filter(tenant=self.tenant).exists())
 
     def test_create_book_with_matching_currency_case_insensitive(self):
         resp = self._post({**COST_BOOK, "currency": "USD"})
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()["currency"], "usd")  # stored lowercase
 
-    def test_create_book_omitted_currency_defaults_to_tenant_currency(self):
-        eur_tenant = Tenant.objects.create(
-            name="Eur Pin", products=["metering", "billing"], default_currency="eur")
-        _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
-        resp = self.http_client.post(
-            "/api/v1/metering/pricing/cost-books",
-            data=json.dumps(COST_BOOK), content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {eur_key}")
+    def test_create_book_omitted_currency_takes_the_tenants(self):
+        resp = self._post(COST_BOOK)
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(resp.json()["currency"], "eur")
+        self.assertEqual(resp.json()["currency"], "usd")

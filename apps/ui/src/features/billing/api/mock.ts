@@ -52,6 +52,7 @@ export async function getRevenueWindow(range: {
     basis: "recorded",
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
+    foreign_currency_subscription_count: 0,
     // ⚠ THE WINDOW'S TOTALS ARE NOT A FIELD ANY MORE, AND THAT IS THE POINT.
     // The report this replaced published its own totals beside its day rows,
     // which was a second definition of the same sum; the one query answers the

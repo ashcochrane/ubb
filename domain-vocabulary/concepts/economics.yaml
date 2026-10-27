@@ -20,8 +20,8 @@ customer_billing_mode:
   label_key_prefix: customer_billing_mode
   retired_aliases:
     # `meter_only` said what UBB does NOT do. `external` says where the billing
-    # actually happens, which is the fact a tenant is choosing between. The
-    # rename is owned by a later slice; the registry states the destination now.
+    # actually happens, which is the fact a tenant is choosing between. Slice 8
+    # made the rename (R10-W3); the alias stays so the sweep refuses the old word.
     - meter_only
   consumers:
     - surface: backend
@@ -56,8 +56,12 @@ tenant_posture:
   consumers:
     - surface: backend
       path: ubb-platform/apps/platform/tenants/models.py
+    # The console holds the posture where it renders it (slice 8): the
+    # catalogue's words, by the generated label keys, on the settings
+    # feature's billing-mode card. The legacy adapter never rendered it and
+    # has nothing to re-export.
     - surface: console
-      path: apps/ui/src/lib/labels.ts
+      path: apps/ui/src/features/settings/lib/billing-mode.ts
     - surface: openapi
       path: openapi/v1.json
 
@@ -1400,3 +1404,29 @@ plan_name:
       path: ubb-platform/apps/platform/plans/models.py
     - surface: openapi
       path: openapi/v1.json
+
+movement_reason:
+  kind: closed
+  summary: >-
+    Why money moved through a wallet by hand — a credit or debit an operator
+    made outside the automated paths. It answers "why did this ledger
+    movement happen?", which is a different question from why work was
+    stopped (`reason_code`): the two shared one public name until #479, and
+    ADR-0006 §2 does not let two concepts share one. Closed: the route refuses
+    any other value by name, and the ledger column holds the same set beside
+    the empty string an automated movement records.
+  values:
+    - correction
+    - goodwill
+    - chargeback
+    - write_off
+    - migration
+    - other
+  label_key_prefix: movement_reason
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/wallets/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/movement-reason.ts

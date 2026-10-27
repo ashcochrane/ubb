@@ -6,8 +6,9 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.invoicing.models import CustomerUsageInvoice
-from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.models import SubscriptionInvoice
 from core.widget_auth import create_widget_token
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 class WidgetBalanceTest(TestCase):
@@ -307,7 +308,7 @@ def _make_usage_invoice(tenant, customer):
 
 
 def _make_subscription_invoice(tenant, customer):
-    sub = StripeSubscription.objects.create(
+    sub = a_mirrored_subscription(
         tenant=tenant,
         customer=customer,
         stripe_subscription_id="sub_test",

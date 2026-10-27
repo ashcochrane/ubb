@@ -34,6 +34,7 @@ from apps.platform.tenants.models import TenantApiKey
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import stop_line
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -44,6 +45,9 @@ def _tenant(mode="prepaid", enf="enforcing"):
 @pytest.mark.django_db
 class TestLiveCounterPrepaid:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_flag_off_hook_is_noop(self):
@@ -111,6 +115,9 @@ class TestLiveCounterPrepaid:
 @pytest.mark.django_db
 class TestLiveCounterPostpaid:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_incr_and_read(self):
@@ -168,6 +175,9 @@ class TestStopFlag:
     """P3: the synchronous customer-wide cooperative stop flag."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_crossing_sets_flag_and_returns_verdict(self):
@@ -318,6 +328,7 @@ class TestStopFlag:
         assert c.status == "active"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_debits_at_floor_race():
     """20 threads x 1_500_000 against a 20_000_000 balance: every debit is
@@ -386,6 +397,9 @@ class TestStopPropagation:
     """
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     @staticmethod
@@ -529,6 +543,9 @@ class TestCreditHookFiresThroughEndpoint:
     credit sites use the identical transaction.on_commit(credit) pattern."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_manual_credit_endpoint_raises_live_balance(self, django_capture_on_commit_callbacks):

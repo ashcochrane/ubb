@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros } from "@/lib/format";
+import { movementReasonToSend } from "@/lib/movement-reason";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useCreditWallet } from "../api/queries";
@@ -36,7 +37,7 @@ export function CreditForm({ isAdmin }: { isAdmin: boolean }) {
       reference: "",
       source: "",
       actor: "",
-      reason_code: "",
+      movement_reason: "",
     },
   });
   const values = form.getValues();
@@ -51,7 +52,7 @@ export function CreditForm({ isAdmin }: { isAdmin: boolean }) {
         reference: v.reference.trim(),
         source: v.source.trim(),
         actor: v.actor.trim(),
-        reason_code: v.reason_code.trim(),
+        movement_reason: movementReasonToSend(v.movement_reason),
       },
       {
         onSuccess: (result) => {
@@ -101,10 +102,10 @@ export function CreditForm({ isAdmin }: { isAdmin: boolean }) {
       <OptionalFields
         isAdmin={isAdmin}
         actor={form.register("actor")}
-        reasonCode={form.register("reason_code")}
+        movementReason={form.register("movement_reason")}
         errors={{
           actor: form.formState.errors.actor?.message,
-          reasonCode: form.formState.errors.reason_code?.message,
+          movementReason: form.formState.errors.movement_reason?.message,
         }}
       />
       <DisabledHint disabled={!isAdmin} hint="Requires the Admin role.">

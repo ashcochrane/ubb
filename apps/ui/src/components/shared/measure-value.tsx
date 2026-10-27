@@ -142,6 +142,33 @@ export function RetentionHorizonNote({
   );
 }
 
+/**
+ * Where a revenue answer left out subscriptions Stripe holds in another
+ * currency, how many — or nothing, where it left out none (#564).
+ *
+ * ⚠ THE COUNT IS THE WHOLE STATEMENT. UBB accepts US dollars only and
+ * converts nothing (ADR-0023), so there is no dollar figure for what was
+ * left out and the note does not invent one: the revenue beside it is the
+ * sum of what UBB admits, and the true figure is higher by an amount only
+ * Stripe can state.
+ */
+export function ForeignCurrencyNote({
+  caveats,
+}: {
+  caveats: Pick<AnswerCaveats, "foreign_currency_subscription_count">;
+}) {
+  const count = caveats.foreign_currency_subscription_count;
+  if (count === 0) return null;
+  return (
+    <p data-foreign-currency={count} className="text-[11px] text-text-muted">
+      {count === 1
+        ? "1 subscription Stripe holds in another currency is left out of this revenue"
+        : `${count} subscriptions Stripe holds in another currency are left out of this revenue`}
+      {" — UBB accepts US dollars only and converts none."}
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Chart tooltips
 

@@ -15,14 +15,12 @@ from django.utils import timezone
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import (
-    CustomerSubscriptionItem,
-    StripeSubscription,
-)
+from apps.subscriptions.models import CustomerSubscriptionItem
 from apps.subscriptions.orchestration.service import (
     SubscriptionOrchestrator,
     OrchestrationError,
 )
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 SVC = "apps.subscriptions.orchestration.service.stripe"
 
@@ -48,7 +46,7 @@ def _subscribed(t, plan, *, external_id="biz", sub_id="sub_1", seat_qty=10):
     biz = Customer.objects.create(tenant=t, external_id=external_id,
                                   stripe_customer_id=f"cus_{external_id}")
     now = timezone.now()
-    mirror = StripeSubscription.objects.create(
+    mirror = a_mirrored_subscription(
         tenant=t, customer=biz, stripe_subscription_id=sub_id,
         stripe_product_name="Pro", status="active",
         amount_micros=50_000_000 + 8_000_000 * seat_qty, currency="usd",
@@ -293,3 +291,29 @@ def test_fee_dropped_to_zero_on_provisioned_axis_skips_price_create():
     plan.refresh_from_db()
     assert plan.per_seat_micros == 0
     assert plan.pricing_version == 1
+
+
+
+@pytest.mark.django_db
+def test_a_new_price_version_reads_the_tenants_currency_and_refuses_another():
+    """#565: a repriced plan's new Stripe Price takes its currency from the
+    tenant, whose catalog the plan is — and refuses, with the tenant's CHECK
+    lifted for this test's transaction, rather than sending another."""
+    from django.db import connection
+    from core.currency_policy import CurrencyDisagreement
+
+    t = _charge_ready_tenant()
+    _provisioned_plan(t)
+    with connection.cursor() as cursor:
+        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+        cursor.execute("ALTER TABLE ubb_tenant DROP CONSTRAINT "
+                       "ck_tenant_default_currency_usd")
+        cursor.execute("UPDATE ubb_tenant SET default_currency = 'eur' WHERE id = %s",
+                       [str(t.id)])
+    t = Tenant.objects.get(pk=t.pk)
+
+    with patch(f"{SVC}.Price.create") as pc:
+        with pytest.raises(CurrencyDisagreement, match="plan catalog"):
+            SubscriptionOrchestrator.update_plan_prices(t, "pro",
+                                                        per_seat_micros=6_000_000)
+    pc.assert_not_called()

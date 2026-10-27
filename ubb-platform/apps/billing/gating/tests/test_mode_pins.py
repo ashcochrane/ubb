@@ -28,6 +28,7 @@ from apps.platform.events.schemas import (
     WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="off"):
@@ -35,6 +36,7 @@ def _tenant(mode="prepaid", enf="off"):
                                  billing_mode=mode, enforcement_mode=enf)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAdvisoryRetired:
     def test_migration_maps_advisory_to_off(self):
@@ -80,6 +82,9 @@ class TestAdvisoryRetired:
 @pytest.mark.django_db
 class TestOffIsByteForBytePreEnforcement:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_floor_crossing_leaves_no_enforcement_trace(self):

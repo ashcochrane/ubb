@@ -8,9 +8,11 @@ from apps.subscriptions.economics.revenue import SuppliedRevenueService
 from apps.subscriptions.economics.services import (
     MARGIN_REVENUE_BASIS, MarginService)
 from core.vocabulary import RECOGNITION_METHOD_STRAIGHT_LINE
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class MarginServiceTest(TestCase):
+class MarginServiceTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="T")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
@@ -19,7 +21,7 @@ class MarginServiceTest(TestCase):
 
     def test_billed_usage_is_revenue_and_the_margin_is_what_is_left_of_it(self):
         """⚠ **THIS CASE ASSERTED THE OPPOSITE UNTIL #497, AND ITS NAME SAID
-        SO.** It was `test_meter_only_margin_is_billed_minus_provider`, and the
+        SO.** It was the metering-only posture's margin test, and the
         margin it asserted was the NEGATIVE of the cost: this tenant's billing
         mode resolved its customer away from billed usage, so a million micros
         of resolved customer price was struck out of the revenue on the way
@@ -50,12 +52,12 @@ class MarginServiceTest(TestCase):
         never about the switch — and the module it sat in existed only to prove
         the two revenue "modes" behaved differently, which is now not a fact.
         """
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
         from apps.subscriptions.tests._helpers import a_tenant_ubb_invoices
         from django.utils import timezone
         tenant, customer = a_tenant_ubb_invoices()
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer, stripe_subscription_id="s1",
             stripe_product_name="Pro", status="active", amount_micros=20_000_000,
             quantity=1, currency="usd", interval="month",

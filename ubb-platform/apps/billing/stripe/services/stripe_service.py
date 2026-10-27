@@ -11,6 +11,7 @@ from core.exceptions import (
     StripePaymentError,
     StripeFatalError,
 )
+from core.currency_policy import the_rails_currency
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units, to_minor
 
 assert int(stripe.VERSION.split(".")[0]) >= 15, f"Stripe SDK must be >=15 for Basil API; got {stripe.VERSION}"
@@ -39,14 +40,10 @@ def micros_to_cents(amount_micros, currency=DEFAULT_CURRENCY):
     to. It is translated to StripeFatalError because a misaligned amount at the
     Stripe boundary is a non-retryable bug, not a transient failure.
 
-    ``currency`` defaults, and today every caller takes the default. That is
-    honest rather than aspirational: the OUTBOUND Stripe boundary is still
-    USD-only in the other half too — the ``currency="usd"`` literals sent
-    alongside these amounts (stripe_api.py, receipts.py, and the platform-fee
-    invoice item below). Making this argument real means fixing that pair
-    together, which needs the live Stripe money test in a second currency that
-    §7.2 defers. The parameter exists so that is a change of arguments rather
-    than an excavation.
+    Every outbound caller passes ``currency``: the currency it read off the
+    authoritative monetary record and sends beside this amount, through
+    ``core.currency_policy.the_rails_currency`` (#565). The default serves
+    only a caller with no record in scope.
     """
     try:
         assert_aligned(amount_micros, currency)
@@ -193,7 +190,12 @@ class StripeService:
                 f"Tenant {tenant.id} has no stripe_customer_id for platform billing"
             )
 
-        amount_cents = micros_to_cents(billing_period.platform_fee_micros)
+        # The period's currency, read off the row the fee was computed on —
+        # never a literal here (#565). Refused before any Stripe call.
+        currency = the_rails_currency(
+            f"billing period {billing_period.id}", billing_period.currency)
+        amount_cents = micros_to_cents(billing_period.platform_fee_micros,
+                                       currency)
         if amount_cents <= 0:
             return None
 
@@ -218,7 +220,7 @@ class StripeService:
             customer=billing_config.stripe_customer_id,
             invoice=invoice.id,
             amount=amount_cents,
-            currency="usd",
+            currency=currency,
             description=f"UBB Platform fee: {billing_period.period_start} - {billing_period.period_end}",
         )
 

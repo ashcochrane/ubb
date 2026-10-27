@@ -12,10 +12,6 @@
       "status": 409,
       "title": "Conflict"
     },
-    "currency_locked": {
-      "status": 409,
-      "title": "Currency locked"
-    },
     "effective_at_before_scheduled_boundary": {
       "status": 422,
       "title": "effective_at is before the book's latest scheduled boundary"
@@ -104,6 +100,10 @@
       "status": 404,
       "title": "Not found"
     },
+    "payment_rail_not_activated": {
+      "status": 409,
+      "title": "The payment rail is not activated for this environment"
+    },
     "pricing_mode_frozen": {
       "status": 409,
       "title": "How a kind of work is sold cannot change"
@@ -176,6 +176,7 @@
       "effective_at_too_old",
       "not_found",
       "provider_conflicts_with_event_type",
+      "unsupported_currency",
       "validation_error"
     ],
     "reason_codes": [

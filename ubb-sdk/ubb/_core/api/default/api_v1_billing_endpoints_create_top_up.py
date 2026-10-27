@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.create_top_up_request import CreateTopUpRequest
+from ...models.problem_out import ProblemOut
 from ...models.top_up_checkout_response import TopUpCheckoutResponse
 from typing import cast
 
@@ -41,7 +42,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> TopUpCheckoutResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TopUpCheckoutResponse | None:
     if response.status_code == 200:
         response_200 = TopUpCheckoutResponse.from_dict(response.json())
 
@@ -49,13 +50,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[TopUpCheckoutResponse]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TopUpCheckoutResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -70,7 +78,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: CreateTopUpRequest,
 
-) -> Response[TopUpCheckoutResponse]:
+) -> Response[ProblemOut | TopUpCheckoutResponse]:
     """ Create Top Up
 
      Start a top-up. Replay-safe: idempotency_key is required and unique
@@ -86,7 +94,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[TopUpCheckoutResponse]
+        Response[ProblemOut | TopUpCheckoutResponse]
      """
 
 
@@ -108,7 +116,7 @@ def sync(
     client: AuthenticatedClient,
     body: CreateTopUpRequest,
 
-) -> TopUpCheckoutResponse | None:
+) -> ProblemOut | TopUpCheckoutResponse | None:
     """ Create Top Up
 
      Start a top-up. Replay-safe: idempotency_key is required and unique
@@ -124,7 +132,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        TopUpCheckoutResponse
+        ProblemOut | TopUpCheckoutResponse
      """
 
 
@@ -141,7 +149,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: CreateTopUpRequest,
 
-) -> Response[TopUpCheckoutResponse]:
+) -> Response[ProblemOut | TopUpCheckoutResponse]:
     """ Create Top Up
 
      Start a top-up. Replay-safe: idempotency_key is required and unique
@@ -157,7 +165,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[TopUpCheckoutResponse]
+        Response[ProblemOut | TopUpCheckoutResponse]
      """
 
 
@@ -179,7 +187,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: CreateTopUpRequest,
 
-) -> TopUpCheckoutResponse | None:
+) -> ProblemOut | TopUpCheckoutResponse | None:
     """ Create Top Up
 
      Start a top-up. Replay-safe: idempotency_key is required and unique
@@ -195,7 +203,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        TopUpCheckoutResponse
+        ProblemOut | TopUpCheckoutResponse
      """
 
 

@@ -419,7 +419,17 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # publication keeps its supplier, and a held price states its reason.
         # Neither names a retired word, so the number moved for the files
         # existing.
-        "historical-migrations": (UNTIL_SLICE_8, 283, 19),
+        # 283 -> 290 in R10-W3 (#555): seven migrations — UBB v1's USD
+        # CHECKs, one per app owning a currency column. None names a
+        # retired word, so the number moved for the files existing.
+        # 290 -> 292 in R10-W3 (#564, #565): two migrations — the mirror keeps
+        # what Stripe sent, and a billing period states its currency.
+        # 292 -> 293 in R10-W3 (slice 8's ledger): one migration — a tenant
+        # that bills elsewhere is `external`.
+        # 293 -> 294 in R10-W3 (G27): one migration — a money mode needs its
+        # payment rail activated first.
+        # 294 -> 296 in R10-W3 (#479, #516): two column renames.
+        "historical-migrations": (UNTIL_SLICE_8, 296, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

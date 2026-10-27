@@ -33,6 +33,7 @@ from apps.billing.gating.tests._helpers import (
     FIXTURE_OPENING, drive_a_stop, stop_line)
 from core.vocabulary import (
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY)
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -47,6 +48,7 @@ def _events(event_type, owner_key="owner_id", owner_id=None):
     return qs
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestStopTransition:
     def test_first_stop_wins_opens_episode_1_and_emits(self):
@@ -121,6 +123,7 @@ class TestStopTransition:
         assert StopSignalState.objects.get(owner=c, reason=stop_line(t)).state == "stopped"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSuspensionFold:
     def test_prepaid_winner_suspends_with_the_hard_floors_word(self):
@@ -156,6 +159,7 @@ class TestSuspensionFold:
         assert _events("customer.suspended", "customer_id", c.id).count() == 0
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestEmissionAtomicity:
     """#43 §A at the service seam: every family rides the same savepoint
@@ -198,6 +202,7 @@ class TestEmissionAtomicity:
         assert _events(WalletPolicySoftFloorCrossed.EVENT_TYPE, owner_id=c.id).count() == 0
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAnnouncementStamps:
     """#43 §B — every winning transition stamps ``announce_outbox_id`` with
@@ -266,6 +271,9 @@ class TestTwoStopLinesAtOnce:
     trio; ticket 8 repeats it end to end once the pool blocks prepaid."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def _both(self, t, c):

@@ -70,3 +70,13 @@ def _stripe_guard(request, monkeypatch):
     monkeypatch.setattr(
         "stripe._api_requestor._APIRequestor.request_raw_async", _blocked)
     yield
+
+
+@pytest.fixture
+def rail_activated(db):
+    """The Stripe payment rail activated in both environments — for a test
+    that ASKS for it by requesting this fixture (G27; the owner's §0.4 E).
+    Never autouse: a suite in which every money-mode tenant is quietly
+    rail-ready cannot notice the invariant going missing."""
+    from apps.platform.tenants.tests._rails import activate_the_rail
+    return activate_the_rail()

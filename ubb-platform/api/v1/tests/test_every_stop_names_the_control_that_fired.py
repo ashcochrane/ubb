@@ -53,6 +53,7 @@ from core.vocabulary import (
     CEILING_BASIS_COST, CEILING_BASIS_TIME, CONTROL_FAMILY_CEILING,
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY,
     TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class EveryStopNamesItsControlTestBase(TestCase):
@@ -112,7 +113,7 @@ class EveryStopNamesItsControlTestBase(TestCase):
         Task.objects.filter(id=unit.id).update(**fields)
 
 
-class ACeilingStopNamesTheDeclarationTest(EveryStopNamesItsControlTestBase):
+class ACeilingStopNamesTheDeclarationTest(RailActivated, EveryStopNamesItsControlTestBase):
     def test_a_cogs_ceiling_stop_under_a_declared_kind(self):
         kind = self._kind("summarise", ceiling=5_000_000)
         unit = self._unit(ceiling=5_000_000, task_type="summarise")
@@ -148,7 +149,7 @@ class ACeilingStopNamesTheDeclarationTest(EveryStopNamesItsControlTestBase):
         self.assertEqual(unit.ceiling_basis, CEILING_BASIS_COST)
 
 
-class AWindowStopIsTheCeilingsOnTimeTest(EveryStopNamesItsControlTestBase):
+class AWindowStopIsTheCeilingsOnTimeTest(RailActivated, EveryStopNamesItsControlTestBase):
     def test_a_silence_window_stop(self):
         kind = self._kind("quiet", silence_window_seconds=60,
                           absolute_deadline_seconds=86_400)
@@ -178,7 +179,7 @@ class AWindowStopIsTheCeilingsOnTimeTest(EveryStopNamesItsControlTestBase):
         self.assertEqual(payload["ceiling_basis"], CEILING_BASIS_TIME)
 
 
-class ACascadeCarriesTheParentsControlTest(EveryStopNamesItsControlTestBase):
+class ACascadeCarriesTheParentsControlTest(RailActivated, EveryStopNamesItsControlTestBase):
     def test_contained_work_killed_with_its_parent_records_the_parents_family_and_id(self):
         kind = self._kind("pipeline", ceiling=5_000_000)
         self._kind("piece", kind=TASK_TYPE_KIND_SUBTASK)
@@ -209,7 +210,7 @@ class ACascadeCarriesTheParentsControlTest(EveryStopNamesItsControlTestBase):
             event_type=SubtaskKilled.EVENT_TYPE).exists())
 
 
-class ACustomerStopNamesItsControlTest(EveryStopNamesItsControlTestBase):
+class ACustomerStopNamesItsControlTest(RailActivated, EveryStopNamesItsControlTestBase):
     def test_the_wallet_floor_names_the_row_that_carried_it(self):
         profile = CustomerBillingProfile.objects.create(
             customer=self.customer, min_balance_micros=0)

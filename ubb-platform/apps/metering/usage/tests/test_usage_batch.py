@@ -169,14 +169,23 @@ class TestBatchBasics:
     def test_validation_error_mapped(self):
         """The generic ValueError branch maps to validation_error.
 
-        Driven by a currency mismatch since #273: the open bag's key-shape
-        refusal was this branch's other reachable input and it retired with
-        the bag it belonged to.
+        Driven by a Grouping Field the tenant never declared since #555: a
+        foreign currency was this branch's input from #273, and it now has a
+        named code of its own (`unsupported_currency`, below).
         """
         t, c, http, auth = _setup()
         resp = _post(http, auth, BATCH_URL, {"events": [
-            _item(c, 1, currency="eur")]}).json()
+            _item(c, 1, grouping_fields={"never_declared": "x"})]}).json()
         assert resp["results"][0]["code"] == "validation_error"
+        assert resp["rejected"] == 1
+
+    def test_a_foreign_currency_is_its_own_named_refusal(self):
+        """UBB v1 is USD-only (ADR-0023): the batch answers the same code
+        the single route does, ahead of the generic branch."""
+        t, c, http, auth = _setup()
+        resp = _post(http, auth, BATCH_URL, {"events": [
+            _item(c, 1, currency="eur")]}).json()
+        assert resp["results"][0]["code"] == "unsupported_currency"
         assert resp["rejected"] == 1
 
     def test_success_body_mirrors_single_call(self):

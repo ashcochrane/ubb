@@ -282,10 +282,24 @@ class TestTheCurrencyIsPinnedExactlyOnce:
     def test_a_fixed_currency_pins_it(self):
         event_type = _event_type(_tenant())
 
-        mapping = _declared(event_type, currency="gbp")
+        mapping = _declared(event_type, currency="usd")
 
-        assert mapping.currency == "gbp"
+        assert mapping.currency == "usd"
         assert mapping.currency_path == []
+
+    def test_a_fixed_currency_ubb_can_represent_and_does_not_admit_is_refused(self):
+        """UBB v1 is USD-only (ADR-0023, #555's eighth drift site). `gbp` is
+        in `core.money`'s minor-unit table — that is representation, not
+        admission — and a mapping pinned to it would generate an integration
+        whose every call the recording routes refuse."""
+        event_type = _event_type(_tenant())
+
+        with pytest.raises(ValidationError) as refused:
+            _mapping(event_type, currency="gbp").full_clean()
+
+        assert "US dollars only" in " ".join(refused.value.message_dict["currency"])
+        assert not ReportedCostMapping.objects.filter(
+            event_type=event_type).exists()
 
     def test_a_supplier_returned_currency_pins_it_by_path(self):
         event_type = _event_type(_tenant())
@@ -335,9 +349,8 @@ class TestTheCurrencyIsPinnedExactlyOnce:
                 currency="", currency_path=[])
 
     def test_a_currency_ubb_cannot_hold_is_refused(self):
-        """UBB holds money in micros of a currency whose minor unit it knows.
-        A code with no known minor unit cannot reach Stripe, and a declaration
-        that pinned one would be pinning a cost nobody can settle."""
+        """Refused by the same one policy as `gbp` above: a code UBB cannot
+        even represent is a fortiori one it does not admit."""
         event_type = _event_type(_tenant())
 
         with pytest.raises(ValidationError) as refused:
@@ -466,12 +479,13 @@ class TestPublicationPinsTheMapping:
         event_type.refresh_from_db()
         event_type.publish()
 
-        mapping.currency = "gbp"
+        mapping.amount_representation = AMOUNT_REPRESENTATION_MICROS
         mapping.save(update_fields=["updated_at"])
 
         assert EventType.objects.get(pk=event_type.pk).declaration_status \
             == DECLARATION_STATUS_DRAFT
-        assert ReportedCostMapping.objects.get(pk=mapping.pk).currency == "gbp"
+        assert ReportedCostMapping.objects.get(pk=mapping.pk) \
+            .amount_representation == AMOUNT_REPRESENTATION_MICROS
 
     def test_a_save_that_changes_nothing_pinned_leaves_it_published(self):
         """The other direction, without which the rule above would be "any save

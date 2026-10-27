@@ -66,6 +66,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_COMPLETED,
     TASK_TYPE_KIND_TASK,
     TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST)
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class OneRulePinTestBase(TestCase):
@@ -149,7 +150,7 @@ class OneRulePinTestBase(TestCase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin1SyncTippingEventTest(OneRulePinTestBase):
+class Pin1SyncTippingEventTest(RailActivated, OneRulePinTestBase):
     """⚠ THE ARITHMETIC LANDS EXACTLY ON THE CEILING, DELIBERATELY (#452,
     #150 §10.3). Until slice 6 this pin tipped the unit one million micros
     OVER its ceiling, which the live lane's strictly-above compare and the
@@ -243,7 +244,7 @@ class Pin1SyncTippingEventTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
+class TheAcknowledgementAssessesTheCeilingTest(RailActivated, OneRulePinTestBase):
     """The four-way assessment on the recording acknowledgement (#452, slice
     6 §3, §13) — TD claims 2 and 3, through the route.
 
@@ -573,7 +574,7 @@ class TheAcknowledgementAssessesTheCeilingTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin1NothingDeferredTest(OneRulePinTestBase):
+class Pin1NothingDeferredTest(RailActivated, OneRulePinTestBase):
     """Preserves: the Task COGS ceiling bites, and the tipping event lands and
     bills with its exact provider cost counted into the task's total.
 
@@ -613,7 +614,7 @@ class Pin1NothingDeferredTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
+class Pin2KilledTaskStillCountsTest(RailActivated, OneRulePinTestBase):
     def test_events_on_killed_task_land_bill_and_count(self, _mock):
         task = self._task(limit=10_000_000)
         # Trip the limit (kills the task; the kill executes on the recording
@@ -644,7 +645,7 @@ class Pin2KilledTaskStillCountsTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin3WalletNoFloorCheckTest(OneRulePinTestBase):
+class Pin3WalletNoFloorCheckTest(RailActivated, OneRulePinTestBase):
     def test_wallet_carries_no_floor_check(self, _mock):
         # ADR-002: DB constraints enforce accounting facts, never spend
         # policy — the wallet must accept a negative balance.
@@ -657,7 +658,7 @@ class Pin3WalletNoFloorCheckTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
+class Pin7TwoHundredAlwaysTest(RailActivated, OneRulePinTestBase):
     def test_no_usage_report_path_answers_429_or_409(self, _mock):
         task = self._task(limit=1_000_000)
         # Tipping event, then two more on the killed task — singles. Each
@@ -697,7 +698,7 @@ class Pin7TwoHundredAlwaysTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin14DenominationTest(OneRulePinTestBase):
+class Pin14DenominationTest(RailActivated, OneRulePinTestBase):
     def test_only_the_provider_total_races_the_limit(self, _mock):
         task = self._task(limit=10_000_000)
         # Billed way past the limit, provider under it -> nothing fires.
@@ -730,7 +731,7 @@ class Pin14DenominationTest(OneRulePinTestBase):
         self.assertEqual(task.status, TASK_STATUS_KILLED)
 
 
-class CeilingResolutionAtStartTest(OneRulePinTestBase):
+class CeilingResolutionAtStartTest(RailActivated, OneRulePinTestBase):
     """What Pin 15 pinned that was never about coverage (#321).
 
     This tenant declares no cost rates anywhere and every start below is
@@ -792,7 +793,7 @@ class CeilingResolutionAtStartTest(OneRulePinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin16LabelFallbackRemovedTest(OneRulePinTestBase):
+class Pin16LabelFallbackRemovedTest(RailActivated, OneRulePinTestBase):
     def test_a_task_label_gets_no_attribution_no_limit_no_kill(self, _mock):
         task = self._task(limit=1)  # would trip on any attributed event
         resp = self._record(metadata={"task": str(task.id)},
@@ -856,7 +857,7 @@ _SURFACE_FILES = [
 _SDK_ROOT = _PLATFORM_ROOT.parent / "ubb-sdk" / "ubb"
 
 
-class Pin17CleanCutSweepTest(OneRulePinTestBase):
+class Pin17CleanCutSweepTest(RailActivated, OneRulePinTestBase):
     def test_no_run_era_event_type_in_catalog(self):
         from apps.platform.events import catalog, schemas
         self.assertNotIn("run.limit_exceeded", catalog.WEBHOOK_EVENT_TYPES)

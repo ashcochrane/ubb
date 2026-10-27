@@ -2,13 +2,30 @@ import hashlib
 import secrets
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.platform.membership.roles import ADMIN, ROLE_CHOICES
+from core.exceptions import StripeFatalError
+from core.currency_policy import (
+    UnsupportedCurrency,
+    admit_currency,
+    usd_only_check,
+)
 from core.models import BaseModel
+from core.transitions import FROZEN
 from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_EXTERNAL,
     CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID,
+    CUSTOMER_BILLING_MODE_VALUES,
+    PAYMENT_RAIL_ENVIRONMENT_LIVE,
+    PAYMENT_RAIL_ENVIRONMENT_TEST,
+    PAYMENT_RAIL_ENVIRONMENT_VALUES,
+    PAYMENT_RAIL_STRIPE,
+    PAYMENT_RAIL_VALUES,
+    TENANT_POSTURE_FULL_BILLING,
+    TENANT_POSTURE_METERING_ONLY,
     TENANT_PRODUCT_METERING,
     TENANT_PRODUCT_VALUES,
 )
@@ -27,24 +44,244 @@ from core.vocabulary import (
 # it switched on (#149 §6) — there is one recording core, so there is nothing
 # for a tenant to choose between.
 
-# CUR-1's SUPPORTED_CURRENCIES now lives in ``core.money``, beside the table
-# that says how many minor units each of them has — one place, both facts about
-# a currency. It sat here only because the 1/100 minor unit was hard-coded at
-# twenty sites and the list was the cheapest way to keep them all true.
+# WHICH CURRENCY A TENANT MAY HOLD IS NOT THIS MODEL'S ANSWER, AND IT IS NOT
+# `core.money`'s EITHER. That module's table says which currencies UBB can
+# REPRESENT; `core.currency_policy` says which one its economics ADMIT, and in
+# v1 that is US dollars only (ADR-0023). `clean` below asks the policy, and
+# `ck_tenant_default_currency_usd` holds every write that never calls it — the
+# admin form is a door, and so is `QuerySet.update()`.
 
 # The canonical tokens come from the registry via `core.vocabulary` (#200), so
 # this model cannot hold a second copy of a value that drifts from it. The
 # English stays here: label wording is not registry content (ADR-0008 §4).
 #
-# "meter_only" is the one entry still spelled out. The registry declares the
-# END-STATE name for it, which is a different word, and renaming the value a
-# tenant's API responses carry is a later slice's job (a migration-ledger entry,
-# #201) — not something to slip into the slice that installs the gates.
+# All three by reference since slice 8 (R10-W3): the mode that meters and
+# never bills is `external`, which says where the billing happens — the fact a
+# tenant is choosing between — where the retired word said what UBB does not do.
 BILLING_MODE_CHOICES = [
-    ("meter_only", "Meter only"),
+    (CUSTOMER_BILLING_MODE_EXTERNAL, "External billing"),
     (CUSTOMER_BILLING_MODE_PREPAID, "Prepaid credits"),
     (CUSTOMER_BILLING_MODE_POSTPAID, "Postpaid"),
 ]
+
+#: WHETHER UBB CREATES THIS TENANT'S CUSTOMER CHARGES AT ALL — the registry's
+#: `tenant_posture`, DERIVED from the billing mode and never stored (ADR-0006 §4):
+#: a second writable copy could disagree with the first. Served read-only on
+#: the tenant config so a caller need not reconstruct this mapping.
+TENANT_POSTURE_OF = {
+    CUSTOMER_BILLING_MODE_EXTERNAL: TENANT_POSTURE_METERING_ONLY,
+    CUSTOMER_BILLING_MODE_PREPAID: TENANT_POSTURE_FULL_BILLING,
+    CUSTOMER_BILLING_MODE_POSTPAID: TENANT_POSTURE_FULL_BILLING,
+}
+
+#: THE MODES IN WHICH UBB MOVES A TENANT'S CUSTOMER MONEY — the ones whose
+#: posture is `full_billing` — and so the ones a tenant may not enter before
+#: the payment rail they collect through is activated (ADR-0008 §6, G27).
+#: Derived from the posture map rather than listed, so the two cannot disagree.
+MONEY_MODES = frozenset(
+    mode for mode, posture in TENANT_POSTURE_OF.items()
+    if posture == TENANT_POSTURE_FULL_BILLING)
+
+#: The rail a tenant's money modes collect through. v1 has one; a second rail
+#: would make this a per-tenant choice, and that is a decision for then.
+TENANT_MONEY_RAIL = PAYMENT_RAIL_STRIPE
+
+
+def rail_environment_of(*, is_sandbox):
+    """Which environment of the rail a tenant's money moves in (ruling 1).
+
+    A sandbox exercises the rail's `test` environment and every other tenant
+    its `live` one — so a sandbox copied from a `prepaid` parent needs the
+    `test` activation, and a `live` one does not stand in for it.
+    """
+    return (PAYMENT_RAIL_ENVIRONMENT_TEST if is_sandbox
+            else PAYMENT_RAIL_ENVIRONMENT_LIVE)
+
+
+class PaymentRailNotActivated(ValidationError):
+    """G27's refusal: a money mode, with no enabled activation of its rail.
+
+    A `ValidationError` on `billing_mode`, so the admin form shows it on the
+    field and a model's `clean()` raises it like any other; its own class,
+    so the API answers it by name (`payment_rail_not_activated`) rather than
+    as a generic invalid configuration, and a caller can tell "this mode is
+    not open yet" from "you sent something malformed".
+    """
+
+    code = "payment_rail_not_activated"
+
+    def __init__(self, *, billing_mode, rail, environment):
+        self.billing_mode = billing_mode
+        self.rail = rail
+        self.environment = environment
+        self.explanation = (
+            f"billing_mode '{billing_mode}' moves customer money through the "
+            f"'{rail}' payment rail, which has no enabled activation in its "
+            f"'{environment}' environment. A rail is activated by a named "
+            f"approver recording its evidence (ADR-0008 §6); until then this "
+            f"tenant can meter and bill elsewhere ('external').")
+        super().__init__({"billing_mode": [self.explanation]})
+
+
+def refuse_a_money_mode_without_its_rail(*, billing_mode, is_sandbox):
+    """THE ONE DOMAIN RULE G27 is (ADR-0008 §6; the owner's ruling 3).
+
+    `prepaid` or `postpaid` may not be entered without an ENABLED activation
+    of the tenant's rail in the tenant's environment. Every door that writes
+    a tenant reaches it through `Tenant.clean()` — the config route, sandbox
+    creation, the admin form and the seed command — and
+    `trg_tenant_money_mode_needs_its_rail` holds the same requirement for the
+    writes that never call `clean()`. It decides nothing about a tenant
+    already in a money mode: disabling a rail stops new use, and scans no
+    dependent tenant (ruling 2).
+    """
+    if billing_mode not in MONEY_MODES:
+        return
+    environment = rail_environment_of(is_sandbox=is_sandbox)
+    if not the_rail_is_open_in(environment):
+        raise PaymentRailNotActivated(
+            billing_mode=billing_mode, rail=TENANT_MONEY_RAIL,
+            environment=environment)
+
+
+def the_rail_is_open_in(environment):
+    """Whether the tenant money rail may be used in ``environment`` now: an
+    activation exists AND its flag is on. The one read every G27 decision
+    takes — entering a money mode, and starting new money on the rail.
+
+    There is exactly one activation per rail and environment
+    (`uq_payment_rail_activation_once_per_environment`), so this asks one
+    row and never depends on which of two rows a query returns first.
+    """
+    return PaymentRailActivation.objects.filter(
+        rail=TENANT_MONEY_RAIL, environment=environment, enabled=True).exists()
+
+
+class PaymentRailClosed(StripeFatalError):
+    """G27's OPERATIONAL refusal: new customer money on a rail that is closed —
+    never activated, or its flag turned off — in the tenant's environment.
+
+    The flag's one meaning is "may this rail be used now": ADR-0008 §6's
+    flag "technically prevents premature use", and disabling it "may stop
+    new activation or use of the rail" (the owner's ruling 2). So a tenant
+    already in a money mode keeps its mode — nothing scans it — but no NEW
+    money moves on a closed rail: no top-up checkout, no auto top-up
+    charge, no usage invoice pushed, no subscription started, resumed or
+    re-priced. Money that already moved still lands (webhooks, receipts),
+    and stopping money (pause, cancel) is never refused.
+
+    A `StripeFatalError` — not retryable, and raised before anything is
+    sent — so every caller's non-retryable path takes it; the API answers it
+    by name, with the same code as the entry refusal.
+    """
+
+    code = "payment_rail_not_activated"
+
+    def __init__(self, *, tenant_id, rail, environment):
+        self.rail = rail
+        self.environment = environment
+        self.explanation = (
+            f"the '{rail}' payment rail is not open in its '{environment}' "
+            f"environment — no enabled activation — so UBB starts no new "
+            f"money movement on it for tenant {tenant_id}. Money already "
+            f"moved still lands; an approver reopens the rail with its flag.")
+        super().__init__(self.explanation)
+
+
+def refuse_a_rail_operation_while_it_is_closed(tenant):
+    """Refuse NEW customer money on ``tenant``'s rail unless it is open for
+    the tenant's environment (G27's flag, operationally). Called by each
+    outbound adapter before anything reaches Stripe.
+
+    It governs the MONEY MODES, the posture G27 is about ("`prepaid` and
+    `postpaid` may not be enabled without a matching activation"): a tenant in
+    one moves its customers' money on the rail, and a closed rail stops that.
+    An `external` tenant has entered no money mode, and UBB's subscription
+    control plane serves it on the billing product as before — whether that
+    use should need an activation too is the owner's question, recorded on
+    #619, not a reading taken here.
+    """
+    if tenant.billing_mode not in MONEY_MODES:
+        return
+    environment = rail_environment_of(is_sandbox=tenant.is_sandbox)
+    if not the_rail_is_open_in(environment):
+        raise PaymentRailClosed(tenant_id=tenant.id, rail=TENANT_MONEY_RAIL,
+                                environment=environment)
+
+
+class PaymentRailActivation(BaseModel):
+    """The evidence that a payment rail was approved to move money in one
+    environment (ADR-0008 §6) — and the flag that lets it be used.
+
+    **A record and a flag, on one row, under two rules.** The record —
+    `rail`, `environment`, `activated_at`, `approved_by`, `evidence` — is
+    historical fact: who approved what, when, on what evidence. All five are
+    declared `FROZEN` and held by
+    `trg_payment_rail_activation_declared_transitions` through every door
+    (the owner's ruling 2). The flag, `enabled`, is the operational switch:
+    turning it off stops any tenant ENTERING a money mode on this rail and
+    environment, and deletes nothing — there is no delete or revoke path:
+    the table refuses every `DELETE` (`trg_payment_rail_activation_is_kept`),
+    the admin grants no delete permission, and nothing scans the tenants
+    already in one.
+
+    It has no tenant: a rail is activated for the platform, once per
+    environment, and every tenant's money mode reads the one row for its
+    own environment (`rail_environment_of`).
+    """
+
+    rail = models.CharField(
+        max_length=20,
+        choices=[(rail, rail) for rail in sorted(PAYMENT_RAIL_VALUES)])
+    environment = models.CharField(
+        max_length=10,
+        choices=[(environment, environment)
+                 for environment in sorted(PAYMENT_RAIL_ENVIRONMENT_VALUES)])
+    activated_at = models.DateTimeField()
+    approved_by = models.CharField(max_length=255)
+    evidence = models.TextField()
+    enabled = models.BooleanField(default=True)
+
+    #: The evidence is history; the flag beside it is not, and is left
+    #: undeclared for that reason — an operational column, the way a
+    #: Charge's `correction_note` is.
+    transition_classes = {
+        "rail": FROZEN,
+        "environment": FROZEN,
+        "activated_at": FROZEN,
+        "approved_by": FROZEN,
+        "evidence": FROZEN,
+    }
+
+    class Meta:
+        db_table = "ubb_payment_rail_activation"
+        constraints = [
+            # One activation per rail and environment: the flag answers
+            # "may this rail be used here?" and two rows would make that
+            # question ambiguous.
+            models.UniqueConstraint(
+                fields=["rail", "environment"],
+                name="uq_payment_rail_activation_once_per_environment"),
+            models.CheckConstraint(
+                condition=models.Q(rail__in=sorted(PAYMENT_RAIL_VALUES)),
+                name="ck_payment_rail_activation_rail_known"),
+            models.CheckConstraint(
+                condition=models.Q(
+                    environment__in=sorted(PAYMENT_RAIL_ENVIRONMENT_VALUES)),
+                name="ck_payment_rail_activation_environment_known"),
+            # Evidence with no approver, or an approver with no evidence, is
+            # not evidence (ADR-0008 §6: "a named approver").
+            models.CheckConstraint(
+                condition=~models.Q(approved_by=""),
+                name="ck_payment_rail_activation_names_its_approver"),
+            models.CheckConstraint(
+                condition=~models.Q(evidence=""),
+                name="ck_payment_rail_activation_carries_its_evidence"),
+        ]
+
+    def __str__(self):
+        state = "enabled" if self.enabled else "disabled"
+        return f"{self.rail} ({self.environment}, {state})"
 
 # Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
 # positions (#42, spec §G; `advisory` retired, mapped to `off` by migration
@@ -77,7 +314,8 @@ class Tenant(BaseModel):
     widget_secret = models.CharField(max_length=64, blank=True, default="")
     products = models.JSONField(default=list, blank=True)
     billing_mode = models.CharField(
-        max_length=20, choices=BILLING_MODE_CHOICES, default="meter_only", db_index=True
+        max_length=20, choices=BILLING_MODE_CHOICES,
+        default=CUSTOMER_BILLING_MODE_EXTERNAL, db_index=True
     )
     default_currency = models.CharField(max_length=3, default="usd")
     charges_enabled = models.BooleanField(default=False)
@@ -210,6 +448,18 @@ class Tenant(BaseModel):
     class Meta:
         db_table = "ubb_tenant"
         constraints = [
+            # UBB v1 is USD-only (ADR-0023). The tenant's currency is the
+            # column this rule most needs: the config route refuses another,
+            # and the admin form edits every column without it.
+            usd_only_check("default_currency", "ck_tenant_default_currency_usd"),
+            # The closed set at the database (ADR-0002): `choices=` is a form
+            # courtesy, and neither the admin form nor `QuerySet.update()` is
+            # held by it.
+            models.CheckConstraint(
+                condition=models.Q(
+                    billing_mode__in=sorted(CUSTOMER_BILLING_MODE_VALUES)),
+                name="ck_tenant_billing_mode_known",
+            ),
             models.UniqueConstraint(
                 fields=["parent_tenant"],
                 condition=models.Q(is_sandbox=True),
@@ -238,8 +488,49 @@ class Tenant(BaseModel):
     def __str__(self):
         return self.name
 
+    @property
+    def tenant_posture(self):
+        """The registry's derived posture for this tenant's billing mode."""
+        return TENANT_POSTURE_OF[self.billing_mode]
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        tenant = super().from_db(db, field_names, values)
+        tenant._stored_money_posture = tenant._money_posture_as_loaded()
+        return tenant
+
+    def refresh_from_db(self, using=None, fields=None, from_queryset=None):
+        super().refresh_from_db(using=using, fields=fields,
+                                from_queryset=from_queryset)
+        if fields is None or {"billing_mode", "is_sandbox"} & set(fields):
+            self._stored_money_posture = self._money_posture_as_loaded()
+
+    def _money_posture_as_loaded(self):
+        """`(billing_mode, is_sandbox)` as read, or None if either was deferred."""
+        loaded = self.__dict__
+        if "billing_mode" not in loaded or "is_sandbox" not in loaded:
+            return None
+        return (loaded["billing_mode"], loaded["is_sandbox"])
+
+    def _entering_a_money_mode(self):
+        """Whether this write puts the tenant into a money mode it was not in.
+
+        A new row in one is entering it, and so is a change of mode or of
+        environment. A tenant already in one is not — re-saving it asks no
+        question, which is what lets a rail be disabled without scanning
+        anyone (ruling 2).
+        """
+        if self.billing_mode not in MONEY_MODES:
+            return False
+        stored = None
+        if not self._state.adding:
+            stored = getattr(self, "_stored_money_posture", None)
+            if stored is None:
+                stored = (Tenant.objects.filter(pk=self.pk)
+                          .values_list("billing_mode", "is_sandbox").first())
+        return stored != (self.billing_mode, self.is_sandbox)
+
     def clean(self):
-        from django.core.exceptions import ValidationError
         super().clean()
         if not self.products or TENANT_PRODUCT_METERING not in self.products:
             raise ValidationError({"products": "metering must always be present in products."})
@@ -248,11 +539,21 @@ class Tenant(BaseModel):
             raise ValidationError(
                 {"products": f"Unknown products: {', '.join(sorted(unknown))}"}
             )
-        money_modes = (CUSTOMER_BILLING_MODE_PREPAID, CUSTOMER_BILLING_MODE_POSTPAID)
-        if self.billing_mode in money_modes and "billing" not in (self.products or []):
+        if self.billing_mode in MONEY_MODES and "billing" not in (self.products or []):
             raise ValidationError(
                 {"billing_mode": f"billing_mode '{self.billing_mode}' requires 'billing' in products."}
             )
+        # G27 (ADR-0008 §6): a money mode needs its rail activated first.
+        if self._entering_a_money_mode():
+            refuse_a_money_mode_without_its_rail(
+                billing_mode=self.billing_mode, is_sandbox=self.is_sandbox)
+        # UBB v1 is USD-only (ADR-0023). Every door that saves a tenant —
+        # the config route, a sandbox, the admin form, a seed — reaches this,
+        # and the CHECK above holds the writes that never call `save()`.
+        try:
+            self.default_currency = admit_currency(self.default_currency)
+        except UnsupportedCurrency as refused:
+            raise ValidationError({"default_currency": str(refused)})
         if self.backfill_window_days is not None and not (0 <= self.backfill_window_days <= 60):
             raise ValidationError(
                 {"backfill_window_days": "backfill_window_days must be between 0 and 60."}
@@ -268,6 +569,7 @@ class Tenant(BaseModel):
         self.products = sorted(set(self.products))
         self.clean()
         super().save(*args, **kwargs)
+        self._stored_money_posture = (self.billing_mode, self.is_sandbox)
         cache.delete(f"tenant_products:{self.id}")
 
     def rotate_widget_secret(self):

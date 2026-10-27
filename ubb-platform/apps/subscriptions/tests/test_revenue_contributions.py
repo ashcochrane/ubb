@@ -15,7 +15,6 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.revenue import RevenueService
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.queries import (
     REVENUE_ATTRIBUTABLE_AXES, REVENUE_FINEST_BUCKET, REVENUE_SOURCES,
     REVENUE_SOURCE_SUBSCRIPTION, REVENUE_SOURCE_TENANT_SUPPLIED,
@@ -25,6 +24,7 @@ from core.vocabulary import (
     RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED,
 )
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 OPENS, NEXT = date(2026, 3, 1), date(2026, 4, 1)
 MONTH = [(OPENS, NEXT)]
@@ -59,7 +59,7 @@ class _ATenantWithTwoCustomers(TestCase):
     def a_subscription(self, customer=None, *, amount=31_000_000,
                        status="active", interval="month"):
         now = timezone.now()
-        return StripeSubscription.objects.create(
+        return a_mirrored_subscription(
             tenant=self.tenant, customer=customer or self.customer,
             stripe_subscription_id=f"sub_{status}_{amount}",
             stripe_product_name="Pro", status=status, amount_micros=amount,

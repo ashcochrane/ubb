@@ -37,6 +37,7 @@ from django.utils import timezone
 from apps.platform.code_builder.models import BlueprintSnapshot
 
 from ._helpers import EVENT, PROVIDER, BlueprintRoutes, a_tenant
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 START = "api_v1_task_endpoints_start_task"
 
@@ -85,6 +86,9 @@ class _Routes(BlueprintRoutes):
     BILLS = True
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.tenant, self.raw_key = (
             a_tenant(products=("metering", "billing"), billing_mode="postpaid")
             if self.BILLS else a_tenant())

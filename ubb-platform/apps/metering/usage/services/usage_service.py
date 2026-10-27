@@ -8,6 +8,7 @@ from django.db import transaction, IntegrityError
 from django.utils import timezone
 
 from core.crossing import ceiling_fields
+from core.currency_policy import admit_currency
 from core.time_windows import closed_months, month_bounds
 from core.vocabulary import (
     PRICING_MODE_EVENT_PRICED, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -67,9 +68,8 @@ _FUTURE_SKEW = timedelta(minutes=5)
 
 
 def _tenant_currency(tenant):
-    """CUR-1: the tenant's single event currency, normalized lowercase — the
-    ONE rule both the endpoint adapter's mismatch check and the recording
-    input's stamp share."""
+    """The currency a posting is stamped in: the tenant's, which the one
+    policy holds to US dollars (ADR-0023)."""
     return (tenant.default_currency or "usd").lower()
 
 
@@ -994,18 +994,11 @@ class UsageService:
         owner_id = owner.id
         if effective_at is not None:
             validate_effective_at(tenant, owner_id, effective_at, now)
-        # CUR-1 choke point: every event is denominated in the tenant's single
-        # currency. A caller-supplied currency must MATCH it (case-insensitive)
-        # or the event is rejected — no FX, no mixed-currency data. The
-        # normalized stamp itself is gather()'s job.
-        tenant_currency = _tenant_currency(tenant)
+        # UBB v1 is USD-only (ADR-0023): a caller-supplied currency is
+        # admitted by the one policy or the event is refused, never
+        # converted. The stamp itself is gather()'s job, off the tenant row.
         if currency:
-            currency = str(currency).strip().lower()
-            if currency != tenant_currency:
-                raise ValueError(
-                    f"currency mismatch: event currency {currency!r} does not "
-                    f"match tenant currency {tenant_currency!r} (per-tenant "
-                    "single currency; multi-currency/FX is not supported)")
+            currency = admit_currency(currency)
         inp = RecordingInput.gather(
             tenant=tenant, customer=customer,
             idempotency_key=idempotency_key, metadata=metadata,

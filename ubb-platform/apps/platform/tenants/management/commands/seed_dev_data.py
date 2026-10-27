@@ -2,7 +2,16 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import (
+    MONEY_MODES,
+    PaymentRailNotActivated,
+    Tenant,
+    TenantApiKey,
+)
+from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_EXTERNAL,
+    CUSTOMER_BILLING_MODE_VALUES,
+)
 from apps.platform.customers.models import Customer
 
 
@@ -32,12 +41,14 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--billing-mode",
-            default="postpaid",
-            choices=["meter_only", "prepaid", "postpaid"],
+            default=CUSTOMER_BILLING_MODE_EXTERNAL,
+            choices=sorted(CUSTOMER_BILLING_MODE_VALUES),
             help=(
-                "Tenant billing mode (default: postpaid). "
-                "Use 'postpaid' or 'prepaid' to enable J2 subscription billing. "
-                "'meter_only' = J1 cost-attribution only."
+                "Tenant billing mode (default: external = J1 cost-attribution "
+                "only). 'postpaid' or 'prepaid' enable J2 subscription billing, "
+                "and need the Stripe payment rail activated for the environment "
+                "first (ADR-0008 §6, recorded in the admin by its approver): "
+                "this command records no activation evidence of its own."
             ),
         )
         parser.add_argument(
@@ -56,10 +67,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        try:
+            self._seed(options)
+        except PaymentRailNotActivated as refused:
+            # G27: a seed is a door like any other, and it fabricates no
+            # activation to get through it (the owner's §0.4 E).
+            raise CommandError(refused.explanation)
+
+    def _seed(self, options):
         billing_mode = options["billing_mode"]
         # Products required for J2 (billing, incl. subscriptions as a billing
-        # capability) when not meter_only.
-        if billing_mode in ("prepaid", "postpaid"):
+        # capability) when not external.
+        if billing_mode in MONEY_MODES:
             products = ["metering", "billing"]
         else:
             products = ["metering"]
@@ -219,9 +238,9 @@ class Command(BaseCommand):
         self.stdout.write(
             f'# SDK quickstart — see ubb-sdk/README.md for the full Journey-1 happy path\n')
 
-        # ---- Journey 2 endpoints (only meaningful when billing_mode != meter_only) ----
+        # ---- Journey 2 endpoints (only meaningful when billing_mode != external) ----
         self.stdout.write("=" * 60)
-        if billing_mode == "meter_only":
+        if billing_mode == CUSTOMER_BILLING_MODE_EXTERNAL:
             self.stdout.write("Journey 2 (subscriptions + seats) is NOT enabled.")
             self.stdout.write(
                 "Re-run with --billing-mode postpaid to enable J2 (adds billing+subscriptions).\n")

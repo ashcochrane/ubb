@@ -1239,23 +1239,113 @@ gates:
       be enabled without a matching activation record for the rail.
     oracle: the PaymentRailActivation record
     source: ADR-0008 §6, #158 §10.3
-    status: owned_by_slice_8
-    blocked_on: >-
-      `PaymentRailActivation` does not exist as a record or a flag. #191
-      decision 14 splits this: slice 0 declares the vocabulary and this
-      obligation; slice 8 builds the record, the flag and the centrally enforced
-      invariant.
+    status: installed
     notes: >-
-      ADR-0008 §6 requires the invariant to be enforced centrally and never as
-      an advisory console convention, so this row is not satisfied by a UI
-      check. Slice 0's half is DONE and is checkable now: `payment_rail` and
-      `payment_rail_environment` are `closed` concepts in
-      domain-vocabulary/concepts/payment-rails.yaml (#202), declaring no
-      consumers, because ADR-0008 §10.4 requires the names to exist before
-      anything is built on them and ADR-0007 §3 forbids a provisional one. This
-      row staying owned is what distinguishes that early declaration from the
-      later implementation of the check — the names existing must never be read
-      as the invariant being enforced.
+      Installed by slice 8 (R10-W3) under the owner's rulings 1-3 on #190.
+      ONE domain rule, `refuse_a_money_mode_without_its_rail`
+      (`apps/platform/tenants/models.py`), is reached from `Tenant.clean()` by
+      every door that saves a tenant — the config route, sandbox creation and
+      the test key that provisions one, the admin form, `seed_dev_data` — and
+      the API answers it by name (409 `payment_rail_not_activated`), never
+      with a database error. The database is the backstop:
+      `trg_tenant_money_mode_needs_its_rail` on `ubb_tenant` refuses an INSERT,
+      or a change of mode or environment, into `prepaid` or `postpaid` without
+      an ENABLED activation for the tenant's environment — a sandbox's `test`,
+      every other tenant's `live` (ruling 1). The flag is a column of the
+      activation, so the database sees the record AND the flag, and each site
+      holds the whole invariant: the domain rule for the named refusal, the
+      trigger for the writes that never call `clean()`. The activation's five
+      evidence columns are declared FROZEN and held by
+      `trg_payment_rail_activation_declared_transitions` (G19's mechanism);
+      there is no delete or revoke path — the table refuses every DELETE
+      (`trg_payment_rail_activation_is_kept`) — and disabling the flag stops new
+      use without scanning a tenant already in a money mode (ruling 2).
+      THE FLAG HAS ONE OPERATIONAL MEANING — "may this rail be used now" —
+      (the owner's review of #619): for a tenant already in a money mode, a
+      closed rail refuses every NEW customer-money operation by name before
+      Stripe (`PaymentRailClosed`, `refuse_a_rail_operation_while_it_is_closed`):
+      the top-up checkout and the auto top-up charge, a subscription started,
+      resumed or re-priced and a seat quantity pushed, and a usage invoice,
+      which is held as a recoverable skip and pushed once the rail reopens.
+      Money that already moved still lands, and pause/cancel are never
+      refused. Exactly one activation per rail and environment
+      (`uq_payment_rail_activation_once_per_environment`), so no decision
+      rests on which of two rows a query returns.
+      Fixtures are rail-ready only by asking (`RailActivated`,
+      `rail_activated`), and the nodes below build their own activations or
+      none (the owner's §0.4 E). Shown red on a planted violation: with the
+      trigger dropped the database-door nodes fail, and with the domain rule
+      gutted the route, sandbox, admin and seed nodes fail (the #190
+      hand-forward records the run). Before slice 8 this row was owned and
+      the two concepts declared no consumers (#202), so the names existing
+      were never read as the invariant being enforced.
+    enforced_by:
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::TheEnvironmentFollowsTheTenantTest::test_a_live_tenant_with_the_live_activation_is_admitted
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::TheEnvironmentFollowsTheTenantTest::test_a_sandbox_with_the_test_activation_is_admitted
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::TheEnvironmentFollowsTheTenantTest::test_a_sandbox_with_only_the_live_activation_is_refused
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::TheEnvironmentFollowsTheTenantTest::test_a_refused_sandbox_is_never_downgraded_to_external
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_the_config_route_refuses_by_name_and_writes_nothing
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_a_disabled_activation_is_no_activation
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_the_admin_form_refuses_on_the_field
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_the_seed_command_refuses_and_fabricates_no_evidence
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_the_database_refuses_the_writes_that_never_call_save
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::EveryDoorRefusesAMoneyModeWithoutItsRailTest::test_the_database_holds_the_environment_too
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::ATenantAlreadyInAMoneyModeIsLeftAloneTest::test_every_door_still_writes_the_tenants_other_columns
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::TheEvidenceIsFrozenTest::test_no_evidence_column_moves_through_any_door
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::TheEvidenceIsFrozenTest::test_the_flag_moves_through_every_door
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::TheAdminHasNoDeleteOrRevokePathTest::test_the_delete_page_is_forbidden_and_the_row_survives
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::NoDoorDeletesAnActivationTest::test_the_evidence_survives_every_door_that_deletes
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_a_top_up_checkout_is_refused_by_name_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_an_auto_top_up_charge_is_refused_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_a_usage_invoice_is_held_recoverably_and_pushes_once_the_rail_reopens
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_resuming_a_subscription_is_refused_by_name
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_starting_a_subscription_is_refused_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_reopening_the_rail_lets_new_money_start_again
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::AnActivationIsEvidenceWhenRecordedTest::test_one_activation_per_rail_and_environment
 
 # --- Obligations that are not gates -----------------------------------------
 #

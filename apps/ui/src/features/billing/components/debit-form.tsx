@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros } from "@/lib/format";
+import { movementReasonToSend } from "@/lib/movement-reason";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useDebitWallet } from "../api/queries";
@@ -34,7 +35,7 @@ export function DebitForm({ isAdmin }: { isAdmin: boolean }) {
       amount: "",
       reference: "",
       actor: "",
-      reason_code: "",
+      movement_reason: "",
       allow_negative: false,
     },
   });
@@ -49,7 +50,7 @@ export function DebitForm({ isAdmin }: { isAdmin: boolean }) {
         idempotency_key: confirm.idempotencyKey.current ?? crypto.randomUUID(),
         reference: v.reference.trim(),
         actor: v.actor.trim(),
-        reason_code: v.reason_code.trim(),
+        movement_reason: movementReasonToSend(v.movement_reason),
         allow_negative: v.allow_negative,
       },
       {
@@ -93,10 +94,10 @@ export function DebitForm({ isAdmin }: { isAdmin: boolean }) {
       <OptionalFields
         isAdmin={isAdmin}
         actor={form.register("actor")}
-        reasonCode={form.register("reason_code")}
+        movementReason={form.register("movement_reason")}
         errors={{
           actor: form.formState.errors.actor?.message,
-          reasonCode: form.formState.errors.reason_code?.message,
+          movementReason: form.formState.errors.movement_reason?.message,
         }}
       />
       <Controller

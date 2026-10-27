@@ -20,6 +20,7 @@ from apps.platform.events.schemas import CustomerStopCleared
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -30,6 +31,9 @@ def _tenant(mode="prepaid", enf="enforcing"):
 @pytest.mark.django_db
 class TestCleanup:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_clears_stop_and_balance_for_tenant_owners(self):
@@ -84,6 +88,9 @@ class TestCleanup:
 @pytest.mark.django_db
 class TestDriftAlert:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_reconcile_prepaid_logs_drift_spike(self, caplog):
@@ -108,6 +115,9 @@ class TestDriftAlert:
 @pytest.mark.django_db
 class TestEnforcementModeFlip:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def _patch(self, raw, body):

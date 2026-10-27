@@ -48,6 +48,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.platform.work.models import Task
 from core.vocabulary import TASK_STATUS_KILLED, TRIGGER_SOURCE_USAGE_INGEST
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: The seat level's line: the tenant default, which reaches every seat and
 #: never a business, so each seat has a Pool of its own at this figure.
@@ -338,13 +339,13 @@ class APooledSeatsOwnPoolStopReachesItsAcknowledgements:
             self._assert_not_stopped(ack)
 
 
-class APooledSeatsOwnPoolStopOnTheSingleRouteTest(
+class APooledSeatsOwnPoolStopOnTheSingleRouteTest(RailActivated, 
         APooledSeatsOwnPoolStopReachesItsAcknowledgements,
         ThroughTheSingleRoute, PoolTestBase):
     pass
 
 
-class APooledSeatsOwnPoolStopOnABatchItemTest(
+class APooledSeatsOwnPoolStopOnABatchItemTest(RailActivated, 
         APooledSeatsOwnPoolStopReachesItsAcknowledgements,
         ThroughABatchItem, PoolTestBase):
     pass

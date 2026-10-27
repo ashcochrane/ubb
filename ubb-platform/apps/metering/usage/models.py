@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.platform.event_types.exact_decimals import canonical_quantities
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE
 from core.vocabulary import (
@@ -138,10 +139,10 @@ class Posting(BaseModel):
     # The argument for dropping it rather than moving it is in
     # `migrations/0032_the_inline_unit_total_dies.py`.
     #
-    # CUR-1: lowercase, matching the seven other currency columns and the
-    # payment rail's own casing (#269, spec §K2). No CHECK constraint —
-    # see the module note in `tests/test_posting_rename.py` for why the one
-    # slice 2 was handed cannot be written truthfully today.
+    # Lowercase, matching every other currency column and the payment rail's
+    # own casing (#269, spec §K2). `ck_posting_currency_usd` holds it to UBB
+    # v1's one currency (ADR-0023): the recording routes refuse another, and
+    # the CHECK holds every write that goes round them.
     currency = models.CharField(max_length=3, default="usd")
     # --- The fourteen selector columns (design D2/D3) ---
     # One vocabulary for analytics grouping AND rate selection. Four reserved
@@ -512,6 +513,8 @@ class Posting(BaseModel):
                 fields=["tenant", "customer", "idempotency_key"],
                 name="uq_usage_event_idempotency_v2",
             ),
+            # UBB v1 is USD-only (ADR-0023).
+            usd_only_check("currency", "ck_posting_currency_usd"),
             # The two closed sets, at the database. The shape is the value-set
             # check slice 2 put on the Event Type's costing declaration: a
             # closed concept that only `clean()` defends is open to anything

@@ -46,6 +46,7 @@ from core.vocabulary import (
     TASK_TYPE_KIND_SUBTASK,
     TRIGGER_SOURCE_PARENT_CASCADE, TRIGGER_SOURCE_POOL_CROSSING,
     TRIGGER_SOURCE_STALE_REAPER, TRIGGER_SOURCE_USAGE_INGEST)
+from apps.platform.tenants.tests._rails import RailActivated
 
 STOP_FIELDS = ("reason_code", "trigger_source", "control_family")
 
@@ -72,7 +73,7 @@ class AUnitReadTestBase(EveryStopNamesItsControlTestBase):
         return {field: body[field] for field in STOP_FIELDS}
 
 
-class AStoppedUnitSaysHowTest(AUnitReadTestBase):
+class AStoppedUnitSaysHowTest(RailActivated, AUnitReadTestBase):
 
     def test_a_ceiling_stop(self):
         unit = self._unit(ceiling=5_000_000)
@@ -134,7 +135,7 @@ class AStoppedUnitSaysHowTest(AUnitReadTestBase):
         self.assertEqual(row["reason_code"], reasons.TASK_COGS_CEILING)
 
 
-class AUnitUBBDidNotStopSaysNoneTest(AUnitReadTestBase):
+class AUnitUBBDidNotStopSaysNoneTest(RailActivated, AUnitReadTestBase):
     """Null, with the keys present: required and nullable, never absent."""
 
     def test_running_work(self):
@@ -169,7 +170,7 @@ class AUnitUBBDidNotStopSaysNoneTest(AUnitReadTestBase):
         self.assertEqual(body["outcome_reason"], OUTCOME_REASON_TIMEOUT)
 
 
-class KeysACallerPlantedAreNeverUBBsStopTest(AUnitReadTestBase):
+class KeysACallerPlantedAreNeverUBBsStopTest(RailActivated, AUnitReadTestBase):
     """A caller plants every stop-looking key at the start; whichever path the
     unit then takes, the read answers only what UBB recorded — and the
     caller's bag comes through every path exactly as the caller wrote it,

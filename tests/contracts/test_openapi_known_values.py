@@ -1345,6 +1345,23 @@ CONCEPTS_IN_THE_CONTRACT = {
     "diagnostic_severity": Published(1, ENUM),    # each diagnostic
     "diagnostic_code": Published(1, ENUM),        # each diagnostic
     "configuration_object_kind": Published(2, ENUM),  # provenance + diagnostic
+    # R10-W3 (slice 8's ledger) — THE TENANT'S BILLING MODE TAKES ITS FINAL
+    # WORD, AND THE POSTURE DERIVED FROM IT IS SERVED BESIDE IT. Two G4 debts
+    # paid in one commit, for #498's reason: the posture is a function of the
+    # mode (ADR-0006 §4), so publishing one without the other would publish
+    # half a sentence. The mode is written and read, so it is in and out —
+    # nullable on the way in, where `null` means "leave this alone", so its
+    # marker sits on the union's string member. The posture is read only:
+    # never stored, so there is nothing a caller could write.
+    "customer_billing_mode": Published(2, ENUM),  # TenantConfigIn + Out
+    "tenant_posture": Published(1, ENUM),         # TenantConfigOut
+    # R10-W3 (#479) — WHY A WALLET MOVED BY HAND, coined and marked in one
+    # commit, so it never owed a G4 debt and the seeding's floor does not
+    # move (`outcome_reason`'s precedent). Two request nodes, the credit
+    # body and the debit body; nullable on the way in, where `null` records
+    # no reason, so the marker sits on the union's string member. No read
+    # publishes it.
+    "movement_reason": Published(2, ENUM),  # CreditRequest + DebitRequest
 }
 
 
@@ -1886,6 +1903,16 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("configuration_object_kind", {"IntegrationBlueprintProvenance",
                                          "IntegrationBlueprintDiagnostic"})
 
+    # The tenant's own billing mode is written where the tenant writes its
+    # configuration and read where it reads it, beside `tenant_product`; the
+    # posture is derived from it, so it is only ever read.
+    placed("customer_billing_mode", {"TenantConfigIn", "TenantConfigOut"})
+    placed("tenant_posture", {"TenantConfigOut"})
+
+    # Why money moved by hand: said by the operator on the two bodies that
+    # move it, and on nothing else (#479).
+    placed("movement_reason", {"CreditRequest", "DebitRequest"})
+
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
     # placement nobody stated still passed here — the count map beside it says
@@ -2018,15 +2045,14 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
 #: movement's categorisation a registry concept is a decision, so neither is
 #: taken in a ticket about the stop cause. This inventory is the record until
 #: #479 lands.
-PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {
-    "/components/schemas/CreditRequest/properties/reason_code":
-        "The wallet movement's own categorisation, a hand-validated closed set "
-        "(`REASON_CODES`) with no registry concept — shares the stop cause's "
-        "name by coincidence and admits none of its values.",
-    "/components/schemas/DebitRequest/properties/reason_code":
-        "The same set on the debit body, for the same reason: a caller says "
-        "why money moved, not which bound stopped work.",
-}
+#:
+#: ⚠ #479 LANDED IN R10-W3 AND BOTH ENTRIES LEFT. The wallet's field is
+#: `movement_reason` now, the registry's own closed concept, marked on both
+#: bodies — so neither property shares an advertised concept's name any
+#: more. The inventory is kept EMPTY rather than deleted: the equality
+#: above is what turns the next collision red, and an empty set is the only
+#: state in which it has nowhere to hide.
+PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {}
 
 
 def test_every_name_collision_carries_a_real_reason():
@@ -2731,6 +2757,13 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # set needs from a backend is authority over the whole set rather than a
     # path to every member — which is the ruling `measurements_status` has
     # carried since it was coined. One entry out, one step down.
-    assert len(_entries(programme)) >= 3, (
+    # 3 -> 1 in R10-W3 (slice 8's ledger): `customer_billing_mode` and
+    # `tenant_posture`, TWO in one commit for #498's reason — the posture is
+    # derived from the mode, so they are one sentence. Both paid at the
+    # tenant model, which now holds the mode's three values by reference
+    # with a `CHECK` beside them and derives the posture from a total map,
+    # and both marked on the tenant configuration in the same commit. Two
+    # entries out, two steps down.
+    assert len(_entries(programme)) >= 1, (
         f"only {len(_entries(programme))} G4 debts — the contract has not "
         f"suddenly caught up with the registry, so suspect the walk")

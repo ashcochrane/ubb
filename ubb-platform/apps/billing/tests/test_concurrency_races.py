@@ -29,9 +29,10 @@ from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class ConcurrentDrawdownRace(TransactionTestCase):
+class ConcurrentDrawdownRace(RailActivated, TransactionTestCase):
     """Race (a): two threads call handle_usage_recorded_billing with the same
     usage event_id — only one debit must land."""
 
@@ -96,7 +97,7 @@ class ConcurrentDrawdownRace(TransactionTestCase):
         )
 
 
-class ConcurrentTopUpCreditRace(TransactionTestCase):
+class ConcurrentTopUpCreditRace(RailActivated, TransactionTestCase):
     """Race (b): two threads call AutoTopUpService.apply_topup_credit with the
     same payment_intent.id — only one credit must land."""
 

@@ -1049,7 +1049,7 @@ def reconcile_the_rate_table_with(model):
     * **The rules that arrived afterwards.** The check that makes a rule name
       its quantity exactly once, and the trigger that refuses a rule
       referencing no declaration, both describe the world AFTER the conversions
-      that installed them. The rows a replay writes are pre-conversion rows,
+      that installed them — and so does UBB v1's USD rule. The rows a replay writes are pre-conversion rows,
       which satisfy neither — that is what the conversions are for. A rule
       added after the migration being replayed is part of what has to come off.
 
@@ -1066,6 +1066,10 @@ def reconcile_the_rate_table_with(model):
                        f"{NAMES_ONE_QUANTITY_CHECK}")
         cursor.execute(f"DROP TRIGGER IF EXISTS trg_rate_names_a_declaration "
                        f"ON {quote(table)}")
+        # UBB v1's USD rule (ADR-0023, #555) arrived long after any replay
+        # this serves, over rules that could still carry another currency.
+        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
+                       f"ck_rate_currency_usd")
 
 
 def restore_the_shape_of(model):

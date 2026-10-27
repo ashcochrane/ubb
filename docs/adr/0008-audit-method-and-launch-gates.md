@@ -110,7 +110,8 @@ CI proves coverage in both directions: every required registry value has a label
 a valid registry value, no retired token remains labelled, and every supported locale carries the key.
 
 **Silent humanisation of a canonical concept is a defect.** A missing label fails CI, and at runtime
-renders an explicit development error. Deriving `"Meter only"` from `meter_only` manufactures
+renders an explicit development error. Title-casing a value token into a label (as the console once
+worded the retired billing mode, by capitalising its code) manufactures
 user-facing terminology from an implementation token — which is exactly the authority ADR-0006 spent
 thirteen documents establishing. An unknown *open* value renders in a deliberate generic form, never
 title-cased as though UBB authored the wording. **This reverses #154 §9.1**, which treated the fallback

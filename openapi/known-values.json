@@ -160,10 +160,15 @@
       ]
     },
     "customer_billing_mode": {
-      "advertised": false,
-      "backend_serves": "2 of 3 values",
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "external",
+        "prepaid",
+        "postpaid"
+      ]
     },
     "declaration_status": {
       "advertised": true,
@@ -309,6 +314,20 @@
       "kind": "tenant_defined",
       "representation": "none"
     },
+    "movement_reason": {
+      "advertised": true,
+      "backend_serves": "6 of 6 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "correction",
+        "goodwill",
+        "chargeback",
+        "write_off",
+        "migration",
+        "other"
+      ]
+    },
     "not_applicable_reason": {
       "advertised": true,
       "backend_serves": "1 of 1 values",
@@ -337,13 +356,13 @@
     },
     "payment_rail": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "1 of 1 values",
       "kind": "closed",
       "representation": "none"
     },
     "payment_rail_environment": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
       "representation": "none"
     },
@@ -563,10 +582,14 @@
       ]
     },
     "tenant_posture": {
-      "advertised": false,
-      "backend_serves": "0 of 2 values",
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "metering_only",
+        "full_billing"
+      ]
     },
     "tenant_product": {
       "advertised": true,
@@ -578,6 +601,12 @@
         "billing",
         "referrals"
       ]
+    },
+    "total_billed_cost_micros": {
+      "advertised": false,
+      "backend_serves": null,
+      "kind": "free_text",
+      "representation": "none"
     },
     "trigger_source": {
       "advertised": true,

@@ -25,6 +25,7 @@ from _customer import python_script, shell_script
 from _harness import COMPLETE, Purpose, run_python, run_shell, write
 from _scenarios import PYTHON, SCENARIOS, Outcome
 from _tenant import ScenarioTenant
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -44,6 +45,10 @@ def _cases():
 @pytest.mark.parametrize("scenario,target,shell", list(_cases()))
 def test_a_scenario_runs_unmodified(scenario, target, shell, server,
                                     tmp_path):
+    # A scenario's posture may be a money mode, which needs the payment
+    # rail activated first (G27). Asked for here, by name: the tenant
+    # helper never makes a tenant rail-ready on its own (`_rails.py`).
+    activate_the_rail()
     tenant = ScenarioTenant(f"{scenario.name} on {target}",
                             **scenario.posture)
     selection = scenario.configure(tenant, target)

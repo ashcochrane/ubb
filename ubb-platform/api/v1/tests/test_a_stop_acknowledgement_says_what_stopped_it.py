@@ -56,6 +56,7 @@ from core.vocabulary import (
     PRICING_MODE_FIXED, PRICING_STATUS_KNOWN, SPEND_POOL_ENFORCE_MODE_BLOCKING,
     TASK_OUTCOME_DELIVERED, TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_CHARGE_PROJECTION,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL, TRIGGER_SOURCE_USAGE_INGEST)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: Every stop fact an acknowledgement carries, in the order the body sends
 #: them. Each is ALWAYS present, so an assertion reads the key, never `.get`.
@@ -445,25 +446,25 @@ class ABackDatedPostpaidReportHearsTheStandingStop(ReadsAStopAcknowledgement):
         self.assertEqual(Door.spend(self.customer.id), 9_000_000)
 
 
-class ABackDatedPostpaidReportOnTheSingleRouteTest(
+class ABackDatedPostpaidReportOnTheSingleRouteTest(RailActivated, 
         ABackDatedPostpaidReportHearsTheStandingStop, ThroughTheSingleRoute,
         PoolTestBase):
     MODE = CUSTOMER_BILLING_MODE_POSTPAID
 
 
-class ABackDatedPostpaidReportOnABatchItemTest(
+class ABackDatedPostpaidReportOnABatchItemTest(RailActivated, 
         ABackDatedPostpaidReportHearsTheStandingStop, ThroughABatchItem,
         PoolTestBase):
     MODE = CUSTOMER_BILLING_MODE_POSTPAID
 
 
-class AStopAcknowledgementOnTheSingleRouteTest(
+class AStopAcknowledgementOnTheSingleRouteTest(RailActivated, 
         AStopAcknowledgementSaysWhatStoppedIt, ThroughTheSingleRoute,
         PoolTestBase):
     pass
 
 
-class AStopAcknowledgementOnABatchItemTest(
+class AStopAcknowledgementOnABatchItemTest(RailActivated, 
         AStopAcknowledgementSaysWhatStoppedIt, ThroughABatchItem, PoolTestBase):
     pass
 

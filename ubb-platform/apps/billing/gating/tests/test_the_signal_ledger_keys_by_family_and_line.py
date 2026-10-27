@@ -33,6 +33,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
     CONTROL_FAMILY_VALUES, CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID)
+from apps.platform.tenants.tests._rails import RailActivated
 
 MIGRATION = importlib.import_module(
     "apps.billing.gating.migrations.0014_the_signal_ledger_keys_by_family_and_line")
@@ -128,7 +129,7 @@ class MigrationTestBase(TestCase):
         return row
 
 
-class TheRowsTakeTheirLinesTest(MigrationTestBase):
+class TheRowsTakeTheirLinesTest(RailActivated, MigrationTestBase):
     def test_the_customer_wide_row_splits_by_the_owners_tenant_mode(self):
         pre = self._old_row(self.prepaid, self.pre, MIGRATION.OLD_FLOOR_STOP,
                             reason=reasons.HARD_FLOOR)
@@ -192,7 +193,7 @@ class TheRowsTakeTheirLinesTest(MigrationTestBase):
                              (family, reason, ""))
 
 
-class ThePairsPayloadsTakeTheNewShapeTest(MigrationTestBase):
+class ThePairsPayloadsTakeTheNewShapeTest(RailActivated, MigrationTestBase):
     def _row(self, tenant, event_type, **payload):
         # Literal payloads on purpose (`docs/conventions/testing.md`'s
         # exception): the POINT is the shape a row queued before #458 holds

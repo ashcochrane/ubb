@@ -5,7 +5,7 @@
       "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:329e3bdc495695e8c4075a9ad939d09a1a853920e6acd998a9eae2d53c20df9c",
+      "configuration_fingerprint": "sha256:611a9acf2f0384292fdf00021ab91b5162cbba2b14a55bbd7ff8a282b702d118",
       "readiness": "complete",
       "calls": [
         {
@@ -296,7 +296,7 @@
       "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:6705149b0932c8ff1ea7bcadae873bd8e6b314b4369fe578ab416726b206e029",
+      "configuration_fingerprint": "sha256:17d317481936a51c9797270e056f251b8a362493048841180b22b75a9c99fba1",
       "readiness": "complete",
       "calls": [
         {
@@ -589,7 +589,7 @@
       "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:32bcba9a9d448bca8380004564b5753e0e7e3dc22c56b60e2d78bffdcc09156c",
+      "configuration_fingerprint": "sha256:b1fe027a40dc25f0c333b12ceba881d58520a42912471df861bfac3e851f6c85",
       "readiness": "complete",
       "calls": [
         {
@@ -880,7 +880,7 @@
       "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:ccd1e3ea62f17dd97b2d3296d688aa4defa22bb023c95cb6617b8435ab3a5efc",
+      "configuration_fingerprint": "sha256:509a2cf78402e75a7c93e955e2d26a248276abf8758badb1e9352309ee2624fc",
       "readiness": "complete",
       "calls": [
         {
@@ -1173,7 +1173,7 @@
       "renderer_contract_version": 3,
       "target": "python_sdk",
       "sdk_major_version": 3,
-      "configuration_fingerprint": "sha256:27ec666e1c69ec128079661b92c9124262fb93af325405535a03cc13dc9578f2",
+      "configuration_fingerprint": "sha256:d849d64952edf3d3bb70533cf625112ecc57b2699ddeb6aa7ed075ab6b8f1228",
       "readiness": "complete",
       "calls": [
         {
@@ -1464,7 +1464,7 @@
       "renderer_contract_version": 3,
       "target": "shell_http",
       "sdk_major_version": null,
-      "configuration_fingerprint": "sha256:ba0a1f4748ff76889c1f1dfb364a1d2385ff80562e7f799a39db206ad863a3d2",
+      "configuration_fingerprint": "sha256:50bbb0b6f8cfbd188b171a462cd631ac489c5a8e4b7a16d9b4e57b2de5e2e6fe",
       "readiness": "complete",
       "calls": [
         {

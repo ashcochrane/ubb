@@ -41,6 +41,7 @@ function oneCustomerAnswer(measures: EconomicMeasureScenario[]): Economics {
     basis: "recorded",
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
+    foreign_currency_subscription_count: 0,
     rows: [{ grouping_field_value: [], grouping_field_value_status: [], measures }],
     context: [],
   };

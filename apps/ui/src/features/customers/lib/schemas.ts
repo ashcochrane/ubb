@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 
+import { movementReasonField } from "@/lib/movement-reason";
 import {
   RECOGNITION_METHOD_VALUES,
   SPEND_POOL_ENFORCE_MODE_VALUES,
@@ -88,7 +89,7 @@ export function adjustSchema(direction: "credit" | "debit") {
       direction === "credit"
         ? z.string().trim().min(1, "Source is required").max(255)
         : z.string().trim().max(255),
-    reason_code: z.string().trim().max(32, "32 characters max"),
+    movement_reason: movementReasonField,
     allow_negative: z.boolean(),
   });
 }

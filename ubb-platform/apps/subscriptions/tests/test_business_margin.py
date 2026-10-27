@@ -8,8 +8,9 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.economics.services import MarginService
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.platform.tenants.tests._rails import RailActivated
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -17,6 +18,7 @@ PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_compute_business_sums_seats():
     t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="postpaid")
@@ -35,6 +37,7 @@ def test_compute_business_sums_seats():
     assert len(d["seats"]) == 2
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_compute_business_includes_business_own_subscription():
     # The Wave-4 subscription lives on the business itself (seats have no sub).
@@ -45,7 +48,7 @@ def test_compute_business_includes_business_own_subscription():
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
     now = timezone.now()
-    StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_biz",
+    a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_biz",
         stripe_product_name="Pro Access", status="active", amount_micros=130_000_000, quantity=10,
         currency="usd", interval="month", current_period_start=now, current_period_end=now,
         last_synced_at=now)
@@ -59,7 +62,7 @@ def test_compute_business_includes_business_own_subscription():
     assert d["totals"]["subscription_revenue_micros"] == 130_000_000
 
 
-class BusinessMarginEndpointTest(TestCase):
+class BusinessMarginEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http = Client()
         self.tenant = Tenant.objects.create(name="BizCo", products=["metering", "billing"],

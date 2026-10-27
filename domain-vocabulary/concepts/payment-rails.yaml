@@ -8,9 +8,11 @@
 # declares what they will be called and carries the obligation that says so
 # (gates/manifest.yaml, G27 and O3).
 #
-# Both concepts therefore declare NO consumers, which is legal and reported by
-# name. That is the honest state: nothing consumes them yet, and a registry that
-# hid the fact would be claiming coverage it does not have.
+# Both concepts declared NO consumers until slice 8 built the machinery
+# (R10-W3, G27): the activation record and the rule that reads it live on the
+# tenant model, which holds every value of both by reference. Nothing else
+# consumes them — no route publishes an activation, so there is no contract
+# or console consumer to declare.
 
 payment_rail:
   kind: closed
@@ -23,7 +25,9 @@ payment_rail:
   values:
     - stripe
   label_key_prefix: payment_rail
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
 
 payment_rail_environment:
   kind: closed
@@ -36,4 +40,6 @@ payment_rail_environment:
     - test
     - live
   label_key_prefix: payment_rail_environment
-  consumers: []
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py

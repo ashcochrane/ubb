@@ -645,3 +645,24 @@ GET /api/v1/metering/customers/{customer_id}/usage deleted the `query` request p
 # TypeError naming the keyword, and `ubb-sdk/MIGRATION.md` §18 tells raw-HTTP
 # callers to read the configuration back rather than trust the status.
 PUT /api/v1/billing/postpaid-config removed the request property `usage_line_item_group_by`
+
+# 2026-10-27 - R10-W3 (#479): a wallet movement states its reason under its
+# own name. The credit and debit bodies' `reason_code` categorised the MOVEMENT;
+# the stop cause publishes the same name for a different concept, and ADR-0006
+# §2 does not let two concepts share one. The ruling renames the field
+# `movement_reason` and declares its six values as the registry's closed
+# `movement_reason`, marked on both bodies; the ledger column moved by
+# `RenameField` (`wallets/0013`) with a `CHECK` holding the set.
+#
+# LICENCE: ADR-0007 §5 - pre-live, owned by #190. Both routes predate
+# `api-v1-launch`, so each is a reviewed entry pasted from `--emit`. WARN is
+# oasdiff's classification: the property was never required.
+#
+# ⚠ django-ninja drops an undeclared body key rather than refusing it, which
+# would have answered a stale raw-HTTP caller 200 with its reason silently lost.
+# So both bodies REFUSE `reason_code` by name (422 `validation_error`, naming
+# `movement_reason`; nothing moves) - no alias, and no silent drop (the
+# owner's review of #619). The SDK's keyword was renamed in the same commit, so
+# a stale SDK caller gets a TypeError naming it; `ubb-sdk/MIGRATION.md` §21.
+POST /api/v1/billing/credit removed the request property `reason_code`
+POST /api/v1/billing/debit removed the request property `reason_code`

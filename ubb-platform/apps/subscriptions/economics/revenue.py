@@ -1,5 +1,6 @@
 import calendar
 
+from core.currency_policy import ECONOMIC_CURRENCY
 from core.vocabulary import (
     RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED)
@@ -71,17 +72,41 @@ class RevenueService:
     """
 
     @staticmethod
+    def _in_accruing_status(tenant_id, customer_id):
+        from apps.subscriptions.models import StripeSubscription
+        subs = StripeSubscription.objects.filter(
+            tenant_id=tenant_id, status__in=ACCRUING_SUBSCRIPTION_STATUSES)
+        return subs.filter(customer_id=customer_id) if customer_id else subs
+
+    @staticmethod
     def accruing(tenant_id, *, customer_id=None):
         """The mirrored subscriptions that accrue revenue at all.
 
         Split out from the sum below because the one economic query asks the
         same question for a whole tenant at once (slice 7 §2) and two copies of
         this status list would be two answers to *which subscriptions count*.
+
+        ⚠ **ONLY THOSE IN UBB'S ONE CURRENCY** (#564, ADR-0023 §7). A
+        subscription a connected account holds in another is QUARANTINED: it
+        has no amount in US dollars to add (there is no FX), so it is left out
+        of every figure built on this — and :meth:`foreign_currency` below is
+        the same question's other half, which every one of those figures
+        publishes as a count.
         """
-        from apps.subscriptions.models import StripeSubscription
-        subs = StripeSubscription.objects.filter(
-            tenant_id=tenant_id, status__in=ACCRUING_SUBSCRIPTION_STATUSES)
-        return subs.filter(customer_id=customer_id) if customer_id else subs
+        return RevenueService._in_accruing_status(
+            tenant_id, customer_id).filter(currency=ECONOMIC_CURRENCY)
+
+    @staticmethod
+    def foreign_currency(tenant_id, *, customer_id=None):
+        """The accruing subscriptions :meth:`accruing` leaves out: in a currency
+        UBB does not admit, kept as Stripe stated them and excluded (#564).
+
+        Scoped exactly like :meth:`accruing` — same tenant, same customer, same
+        statuses — so a figure built on one and a count built on the other
+        describe the same set of subscriptions between them.
+        """
+        return RevenueService._in_accruing_status(
+            tenant_id, customer_id).exclude(currency=ECONOMIC_CURRENCY)
 
     @staticmethod
     def nominal_for_window(subscription, start_date, end_date) -> int:
@@ -111,6 +136,13 @@ class RevenueService:
             RevenueService.nominal_for_window(sub, start_date, end_date)
             for sub in RevenueService.accruing(
                 tenant_id, customer_id=customer_id))
+
+    @staticmethod
+    def foreign_currency_count(tenant_id, customer_id) -> int:
+        """How many subscriptions :meth:`accrued_subscription_revenue` left out
+        for a customer — exact, and 0 where it left out nothing (#564)."""
+        return RevenueService.foreign_currency(
+            tenant_id, customer_id=customer_id).count()
 
     @staticmethod
     def accrued_subscription_revenue(tenant_id, customer_id, start_date, end_date) -> int:

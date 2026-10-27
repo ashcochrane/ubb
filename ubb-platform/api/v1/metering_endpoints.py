@@ -15,6 +15,11 @@ from apps.metering.pricing.receipts import (
     uncosted_quantity_keys,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
+from core.currency_policy import (
+    FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
+    UnsupportedCurrency,
+    admit_currency,
+)
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
@@ -410,7 +415,8 @@ def usage_error(e):
     for it; the event is recorded with its cost said to be unresolved, and the
     caller learns that from the 200 body rather than from a 422 that throws the
     charge away."""
-    if isinstance(e, (EffectiveAtError, ProviderConflictsWithEventType)):
+    if isinstance(e, (EffectiveAtError, ProviderConflictsWithEventType,
+                      UnsupportedCurrency)):
         return e.code, str(e)
     return "validation_error", str(e)
 
@@ -1169,27 +1175,20 @@ def _book_or_404(request, book_id):
 
 
 def _resolve_book_currency(tenant, raw_currency):
-    """CUR-1 currency pin: a cost book is declared in the tenant's currency.
+    """The currency a cost book is declared in: UBB v1's one (ADR-0023).
 
-    Omitted/empty currency defaults to the tenant's default_currency; an
-    explicit value must match it case-insensitively. Returns the normalized
-    lowercase currency, or raises ValueError (mapped to 422 by callers).
+    Omitted/empty takes the tenant's, which the policy holds to US dollars;
+    an explicit value is admitted by the one policy or refused with
+    `UnsupportedCurrency`.
 
     ⚠ **ONLY THE COST BOOK ASKS THIS NOW.** A Pricing Book has no currency
     column at all, so there is nothing on it to pin — which is the same fact
     this function has always enforced, said by the schema instead of by a
     check.
     """
-    tenant_currency = (tenant.default_currency or "usd").lower()
     if not raw_currency:
-        return tenant_currency
-    book_currency = str(raw_currency).strip().lower()
-    if book_currency != tenant_currency:
-        raise ValueError(
-            f"cost-book currency {book_currency!r} does not match tenant "
-            f"currency {tenant_currency!r} (per-tenant single currency; "
-            "multi-currency/FX is not supported)")
-    return book_currency
+        return tenant.default_currency
+    return admit_currency(raw_currency)
 
 
 @metering_router.get("/pricing/pricing-books", response=PaginatedPricingBooks)
@@ -1313,8 +1312,8 @@ def declare_cost_book(request, payload: CostBookIn):
     _gate_a_cost_book(request)
     try:
         currency = _resolve_book_currency(request.auth.tenant, payload.currency)
-    except ValueError as e:
-        raise Problem("validation_error", str(e))
+    except UnsupportedCurrency as refused:
+        raise Problem(refused.code, str(refused))
     try:
         with transaction.atomic():
             book = CostBook.objects.create(
@@ -2446,7 +2445,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         EconomicQuestionRefused, economic_refusal, economics, grouping_options)
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
     from apps.subscriptions.queries import (
-        revenue_contributions, supplied_revenue_covered_periods)
+        foreign_currency_subscription_count, revenue_contributions,
+        supplied_revenue_covered_periods)
 
     measures = list(measures or [])
     axes = list(group_by or [])
@@ -2519,8 +2519,15 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                            ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
     supplied = {}
+    # What this answer's revenue LEFT OUT (#564): subscriptions Stripe holds
+    # in a currency UBB does not admit. Counted over exactly the scope the
+    # revenue is fetched for, and 0 on a question that asked for no revenue,
+    # because such an answer left nothing out.
+    foreign = 0
     if revenue_wanted:
         customer_ids = [customer_id] if customer_id else None
+        foreign = foreign_currency_subscription_count(
+            request.auth.tenant.id, customer_ids=customer_ids)
         supplied["contributed_revenue"] = revenue_contributions(
             request.auth.tenant.id,
             windows=_economic_buckets(start, end, bucket), basis=chosen,
@@ -2548,7 +2555,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         # handler as one.
         raise Problem(UNANSWERABLE_COMBINATION, str(refused))
     return 200, {"period_start": start.isoformat(),
-                 "period_end": end.isoformat(), **answer}
+                 "period_end": end.isoformat(), **answer,
+                 FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY: foreign}
 
 
 def _economic_buckets(start, end, bucket):

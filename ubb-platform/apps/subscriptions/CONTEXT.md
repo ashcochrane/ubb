@@ -16,6 +16,17 @@ _Avoid_: treating the mirror as authoritative over Stripe.
 A synced row per Stripe subscription invoice, tracked for revenue attribution and AR status.
 (`apps/subscriptions/models.py:SubscriptionInvoice`)
 
+**Quarantined subscription**:
+A mirrored subscription or invoice Stripe holds in a currency UBB does not admit (v1 admits US
+dollars only; platform glossary, *Economic currency*). Kept as Stripe sent it — its currency, and
+its amount in that currency's minor unit (`source_amount_minor` / `source_amount_paid_minor`) —
+with no economic amount, so it reaches no USD revenue or margin; every revenue or margin read it
+could have reached says how many it left out (`foreign_currency_subscription_count`, 0 when none).
+A retry or a repair of the same Stripe object adds no second fact (#564).
+(`apps/subscriptions/stripe/items.py:mirrored_amounts`)
+_Avoid_: converting it, or relabelling its currency — UBB states the fact it cannot price rather
+than inventing a dollar figure.
+
 **Axis**:
 The kind of a subscription line — `access` (a fixed access fee, quantity 1) or `seat` (per-seat,
 quantity = seat count). (`apps/subscriptions/models.py:CustomerSubscriptionItem.axis`)

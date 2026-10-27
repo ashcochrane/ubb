@@ -69,6 +69,7 @@ from .create_customer_request_metadata import CreateCustomerRequestMetadata
 from .create_grant_request import CreateGrantRequest
 from .create_top_up_request import CreateTopUpRequest
 from .credit_request import CreditRequest
+from .credit_request_movement_reason_type_0 import CreditRequestMovementReasonType0
 from .customer_billing_profile_in import CustomerBillingProfileIn
 from .customer_billing_profile_out import CustomerBillingProfileOut
 from .customer_identity_out import CustomerIdentityOut
@@ -87,6 +88,7 @@ from .customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from .customer_spend_pool_status_out_enforce_mode import CustomerSpendPoolStatusOutEnforceMode
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
+from .debit_request_movement_reason_type_0 import DebitRequestMovementReasonType0
 from .dimension_def_in import DimensionDefIn
 from .dimension_def_in_scope import DimensionDefInScope
 from .dimension_def_out import DimensionDefOut
@@ -303,9 +305,12 @@ from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
 from .tenant_billing_period_out import TenantBillingPeriodOut
 from .tenant_config_in import TenantConfigIn
+from .tenant_config_in_billing_mode_type_0 import TenantConfigInBillingModeType0
 from .tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from .tenant_config_out import TenantConfigOut
+from .tenant_config_out_billing_mode import TenantConfigOutBillingMode
 from .tenant_config_out_products_item import TenantConfigOutProductsItem
+from .tenant_config_out_tenant_posture import TenantConfigOutTenantPosture
 from .tenant_default_markup_in import TenantDefaultMarkupIn
 from .tenant_default_markup_out import TenantDefaultMarkupOut
 from .tenant_invoice_list_response import TenantInvoiceListResponse
@@ -457,6 +462,7 @@ __all__ = (
     "CreateGrantRequest",
     "CreateTopUpRequest",
     "CreditRequest",
+    "CreditRequestMovementReasonType0",
     "CustomerBillingProfileIn",
     "CustomerBillingProfileOut",
     "CustomerIdentityOut",
@@ -475,6 +481,7 @@ __all__ = (
     "CustomerSpendPoolStatusOutEnforceMode",
     "DebitCreditResponse",
     "DebitRequest",
+    "DebitRequestMovementReasonType0",
     "DimensionDefIn",
     "DimensionDefInScope",
     "DimensionDefOut",
@@ -691,9 +698,12 @@ __all__ = (
     "TenantBillingPeriodListResponse",
     "TenantBillingPeriodOut",
     "TenantConfigIn",
+    "TenantConfigInBillingModeType0",
     "TenantConfigInProductsType0Item",
     "TenantConfigOut",
+    "TenantConfigOutBillingMode",
     "TenantConfigOutProductsItem",
+    "TenantConfigOutTenantPosture",
     "TenantDefaultMarkupIn",
     "TenantDefaultMarkupOut",
     "TenantInvoiceListResponse",

@@ -1,5 +1,6 @@
 from django.db import models
 
+from core.currency_policy import usd_only_check
 from core.models import BaseModel
 
 
@@ -31,13 +32,30 @@ class TenantBillingPeriod(BaseModel):
         default="open",
         db_index=True,
     )
-    total_usage_cost_micros = models.BigIntegerField(default=0)
+    #: Σ `billed_cost_micros` over the period's postings, placed by ARRIVAL
+    #: (#516) — Task Charges included, because fixed-price revenue is
+    #: revenue and UBB's platform fee is a percentage of this. Named for
+    #: what it aggregates since #516, which retired the "usage cost" name.
+    total_billed_cost_micros = models.BigIntegerField(default=0)
+    #: Every real `metered_usage` event recorded in the period, priced or
+    #: not — and never a Task Charge, which is synthetic revenue rather
+    #: than an event the tenant recorded (#563). So the money above
+    #: includes what this count excludes, deliberately. PUBLISHED as
+    #: `recorded_events`, the registry's measure; `event_count` is the
+    #: column's internal name only.
     event_count = models.BigIntegerField(default=0)
     platform_fee_micros = models.BigIntegerField(default=0)
+    #: THE CURRENCY THIS PERIOD'S MONEY IS IN, stamped from the tenant when
+    #: the period opens. A fact about money names its currency (#145 §7.2),
+    #: and the platform fee is invoiced in it — read off this row, never
+    #: stated by the invoice call (#565).
+    currency = models.CharField(max_length=3, default="usd")
 
     class Meta:
         db_table = "ubb_tenant_billing_period"
         constraints = [
+            # UBB v1 is USD-only (ADR-0023).
+            usd_only_check("currency", "ck_billing_period_currency_usd"),
             # Composite uniqueness for idempotent period creation
             models.UniqueConstraint(
                 fields=["tenant", "period_start", "period_end"],

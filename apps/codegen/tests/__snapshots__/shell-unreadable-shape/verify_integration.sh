@@ -3,7 +3,7 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   sh verify_integration.sh EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:4e00520a5f95ada0ffece71f5d37bff401b0aa5c294a755554871989fed2d171"
+# configuration_fingerprint = "sha256:f65fafc5fc4e1635ad097c8cabd4bee298e69e31b8ae283831f35a435d6c4bed"
 
 # Checks that jq can do what this script asks of it. It contacts nothing
 # and creates nothing.

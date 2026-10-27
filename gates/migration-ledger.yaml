@@ -292,9 +292,10 @@ entries:
   # then cleared all five in one commit. The webhook events repeat G8's owners
   # exactly, because one event cannot be owed by two slices.
   #
-  # ONE ENTRY HAS NO POSITIVE OWNER: `meter_only` is slice 8 by default, and its
-  # reason says so. It is #205's residue in a new place — an owner slice that
-  # nobody chose — and it is written down rather than smoothed over.
+  # ONE ENTRY HAD NO POSITIVE OWNER: `meter_only` was slice 8's by default, and
+  # its reason said so — #205's residue in a new place, an owner slice nobody
+  # chose, written down rather than smoothed over. Slice 8 PAID it in R10-W3,
+  # with the payment-rail activation that made it slice 8's.
 
   # `g7-backend-budget` WAS HERE AND IS PAID (#469, the fold). It stood at
   # 2 files — the billing glossary's entry named by the retired family word
@@ -384,41 +385,6 @@ entries:
   # a GENERATED module carrying a route docstring that named one of the actions
   # in passing; editing that docstring cleared it, which is the shape #349
   # recorded — a retired term can be paid by a commit whose subject is elsewhere.
-
-  - id: g7-backend-meter_only
-    gate: G7
-    site: backend::meter_only
-    expected: customer_billing_mode
-    found: 10 files
-    owner_slice: slice_8
-    reason: >-
-      It said what UBB does NOT do; `external` says where the billing
-      actually happens, which is the fact a tenant is choosing between.
-      Owned by slice 8 because the mode's siblings — `prepaid` and
-      `postpaid` — may not be activated before their payment rail has
-      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
-      REBUILDS THIS SUBJECT, so this owner is the programme's default
-      rather than a positive finding, and it wants an owner's eye.
-      15 → 14 in #469, slice 6's fold: the billing glossary's pool entry
-      spelled it three times in a "mode split" paragraph that #459 had
-      falsified (a blocking pool now stops work in every mode), and the
-      rewritten entry says "a tenant that does not bill through UBB"
-      where it needs the posture at all — a slice may reduce another
-      slice's count and may not raise it (§20). Slice 6 has landed and
-      left it at 14. The platform glossary's tenant entry still lists
-      the mode by name and stays counted.
-      ⚠ 14 → 10 in #497, slice 7's third, and NOT because that ticket set
-      out to pay any part of this debt. `found:` is a ceiling as well as a
-      floor — the sweep refuses an entry claiming more files than the tree
-      has — so a ticket that merely REMOVES a retired word from files is
-      forced to decrement somebody else's entry. Four files went: the
-      posture resolver, which read the mode to decide whether a customer's
-      usage was revenue and is deleted outright, and three test modules
-      that spelled the mode only to build a fixture for it. Nothing was
-      re-spelled and nothing moved to a new home — the default IS this
-      mode, so a metering-only fixture now names nothing at all, which is
-      how those modules stopped carrying it. Slice 8 still owns the rename
-      and the remaining ten.
 
   # ⚠ `pricing_provenance` REACHED ZERO ON ALL FOUR SURFACES IN #370 AND ALL
   # FOUR OF ITS ENTRIES ARE DELETED — backend (9), console (4), openapi (1) and
@@ -592,35 +558,6 @@ entries:
   # `term_spread`. The word is still refused in every swept file by the
   # `retired_aliases` entry on `analytics_grouping_kind`, which is what paying
   # a G7 debt leaves standing: the excuse goes, the retirement does not.
-  - id: g7-console-meter_only
-    gate: G7
-    site: console::meter_only
-    expected: customer_billing_mode
-    found: 6 files
-    owner_slice: slice_8
-    reason: >-
-      It said what UBB does NOT do; `external` says where the billing
-      actually happens, which is the fact a tenant is choosing between.
-      Owned by slice 8 because the mode's siblings — `prepaid` and
-      `postpaid` — may not be activated before their payment rail has
-      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
-      REBUILDS THIS SUBJECT, so this owner is the programme's default
-      rather than a positive finding, and it wants an owner's eye.
-
-      7 -> 6 in #501, paid by slice 7 and not by this entry's owner, which the
-      ratchet permits and the sweep requires — an entry may not record more
-      files than the tree holds. The file is the dashboard's overview page,
-      which branched on the mode to decide WHICH revenue figure to show a
-      meter-only tenant. That branch is not renamed here, it is deleted: the
-      field it read is one of the ones the collapse removes, and the one
-      economic query publishes ONE revenue figure under one definition for
-      every tenant whatever their mode. A conditional that no longer has two
-      answers to choose between is not a conditional.
-
-      The six left are the genuine subject — the settings surface where a
-      tenant reads and changes its mode, the config hook and the labels — and
-      slice 8 still owns them.
-
   # ⚠ `price_card` REACHED ZERO ON THE CONSOLE IN #371 and its entry is deleted
   # — see the cost half's note above, which it shared a file and a fate with.
 
@@ -750,21 +687,6 @@ entries:
   # to hide it would have paid the debt with bookkeeping. The frozen twin is
   # the record and it is untouched.
 
-  - id: g7-docs-meter_only
-    gate: G7
-    site: docs::meter_only
-    expected: customer_billing_mode
-    found: 2 files
-    owner_slice: slice_8
-    reason: >-
-      It said what UBB does NOT do; `external` says where the billing
-      actually happens, which is the fact a tenant is choosing between.
-      Owned by slice 8 because the mode's siblings — `prepaid` and
-      `postpaid` — may not be activated before their payment rail has
-      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
-      REBUILDS THIS SUBJECT, so this owner is the programme's default
-      rather than a positive finding, and it wants an owner's eye.
-
   # `g7-docs-tag_key` WAS HERE AND IS PAID (#531), together with the invoice-line
   # grouping word's docs entry below and at the same single file: ADR-0005's
   # Consequences bullet, which named all three ad-hoc label reads "as the wire
@@ -875,21 +797,6 @@ entries:
   # the repo surface nowhere. The fold (#469) forecast this entry as its own;
   # the sweep is the judge, and it died here.
 
-  - id: g7-repo-meter_only
-    gate: G7
-    site: repo::meter_only
-    expected: customer_billing_mode
-    found: 1 files
-    owner_slice: slice_8
-    reason: >-
-      It said what UBB does NOT do; `external` says where the billing
-      actually happens, which is the fact a tenant is choosing between.
-      Owned by slice 8 because the mode's siblings — `prepaid` and
-      `postpaid` — may not be activated before their payment rail has
-      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
-      REBUILDS THIS SUBJECT, so this owner is the programme's default
-      rather than a positive finding, and it wants an owner's eye.
-
   # ⚠ `card_type` REACHED ZERO ON THE SDK IN #373 and its entry is deleted —
   # the LAST surface holding it apart from the backend's four files, so the
   # term now has one entry left in the whole ledger. Three files: the
@@ -936,21 +843,6 @@ entries:
   # raises `TypeError` and Python names it in the message, so the caller is
   # told by the interpreter rather than by a doc that would have cost this
   # entry its last file.
-
-  - id: g7-sdk-meter_only
-    gate: G7
-    site: sdk::meter_only
-    expected: customer_billing_mode
-    found: 2 files
-    owner_slice: slice_8
-    reason: >-
-      It said what UBB does NOT do; `external` says where the billing
-      actually happens, which is the fact a tenant is choosing between.
-      Owned by slice 8 because the mode's siblings — `prepaid` and
-      `postpaid` — may not be activated before their payment rail has
-      been (ADR-0008 §6), and the rail machinery is slice 8's. NO SLICE
-      REBUILDS THIS SUBJECT, so this owner is the programme's default
-      rather than a positive finding, and it wants an owner's eye.
 
   # ⚠ `pricing_model` REACHED ZERO IN #373 AND THE TERM HAS NO ENTRY LEFT
   # ANYWHERE. #366 deleted the backend, console, openapi and docs entries when
@@ -1159,20 +1051,6 @@ entries:
       positive owner, and flagged in gates/README.md as wanting an owner's eye
       — the same shape as #206's `meter_only`. Any slice may take it earlier.
 
-  - id: g2-backend-customer_billing_mode
-    gate: G2
-    site: ubb-platform/apps/platform/tenants/models.py::customer_billing_mode
-    expected: customer_billing_mode
-    found: 2 of 3 values
-    owner_slice: slice_8
-    reason: >-
-      Partly paid: 2 of 3 values already come from the registry. This consumer
-      holds its value sets as its own `choices=` lists rather than importing
-      them from `core.vocabulary`. `meter_only` becomes `external`, and
-      renaming a value a tenant's API responses carry is a public break. G7
-      already owes `meter_only` to slice 8 for the same reason, and this entry
-      must not fall earlier than that one.
-
   # ⚠ `measure_status` REACHED 5 OF 5 ON THE BACKEND IN #500 and its entry is
   # deleted, with its G4 twin below, in the commit that added the concept's
   # FIFTH value. The extent moved `3 of 4` -> `5 of 5`: `unavailable_outside_
@@ -1258,19 +1136,6 @@ entries:
   # inside its `jsonb`. `measurements_status` is the precedent: its consumer is
   # the serialiser that computes it, for the same reason.
 
-  - id: g2-backend-tenant_posture
-    gate: G2
-    site: ubb-platform/apps/platform/tenants/models.py::tenant_posture
-    expected: tenant_posture
-    found: 0 of 2 values
-    owner_slice: slice_8
-    reason: >-
-      This consumer holds its value sets as its own `choices=` lists rather
-      than importing them from `core.vocabulary`. ADR-0006 §4 makes the
-      posture DERIVED, and G10 records that no writable column exists for it
-      today. It becomes real when the billing mode it is derived from is
-      rebuilt, alongside `customer_billing_mode` at the cutover.
-
   # `g2-backend-usage_event_kind` DIED IN #417, and it was §27's THIRD SHAPE:
   # `0 of 2 values` over a consumer that held NOTHING — no column on the model,
   # no map in the console's label layer, no occurrence in the contract. Paying
@@ -1296,20 +1161,6 @@ entries:
   # were bound in `features/spend-controls/lib/families.ts` off the
   # catalogue (moved to `@/lib/control-family` in #468, the day a second
   # feature rendered the word), and the family map's entry left with this one.
-
-  - id: g2-console-customer_billing_mode
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::customer_billing_mode
-    expected: customer_billing_mode
-    found: 0 of 3 values
-    owner_slice: slice_8
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. `meter_only` becomes `external`, and renaming a
-      value a tenant's API responses carry is a public break. G7 already owes
-      `meter_only` to slice 8 for the same reason, and this entry must not
-      fall earlier than that one.
 
   # g2-console-measure_status WAS HERE AND IS PAID (#510, slice 7). `labels.ts`
   # holds `MEASURE_STATUSES = MEASURE_STATUS_VALUES` by reference, and the five
@@ -1357,20 +1208,6 @@ entries:
   # `g2-console-spend_pool_enforce_mode` WAS HERE AND IS PAID (#468): the
   # adapter holds `SPEND_POOL_ENFORCE_MODES` by reference from the generated
   # vocabulary, and the words are bound in `@/lib/spend-pool`.
-
-  - id: g2-console-tenant_posture
-    gate: G2
-    site: apps/ui/src/lib/labels.ts::tenant_posture
-    expected: tenant_posture
-    found: 0 of 2 values
-    owner_slice: slice_8
-    reason: >-
-      `labels.ts` is both identity and expression (#158 §16): it holds its own
-      `as const` arrays and label maps rather than importing `vocabulary.ts`.
-      #210 splits the two. ADR-0006 §4 makes the posture DERIVED, and G10
-      records that no writable column exists for it today. It becomes real
-      when the billing mode it is derived from is rebuilt, alongside
-      `customer_billing_mode` at the cutover.
 
   # ⚠ `g2-console-usage_event_kind` REACHED 2 OF 2 IN #425 and its entry is
   # deleted, in the shape slices 3 and 4 established (spec §26): `labels.ts`
@@ -1531,20 +1368,6 @@ entries:
       want of an owner — #227's finding, repeated here because it is the same
       absence and it wants an owner's eye. The metadata appears in that slice.
 
-  - id: g4-openapi-customer_billing_mode
-    gate: G4
-    site: openapi/v1.json::customer_billing_mode
-    expected: customer_billing_mode
-    found: 2 of 3 values
-    owner_slice: slice_8
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 2 of 3 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. No slice's issue says it rebuilds this mode, and its siblings gate
-      on payment-rail activation, which is slice 8's — #206's `meter_only`
-      entry in a second place. The metadata appears in that slice.
-
   # ⚠ `measure_status` IS ADVERTISED SINCE #500 and its entry is deleted, in the
   # same commit as its backend G2 twin and the concept's fifth value. It could
   # not have been any other commit: `advertised` is derived from the backend
@@ -1604,19 +1427,6 @@ entries:
   # the published verdicts list is now `reason_codes`, pinned to the
   # generated vocabulary by `api/v1/tests/test_problem_contract.py`.
 
-  - id: g4-openapi-tenant_posture
-    gate: G4
-    site: openapi/v1.json::tenant_posture
-    expected: tenant_posture
-    found: 0 of 2 values
-    owner_slice: slice_8
-    reason: >-
-      The contract may not advertise these values while the backend consumer
-      holds 0 of 2 of them: the spec would publish the agreed vocabulary on a
-      field that still returns the one it replaces, and a consumer can act on
-      that. No slice's issue says it rebuilds the tenant's posture, and the
-      cutover is where it lands. The metadata appears in that slice.
-
   # g4-openapi-trigger_source WAS HERE AND IS PAID (#412, slice 5). The
   # backend consumer holds all five mechanisms by reference, and the terminal
   # stop events publish the field with its `x-ubb-known-values` metadata — an
@@ -1666,35 +1476,6 @@ entries:
       for this value set, so there is no label key to move it to yet and no
       domain slice's subject contains it. Owned by the cutover, where the
       ledger reaches zero; pulling it earlier is the ratchet's one free move.
-
-  - id: g6-map-billing-mode-description
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::billingModeDescription
-    expected: tenant_posture and customer_billing_mode
-    owner_slice: slice_8
-    reason: >-
-      A sentence of explanatory copy per billing mode, keyed on the raw token
-      and running through the same humanising fallback — where the fallback
-      produces a title-cased token in place of a sentence. ADR-0008 §4.5 keeps
-      prose permanently out of the registry, so what this owes is not a
-      registry concept but a stable label key to hang the sentence on; it moves
-      with `billingModeLabel` beside it.
-
-  - id: g6-map-billing-mode-label
-    gate: G6
-    site: apps/ui/src/lib/labels.ts::billingModeLabel
-    expected: tenant_posture and customer_billing_mode
-    owner_slice: slice_8
-    reason: >-
-      `billingModeLabel` hand-writes the wording for the tenant's billing mode
-      — including the retired token G7 records against this same file — and
-      falls back to `humanize`, so that token renders as a title-cased copy of
-      itself because a function transformed it rather than because anyone chose
-      those words. It is ADR-0008 §4.3's own worked example. The end state
-      splits this one
-      field in two, a tenant posture and a per-customer billing mode, so the
-      map does not move to one concept's label keys — it is replaced by both,
-      in the slice that splits it.
 
   - id: g6-map-billing-period-status-label
     gate: G6

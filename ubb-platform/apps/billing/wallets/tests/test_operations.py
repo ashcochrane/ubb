@@ -123,6 +123,7 @@ def _op_registry(tenant, customer, wallet):
     ]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestMirrorRule:
     def test_every_op_mirrors_exactly_its_positive_delta(
@@ -192,6 +193,7 @@ class TestMirrorRule:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRefusals:
     def test_debit_refuses_below_the_floor_with_the_numbers(self):
@@ -337,6 +339,7 @@ class TestRefusals:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReplays:
     def test_debit_credit_withdraw_replay_once(self):
@@ -466,6 +469,7 @@ def _due_grant(t, c, amount=5_000_000):
     return grant
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestExpiryPlacement:
     @pytest.mark.parametrize("op_name", [
@@ -541,6 +545,7 @@ class TestExpiryPlacement:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestMoneyRules:
     def test_void_clamps_to_the_spendable_balance(self):
@@ -616,11 +621,11 @@ class TestMoneyRules:
         result = wallet_ops.debit(
             customer_id=c.id, tenant=t, amount_micros=1_000_000,
             idempotency_key=str(uuid.uuid4()),
-            audit=wallet_ops.Audit(actor="ops@t.co", reason_code="correction",
+            audit=wallet_ops.Audit(actor="ops@t.co", movement_reason="correction",
                                    reference="ref-1"))
         txn = WalletTransaction.objects.get(pk=result.transaction_id)
         assert txn.actor == "ops@t.co"
-        assert txn.reason_code == "correction"
+        assert txn.movement_reason == "correction"
         assert txn.reference_id == "ref-1"
         assert txn.description == "External debit"
 
@@ -667,6 +672,7 @@ class TestMoneyRules:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestDrawdownTail:
     def test_zero_cross_emits_overage_and_tier1_suspension(self):
@@ -760,6 +766,7 @@ class TestDrawdownTail:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestExpireDueSweep:
     def test_sweep_expires_and_counts(self):

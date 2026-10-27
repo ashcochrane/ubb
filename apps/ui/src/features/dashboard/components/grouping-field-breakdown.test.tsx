@@ -76,7 +76,7 @@ describe("GroupingFieldBreakdown", () => {
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: { rows: [], context: [], held_from: null, measurement_horizon: false },
+          data: { rows: [], context: [], held_from: null, measurement_horizon: false, foreign_currency_subscription_count: 0 },
           isPending: false,
           isError: false,
           error: null,
@@ -99,7 +99,7 @@ describe("GroupingFieldBreakdown", () => {
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: { rows: [], context: [], held_from: "2020-09-18", measurement_horizon: false },
+          data: { rows: [], context: [], held_from: "2020-09-18", measurement_horizon: false, foreign_currency_subscription_count: 0 },
           isPending: false,
           isError: false,
           error: null,

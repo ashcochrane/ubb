@@ -157,6 +157,7 @@ def _strand_via_the_recording_path(raw_key, customer, billed_micros):
 NO_OUTCOMES = {"repaired": 0, "repaired_micros": 0, "repair_lapsed": 0}
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin7TwoPassRepair:
     def test_pass_one_candidates_pass_two_repairs_with_full_audit(self):
@@ -304,6 +305,7 @@ class TestPin7TwoPassRepair:
         assert c.status == "suspended"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin8TransientAndDeMinimis:
     def test_transient_deficit_lapses_without_repair(self):
@@ -355,6 +357,7 @@ class TestPin8TransientAndDeMinimis:
         assert fresh.first_deficit_micros == 6_000_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin10DownwardNeighborsUntouched:
     def test_the_measurement_is_the_durable_balance_alone(self):
@@ -429,6 +432,7 @@ class TestPin10DownwardNeighborsUntouched:
         assert _live(c.id) is None
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin11RepairSpikeAlert:
     def test_spike_past_the_count_threshold_alerts_critical(self, caplog,
@@ -472,6 +476,7 @@ class TestPin11RepairSpikeAlert:
                        for r in caplog.records)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRepairRidesThePatrol:
     def test_outcomes_ride_the_beat_and_the_ops_surface(self):

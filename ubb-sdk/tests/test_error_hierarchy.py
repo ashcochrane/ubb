@@ -53,7 +53,7 @@ class TestCatchByFamilyOrCode:
         assert type(a) is InsufficientBalanceError and type(b) is WouldOverdrawError
 
     def test_ubbconflicterror_alias_still_works(self):
-        exc = exception_for(409, "currency_locked", "")
+        exc = exception_for(409, "would_overdraw", "")
         assert isinstance(exc, UBBConflictError)  # legacy name, now == ConflictError
 
     def test_server_validation_error_is_not_client_validation_error(self):

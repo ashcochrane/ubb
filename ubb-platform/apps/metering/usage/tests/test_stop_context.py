@@ -31,6 +31,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import CloseDeclaration, TaskService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import TASK_OUTCOME_DELIVERED
+from apps.platform.tenants.tests._rails import RailActivated
 
 NO_VERDICTS = {"crossed_task_limit": False, "crossed_subtask_limit": False,
                "task_not_active": False}
@@ -60,7 +61,7 @@ class StopContextTestBase(TestCase):
         return build_stop_context(task=task, verdicts=verdicts, **kw)
 
 
-class UnitContextTest(StopContextTestBase):
+class UnitContextTest(RailActivated, StopContextTestBase):
     def test_no_verdicts_no_customer_state_returns_none(self):
         task = self._task()
         self.assertIsNone(self._build(task, dict(NO_VERDICTS)))
@@ -157,7 +158,7 @@ class UnitContextTest(StopContextTestBase):
                          sub.completed_at.isoformat())
 
 
-class CustomerContextTest(StopContextTestBase):
+class CustomerContextTest(RailActivated, StopContextTestBase):
     def _open_episode(self, seq=3, line=reasons.HARD_FLOOR, state="stopped"):
         # A ledger row on one LINE (slice 6 §9): the family is the line's,
         # derived the way the ledger derives it.

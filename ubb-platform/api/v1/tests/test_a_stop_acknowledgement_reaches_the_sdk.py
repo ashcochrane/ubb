@@ -172,6 +172,7 @@ def test_a_key_first_recorded_in_a_batch_replays_identically_through_the_sdk(sdk
         first.trigger_source, first.stop_bound_micros, first.stop_measured_micros)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_a_customer_stop_replays_its_facts_after_its_pool_moves_and_clears(billing_sdk):
     """Pins 1, 3 and 5 for a customer-wide stop: the Pool is raised, the
@@ -194,6 +195,7 @@ def test_a_customer_stop_replays_its_facts_after_its_pool_moves_and_clears(billi
     assert _facts(replayed.value) == (TRIGGER_SOURCE_USAGE_INGEST, 8_000_000, 9_000_000)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_a_hard_floor_reaches_the_sdk_as_signed_figures(billing_sdk):
     """The owner's review of #612: the figures are signed. A floor is
@@ -217,6 +219,7 @@ def test_a_hard_floor_reaches_the_sdk_as_signed_figures(billing_sdk):
     assert (item.stop_bound_micros, item.stop_measured_micros) == (-1_000_000, -1_500_000)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_609s_precedence_is_replayed_as_it_was_selected(billing_sdk):
     """Pin 7: a pooled seat's report named the business's Pool line over the

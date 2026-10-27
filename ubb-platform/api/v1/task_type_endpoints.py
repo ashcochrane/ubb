@@ -190,8 +190,7 @@ def declare_kinds(tenant, payload):
             # so a third meaning would give away exactly the distinguishability
             # a caller needs to act — and the request is not malformed: it is
             # well formed and refused by the state of a row that already exists,
-            # which is what a 409 means here. `currency_locked` is the same
-            # shape one module over.
+            # which is what a 409 means here.
             try:
                 regime = declaration.regime_over(standing)
             except RegimeChangeRefused as refused:

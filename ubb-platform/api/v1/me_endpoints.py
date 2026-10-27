@@ -9,6 +9,7 @@ from apps.platform.audit.marker import records_audit
 from api.v1.schemas import whole_minor_units
 from core.auth import ProductAccess
 from core.money import DEFAULT_CURRENCY, minor_units
+from core.problems import ProblemOut
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
@@ -166,7 +167,10 @@ class PaginatedUsageInvoices(Paginated[MeUsageInvoiceOut]):
 
 class MeSubscriptionInvoiceOut(Schema):
     id: str
-    amount_paid_micros: int
+    amount_paid_micros: Optional[int] = Field(description=(
+        "What was paid, in micros of US dollars — or null where the invoice "
+        "was issued in another currency, which UBB does not convert; the "
+        "hosted invoice states it as issued."))
     status: str
     hosted_invoice_url: str = ""
     invoice_pdf: str = ""
@@ -284,7 +288,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     return page(wallet.transactions.all(), cursor, limit, serialize=_transaction_out)
 
 
-@me_router.post("/top-up", response=TopUpResponse)
+@me_router.post("/top-up", response={200: TopUpResponse, 409: ProblemOut})
 @records_audit("top_up.requested")
 def create_top_up(request, payload: TopUpRequest):
     """Widget twin of the tenant top-up. Replay-safe: idempotency_key is

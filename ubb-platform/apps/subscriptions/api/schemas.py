@@ -14,8 +14,18 @@ class StripeSubscriptionOut(Schema):
     stripe_subscription_id: str
     stripe_product_name: str
     status: str
-    amount_micros: int
+    amount_micros: Optional[int] = Field(description=(
+        "What the subscription accrues per interval, in micros of US "
+        "dollars — or null where Stripe holds it in another currency: UBB v1 "
+        "admits US dollars only and converts nothing, so it has no amount in "
+        "dollars to state and leaves the subscription out of every revenue "
+        "figure."))
+    #: The currency Stripe holds the subscription in, as Stripe sent it.
     currency: str
+    source_amount_minor: int = Field(description=(
+        "What Stripe states the subscription charges per interval, exactly as "
+        "Stripe sent it: a whole number of `currency`'s minor unit, never "
+        "converted."))
     interval: str
     current_period_start: str
     current_period_end: str
@@ -25,8 +35,15 @@ class StripeSubscriptionOut(Schema):
 class SubscriptionInvoiceOut(Schema):
     id: str
     stripe_invoice_id: str
-    amount_paid_micros: int
+    amount_paid_micros: Optional[int] = Field(description=(
+        "What was paid, in micros of US dollars — or null where Stripe "
+        "issued the invoice in another currency, which UBB v1 does not admit "
+        "and does not convert."))
+    #: The currency Stripe issued the invoice in, as Stripe sent it.
     currency: str
+    source_amount_paid_minor: int = Field(description=(
+        "What Stripe states was paid, exactly as Stripe sent it: a whole "
+        "number of `currency`'s minor unit, never converted."))
     period_start: str
     period_end: str
     paid_at: str

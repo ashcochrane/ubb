@@ -17,9 +17,10 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.widget_auth import create_widget_token
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class GrantEndpointsTest(TestCase):
+class GrantEndpointsTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -174,7 +175,7 @@ class GrantEndpointsTest(TestCase):
         self.assertIsNotNone(body["next_expiry_at"])
 
 
-class WithdrawExcludesPromoTest(TestCase):
+class WithdrawExcludesPromoTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -221,7 +222,7 @@ class WithdrawExcludesPromoTest(TestCase):
         self.assertEqual(promo.remaining_micros, 60_000_000)  # untouched
 
 
-class RefundLotAwareTest(TestCase):
+class RefundLotAwareTest(RailActivated, TestCase):
     """Fix 2 — /refund re-funds the grant lots that funded the usage, closing
     the promo cash-out hole (promo -> spend -> refund -> withdraw)."""
 

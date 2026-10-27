@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_config_in_billing_mode_type_0 import TenantConfigInBillingModeType0
 from ..models.tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from ..types import UNSET, Unset
 from typing import cast
@@ -26,7 +27,7 @@ class TenantConfigIn:
     """ 
         Attributes:
             automatic_tax_enabled (bool | None | Unset):
-            billing_mode (None | str | Unset):
+            billing_mode (None | TenantConfigInBillingModeType0 | Unset):
             default_currency (None | str | Unset):
             default_subtask_cogs_ceiling_micros (int | None | Unset):
             default_task_cogs_ceiling_micros (int | None | Unset):
@@ -39,7 +40,7 @@ class TenantConfigIn:
      """
 
     automatic_tax_enabled: bool | None | Unset = UNSET
-    billing_mode: None | str | Unset = UNSET
+    billing_mode: None | TenantConfigInBillingModeType0 | Unset = UNSET
     default_currency: None | str | Unset = UNSET
     default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
@@ -65,6 +66,8 @@ class TenantConfigIn:
         billing_mode: None | str | Unset
         if isinstance(self.billing_mode, Unset):
             billing_mode = UNSET
+        elif isinstance(self.billing_mode, TenantConfigInBillingModeType0):
+            billing_mode = self.billing_mode.value
         else:
             billing_mode = self.billing_mode
 
@@ -174,12 +177,22 @@ class TenantConfigIn:
         automatic_tax_enabled = _parse_automatic_tax_enabled(d.pop("automatic_tax_enabled", UNSET))
 
 
-        def _parse_billing_mode(data: object) -> None | str | Unset:
+        def _parse_billing_mode(data: object) -> None | TenantConfigInBillingModeType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
-            return cast(None | str | Unset, data)
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                billing_mode_type_0 = TenantConfigInBillingModeType0(data)
+
+
+
+                return billing_mode_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TenantConfigInBillingModeType0 | Unset, data)
 
         billing_mode = _parse_billing_mode(d.pop("billing_mode", UNSET))
 

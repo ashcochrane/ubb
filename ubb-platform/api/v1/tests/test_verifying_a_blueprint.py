@@ -40,6 +40,7 @@ from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from ._helpers import (
     A_JSON_SHAPE, EVENT, INPUT_TOKENS, KIND, PROVIDER, SEARCHES, SUBTASK_KIND,
     BlueprintRoutes)
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 #: A second published Event Type, declared and never selected.
 OTHER_EVENT = "image.render"
@@ -76,6 +77,9 @@ class VerifyRoutes(BlueprintRoutes):
     shared fixture's."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"],
             billing_mode="postpaid")
@@ -740,10 +744,11 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
             "known", 4_200)
 
     def test_a_foreign_currency_sample_is_the_recordings_refusal(self):
-        """A currency UBB holds that is not the tenant's reaches the recording
-        as the generated code sends it, and is refused there by the one shared
-        rule (422, "currency mismatch", #583 D1). Verify neither swaps it for
-        the tenant's nor refuses it with a rule of its own."""
+        """A currency UBB can represent and does not admit reaches the
+        recording as the generated code sends it, and is refused there by the
+        one policy (422 `unsupported_currency`, ADR-0023; #583 D1). Verify
+        neither swaps it for the tenant's nor refuses it with a rule of its
+        own."""
         body = self._run(self._reads_its_currency(),
                          provider_response_cost_micros=125, currency="eur")
 
@@ -751,7 +756,7 @@ class TestACostReadOffTheResponseIsVerifiedOnItsOwnField(VerifyRoutes):
         assert body["refusal"]["operation_id"] == \
             "api_v1_metering_endpoints_record_usage"
         assert body["refusal"]["problem"]["status"] == 422
-        assert "currency mismatch" in body["refusal"]["problem"]["detail"]
+        assert body["refusal"]["problem"]["code"] == "unsupported_currency"
         (record,) = body["records"]
         assert record["acknowledgement"] is None
 

@@ -1638,12 +1638,12 @@ class AResolutionRunKeepsTheSourceTheCostWasAdmittedUnderTest(
 
 class _TheCurrencyRuleIsTheSharedOne:
     """The new transport takes the event-currency path the caller-supplied
-    one takes and no other (#570 ruling 5): the event's `currency` must match
-    the tenant's, with no FX and no second check of its own. So each currency
-    is sent on both transports, each under the declaration that admits it,
-    and the two outcomes are compared to EACH OTHER — including for a tenant
-    whose currency is not USD, where a check of the new field's own would
-    show."""
+    one takes and no other (#570 ruling 5): the event's `currency` is
+    admitted by the one policy (US dollars only, ADR-0023), with no FX and no
+    second check of its own. So each currency is sent on both transports,
+    each under the declaration that admits it, and the two outcomes are
+    compared to EACH OTHER — a check of the new field's own would show as a
+    disagreement on any of the five."""
 
     CURRENCIES = (None, "usd", "USD", "eur", "EUR")
 
@@ -1681,18 +1681,11 @@ class _TheCurrencyRuleIsTheSharedOne:
 
         self.assertTrue(answers[None].accepted)
         self.assertTrue(answers["USD"].accepted)
-        refused = answers["eur"]
-        self.assertFalse(refused.accepted)
-        self.assertTrue(refused.body["detail"].startswith(
-            "currency mismatch: event currency 'eur' does not match tenant "
-            "currency 'usd'"), refused.body["detail"])
-
-    def test_a_tenant_whose_currency_is_not_usd(self):
-        answers = self.outcomes("eur")
-
-        self.assertTrue(answers["eur"].accepted, answers["eur"].body)
-        self.assertTrue(answers["EUR"].accepted)
-        self.assertFalse(answers["usd"].accepted)
+        for foreign in ("eur", "EUR"):
+            refused = answers[foreign]
+            self.assertFalse(refused.accepted)
+            self.assertEqual(refused.body["code"], "unsupported_currency")
+            self.assertIn("US dollars only", refused.body["detail"])
 
 
 class TheCurrencyRuleOnTheSingleRouteTest(_TheCurrencyRuleIsTheSharedOne,

@@ -34,7 +34,6 @@ from apps.subscriptions.economics.models import (
     CustomerCostAccumulator, TenantSuppliedRevenue)
 from apps.subscriptions.economics.services import (
     MARGIN_REVENUE_BASIS, MarginService)
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.tests._helpers import a_supplied_figure
 from api.v1.schemas import EconomicMeasureOut, EconomicsOut, MeasureStatus
 # The route, the tenant it takes and the two readers of its answer moved to the
@@ -58,6 +57,7 @@ from core.vocabulary import (
     REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 #: The window every fixture records into: one whole calendar month, so the
 #: coarse revenue's own span and the question's period are the same shape.
@@ -155,7 +155,7 @@ SECOND_CUSTOMER = (SUPPLIED_FOR_MARCH, 250_000)
 def a_monthly_subscription(tenant, customer):
     """An active monthly Stripe subscription that accrues
     `SUBSCRIPTION_FOR_MARCH` over the month every fixture here records into."""
-    return StripeSubscription.objects.create(
+    return a_mirrored_subscription(
         tenant=tenant, customer=customer,
         stripe_subscription_id=f"sub_{customer.external_id}",
         stripe_product_name="Pro", status="active",

@@ -149,7 +149,7 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
             f"belongs back in the list rather than in neither")
 
 
-def test_slice_0_declares_the_payment_rail_names_and_owes_the_machinery(programme):
+def test_slice_8_installed_the_machinery_slice_0_named(programme):
     """#191 decision 14's split, as a claim about this manifest (#202).
 
     Slice 0 declares `payment_rail` and its environment values as `closed`
@@ -161,10 +161,15 @@ def test_slice_0_declares_the_payment_rail_names_and_owes_the_machinery(programm
 
     The general shape of an owed row and of a deferred obligation is asserted
     over every row above; what is asserted here is the pairing those checks
-    cannot know — that it is *slice 8* that owes G27, and that the obligation
-    beside it is the live-money one rather than some other deferral.
+    cannot know. Until slice 8 that was "*slice 8* owes G27"; slice 8
+    (R10-W3) built the record, the flag and the invariant and flipped the row,
+    so it is now "G27 is installed" — and the live-money obligation beside
+    it is STILL deferred, because building the machinery is not the
+    commercial act of activating a rail (ADR-0008 §6). The two moving
+    together is the confusion this test exists to refuse.
     """
-    assert programme.gates["G27"].owner_slice == "slice_8"
+    assert programme.gates["G27"].installed
+    assert programme.gates["G27"].sites
     assert "live" in programme.obligations["O3"].body["evidence_required"]
 
 

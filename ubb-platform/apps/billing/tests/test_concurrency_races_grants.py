@@ -32,6 +32,7 @@ from apps.billing.wallets.models import (
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 def _committed_grant(wallet, tenant, *, kind="promo", amount=10_000_000,
@@ -52,7 +53,7 @@ def _committed_grant(wallet, tenant, *, kind="promo", amount=10_000_000,
     return grant
 
 
-class ConcurrentDrawdownWithGrants(TransactionTestCase):
+class ConcurrentDrawdownWithGrants(RailActivated, TransactionTestCase):
     """Race (c): two threads, same usage event, wallet funded by a grant —
     one debit, lot remaining decremented once, allocations written once."""
 
@@ -116,7 +117,7 @@ class ConcurrentDrawdownWithGrants(TransactionTestCase):
                              max(wallet.balance_micros, 0))
 
 
-class ConcurrentExpiryVsDrawdown(TransactionTestCase):
+class ConcurrentExpiryVsDrawdown(RailActivated, TransactionTestCase):
     """Race (d): expiry sweep vs drawdown exactly at the expiry boundary."""
 
     def _fixture(self):

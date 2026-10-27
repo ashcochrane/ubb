@@ -155,7 +155,13 @@ VALUE_SETS = {
     "ubb-platform/apps/platform/membership/models.py": 4,
     "ubb-platform/apps/platform/plans/models.py": 1,
     "ubb-platform/apps/platform/tenants/management/commands/seed_dev_data.py": 1,
-    "ubb-platform/apps/platform/tenants/models.py": 3,
+    # 3 -> 5 in R10-W3 (G27): the payment-rail activation's rail and its
+    # environment, the two concepts slice 0 declared a programme ahead of the
+    # record (#202) and slice 8 built it on. Both lists are comprehensions
+    # over the generated frozensets — this module is now their declared
+    # backend consumer — and hold no value of their own; counted all the
+    # same, because this inventory counts the SHAPE and not the provenance.
+    "ubb-platform/apps/platform/tenants/models.py": 5,
     # 2 → 3 in #409: `OUTCOME_REASON_CHOICES`, the caller's closed set of
     # reasons a unit of work did not deliver. It rises for the same reason the
     # usage models' pair above rose — this inventory counts the SHAPE and not

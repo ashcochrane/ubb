@@ -71,6 +71,7 @@ def _assert_g1(wallet):
     assert _active_sum(wallet) <= max(wallet.balance_micros, 0)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAllocationOrder:
     def test_consumption_order_matrix(self):
@@ -133,6 +134,7 @@ class TestAllocationOrder:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestLazyExpiry:
     def test_drawdown_expires_due_lot_before_consuming(self):
@@ -184,6 +186,7 @@ class TestLazyExpiry:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestOverageRecoup:
     def test_grant_into_negative_balance_self_allocates(self):
@@ -206,6 +209,7 @@ class TestOverageRecoup:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestG3ExpiryNeverNegative:
     def test_expiry_clamped_after_partial_spend(self):
@@ -253,6 +257,7 @@ class TestG3ExpiryNeverNegative:
                             "customer.suspended"]).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTopUpGrants:
     def test_apply_topup_credit_twice_one_topup_one_grant(self):
@@ -313,6 +318,7 @@ class TestTopUpGrants:
         event.data.object.customer = "cus_g1"
         event.data.object.client_reference_id = str(a.id)
         event.data.object.amount_total = 100  # cents -> 1_000_000 micros
+        event.data.object.currency = "usd"
         event.data.object.id = "cs_g1"
         event.data.object.payment_intent = None
         handle_checkout_completed(event)
@@ -331,6 +337,7 @@ class TestTopUpGrants:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestClawbackCascade:
     def test_dispute_of_partially_consumed_lot_cascades(self):
@@ -365,6 +372,7 @@ class TestClawbackCascade:
         event.data.object.charge = "ch_d1"
         event.data.object.status = "lost"
         event.data.object.amount = 2000  # cents -> 20_000_000 micros
+        event.data.object.currency = "usd"
         event.account = "acct_d1"
         handle_charge_dispute_closed(event)
 
@@ -417,7 +425,7 @@ class TestClawbackCascade:
         g = _make_grant(w, t, kind="paid", amount=20_000_000,
                         source="checkout", source_reference=str(attempt.id))
 
-        refund = MagicMock(id="re_r1", amount=1000)  # 10_000_000 micros
+        refund = MagicMock(id="re_r1", amount=1000, currency="usd")  # 10_000_000 micros
         charge = MagicMock(id="ch_r1", amount_refunded=1000)
         charge.refunds.data = [refund]
         event = MagicMock()
@@ -438,6 +446,7 @@ class TestClawbackCascade:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReconcileGrants:
     def test_corrupted_grant_logs_loud(self):

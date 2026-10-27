@@ -42,6 +42,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED)
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="enforcing", stale=900):
@@ -58,6 +59,9 @@ def _task(t, c, owner_id):
 @pytest.mark.django_db
 class TestReaper:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def _emitted(self, task_id):
@@ -118,6 +122,9 @@ class TestReaper:
 @pytest.mark.django_db
 class TestCloseAbandonedHeartbeatSkip:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_skips_alive_task_expires_silent_task(self):
@@ -167,6 +174,9 @@ class TestCloseAbandonedHeartbeatSkip:
 @pytest.mark.django_db
 class TestP5ReviewFixes:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_reaper_respects_tenant_task_stale_seconds(self):

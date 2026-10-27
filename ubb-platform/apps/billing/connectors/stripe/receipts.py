@@ -35,9 +35,17 @@ class ReceiptService:
         import stripe
         from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 
+        from apps.billing.locking import the_currency_a_top_up_credits
+        from core.currency_policy import the_rails_currency
+
         connected_account = get_tenant_stripe_account(customer.tenant_id)
         customer_stripe_id = get_customer_stripe_id(customer.id)
-        amount_cents = micros_to_cents(top_up_attempt.amount_micros)
+        # The receipt documents money the wallet was credited, so it is in
+        # that wallet's currency — read, never stated here (#565). Refused
+        # before any Stripe call, so no half-built receipt is left behind.
+        currency = the_rails_currency(
+            *the_currency_a_top_up_credits(top_up_attempt))
+        amount_cents = micros_to_cents(top_up_attempt.amount_micros, currency)
         api_key = api_key_for_tenant(customer.tenant)
 
         try:
@@ -61,7 +69,7 @@ class ReceiptService:
                 customer=customer_stripe_id,
                 invoice=stripe_invoice.id,
                 amount=amount_cents,
-                currency="usd",
+                currency=currency,
                 description="Account Top-Up",
                 stripe_account=connected_account,
             )

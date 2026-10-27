@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,479 of 2,931 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,503 of 2,968 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    43 files, 121 occurrences
+    #     units    42 files, 120 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -2927,6 +2927,65 @@ measurement_key:
     # (`usage/0050`), so the exclusions stand at 452. One is swept: the kernel
     # task that answers a publication's held names after it commits
     # (`event_types/tasks.py`).
+    #
+    # 2026-10-27, R10-W3 (#555): 2,479 of 2,931 -> 2,483 of 2,942 tracked
+    # files, and `units` 43/121 -> 42/120 — the case of an occurrence
+    # LEAVING the tree, with no exclusion count but the migrations' moving.
+    # Eleven files arrived. Seven are migrations excluded under
+    # `historical-migrations` (283 -> 290), UBB v1's USD `CHECK`s, so the
+    # exclusions stand at 459; four are swept: the one currency policy
+    # (`core/currency_policy.py`), its test, the database's test of it
+    # (`apps/platform/tests/test_v1_is_usd_only.py`) and ADR-0023. The
+    # occurrence that left is the surviving "currency minor units" sense,
+    # in a comment on `tenants/models.py` that said where the minor-unit
+    # table lives; it was rewritten to say which module ADMITS a currency,
+    # and the table's own docstring already names the minor unit.
+    #
+    # 2026-10-27, R10-W3 (#564, #565): 2,483 of 2,942 -> 2,487 of 2,948
+    # tracked files (`units` UNMOVED). Six files arrived. Two are migrations
+    # excluded under `historical-migrations` (290 -> 292): the mirror keeps
+    # what Stripe sent (`subscriptions/0018`) and a billing period states its
+    # currency (`tenant_billing/0013`), so the exclusions stand at 461. Four
+    # are swept: the foreign-currency quarantine's route tests, the outbound
+    # rail's refusal tests, the mirror migration's test and the console's
+    # test of a quarantined amount.
+    #
+    # 2026-10-27, R10-W3 (slice 8's ledger): 2,487 of 2,948 -> 2,491 of
+    # 2,953 tracked files (`units` UNMOVED). Six files arrived and one
+    # left. One arrival is a migration excluded under
+    # `historical-migrations` (292 -> 293): a tenant that bills elsewhere is
+    # `external` (`tenants/0029`), so the exclusions stand at 462. Five are
+    # swept: the route test of the final word, the console's billing-mode
+    # labels (`src/lib/billing-mode.ts`) and three SDK models the
+    # regenerated core added for the closed set and the derived posture.
+    # The one that left is swept too: the console's test of a quarantined
+    # amount, which moved into the customers feature's helper tests with the
+    # helper it tests (a component file may export only components).
+    #
+    # 2026-10-27, R10-W3 (G27): 2,491 of 2,953 -> 2,494 of 2,957 tracked
+    # files (`units` UNMOVED). Four files arrived. One is a migration
+    # excluded under `historical-migrations` (293 -> 294): a money mode
+    # needs its payment rail activated first (`tenants/0030`), so the
+    # exclusions stand at 463. Three are swept: G27's route and door tests,
+    # the activation record's tests, and the fixture capability a test asks
+    # for by name (`tenants/tests/_rails.py`).
+    #
+    # 2026-10-27, R10-W3 (#479, #516, #563): 2,494 of 2,957 -> 2,502 of
+    # 2,967 tracked files (`units` UNMOVED). Ten files arrived. Two are
+    # migrations excluded under `historical-migrations` (294 -> 296): a
+    # wallet movement states its reason (`wallets/0013`) and a billing
+    # period names what it sums (`tenant_billing/0014`), so the exclusions
+    # stand at 465. Eight are swept: the console's movement-reason module,
+    # its select and both their tests, the two route-level test modules, and
+    # two SDK models the regenerated core added for the reason on the
+    # credit and debit bodies.
+    #
+    # 2026-10-27, R10-W3 (the window's review): 2,502 of 2,967 -> 2,503 of
+    # 2,968 tracked files (`units` UNMOVED). One file arrived and one moved.
+    # The arrival is swept: the console's rendering test of a quarantined
+    # subscription (`features/customers/components/subscription-tab.test.tsx`).
+    # The console's billing-mode words moved from `src/lib/` to the settings
+    # feature's `lib/`, their only reader, and are swept where they landed.
 
     - term: units
       retired_as: >-
@@ -3068,3 +3127,30 @@ idempotency_key:
       path: ubb-sdk/ubb/metering.py
     - surface: openapi
       path: openapi/v1.json
+
+total_billed_cost_micros:
+  kind: free_text
+  summary: >-
+    What a tenant's customers were billed over a scope: the sum of
+    `billed_cost_micros` over its postings. On a billing period it is placed
+    by arrival and INCLUDES a fixed-price unit of work's charge, which is
+    revenue and which UBB's platform fee is a percentage of — while the
+    period's `event_count` beside it counts metered events only (#563). The
+    stop payload gives the same sum over one unit of work the same name.
+  # A column name rather than a value set, filed here for the reason
+  # `live_counter_maintenance_enabled` is: the retired spelling needs an alias
+  # the sweep can refuse, and an alias needs a concept to hang on. #516's
+  # ruling asked for exactly this — "a ledger or registry note, so the old
+  # spelling cannot survive" — and a registry alias is the one of the two that
+  # outlives a ledger entry being paid.
+  retired_aliases:
+    # "Usage cost" read like a supplier's cost and hid that fixed-price revenue
+    # is inside it. An aggregate is named for what it aggregates (#516).
+    - total_usage_cost_micros
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/tenant_billing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/components/tenant-billing-page.tsx

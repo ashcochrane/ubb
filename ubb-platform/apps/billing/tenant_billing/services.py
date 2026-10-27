@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.billing.tenant_billing.models import PlatformFeeCarry, TenantBillingPeriod
 from apps.platform.event_types.quarantine import refuse_a_silent_close
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
-from core.money import DEFAULT_CURRENCY, from_minor, to_minor
+from core.money import from_minor, to_minor
 from core.time_windows import utc_day_start
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ class TenantBillingService:
                 tenant=tenant,
                 period_start=first_of_month,
                 period_end=first_of_next_month,
-                defaults={"status": "open"},
+                defaults={"status": "open",
+                          "currency": tenant.default_currency},
             )
         except IntegrityError:
             # Race condition: partial unique index rejected a second open period.
@@ -47,14 +48,24 @@ class TenantBillingService:
         return period
 
     @staticmethod
-    def accumulate_usage(tenant, billed_cost_micros):
+    def accumulate_usage(tenant, billed_cost_micros, *, counts_as_event):
         """Atomically increment the current billing period's usage totals.
+
+        **WHETHER THE POSTING IS AN EVENT IS THE CALLER'S, AND IT IS READ OFF
+        THE POSTING'S KIND (#563).** `counts_as_event` is true for a
+        `metered_usage` posting — priced, unpriced or priced at zero — and
+        false for a Task Charge, whose money is added all the same: the
+        count excludes synthetic charges while the money includes them. It
+        is a required keyword so no caller can count by default, and the
+        close's reconcile decides the same way from the same column
+        (`get_period_totals`), so the two writers agree and a drift warning
+        means a real accumulator failure again.
 
         Called synchronously in the usage recording hot path. The atomic
         UPDATE is fast (no select, just increment) so this does not add
         meaningful latency.
 
-        ⚠ `F("total_usage_cost_micros") + None` IS NOT A PYTHON ERROR. It
+        ⚠ `F("total_billed_cost_micros") + None` IS NOT A PYTHON ERROR. It
         compiles to SQL, and SQL propagates `NULL` through addition, so one
         posting UBB could not price would have made this `UPDATE` write `NULL`
         over a tenant's running period total.
@@ -63,7 +74,7 @@ class TenantBillingService:
         SILENT NULL — MEASURED, NOT ASSUMED (#351).** The slice's spec files
         this site under "a silently wrong number: no exception, no log line",
         and that is the one thing it is not, because
-        `TenantBillingPeriod.total_usage_cost_micros` is NOT NULL. Postgres
+        `TenantBillingPeriod.total_billed_cost_micros` is NOT NULL. Postgres
         refuses the row, and this accumulation runs under an outbox handler, so
         the failure shape is a poisoned retry loop rather than a quiet total.
         `CustomerCostAccumulator`'s two columns are NOT NULL for the same
@@ -94,10 +105,11 @@ class TenantBillingService:
         already re-derives rather than trusting this accumulator.
         """
         billed_cost_micros = billed_cost_micros or 0
+        events = 1 if counts_as_event else 0
         period = TenantBillingService.get_or_create_current_period(tenant)
         rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
-            total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,
-            event_count=F("event_count") + 1,
+            total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
+            event_count=F("event_count") + events,
         )
         if rows == 0:
             # Period was closed between get_or_create and update — get fresh period and retry once
@@ -107,8 +119,8 @@ class TenantBillingService:
             )
             period = TenantBillingService.get_or_create_current_period(tenant)
             rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
-                total_usage_cost_micros=F("total_usage_cost_micros") + billed_cost_micros,
-                event_count=F("event_count") + 1,
+                total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
+                event_count=F("event_count") + events,
             )
             if rows == 0:
                 logger.error(
@@ -157,7 +169,7 @@ class TenantBillingService:
                     fee = config.config.get("amount_micros", 0)
                 elif config.fee_type == "percentage":
                     pct = Decimal(str(config.config.get("percentage", "0")))
-                    fee = int(Decimal(period.total_usage_cost_micros) * pct / Decimal(100))
+                    fee = int(Decimal(period.total_billed_cost_micros) * pct / Decimal(100))
                 else:
                     continue
 
@@ -172,7 +184,7 @@ class TenantBillingService:
             from apps.billing.queries import get_billing_config
             billing_config = get_billing_config(tenant.id)
             raw_fee = (
-                Decimal(period.total_usage_cost_micros)
+                Decimal(period.total_billed_cost_micros)
                 * billing_config.platform_fee_percentage
                 / Decimal(100)
             )
@@ -222,11 +234,11 @@ class TenantBillingService:
         if period.tenant.is_sandbox:
             return 0
 
-        # The fee is UBB invoicing the tenant on UBB's OWN Stripe account,
-        # always in the platform's currency (see the currency="usd" on the
-        # invoice item in stripe_service.push_platform_fee_invoice) — not the
-        # tenant's customer-facing default_currency.
-        fee_currency = DEFAULT_CURRENCY
+        # The fee is UBB invoicing the tenant on UBB's OWN Stripe account, in
+        # the currency of the money it is a percentage of: the period's own
+        # (#565), which `StripeService.create_tenant_platform_invoice` reads
+        # off the same row.
+        fee_currency = period.currency
 
         carried_in = (
             PlatformFeeCarry.objects
@@ -403,7 +415,7 @@ class TenantBillingService:
 
         totals = get_period_totals(period.tenant_id, period.period_start,
                                    period.period_end, basis="arrival")
-        recomputed_cost = totals["total_cost_micros"]
+        recomputed_billed_cost = totals["total_billed_cost_micros"]
         recomputed_count = totals["event_count"]
 
         # Skip if no events found — avoids zeroing out periods where events
@@ -420,21 +432,21 @@ class TenantBillingService:
         if recomputed_count == 0 and period.event_count > 0:
             return None
 
-        if (recomputed_cost != period.total_usage_cost_micros
+        if (recomputed_billed_cost != period.total_billed_cost_micros
                 or recomputed_count != period.event_count):
             logger.warning(
                 "Billing period reconciliation drift detected",
                 extra={"data": {
                     "period_id": str(period.id),
                     "tenant": period.tenant.name,
-                    "stored_cost": period.total_usage_cost_micros,
-                    "recomputed_cost": recomputed_cost,
+                    "stored_billed_cost": period.total_billed_cost_micros,
+                    "recomputed_billed_cost": recomputed_billed_cost,
                     "stored_count": period.event_count,
                     "recomputed_count": recomputed_count,
                 }},
             )
             TenantBillingPeriod.objects.filter(id=period.id).update(
-                total_usage_cost_micros=recomputed_cost,
+                total_billed_cost_micros=recomputed_billed_cost,
                 event_count=recomputed_count,
             )
 

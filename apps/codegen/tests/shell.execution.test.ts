@@ -1565,15 +1565,16 @@ describe("a supplier's cost read off the response, in a shell file", () => {
     expect(ran.requests).toEqual([]);
   });
 
-  it("returns UBB's refusal of a currency it holds and the tenant does not, as curl gave it", () => {
-    // D1: the one shared rule is the server's. The file sends the code it
+  it("returns UBB's refusal of a currency it can represent and does not admit, as curl gave it", () => {
+    // D1: the one shared rule is the server's (ADR-0023: US dollars only).
+    // The file sends the code it
     // read and returns the refusal: never a status a stop has, and never 0.
     const problem = {
-      type: "https://ubb.dev/errors/validation_error",
-      title: "Validation error",
+      type: "https://ubb.dev/errors/unsupported_currency",
+      title: "Unsupported currency",
       status: 422,
-      code: "validation_error",
-      detail: "currency mismatch: event currency 'eur' does not match tenant currency 'usd'",
+      code: "unsupported_currency",
+      detail: "unsupported currency 'eur': UBB v1 admits US dollars only ('usd')",
     };
     const { ran, statuses } = recorded(
       "shell-response-cost-read-currency",
@@ -1590,7 +1591,7 @@ describe("a supplier's cost read off the response, in a shell file", () => {
     );
 
     expect(statuses).toEqual(["22"]);
-    expect(ran.stderr).toContain("currency mismatch");
+    expect(ran.stderr).toContain("US dollars only");
     expect(ran.requests.map((request) => request.body.currency)).toEqual(["eur"]);
   });
 

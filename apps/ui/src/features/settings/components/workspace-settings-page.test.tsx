@@ -12,7 +12,10 @@ describe("WorkspaceSettingsPage", () => {
 
     // Workspace card
     expect(await screen.findByText("Acme AI")).toBeInTheDocument();
-    expect(screen.getByText("USD — US Dollar")).toBeInTheDocument();
+    // UBB v1 is US dollars only (ADR-0023): the currency is shown, never offered.
+    expect(screen.getByText("USD")).toBeInTheDocument();
+    expect(screen.getByText(/UBB\s+accepts no other currency and converts none/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Workspace currency")).not.toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
 
     // Spend control card with explanatory copy — the position the wire

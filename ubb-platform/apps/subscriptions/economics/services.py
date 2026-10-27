@@ -4,6 +4,7 @@ from apps.subscriptions.economics.models import CustomerCostAccumulator, Custome
 from apps.subscriptions.economics.revenue import (
     RevenueService, SuppliedRevenueService)
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
+from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY
 from core.vocabulary import REVENUE_BASIS_RECOGNISED
 
 #: THE BASIS EVERY MARGIN FIGURE HERE IS STATED UNDER (#496).
@@ -164,6 +165,11 @@ class MarginService:
                 billed_over_window=costs["billed_cost_micros"]),
             costs["provider_cost_micros"])
         return {
+            # What the subscription revenue below LEFT OUT (#564): a
+            # subscription in a currency UBB does not admit, quarantined and
+            # never converted. Scoped exactly like the revenue beside it.
+            FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY:
+                RevenueService.foreign_currency_count(tenant_id, customer_id),
             "customer_id": str(customer_id),
             "subscription_revenue_micros": subscription_revenue,
             "supplied_revenue_micros": supplied_revenue,
@@ -188,6 +194,7 @@ class MarginService:
         keys = ["subscription_revenue_micros", "supplied_revenue_micros",
                 "usage_revenue_micros", "provider_cost_micros",
                 UNRESOLVED_EVENT_COUNT_KEY, UNPRICED_EVENT_COUNT_KEY,
+                FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
                 "total_revenue_micros", "gross_margin_micros", "event_count"]
         totals = {k: 0 for k in keys}
         for d in per_seat:
@@ -202,6 +209,10 @@ class MarginService:
         business_supplied = SuppliedRevenueService.attributed_total(
             tenant_id, business.id, start_date, end_date, MARGIN_REVENUE_BASIS)
         totals["subscription_revenue_micros"] += business_sub
+        # The business's OWN foreign subscriptions, on top of its seats' — the
+        # revenue line above left them out, so the count says so (#564).
+        totals[FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY] += (
+            RevenueService.foreign_currency_count(tenant_id, business.id))
         totals["supplied_revenue_micros"] += business_supplied
         totals["total_revenue_micros"] += business_sub + business_supplied
         totals["gross_margin_micros"] += business_sub + business_supplied
@@ -227,6 +238,10 @@ class MarginService:
         unpriced = acc.unpriced_event_count if acc else 0
         subscription_revenue = RevenueService.accrued_subscription_revenue(
             tenant_id, customer_id, period_start, period_end)
+        # Frozen beside the figure it qualifies, as the two counts above are
+        # (#564): the alarm this snapshot may raise is raised on a revenue
+        # that left these out.
+        foreign = RevenueService.foreign_currency_count(tenant_id, customer_id)
         supplied_revenue = SuppliedRevenueService.attributed_total(
             tenant_id, customer_id, period_start, period_end, MARGIN_REVENUE_BASIS)
         total_revenue, usage_revenue, margin, pct = _compose(
@@ -245,6 +260,7 @@ class MarginService:
                 "provider_cost_micros": provider_cost,
                 UNRESOLVED_EVENT_COUNT_KEY: unresolved,
                 UNPRICED_EVENT_COUNT_KEY: unpriced,
+                FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY: foreign,
                 "total_revenue_micros": total_revenue,
                 "gross_margin_micros": margin,
                 "margin_percentage": pct,
@@ -316,7 +332,18 @@ class MarginService:
         recent = alerting.look_back(
             econ.tenant_id, econ.customer_id, econ.period_start,
             periods=consecutive)
-        below = len(recent) >= consecutive and all(
+        # A MARGIN THAT LEFT FOREIGN REVENUE OUT CONCLUDES NOTHING (#564; the
+        # owner's review of #619). A subscription Stripe holds in a currency
+        # UBB does not admit is excluded because there is no FX: its revenue
+        # is UNKNOWN in dollars, not zero, so the margin over that scope is a
+        # subtotal, and "unprofitable" read off it would be a false alarm
+        # about somebody's money. Unlike an unresolved cost it never resolves,
+        # so the alarm is not raised on the partial figure: the scope is left
+        # unflagged — which says nothing, not "profitable" — and every margin
+        # read beside it states the count that says why.
+        comparable = not any(
+            state[FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY] for state in recent)
+        below = comparable and len(recent) >= consecutive and all(
             state["margin_pct"] < min_pct for state in recent)
 
         if below != prev_flag:

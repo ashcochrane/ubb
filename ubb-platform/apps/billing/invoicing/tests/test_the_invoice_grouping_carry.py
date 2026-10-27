@@ -34,6 +34,7 @@ from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import ANALYTICS_GROUPING_KIND_FIELD
+from apps.platform.tenants.tests._rails import RailActivated
 
 MIGRATION = importlib.import_module(
     "apps.billing.invoicing.migrations."
@@ -72,7 +73,7 @@ class TheFrozenSpellingsAreTheLivingOnesTest(TestCase):
         assert MIGRATION.FIRST_SLOT == SLOTS[0]
 
 
-class TheCarryReadsWhatEachValueDidTest(TestCase):
+class TheCarryReadsWhatEachValueDidTest(RailActivated, TestCase):
     """Each stored shape, carried to the axis it was really grouping by."""
 
     def setUp(self):

@@ -22,7 +22,7 @@ to sit where both can reach it.
 
 The three orientations:
 
-  WALLET (prepaid / meter_only — the balance FALLS). The configured floor is
+  WALLET (prepaid / external — the balance FALLS). The configured floor is
   a magnitude, ``min_balance_micros``; the comparable line is its negation
   (``floor_line``). PAST the floor = balance strictly BELOW the line;
   RECOVERED = balance at/above it (the exact negation — recovery on the line
@@ -59,7 +59,7 @@ from datetime import timezone as _utc_tz
 from typing import NamedTuple
 
 
-# --- wallet floor (prepaid / meter_only; balance FALLS across the line) ----
+# --- wallet floor (prepaid / external; balance FALLS across the line) ----
 
 def floor_line(min_balance_micros):
     """The comparable wallet line: a balance below ``-min_balance`` is past

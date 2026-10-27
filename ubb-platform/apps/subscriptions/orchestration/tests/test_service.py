@@ -5,6 +5,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.subscriptions.models import CustomerSubscriptionItem, StripeSubscription
 from apps.subscriptions.orchestration.service import SubscriptionOrchestrator, OrchestrationError
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 def _charge_ready_tenant():
@@ -51,7 +52,7 @@ def test_set_seats_modifies_quantity_with_proration():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
     plan = a_plan(tenant=t, key="pro", name="Pro", per_seat_micros=8_000_000)
-    sub = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
+    sub = a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=80_000_000, quantity=10, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
         last_synced_at="2026-01-01T00:00:00Z")
@@ -68,7 +69,7 @@ def test_set_seats_refreshes_mirror_without_webhook():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
     plan = a_plan(tenant=t, key="pro", name="Pro", per_seat_micros=2_000_000)
-    mirror = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
+    mirror = a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=5_000_000, quantity=2, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
         last_synced_at="2026-01-01T00:00:00Z")
@@ -88,9 +89,9 @@ def test_set_seats_refreshes_mirror_without_webhook():
 
 
 @pytest.mark.django_db
-def test_ensure_plan_provisioned_uses_tenant_currency():
-    t = Tenant.objects.create(name="EUR", products=["metering", "billing"],
-        stripe_connected_account_id="acct_T", charges_enabled=True, default_currency="eur")
+def test_ensure_plan_provisioned_prices_in_the_tenants_currency():
+    t = Tenant.objects.create(name="USD", products=["metering", "billing"],
+        stripe_connected_account_id="acct_T", charges_enabled=True, default_currency="usd")
     plan = a_plan(tenant=t, key="pro", name="Pro",
         access_fee_micros=50_000_000, per_seat_micros=8_000_000, interval="month")
     with patch("apps.subscriptions.orchestration.service.stripe.Product.create",
@@ -100,7 +101,7 @@ def test_ensure_plan_provisioned_uses_tenant_currency():
         SubscriptionOrchestrator.ensure_plan_provisioned(plan)
     assert mpr.call_count == 2
     for _, kw in mpr.call_args_list:
-        assert kw["currency"] == "eur"
+        assert kw["currency"] == t.default_currency == "usd"
 
 
 @pytest.mark.django_db

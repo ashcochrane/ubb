@@ -846,6 +846,7 @@ export async function subscribeCustomer(
     status: "active",
     amount_micros: 149_000_000,
     currency: "usd",
+    source_amount_minor: 14_900,
     interval: "month",
     current_period_start: "2026-07-24T00:00:00Z",
     current_period_end: "2026-08-24T00:00:00Z",

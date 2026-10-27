@@ -32,6 +32,7 @@ from apps.billing.invoicing.models import (
     CustomerUsageInvoice, PostpaidResidualLedger, PostpaidUsageConfig)
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 from core.exceptions import StripeFatalError
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 SVC = "apps.billing.invoicing.services.postpaid_service.stripe"
@@ -55,10 +56,9 @@ def _customer(t, external_id="c1", stripe_customer_id="cus_1"):
 
 
 def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
-    from apps.subscriptions.models import (
-        CustomerSubscriptionItem, StripeSubscription)
+    from apps.subscriptions.models import CustomerSubscriptionItem
     now = timezone.now()
-    sub = StripeSubscription.objects.create(
+    sub = a_mirrored_subscription(
         tenant=t, customer=c, stripe_subscription_id=sub_id,
         stripe_product_name="P", status=status, amount_micros=49_000_000,
         interval="month", quantity=1, current_period_start=now,
@@ -156,6 +156,7 @@ def _subscription_targets(mock_list):
     return [call for call in mock_list.call_args_list if "subscription" in call.kwargs]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestHappyPath:
     def test_usage_rides_the_renewal_draft(self):
@@ -191,6 +192,7 @@ class TestHappyPath:
         assert rec.line_items.count() == 2
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestStandaloneFallback:
     def test_window_missed_old_draft_falls_back_with_log(self, caplog):
@@ -271,6 +273,7 @@ class TestStandaloneFallback:
         assert m.create.call_count == 0
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestEligibilityPort:
     def test_no_subscription_returns_none(self):
@@ -309,6 +312,7 @@ class TestEligibilityPort:
         assert get_active_subscription_for_consolidation(t, c2) is None
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSafetyAddendumResume:
     def test_resume_draft_still_open_creates_only_missing_items_no_finalize(self):
@@ -452,6 +456,7 @@ class TestSafetyAddendumResume:
         assert m.finalize.call_args.kwargs["invoice"] == "in_rem"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRebillVoidInterplay:
     def test_rebill_void_refused_for_consolidated_rec(self):
@@ -492,6 +497,7 @@ class TestRebillVoidInterplay:
         assert rec.rebill_generation == 0  # unchanged
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestConsolidatedAr:
     """invoice.paid for the SUBSCRIPTION invoice must mark BOTH the
@@ -578,6 +584,7 @@ class TestConsolidatedAr:
         assert rec.hosted_invoice_url == "https://pay/r"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestGen1ConsolidatedComposedKey:
     def test_gen1_consolidated_push_key_namespace(self):
@@ -642,3 +649,60 @@ def test_close_beat_lands_inside_the_renewal_draft_window():
     ~1h later — the postpaid close must run between the two."""
     sched = settings.CELERY_BEAT_SCHEDULE["close-postpaid-usage-periods"]["schedule"]
     assert sched == crontab(minute=5, hour=0, day_of_month=1)
+
+
+@pytest.mark.usefixtures("rail_activated")
+@pytest.mark.django_db
+class TestTheUsageInvoiceRowIsTheCurrencysRecord:
+    """#565: the push takes its currency from the usage invoice row and refuses
+    — never reconciles — a disagreement, on both of its paths. A refusal parks
+    the row `failed_permanent` with the reason, and no line reaches Stripe."""
+
+    def test_a_renewal_draft_in_another_currency_is_refused(self):
+        """The CONSOLIDATED path: the draft is Stripe's, in its subscription's
+        currency. A subscription a connected account holds in a currency UBB
+        never admitted is exactly the case, and a dollar line cannot ride it."""
+        t = _tenant()
+        c = _customer(t)
+        _sub(t, c)
+        foreign = _renewal()
+        foreign.currency = "eur"
+        with _stripe(sub_drafts=[foreign]) as m, _agg():
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "failed_permanent"
+        assert "CurrencyDisagreement" in rec.last_attempt_error
+        assert "Stripe invoice in_renewal is in 'eur'" in rec.last_attempt_error
+        assert m.item_create.call_count == 0
+
+    def test_a_usage_invoice_in_another_currency_is_refused(self):
+        """The STANDALONE path, with the row's own CHECK lifted for this test's
+        transaction: the push refuses on its own rather than leaning on it."""
+        from django.db import connection
+        t = _tenant(consolidate=False)
+        c = _customer(t)
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c, period_start=PS, period_end=PE)
+        with connection.cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+            cursor.execute("ALTER TABLE ubb_customer_usage_invoice DROP CONSTRAINT "
+                           "ck_usage_invoice_currency_usd")
+            cursor.execute("UPDATE ubb_customer_usage_invoice SET currency = 'eur' "
+                           "WHERE id = %s", [str(rec.id)])
+        with _stripe() as m, _agg():
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "failed_permanent"
+        assert f"usage invoice {rec.id} is in 'eur'" in rec.last_attempt_error
+        assert m.create.call_count == 0
+        assert m.item_create.call_count == 0
+
+    def test_the_lines_are_sent_in_the_rows_currency(self):
+        """The control: a dollar row sends every line in its own currency."""
+        t = _tenant(consolidate=False)
+        c = _customer(t)
+        with _stripe() as m, _agg():
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        assert m.item_create.call_count == 2
+        assert {call.kwargs["currency"] for call in m.item_create.call_args_list} \
+            == {rec.currency}

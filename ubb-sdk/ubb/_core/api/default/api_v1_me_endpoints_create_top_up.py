@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.problem_out import ProblemOut
 from ...models.top_up_request import TopUpRequest
 from ...models.top_up_response import TopUpResponse
 from typing import cast
@@ -40,7 +41,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> TopUpResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TopUpResponse | None:
     if response.status_code == 200:
         response_200 = TopUpResponse.from_dict(response.json())
 
@@ -48,13 +49,20 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[TopUpResponse]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TopUpResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -68,7 +76,7 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> Response[TopUpResponse]:
+) -> Response[ProblemOut | TopUpResponse]:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
@@ -83,7 +91,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[TopUpResponse]
+        Response[ProblemOut | TopUpResponse]
      """
 
 
@@ -103,7 +111,7 @@ def sync(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> TopUpResponse | None:
+) -> ProblemOut | TopUpResponse | None:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
@@ -118,7 +126,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        TopUpResponse
+        ProblemOut | TopUpResponse
      """
 
 
@@ -133,7 +141,7 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> Response[TopUpResponse]:
+) -> Response[ProblemOut | TopUpResponse]:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
@@ -148,7 +156,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[TopUpResponse]
+        Response[ProblemOut | TopUpResponse]
      """
 
 
@@ -168,7 +176,7 @@ async def asyncio(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> TopUpResponse | None:
+) -> ProblemOut | TopUpResponse | None:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
@@ -183,7 +191,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        TopUpResponse
+        ProblemOut | TopUpResponse
      """
 
 

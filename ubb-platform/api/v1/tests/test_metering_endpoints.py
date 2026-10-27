@@ -910,8 +910,11 @@ class ManyRulesInOneBookTest(TestCase):
 
 
 class RecordUsageCurrencyTest(TestCase):
-    """CUR-1 choke point: record_usage rejects any currency that is not the
-    tenant's default_currency (case-insensitive); stored normalized lowercase."""
+    """UBB v1 is USD-only on the recording routes (ADR-0023, #555): a
+    caller-supplied currency is admitted by the one policy in any spelling
+    and stored lowercase, or the event is refused `unsupported_currency` —
+    whole-request on the single route, per item on the batch — and never
+    recorded."""
 
     def setUp(self):
         self.http_client = Client()
@@ -938,14 +941,17 @@ class RecordUsageCurrencyTest(TestCase):
             **extra,
         }
 
-    def test_mismatched_currency_returns_422(self):
-        resp = self._post(self._body("cur_mismatch", currency="eur"))
-        self.assertEqual(resp.status_code, 422, resp.content)
-        self.assertIn("currency mismatch", resp.json()["detail"])
+    def test_another_currency_returns_422_and_records_nothing(self):
         from apps.metering.usage.models import Posting
+        for offered in ("eur", "jpy"):
+            with self.subTest(offered=offered):
+                resp = self._post(self._body(f"cur_{offered}", currency=offered))
+                self.assertEqual(resp.status_code, 422, resp.content)
+                self.assertEqual(resp.json()["code"], "unsupported_currency")
+                self.assertIn("US dollars only", resp.json()["detail"])
         self.assertEqual(Posting.objects.filter(tenant=self.tenant).count(), 0)
 
-    def test_matching_currency_accepted(self):
+    def test_us_dollars_are_accepted(self):
         resp = self._post(self._body("cur_match", currency="usd"))
         self.assertEqual(resp.status_code, 200, resp.content)
 
@@ -956,29 +962,14 @@ class RecordUsageCurrencyTest(TestCase):
         event = Posting.objects.get(id=resp.json()["event_id"])
         self.assertEqual(event.currency, "usd")
 
-    def test_omitted_currency_defaults_to_tenant_currency(self):
-        eur_tenant = Tenant.objects.create(
-            name="EurTenant", products=["metering"], default_currency="eur")
-        _, eur_key = TenantApiKey.create_key(eur_tenant, label="cur-eur")
-        eur_customer = Customer.objects.create(tenant=eur_tenant, external_id="cur_eur1")
-        declares_a_caller_supplied_cost(eur_tenant, DECLARED, currency="eur")
-        resp = self.http_client.post(
-            "/api/v1/metering/usage",
-            data=json.dumps({
-                "customer_id": str(eur_customer.id),
-                "idempotency_key": "idem_eur",
-                "event_type": DECLARED,
-                "provider_cost_micros": 1_000_000,
-            }),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {eur_key}",
-        )
+    def test_omitted_currency_is_stamped_from_the_tenant(self):
+        resp = self._post(self._body("cur_omitted"))
         self.assertEqual(resp.status_code, 200, resp.content)
         from apps.metering.usage.models import Posting
         event = Posting.objects.get(id=resp.json()["event_id"])
-        self.assertEqual(event.currency, "eur")
+        self.assertEqual(event.currency, "usd")
 
-    def test_batch_item_currency_mismatch_is_per_item_validation_error(self):
+    def test_batch_item_in_another_currency_is_refused_by_itself(self):
         resp = self.http_client.post(
             "/api/v1/metering/usage/batch",
             data=json.dumps({"events": [
@@ -993,5 +984,5 @@ class RecordUsageCurrencyTest(TestCase):
         self.assertEqual(body["accepted"], 1)
         self.assertEqual(body["rejected"], 1)
         self.assertTrue(body["results"][0]["accepted"])
-        self.assertEqual(body["results"][1]["code"], "validation_error")
-        self.assertIn("currency mismatch", body["results"][1]["detail"])
+        self.assertEqual(body["results"][1]["code"], "unsupported_currency")
+        self.assertIn("US dollars only", body["results"][1]["detail"])

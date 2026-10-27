@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 import {
+  ForeignCurrencyNote,
   MarginShare,
   MeasureValue,
   RetentionHorizonNote,
@@ -169,6 +170,7 @@ export function OverviewTab({
             <React.Suspense fallback={<Skeleton className="h-64 w-full" />}>
               <MarginTrendChart points={trend.data.points} currency={currency} />
             </React.Suspense>
+            <ForeignCurrencyNote caveats={trend.data} />
             <RetentionHorizonNote caveats={trend.data} />
             {/* ⚠ **THE REVENUE LINE INCLUDES SUPPLIED AMOUNTS, AND ONE OF THE
                 TWO VIEWS SPREADS THEM (§5).** A figure a tenant stated for a

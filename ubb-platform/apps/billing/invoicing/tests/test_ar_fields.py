@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 @pytest.mark.django_db
@@ -83,10 +84,9 @@ class TestCustomerUsageInvoiceARFields:
 @pytest.mark.django_db
 class TestSubscriptionInvoiceARFields:
     def _make_stripe_sub(self, tenant, customer, sub_id="sub_ar_001"):
-        from apps.subscriptions.models import StripeSubscription
 
         now = timezone.now()
-        return StripeSubscription.objects.create(
+        return a_mirrored_subscription(
             tenant=tenant,
             customer=customer,
             stripe_subscription_id=sub_id,

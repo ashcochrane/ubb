@@ -30,7 +30,7 @@ lazy function-body imports too. Full matrix + rationale:
 `docs/architecture/2026-06-12-adr-001-product-boundaries.md`. The composition layer (`api/v1`,
 `apps/*/api`) may import any product; products never import `api.*`.
 
-Tenant billing modes (`Tenant.billing_mode`): `meter_only` · `prepaid` · `postpaid`. Tenant-enabled
+Tenant billing modes (`Tenant.billing_mode`): `external` · `prepaid` · `postpaid`. Tenant-enabled
 products (`Tenant.products`): `metering`, `billing`, `referrals` — declared once in
 `domain-vocabulary/` and imported by the model rather than restated there. Deliberately not the
 four-product list above: `subscriptions` gates on `billing` now, and slice 1 retired the

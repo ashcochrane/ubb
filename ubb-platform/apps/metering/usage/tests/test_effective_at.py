@@ -211,6 +211,7 @@ class TestHistoricalPricing:
         assert r_new["billed_cost_micros"] == 5_000  # 100 @ v2's 50
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestClosedPeriodGuard:
     @pytest.mark.parametrize("status,push_phase,stripe_invoice_id,line_snapshot", [

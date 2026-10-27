@@ -54,6 +54,7 @@ def _grant(w, t, *, kind="promo", amount=10_000_000, expires_at=None):
     return g
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestExpiryBeat:
     def test_beat_twice_expires_exactly_once(self):
@@ -135,6 +136,7 @@ class TestExpiryBeat:
             event_type="credit_grant.expiring").exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSweepFaultIsolation:
     """Fix 1: one poisoned customer must never stall the whole hourly sweep."""
@@ -212,6 +214,7 @@ class TestSweepFaultIsolation:
         assert len(failures) == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestWalletBalanceLowOnExpiry:
     """Fix 3: an expiry debit that leaves the balance below the auto-top-up
@@ -254,6 +257,7 @@ class TestWalletBalanceLowOnExpiry:
             event_type="wallet.balance_low").exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestExpirySkipDupObservability:
     """Fix 7: the raced-expiry IntegrityError skip is no longer silent."""

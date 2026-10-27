@@ -240,7 +240,7 @@ describe("Verify, run", () => {
 
     expect(within(shown).getByRole("status")).not.toHaveTextContent(/Verified:/);
     expect(within(shown).getByRole("status")).toHaveTextContent("The run was refused before it finished.");
-    expect(within(shown).getByRole("alert")).toHaveTextContent("currency mismatch");
+    expect(within(shown).getByRole("alert")).toHaveTextContent("US dollars only");
   });
 
   it("verifies the Blueprint on screen and names where it ran", async () => {

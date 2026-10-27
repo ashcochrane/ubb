@@ -1,6 +1,6 @@
 {
   "blueprint": "response-cost-read-currency",
-  "configuration_fingerprint": "sha256:118dce9aa8631c5b3d9837227458f56deb5025dfb5bd2e08d2d8263af798d902",
+  "configuration_fingerprint": "sha256:8ab77aa268bddf8729df7a640651fe755541d78569b18679c7d68423194caeea",
   "request": {
     "records": [
       {
@@ -14,7 +14,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:118dce9aa8631c5b3d9837227458f56deb5025dfb5bd2e08d2d8263af798d902",
+    "configuration_fingerprint": "sha256:8ab77aa268bddf8729df7a640651fe755541d78569b18679c7d68423194caeea",
     "verified": false,
     "unexercised_event_types": [],
     "unexercised_subtask_types": [],
@@ -66,11 +66,11 @@
     "refusal": {
       "operation_id": "api_v1_metering_endpoints_record_usage",
       "problem": {
-        "type": "https://ubb.dev/errors/validation_error",
-        "title": "Validation error",
+        "type": "https://ubb.dev/errors/unsupported_currency",
+        "title": "Unsupported currency",
         "status": 422,
-        "code": "validation_error",
-        "detail": "currency mismatch: event currency 'eur' does not match tenant currency 'usd' (per-tenant single currency; multi-currency/FX is not supported)"
+        "code": "unsupported_currency",
+        "detail": "unsupported currency 'eur': UBB v1 admits US dollars only ('usd') and converts nothing — there is no FX, so no other currency can enter its economics"
       }
     }
   }

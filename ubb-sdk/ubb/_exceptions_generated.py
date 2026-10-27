@@ -80,11 +80,6 @@ class BillingPeriodClosedError(UnprocessableEntityError):
     CODE = 'billing_period_closed'
 
 
-class CurrencyLockedError(ConflictError):
-    STATUS = 409
-    CODE = 'currency_locked'
-
-
 class EffectiveAtBeforeScheduledBoundaryError(UnprocessableEntityError):
     STATUS = 422
     CODE = 'effective_at_before_scheduled_boundary'
@@ -175,6 +170,11 @@ class LastActiveKeyError(ConflictError):
     CODE = 'last_active_key'
 
 
+class PaymentRailNotActivatedError(ConflictError):
+    STATUS = 409
+    CODE = 'payment_rail_not_activated'
+
+
 class PricingModeFrozenError(ConflictError):
     STATUS = 409
     CODE = 'pricing_mode_frozen'
@@ -247,7 +247,6 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'bad_request': BadRequestError,
     'billing_period_closed': BillingPeriodClosedError,
     'conflict': ConflictError,
-    'currency_locked': CurrencyLockedError,
     'effective_at_before_scheduled_boundary': EffectiveAtBeforeScheduledBoundaryError,
     'effective_at_in_future': EffectiveAtInFutureError,
     'effective_at_in_past': EffectiveAtInPastError,
@@ -270,6 +269,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'last_active_key': LastActiveKeyError,
     'method_not_allowed': MethodNotAllowedError,
     'not_found': NotFoundError,
+    'payment_rail_not_activated': PaymentRailNotActivatedError,
     'pricing_mode_frozen': PricingModeFrozenError,
     'provider_conflicts_with_event_type': ProviderConflictsWithEventTypeError,
     'rate_limit_exceeded': RateLimitExceededError,
@@ -310,7 +310,6 @@ __all__ = [
     'InternalServerError',
     'ServiceUnavailableError',
     'BillingPeriodClosedError',
-    'CurrencyLockedError',
     'EffectiveAtBeforeScheduledBoundaryError',
     'EffectiveAtInFutureError',
     'EffectiveAtInPastError',
@@ -329,6 +328,7 @@ __all__ = [
     'InvalidTenantIdError',
     'LastActiveAdminError',
     'LastActiveKeyError',
+    'PaymentRailNotActivatedError',
     'PricingModeFrozenError',
     'ProviderConflictsWithEventTypeError',
     'RateLimitExceededError',

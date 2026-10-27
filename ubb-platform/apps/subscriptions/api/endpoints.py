@@ -25,6 +25,7 @@ from core.pagination import paginate
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
+from apps.platform.tenants.models import PaymentRailClosed
 from apps.platform.plans import queries as plan_queries
 from apps.subscriptions.api.schemas import (
     SyncResponse,
@@ -82,6 +83,7 @@ def get_subscription(request, customer_id: UUIDIdentifier):
         "status": sub.status,
         "amount_micros": sub.amount_micros,
         "currency": sub.currency,
+        "source_amount_minor": sub.source_amount_minor,
         "interval": sub.interval,
         "current_period_start": sub.current_period_start.isoformat(),
         "current_period_end": sub.current_period_end.isoformat(),
@@ -114,6 +116,7 @@ def get_invoices(request, customer_id: UUIDIdentifier, cursor: str = None, limit
                 "stripe_invoice_id": inv.stripe_invoice_id,
                 "amount_paid_micros": inv.amount_paid_micros,
                 "currency": inv.currency,
+                "source_amount_paid_minor": inv.source_amount_paid_minor,
                 "period_start": inv.period_start.isoformat(),
                 "period_end": inv.period_end.isoformat(),
                 "paid_at": inv.paid_at.isoformat(),
@@ -327,6 +330,8 @@ def _lifecycle_call(request, external_id, verb_kwargs):
             tenant, customer, change_event_id=change_event_id, **verb_kwargs)
     except NoActiveSubscription as e:
         raise Problem("not_found", str(e))
+    except PaymentRailClosed:
+        raise  # G27, answered by name (`problems.py`)
     except (OrchestrationError, StripeFatalError) as e:
         raise Problem("validation_error", str(e))
 
@@ -345,7 +350,8 @@ def _lifecycle_call(request, external_id, verb_kwargs):
 
 
 @subscriptions_router.post("/customers/{external_id}/subscribe",
-                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+                           response={200: dict, 404: ProblemOut, 409: ProblemOut,
+                                     422: ProblemOut})
 @role_floor(WRITE)
 @records_audit("plan.assigned", "subscription.created")
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
@@ -386,6 +392,8 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
 
     try:
         mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
+    except PaymentRailClosed:
+        raise  # G27, answered by name (`problems.py`)
     except (OrchestrationError, StripeFatalError) as e:
         raise Problem("validation_error", str(e))
 
@@ -410,7 +418,8 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
 
 
 @subscriptions_router.post("/customers/{external_id}/seats",
-                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+                           response={200: dict, 404: ProblemOut, 409: ProblemOut,
+                                     422: ProblemOut})
 @role_floor(WRITE)
 @records_audit("subscription.seats_changed")
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
@@ -474,7 +483,8 @@ def pause_subscription(request, external_id: str):
 
 
 @subscriptions_router.post("/customers/{external_id}/subscription/resume",
-                           response={200: dict, 404: ProblemOut, 422: ProblemOut})
+                           response={200: dict, 404: ProblemOut, 409: ProblemOut,
+                                     422: ProblemOut})
 @role_floor(WRITE)
 @records_audit("subscription.resumed")
 def resume_subscription(request, external_id: str):

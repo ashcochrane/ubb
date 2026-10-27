@@ -47,6 +47,7 @@ from core.vocabulary import (
     CUSTOMER_BILLING_MODE_PREPAID, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
     RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED)
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class _ATenantBillingItsCustomersElsewhereMixin:
@@ -291,7 +292,7 @@ class BothViewsAreOfferedAndBothAreLabelledTest(
                          [{"currency": "usd", "amount_micros": 2_300_000}])
 
 
-class BothPosturesSurviveTest(
+class BothPosturesSurviveTest(RailActivated, 
         _ATenantBillingItsCustomersElsewhereMixin, TestCase):
     """#153 §3.2: cost-tracking alone and cost tracking plus a supplied figure
     are both legitimate, and this slice must not build only the second.

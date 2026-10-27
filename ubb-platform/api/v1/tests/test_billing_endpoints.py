@@ -7,6 +7,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.wallets.models import Wallet
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class BillingProductGatingTest(TestCase):
@@ -87,7 +88,7 @@ class BillingProductGatingTest(TestCase):
     # test_tenant_endpoints.py.
 
 
-class BillingDebitEndpointTest(TestCase):
+class BillingDebitEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
@@ -256,27 +257,27 @@ class BillingDebitEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
 
-    # --- attribution (Phase 1): reason_code + actor stored on the ledger ---
+    # --- attribution (Phase 1): movement_reason + actor stored on the ledger ---
 
-    def test_debit_records_reason_code_and_actor(self):
+    def test_debit_records_movement_reason_and_actor(self):
         from apps.billing.wallets.models import WalletTransaction
         resp = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
                              "reference": "adj", "idempotency_key": "attr_k1",
-                             "reason_code": "correction", "actor": "ops@acme.co"}),
+                             "movement_reason": "correction", "actor": "ops@acme.co"}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         self.assertEqual(resp.status_code, 200)
         txn = WalletTransaction.objects.get(id=resp.json()["transaction_id"])
-        self.assertEqual(txn.reason_code, "correction")
+        self.assertEqual(txn.movement_reason, "correction")
         self.assertEqual(txn.actor, "ops@acme.co")
 
-    def test_debit_rejects_unknown_reason_code(self):
+    def test_debit_rejects_unknown_movement_reason(self):
         resp = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
                              "reference": "adj", "idempotency_key": "attr_k2",
-                             "reason_code": "bogus"}),
+                             "movement_reason": "bogus"}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         self.assertEqual(resp.status_code, 422)
 
@@ -405,18 +406,18 @@ class BillingCreditEndpointTest(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_credit_records_reason_code_and_actor(self):
+    def test_credit_records_movement_reason_and_actor(self):
         from apps.billing.wallets.models import WalletTransaction
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({"customer_id": "cust_credit_1", "amount_micros": 1_000_000,
                              "source": "manual", "reference": "adj",
                              "idempotency_key": "attr_c1",
-                             "reason_code": "goodwill", "actor": "ops@acme.co"}),
+                             "movement_reason": "goodwill", "actor": "ops@acme.co"}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
         self.assertEqual(response.status_code, 200)
         txn = WalletTransaction.objects.get(id=response.json()["transaction_id"])
-        self.assertEqual(txn.reason_code, "goodwill")
+        self.assertEqual(txn.movement_reason, "goodwill")
         self.assertEqual(txn.actor, "ops@acme.co")
 
 

@@ -127,7 +127,8 @@ def _recover_skipped_usage_invoices(model):
     Guarded conditional updates: a row a concurrent push already transitioned
     out of 'skipped' is left alone (no read-modify-write clobber)."""
     qs = model.objects.filter(
-        status="skipped", skip_reason__in=["not_charge_ready", "no_stripe_customer"],
+        status="skipped",
+        skip_reason__in=["not_charge_ready", "no_stripe_customer", "payment_rail_closed"],
     ).select_related("tenant", "customer")
     for rec in qs:
         owner = rec.customer.resolve_billing_owner()
@@ -137,6 +138,10 @@ def _recover_skipped_usage_invoices(model):
             continue
         if rec.skip_reason == "not_charge_ready":
             recovered = bool(rec.tenant.stripe_connected_account_id) and rec.tenant.charges_enabled
+        elif rec.skip_reason == "payment_rail_closed":
+            from apps.platform.tenants.models import the_rail_is_open_in, rail_environment_of
+            recovered = the_rail_is_open_in(
+                rail_environment_of(is_sandbox=rec.tenant.is_sandbox))
         else:  # no_stripe_customer
             recovered = bool(owner.stripe_customer_id)
         if recovered:

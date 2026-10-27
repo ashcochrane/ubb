@@ -5,9 +5,9 @@ from django.utils import timezone
 
 from apps.billing.connectors.stripe.invoice_routing import livemode_filter
 from apps.subscriptions.models import StripeSubscription
-from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
+from apps.subscriptions.stripe.items import (
+    _period_end, _period_start, _product_name, mirrored_amounts)
 from apps.platform.customers.models import Customer
-from core.money import DEFAULT_CURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,7 @@ def handle_subscription_created(event):
         )
         raise  # Re-raise so webhook framework retries
 
-    amount_micros, seat_qty, interval = _sum_items(
-        stripe_sub, (customer.tenant.default_currency or DEFAULT_CURRENCY).lower())
+    money = mirrored_amounts(stripe_sub)
     StripeSubscription.objects.get_or_create(
         stripe_subscription_id=stripe_sub.id,
         defaults={
@@ -42,13 +41,14 @@ def handle_subscription_created(event):
             "customer": customer,
             "stripe_product_name": _product_name(stripe_sub),
             "status": stripe_sub.status,
-            "amount_micros": amount_micros,
-            "currency": stripe_sub.get("currency", "usd"),
-            "interval": interval,
+            "amount_micros": money.amount_micros,
+            "currency": money.currency,
+            "source_amount_minor": money.source_amount_minor,
+            "interval": money.interval,
             "current_period_start": _period_start(stripe_sub),
             "current_period_end": _period_end(stripe_sub),
             "last_synced_at": timezone.now(),
-            "quantity": seat_qty,
+            "quantity": money.seat_qty,
         },
     )
 
@@ -61,23 +61,25 @@ def handle_subscription_updated(event):
             stripe_subscription_id=stripe_sub.id,
             **livemode_filter(event),
         )
-        amount_micros, seat_qty, interval = _sum_items(
-            stripe_sub, (sub.tenant.default_currency or DEFAULT_CURRENCY).lower())
+        money = mirrored_amounts(stripe_sub)
         sub.status = stripe_sub.status
         sub.stripe_product_name = _product_name(stripe_sub) or sub.stripe_product_name
-        sub.amount_micros = amount_micros
-        sub.interval = interval
+        sub.amount_micros = money.amount_micros
+        sub.currency = money.currency
+        sub.source_amount_minor = money.source_amount_minor
+        sub.interval = money.interval
         sub.current_period_start = _period_start(stripe_sub)
         sub.current_period_end = _period_end(stripe_sub)
         sub.last_synced_at = timezone.now()
-        sub.quantity = seat_qty
+        sub.quantity = money.seat_qty
         # F5.4 lifecycle flags: Stripe keeps status "active" both under a
         # pending cancel_at_period_end and under pause_collection, so the
         # mirror carries them explicitly (pause_collection presence => paused).
         sub.cancel_at_period_end = bool(stripe_sub.get("cancel_at_period_end") or False)
         sub.paused = bool(stripe_sub.get("pause_collection") or False)
         sub.save(update_fields=[
-            "status", "stripe_product_name", "amount_micros", "interval",
+            "status", "stripe_product_name", "amount_micros", "currency",
+            "source_amount_minor", "interval",
             "current_period_start", "current_period_end",
             "last_synced_at", "updated_at", "quantity",
             "cancel_at_period_end", "paused",

@@ -1089,6 +1089,41 @@ export const MEASUREMENTS_STATUS_LABEL_KEYS = {
 // generator lost.
 
 
+// --- movement_reason --------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Why money moved through a wallet by hand — a credit or debit an operator
+// made outside the automated paths. It answers "why did this ledger movement
+// happen?", which is a different question from why work was stopped
+// (`reason_code`): the two shared one public name until #479, and ADR-0006 §2
+// does not let two concepts share one. Closed: the route refuses any other
+// value by name, and the ledger column holds the same set beside the empty
+// string an automated movement records.
+//
+// Declared in concepts/economics.yaml.
+
+export const MOVEMENT_REASON_VALUES = [
+  "correction",
+  "goodwill",
+  "chargeback",
+  "write_off",
+  "migration",
+  "other",
+] as const;
+
+export type MovementReason = (typeof MOVEMENT_REASON_VALUES)[number];
+
+export const MOVEMENT_REASON_LABEL_KEYS = {
+  "correction": "movement_reason.correction",
+  "goodwill": "movement_reason.goodwill",
+  "chargeback": "movement_reason.chargeback",
+  "write_off": "movement_reason.write_off",
+  "migration": "movement_reason.migration",
+  "other": "movement_reason.other",
+} as const satisfies Record<MovementReason, string>;
+
+
 // --- not_applicable_reason --------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -1870,6 +1905,26 @@ export const TENANT_PRODUCT_LABEL_KEYS = {
   "billing": "tenant_product.billing",
   "referrals": "tenant_product.referrals",
 } as const satisfies Record<TenantProduct, string>;
+
+
+// --- total_billed_cost_micros -----------------------------------------------
+//
+// free_text — Not vocabulary. Recorded here so that "is this a value set?" is
+// answered once, in data, rather than re-litigated by whoever next wants to
+// add an enum to it.
+//
+// What a tenant's customers were billed over a scope: the sum of
+// `billed_cost_micros` over its postings. On a billing period it is placed by
+// arrival and INCLUDES a fixed-price unit of work's charge, which is revenue
+// and which UBB's platform fee is a percentage of — while the period's
+// `event_count` beside it counts metered events only (#563). The stop payload
+// gives the same sum over one unit of work the same name.
+//
+// Declared in concepts/retired.yaml.
+//
+// No constants: this kind declares no values by construction. The section is
+// here so that fact is visible, rather than looking like a concept the
+// generator lost.
 
 
 // --- trigger_source ---------------------------------------------------------

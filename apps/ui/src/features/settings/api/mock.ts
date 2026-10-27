@@ -7,6 +7,7 @@ import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { PRODUCTS } from "@/lib/labels";
+import { CUSTOMER_BILLING_MODE_VALUES } from "@/lib/vocabulary";
 import {
   applyMockUndeclaredWorkCeilings,
   readMockTenantConfig,
@@ -16,8 +17,6 @@ import {
 import {
   AUDIT_RECORDS,
   BILLING_PERIODS,
-  CURRENCY_LOCK_REASON,
-  CURRENCY_LOCKED,
   INITIAL_CONNECT_STATUS,
   INITIAL_INVITATIONS,
   INITIAL_MARGIN_THRESHOLD,
@@ -78,11 +77,18 @@ export async function updateTenantConfig(
   const config = readMockTenantConfig();
   const next: TenantConfig = { ...config };
 
-  if (patch.default_currency != null && patch.default_currency !== config.default_currency) {
-    if (CURRENCY_LOCKED) {
-      throw problem(409, "currency_locked", "Currency locked", CURRENCY_LOCK_REASON);
+  // UBB v1 is USD-only (ADR-0023): the server admits `usd` in any spelling
+  // and refuses every other code, and the mock answers the same way.
+  if (patch.default_currency != null) {
+    if (patch.default_currency.trim().toLowerCase() !== "usd") {
+      throw problem(
+        422,
+        "unsupported_currency",
+        "Unsupported currency",
+        `unsupported currency '${patch.default_currency}': UBB v1 admits US dollars only ('usd')`,
+      );
     }
-    next.default_currency = patch.default_currency;
+    next.default_currency = "usd";
   }
   if (patch.products != null) {
     const unknown = patch.products.filter((p) => !(PRODUCTS as readonly string[]).includes(p));
@@ -99,7 +105,7 @@ export async function updateTenantConfig(
     next.products = normalized;
   }
   if (patch.billing_mode != null) {
-    if (!["meter_only", "prepaid", "postpaid"].includes(patch.billing_mode)) {
+    if (!(CUSTOMER_BILLING_MODE_VALUES as readonly string[]).includes(patch.billing_mode)) {
       throw invalidConfig(`Unknown billing mode: ${patch.billing_mode}`);
     }
     next.billing_mode = patch.billing_mode;

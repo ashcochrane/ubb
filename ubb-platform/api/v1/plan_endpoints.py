@@ -16,6 +16,7 @@ from apps.metering.pricing.services.book_service import BookService
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
+from apps.platform.tenants.models import PaymentRailClosed
 from apps.platform.plans import queries
 from apps.platform.plans.services import PlanInUse, PlanService
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
@@ -119,7 +120,8 @@ def create_plan(request, payload: PlanIn):
     return 201, _plan_out(plan)
 
 
-@plan_router.patch("/plans/{key}", response={200: PlanOut, 404: ProblemOut, 422: ProblemOut})
+@plan_router.patch("/plans/{key}",
+                   response={200: PlanOut, 404: ProblemOut, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("plan.updated")
 def update_plan(request, key: str, payload: PlanUpdateIn):
@@ -183,6 +185,8 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
                 access_fee_micros=payload.access_fee_micros,
                 per_seat_micros=payload.per_seat_micros,
                 migrate_existing=payload.migrate_existing)
+        except PaymentRailClosed:
+            raise  # G27, answered by name (`problems.py`)
         except (OrchestrationError, StripeFatalError) as e:
             raise Problem("validation_error", str(e))
         audit_record(

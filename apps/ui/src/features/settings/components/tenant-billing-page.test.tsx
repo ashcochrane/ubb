@@ -28,6 +28,18 @@ describe("TenantBillingPage", () => {
     expect(screen.getByText("$1,842.55")).toBeInTheDocument();
   });
 
+  it("names the period's money and count for what they hold (#516, #563)", async () => {
+    renderWithQuery(<TenantBillingPage />);
+    await screen.findByText("Billing periods");
+    const headers = (await screen.findAllByRole("columnheader")).map(
+      (cell) => cell.textContent,
+    );
+    expect(headers).toEqual(
+      expect.arrayContaining(["Billed to customers", "Metered events"]),
+    );
+    expect(headers).not.toContain("Usage cost");
+  });
+
   it("renders invoices with the Stripe id in mono (or a dash when absent)", async () => {
     renderWithQuery(<TenantBillingPage />);
     expect(await screen.findByText("in_1PXmc2Acme0601")).toBeInTheDocument();

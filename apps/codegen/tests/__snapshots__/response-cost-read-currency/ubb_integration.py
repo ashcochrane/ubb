@@ -6,7 +6,7 @@
 # renderer_contract_version = 3
 # sdk_major_version = 3
 # target = "python_sdk"
-# configuration_fingerprint = "sha256:118dce9aa8631c5b3d9837227458f56deb5025dfb5bd2e08d2d8263af798d902"
+# configuration_fingerprint = "sha256:8ab77aa268bddf8729df7a640651fe755541d78569b18679c7d68423194caeea"
 # The fingerprint identifies exactly what this file was resolved from. A
 # different one in the Code Builder means this file is stale.
 

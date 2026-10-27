@@ -40,7 +40,7 @@ class GetPeriodTotalsTest(TestCase):
             billed_cost_micros=2_000_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
-        self.assertEqual(totals["total_cost_micros"], 3_000_000)
+        self.assertEqual(totals["total_billed_cost_micros"], 3_000_000)
         self.assertEqual(totals["event_count"], 2)
 
     def test_sums_billed_cost(self):
@@ -50,11 +50,11 @@ class GetPeriodTotalsTest(TestCase):
             billed_cost_micros=1_500_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
-        self.assertEqual(totals["total_cost_micros"], 1_500_000)
+        self.assertEqual(totals["total_billed_cost_micros"], 1_500_000)
 
     def test_returns_zeros_for_empty_period(self):
         totals = get_period_totals(self.tenant.id, self.start, self.end)
-        self.assertEqual(totals["total_cost_micros"], 0)
+        self.assertEqual(totals["total_billed_cost_micros"], 0)
         self.assertEqual(totals["event_count"], 0)
 
     def test_filters_by_tenant(self):
@@ -65,7 +65,7 @@ class GetPeriodTotalsTest(TestCase):
             idempotency_key="i1", billed_cost_micros=5_000_000,
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
-        self.assertEqual(totals["total_cost_micros"], 0)
+        self.assertEqual(totals["total_billed_cost_micros"], 0)
         self.assertEqual(totals["event_count"], 0)
 
     def test_arrival_basis_windows_on_created_at(self):
@@ -83,7 +83,7 @@ class GetPeriodTotalsTest(TestCase):
         self.assertEqual(effective["event_count"], 0)
         arrival = get_period_totals(self.tenant.id, self.start, self.end, basis="arrival")
         self.assertEqual(arrival["event_count"], 1)
-        self.assertEqual(arrival["total_cost_micros"], 1_000_000)
+        self.assertEqual(arrival["total_billed_cost_micros"], 1_000_000)
 
     def test_invalid_basis_raises(self):
         with self.assertRaises(ValueError):
@@ -119,7 +119,7 @@ class GetPeriodTotalsTest(TestCase):
         # NULL, so it passed over nothing and includes the very posting the
         # count excludes — a reader taking the count as a caveat on this figure
         # would report a period partial in the one number that never is.
-        assert totals["total_cost_micros"] == 3_000_000
+        assert totals["total_billed_cost_micros"] == 3_000_000
         assert totals["event_count"] == 2
 
     def test_a_cost_that_does_not_exist_is_not_a_cost_that_is_missing(self):

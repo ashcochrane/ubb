@@ -17,12 +17,13 @@ from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, RESOLVED_SUPPLIER_COST_MEANING,
     supplier_cost_total_meaning)
 from core.crossing import ceiling_fields
+from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.problems import ProblemOut
 from core.vocabulary import (
-    GROUPING_FIELD_SCOPE_EVENT, PRICING_MODE_EVENT_PRICED,
-    RATE_STRUCTURE_PER_UNIT,
+    GROUPING_FIELD_SCOPE_EVENT, MOVEMENT_REASON_VALUES,
+    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT,
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_VALUES,
     TASK_TYPE_KIND_TASK)
 
@@ -1356,7 +1357,51 @@ class ReadyResponse(Schema):
     checks: dict[str, str]
 
 
-REASON_CODES = ("correction", "goodwill", "chargeback", "write_off", "migration", "other")
+#: WHY A WALLET MOVED BY HAND — the registry's closed `movement_reason`
+#: (#479). Not the stop's `reason_code`: that is why work was stopped, a
+#: different published concept, and the two shared this field's old name.
+#: The `enum` is written at export and validates nothing, so the route
+#: refuses an unknown value itself (`_a_known_movement_reason`).
+MovementReason = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "movement_reason"})]
+
+_MOVEMENT_REASON_DESCRIPTION = (
+    "Why this money moved by hand — one of the registry's movement reasons. "
+    "Optional: omit it, or send null, to record none. Stored on the wallet "
+    "transaction for the audit trail.")
+
+
+#: The wallet field's RETIRED name (#479). Refused by name, never dropped: a
+#: caller who sent a reason and got a 200 with none recorded has lost it in
+#: silence, which is the one outcome a rename may not have. No alias either —
+#: `movement_reason` is the only accepted spelling, and `reason_code` is the
+#: stop cause's published name, a different concept.
+RETIRED_MOVEMENT_REASON_FIELD = "reason_code"
+
+
+def _refuse_the_retired_reason_field(body):
+    """Refuse a body that names the wallet field's retired spelling.
+
+    A ninja `Schema`'s before-validators are handed a `DjangoGetter`, not a
+    dict (see `RecordUsageRequest.refuse_a_caller_supplied_customer_price`):
+    unwrap `_obj` first, or the check never fires.
+    """
+    body = getattr(body, "_obj", body)
+    if isinstance(body, dict) and RETIRED_MOVEMENT_REASON_FIELD in body:
+        raise ValueError(
+            f"{RETIRED_MOVEMENT_REASON_FIELD} is not accepted on a wallet credit "
+            f"or debit: why money moved is movement_reason, one of "
+            f"{sorted(MOVEMENT_REASON_VALUES)} or null. It is refused rather "
+            f"than ignored, so a reason you sent is never dropped in silence.")
+    return body
+
+
+def _a_known_movement_reason(value):
+    if value is not None and value not in MOVEMENT_REASON_VALUES:
+        raise ValueError(
+            f"movement_reason must be one of {sorted(MOVEMENT_REASON_VALUES)}, "
+            f"or omitted")
+    return value
 
 
 class DebitRequest(Schema):
@@ -1370,17 +1415,21 @@ class DebitRequest(Schema):
     # Debit respects the customer's overdraft floor by default (like drawdown);
     # allow_negative=true forces a correction past it (logged as forced_overdraw).
     allow_negative: bool = False
-    # Attribution (Phase 1): reason_code categorizes the adjustment; actor is
-    # who/what initiated it. Optional today; recommended on every manual move.
-    reason_code: str = Field(default="", max_length=32)
+    # Attribution (Phase 1): movement_reason categorises the adjustment; actor
+    # is who/what initiated it. Optional today; recommended on every manual move.
+    movement_reason: Optional[MovementReason] = Field(
+        default=None, description=_MOVEMENT_REASON_DESCRIPTION)
     actor: str = Field(default="", max_length=255)
 
-    @field_validator("reason_code")
+    @field_validator("movement_reason")
     @classmethod
-    def reason_code_valid(cls, v):
-        if v and v not in REASON_CODES:
-            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
-        return v
+    def movement_reason_known(cls, v):
+        return _a_known_movement_reason(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_the_retired_reason_field(cls, body):
+        return _refuse_the_retired_reason_field(body)
 
 
 class CreditRequest(Schema):
@@ -1391,15 +1440,19 @@ class CreditRequest(Schema):
     # Required — see DebitRequest.idempotency_key.
     idempotency_key: str = Field(min_length=1, max_length=500)
     # Attribution (Phase 1) — see DebitRequest.
-    reason_code: str = Field(default="", max_length=32)
+    movement_reason: Optional[MovementReason] = Field(
+        default=None, description=_MOVEMENT_REASON_DESCRIPTION)
     actor: str = Field(default="", max_length=255)
 
-    @field_validator("reason_code")
+    @field_validator("movement_reason")
     @classmethod
-    def reason_code_valid(cls, v):
-        if v and v not in REASON_CODES:
-            raise ValueError(f"reason_code must be one of {sorted(REASON_CODES)} or empty")
-        return v
+    def movement_reason_known(cls, v):
+        return _a_known_movement_reason(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_the_retired_reason_field(cls, body):
+        return _refuse_the_retired_reason_field(body)
 
 
 class DebitCreditResponse(Schema):
@@ -3878,6 +3931,11 @@ class EconomicsOut(Schema):
     measurement_data_available_from: str
     rows: list[EconomicRowOut]
     context: list[RevenueContextOut]
+    #: WHAT THE REVENUE IN THIS ANSWER LEFT OUT (#564, the owner's ruling 5):
+    #: required and never null, because UBB always knows. 0 on a question
+    #: that asked for no revenue, which left nothing out.
+    foreign_currency_subscription_count: int = Field(
+        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
 
 
 #: WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR. `closed` — UBB owns
@@ -4083,10 +4141,23 @@ class TaskTypeRegistryOut(Schema):
 TenantProduct = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "tenant_product"})]
 
+#: WHAT UBB DOES ABOUT MONEY FOR A TENANT'S CUSTOMERS — the registry's
+#: `customer_billing_mode`, `closed`, so the export writes its `enum`.
+CustomerBillingMode = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "customer_billing_mode"})]
+
+#: WHETHER UBB CREATES THE TENANT'S CUSTOMER CHARGES AT ALL — the registry's
+#: `tenant_posture`, derived from the billing mode and served read-only.
+TenantPosture = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "tenant_posture"})]
+
 
 class TenantConfigOut(Schema):
     name: str
-    billing_mode: str
+    billing_mode: CustomerBillingMode
+    #: Derived from `billing_mode` and never stored (ADR-0006 §4), served so a
+    #: caller need not reconstruct the mapping.
+    tenant_posture: TenantPosture
     products: list[TenantProduct]
     default_currency: str
     stripe_connected_account_id: str
@@ -4125,7 +4196,7 @@ class TenantConfigOut(Schema):
 
 
 class TenantConfigIn(Schema):
-    billing_mode: Optional[str] = None
+    billing_mode: Optional[CustomerBillingMode] = None
     products: Optional[list[TenantProduct]] = None
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).
@@ -4136,8 +4207,8 @@ class TenantConfigIn(Schema):
     # because nothing on the recording path was ever deferred). Omit =
     # unchanged. Never a contract change — only the latency profile.
     live_counter_maintenance_enabled: Optional[bool] = None
-    # CUR-1: lowercase ISO code from core.money.SUPPORTED_CURRENCIES
-    # (2-decimal only); 409 once any money exists for the tenant.
+    # UBB v1 is USD-only (ADR-0023): `usd` in any case is admitted and
+    # stored lowercase; any other code is `unsupported_currency`.
     default_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
     # Spend-safety defaults. Omitting a key leaves it unchanged.
     # min_balance_micros is the allowed overdraft magnitude (>= 0; cannot be
@@ -4215,8 +4286,22 @@ class TenantBillingPeriodOut(Schema):
     period_start: str
     period_end: str
     status: str
-    total_usage_cost_micros: int
-    event_count: int
+    total_billed_cost_micros: int = Field(description=(
+        "What the tenant's customers were billed in this period: the sum of "
+        "`billed_cost_micros` over the period's postings, placed by when UBB "
+        "received them. It INCLUDES the charge for a unit of work sold at one "
+        "agreed price, which is revenue, so it can include money that "
+        "`recorded_events` does not count an event for. The same name and "
+        "meaning as the stop payload's sum over one unit of work. UBB's "
+        "platform fee is a percentage of it."))
+    #: The registry's measure, by its canonical name (`analytics_measure`'s
+    #: `recorded_events`; the owner's review of #619): the column behind it
+    #: keeps the internal name `event_count`.
+    recorded_events: int = Field(description=(
+        "Every metered usage event recorded in this period, whatever it was "
+        "priced at — unpriced and zero-priced events included. It EXCLUDES "
+        "the synthetic charge for a unit of work sold at one agreed price, "
+        "whose money `total_billed_cost_micros` includes."))
     platform_fee_micros: int
 
 
@@ -4227,8 +4312,8 @@ def tenant_billing_period_out(p):
         "period_start": p.period_start.isoformat(),
         "period_end": p.period_end.isoformat(),
         "status": p.status,
-        "total_usage_cost_micros": p.total_usage_cost_micros,
-        "event_count": p.event_count,
+        "total_billed_cost_micros": p.total_billed_cost_micros,
+        "recorded_events": p.event_count,
         "platform_fee_micros": p.platform_fee_micros,
     }
 

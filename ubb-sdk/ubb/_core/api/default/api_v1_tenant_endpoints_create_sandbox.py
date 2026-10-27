@@ -48,6 +48,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_403
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -74,7 +81,10 @@ def sync_detailed(
 
     The RAW key is returned exactly once per call (each POST mints a fresh
     key — that is also the rotation path). 403 from a sandbox key: sandboxes
-    cannot nest.
+    cannot nest. 409 `payment_rail_not_activated` when the tenant is
+    `prepaid`/`postpaid` and the payment rail has no enabled activation in
+    the `test` environment a sandbox runs in: the sandbox is not created,
+    and never created `external` instead (G27).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -106,7 +116,10 @@ def sync(
 
     The RAW key is returned exactly once per call (each POST mints a fresh
     key — that is also the rotation path). 403 from a sandbox key: sandboxes
-    cannot nest.
+    cannot nest. 409 `payment_rail_not_activated` when the tenant is
+    `prepaid`/`postpaid` and the payment rail has no enabled activation in
+    the `test` environment a sandbox runs in: the sandbox is not created,
+    and never created `external` instead (G27).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -133,7 +146,10 @@ async def asyncio_detailed(
 
     The RAW key is returned exactly once per call (each POST mints a fresh
     key — that is also the rotation path). 403 from a sandbox key: sandboxes
-    cannot nest.
+    cannot nest. 409 `payment_rail_not_activated` when the tenant is
+    `prepaid`/`postpaid` and the payment rail has no enabled activation in
+    the `test` environment a sandbox runs in: the sandbox is not created,
+    and never created `external` instead (G27).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -165,7 +181,10 @@ async def asyncio(
 
     The RAW key is returned exactly once per call (each POST mints a fresh
     key — that is also the rotation path). 403 from a sandbox key: sandboxes
-    cannot nest.
+    cannot nest. 409 `payment_rail_not_activated` when the tenant is
+    `prepaid`/`postpaid` and the payment rail has no enabled activation in
+    the `test` environment a sandbox runs in: the sandbox is not created,
+    and never created `external` instead (G27).
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

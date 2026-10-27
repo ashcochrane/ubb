@@ -429,8 +429,10 @@ def test_the_gate_owes_nothing_and_the_family_is_declared_empty():
     # entries AND by a ledger this reader failed to parse at all. Reading a
     # sibling family that is NOT empty separates the two — it fails on an
     # unparsed document and passes only where entries really were read.
-    assert any(entry["gate"] == "G7" for entry in ledger["entries"]), (
-        "no G7 entry was read either, so the emptiness above is a statement "
+    # The sibling was G7 until R10-W3 paid its last five (slice 8's ledger);
+    # G6 is the largest family still owed.
+    assert any(entry["gate"] == "G6" for entry in ledger["entries"]), (
+        "no G6 entry was read either, so the emptiness above is a statement "
         "about this reader rather than about the ledger")
 
 

@@ -26,6 +26,11 @@ class SeatMarginOut:
         Attributes:
             customer_id (str):
             event_count (int):
+            foreign_currency_subscription_count (int): How many Stripe subscriptions the subscription revenue in this answer
+                leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts
+                nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this
+                is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact,
+                scoped like the figures it qualifies, and 0 where nothing was left out.
             gross_margin_micros (int):
             margin_percentage (float):
             provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over this customer's events in
@@ -44,6 +49,7 @@ class SeatMarginOut:
 
     customer_id: str
     event_count: int
+    foreign_currency_subscription_count: int
     gross_margin_micros: int
     margin_percentage: float
     provider_cost_micros: int
@@ -64,6 +70,8 @@ class SeatMarginOut:
         customer_id = self.customer_id
 
         event_count = self.event_count
+
+        foreign_currency_subscription_count = self.foreign_currency_subscription_count
 
         gross_margin_micros = self.gross_margin_micros
 
@@ -91,6 +99,7 @@ class SeatMarginOut:
         field_dict.update({
             "customer_id": customer_id,
             "event_count": event_count,
+            "foreign_currency_subscription_count": foreign_currency_subscription_count,
             "gross_margin_micros": gross_margin_micros,
             "margin_percentage": margin_percentage,
             "provider_cost_micros": provider_cost_micros,
@@ -113,6 +122,8 @@ class SeatMarginOut:
         customer_id = d.pop("customer_id")
 
         event_count = d.pop("event_count")
+
+        foreign_currency_subscription_count = d.pop("foreign_currency_subscription_count")
 
         gross_margin_micros = d.pop("gross_margin_micros")
 
@@ -137,6 +148,7 @@ class SeatMarginOut:
         seat_margin_out = cls(
             customer_id=customer_id,
             event_count=event_count,
+            foreign_currency_subscription_count=foreign_currency_subscription_count,
             gross_margin_micros=gross_margin_micros,
             margin_percentage=margin_percentage,
             provider_cost_micros=provider_cost_micros,

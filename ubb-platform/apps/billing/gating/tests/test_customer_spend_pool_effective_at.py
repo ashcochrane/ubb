@@ -42,6 +42,7 @@ def _draw(t, c, billed, n, effective_at=None):
     handle_usage_recorded_billing(str(uuid.uuid4()), payload)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSpendPoolEffectiveMonthBasis:
     def setup_method(self):

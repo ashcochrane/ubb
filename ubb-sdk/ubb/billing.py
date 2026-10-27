@@ -61,14 +61,15 @@ class BillingClient:
 
     def debit(self, customer_id: str, amount_micros: int, reference: str,
               idempotency_key: str, allow_negative: bool = False,
-              reason_code: str = "", actor: str = "") -> dict:
+              movement_reason: str | None = None, actor: str = "") -> dict:
         """Debit a customer's wallet via POST /api/v1/billing/debit.
 
         idempotency_key is required (server-enforced) so a retried debit never
         double-charges. By default the debit still respects the customer's
         overdraft floor; pass allow_negative=True to force a correction past it.
-        reason_code/actor attribute the adjustment for the audit trail. For a
-        guarded withdrawal use ``withdraw``.
+        movement_reason/actor attribute the adjustment for the audit trail —
+        the reason is one of ``ubb.vocabulary.MOVEMENT_REASON_VALUES``, or
+        None for none. For a guarded withdrawal use ``withdraw``.
         """
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_DEBIT, json={
             "customer_id": customer_id,
@@ -76,19 +77,20 @@ class BillingClient:
             "reference": reference,
             "idempotency_key": idempotency_key,
             "allow_negative": allow_negative,
-            "reason_code": reason_code,
+            "movement_reason": movement_reason,
             "actor": actor,
         })
         return r.json()
 
     def credit(self, customer_id: str, amount_micros: int, source: str,
                reference: str, idempotency_key: str,
-               reason_code: str = "", actor: str = "") -> dict:
+               movement_reason: str | None = None, actor: str = "") -> dict:
         """Credit a customer's wallet via POST /api/v1/billing/credit.
 
         idempotency_key is required (server-enforced). Adds plain, non-expiring
         adjustment money — for refunding a usage charge use ``refund``.
-        reason_code/actor attribute the adjustment for the audit trail.
+        movement_reason/actor attribute the adjustment for the audit trail
+        (see ``debit``).
         """
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_CREDIT, json={
             "customer_id": customer_id,
@@ -96,7 +98,7 @@ class BillingClient:
             "source": source,
             "reference": reference,
             "idempotency_key": idempotency_key,
-            "reason_code": reason_code,
+            "movement_reason": movement_reason,
             "actor": actor,
         })
         return r.json()

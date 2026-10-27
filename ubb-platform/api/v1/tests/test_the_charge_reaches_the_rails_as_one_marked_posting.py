@@ -405,7 +405,7 @@ class TestAChargePostingReadsAsOne(ProjectionTestBase):
 class TestUbbsOwnFeeIsChargedOnTheProjection(ProjectionTestBase):
     """AC 5 — the platform-fee effect is EXPLICIT, and this is what proves it.
 
-    UBB's fee is a percentage of `TenantBillingPeriod.total_usage_cost_micros`,
+    UBB's fee is a percentage of `TenantBillingPeriod.total_billed_cost_micros`,
     which `TenantBillingService.accumulate_usage` increments with each posting's
     billed cost. So the question *is fixed-price revenue inside UBB's own fee
     basis?* has one answer and it is observable: the period total the fee is
@@ -420,7 +420,7 @@ class TestUbbsOwnFeeIsChargedOnTheProjection(ProjectionTestBase):
 
     def _fee_basis(self):
         return TenantBillingPeriod.objects.get(
-            tenant=self.tenant).total_usage_cost_micros
+            tenant=self.tenant).total_billed_cost_micros
 
     def test_the_fee_basis_moves_by_the_agreed_price(self):
         started = self._priced_work()

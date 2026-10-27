@@ -110,6 +110,7 @@ class WebhookDispatcherTest(TestCase):
         mock_event.data.object.customer = customer.stripe_customer_id
         mock_event.data.object.client_reference_id = str(attempt.id)
         mock_event.data.object.amount_total = 100  # 100 cents = $1 = 1_000_000 micros
+        mock_event.data.object.currency = "usd"
         mock_event.data.object.id = "cs_test_session_1"
         return mock_event
 
@@ -193,6 +194,7 @@ class HandleCheckoutCompletedTest(TestCase):
         event.data.object.customer = self.customer.stripe_customer_id
         event.data.object.client_reference_id = str(self.attempt.id)
         event.data.object.amount_total = amount_total
+        event.data.object.currency = "usd"
         event.data.object.id = session_id
         event.data.object.payment_intent = None
         return event
@@ -200,6 +202,21 @@ class HandleCheckoutCompletedTest(TestCase):
     def test_checkout_completed_null_amount_total(self):
         event = self._make_event(amount_total=None)
         handle_checkout_completed(event)
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 0)
+        self.assertFalse(WalletTransaction.objects.exists())
+
+    def test_a_session_in_another_currency_credits_nothing(self):
+        """§0.4 B: an amount Stripe states is read in the currency Stripe states,
+        never scaled by the tenant's setting. A session in a currency UBB does
+        not admit is refused, and nothing is credited at a guessed scale."""
+        from core.currency_policy import CurrencyDisagreement
+        event = self._make_event(amount_total=100)
+        event.data.object.currency = "eur"
+
+        with self.assertRaisesRegex(CurrencyDisagreement, "'eur'"):
+            handle_checkout_completed(event)
+
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 0)
         self.assertFalse(WalletTransaction.objects.exists())
@@ -279,6 +296,7 @@ class PooledSeatTopUpWebhookTest(TestCase):
         event.data.object.customer = customer_stripe_id
         event.data.object.client_reference_id = str(attempt.id) if attempt else ""
         event.data.object.amount_total = amount_total
+        event.data.object.currency = "usd"
         event.data.object.id = session_id
         event.data.object.payment_intent = None
         return event
@@ -398,6 +416,7 @@ class ChargeDisputeCreatedTest(TestCase):
         event = MagicMock()
         event.data.object.charge = "ch_dispute_1"
         event.data.object.amount = 500
+        event.data.object.currency = "usd"
         event.data.object.reason = "fraudulent"
         event.account = "acct_test"
 
@@ -412,6 +431,7 @@ class ChargeDisputeCreatedTest(TestCase):
         event = MagicMock()
         event.data.object.charge = "ch_unknown"
         event.data.object.amount = 500
+        event.data.object.currency = "usd"
         event.data.object.reason = "fraudulent"
         event.account = "acct_test"
 
@@ -439,6 +459,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 500  # 500 cents = 5_000_000 micros
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -457,6 +478,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "won"
         event.data.object.amount = 500
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -473,6 +495,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 500
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -490,6 +513,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_unknown"
         event.data.object.status = "lost"
         event.data.object.amount = 500
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -503,6 +527,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = None
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -522,6 +547,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 1100  # 1100 cents = 11_000_000 micros
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -536,6 +562,7 @@ class ChargeDisputeClosedTest(TestCase):
         event.data.object.charge = "ch_dispute_2"
         event.data.object.status = "lost"
         event.data.object.amount = 200  # 200 cents = 2_000_000 micros → balance = 8M
+        event.data.object.currency = "usd"
         event.account = "acct_test"
 
         handle_charge_dispute_closed(event)
@@ -560,12 +587,29 @@ class ChargeRefundedTest(TestCase):
             trigger="manual", status="succeeded", stripe_charge_id="ch_refund_1",
         )
 
+    def test_a_refund_in_another_currency_claws_back_nothing(self):
+        """§0.4 B, money moving out: the refund's own currency decides the
+        scale, and one UBB does not admit is refused — the wallet keeps every
+        micro rather than losing a guessed amount."""
+        from core.currency_policy import CurrencyDisagreement
+        event = MagicMock()
+        event.data.object.id = "ch_refund_1"
+        event.account = "acct_test"
+        r = MagicMock(); r.id = "re_eur"; r.amount = 300; r.currency = "eur"
+        event.data.object.refunds.data = [r]
+
+        with self.assertRaisesRegex(CurrencyDisagreement, "'eur'"):
+            handle_charge_refunded(event)
+
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 10_000_000)
+
     def test_deducts_wallet_on_stripe_refund(self):
         event = MagicMock()
         event.data.object.id = "ch_refund_1"
         event.data.object.amount_refunded = 300  # 300 cents = 3_000_000 micros
         event.account = "acct_test"
-        r = MagicMock(); r.id = "re_single"; r.amount = 300
+        r = MagicMock(); r.id = "re_single"; r.amount = 300; r.currency = "usd"
         event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
@@ -583,7 +627,7 @@ class ChargeRefundedTest(TestCase):
         event.data.object.id = "ch_refund_1"
         event.data.object.amount_refunded = 300
         event.account = "acct_test"
-        r = MagicMock(); r.id = "re_idem"; r.amount = 300
+        r = MagicMock(); r.id = "re_idem"; r.amount = 300; r.currency = "usd"
         event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
@@ -600,7 +644,7 @@ class ChargeRefundedTest(TestCase):
         event.data.object.id = "ch_unknown"
         event.data.object.amount_refunded = 300
         event.account = "acct_test"
-        r = MagicMock(); r.id = "re_unknown"; r.amount = 300
+        r = MagicMock(); r.id = "re_unknown"; r.amount = 300; r.currency = "usd"
         event.data.object.refunds.data = [r]
 
         handle_charge_refunded(event)
@@ -630,7 +674,7 @@ class ChargeRefundedTest(TestCase):
         event1.data.object.id = "ch_refund_1"
         event1.data.object.amount_refunded = 100
         event1.account = "acct_test"
-        r1 = MagicMock(); r1.id = "re_1"; r1.amount = 100
+        r1 = MagicMock(); r1.id = "re_1"; r1.amount = 100; r1.currency = "usd"
         event1.data.object.refunds.data = [r1]
         handle_charge_refunded(event1)
         self.wallet.refresh_from_db()
@@ -640,8 +684,8 @@ class ChargeRefundedTest(TestCase):
         event2.data.object.id = "ch_refund_1"
         event2.data.object.amount_refunded = 200
         event2.account = "acct_test"
-        r2a = MagicMock(); r2a.id = "re_1"; r2a.amount = 100
-        r2b = MagicMock(); r2b.id = "re_2"; r2b.amount = 100
+        r2a = MagicMock(); r2a.id = "re_1"; r2a.amount = 100; r2a.currency = "usd"
+        r2b = MagicMock(); r2b.id = "re_2"; r2b.amount = 100; r2b.currency = "usd"
         event2.data.object.refunds.data = [r2a, r2b]
         handle_charge_refunded(event2)
         self.wallet.refresh_from_db()
@@ -681,6 +725,7 @@ class PooledSeatClawbackWebhookTest(TestCase):
         event.data.object.charge = charge_id
         event.data.object.status = status
         event.data.object.amount = amount
+        event.data.object.currency = "usd"
         event.account = "acct_clawback"
         return event
 
@@ -692,6 +737,7 @@ class PooledSeatClawbackWebhookTest(TestCase):
         r = MagicMock()
         r.id = refund_id
         r.amount = amount
+        r.currency = "usd"
         event.data.object.refunds.data = [r]
         return event
 

@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.models import SubscriptionInvoice
 from apps.billing.invoicing.models import CustomerUsageInvoice
 
 from api.v1.webhooks import (
@@ -25,6 +25,7 @@ from api.v1.webhooks import (
     handle_invoice_voided,
     handle_invoice_uncollectible,
 )
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 def _event(account, *, obj):
@@ -93,7 +94,7 @@ class TestBasilSubscriptionRouting:
         )
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_x",
             stripe_product_name="Pro", status="active",
@@ -254,7 +255,7 @@ class TestSubscriptionInvoiceReconcile:
         )
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_ar_1",
             stripe_product_name="Pro", status="active",

@@ -66,7 +66,7 @@ _PERIOD_END_UNIX = int(datetime.datetime(2026, 7, 1, tzinfo=datetime.timezone.ut
 def _fake_sub():
     """A Stripe Subscription dict: two licensed items (access price_a + seat price_s).
 
-    Shapes match what _sum_items / _persist_mirror read: each item carries a
+    Shapes match what mirrored_amounts / _persist_mirror read: each item carries a
     ``price`` with ``unit_amount`` (cents) + ``recurring.usage_type=licensed``, a
     ``quantity``, an ``id`` (the subscription-item id), and per-item
     ``current_period_start/end`` (unix) for the mirror's period.
@@ -109,6 +109,7 @@ def _no_outbox_dispatch():
         yield
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_wave4_multi_axis_orchestration_one_bill_and_margin(
     live_server, _no_outbox_dispatch, settings

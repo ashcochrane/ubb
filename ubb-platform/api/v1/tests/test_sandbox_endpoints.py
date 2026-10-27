@@ -13,7 +13,7 @@ class TenantSandboxEndpointTest(TestCase):
     def setUp(self):
         self.http = Client()
         self.live = Tenant.objects.create(
-            name="Live Co", products=["metering"], billing_mode="meter_only")
+            name="Live Co", products=["metering"], billing_mode="external")
         _, self.live_key = TenantApiKey.create_key(self.live, label="t")
 
     def _auth(self, key):

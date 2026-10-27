@@ -79,8 +79,11 @@ export function TenantBillingPage() {
                     <TableRow>
                       <TableHead>Period</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Usage cost</TableHead>
-                      <TableHead className="text-right">Events</TableHead>
+                      {/* Named for what each column holds (#516, #563): the
+                          money is everything billed, a fixed-price unit's
+                          charge included; the count is metered events only. */}
+                      <TableHead className="text-right">Billed to customers</TableHead>
+                      <TableHead className="text-right">Metered events</TableHead>
                       <TableHead className="text-right">Platform fee</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -102,10 +105,10 @@ export function TenantBillingPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatMicros(period.total_usage_cost_micros, currency)}
+                          {formatMicros(period.total_billed_cost_micros, currency)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEventCount(period.event_count)}
+                          {formatEventCount(period.recorded_events)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatMicros(period.platform_fee_micros, currency)}

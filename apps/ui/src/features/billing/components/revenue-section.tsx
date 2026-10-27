@@ -6,6 +6,7 @@ import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import {
+  ForeignCurrencyNote,
   MeasureValue,
   RetentionHorizonNote,
   RevenueContext,
@@ -146,6 +147,7 @@ export function RevenueSection({
                 {revenueBasisNote(query.data.basis)}
               </p>
               <RevenueContext context={query.data.context} currency={currency} />
+              <ForeignCurrencyNote caveats={query.data} />
               <RetentionHorizonNote caveats={query.data} />
             </div>
           );

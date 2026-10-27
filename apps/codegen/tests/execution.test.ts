@@ -757,9 +757,10 @@ result = {"refused": refused, "said": said, "sent": len(server.requests)}
     expect(answer.sent).toBe(0);
   });
 
-  it("surfaces UBB's refusal of a currency it holds and the tenant does not, as the SDK's error", () => {
-    // D1: the one shared rule is the server's. A recognised currency that is
-    // not the tenant's is sent, refused there, and that refusal propagates.
+  it("surfaces UBB's refusal of a currency it can represent and does not admit, as the SDK's error", () => {
+    // D1: the one shared rule is the server's (ADR-0023: US dollars only). A
+    // recognised currency UBB does not admit is sent, refused there, and that
+    // refusal propagates.
     const answer = run<Record<string, unknown>>(
       rendered("response-cost-read-currency"),
       `${AN_OBJECT}
@@ -767,11 +768,11 @@ from ubb.exceptions import UBBAPIError
 integration = load()
 server.queue("/api/v1/metering/usage", http_status=422, raw_body=${JSON.stringify(
         JSON.stringify({
-          type: "https://ubb.dev/errors/validation_error",
-          title: "Validation error",
+          type: "https://ubb.dev/errors/unsupported_currency",
+          title: "Unsupported currency",
           status: 422,
-          code: "validation_error",
-          detail: "currency mismatch: event currency 'eur' does not match tenant currency 'usd'",
+          code: "unsupported_currency",
+          detail: "unsupported currency 'eur': UBB v1 admits US dollars only ('usd')",
         }),
       )})
 raised = None
@@ -788,7 +789,7 @@ result = {"status": getattr(raised, "status_code", None),
     );
 
     expect(answer.status).toBe(422);
-    expect(answer.detail).toContain("currency mismatch");
+    expect(answer.detail).toContain("US dollars only");
     expect(answer.sent).toEqual([expect.objectContaining({ currency: "eur" })]);
   });
 

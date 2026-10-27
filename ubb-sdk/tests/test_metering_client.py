@@ -904,6 +904,9 @@ class TheOneEconomicQueryTest(unittest.TestCase):
             "economic_data_available_from": "2020-01-01",
             "measurement_data_available_from": "2025-07-01",
             "rows": [], "context": [],
+            # Required and never null (#564): how many foreign-currency
+            # subscriptions the revenue left out, 0 where none.
+            "foreign_currency_subscription_count": 0,
         }
         body.update(overrides)
         return body
@@ -987,6 +990,7 @@ class TheOneEconomicQueryTest(unittest.TestCase):
         self.assertEqual(str(answer.basis), "recorded")
         self.assertEqual(answer.economic_data_available_from, "2020-01-01")
         self.assertEqual(answer.measurement_data_available_from, "2025-07-01")
+        self.assertEqual(answer.foreign_currency_subscription_count, 0)
 
     @patch("ubb.metering.httpx.Client.get")
     def test_a_measure_keeps_its_state_and_its_absent_figure_stays_absent(self, mock_get):

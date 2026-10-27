@@ -39,6 +39,7 @@ vi.mock("../api/provider", () => ({
       basis: "recorded",
       economic_data_available_from: "2020-09-18",
       measurement_data_available_from: "2026-06-01",
+      foreign_currency_subscription_count: 0,
       rows: [{ bucket_start: null, grouping_field_value: [], grouping_field_value_status: [], measures }],
       context: [],
     }),

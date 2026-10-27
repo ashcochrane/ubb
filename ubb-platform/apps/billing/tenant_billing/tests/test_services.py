@@ -23,7 +23,7 @@ class TestProductFeeCalculation:
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="open",
-            total_usage_cost_micros=100_000_000,  # $100 usage
+            total_billed_cost_micros=100_000_000,  # $100 usage
             event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
@@ -47,7 +47,7 @@ class TestProductFeeCalculation:
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="open",
-            total_usage_cost_micros=100_000_000,  # $100 usage
+            total_billed_cost_micros=100_000_000,  # $100 usage
             event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
@@ -74,7 +74,7 @@ class TestProductFeeCalculation:
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="open",
-            total_usage_cost_micros=200_000_000,  # $200 usage
+            total_billed_cost_micros=200_000_000,  # $200 usage
             event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 
@@ -98,7 +98,7 @@ class TestProductFeeCalculation:
             period_start=date(2026, 1, 1),
             period_end=date(2026, 2, 1),
             status="open",
-            total_usage_cost_micros=100_000_000,
+            total_billed_cost_micros=100_000_000,
             event_count=1,  # Prevents reconcile from zeroing cost (no Postings in test DB)
         )
 

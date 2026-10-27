@@ -8,7 +8,8 @@ from django.db import transaction
 from django.utils import timezone
 
 from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
-from core.money import DEFAULT_CURRENCY, from_minor
+from core.currency_policy import CurrencyDisagreement, the_rails_currency
+from core.money import from_minor
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
@@ -211,9 +212,14 @@ def reconcile_topups_with_stripe():
                 "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id}})
             continue
         expected_micros = attempt.amount_micros
-        actual_micros = from_minor(
-            charge.amount,
-            (attempt.customer.tenant.default_currency or DEFAULT_CURRENCY).lower())
+        # Read in the currency the CHARGE states (§0.4 B). One UBB does not
+        # admit is a mismatch to report, never an amount to rescale.
+        try:
+            actual_micros = from_minor(charge.amount, the_rails_currency(
+                f"Stripe charge {attempt.stripe_charge_id}",
+                getattr(charge, "currency", None)))
+        except CurrencyDisagreement:
+            actual_micros = None
         if charge.status != "succeeded" or actual_micros != expected_micros or charge.refunded:
             mismatches += 1
             logger.error("Stripe reconciliation mismatch", extra={"data": {
