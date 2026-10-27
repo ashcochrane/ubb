@@ -143,17 +143,18 @@ vocabulary check would refuse everything and every other test in the class would
 they all assert refusals.
 
 **D8's `key` is renameable in principle, but there is no rename path.** The design doc (D8) declares
-`key` a mutable display label — "the slot is identity" — but `DimensionService.declare` never
+`key` a mutable display label — "the slot is identity" — but `GroupingFieldService.declare` never
 implements a rename: it looks an existing record up **by key**, so a genuinely new key always takes
 the create branch, not an update-in-place. There is no `PATCH`/`PUT` verb, no service method, no
 anything that says "keep this slot's history, just call it something else now." Attempting to
 *simulate* a rename by declaring a fresh key bound to a slot an old key still holds hits the
 same-slot collision Important-4 (final-fixes wave, 2026-07-27) fixed: previously an uncaught
-`IntegrityError` on `uq_dimension_def_slot` (500), now a `DimensionError` (422) — loud and correct,
-but still a rejection, not a rename. A real rename path is unbuilt work, not a design gap covered by
-an existing invariant. (The service class, the error class and the two constraint names still carry
-the old noun; the constraints deliberately, because renaming one is a drop-and-create of a
-load-bearing unique index, which ADR-0007 §1 refuses.)
+`IntegrityError` on `uq_dimension_def_slot` (500), now a `GroupingFieldError` (422) — loud and
+correct, but still a rejection, not a rename. A real rename path is unbuilt work, not a design gap
+covered by an existing invariant. (The service class and the error class took the canonical noun in
+#541. The three constraint names still carry the old one, deliberately: renaming one is a
+drop-and-create of a load-bearing unique index, which ADR-0007 §1 refuses, so they are handed to the
+cutover's migration squash, which creates their final names.)
 
 ## Consequences
 

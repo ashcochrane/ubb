@@ -441,8 +441,20 @@ gates:
       - suite: contracts
         node: >-
           tests/contracts/test_forbidden_terms.py::test_the_declared_exclusion_set_is_exactly_what_the_file_says
+      - suite: contracts
+        node: >-
+          tests/contracts/test_no_published_name_spells_the_retired_grouping_word.py::test_no_component_name_spells_the_retired_grouping_word
+      - suite: contracts
+        node: >-
+          tests/contracts/test_no_published_name_spells_the_retired_grouping_word.py::test_no_generated_sdk_model_spells_the_retired_grouping_word
+      - suite: contracts
+        node: >-
+          tests/contracts/test_no_published_name_spells_the_retired_grouping_word.py::test_no_audit_resource_type_spells_the_retired_grouping_word
+      - suite: contracts
+        node: >-
+          tests/contracts/test_no_published_name_spells_the_retired_grouping_word.py::test_every_audit_resource_type_is_read_rather_than_assumed
     notes: >-
-      Four nodes rather than one, because #206 asks for two different things and
+      The sweep's four nodes rather than one, because #206 asks for two different things and
       a single node would let either half rot. The first is the gate; the second
       is the TOTAL ACCOUNTING that makes it trustworthy — every tracked file is
       swept or matched by exactly one declared rule, so a surface quietly
@@ -453,7 +465,17 @@ gates:
       is case-sensitive over the token as the registry spells it, so a
       Pascal-cased spelling of a retired word is not a hit — and it is no other
       gate's subject either, since G9 compares a table against its own model
-      rather than against the vocabulary. And `retired_senses` is deliberately
+      rather than against the vocabulary. ONE WORD'S PUBLISHED NAMES ARE THE
+      EXCEPTION SINCE #541, and they are why the row names four more nodes.
+      Four components spelled `grouping_field_value`'s retired noun in Pascal
+      case and every model generated off them followed, while the audit feed
+      wrote it joined to a suffix, so the sweep saw none of it. Those nodes
+      read exactly where a name is published as a name — component keys and
+      titles, generated SDK model modules and classes, the audit
+      `resource_type` values the backend writes — and match that word there
+      case-insensitively, off the registry; anywhere else the word is still
+      the sweep's alone, deliberately, because the owner refused a ban on the
+      English word outside that sense. And `retired_senses` is deliberately
       not input: eight words are retired in one sense while live in another, and
       ADR-0008 §1 keeps that human-judged. #206 moved three of the eight —
       `flat`, `hold`, `estimate` — out of `retired_aliases` on the evidence of

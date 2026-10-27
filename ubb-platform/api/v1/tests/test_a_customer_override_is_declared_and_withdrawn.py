@@ -45,7 +45,7 @@ from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.models import AuditRecord
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     DECLARATION_STATUS_DRAFT,
@@ -85,8 +85,8 @@ class _ATenantWithACustomerMixin:
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="acme")
         declares_a_quantity(self.tenant, QUANTITY)
-        DimensionService.declare(self.tenant, key=TIER,
-                                 slot="grouping_field_7", scope="event")
+        GroupingFieldService.declare(self.tenant, key=TIER,
+                                     slot="grouping_field_7", scope="event")
         self.inherited = rate_in_default_book(
             self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
             measurement_key=QUANTITY,

@@ -8,32 +8,32 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.dimension_def_out_scope import DimensionDefOutScope
+from ..models.grouping_field_out_scope import GroupingFieldOutScope
 
 
 
 
 
 
-T = TypeVar("T", bound="DimensionDefOut")
+T = TypeVar("T", bound="GroupingFieldOut")
 
 
 
 @_attrs_define
-class DimensionDefOut:
+class GroupingFieldOut:
     """ 
         Attributes:
             key (str):
             max_cardinality (int):
             retired (bool):
-            scope (DimensionDefOutScope):
+            scope (GroupingFieldOutScope):
             slot (str):
      """
 
     key: str
     max_cardinality: int
     retired: bool
-    scope: DimensionDefOutScope
+    scope: GroupingFieldOutScope
     slot: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -76,14 +76,14 @@ class DimensionDefOut:
 
         retired = d.pop("retired")
 
-        scope = DimensionDefOutScope(d.pop("scope"))
+        scope = GroupingFieldOutScope(d.pop("scope"))
 
 
 
 
         slot = d.pop("slot")
 
-        dimension_def_out = cls(
+        grouping_field_out = cls(
             key=key,
             max_cardinality=max_cardinality,
             retired=retired,
@@ -92,8 +92,8 @@ class DimensionDefOut:
         )
 
 
-        dimension_def_out.additional_properties = d
-        return dimension_def_out
+        grouping_field_out.additional_properties = d
+        return grouping_field_out
 
     @property
     def additional_keys(self) -> list[str]:

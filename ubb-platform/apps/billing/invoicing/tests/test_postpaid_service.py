@@ -32,9 +32,9 @@ class TestAggregate:
         assert lines == [("", 1_000_000)]
 
     def test_group_by_product_with_other_bucket(self):
-        from apps.platform.grouping_fields.services import DimensionService
+        from apps.platform.grouping_fields.services import GroupingFieldService
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
-        DimensionService.declare(t, key="product", slot="grouping_field_1", scope="event")
+        GroupingFieldService.declare(t, key="product", slot="grouping_field_1", scope="event")
         PostpaidUsageConfig.objects.create(tenant=t, invoice_line_grouping="field:product")
         self._events(t, c)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)

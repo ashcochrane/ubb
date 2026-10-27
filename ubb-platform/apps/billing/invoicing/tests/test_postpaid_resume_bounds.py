@@ -307,9 +307,9 @@ class TestFrozenLineSnapshot:
         than a column name, so the fixture has to declare the field the slot
         holds — which is the registry's rule and not this suite's subject.
         """
-        from apps.platform.grouping_fields.services import DimensionService
-        DimensionService.declare(t, key="product", slot="grouping_field_1",
-                                 scope="event")
+        from apps.platform.grouping_fields.services import GroupingFieldService
+        GroupingFieldService.declare(t, key="product", slot="grouping_field_1",
+                                     scope="event")
         return "field:product"
 
     def test_resume_after_group_by_flip_creates_zero_new_items(self):

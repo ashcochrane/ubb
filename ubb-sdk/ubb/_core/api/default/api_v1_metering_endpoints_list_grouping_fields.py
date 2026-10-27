@@ -8,7 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.dimension_registry_out import DimensionRegistryOut
+from ...models.grouping_field_registry_out import GroupingFieldRegistryOut
 from typing import cast
 
 
@@ -32,9 +32,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionRegistryOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> GroupingFieldRegistryOut | None:
     if response.status_code == 200:
-        response_200 = DimensionRegistryOut.from_dict(response.json())
+        response_200 = GroupingFieldRegistryOut.from_dict(response.json())
 
 
 
@@ -46,7 +46,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionRegistryOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[GroupingFieldRegistryOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -59,7 +59,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[DimensionRegistryOut]:
+) -> Response[GroupingFieldRegistryOut]:
     """ List Grouping Fields
 
      This tenant's declared Grouping Field vocabulary.
@@ -69,7 +69,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionRegistryOut]
+        Response[GroupingFieldRegistryOut]
      """
 
 
@@ -87,7 +87,7 @@ def sync(
     *,
     client: AuthenticatedClient,
 
-) -> DimensionRegistryOut | None:
+) -> GroupingFieldRegistryOut | None:
     """ List Grouping Fields
 
      This tenant's declared Grouping Field vocabulary.
@@ -97,7 +97,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionRegistryOut
+        GroupingFieldRegistryOut
      """
 
 
@@ -110,7 +110,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
 
-) -> Response[DimensionRegistryOut]:
+) -> Response[GroupingFieldRegistryOut]:
     """ List Grouping Fields
 
      This tenant's declared Grouping Field vocabulary.
@@ -120,7 +120,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionRegistryOut]
+        Response[GroupingFieldRegistryOut]
      """
 
 
@@ -138,7 +138,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient,
 
-) -> DimensionRegistryOut | None:
+) -> GroupingFieldRegistryOut | None:
     """ List Grouping Fields
 
      This tenant's declared Grouping Field vocabulary.
@@ -148,7 +148,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionRegistryOut
+        GroupingFieldRegistryOut
      """
 
 

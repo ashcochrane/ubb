@@ -106,7 +106,7 @@ class RiskService:
         ⚠ IT ADMITS THE GROUPING VALUES, WHICH IS A WRITE. A caller that only
         needs to know what a declaration binds to — a repeated start comparing
         itself against the unit it may be replaying — must use
-        `DimensionService.resolve`, or a start that is about to be refused
+        `GroupingFieldService.resolve`, or a start that is about to be refused
         permanently burns a key's cardinality for work that never began.
 
         The ceiling is universal — a tenant who never enables billing still
@@ -114,7 +114,7 @@ class RiskService:
         composition layer asks this for every start, whatever the tenant's
         posture, and asks the money-shaped questions below separately.
         """
-        from apps.platform.grouping_fields.services import DimensionError, DimensionService
+        from apps.platform.grouping_fields.services import GroupingFieldError, GroupingFieldService
         from apps.platform.work.queries import task_type_policy
 
         kind = TASK_TYPE_KIND_SUBTASK if is_subtask else TASK_TYPE_KIND_TASK
@@ -140,8 +140,8 @@ class RiskService:
         scope = (GROUPING_FIELD_SCOPE_SUBTASK if is_subtask
                  else GROUPING_FIELD_SCOPE_TASK)
         try:
-            slot_values = DimensionService.admit(tenant, grouping_values or {}, scope=scope)
-        except DimensionError as exc:
+            slot_values = GroupingFieldService.admit(tenant, grouping_values or {}, scope=scope)
+        except GroupingFieldError as exc:
             raise ValueError(str(exc)) from exc
 
         if policy:

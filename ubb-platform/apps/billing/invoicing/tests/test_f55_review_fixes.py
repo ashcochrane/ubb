@@ -220,14 +220,14 @@ class PostpaidConfigPartialUpdateTest(TestCase):
     """
 
     def setUp(self):
-        from apps.platform.grouping_fields.services import DimensionService
+        from apps.platform.grouping_fields.services import GroupingFieldService
         self.http = Client()
         self.tenant = Tenant.objects.create(
             name="T2", products=["metering", "billing"])
         for key, slot in (("product_id", "grouping_field_1"),
                           ("model", "grouping_field_2")):
-            DimensionService.declare(self.tenant, key=key, slot=slot,
-                                     scope="event")
+            GroupingFieldService.declare(self.tenant, key=key, slot=slot,
+                                         scope="event")
         _, self.key = TenantApiKey.create_key(self.tenant, label="k")
 
     def _auth(self):

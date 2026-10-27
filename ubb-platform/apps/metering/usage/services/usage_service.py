@@ -128,7 +128,7 @@ def validate_effective_at(tenant, owner_id, effective_at, now):
             "been invoiced; backfills into it are rejected")
 
 
-def _inherit_dimensions(task_id, dimension_slots):
+def _inherit_grouping_fields(task_id, grouping_slots):
     """What one event takes from the unit of work it belongs to (design D6).
 
     Twelve INHERITABLE SELECTOR VALUES — not fourteen: `provider` and
@@ -168,7 +168,7 @@ def _inherit_dimensions(task_id, dimension_slots):
     # its revenue to sit on instead, so the ladder applies to it.
     out = {"task_type": "", "subtask_type": "",
            "pricing_mode": PRICING_MODE_EVENT_PRICED}
-    out.update({s: (dimension_slots or {}).get(s, "") for s in SLOTS})
+    out.update({s: (grouping_slots or {}).get(s, "") for s in SLOTS})
     if task_id is None:
         return out
 
@@ -428,7 +428,7 @@ class RecordingInput:
     task_type: str
     subtask_type: str
     #: HOW THE UNIT OF WORK THIS EVENT BELONGS TO WAS SOLD (#418), resolved by
-    #: `_inherit_dimensions` off the same row the two axes above come from. Not
+    #: `_inherit_grouping_fields` off the same row the two axes above come from. Not
     #: a selector and never written to the posting: it decides whether this
     #: event carries a customer price at all, which the spine answers and the
     #: `pricing_status` column records.
@@ -473,15 +473,15 @@ class RecordingInput:
                metadata, event_type, provider, measurements,
                task_id, caller_provider_cost, claimed_provider_cost,
                effective_at, billing_owner_id, owner_row,
-               now, dimension_slots=None, reported_cost_source_kind=None,
+               now, grouping_slots=None, reported_cost_source_kind=None,
                declaration=DECLARATION_NOT_READ):
         """The normalization the recording path runs: tenant-currency stamp,
         declared-grouping-field slot fill, and the ``or ""``/``or {}`` defaults
         the posting create relies on. Validation does NOT live here — the
         endpoint adapter validates before building.
 
-        ``dimension_slots`` is an ALREADY-ADMITTED {slot: value} map (Task 9:
-        DimensionService.admit ran in the caller — gather() never admits).
+        ``grouping_slots`` is an ALREADY-ADMITTED {slot: value} map (Task 9:
+        GroupingFieldService.admit ran in the caller — gather() never admits).
         The open bag is labelling only (#37) and is never consulted for
         grouped values — the historical "product"/"service"/"agent"
         label-lifting is retired.
@@ -489,8 +489,8 @@ class RecordingInput:
         Grouping fields are DECLARED and INHERITED (design D1/D6) — there is no
         label-fallback inference and no legacy ``product_id`` wire field: the
         write contract's only path onto a slot is a declared grouping field
-        bound to it (DimensionService.admit), same as any other.
-        ``_inherit_dimensions`` resolves the TWELVE inheritable selector
+        bound to it (GroupingFieldService.admit), same as any other.
+        ``_inherit_grouping_fields`` resolves the TWELVE inheritable selector
         columns by that precedence — this event's own value wins, else the leaf
         task's, else its parent's, else "". Twelve of the fourteen: `provider`
         and `event_type` are the caller's own on every event and are never
@@ -498,8 +498,8 @@ class RecordingInput:
         does not follow that precedence — the piece of work's pricing regime
         (#418), read off the leaf and used by the pricing spine rather than by
         rule matching."""
-        slots = dict(dimension_slots or {})
-        dims = _inherit_dimensions(task_id, slots)
+        slots = dict(grouping_slots or {})
+        inherited = _inherit_grouping_fields(task_id, slots)
         return cls(
             tenant=tenant, customer=customer,
             idempotency_key=idempotency_key,
@@ -517,7 +517,7 @@ class RecordingInput:
             # as exactly the whole number it is; a float is refused, never
             # read.
             measurements=canonical_quantities(measurements),
-            **dims,
+            **inherited,
             task_id=task_id, billing_owner_id=billing_owner_id,
             owner_row=owner_row, effective_at=effective_at,
             caller_provider_cost=caller_provider_cost,
@@ -932,7 +932,7 @@ class UsageService:
                          claimed_provider_cost_micros=None,
                          provider="", event_type="", currency=None,
                          metadata=None, task_id=None, measurements=None,
-                         effective_at=None, dimension_slots=None,
+                         effective_at=None, grouping_slots=None,
                          declaration=DECLARATION_NOT_READ):
         """The recording path (#112) for a key :meth:`replay` found nothing
         under: validation + owner resolve, then the recording core. The keyword
@@ -962,9 +962,9 @@ class UsageService:
         removes a second name for a job one name was doing, and it waited for
         #410 to make that key caller-supplied with a permanent claim.
 
-        ``dimension_slots`` (Task 9) is an already-admitted {slot: value} map
-        — the caller (endpoint / record_sync_item) runs DimensionService.admit
-        BEFORE calling this, so a DimensionError is the whole-request/whole-
+        ``grouping_slots`` (Task 9) is an already-admitted {slot: value} map
+        — the caller (endpoint / record_sync_item) runs GroupingFieldService.admit
+        BEFORE calling this, so a GroupingFieldError is the whole-request/whole-
         item rejection and never reaches here.
 
         ``provider_cost_micros`` is admitted the same way (#324): WHETHER a
@@ -1010,7 +1010,7 @@ class UsageService:
             claimed_provider_cost=claimed_provider_cost_micros,
             effective_at=effective_at,
             billing_owner_id=owner_id, owner_row=owner, now=now,
-            dimension_slots=dimension_slots, declaration=declaration)
+            grouping_slots=grouping_slots, declaration=declaration)
         try:
             outcome = UsageService._record_core(inp)
         except RecordingConflict as exc:

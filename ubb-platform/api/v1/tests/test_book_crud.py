@@ -23,7 +23,7 @@ import json
 from django.test import TestCase, Client
 
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.metering.pricing.models import CostBook, Rate
 
@@ -71,8 +71,8 @@ class BookCRUDTest(TestCase):
         # declared record, so the catalogue entry comes first. What the route
         # answers WITHOUT it is `test_a_rate_names_a_declared_quantity.py`'s.
         declares_a_quantity(self.tenant, COST_RULE["measurement_key"])
-        DimensionService.declare(self.tenant, key=SEGMENT_KEY,
-                                 slot=SEGMENT_SLOT, scope="event")
+        GroupingFieldService.declare(self.tenant, key=SEGMENT_KEY,
+                                     slot=SEGMENT_SLOT, scope="event")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

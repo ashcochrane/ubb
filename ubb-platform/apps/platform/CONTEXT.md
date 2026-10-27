@@ -366,7 +366,11 @@ tenant's `GroupingField` registry is the single vocabulary for both, so nothing 
 or priced on that was not declared. Unlike a `metadata` value, a grouping field's keyspace is capped
 on write. (ADR-0005; `apps/platform/grouping_fields/models.py:GroupingField`)
 _Avoid_: the pre-#155 noun for this axis — the registry, its records and its columns all carry this
-one now.
+one now, and since #541 so do the published components (`GroupingFieldIn`/`Out`,
+`GroupingFieldRegistryIn`/`Out`), the service and its error (`GroupingFieldService`,
+`GroupingFieldError`) and the audit `resource_type` (`grouping_field_registry`), held by a
+case-insensitive contract gate. Three historical constraint names and `TaskType`'s required-fields
+column still spell the old noun, handed to the cutover's migration squash.
 
 **Grouping field value**:
 One distinct value ever admitted under a declared key, one row per (tenant, key, value). It is what

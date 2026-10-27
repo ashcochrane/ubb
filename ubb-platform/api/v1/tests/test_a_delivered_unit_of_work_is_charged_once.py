@@ -64,7 +64,7 @@ from apps.metering.pricing.models import Charge
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import Task, TaskType
 from apps.platform.work.services import TaskService
@@ -460,8 +460,8 @@ class TestWhatTheChargeCarries(ChargeTestBase):
     def test_the_charge_snapshots_the_grouping_values_the_work_carried(self):
         """The snapshot is a COPY rather than a read through the work, because
         the work's row is mutable and this one is not."""
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
                                agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(**declared_grouping_values(

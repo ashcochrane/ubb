@@ -37,7 +37,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.billing.invoicing.models import PostpaidUsageConfig, PostpaidResidualLedger
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from core.time_windows import utc_day_start
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
@@ -92,7 +92,7 @@ def _grouped_by_a_declared_field(tenant, key="product", slot="grouping_field_1")
     it — and the reference implementation reads that slot directly, which is
     exactly the independence the parity is for.
     """
-    DimensionService.declare(tenant, key=key, slot=slot, scope="event")
+    GroupingFieldService.declare(tenant, key=key, slot=slot, scope="event")
     PostpaidUsageConfig.objects.create(
         tenant=tenant, invoice_line_grouping=f"field:{key}")
     return slot

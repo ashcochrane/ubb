@@ -8,8 +8,8 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
-from ...models.dimension_registry_in import DimensionRegistryIn
-from ...models.dimension_registry_out import DimensionRegistryOut
+from ...models.grouping_field_registry_in import GroupingFieldRegistryIn
+from ...models.grouping_field_registry_out import GroupingFieldRegistryOut
 from ...models.problem_out import ProblemOut
 from typing import cast
 
@@ -17,7 +17,7 @@ from typing import cast
 
 def _get_kwargs(
     *,
-    body: DimensionRegistryIn,
+    body: GroupingFieldRegistryIn,
 
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -41,9 +41,9 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> DimensionRegistryOut | ProblemOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> GroupingFieldRegistryOut | ProblemOut | None:
     if response.status_code == 200:
-        response_200 = DimensionRegistryOut.from_dict(response.json())
+        response_200 = GroupingFieldRegistryOut.from_dict(response.json())
 
 
 
@@ -62,7 +62,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[DimensionRegistryOut | ProblemOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[GroupingFieldRegistryOut | ProblemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -74,9 +74,9 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    body: DimensionRegistryIn,
+    body: GroupingFieldRegistryIn,
 
-) -> Response[DimensionRegistryOut | ProblemOut]:
+) -> Response[GroupingFieldRegistryOut | ProblemOut]:
     """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
@@ -85,14 +85,14 @@ def sync_detailed(
     bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (DimensionRegistryIn):
+        body (GroupingFieldRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionRegistryOut | ProblemOut]
+        Response[GroupingFieldRegistryOut | ProblemOut]
      """
 
 
@@ -110,9 +110,9 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    body: DimensionRegistryIn,
+    body: GroupingFieldRegistryIn,
 
-) -> DimensionRegistryOut | ProblemOut | None:
+) -> GroupingFieldRegistryOut | ProblemOut | None:
     """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
@@ -121,14 +121,14 @@ def sync(
     bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (DimensionRegistryIn):
+        body (GroupingFieldRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionRegistryOut | ProblemOut
+        GroupingFieldRegistryOut | ProblemOut
      """
 
 
@@ -141,9 +141,9 @@ body=body,
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    body: DimensionRegistryIn,
+    body: GroupingFieldRegistryIn,
 
-) -> Response[DimensionRegistryOut | ProblemOut]:
+) -> Response[GroupingFieldRegistryOut | ProblemOut]:
     """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
@@ -152,14 +152,14 @@ async def asyncio_detailed(
     bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (DimensionRegistryIn):
+        body (GroupingFieldRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[DimensionRegistryOut | ProblemOut]
+        Response[GroupingFieldRegistryOut | ProblemOut]
      """
 
 
@@ -177,9 +177,9 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    body: DimensionRegistryIn,
+    body: GroupingFieldRegistryIn,
 
-) -> DimensionRegistryOut | ProblemOut | None:
+) -> GroupingFieldRegistryOut | ProblemOut | None:
     """ Declare Grouping Fields
 
      Declare this tenant's slicing axes — the ONE vocabulary used by both
@@ -188,14 +188,14 @@ async def asyncio(
     bound and `max_cardinality` may only be raised (D8).
 
     Args:
-        body (DimensionRegistryIn):
+        body (GroupingFieldRegistryIn):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        DimensionRegistryOut | ProblemOut
+        GroupingFieldRegistryOut | ProblemOut
      """
 
 

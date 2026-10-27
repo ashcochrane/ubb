@@ -10,25 +10,25 @@ from core.vocabulary import GROUPING_FIELD_SCOPE_VALUES
 KEY_PATTERN = re.compile(r"[a-z][a-z0-9_]{1,63}")
 
 
-class DimensionError(ValueError):
+class GroupingFieldError(ValueError):
     """A declaration or value admission violated the registry's rules."""
 
 
-class DimensionService:
+class GroupingFieldService:
     @staticmethod
     def declare(tenant, *, key, slot, scope, max_cardinality=100):
         """Declare or update one grouping field. Idempotent on (key, slot,
         scope); enforces the D8 mutability rules."""
         if not KEY_PATTERN.fullmatch(key or ""):
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"invalid grouping field key {key!r}: must match "
                 f"[a-z][a-z0-9_]{{1,63}}")
         if key in RESERVED_KEYS:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{key!r} is a reserved grouping field — always present, never "
                 "declared")
         if key in FORBIDDEN_KEYS:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{key!r} is a correlation identifier, not a grouping field: it "
                 "is unbounded, so it is a filter parameter and cannot be "
                 "grouped by")
@@ -38,13 +38,13 @@ class DimensionService:
         #
         # WITHOUT THIS LINE THAT CALLER GETS A 200 AND LOSES ITS DATA, SILENTLY.
         # The declaration stores; `admit` below then returns `{unknown: value}`;
-        # and `_inherit_dimensions` copies only the slots it knows about, so the
+        # and `_inherit_grouping_fields` copies only the slots it knows about, so the
         # value is dropped on the floor. Every event the tenant records against
         # that key is attributed to nothing, and the first sign of it is a chart
         # with a column missing. Refusing here turns that into a 422 against the
         # request that is actually wrong.
         if slot not in SLOTS:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{slot!r} is not a slot: the slots are {', '.join(SLOTS)}")
         # The contract publishes the scope as a closed `enum`, on the
         # declaration and on its representation (#575). Until it did, a scope
@@ -54,7 +54,7 @@ class DimensionService:
         # (`_bindings` below), so one that matches no call is a field that can
         # never take a value.
         if scope not in GROUPING_FIELD_SCOPE_VALUES:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{scope!r} is not a scope: the scopes are "
                 f"{', '.join(sorted(GROUPING_FIELD_SCOPE_VALUES))}")
 
@@ -63,11 +63,11 @@ class DimensionService:
             # uq_dimension_def_slot is (tenant, slot) — a slot binds to ONE
             # key at a time, regardless of scope. Check for that collision
             # here (a different key already bound to this slot) so a
-            # copy-paste mistake is a 422 DimensionError, not a raw
+            # copy-paste mistake is a 422 GroupingFieldError, not a raw
             # IntegrityError the endpoint doesn't catch (500).
             slot_holder = GroupingField.objects.filter(tenant=tenant, slot=slot).first()
             if slot_holder is not None:
-                raise DimensionError(
+                raise GroupingFieldError(
                     f"slot {slot!r} is already bound to key {slot_holder.key!r}: "
                     f"cannot also bind {key!r} to it — a slot holds exactly one "
                     "key at a time")
@@ -76,17 +76,17 @@ class DimensionService:
                 max_cardinality=max_cardinality)
 
         if existing.slot != slot:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{key!r} slot is immutable: bound to {existing.slot}, cannot "
                 f"rebind to {slot} — historical rows in that column would "
                 "silently change meaning")
         if existing.scope != scope:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{key!r} scope is immutable: declared {existing.scope}, cannot "
                 f"change to {scope} — inheritance would differ between old and "
                 "new rows")
         if max_cardinality < existing.max_cardinality:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"{key!r} max_cardinality cannot be lowered "
                 f"({existing.max_cardinality} -> {max_cardinality})")
         if max_cardinality != existing.max_cardinality:
@@ -113,7 +113,7 @@ class DimensionService:
         ``_record_value``, which only ``admit`` reaches.
         """
         return {slot: value for _, slot, value
-                in DimensionService._bindings(tenant, values, scope)}
+                in GroupingFieldService._bindings(tenant, values, scope)}
 
     @staticmethod
     def admit(tenant, values, scope):
@@ -129,9 +129,9 @@ class DimensionService:
         """
         out = {}
         with transaction.atomic():
-            for definition, slot, value in DimensionService._bindings(
+            for definition, slot, value in GroupingFieldService._bindings(
                     tenant, values, scope):
-                DimensionService._record_value(tenant, definition, value)
+                GroupingFieldService._record_value(tenant, definition, value)
                 out[slot] = value
         return out
 
@@ -154,15 +154,15 @@ class DimensionService:
         for key, raw in values.items():
             d = defs.get(key)
             if d is None:
-                raise DimensionError(
+                raise GroupingFieldError(
                     f"unknown grouping field {key!r}: declare it first")
             if d.scope != scope:
-                raise DimensionError(
+                raise GroupingFieldError(
                     f"{key!r} is declared at {d.scope} scope and cannot be set "
                     f"at {scope} scope")
             value = str(raw)
             if len(value) > 100:
-                raise DimensionError(
+                raise GroupingFieldError(
                     f"grouping field {key!r} value exceeds 100 characters")
             yield d, d.slot, value
 
@@ -172,13 +172,13 @@ class DimensionService:
                 tenant=tenant, key=grouping_field.key, value=value).exists():
             return
         if grouping_field.retired_at is not None:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"grouping field {grouping_field.key!r} is retired and accepts "
                 f"no new values (got {value!r})")
         count = GroupingFieldValue.objects.filter(
             tenant=tenant, key=grouping_field.key).count()
         if count >= grouping_field.max_cardinality:
-            raise DimensionError(
+            raise GroupingFieldError(
                 f"grouping field {grouping_field.key!r} cardinality exceeded: "
                 f"{count} distinct values already recorded (max "
                 f"{grouping_field.max_cardinality}); {value!r} refused. High-"

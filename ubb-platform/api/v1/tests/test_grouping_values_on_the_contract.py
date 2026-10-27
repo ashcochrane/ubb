@@ -45,7 +45,7 @@ from apps.platform.grouping_fields.models import SLOTS
 #: internal identity for a binding the tenant knows by its own key.
 #:
 #: A property whose VALUE is a slot identifier is a different matter and is
-#: deliberately not matched: `DimensionDefIn.slot` is how a tenant binds its key
+#: deliberately not matched: `GroupingFieldIn.slot` is how a tenant binds its key
 #: to a slot in the first place, and the declaration surface is the one place
 #: the physical slot is legitimately the subject.
 SLOT_NAMED = re.compile(r"(dim|grouping_field_)\d+")

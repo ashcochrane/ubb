@@ -353,8 +353,8 @@ class CrossProductReadContractTest(TestCase):
                           UNPRICED_EVENT_COUNT_KEY: 1})
 
     def _a_declared_axis(self, key="product", slot="grouping_field_1"):
-        from apps.platform.grouping_fields.services import DimensionService
-        DimensionService.declare(self.tenant, key=key, slot=slot, scope="event")
+        from apps.platform.grouping_fields.services import GroupingFieldService
+        GroupingFieldService.declare(self.tenant, key=key, slot=slot, scope="event")
         return f"field:{key}"
 
     def test_billed_breakdown_refuses_a_word_that_names_no_axis(self):

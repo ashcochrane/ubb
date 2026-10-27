@@ -65,7 +65,7 @@ class TestGroupingFieldInheritance:
 
     def test_event_scoped_value_overrides_inheritance(self):
         t, c, parent, sub = self._fixture()
-        e = self._record(t, c, sub, dimension_slots={"grouping_field_1": "us-east-1"})
+        e = self._record(t, c, sub, grouping_slots={"grouping_field_1": "us-east-1"})
         assert e.grouping_field_1 == "us-east-1"
 
     def test_top_level_task_event_has_no_subtask_type(self):
@@ -100,7 +100,7 @@ class TestGroupingFieldInheritance:
 
     def test_declared_dim1_wins_over_task_inheritance(self):
         """dim1's only source is a declared event-scoped grouping field
-        (`dimension_slots`) — when both an event-scoped declared value and a
+        (`grouping_slots`) — when both an event-scoped declared value and a
         task-inherited dim1 are present, the event-scoped value wins (D6
         precedence), unchanged by product_id's removal."""
         t = Tenant.objects.create(name="T3")
@@ -111,6 +111,6 @@ class TestGroupingFieldInheritance:
             tenant=t, customer=c, idempotency_key="k1",
             provider="openai", event_type="completion", provider_cost_micros=1,
             task_id=parent.id,
-            dimension_slots={"grouping_field_1": "declared-value"})
+            grouping_slots={"grouping_field_1": "declared-value"})
         e = Posting.objects.get(id=r["event_id"])
         assert e.grouping_field_1 == "declared-value"

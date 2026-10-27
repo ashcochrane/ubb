@@ -8,7 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.dimension_def_in_scope import DimensionDefInScope
+from ..models.grouping_field_in_scope import GroupingFieldInScope
 from ..types import UNSET, Unset
 
 
@@ -16,24 +16,24 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="DimensionDefIn")
+T = TypeVar("T", bound="GroupingFieldIn")
 
 
 
 @_attrs_define
-class DimensionDefIn:
+class GroupingFieldIn:
     """ 
         Attributes:
             key (str):
             slot (str):
             max_cardinality (int | Unset):  Default: 100.
-            scope (DimensionDefInScope | Unset):  Default: DimensionDefInScope.EVENT.
+            scope (GroupingFieldInScope | Unset):  Default: GroupingFieldInScope.EVENT.
      """
 
     key: str
     slot: str
     max_cardinality: int | Unset = 100
-    scope: DimensionDefInScope | Unset = DimensionDefInScope.EVENT
+    scope: GroupingFieldInScope | Unset = GroupingFieldInScope.EVENT
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -78,16 +78,16 @@ class DimensionDefIn:
         max_cardinality = d.pop("max_cardinality", UNSET)
 
         _scope = d.pop("scope", UNSET)
-        scope: DimensionDefInScope | Unset
+        scope: GroupingFieldInScope | Unset
         if isinstance(_scope,  Unset):
             scope = UNSET
         else:
-            scope = DimensionDefInScope(_scope)
+            scope = GroupingFieldInScope(_scope)
 
 
 
 
-        dimension_def_in = cls(
+        grouping_field_in = cls(
             key=key,
             slot=slot,
             max_cardinality=max_cardinality,
@@ -95,8 +95,8 @@ class DimensionDefIn:
         )
 
 
-        dimension_def_in.additional_properties = d
-        return dimension_def_in
+        grouping_field_in.additional_properties = d
+        return grouping_field_in
 
     @property
     def additional_keys(self) -> list[str]:

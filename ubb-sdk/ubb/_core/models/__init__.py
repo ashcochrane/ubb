@@ -89,12 +89,6 @@ from .customer_spend_pool_status_out_enforce_mode import CustomerSpendPoolStatus
 from .debit_credit_response import DebitCreditResponse
 from .debit_request import DebitRequest
 from .debit_request_movement_reason_type_0 import DebitRequestMovementReasonType0
-from .dimension_def_in import DimensionDefIn
-from .dimension_def_in_scope import DimensionDefInScope
-from .dimension_def_out import DimensionDefOut
-from .dimension_def_out_scope import DimensionDefOutScope
-from .dimension_registry_in import DimensionRegistryIn
-from .dimension_registry_out import DimensionRegistryOut
 from .earnings_out import EarningsOut
 from .economic_measure_out import EconomicMeasureOut
 from .economic_measure_out_measure import EconomicMeasureOutMeasure
@@ -114,6 +108,12 @@ from .event_type_update_in_costing_method_type_0 import EventTypeUpdateInCosting
 from .grant_list_response import GrantListResponse
 from .grant_out import GrantOut
 from .grant_summary_out import GrantSummaryOut
+from .grouping_field_in import GroupingFieldIn
+from .grouping_field_in_scope import GroupingFieldInScope
+from .grouping_field_out import GroupingFieldOut
+from .grouping_field_out_scope import GroupingFieldOutScope
+from .grouping_field_registry_in import GroupingFieldRegistryIn
+from .grouping_field_registry_out import GroupingFieldRegistryOut
 from .grouping_field_values_out import GroupingFieldValuesOut
 from .grouping_option_out import GroupingOptionOut
 from .grouping_option_out_kind import GroupingOptionOutKind
@@ -482,12 +482,6 @@ __all__ = (
     "DebitCreditResponse",
     "DebitRequest",
     "DebitRequestMovementReasonType0",
-    "DimensionDefIn",
-    "DimensionDefInScope",
-    "DimensionDefOut",
-    "DimensionDefOutScope",
-    "DimensionRegistryIn",
-    "DimensionRegistryOut",
     "EarningsOut",
     "EconomicMeasureOut",
     "EconomicMeasureOutMeasure",
@@ -507,6 +501,12 @@ __all__ = (
     "GrantListResponse",
     "GrantOut",
     "GrantSummaryOut",
+    "GroupingFieldIn",
+    "GroupingFieldInScope",
+    "GroupingFieldOut",
+    "GroupingFieldOutScope",
+    "GroupingFieldRegistryIn",
+    "GroupingFieldRegistryOut",
     "GroupingFieldValuesOut",
     "GroupingOptionOut",
     "GroupingOptionOutKind",

@@ -588,11 +588,11 @@ class ThePublishedContractCaughtUpWithTheWideningTest(SimpleTestCase):
                     f"{name} still publishes a slot under its older spelling")
 
     def test_the_declaration_body_admits_one_item_per_slot(self):
-        registry = schemas()["DimensionRegistryIn"]
+        registry = schemas()["GroupingFieldRegistryIn"]
         (listed,) = [name for name, spec in registry["properties"].items()
                      if spec.get("type") == "array"]
         self.assertEqual(registry["properties"][listed]["maxItems"], len(SLOTS))
 
     def test_the_slot_property_admits_the_widest_identifier(self):
-        self.assertEqual(schemas()["DimensionDefIn"]["properties"]["slot"]["maxLength"],
+        self.assertEqual(schemas()["GroupingFieldIn"]["properties"]["slot"]["maxLength"],
                          SLOT_MAX_LENGTH)

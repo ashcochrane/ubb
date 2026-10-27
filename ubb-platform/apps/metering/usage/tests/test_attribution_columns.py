@@ -10,7 +10,7 @@ def test_the_open_bag_no_longer_lifts_into_dim_columns():
     """Task 9: the reserved-label lifting (dim2 <- ["service"], dim3 <-
     ["agent"], dim1 <- ["product"]) is deleted — the open bag is free-form
     labelling only, never slot attribution. dim1 only fills from an explicit
-    declared grouping field (``dimension_slots``), never from the bag."""
+    declared grouping field (``grouping_slots``), never from the bag."""
     t = Tenant.objects.create(name="T")
     c = Customer.objects.create(tenant=t, external_id="c1")
     r = UsageService.record_usage(t, c, "i1", provider_cost_micros=1000,
@@ -25,7 +25,7 @@ def test_declared_dim1_fills_dim1_a_label_does_not():
     t = Tenant.objects.create(name="T")
     c = Customer.objects.create(tenant=t, external_id="c1")
     r = UsageService.record_usage(t, c, "i1", provider_cost_micros=1000,
-                                  dimension_slots={"grouping_field_1": "explicit"},
+                                  grouping_slots={"grouping_field_1": "explicit"},
                                   metadata={"product": "fromlabel", "service": "s"})
     e = Posting.objects.get(id=r["event_id"])
     assert e.grouping_field_1 == "explicit"

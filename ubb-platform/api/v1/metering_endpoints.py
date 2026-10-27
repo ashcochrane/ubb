@@ -47,7 +47,7 @@ from api.v1.schemas import (
     book_change_body, book_change_diff_out, book_publish_out,
     agreed_price_out, pricing_book_out, cost_book_out, rate_out,
     usage_event_out,
-    DimensionRegistryIn, DimensionRegistryOut, GroupingFieldValuesOut,
+    GroupingFieldRegistryIn, GroupingFieldRegistryOut, GroupingFieldValuesOut,
     GroupingOptionsOut, EconomicsOut,
 )
 from core.vocabulary import (
@@ -81,7 +81,7 @@ from apps.metering.usage.services.usage_service import (
     EffectiveAtError, UsageService)
 from apps.metering.usage.models import Posting
 from apps.platform.grouping_fields.queries import keys_by_slot, slot_map
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 
 logger = logging.getLogger(__name__)
 
@@ -405,7 +405,7 @@ def usage_error(e):
     `ProviderConflictsWithEventType`; each IS a ValueError, so they must be
     tested before the generic branch), then plain ValueError — which is also
     what the other admissions raise (`SupplierCostNotAdmissible`,
-    `QuantityNotAdmissible`, `DimensionError`), so every refusal
+    `QuantityNotAdmissible`, `GroupingFieldError`), so every refusal
     `replay_or_record` can raise is mapped here. The single endpoint raises
     the code as a Problem; the batch wraps the same code in a verdict dict.
 
@@ -571,7 +571,7 @@ def replay_or_record(tenant, customer, item):
     batch stops being "N sequential singles". Every refusal it raises is a
     ``ValueError`` — ``ProviderConflictsWithEventType``,
     ``SupplierCostNotAdmissible``, ``QuantityNotAdmissible``,
-    ``DimensionError`` and ``AmountPastTheMoneyBound`` are — so each route
+    ``GroupingFieldError`` and ``AmountPastTheMoneyBound`` are — so each route
     renders all of them through :func:`usage_error`.
     """
     replayed = UsageService.replay(tenant, customer, item.idempotency_key)
@@ -582,10 +582,10 @@ def replay_or_record(tenant, customer, item):
     provider = admit_provider(item, declaration)
     admit_supplier_cost(item, declaration)
     admit_quantities(item, published)
-    dimension_slots = DimensionService.admit(
+    grouping_slots = GroupingFieldService.admit(
         tenant, item.grouping_fields, scope=GROUPING_FIELD_SCOPE_EVENT)
     return UsageService.record_new_usage(
-        tenant=tenant, customer=customer, dimension_slots=dimension_slots,
+        tenant=tenant, customer=customer, grouping_slots=grouping_slots,
         **usage_kwargs(item, provider=provider, declaration=declaration))
 
 
@@ -2173,28 +2173,28 @@ def get_waived_loss(request, selected_from: datetime = None,
 
 
 @metering_router.put("/grouping-fields",
-                     response={200: DimensionRegistryOut, 422: ProblemOut})
+                     response={200: GroupingFieldRegistryOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("grouping_field.declared")
-def declare_grouping_fields(request, payload: DimensionRegistryIn):
+def declare_grouping_fields(request, payload: GroupingFieldRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
     an identical declaration is a no-op. `slot` and `scope` are immutable once
     bound and `max_cardinality` may only be raised (D8)."""
     _product_check(request)
     from apps.platform.grouping_fields.queries import declared_grouping_fields
-    from apps.platform.grouping_fields.services import DimensionError, DimensionService
+    from apps.platform.grouping_fields.services import GroupingFieldError, GroupingFieldService
 
     tenant = request.auth.tenant
     try:
         with transaction.atomic():
             for d in payload.grouping_fields:
-                DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
-                                         max_cardinality=d.max_cardinality)
+                GroupingFieldService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
+                                             max_cardinality=d.max_cardinality)
             audit_record(
                 action="grouping_field.declared",
                 tenant_id=tenant.id,
-                resource_type="dimension_registry",
+                resource_type="grouping_field_registry",
                 resource_id=tenant.id,
                 # THE AUDIT RECORD NAMES WHAT THE RESPONSE NAMES. `metadata`
                 # is an open object on a tenant-readable feed, so this key
@@ -2206,12 +2206,12 @@ def declare_grouping_fields(request, payload: DimensionRegistryIn):
                      "max_cardinality": d.max_cardinality}
                     for d in payload.grouping_fields]},
             )
-    except DimensionError as exc:
+    except GroupingFieldError as exc:
         raise Problem("validation_error", str(exc))
     return 200, {"grouping_fields": declared_grouping_fields(tenant.id)}
 
 
-@metering_router.get("/grouping-fields", response=DimensionRegistryOut)
+@metering_router.get("/grouping-fields", response=GroupingFieldRegistryOut)
 @role_floor(READ)
 def list_grouping_fields(request):
     """This tenant's declared Grouping Field vocabulary."""

@@ -101,7 +101,7 @@ class TestTaskTypeRegistry:
             tenant=self.tenant, key="invoice_batch"
         ).task_cogs_ceiling_micros == 9_000_000
 
-    def test_undeclared_required_dimension_is_422(self):
+    def test_undeclared_required_grouping_field_is_422(self):
         # "region" is pre-declared in setup_method; "customer_tier" is not —
         # the point of this test is that an UNdeclared key is rejected.
         r = self._declare({"key": "invoice_batch", "kind": TASK_TYPE_KIND_TASK,
