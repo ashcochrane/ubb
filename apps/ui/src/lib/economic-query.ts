@@ -475,6 +475,12 @@ export interface AnswerCaveats {
   readonly held_from: string | null;
   /** Whether that horizon is the measurement one — the pruned-records clock. */
   readonly measurement_horizon: boolean;
+  /**
+   * How many Stripe subscriptions this answer's revenue LEFT OUT because
+   * Stripe holds them in a currency UBB does not admit (#564, ADR-0023).
+   * Exact, and 0 where nothing was — never null, so a page can always say.
+   */
+  readonly foreign_currency_subscription_count: number;
 }
 
 export function caveatsOf(answer: EconomicsAnswer): AnswerCaveats {
@@ -482,6 +488,8 @@ export function caveatsOf(answer: EconomicsAnswer): AnswerCaveats {
     context: answer.context,
     held_from: reachesPastHorizon(answer) ? governingHorizon(answer) : null,
     measurement_horizon: answer.group_by.includes(MEASUREMENT_CONCEPT_AXIS),
+    foreign_currency_subscription_count:
+      answer.foreign_currency_subscription_count,
   };
 }
 

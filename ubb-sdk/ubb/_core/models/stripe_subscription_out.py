@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from typing import cast
 
 
 
@@ -22,25 +23,30 @@ T = TypeVar("T", bound="StripeSubscriptionOut")
 class StripeSubscriptionOut:
     """ 
         Attributes:
-            amount_micros (int):
+            amount_micros (int | None): What the subscription accrues per interval, in micros of US dollars — or null where
+                Stripe holds it in another currency: UBB v1 admits US dollars only and converts nothing, so it has no amount in
+                dollars to state and leaves the subscription out of every revenue figure.
             currency (str):
             current_period_end (str):
             current_period_start (str):
             id (str):
             interval (str):
             last_synced_at (str):
+            source_amount_minor (int): What Stripe states the subscription charges per interval, exactly as Stripe sent it:
+                a whole number of `currency`'s minor unit, never converted.
             status (str):
             stripe_product_name (str):
             stripe_subscription_id (str):
      """
 
-    amount_micros: int
+    amount_micros: int | None
     currency: str
     current_period_end: str
     current_period_start: str
     id: str
     interval: str
     last_synced_at: str
+    source_amount_minor: int
     status: str
     stripe_product_name: str
     stripe_subscription_id: str
@@ -51,6 +57,7 @@ class StripeSubscriptionOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        amount_micros: int | None
         amount_micros = self.amount_micros
 
         currency = self.currency
@@ -64,6 +71,8 @@ class StripeSubscriptionOut:
         interval = self.interval
 
         last_synced_at = self.last_synced_at
+
+        source_amount_minor = self.source_amount_minor
 
         status = self.status
 
@@ -82,6 +91,7 @@ class StripeSubscriptionOut:
             "id": id,
             "interval": interval,
             "last_synced_at": last_synced_at,
+            "source_amount_minor": source_amount_minor,
             "status": status,
             "stripe_product_name": stripe_product_name,
             "stripe_subscription_id": stripe_subscription_id,
@@ -94,7 +104,13 @@ class StripeSubscriptionOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        amount_micros = d.pop("amount_micros")
+        def _parse_amount_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        amount_micros = _parse_amount_micros(d.pop("amount_micros"))
+
 
         currency = d.pop("currency")
 
@@ -107,6 +123,8 @@ class StripeSubscriptionOut:
         interval = d.pop("interval")
 
         last_synced_at = d.pop("last_synced_at")
+
+        source_amount_minor = d.pop("source_amount_minor")
 
         status = d.pop("status")
 
@@ -122,6 +140,7 @@ class StripeSubscriptionOut:
             id=id,
             interval=interval,
             last_synced_at=last_synced_at,
+            source_amount_minor=source_amount_minor,
             status=status,
             stripe_product_name=stripe_product_name,
             stripe_subscription_id=stripe_subscription_id,

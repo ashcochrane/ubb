@@ -449,7 +449,11 @@ exclusions:
     # `pricing/0033`, `usage/0051`, `event_types/0013`, `subscriptions/0017`,
     # `invoicing/0010`). None names a retired word, so the number moved for
     # the files existing.
-    files: 290
+    # 290 → 292 in R10-W3 (#564, #565): two migrations — a Stripe amount is
+    # kept as Stripe sent it and quarantined (`subscriptions/0018`), and a
+    # billing period states its currency (`tenant_billing/0013`). Neither
+    # names a retired word, so the number moved for the files existing.
+    files: 292
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

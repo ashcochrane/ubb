@@ -3,8 +3,8 @@ import pytest
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.economics.revenue import RevenueService
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)  # full June
 
@@ -23,11 +23,11 @@ class TestAccrual:
 
     def test_subscription_nominal_full_month(self):
         # amount_micros now holds the FULL per-interval total; quantity is informational and
-        # must NOT be multiplied in (it is already summed into amount_micros by _sum_items).
+        # must NOT be multiplied in (it is already summed into amount_micros by mirrored_amounts).
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         now = timezone.now()
-        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_1",
+        a_mirrored_subscription(tenant=t, customer=c, stripe_subscription_id="sub_1",
             stripe_product_name="Pro", status="active", amount_micros=130_000_000, quantity=10,
             currency="usd", interval="month", current_period_start=now, current_period_end=now,
             last_synced_at=now)
@@ -39,7 +39,7 @@ class TestAccrual:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         now = timezone.now()
-        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_u",
+        a_mirrored_subscription(tenant=t, customer=c, stripe_subscription_id="sub_u",
             stripe_product_name="Pro", status="unpaid", amount_micros=130_000_000, quantity=10,
             currency="usd", interval="month", current_period_start=now, current_period_end=now,
             last_synced_at=now)
@@ -49,7 +49,7 @@ class TestAccrual:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         now = timezone.now()
-        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_x",
+        a_mirrored_subscription(tenant=t, customer=c, stripe_subscription_id="sub_x",
             stripe_product_name="Pro", status="canceled", amount_micros=10_000_000, quantity=3,
             currency="usd", interval="month", current_period_start=now, current_period_end=now,
             last_synced_at=now)

@@ -8,6 +8,7 @@ from apps.subscriptions.economics.revenue import SuppliedRevenueService
 from apps.subscriptions.economics.services import (
     MARGIN_REVENUE_BASIS, MarginService)
 from core.vocabulary import RECOGNITION_METHOD_STRAIGHT_LINE
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 class MarginServiceTest(TestCase):
@@ -50,12 +51,12 @@ class MarginServiceTest(TestCase):
         never about the switch — and the module it sat in existed only to prove
         the two revenue "modes" behaved differently, which is now not a fact.
         """
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
         from apps.subscriptions.tests._helpers import a_tenant_ubb_invoices
         from django.utils import timezone
         tenant, customer = a_tenant_ubb_invoices()
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer, stripe_subscription_id="s1",
             stripe_product_name="Pro", status="active", amount_micros=20_000_000,
             quantity=1, currency="usd", interval="month",

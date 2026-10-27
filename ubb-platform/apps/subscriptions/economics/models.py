@@ -140,6 +140,12 @@ class CustomerEconomics(BaseModel):
     # NOT NULL for the same reason its sibling is — a snapshot is never
     # null-skipped, so what travels is the count rather than a null.
     unpriced_event_count = models.IntegerField(default=0)
+    # HOW MANY SUBSCRIPTIONS THE FROZEN SUBSCRIPTION REVENUE LEFT OUT (#564):
+    # those in a currency UBB does not admit, quarantined and never
+    # converted. A third count, about a third set — subscriptions, not
+    # postings — and NOT NULL like its siblings: UBB always knows how many it
+    # left out, and 0 means none.
+    foreign_currency_subscription_count = models.IntegerField(default=0)
     gross_margin_micros = models.BigIntegerField(default=0)
     total_revenue_micros = models.BigIntegerField(default=0)
     # THE SWITCH'S TWIN WAS HERE AND IS GONE (#497, slice 7 §9), with the

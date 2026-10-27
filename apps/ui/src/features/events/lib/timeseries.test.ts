@@ -186,6 +186,7 @@ describe("pivotTimeseries", () => {
       basis: "recorded",
       economic_data_available_from: "2020-07-01",
       measurement_data_available_from: "2026-01-01",
+      foreign_currency_subscription_count: 0,
       rows: [
         {
           bucket_start: "2026-07-01T00:00:00Z",

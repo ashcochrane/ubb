@@ -8,8 +8,8 @@ from apps.platform.customers.models import Customer
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.economics.services import MarginService
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -45,7 +45,7 @@ def test_compute_business_includes_business_own_subscription():
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
     now = timezone.now()
-    StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_biz",
+    a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_biz",
         stripe_product_name="Pro Access", status="active", amount_micros=130_000_000, quantity=10,
         currency="usd", interval="month", current_period_start=now, current_period_end=now,
         last_synced_at=now)

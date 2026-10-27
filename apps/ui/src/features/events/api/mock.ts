@@ -267,6 +267,7 @@ export async function getUsageAnalytics(
     basis: "recorded",
     economic_data_available_from: ECONOMIC_HORIZON,
     measurement_data_available_from: MEASUREMENT_HORIZON,
+    foreign_currency_subscription_count: 0,
     // ⚠ ONE ROW, ALWAYS. An ungrouped, unbucketed question has exactly one —
     // zeros over an empty window, which is a measured zero rather than an
     // absence — so the page never has to handle an empty list here.
@@ -421,6 +422,7 @@ export async function getUsageTimeseries(
     basis: "recorded",
     economic_data_available_from: ECONOMIC_HORIZON,
     measurement_data_available_from: MEASUREMENT_HORIZON,
+    foreign_currency_subscription_count: 0,
     rows,
     context: [],
   };

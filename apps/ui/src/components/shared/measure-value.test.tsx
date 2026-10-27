@@ -31,6 +31,7 @@ import {
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import {
+  ForeignCurrencyNote,
   MarginShare,
   MeasureTooltip,
   MeasureValue,
@@ -301,5 +302,37 @@ describe("a state this build has never seen", () => {
     expect(node.textContent).toContain("estimated");
     expect(node.textContent).toContain("Unrecognised");
     expect(node.textContent).not.toMatch(/\$4\.00/);
+  });
+});
+
+// What a revenue answer left out because Stripe holds it in another currency
+// (#564, ADR-0023). A count, never a figure: UBB converts nothing, so there is
+// no dollar amount for what was left out, and the note never draws one.
+describe("ForeignCurrencyNote", () => {
+  it("says nothing where the answer left nothing out", () => {
+    const { container } = render(
+      <ForeignCurrencyNote caveats={{ foreign_currency_subscription_count: 0 }} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("names how many were left out, and why, and draws no amount", () => {
+    const { container } = render(
+      <ForeignCurrencyNote caveats={{ foreign_currency_subscription_count: 2 }} />,
+    );
+    const note = container.querySelector("[data-foreign-currency]");
+    expect(note?.getAttribute("data-foreign-currency")).toBe("2");
+    expect(note?.textContent).toContain(
+      "2 subscriptions Stripe holds in another currency are left out of this revenue",
+    );
+    expect(note?.textContent).toContain("UBB accepts US dollars only and converts none");
+    expect(note?.textContent).not.toMatch(/\$/);
+  });
+
+  it("speaks of one in the singular", () => {
+    render(<ForeignCurrencyNote caveats={{ foreign_currency_subscription_count: 1 }} />);
+    expect(
+      screen.getByText(/1 subscription Stripe holds in another currency is left out/),
+    ).toBeInTheDocument();
   });
 });

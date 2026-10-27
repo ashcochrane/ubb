@@ -12,6 +12,8 @@ from apps.billing.stripe.services.stripe_service import (
     validate_amount_micros,
     micros_to_cents,
 )
+from apps.billing.locking import the_currency_a_top_up_credits
+from core.currency_policy import the_rails_currency
 from core.exceptions import StripeFatalError
 from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 
@@ -40,7 +42,11 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
     only where Stripe bills for consumption (subscriptions, usage invoices).
     """
     validate_amount_micros(amount_micros)
-    amount_cents = micros_to_cents(amount_micros)
+    # The currency is the wallet's this top-up credits, never a literal
+    # (#565): refused here, before anything is sent, if that record is not
+    # in UBB's one currency.
+    currency = the_rails_currency(*the_currency_a_top_up_credits(top_up_attempt))
+    amount_cents = micros_to_cents(amount_micros, currency)
     customer_stripe_id = get_customer_stripe_id(customer.id)
     connected_account = get_tenant_stripe_account(customer.tenant_id)
     if not connected_account or not _charges_ready(customer.tenant_id):
@@ -56,7 +62,7 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
         mode="payment",
         line_items=[{
             "price_data": {
-                "currency": "usd",
+                "currency": currency,
                 "unit_amount": amount_cents,
                 "product_data": {"name": "Account Top-Up"},
             },
@@ -80,7 +86,9 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     credit must equal the charged amount exactly (see create_checkout_session).
     """
     validate_amount_micros(amount_micros)
-    amount_cents = micros_to_cents(amount_micros)
+    # The wallet's currency, as for the Checkout above (#565).
+    currency = the_rails_currency(*the_currency_a_top_up_credits(top_up_attempt))
+    amount_cents = micros_to_cents(amount_micros, currency)
     customer_stripe_id = get_customer_stripe_id(customer.id)
     connected_account = get_tenant_stripe_account(customer.tenant_id)
     if not connected_account or not _charges_ready(customer.tenant_id):
@@ -117,7 +125,7 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
         idempotency_key=f"charge-{top_up_attempt.id}",
         customer=customer_stripe_id,
         amount=amount_cents,
-        currency="usd",
+        currency=currency,
         payment_method=pm_id,
         off_session=True,
         confirm=True,

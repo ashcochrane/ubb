@@ -6,6 +6,7 @@ from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.billing.invoicing.models import PostpaidUsageConfig
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -74,11 +75,10 @@ class TestPush:
         Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=600_000, billed_cost_micros=1_000_000, effective_at=MID)
         if with_sub:
-            from apps.subscriptions.models import StripeSubscription
             from django.utils import timezone
             now = timezone.now()
-            StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_1",
-                stripe_product_name="Pro", status="active", amount_micros=1, currency="usd",
+            a_mirrored_subscription(tenant=t, customer=c, stripe_subscription_id="sub_1",
+                stripe_product_name="Pro", status="active", amount_micros=10_000, currency="usd",
                 interval="month", current_period_start=now, current_period_end=now, last_synced_at=now)
         return t, c
 
@@ -182,11 +182,10 @@ class TestPush:
         """(c) status='unpaid' -> still standalone (no pin); subscription state never
         affects routing now that usage always bills on its own invoice."""
         from unittest.mock import patch, MagicMock
-        from apps.subscriptions.models import StripeSubscription
         t, c = self._setup(with_sub=False)
         now = timezone.now()
-        StripeSubscription.objects.create(tenant=t, customer=c, stripe_subscription_id="sub_unpaid",
-            stripe_product_name="Pro", status="unpaid", amount_micros=1, currency="usd",
+        a_mirrored_subscription(tenant=t, customer=c, stripe_subscription_id="sub_unpaid",
+            stripe_product_name="Pro", status="unpaid", amount_micros=10_000, currency="usd",
             interval="month", current_period_start=now, current_period_end=now, last_synced_at=now)
         with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
              patch("apps.platform.events.tasks.process_single_event"):

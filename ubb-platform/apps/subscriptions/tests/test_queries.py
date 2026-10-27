@@ -4,7 +4,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.subscriptions.queries import get_customer_subscription
-from apps.subscriptions.models import StripeSubscription
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 # THE TWO SNAPSHOT READS' TESTS WERE HERE AND ARE GONE WITH THEM (#502, slice 7
 # §8): one customer's stored margin row, and the tenant-wide total aggregated
@@ -33,7 +33,7 @@ class TestGetCustomerSubscription:
         tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant,
             customer=customer,
             stripe_subscription_id="sub_123",

@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 def _stripe_invoice(id, status, *, hosted=None, pdf=None, subscription=None):
@@ -75,10 +76,10 @@ class TestArPoller:
 
     def test_subscription_invoice_status_flips_to_paid(self):
         from apps.billing.invoicing.tasks import reconcile_invoice_payment_status
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
         t, c = self._tenant_customer()
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=t, customer=c, stripe_subscription_id="sub_1",
             stripe_product_name="P", status="active", amount_micros=1_000_000,
             interval="month", quantity=1, current_period_start=now,
@@ -195,9 +196,9 @@ class RepairTransitionParityTest(TestCase):
         self.assertEqual(rec.payment_status, "paid")
 
     def _subscription_invoice(self, t, c, stripe_invoice_id, status):
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
         now = timezone.now()
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=t, customer=c, stripe_subscription_id=f"sub_{stripe_invoice_id}",
             stripe_product_name="P", status="active", amount_micros=1_000_000,
             interval="month", quantity=1, current_period_start=now,

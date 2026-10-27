@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from typing import cast
 
 
 
@@ -22,21 +23,25 @@ T = TypeVar("T", bound="SubscriptionInvoiceOut")
 class SubscriptionInvoiceOut:
     """ 
         Attributes:
-            amount_paid_micros (int):
+            amount_paid_micros (int | None): What was paid, in micros of US dollars — or null where Stripe issued the
+                invoice in another currency, which UBB v1 does not admit and does not convert.
             currency (str):
             id (str):
             paid_at (str):
             period_end (str):
             period_start (str):
+            source_amount_paid_minor (int): What Stripe states was paid, exactly as Stripe sent it: a whole number of
+                `currency`'s minor unit, never converted.
             stripe_invoice_id (str):
      """
 
-    amount_paid_micros: int
+    amount_paid_micros: int | None
     currency: str
     id: str
     paid_at: str
     period_end: str
     period_start: str
+    source_amount_paid_minor: int
     stripe_invoice_id: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -45,6 +50,7 @@ class SubscriptionInvoiceOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        amount_paid_micros: int | None
         amount_paid_micros = self.amount_paid_micros
 
         currency = self.currency
@@ -56,6 +62,8 @@ class SubscriptionInvoiceOut:
         period_end = self.period_end
 
         period_start = self.period_start
+
+        source_amount_paid_minor = self.source_amount_paid_minor
 
         stripe_invoice_id = self.stripe_invoice_id
 
@@ -69,6 +77,7 @@ class SubscriptionInvoiceOut:
             "paid_at": paid_at,
             "period_end": period_end,
             "period_start": period_start,
+            "source_amount_paid_minor": source_amount_paid_minor,
             "stripe_invoice_id": stripe_invoice_id,
         })
 
@@ -79,7 +88,13 @@ class SubscriptionInvoiceOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        amount_paid_micros = d.pop("amount_paid_micros")
+        def _parse_amount_paid_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        amount_paid_micros = _parse_amount_paid_micros(d.pop("amount_paid_micros"))
+
 
         currency = d.pop("currency")
 
@@ -91,6 +106,8 @@ class SubscriptionInvoiceOut:
 
         period_start = d.pop("period_start")
 
+        source_amount_paid_minor = d.pop("source_amount_paid_minor")
+
         stripe_invoice_id = d.pop("stripe_invoice_id")
 
         subscription_invoice_out = cls(
@@ -100,6 +117,7 @@ class SubscriptionInvoiceOut:
             paid_at=paid_at,
             period_end=period_end,
             period_start=period_start,
+            source_amount_paid_minor=source_amount_paid_minor,
             stripe_invoice_id=stripe_invoice_id,
         )
 

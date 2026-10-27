@@ -166,7 +166,10 @@ class PaginatedUsageInvoices(Paginated[MeUsageInvoiceOut]):
 
 class MeSubscriptionInvoiceOut(Schema):
     id: str
-    amount_paid_micros: int
+    amount_paid_micros: Optional[int] = Field(description=(
+        "What was paid, in micros of US dollars — or null where the invoice "
+        "was issued in another currency, which UBB does not convert; the "
+        "hosted invoice states it as issued."))
     status: str
     hosted_invoice_url: str = ""
     invoice_pdf: str = ""

@@ -39,6 +39,11 @@ class EconomicsOut:
                 whole period is one row.
             context (list[RevenueContextOut]):
             economic_data_available_from (str):
+            foreign_currency_subscription_count (int): How many Stripe subscriptions the subscription revenue in this answer
+                leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts
+                nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this
+                is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact,
+                scoped like the figures it qualifies, and 0 where nothing was left out.
             group_by (list[str]):
             measurement_data_available_from (str):
             period_end (str):
@@ -50,6 +55,7 @@ class EconomicsOut:
     bucket: None | str
     context: list[RevenueContextOut]
     economic_data_available_from: str
+    foreign_currency_subscription_count: int
     group_by: list[str]
     measurement_data_available_from: str
     period_end: str
@@ -78,6 +84,8 @@ class EconomicsOut:
 
         economic_data_available_from = self.economic_data_available_from
 
+        foreign_currency_subscription_count = self.foreign_currency_subscription_count
+
         group_by = self.group_by
 
 
@@ -103,6 +111,7 @@ class EconomicsOut:
             "bucket": bucket,
             "context": context,
             "economic_data_available_from": economic_data_available_from,
+            "foreign_currency_subscription_count": foreign_currency_subscription_count,
             "group_by": group_by,
             "measurement_data_available_from": measurement_data_available_from,
             "period_end": period_end,
@@ -144,6 +153,8 @@ class EconomicsOut:
 
         economic_data_available_from = d.pop("economic_data_available_from")
 
+        foreign_currency_subscription_count = d.pop("foreign_currency_subscription_count")
+
         group_by = cast(list[str], d.pop("group_by"))
 
 
@@ -168,6 +179,7 @@ class EconomicsOut:
             bucket=bucket,
             context=context,
             economic_data_available_from=economic_data_available_from,
+            foreign_currency_subscription_count=foreign_currency_subscription_count,
             group_by=group_by,
             measurement_data_available_from=measurement_data_available_from,
             period_end=period_end,

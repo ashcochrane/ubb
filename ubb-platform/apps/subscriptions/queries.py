@@ -179,6 +179,24 @@ def revenue_contributions(tenant_id, *, windows, basis, customer_ids=None) -> li
     return rows
 
 
+def foreign_currency_subscription_count(tenant_id, *, customer_ids=None) -> int:
+    """How many accruing subscriptions :func:`revenue_contributions` leaves
+    out because Stripe holds them in a currency UBB does not admit (#564).
+
+    Scoped exactly as that read scopes the subscriptions it contributes — the
+    tenant, and the customers asked about — so the figure a caller builds
+    from the one and the count it reads from the other describe the same set.
+    Exact, and 0 where nothing was left out.
+    """
+    from apps.subscriptions.economics.revenue import RevenueService
+
+    foreign = RevenueService.foreign_currency(tenant_id)
+    if customer_ids is not None:
+        foreign = foreign.filter(
+            customer_id__in=[str(customer_id) for customer_id in customer_ids])
+    return foreign.count()
+
+
 def _contribution(window_start, window_end, customer_id, source, amount_micros):
     """One row of :func:`revenue_contributions`, built in one place.
 

@@ -1,4 +1,5 @@
 from django.db import models
+from core.currency_policy import ECONOMIC_CURRENCY
 from core.models import BaseModel
 
 
@@ -12,6 +13,17 @@ SUBSCRIPTION_STATUS_CHOICES = [
     ("unpaid", "Unpaid"),
     ("paused", "Paused"),
 ]
+
+
+def economic_amount_only_in_usd(amount, name):
+    """The mirror's pairing rule: ``amount`` (micros of UBB's one currency)
+    is present exactly when the source ``currency`` is UBB's (ADR-0023 §7)."""
+    return models.CheckConstraint(
+        condition=(models.Q(currency=ECONOMIC_CURRENCY,
+                            **{f"{amount}__isnull": False})
+                   | (~models.Q(currency=ECONOMIC_CURRENCY)
+                      & models.Q(**{f"{amount}__isnull": True}))),
+        name=name)
 
 
 class StripeSubscription(BaseModel):
@@ -32,8 +44,21 @@ class StripeSubscription(BaseModel):
     stripe_subscription_id = models.CharField(max_length=255, unique=True, db_index=True)
     stripe_product_name = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=SUBSCRIPTION_STATUS_CHOICES, db_index=True)
-    amount_micros = models.BigIntegerField()
+    #: WHAT IT ACCRUES PER INTERVAL, in micros of UBB's one currency — or
+    #: NULL where Stripe's `currency` is not one UBB admits (#564). There is
+    #: no FX, so a foreign subscription has no amount in US dollars to state:
+    #: it is QUARANTINED — kept, and excluded from every revenue and margin
+    #: figure, which each say how many they left out (ADR-0023 §7). Null is
+    #: "cannot be known", never zero; `ck_subscription_economic_amount_only_in_usd`
+    #: holds the pairing, so no row can carry a relabelled amount.
+    amount_micros = models.BigIntegerField(null=True)
+    #: The currency Stripe SENT, in its canonical spelling — a source fact.
     currency = models.CharField(max_length=3, default="usd")
+    #: WHAT STRIPE SENT, EXACTLY: the licensed items' `unit_amount` times
+    #: quantity, summed, in the minor unit of `currency` above. An integer
+    #: Stripe stated and UBB never scaled — not micros (ADR-0006 §1), and kept
+    #: for every currency, including one `core.money` cannot represent.
+    source_amount_minor = models.BigIntegerField()
     interval = models.CharField(max_length=10)
     quantity = models.IntegerField(default=1)
     current_period_start = models.DateTimeField()
@@ -51,6 +76,15 @@ class StripeSubscription(BaseModel):
         db_table = "ubb_stripe_subscription"
         indexes = [
             models.Index(fields=["tenant", "status"], name="idx_stripesub_tenant_status"),
+        ]
+        constraints = [
+            # AN ECONOMIC AMOUNT EXISTS EXACTLY WHEN THE SOURCE CURRENCY IS
+            # UBB'S (#564). It does not hold `currency` to US dollars — a
+            # foreign code is the evidence the quarantine keeps — it refuses
+            # the relabel: a foreign row carrying a dollar amount, or a dollar
+            # row carrying none.
+            economic_amount_only_in_usd(
+                "amount_micros", "ck_subscription_economic_amount_only_in_usd"),
         ]
 
     def __str__(self):
@@ -74,8 +108,15 @@ class SubscriptionInvoice(BaseModel):
         StripeSubscription, on_delete=models.CASCADE, related_name="invoices"
     )
     stripe_invoice_id = models.CharField(max_length=255, unique=True, db_index=True)
-    amount_paid_micros = models.BigIntegerField(default=0)
+    #: What was paid, in micros of UBB's one currency — or NULL where
+    #: Stripe's `currency` is not one UBB admits: quarantined, kept and
+    #: never converted (#564; the subscription's comment above).
+    amount_paid_micros = models.BigIntegerField(null=True, default=0)
+    #: The currency Stripe SENT, in its canonical spelling — a source fact.
     currency = models.CharField(max_length=3, default="usd")
+    #: Stripe's `amount_paid`, exactly as sent: an integer in the minor unit
+    #: of `currency`, never scaled (ADR-0006 §1).
+    source_amount_paid_minor = models.BigIntegerField(default=0)
     # NULL until the invoice carries the data: an open (finalized, unpaid) row may
     # arrive before period/paid_at are known.
     period_start = models.DateTimeField(null=True, blank=True)
@@ -88,6 +129,12 @@ class SubscriptionInvoice(BaseModel):
 
     class Meta:
         db_table = "ubb_subscription_invoice"
+        constraints = [
+            # The subscription's pairing, for what was paid (#564).
+            economic_amount_only_in_usd(
+                "amount_paid_micros",
+                "ck_subscription_invoice_economic_amount_only_in_usd"),
+        ]
 
     def __str__(self):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"

@@ -301,6 +301,7 @@ describe("a grouped chart whose revenue cannot be placed", () => {
       basis: "recorded",
       economic_data_available_from: "2020-07-01",
       measurement_data_available_from: MEASUREMENT_HORIZON,
+      foreign_currency_subscription_count: 0,
       rows: [row("openai", 70_000_000, 90_000_000), row("anthropic", 60_000_000, 80_000_000)],
       context: [subscription],
     });

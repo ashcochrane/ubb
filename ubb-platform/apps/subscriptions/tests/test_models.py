@@ -2,18 +2,18 @@ import pytest
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 @pytest.mark.django_db
 class TestStripeSubscription:
     def test_create_stripe_subscription(self):
-        from apps.subscriptions.models import StripeSubscription
 
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_123abc",
             stripe_product_name="Pro Plan", status="active",
@@ -26,14 +26,13 @@ class TestStripeSubscription:
         assert sub.amount_micros == 49_000_000
 
     def test_stripe_subscription_id_is_unique(self):
-        from apps.subscriptions.models import StripeSubscription
         from django.db import IntegrityError
 
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        StripeSubscription.objects.create(
+        a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_dup",
             stripe_product_name="Plan", status="active",
@@ -41,7 +40,7 @@ class TestStripeSubscription:
             current_period_start=now, current_period_end=now, last_synced_at=now,
         )
         with pytest.raises(IntegrityError):
-            StripeSubscription.objects.create(
+            a_mirrored_subscription(
                 tenant=tenant, customer=customer,
                 stripe_subscription_id="sub_dup",
                 stripe_product_name="Plan", status="active",
@@ -53,13 +52,13 @@ class TestStripeSubscription:
 @pytest.mark.django_db
 class TestSubscriptionInvoice:
     def test_create_subscription_invoice(self):
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
 
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_inv_test",
             stripe_product_name="Enterprise", status="active",
@@ -76,14 +75,14 @@ class TestSubscriptionInvoice:
         assert invoice.amount_paid_micros == 199_000_000
 
     def test_stripe_invoice_id_is_unique(self):
-        from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+        from apps.subscriptions.models import SubscriptionInvoice
         from django.db import IntegrityError
 
         tenant = Tenant.objects.create(name="test", products=["metering", "billing"])
         customer = Customer.objects.create(tenant=tenant, external_id="cust-1")
         now = timezone.now()
 
-        sub = StripeSubscription.objects.create(
+        sub = a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_inv_dup",
             stripe_product_name="Plan", status="active",

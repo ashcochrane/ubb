@@ -1121,6 +1121,11 @@
             "title": "Event Count",
             "type": "integer"
           },
+          "foreign_currency_subscription_count": {
+            "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
+            "title": "Foreign Currency Subscription Count",
+            "type": "integer"
+          },
           "gross_margin_micros": {
             "title": "Gross Margin Micros",
             "type": "integer"
@@ -1162,6 +1167,7 @@
           "provider_cost_micros",
           "unresolved_event_count",
           "unpriced_event_count",
+          "foreign_currency_subscription_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "event_count"
@@ -2865,6 +2871,11 @@
             "title": "Economic Data Available From",
             "type": "string"
           },
+          "foreign_currency_subscription_count": {
+            "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
+            "title": "Foreign Currency Subscription Count",
+            "type": "integer"
+          },
           "group_by": {
             "items": {
               "type": "string"
@@ -2901,7 +2912,8 @@
           "economic_data_available_from",
           "measurement_data_available_from",
           "rows",
-          "context"
+          "context",
+          "foreign_currency_subscription_count"
         ],
         "title": "EconomicsOut",
         "type": "object"
@@ -4706,8 +4718,16 @@
       "MeSubscriptionInvoiceOut": {
         "properties": {
           "amount_paid_micros": {
-            "title": "Amount Paid Micros",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was paid, in micros of US dollars \u2014 or null where the invoice was issued in another currency, which UBB does not convert; the hosted invoice states it as issued.",
+            "title": "Amount Paid Micros"
           },
           "created_at": {
             "format": "date-time",
@@ -8110,6 +8130,11 @@
             "title": "Event Count",
             "type": "integer"
           },
+          "foreign_currency_subscription_count": {
+            "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
+            "title": "Foreign Currency Subscription Count",
+            "type": "integer"
+          },
           "gross_margin_micros": {
             "title": "Gross Margin Micros",
             "type": "integer"
@@ -8161,6 +8186,7 @@
           "provider_cost_micros",
           "unresolved_event_count",
           "unpriced_event_count",
+          "foreign_currency_subscription_count",
           "total_revenue_micros",
           "gross_margin_micros",
           "margin_percentage",
@@ -8474,8 +8500,16 @@
       "StripeSubscriptionOut": {
         "properties": {
           "amount_micros": {
-            "title": "Amount Micros",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the subscription accrues per interval, in micros of US dollars \u2014 or null where Stripe holds it in another currency: UBB v1 admits US dollars only and converts nothing, so it has no amount in dollars to state and leaves the subscription out of every revenue figure.",
+            "title": "Amount Micros"
           },
           "currency": {
             "title": "Currency",
@@ -8501,6 +8535,11 @@
             "title": "Last Synced At",
             "type": "string"
           },
+          "source_amount_minor": {
+            "description": "What Stripe states the subscription charges per interval, exactly as Stripe sent it: a whole number of `currency`'s minor unit, never converted.",
+            "title": "Source Amount Minor",
+            "type": "integer"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -8521,6 +8560,7 @@
           "status",
           "amount_micros",
           "currency",
+          "source_amount_minor",
           "interval",
           "current_period_start",
           "current_period_end",
@@ -8564,8 +8604,16 @@
       "SubscriptionInvoiceOut": {
         "properties": {
           "amount_paid_micros": {
-            "title": "Amount Paid Micros",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was paid, in micros of US dollars \u2014 or null where Stripe issued the invoice in another currency, which UBB v1 does not admit and does not convert.",
+            "title": "Amount Paid Micros"
           },
           "currency": {
             "title": "Currency",
@@ -8587,6 +8635,11 @@
             "title": "Period Start",
             "type": "string"
           },
+          "source_amount_paid_minor": {
+            "description": "What Stripe states was paid, exactly as Stripe sent it: a whole number of `currency`'s minor unit, never converted.",
+            "title": "Source Amount Paid Minor",
+            "type": "integer"
+          },
           "stripe_invoice_id": {
             "title": "Stripe Invoice Id",
             "type": "string"
@@ -8597,6 +8650,7 @@
           "stripe_invoice_id",
           "amount_paid_micros",
           "currency",
+          "source_amount_paid_minor",
           "period_start",
           "period_end",
           "paid_at"
@@ -10258,6 +10312,11 @@
             "title": "External Id",
             "type": "string"
           },
+          "foreign_currency_subscription_count": {
+            "description": "How many Stripe subscriptions the subscription revenue in this answer leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact, scoped like the figures it qualifies, and 0 where nothing was left out.",
+            "title": "Foreign Currency Subscription Count",
+            "type": "integer"
+          },
           "gross_margin_micros": {
             "title": "Gross Margin Micros",
             "type": "integer"
@@ -10281,6 +10340,7 @@
           "gross_margin_micros",
           "unresolved_event_count",
           "unpriced_event_count",
+          "foreign_currency_subscription_count",
           "margin_percentage"
         ],
         "title": "UnprofitableCustomerRow",

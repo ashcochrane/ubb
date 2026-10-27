@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 PS2, PE2 = datetime.date(2026, 7, 1), datetime.date(2026, 8, 1)
@@ -56,11 +57,10 @@ class TestStandaloneAlways:
         invoice — no item is pinned with subscription=<sub_id>."""
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
-        from apps.subscriptions.models import StripeSubscription
         now = timezone.now()
-        StripeSubscription.objects.create(
+        a_mirrored_subscription(
             tenant=t, customer=c, stripe_subscription_id="sub_1", stripe_product_name="Pro",
-            status="active", amount_micros=1, currency="usd", interval="month",
+            status="active", amount_micros=10_000, currency="usd", interval="month",
             current_period_start=now, current_period_end=now, last_synced_at=now)
 
         item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="inv_1")

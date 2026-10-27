@@ -25,7 +25,8 @@ T = TypeVar("T", bound="MeSubscriptionInvoiceOut")
 class MeSubscriptionInvoiceOut:
     """ 
         Attributes:
-            amount_paid_micros (int):
+            amount_paid_micros (int | None): What was paid, in micros of US dollars — or null where the invoice was issued
+                in another currency, which UBB does not convert; the hosted invoice states it as issued.
             created_at (datetime.datetime):
             id (str):
             status (str):
@@ -35,7 +36,7 @@ class MeSubscriptionInvoiceOut:
             period_start (datetime.datetime | None | Unset):
      """
 
-    amount_paid_micros: int
+    amount_paid_micros: int | None
     created_at: datetime.datetime
     id: str
     status: str
@@ -50,6 +51,7 @@ class MeSubscriptionInvoiceOut:
 
 
     def to_dict(self) -> dict[str, Any]:
+        amount_paid_micros: int | None
         amount_paid_micros = self.amount_paid_micros
 
         created_at = self.created_at.isoformat()
@@ -103,7 +105,13 @@ class MeSubscriptionInvoiceOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        amount_paid_micros = d.pop("amount_paid_micros")
+        def _parse_amount_paid_micros(data: object) -> int | None:
+            if data is None:
+                return data
+            return cast(int | None, data)
+
+        amount_paid_micros = _parse_amount_paid_micros(d.pop("amount_paid_micros"))
+
 
         created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 

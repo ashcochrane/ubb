@@ -10,7 +10,11 @@ from ninja import Router
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
 from core.exceptions import MisalignedAmount
-from core.currency_policy import UnsupportedCurrency, admit_currency
+from core.currency_policy import (
+    FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
+    UnsupportedCurrency,
+    admit_currency,
+)
 from core.money import assert_aligned
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS, closed_months
@@ -122,6 +126,11 @@ def margin_unprofitable(request, period_start: date = None):
         # unprofitable customers that showed only the count which cannot say
         # that would be the more misleading of the two.
         UNPRICED_EVENT_COUNT_KEY: r[UNPRICED_EVENT_COUNT_KEY],
+        # ⚠ AND THE REVENUE THE FLAG WAS RAISED ON LEFT THESE OUT (#564):
+        # subscriptions in a currency UBB does not admit. Like the count
+        # above, a non-zero one can mean the true margin is higher.
+        FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY:
+            r[FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY],
         # Floated HERE rather than in the alerting read, which keeps the
         # percentage a `Decimal` all the way to the wire: the threshold
         # comparison that raised these flags is an exact one, and a customer

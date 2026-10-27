@@ -188,6 +188,7 @@ describe("the horizon that governs an answer", () => {
     basis: "recorded",
     economic_data_available_from: "2020-09-18",
     measurement_data_available_from: "2026-06-01",
+    foreign_currency_subscription_count: 0,
     rows: [],
     context: [],
     ...over,

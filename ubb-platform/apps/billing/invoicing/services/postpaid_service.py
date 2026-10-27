@@ -10,7 +10,8 @@ from django.utils import timezone
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.exceptions import StripeFatalError
-from core.money import DEFAULT_CURRENCY, minor_units, to_minor
+from core.currency_policy import the_rails_currency
+from core.money import minor_units, to_minor
 
 logger = logging.getLogger("ubb.billing")
 
@@ -184,7 +185,7 @@ class PostpaidUsageService:
         with transaction.atomic():
             rec, _ = CustomerUsageInvoice.objects.select_for_update().get_or_create(
                 tenant=tenant, customer=customer, period_start=period_start,
-                defaults={"period_end": period_end, "currency": tenant.default_currency or "usd"})
+                defaults={"period_end": period_end, "currency": tenant.default_currency})
             if passed_customer.id != customer.id:
                 # A row keyed on the seat itself can never be transitioned by this
                 # owner-first service — supersede it so reconcile stops retrying it.
@@ -332,8 +333,7 @@ class PostpaidUsageService:
             # status != "pushing" guard means a stale-reclaimed loser can
             # never reach here to double-deposit. The ledger exists by
             # construction: the Phase-1 reservation get_or_create'd it.
-            currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
-            if not (0 <= residual_out < minor_units(currency)):
+            if not (0 <= residual_out < minor_units(rec.currency)):
                 logger.error("billing.residual_out_of_range", extra={"data": {
                     "usage_invoice_id": str(rec.id), "customer_id": str(customer.id),
                     "residual_out": residual_out}})
@@ -357,7 +357,10 @@ class PostpaidUsageService:
 
         connected = tenant.stripe_connected_account_id
         api_key = api_key_for_tenant(tenant)
-        currency = (tenant.default_currency or DEFAULT_CURRENCY).lower()
+        # The usage invoice row is the authoritative monetary object: its
+        # currency is what every line is floored in and sent in, never the
+        # tenant's setting at push time (#565). Refused before any Stripe call.
+        currency = the_rails_currency(f"usage invoice {rec.id}", rec.currency)
 
         # Critical-1: --rebill-void rotates EVERY idempotency-key family. Within
         # Stripe's 24h key window the legacy keys would replay the recorded
@@ -595,6 +598,17 @@ class PostpaidUsageService:
           exactly one finalized invoice — no double-bill, no silent loss.
         """
         from apps.billing.invoicing.models import CustomerUsageInvoice
+
+        # THE RENEWAL DRAFT IS STRIPE'S, IN THE SUBSCRIPTION'S CURRENCY, and a
+        # line in another one cannot ride it (#565). A subscription a connected
+        # account holds in a currency UBB never admitted is exactly that case,
+        # so the push refuses here rather than sending a line Stripe would
+        # either reject or bill in the wrong money.
+        stated = getattr(target, "currency", None)
+        if isinstance(stated, str):
+            currency = the_rails_currency(
+                f"usage invoice {rec.id}", currency,
+                {f"Stripe invoice {target.id}": stated})
 
         target_status = getattr(target, "status", "")
         if target_status == "draft":

@@ -89,3 +89,25 @@ def a_supplied_figure(**stated):
     stated.setdefault("recognition_method", RECOGNITION_METHOD_STRAIGHT_LINE)
     stated.setdefault("source_reference", ITS_OWN_INVOICE)
     return stated
+
+
+def a_mirrored_subscription(**fields):
+    """A mirrored Stripe subscription, written as `mirrored_amounts` writes one.
+
+    THE SOURCE INTEGER IS STATED, NEVER DEFAULTED (#564). A mirror row keeps
+    what Stripe sent beside the dollar amount UBB derives from it, and a column
+    default would be a source figure nobody sent. So a fixture names the amount
+    it means and this states the integer Stripe sends for it: for a US-dollar
+    subscription, that amount in cents, exactly. A fixture whose subject is a
+    FOREIGN subscription states its own — `currency`, `source_amount_minor` and
+    `amount_micros=None` — and this leaves them alone.
+    """
+    from apps.subscriptions.models import StripeSubscription
+    from core.money import to_minor
+
+    if "source_amount_minor" not in fields:
+        minor, remainder = to_minor(fields["amount_micros"],
+                                    fields.get("currency", "usd"))
+        assert not remainder, "a dollar fixture is a whole number of cents"
+        fields["source_amount_minor"] = minor
+    return StripeSubscription.objects.create(**fields)

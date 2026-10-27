@@ -32,8 +32,9 @@ from django.utils import timezone
 from apps.billing.stripe.models import StripeWebhookEvent
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
-from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.models import SubscriptionInvoice
 from api.v1.webhooks import stripe_webhook
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 DEDUP_VOCAB = {"already_received", "already_processed", "already_processing"}
 
@@ -69,7 +70,7 @@ def _fixtures(name, acct, sub_id):
     )
     customer = Customer.objects.create(tenant=tenant, external_id=f"{name}_c1")
     now = timezone.now()
-    StripeSubscription.objects.create(
+    a_mirrored_subscription(
         tenant=tenant, customer=customer,
         stripe_subscription_id=sub_id,
         stripe_product_name="Pro", status="active",

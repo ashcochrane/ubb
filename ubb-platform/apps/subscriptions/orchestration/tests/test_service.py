@@ -5,6 +5,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.subscriptions.models import CustomerSubscriptionItem, StripeSubscription
 from apps.subscriptions.orchestration.service import SubscriptionOrchestrator, OrchestrationError
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 def _charge_ready_tenant():
@@ -51,7 +52,7 @@ def test_set_seats_modifies_quantity_with_proration():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
     plan = a_plan(tenant=t, key="pro", name="Pro", per_seat_micros=8_000_000)
-    sub = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
+    sub = a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=80_000_000, quantity=10, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
         last_synced_at="2026-01-01T00:00:00Z")
@@ -68,7 +69,7 @@ def test_set_seats_refreshes_mirror_without_webhook():
     t = _charge_ready_tenant()
     biz = Customer.objects.create(tenant=t, external_id="biz", stripe_customer_id="cus_biz")
     plan = a_plan(tenant=t, key="pro", name="Pro", per_seat_micros=2_000_000)
-    mirror = StripeSubscription.objects.create(tenant=t, customer=biz, stripe_subscription_id="sub_1",
+    mirror = a_mirrored_subscription(tenant=t, customer=biz, stripe_subscription_id="sub_1",
         amount_micros=5_000_000, quantity=2, interval="month", status="active",
         current_period_start="2026-01-01T00:00:00Z", current_period_end="2026-02-01T00:00:00Z",
         last_synced_at="2026-01-01T00:00:00Z")

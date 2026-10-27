@@ -33,6 +33,8 @@ about FX, which v1 deliberately does not have — never an edit to that table.
 
 from django.db import models
 
+from core.exceptions import StripeFatalError
+
 #: THE CURRENCY UBB v1's ECONOMICS ARE DENOMINATED IN. Lowercase, the casing
 #: every currency column in the tree uses and the payment rail's own.
 ECONOMIC_CURRENCY = "usd"
@@ -40,6 +42,24 @@ ECONOMIC_CURRENCY = "usd"
 #: The problem code a refusal answers with: the error catalogue's existing
 #: entry, which the tenant door and supplied revenue already used.
 UNSUPPORTED_CURRENCY = "unsupported_currency"
+
+#: WHAT EVERY REVENUE AND MARGIN READ CALLS ITS COUNT OF EXCLUDED FOREIGN
+#: SUBSCRIPTIONS (#564, the owner's ruling 5). One spelling, because the value
+#: crosses products — subscriptions counts, the composition layer and the
+#: alerting record publish — as `core.cost_totals`'s two counts do. Exact and
+#: never null: UBB always knows how many subscriptions it left out, and 0
+#: means none.
+FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY = "foreign_currency_subscription_count"
+
+#: What that count means, on every schema that publishes it.
+FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING = (
+    "How many Stripe subscriptions the subscription revenue in this answer "
+    "leaves out because Stripe holds them in a currency UBB does not admit. "
+    "UBB v1 is US dollars only and converts nothing, so each is kept as "
+    "Stripe stated it and excluded from every revenue and margin figure "
+    "here; where this is non-zero the true revenue, and so the margin, is "
+    "higher by an amount UBB cannot state in dollars. Exact, scoped like the "
+    "figures it qualifies, and 0 where nothing was left out.")
 
 #: The model attribute naming a currency column that records what an external
 #: integration sent. Each such column is spared the ``CHECK`` (module docstring,
@@ -71,6 +91,44 @@ def admit_currency(currency) -> str:
             f"only ({ECONOMIC_CURRENCY!r}) and converts nothing — there is "
             f"no FX, so no other currency can enter its economics")
     return ECONOMIC_CURRENCY
+
+
+class CurrencyDisagreement(StripeFatalError):
+    """An outbound money call refused before anything was sent (#565).
+
+    A ``StripeFatalError`` because that is what it is to every caller of the
+    rail: not retryable, and not a transient failure. Retrying a call whose
+    records disagree about the currency would send the same disagreement
+    again.
+    """
+
+
+def the_rails_currency(record, currency, agreeing=None):
+    """The currency an outbound money call sends: read off ``record``, the
+    authoritative monetary object it draws on (ADR-0023 §7, #565).
+
+    ``agreeing`` maps every other record the same amount is drawn against or
+    credited to, by what it is, to its currency. The call is refused — never
+    reconciled — when the record's currency is not one UBB admits, or when
+    any of those disagrees with it. The database already holds every
+    economic column to US dollars, so this never fires on a record UBB wrote;
+    it is the rail PROVING the invariant rather than assuming it, which is
+    why each adapter asks it on its own and why a rule lifted below it is
+    still refused here.
+    """
+    if not is_admitted(currency):
+        raise CurrencyDisagreement(
+            f"{record} is in {currency!r}, which UBB v1 does not admit "
+            f"({ECONOMIC_CURRENCY!r} only); nothing was sent")
+    sending = admit_currency(currency)
+    for other, theirs in (agreeing or {}).items():
+        if not is_admitted(theirs) or admit_currency(theirs) != sending:
+            raise CurrencyDisagreement(
+                f"{record} is in {sending!r} and {other} is in {theirs!r}: "
+                f"UBB never sends an amount in one currency against a "
+                f"record in another, and reconciles nothing; nothing was "
+                f"sent")
+    return sending
 
 
 def usd_only_check(field, name, *, or_blank=False):

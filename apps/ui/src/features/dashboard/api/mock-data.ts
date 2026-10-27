@@ -135,6 +135,7 @@ function economicAnswer({
     // The two horizons every answer publishes, truncated or not.
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
+    foreign_currency_subscription_count: 0,
     rows,
     context,
   };
@@ -277,6 +278,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       // INCOMPLETE by exactly those events (#371; no bound since #603).
       unresolved_event_count: NOVA_PROVIDER_COST.unresolved_event_count,
       unpriced_event_count: 0,
+      foreign_currency_subscription_count: 0,
       margin_percentage: 0,
     },
     {
@@ -285,6 +287,7 @@ export const MOCK_UNPROFITABLE: Unprofitable = {
       gross_margin_micros: -14_700_000,
       unresolved_event_count: 0,
       unpriced_event_count: 0,
+      foreign_currency_subscription_count: 0,
       margin_percentage: -35.7,
     },
   ],

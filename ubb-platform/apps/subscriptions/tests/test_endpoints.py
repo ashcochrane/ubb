@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.test import TestCase, Client
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 class TestSubscriptionDataEndpoints(TestCase):
@@ -21,10 +22,9 @@ class TestSubscriptionDataEndpoints(TestCase):
         )
 
     def test_subscription_detail_endpoint(self):
-        from apps.subscriptions.models import StripeSubscription
 
         now = timezone.now()
-        StripeSubscription.objects.create(
+        a_mirrored_subscription(
             tenant=self.tenant, customer=self.customer,
             stripe_subscription_id="sub_detail",
             stripe_product_name="Pro", status="active",

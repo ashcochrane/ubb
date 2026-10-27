@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.billing.tenant_billing.models import PlatformFeeCarry, TenantBillingPeriod
 from apps.platform.event_types.quarantine import refuse_a_silent_close
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
-from core.money import DEFAULT_CURRENCY, from_minor, to_minor
+from core.money import from_minor, to_minor
 from core.time_windows import utc_day_start
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,8 @@ class TenantBillingService:
                 tenant=tenant,
                 period_start=first_of_month,
                 period_end=first_of_next_month,
-                defaults={"status": "open"},
+                defaults={"status": "open",
+                          "currency": tenant.default_currency},
             )
         except IntegrityError:
             # Race condition: partial unique index rejected a second open period.
@@ -222,11 +223,11 @@ class TenantBillingService:
         if period.tenant.is_sandbox:
             return 0
 
-        # The fee is UBB invoicing the tenant on UBB's OWN Stripe account,
-        # always in the platform's currency (see the currency="usd" on the
-        # invoice item in stripe_service.push_platform_fee_invoice) — not the
-        # tenant's customer-facing default_currency.
-        fee_currency = DEFAULT_CURRENCY
+        # The fee is UBB invoicing the tenant on UBB's OWN Stripe account, in
+        # the currency of the money it is a percentage of: the period's own
+        # (#565), which `StripeService.create_tenant_platform_invoice` reads
+        # off the same row.
+        fee_currency = period.currency
 
         carried_in = (
             PlatformFeeCarry.objects

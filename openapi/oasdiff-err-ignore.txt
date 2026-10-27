@@ -1347,3 +1347,27 @@ POST webhook:usage.recorded added the new required request property `data/pricin
 # and the cumulative gate reports the line as inert (pasted, run and
 # restored, 2026-10-24). The other changes report nothing either way. The
 # break is recorded here, in the PR and in `docs/conventions/django-patterns.md`.
+
+# 2026-10-27 - R10-W3 (#564, ADR-0023 §7): a Stripe amount is kept as Stripe sent
+# it and admitted into UBB's economics only in US dollars. The mirror's three
+# published amounts - a subscription's `amount_micros`, and `amount_paid_micros`
+# on the tenant's and the widget's invoice lists - become REQUIRED AND NULLABLE:
+# null where Stripe holds the subscription or issued the invoice in a currency
+# UBB does not admit, because there is no FX and so no dollar amount to state.
+# Null here is "cannot be known", the one case the owner's ruling 5 leaves for a
+# null; every other read beside them states its figure. The two tenant reads
+# also gain Stripe's own integer (`source_amount_minor`,
+# `source_amount_paid_minor`, required, additive), and every revenue and margin
+# read gains `foreign_currency_subscription_count` (required, never null).
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open; #564's ruling on #190 (the
+# owner's close-out direction of 2026-10-22, and ruling 5 of 2026-10-26) asks
+# for exactly this. All three routes predate `api-v1-launch`, so the authoring
+# comparison (`--baseline origin/main --emit`) and the cumulative gate report the
+# same three findings, reviewed and deliberate; the lines are oasdiff's, pasted
+# from `--emit`.
+#
+# ERR because a reader typed against the old schema meets a null.
+GET /api/v1/me/subscription-invoices response property `data/items/amount_paid_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+GET /api/v1/subscriptions/customers/{customer_id}/invoices response property `data/items/amount_paid_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+GET /api/v1/subscriptions/customers/{customer_id}/subscription response property `amount_micros` list-of-types was widened by adding types `null` to media type `application/json` of response `200`

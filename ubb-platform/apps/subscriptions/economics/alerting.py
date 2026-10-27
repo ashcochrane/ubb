@@ -47,6 +47,7 @@ column, and the payloads have always called it that.
 """
 from apps.subscriptions.economics.models import CustomerEconomics
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
+from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY
 
 
 def state_of(record) -> dict:
@@ -67,6 +68,8 @@ def state_of(record) -> dict:
         "provider_cost_micros": record.provider_cost_micros,
         UNRESOLVED_EVENT_COUNT_KEY: record.unresolved_event_count,
         UNPRICED_EVENT_COUNT_KEY: record.unpriced_event_count,
+        FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY:
+            record.foreign_currency_subscription_count,
     }
 
 

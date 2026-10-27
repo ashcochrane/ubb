@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 class FakeStripeSub(dict):
@@ -106,7 +107,7 @@ class TestFullSync:
             tenant=tenant, external_id="cust-1", stripe_customer_id="cus_existing",
         )
         now = timezone.now()
-        StripeSubscription.objects.create(
+        a_mirrored_subscription(
             tenant=tenant, customer=customer,
             stripe_subscription_id="sub_exists",
             stripe_product_name="Old Plan", status="trialing",

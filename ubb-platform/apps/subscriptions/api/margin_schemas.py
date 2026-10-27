@@ -3,6 +3,7 @@ from ninja import Schema, Field
 
 from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, supplier_cost_total_meaning)
+from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING
 
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
@@ -213,6 +214,8 @@ class SeatMarginOut(Schema):
     #: direction nobody can state (#603), and a seat can be missing both at
     #: once — which is why they are two properties and not one.
     unpriced_event_count: int
+    foreign_currency_subscription_count: int = Field(
+        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
@@ -249,6 +252,8 @@ class UnprofitableCustomerRow(Schema):
     #: unprofitable. Publishing only the count above — the one that cannot say
     #: it — would have made this list the more misleading of the two surfaces.
     unpriced_event_count: int
+    foreign_currency_subscription_count: int = Field(
+        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
     margin_percentage: float
 
 
@@ -287,6 +292,9 @@ class BusinessMarginTotals(Schema):
     unresolved_event_count: int
     #: And the revenue half's, added up the same way (#351).
     unpriced_event_count: int
+    #: The seats' foreign subscriptions plus the business's own (#564).
+    foreign_currency_subscription_count: int = Field(
+        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
     total_revenue_micros: int
     gross_margin_micros: int
     event_count: int

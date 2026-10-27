@@ -24,6 +24,11 @@ class UnprofitableCustomerRow:
         Attributes:
             customer_id (str):
             external_id (str):
+            foreign_currency_subscription_count (int): How many Stripe subscriptions the subscription revenue in this answer
+                leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts
+                nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this
+                is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact,
+                scoped like the figures it qualifies, and 0 where nothing was left out.
             gross_margin_micros (int):
             margin_percentage (float):
             unpriced_event_count (int):
@@ -32,6 +37,7 @@ class UnprofitableCustomerRow:
 
     customer_id: str
     external_id: str
+    foreign_currency_subscription_count: int
     gross_margin_micros: int
     margin_percentage: float
     unpriced_event_count: int
@@ -47,6 +53,8 @@ class UnprofitableCustomerRow:
 
         external_id = self.external_id
 
+        foreign_currency_subscription_count = self.foreign_currency_subscription_count
+
         gross_margin_micros = self.gross_margin_micros
 
         margin_percentage = self.margin_percentage
@@ -61,6 +69,7 @@ class UnprofitableCustomerRow:
         field_dict.update({
             "customer_id": customer_id,
             "external_id": external_id,
+            "foreign_currency_subscription_count": foreign_currency_subscription_count,
             "gross_margin_micros": gross_margin_micros,
             "margin_percentage": margin_percentage,
             "unpriced_event_count": unpriced_event_count,
@@ -78,6 +87,8 @@ class UnprofitableCustomerRow:
 
         external_id = d.pop("external_id")
 
+        foreign_currency_subscription_count = d.pop("foreign_currency_subscription_count")
+
         gross_margin_micros = d.pop("gross_margin_micros")
 
         margin_percentage = d.pop("margin_percentage")
@@ -89,6 +100,7 @@ class UnprofitableCustomerRow:
         unprofitable_customer_row = cls(
             customer_id=customer_id,
             external_id=external_id,
+            foreign_currency_subscription_count=foreign_currency_subscription_count,
             gross_margin_micros=gross_margin_micros,
             margin_percentage=margin_percentage,
             unpriced_event_count=unpriced_event_count,

@@ -43,6 +43,7 @@ const ANSWER: Economics = {
   basis: "recorded",
   economic_data_available_from: "2020-09-18",
   measurement_data_available_from: "2026-06-01",
+  foreign_currency_subscription_count: 0,
   rows: [
     day("2020-09-16", measuresOutsideRetentionHorizon("2020-09-18")),
     day("2020-09-17", measuresOutsideRetentionHorizon("2020-09-18")),

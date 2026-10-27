@@ -1,4 +1,4 @@
-# ADR-0023: UBB v1 is US dollars only — refused at its own doors, held by the database, and never converted
+# ADR-0023: UBB v1 is US dollars only — refused at its own doors, quarantined from Stripe, read from the record on the way out, and never converted
 
 **Status:** accepted
 **Date:** 2026-10-27
@@ -125,6 +125,54 @@ Both are representation. Admission is not decided there. The code travels to UBB
 and the recording routes refuse anything but US dollars (§3). A second copy of "USD only" in the
 renderer would be a second policy in every tenant's repository.
 
+### 7. A foreign-currency fact from Stripe is kept and quarantined (#564)
+
+A connected account may hold a subscription, and issue its invoices, in a currency UBB never admitted.
+UBB does not refuse what Stripe already did: refusing at the webhook would only make Stripe retry, and
+dropping the row would make that revenue read as a confident zero (#141). So every mirror writer reads
+Stripe through one module (`apps/subscriptions/stripe/items.py`), and each row keeps:
+- `currency` — what Stripe named, in its canonical spelling, whatever it is;
+- `source_amount_minor` / `source_amount_paid_minor` — Stripe's own integer, exactly as sent, in that
+  currency's minor unit. It is never scaled by the tenant's minor unit, and it is never stored under
+  `_micros` (ADR-0006 §1); a currency `core.money` cannot represent is kept too;
+- `amount_micros` / `amount_paid_micros` — the economic amount in micros of US dollars, or **null** where
+  the policy does not admit the source currency. There is no FX, so there is no dollar amount to state:
+  null is "cannot be known", never zero.
+
+A `CHECK` on each mirror table pairs the two (an economic amount exactly when the source currency is US
+dollars), so the database refuses a relabel. The row is keyed on Stripe's id, so a retried event, a
+second event about the same object, the poll sync and the poller's repair all meet one row and restate
+it from the same reading.
+
+**Excluded from every aggregate.** `RevenueService.accruing` selects only admitted subscriptions, and
+every figure built on it — the one economic query's revenue and margin, the business margin rollup, and
+the alerting snapshot an unprofitable flag is raised on — leaves the foreign ones out. Invoices are
+summed nowhere.
+
+**Visible as an exact count.** Each of those reads publishes `foreign_currency_subscription_count`:
+required, never null, scoped exactly like the figures it qualifies, and 0 where nothing was left out
+(the owner's ruling 5). A question that asked for no revenue left nothing out and reads 0. The
+console says it beside every revenue figure it draws.
+
+### 8. Every outbound money call reads its currency off the record it draws on (#565)
+
+A call that wrote `"usd"` itself would send the right word today and go on sending it the day a record
+said otherwise. So every outbound money call takes its currency from the authoritative monetary object
+and asks `core.currency_policy.the_rails_currency`, which refuses — never reconciles — a record the
+policy does not admit, or another record the same amount is drawn against that disagrees:
+
+| Call | The record it reads |
+|---|---|
+| Top-up Checkout, the off-session charge, the receipt's invoice item | the wallet the top-up credits (one not yet born: the one rule it will be born by) |
+| Postpaid usage invoice items | the usage invoice row; on the consolidated path the subscription's renewal draft must agree |
+| The platform fee's invoice item | the billing period, which now states its currency |
+| A plan's Stripe Prices, and a repriced version | the tenant, whose catalog the plan is |
+
+The database already holds every one of those records to US dollars, so the refusal never fires on a
+record UBB wrote. It is the rail proving the invariant rather than assuming it, which is why each call
+asks on its own and why the tests lift the record's `CHECK` before asking. A refusal is a
+`CurrencyDisagreement` — a `StripeFatalError`, raised before anything is sent.
+
 ## What proves it
 
 | Rule | Test |
@@ -137,6 +185,10 @@ renderer would be a second policy in every tenant's repository.
 | §4 — the database refuses another currency through every door, naming its `CHECK` | same module — `TheDatabaseRefusesAnotherCurrencyThroughEveryDoorTest`: `test_no_row_is_born_in_another_currency`, `test_no_row_is_moved_into_another_currency`; `ATenantIsRefusedByTheDomainRuleBeforeTheDatabaseTest` |
 | §4 — the reconciliation refuses and rewrites nothing, through the executor | same module — `TheMigrationsReconcileByRefusingTest` |
 | §5 — the lock's own cases answer by the policy alone | `ubb-platform/api/v1/tests/test_tenant_endpoints.py` — `test_holding_money_changes_neither_answer` |
+| §7 — kept as Stripe sent it, never relabelled, idempotent across retries, a second event, the sync and the repair, on both paths | `ubb-platform/api/v1/tests/test_a_foreign_currency_fact_is_kept_and_quarantined.py` — `AForeignSubscriptionIsKeptAndQuarantinedTest`: `test_it_is_kept_exactly_as_stripe_stated_it`, `test_a_currency_ubb_cannot_represent_is_kept_too_never_refused`, `test_a_retry_another_event_and_the_poll_sync_add_no_second_fact`; `AForeignInvoiceIsKeptAndQuarantinedTest`: `test_a_retry_a_second_event_and_the_poller_repair_add_no_second_fact` |
+| §7 — absent from every aggregate, and counted on every revenue and margin read, 0 never null | same module — `test_it_is_absent_from_revenue_and_the_answer_counts_it`, `test_a_question_that_asks_no_revenue_left_nothing_out`, `test_a_tenant_with_no_foreign_subscription_reads_zero_never_null`; `TheMarginReadsCountWhatTheyLeftOutTest`: `test_the_business_rollup_counts_its_seats_and_its_own`, `test_a_rollup_that_left_nothing_out_reads_zero`, `test_the_unprofitable_list_carries_the_count_its_flag_was_raised_on` |
+| §7 — the migration recovers Stripe's integer and refuses rather than rounds | `ubb-platform/apps/subscriptions/tests/test_the_mirror_keeps_what_stripe_sent.py` — `TheMigrationRecoversWhatStripeSentTest` |
+| §8 — each outbound call reads its record and refuses a disagreement on its own | `ubb-platform/api/v1/tests/test_every_outbound_money_call_reads_its_records_currency.py` — `ATopUpReadsTheWalletItCreditsTest`, `APlatformFeeReadsItsBillingPeriodTest`, `APlanPriceReadsTheTenantsCatalogTest`; `ubb-platform/apps/billing/invoicing/tests/test_postpaid_consolidation.py` — `test_a_renewal_draft_in_another_currency_is_refused`, `test_a_usage_invoice_in_another_currency_is_refused`; `ubb-platform/apps/subscriptions/orchestration/tests/test_plan_versioning.py` — `test_a_new_price_version_reads_the_tenants_currency_and_refuses_another` |
 | §6 — a foreign sample reaches the recording and is refused there | `ubb-platform/api/v1/tests/test_verifying_a_blueprint.py` — `test_a_foreign_currency_sample_is_the_recordings_refusal`; `ubb-platform/apps/platform/event_types/tests/test_reported_cost.py` — `test_a_supplier_returned_currency_is_represented_here_and_admitted_at_the_door` |
 
 ## Consequences

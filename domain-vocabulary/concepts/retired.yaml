@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,483 of 2,942 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,487 of 2,948 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2940,6 +2940,15 @@ measurement_key:
     # in a comment on `tenants/models.py` that said where the minor-unit
     # table lives; it was rewritten to say which module ADMITS a currency,
     # and the table's own docstring already names the minor unit.
+    #
+    # 2026-10-27, R10-W3 (#564, #565): 2,483 of 2,942 -> 2,487 of 2,948
+    # tracked files (`units` UNMOVED). Six files arrived. Two are migrations
+    # excluded under `historical-migrations` (290 -> 292): the mirror keeps
+    # what Stripe sent (`subscriptions/0018`) and a billing period states its
+    # currency (`tenant_billing/0013`), so the exclusions stand at 461. Four
+    # are swept: the foreign-currency quarantine's route tests, the outbound
+    # rail's refusal tests, the mirror migration's test and the console's
+    # test of a quarantined amount.
 
     - term: units
       retired_as: >-

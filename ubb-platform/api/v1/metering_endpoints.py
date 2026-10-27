@@ -15,7 +15,11 @@ from apps.metering.pricing.receipts import (
     uncosted_quantity_keys,
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
-from core.currency_policy import UnsupportedCurrency, admit_currency
+from core.currency_policy import (
+    FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
+    UnsupportedCurrency,
+    admit_currency,
+)
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
@@ -2441,7 +2445,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         EconomicQuestionRefused, economic_refusal, economics, grouping_options)
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
     from apps.subscriptions.queries import (
-        revenue_contributions, supplied_revenue_covered_periods)
+        foreign_currency_subscription_count, revenue_contributions,
+        supplied_revenue_covered_periods)
 
     measures = list(measures or [])
     axes = list(group_by or [])
@@ -2514,8 +2519,15 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                            ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
     supplied = {}
+    # What this answer's revenue LEFT OUT (#564): subscriptions Stripe holds
+    # in a currency UBB does not admit. Counted over exactly the scope the
+    # revenue is fetched for, and 0 on a question that asked for no revenue,
+    # because such an answer left nothing out.
+    foreign = 0
     if revenue_wanted:
         customer_ids = [customer_id] if customer_id else None
+        foreign = foreign_currency_subscription_count(
+            request.auth.tenant.id, customer_ids=customer_ids)
         supplied["contributed_revenue"] = revenue_contributions(
             request.auth.tenant.id,
             windows=_economic_buckets(start, end, bucket), basis=chosen,
@@ -2543,7 +2555,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         # handler as one.
         raise Problem(UNANSWERABLE_COMBINATION, str(refused))
     return 200, {"period_start": start.isoformat(),
-                 "period_end": end.isoformat(), **answer}
+                 "period_end": end.isoformat(), **answer,
+                 FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY: foreign}
 
 
 def _economic_buckets(start, end, bucket):

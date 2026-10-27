@@ -17,6 +17,7 @@ from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, RESOLVED_SUPPLIER_COST_MEANING,
     supplier_cost_total_meaning)
 from core.crossing import ceiling_fields
+from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING
 from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.problems import ProblemOut
@@ -3878,6 +3879,11 @@ class EconomicsOut(Schema):
     measurement_data_available_from: str
     rows: list[EconomicRowOut]
     context: list[RevenueContextOut]
+    #: WHAT THE REVENUE IN THIS ANSWER LEFT OUT (#564, the owner's ruling 5):
+    #: required and never null, because UBB always knows. 0 on a question
+    #: that asked for no revenue, which left nothing out.
+    foreign_currency_subscription_count: int = Field(
+        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
 
 
 #: WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR. `closed` — UBB owns

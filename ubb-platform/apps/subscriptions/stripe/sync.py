@@ -6,10 +6,10 @@ from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from apps.subscriptions.models import StripeSubscription
-from apps.subscriptions.stripe.items import _sum_items, _period_start, _period_end, _product_name
+from apps.subscriptions.stripe.items import (
+    _period_end, _period_start, _product_name, mirrored_amounts)
 from apps.platform.queries import get_tenant_stripe_account, get_customers_by_stripe_id
 from core.exceptions import StripeFatalError
-from core.money import DEFAULT_CURRENCY
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,7 @@ def sync_subscriptions(tenant):
             continue
 
         try:
-            amount_micros, seat_qty, interval = _sum_items(
-                stripe_sub, (tenant.default_currency or DEFAULT_CURRENCY).lower())
+            money = mirrored_amounts(stripe_sub)
             StripeSubscription.objects.update_or_create(
                 stripe_subscription_id=stripe_sub.id,
                 defaults={
@@ -81,13 +80,14 @@ def sync_subscriptions(tenant):
                     "customer_id": customer_id,
                     "stripe_product_name": _product_name(stripe_sub),
                     "status": stripe_sub.status,
-                    "amount_micros": amount_micros,
-                    "currency": stripe_sub.get("currency", "usd"),
-                    "interval": interval,
+                    "amount_micros": money.amount_micros,
+                    "currency": money.currency,
+                    "source_amount_minor": money.source_amount_minor,
+                    "interval": money.interval,
                     "current_period_start": _period_start(stripe_sub),
                     "current_period_end": _period_end(stripe_sub),
                     "last_synced_at": timezone.now(),
-                    "quantity": seat_qty,
+                    "quantity": money.seat_qty,
                 },
             )
             synced += 1

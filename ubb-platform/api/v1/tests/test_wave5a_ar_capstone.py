@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
+from apps.subscriptions.models import SubscriptionInvoice
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from core.widget_auth import create_widget_token
 
@@ -35,6 +35,7 @@ from api.v1.webhooks import (
     handle_invoice_voided,
 )
 from apps.billing.connectors.stripe.webhooks import handle_invoice_payment_failed
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 
 # --- synthetic event helpers (mirror test_ar_reconcile.py) ------------------
@@ -94,7 +95,7 @@ class TestWave5aARCapstone(TestCase):
             account_type="individual",
         )
         now = timezone.now()
-        self.sub = StripeSubscription.objects.create(
+        self.sub = a_mirrored_subscription(
             tenant=self.tenant, customer=self.owner,
             stripe_subscription_id="sub_capstone",
             stripe_product_name="Pro", status="active",
@@ -282,7 +283,7 @@ class TestWave5aARCapstone(TestCase):
             payment_status="paid", hosted_invoice_url="https://biz/u",
         )
         now = timezone.now()
-        biz_sub = StripeSubscription.objects.create(
+        biz_sub = a_mirrored_subscription(
             tenant=self.tenant, customer=business,
             stripe_subscription_id="sub_biz",
             stripe_product_name="Pro", status="active",
@@ -329,7 +330,7 @@ class TestSubscriptionPaymentFailed(TestCase):
         )
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         now = timezone.now()
-        self.sub = StripeSubscription.objects.create(
+        self.sub = a_mirrored_subscription(
             tenant=self.tenant, customer=self.customer,
             stripe_subscription_id="sub_pf_sub",
             stripe_product_name="Pro", status="active",

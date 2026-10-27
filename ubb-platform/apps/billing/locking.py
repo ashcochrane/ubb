@@ -12,6 +12,41 @@ canonical order to reserve the position if that ever changes.
 from core.locking import lock_row
 
 
+def currency_a_wallet_is_born_in(owner):
+    """The one rule for a wallet's currency at birth: its owner's tenant's,
+    which UBB v1 holds to US dollars (ADR-0023) — never a literal.
+
+    Named so the outbound rail can ask what a not-yet-born wallet WILL hold
+    without a second copy of the rule (#565).
+    """
+    return owner.tenant.default_currency
+
+
+def the_currency_a_top_up_credits(attempt):
+    """``(record, currency)``: the wallet a top-up attempt credits, and its
+    currency — the authoritative monetary object every top-up call to the
+    rail draws its currency from (#565).
+
+    The billing owner PINNED on the attempt, whose wallet the credit lands
+    on. Where that wallet has not been born yet (a first top-up), the record
+    is the rule that will bear it, so the call and the credit cannot read
+    two different answers. An attempt pinned before the owner was (a row no
+    creation path writes any more) reads its seat's owner: this moves no
+    money, it only names a currency.
+    """
+    from apps.billing.wallets.models import Wallet
+    from apps.platform.customers.models import Customer
+
+    owner_id = (attempt.billing_owner_id
+                or attempt.customer.resolve_billing_owner().id)
+    wallet = Wallet.objects.filter(customer_id=owner_id).first()
+    if wallet is not None:
+        return f"wallet {wallet.id}", wallet.currency
+    owner = Customer.objects.select_related("tenant").get(id=owner_id)
+    return (f"the wallet customer {owner_id} will be born with",
+            currency_a_wallet_is_born_in(owner))
+
+
 def lock_for_billing(customer_id):
     """
     Acquire Wallet -> Customer locks in canonical order.
@@ -52,11 +87,9 @@ def lock_for_billing(customer_id):
 
     wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
     if wallet is None:
-        # CUR-1: a new wallet is born in the customer's tenant currency
-        # (normalized lowercase), never a hardcoded USD.
-        tenant_currency = (customer_for_check.tenant.default_currency or "usd").lower()
         wallet = Wallet.objects.create(
-            customer_id=customer_id, balance_micros=0, currency=tenant_currency)
+            customer_id=customer_id, balance_micros=0,
+            currency=currency_a_wallet_is_born_in(customer_for_check))
     elif wallet.deleted_at is not None:
         wallet.restore()
     customer = Customer.objects.select_for_update().get(id=customer_id)

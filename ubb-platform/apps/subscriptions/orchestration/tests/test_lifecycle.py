@@ -11,11 +11,11 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.orchestration.service import (
     SubscriptionOrchestrator,
     NoActiveSubscription,
 )
+from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 SVC = "apps.subscriptions.orchestration.service.stripe"
 
@@ -27,7 +27,7 @@ def _charge_ready_tenant():
 
 def _mirror(tenant, customer, sub_id="sub_1", status="active"):
     now = timezone.now()
-    return StripeSubscription.objects.create(
+    return a_mirrored_subscription(
         tenant=tenant, customer=customer, stripe_subscription_id=sub_id,
         stripe_product_name="Pro", status=status, amount_micros=50_000_000,
         currency="usd", interval="month", quantity=1,

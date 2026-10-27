@@ -36,6 +36,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
+from apps.billing.tenant_billing.models import TenantBillingPeriod
 from apps.billing.wallets.models import CreditGrant, Wallet
 from apps.metering.pricing.models import Charge, CostBook, Rate
 from apps.metering.pricing.services.charge_service import derived_key
@@ -76,12 +77,18 @@ HELD_BY = {
     ("ubb_reported_cost_mapping", "currency"): "ck_reported_cost_currency_usd",
     ("ubb_tenant_supplied_revenue", "currency"): "ck_supplied_revenue_currency_usd",
     ("ubb_customer_usage_invoice", "currency"): "ck_usage_invoice_currency_usd",
+    ("ubb_tenant_billing_period", "currency"): "ck_billing_period_currency_usd",
 }
 
-#: The columns that record what Stripe SENT (#564), spared the `CHECK`.
+#: The columns that record what Stripe SENT (#564), spared the USD `CHECK` —
+#: and the one rule each does carry, which holds no currency to US dollars:
+#: it pairs the economic amount with the source currency, so a foreign code
+#: is kept and a relabelled dollar amount beside it is refused.
 SOURCE_FACTS = {
-    ("ubb_stripe_subscription", "currency"),
-    ("ubb_subscription_invoice", "currency"),
+    ("ubb_stripe_subscription", "currency"):
+        "ck_subscription_economic_amount_only_in_usd",
+    ("ubb_subscription_invoice", "currency"):
+        "ck_subscription_invoice_economic_amount_only_in_usd",
 }
 
 
@@ -118,7 +125,8 @@ class EveryCurrencyColumnIsAccountedForTest(TestCase):
     def test_the_models_declare_exactly_the_columns_this_module_names(self):
         """The vacuity guard: the walk finds every column the literal names and
         nothing beside them."""
-        self.assertEqual(set(_currency_columns()), set(HELD_BY) | SOURCE_FACTS)
+        self.assertEqual(set(_currency_columns()),
+                         set(HELD_BY) | set(SOURCE_FACTS))
 
     def test_every_economic_column_carries_the_policys_check(self):
         for (table, column), name in HELD_BY.items():
@@ -129,14 +137,15 @@ class EveryCurrencyColumnIsAccountedForTest(TestCase):
 
     def test_the_source_facts_are_declared_on_their_models_and_spared(self):
         """Declared where the column lives, so the next reader of the model
-        sees why no CHECK holds it — and the catalogue agrees that none does.
-        A CHECK there would refuse the evidence #564's quarantine keeps."""
+        sees why no USD CHECK holds it — and the catalogue agrees: the one
+        rule over each is the pairing, which admits a foreign code. A USD
+        CHECK there would refuse the evidence #564's quarantine keeps."""
         columns = _currency_columns()
-        for table, column in sorted(SOURCE_FACTS):
+        for (table, column), pairing in sorted(SOURCE_FACTS.items()):
             with self.subTest(table=table):
                 model = columns[(table, column)]
                 self.assertIn(column, getattr(model, SOURCE_CURRENCY_COLUMNS))
-                self.assertEqual(_checks_on(table, column), {})
+                self.assertEqual(set(_checks_on(table, column)), {pairing})
 
     def test_no_economic_model_declares_a_source_fact(self):
         """The declaration is the CHECK's only exemption, so it is held to the
@@ -206,6 +215,11 @@ class _Rows:
             recognition_method=RECOGNITION_METHOD_ON_RECEIPT,
             source_reference="inv-1")
 
+    def _billing_period(self):
+        return TenantBillingPeriod.objects.create(
+            tenant=self.tenant, period_start=date(2026, 1, 1),
+            period_end=date(2026, 2, 1))
+
     def _usage_invoice(self):
         return CustomerUsageInvoice.objects.create(
             tenant=self.tenant, customer=self.customer,
@@ -223,6 +237,7 @@ ROWS = (
     ("ubb_reported_cost_mapping", "_reported_cost_mapping", "currency"),
     ("ubb_tenant_supplied_revenue", "_supplied_revenue", "currency"),
     ("ubb_customer_usage_invoice", "_usage_invoice", "currency"),
+    ("ubb_tenant_billing_period", "_billing_period", "currency"),
 )
 
 #: The one table whose UPDATE doors meet a rule ahead of the CHECK: a charge's
