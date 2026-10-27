@@ -35,6 +35,7 @@ from core.crossing import month_label_bounds
 from core.vocabulary import (
     CONTROL_FAMILY_CUSTOMER_SPEND_POOL, CONTROL_FAMILY_WALLET_POLICY,
     SPEND_POOL_ENFORCE_MODE_BLOCKING)
+from apps.platform.tenants.tests._rails import RailActivated
 
 FLOOR = 5_000_000
 
@@ -67,7 +68,7 @@ class SignalEpisodesTestBase(TestCase):
         return queries.signal_episodes(self.tenant.id, **filters)
 
 
-class TheTwoStopLinesTest(SignalEpisodesTestBase):
+class TheTwoStopLinesTest(RailActivated, SignalEpisodesTestBase):
     def test_a_hard_floor_episode_carries_its_control_floor_balance_and_both_instants(self):
         self.assertEqual(self._stop(reasons.HARD_FLOOR), 1)
         self.assertEqual(self._clear(reasons.HARD_FLOOR), 1)
@@ -164,7 +165,7 @@ class TheTwoStopLinesTest(SignalEpisodesTestBase):
         self.assertEqual(self._rows(), [])
 
 
-class TheWindDownLineTest(SignalEpisodesTestBase):
+class TheWindDownLineTest(RailActivated, SignalEpisodesTestBase):
     def test_a_soft_floor_row_is_a_marker_with_the_pairs_own_figures_and_no_stop_word(self):
         self.assertEqual(StopSignalService.drive_soft_crossed(
             self.owner.id, self.tenant, balance_micros=-1_500_000,
@@ -187,7 +188,7 @@ class TheWindDownLineTest(SignalEpisodesTestBase):
         self.assertEqual(row["balance_at_crossing_micros"], -1_500_000)
 
 
-class PoolUtilisationTest(SignalEpisodesTestBase):
+class PoolUtilisationTest(RailActivated, SignalEpisodesTestBase):
     def test_a_customer_with_no_pool_answers_no_pool(self):
         answer = queries.customer_spend_pool_utilisation(self.tenant.id, self.owner.id)
         self.assertEqual(answer["cap_micros"], 0)

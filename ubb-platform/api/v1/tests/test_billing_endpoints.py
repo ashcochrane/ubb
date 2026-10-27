@@ -7,6 +7,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.wallets.models import Wallet
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class BillingProductGatingTest(TestCase):
@@ -87,7 +88,7 @@ class BillingProductGatingTest(TestCase):
     # test_tenant_endpoints.py.
 
 
-class BillingDebitEndpointTest(TestCase):
+class BillingDebitEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(

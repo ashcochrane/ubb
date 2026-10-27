@@ -49,6 +49,13 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_201
 
+    if response.status_code == 409:
+        response_409 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_409
+
     if response.status_code == 422:
         response_422 = ProblemOut.from_dict(response.json())
 
@@ -86,6 +93,9 @@ def sync_detailed(
     ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    A test key that would provision the sandbox of a `prepaid`/`postpaid`
+    tenant needs the payment rail activated in the `test` environment, or is
+    refused 409 `payment_rail_not_activated` (G27).
 
     Args:
         body (ApiKeyCreateIn):
@@ -125,6 +135,9 @@ def sync(
     ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    A test key that would provision the sandbox of a `prepaid`/`postpaid`
+    tenant needs the payment rail activated in the `test` environment, or is
+    refused 409 `payment_rail_not_activated` (G27).
 
     Args:
         body (ApiKeyCreateIn):
@@ -159,6 +172,9 @@ async def asyncio_detailed(
     ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    A test key that would provision the sandbox of a `prepaid`/`postpaid`
+    tenant needs the payment rail activated in the `test` environment, or is
+    refused 409 `payment_rail_not_activated` (G27).
 
     Args:
         body (ApiKeyCreateIn):
@@ -198,6 +214,9 @@ async def asyncio(
     ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    A test key that would provision the sandbox of a `prepaid`/`postpaid`
+    tenant needs the payment rail activated in the `test` environment, or is
+    refused 409 `payment_rail_not_activated` (G27).
 
     Args:
         body (ApiKeyCreateIn):

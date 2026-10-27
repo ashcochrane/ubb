@@ -19,6 +19,7 @@ from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from apps.platform.tenants.tasks import reset_sandbox_tenant_sync
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 def _craft_key(tenant, prefix):
@@ -32,7 +33,7 @@ def _craft_key(tenant, prefix):
     )
 
 
-class SandboxProvisioningTest(TestCase):
+class SandboxProvisioningTest(RailActivated, TestCase):
     def setUp(self):
         self.live = Tenant.objects.create(
             name="Live Co",
@@ -170,7 +171,7 @@ class ApiKeyRoutingTest(TestCase):
                 tenant=sandbox).values("id")).exists())
 
 
-class SandboxResetTest(TestCase):
+class SandboxResetTest(RailActivated, TestCase):
     def setUp(self):
         self.live = Tenant.objects.create(
             name="Live Co", products=["metering", "billing"], billing_mode="prepaid")

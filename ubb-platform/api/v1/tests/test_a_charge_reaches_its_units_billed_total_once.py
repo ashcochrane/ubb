@@ -43,6 +43,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import CloseDeclaration, TaskService
 from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, USAGE_EVENT_KIND_TASK_CHARGE)
+from apps.platform.tenants.tests._rails import RailActivated
 
 DELIVERED = CloseTaskRequest(outcome=TASK_OUTCOME_DELIVERED)
 
@@ -93,7 +94,7 @@ class _ADeliverableUnit:
                 unit["unpriced"])
 
 
-class AReplayedCloseAddsNothingTest(_ADeliverableUnit, TestCase):
+class AReplayedCloseAddsNothingTest(RailActivated, _ADeliverableUnit, TestCase):
 
     def test_the_close_that_creates_the_charge_includes_it(self):
         task_id = self._arrange()
@@ -124,7 +125,7 @@ class AReplayedCloseAddsNothingTest(_ADeliverableUnit, TestCase):
         self.assertEqual(self._charge_postings(task_id).count(), 1)
 
 
-class AFailureAfterThePostingLeavesNeitherTest(_ADeliverableUnit, TestCase):
+class AFailureAfterThePostingLeavesNeitherTest(RailActivated, _ADeliverableUnit, TestCase):
 
     def test_a_failure_after_the_posting_takes_both_writes_back(self):
         """The adjustment is taken up and the posting written, and then the
@@ -169,7 +170,7 @@ class AFailureAfterThePostingLeavesNeitherTest(_ADeliverableUnit, TestCase):
         self.assertEqual(self._charge_postings(task_id).count(), 1)
 
 
-class WithNoTransactionOfItsOwnTest(_ADeliverableUnit, TransactionTestCase):
+class WithNoTransactionOfItsOwnTest(RailActivated, _ADeliverableUnit, TransactionTestCase):
     """In autocommit each statement commits on its own, so a posting written
     by a projection holding no transaction would be durable before the
     adjustment ran. The projection's own `atomic` is what keeps them one."""
@@ -208,7 +209,7 @@ class WithNoTransactionOfItsOwnTest(_ADeliverableUnit, TransactionTestCase):
         self.assertEqual(self._the_unit(closed.id)["billed"], 0)
 
 
-class TwoRacingClosesTest(_ADeliverableUnit, TransactionTestCase):
+class TwoRacingClosesTest(RailActivated, _ADeliverableUnit, TransactionTestCase):
     """Two threads, real Postgres row locking: both inside the close at once,
     one wins the transition and the other replays."""
 

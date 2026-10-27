@@ -12,6 +12,7 @@ PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_business_aggregates_across_seats_one_line_per_seat():
     t = Tenant.objects.create(name="T", billing_mode="postpaid", products=["metering", "billing"])
@@ -28,6 +29,7 @@ def test_business_aggregates_across_seats_one_line_per_seat():
     assert dict(lines)["alice"] == 800_000 and dict(lines)["bob"] == 300_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_close_rolls_seats_into_one_business_invoice():
     from unittest.mock import patch, MagicMock
@@ -58,6 +60,7 @@ def test_close_rolls_seats_into_one_business_invoice():
     assert not CustomerUsageInvoice.objects.filter(customer__in=[s1, s2]).exists()  # seats not invoiced
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_business_total_unchanged_when_seat_soft_deleted_mid_period():
     t = Tenant.objects.create(name="T", billing_mode="postpaid", products=["metering", "billing"])
@@ -73,6 +76,7 @@ def test_business_total_unchanged_when_seat_soft_deleted_mid_period():
     assert dict(lines)["bob"] == 300_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_close_invoices_soft_deleted_seat_usage():
     from unittest.mock import patch, MagicMock

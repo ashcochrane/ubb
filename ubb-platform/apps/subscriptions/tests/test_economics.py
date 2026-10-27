@@ -9,9 +9,10 @@ from apps.subscriptions.economics.services import (
     MARGIN_REVENUE_BASIS, MarginService)
 from core.vocabulary import RECOGNITION_METHOD_STRAIGHT_LINE
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class MarginServiceTest(TestCase):
+class MarginServiceTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="T")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")

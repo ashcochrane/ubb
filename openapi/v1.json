@@ -20079,7 +20079,7 @@
         "summary": "List Api Keys"
       },
       "post": {
-        "description": "Mint a new API key. The RAW key is returned exactly once, here.\n\nis_test=True on a live key routes the mint to the tenant's sandbox\nsibling (TenantApiKey.create_key lazily provisions it, F4.4) \u2014 the new\nubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's\nkey list and is managed with a sandbox key; response tenant_id tells you\nwhere it landed. is_test=False on a sandbox key is a mode mismatch (422).",
+        "description": "Mint a new API key. The RAW key is returned exactly once, here.\n\nis_test=True on a live key routes the mint to the tenant's sandbox\nsibling (TenantApiKey.create_key lazily provisions it, F4.4) \u2014 the new\nubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's\nkey list and is managed with a sandbox key; response tenant_id tells you\nwhere it landed. is_test=False on a sandbox key is a mode mismatch (422).\nA test key that would provision the sandbox of a `prepaid`/`postpaid`\ntenant needs the payment rail activated in the `test` environment, or is\nrefused 409 `payment_rail_not_activated` (G27).",
         "operationId": "api_v1_tenant_endpoints_create_api_key",
         "parameters": [],
         "requestBody": {
@@ -20104,6 +20104,16 @@
               }
             },
             "description": "Created"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {
@@ -20832,7 +20842,7 @@
         "summary": "Get Sandbox"
       },
       "post": {
-        "description": "Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.\n\nThe RAW key is returned exactly once per call (each POST mints a fresh\nkey \u2014 that is also the rotation path). 403 from a sandbox key: sandboxes\ncannot nest.",
+        "description": "Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.\n\nThe RAW key is returned exactly once per call (each POST mints a fresh\nkey \u2014 that is also the rotation path). 403 from a sandbox key: sandboxes\ncannot nest. 409 `payment_rail_not_activated` when the tenant is\n`prepaid`/`postpaid` and the payment rail has no enabled activation in\nthe `test` environment a sandbox runs in: the sandbox is not created,\nand never created `external` instead (G27).",
         "operationId": "api_v1_tenant_endpoints_create_sandbox",
         "parameters": [],
         "responses": {
@@ -20857,6 +20867,16 @@
               }
             },
             "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Conflict"
           }
         },
         "security": [

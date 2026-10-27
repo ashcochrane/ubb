@@ -39,9 +39,10 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_RATE_LIMIT_EXCEEDED,
     AFFORDABILITY_REASON_SUBTASK_DEPTH_EXCEEDED,
     SPEND_POOL_ENFORCE_MODE_BLOCKING, TASK_OUTCOME_DELIVERED)
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class AStartIsRefusedFromOneVocabularyTest(TestCase):
+class AStartIsRefusedFromOneVocabularyTest(RailActivated, TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()

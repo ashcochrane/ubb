@@ -160,6 +160,16 @@ def install_problem_handlers(api):
         )
         return problem_response("validation_error", DATA_ERROR_DETAIL)
 
+    from apps.platform.tenants.models import PaymentRailNotActivated
+
+    @api.exception_handler(PaymentRailNotActivated)
+    def _payment_rail_not_activated(request, exc):
+        # G27 (ADR-0008 §6): a money mode before its payment rail is
+        # activated, refused by the one domain rule wherever a route reaches
+        # it — the config PATCH, sandbox creation, a test key that provisions
+        # a sandbox. Answered by name, never as a database error.
+        return problem_response(exc.code, exc.explanation)
+
     @api.exception_handler(Http404)
     def _not_found(request, exc):
         # No detail: Django's Http404 message names the model class.

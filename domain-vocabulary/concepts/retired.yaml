@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,491 of 2,953 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,494 of 2,957 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -2961,6 +2961,14 @@ measurement_key:
     # The one that left is swept too: the console's test of a quarantined
     # amount, which moved into the customers feature's helper tests with the
     # helper it tests (a component file may export only components).
+    #
+    # 2026-10-27, R10-W3 (G27): 2,491 of 2,953 -> 2,494 of 2,957 tracked
+    # files (`units` UNMOVED). Four files arrived. One is a migration
+    # excluded under `historical-migrations` (293 -> 294): a money mode
+    # needs its payment rail activated first (`tenants/0030`), so the
+    # exclusions stand at 463. Three are swept: G27's route and door tests,
+    # the activation record's tests, and the fixture capability a test asks
+    # for by name (`tenants/tests/_rails.py`).
 
     - term: units
       retired_as: >-

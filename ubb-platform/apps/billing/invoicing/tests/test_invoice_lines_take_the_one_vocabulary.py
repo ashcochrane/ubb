@@ -81,6 +81,7 @@ def a_declared_field(tenant, key, slot="grouping_field_1", **kwargs):
     return grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, key)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTheAxisComesFromTheDiscoveryContract:
     """AC1 — the parameter accepts the field and rollup kinds, and nothing else."""
@@ -145,6 +146,7 @@ class TestTheAxisComesFromTheDiscoveryContract:
             PostpaidUsageService.aggregate_lines(tenant, customer, PS, PE)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAFixedPriceUnitOfWorkIsOneLine:
     """AC2 — one line labelled by that unit; its constituent calls produce none.
@@ -246,6 +248,7 @@ class TestAFixedPriceUnitOfWorkIsOneLine:
         assert lines == [("metered", 500_000)]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAWaivedChargeProducesNoLineAndIsStillReported:
     """AC3 — no liability, so no line; and it must not vanish with the line."""
@@ -303,6 +306,7 @@ class TestAWaivedChargeProducesNoLineAndIsStillReported:
             ("usd", 200_000, 1)]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestOnlyRevenueStateDecidesALine:
     """AC5 — an unresolved COST never delays, blocks or alters a line, and the

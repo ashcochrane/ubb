@@ -59,7 +59,9 @@ class ConformancePrincipal:
 
 
 @pytest.fixture
-def conformance_principal(db):
+def conformance_principal(db, rail_activated):
+    # `prepaid` needs the payment rail activated first (G27), and this
+    # fixture asks for it by name rather than inheriting a default.
     tenant = Tenant.objects.create(
         name="Conformance",
         stripe_connected_account_id="acct_conformance",

@@ -6,6 +6,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from core.vocabulary import TENANT_PRODUCT_VALUES
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class TenantBillingPeriodsEndpointTest(TestCase):
@@ -74,7 +75,7 @@ class TenantInvoicesEndpointTest(TestCase):
         self.assertEqual(body["data"][0]["total_amount_micros"], 500_000_000)
 
 
-class TenantConfigEndpointTest(TestCase):
+class TenantConfigEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(

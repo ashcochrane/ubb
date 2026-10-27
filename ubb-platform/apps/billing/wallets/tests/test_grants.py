@@ -71,6 +71,7 @@ def _assert_g1(wallet):
     assert _active_sum(wallet) <= max(wallet.balance_micros, 0)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAllocationOrder:
     def test_consumption_order_matrix(self):
@@ -133,6 +134,7 @@ class TestAllocationOrder:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestLazyExpiry:
     def test_drawdown_expires_due_lot_before_consuming(self):
@@ -184,6 +186,7 @@ class TestLazyExpiry:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestOverageRecoup:
     def test_grant_into_negative_balance_self_allocates(self):
@@ -206,6 +209,7 @@ class TestOverageRecoup:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestG3ExpiryNeverNegative:
     def test_expiry_clamped_after_partial_spend(self):
@@ -253,6 +257,7 @@ class TestG3ExpiryNeverNegative:
                             "customer.suspended"]).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTopUpGrants:
     def test_apply_topup_credit_twice_one_topup_one_grant(self):
@@ -331,6 +336,7 @@ class TestTopUpGrants:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestClawbackCascade:
     def test_dispute_of_partially_consumed_lot_cascades(self):
@@ -438,6 +444,7 @@ class TestClawbackCascade:
         _assert_g1(w)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReconcileGrants:
     def test_corrupted_grant_logs_loud(self):

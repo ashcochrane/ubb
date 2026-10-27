@@ -61,6 +61,7 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN,
     PRICING_STATUS_WAIVED,
 )
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 KNOWN_PRICE_MICROS = 3_000_000
 
@@ -201,6 +202,9 @@ class TestShapeTwoAHandlerThatWouldHaveFiveHundredEd:
     """
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"], billing_mode="postpaid")
         self.customer = Customer.objects.create(
@@ -262,6 +266,9 @@ class TestShapeThreeARunningTotalThatWouldHaveGoneNull:
     """
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"], billing_mode="postpaid")
 

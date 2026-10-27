@@ -450,17 +450,25 @@ def test_the_payment_rail_vocabulary_is_declared_closed(registry):
     assert set(environment.values) == {"test", "live"}
 
 
-def test_the_payment_rail_concepts_are_visibly_unconsumed(registry):
-    """The honest state, asserted rather than assumed. Nothing consumes these
-    yet; a registry that hid the fact would be claiming coverage it does not
-    have, and the compiler reports them by name for the same reason.
+def test_the_payment_rail_concepts_are_consumed_where_the_invariant_is_held(
+        registry):
+    """THIS TEST ASSERTED THE OPPOSITE UNTIL SLICE 8, AND IT WAS REPLACED BY
+    ITS INVERSE RATHER THAN DELETED (R10-W3, G27).
 
-    Subject: these two. That the unconsumed set as a whole holds nothing
-    ELSE unaccounted for is a different claim, and it is made once, in
-    `test_every_unconsumed_concept_is_one_a_slice_is_coming_for` below.
+    Until then nothing consumed these two, and the honest state was asserted
+    rather than assumed: a registry claiming a consumer would have been
+    claiming coverage it did not have. Slice 8 built the activation record
+    and the rule that reads it on the tenant model, which holds every value
+    of both by reference, so the claim now is that THAT is where they are
+    consumed — not merely that somewhere does. A consumer anywhere else would
+    leave the invariant's own module free to spell the values itself.
     """
-    assert {"payment_rail", "payment_rail_environment"} \
-        <= set(registry.concepts_without_consumers)
+    tenant_model = "ubb-platform/apps/platform/tenants/models.py"
+    for name in ("payment_rail", "payment_rail_environment"):
+        consumers = {(c.surface, c.path)
+                     for c in registry.concepts[name].consumers}
+        assert ("backend", tenant_model) in consumers, name
+        assert name not in registry.concepts_without_consumers, name
 
 
 # ---------------------------------------------------------------------------
@@ -820,10 +828,14 @@ def test_every_unconsumed_concept_is_one_a_slice_is_coming_for(registry):
     at all; a concept whose declared consumers all serve it, and which a later
     ticket will teach to a third surface, is not an unconsumed concept. The
     registry entry names the owing ticket, which is where that claim lives.
+
+    **AND THE LAST PAIR LEFT IN SLICE 8 (R10-W3, G27)**, the commit that
+    built the payment-rail activation record and the rule that reads it.
+    The list is EMPTY, and the equality is kept rather than dropped: it is
+    still what catches a concept that quietly loses its consumer, and an
+    empty set is the only state in which that loss has nowhere to hide.
     """
-    assert set(registry.concepts_without_consumers) == {
-        "payment_rail", "payment_rail_environment",
-    }
+    assert set(registry.concepts_without_consumers) == set()
 
 
 # ---------------------------------------------------------------------------

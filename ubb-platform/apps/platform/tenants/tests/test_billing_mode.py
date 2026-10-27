@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 from apps.platform.tenants.models import Tenant
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTenantBillingMode:
     def test_default_is_external(self):

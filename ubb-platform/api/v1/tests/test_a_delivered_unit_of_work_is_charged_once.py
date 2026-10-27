@@ -75,6 +75,7 @@ from core.vocabulary import (
     TASK_OUTCOME_FAILED, TASK_STATUS_COMPLETED, TASK_TYPE_KIND_SUBTASK,
     TASK_TYPE_KIND_TASK,
 )
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 #: The kind of work this tenant sells at one agreed price, and the one it sells
 #: per event — so a case says which regime it is about by naming a word.
@@ -103,6 +104,9 @@ class ChargeTestBase:
     BILLING_MODE = "prepaid"
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         options = {"billing_mode": self.BILLING_MODE} if self.BILLING_MODE else {}
         self.tenant = Tenant.objects.create(
             name="T", products=self.PRODUCTS, **options)

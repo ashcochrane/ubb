@@ -46,6 +46,7 @@ from core.vocabulary import (
     SPEND_POOL_ENFORCE_MODE_BLOCKING, TASK_OUTCOME_DELIVERED,
     TASK_STATUS_KILLED, TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_USAGE_INGEST)
 from apps.platform.customers.models import ACCOUNT_TYPE_BUSINESS, ACCOUNT_TYPE_SEAT
+from apps.platform.tenants.tests._rails import RailActivated
 
 STOPS = "/api/v1/spend-controls/stops-and-breaches"
 UTILISATION = "/api/v1/spend-controls/utilisation-and-headroom"
@@ -152,7 +153,7 @@ class SpendControlReportsTestBase(TestCase):
         return business, seat
 
 
-class ACeilingEpisodeTest(SpendControlReportsTestBase):
+class ACeilingEpisodeTest(RailActivated, SpendControlReportsTestBase):
     def test_a_ceiling_row_is_explained_by_its_unit_and_the_events_after_the_stop(self):
         unit = self._unit(ceiling=10_000_000, task_type="pipeline")
         tip = self._record(bills=6_000_000, task_id=unit.id,
@@ -217,7 +218,7 @@ class ACeilingEpisodeTest(SpendControlReportsTestBase):
         self.assertEqual(self._rows(f"?control_family={CONTROL_FAMILY_ADMISSION_CONTROL}"), [])
 
 
-class AWalletPolicyEpisodeTest(SpendControlReportsTestBase):
+class AWalletPolicyEpisodeTest(RailActivated, SpendControlReportsTestBase):
     def test_a_hard_floor_row_itemises_its_events_and_a_soft_floor_row_is_a_marker(self):
         # 20M - 26M = -6M: past the hard floor's line (-5M) on the live lane;
         # the soft floor's only detector is the durable drawdown.
@@ -253,7 +254,7 @@ class AWalletPolicyEpisodeTest(SpendControlReportsTestBase):
         self.assertEqual(total["event_count"], 2)
 
 
-class ACustomerSpendPoolEpisodeTest(SpendControlReportsTestBase):
+class ACustomerSpendPoolEpisodeTest(RailActivated, SpendControlReportsTestBase):
     WALLET = 100_000_000
 
     def setUp(self):
@@ -346,7 +347,7 @@ class ACustomerSpendPoolEpisodeTest(SpendControlReportsTestBase):
                                     family=CONTROL_FAMILY_CUSTOMER_SPEND_POOL))
 
 
-class TheFiltersTest(SpendControlReportsTestBase):
+class TheFiltersTest(RailActivated, SpendControlReportsTestBase):
     def setUp(self):
         super().setUp()
         self.other = Customer.objects.create(tenant=self.tenant, external_id="c2")
@@ -427,7 +428,7 @@ class TheFiltersTest(SpendControlReportsTestBase):
         self.assertEqual(self._get(STOPS, f"?customer_id={uuid.uuid4()}").status_code, 404)
 
 
-class UtilisationAndHeadroomTest(SpendControlReportsTestBase):
+class UtilisationAndHeadroomTest(RailActivated, SpendControlReportsTestBase):
     def test_the_average_is_per_unit_then_across_every_unit(self):
         """TD claim 13: one chatty unit (ten events, 90% used) and one quiet
         unit (one event, 10% used) average 50 — each unit weighs one, so the
@@ -524,7 +525,7 @@ class UtilisationAndHeadroomTest(SpendControlReportsTestBase):
             UTILISATION, f"?customer_id={other.id}")["customer_spend_pool"])
 
 
-class TheTaskAnalyticsRowLostItsReachedCountTest(SpendControlReportsTestBase):
+class TheTaskAnalyticsRowLostItsReachedCountTest(RailActivated, SpendControlReportsTestBase):
     def test_claim_14_in_both_directions(self):
         unit = self._unit(ceiling=1_000_000, task_type="a")
         self._record(bills=1_000_000, task_id=unit.id, provider_cost_micros=2_000_000)

@@ -38,6 +38,7 @@ from apps.platform.work.services import TaskService
 from apps.platform.work import reasons
 from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import RailActivated
 
 FLOOR = 5_000_000       # hard floor: the stop line is -5M
 SOFT = 2_000_000        # soft floor: the wind-down line is -2M
@@ -126,7 +127,7 @@ class PastLimitPinTestBase(TestCase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
+class Pin2StopContextOnKilledTaskTest(RailActivated, PastLimitPinTestBase):
     def test_tipping_and_late_events_carry_schema_contexts(self, _mock):
         task = self._task(limit=10_000_000)
         # The kill executes on the recording transaction's on_commit (#112)
@@ -218,7 +219,7 @@ class Pin2StopContextOnKilledTaskTest(PastLimitPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin9StopsAndBreachesTest(PastLimitPinTestBase):
+class Pin9StopsAndBreachesTest(RailActivated, PastLimitPinTestBase):
     """Pin 9 on its successor read (#466). The end-to-end reconstruction — a
     ceiling row explained by its unit and the events after the stop, a
     hard-floor row itemising its events, a soft-floor marker row, the window,
@@ -293,7 +294,7 @@ class Pin9StopsAndBreachesTest(PastLimitPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin10NegativeSinceTest(PastLimitPinTestBase):
+class Pin10NegativeSinceTest(RailActivated, PastLimitPinTestBase):
     def _balance(self):
         resp = self.http_client.get(
             f"/api/v1/billing/customers/{self.customer.id}/balance",
@@ -349,7 +350,7 @@ class Pin10NegativeSinceTest(PastLimitPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class PastLimitQueryFiltersTest(PastLimitPinTestBase):
+class PastLimitQueryFiltersTest(RailActivated, PastLimitPinTestBase):
     def _seed(self):
         # One untagged event, one task-scope tagged event, two customer-scope
         # tagged events (the crossing + one after).

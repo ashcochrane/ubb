@@ -37,6 +37,7 @@ from apps.platform.events.schemas import (
     CustomerStopped, UsageRecorded, WalletPolicySoftFloorCleared,
     WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 HARD = 5_000_000  # hard floor: the stop line is -5_000_000
 SOFT = 2_000_000  # soft floor: the wind-down line is -2_000_000
@@ -74,6 +75,7 @@ def _hard_fired():
     return OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSoftFloorResolution:
     def test_customer_override_wins(self):
@@ -115,6 +117,9 @@ class TestSoftFloorResolution:
 @pytest.mark.django_db
 class TestPin12StartGate:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_crossing_refuses_a_new_top_level_task_start(self):
@@ -191,6 +196,9 @@ class TestPin12StartGate:
 @pytest.mark.django_db
 class TestPin12PairExactlyOnce:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_durable_crossing_emits_soft_floor_crossed_once(self):

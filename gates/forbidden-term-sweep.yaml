@@ -457,7 +457,10 @@ exclusions:
     # bills elsewhere is `external` (`tenants/0029`). It moves stored rows OFF
     # the retired spelling, so it must name it — the case this rule exists
     # for: a migration describes the database as it stood, and is never edited.
-    files: 293
+    # 293 → 294 in R10-W3 (G27): one migration — a money mode needs its
+    # payment rail activated first (`tenants/0030`). It names no retired
+    # word, so the number moved for the file existing.
+    files: 294
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

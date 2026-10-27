@@ -123,6 +123,7 @@ def _task(t, c, limit=None, total=0, status="active", parent=None,
         announce_outbox_id=stamp, **(stop or {}))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin1AmbientRollback:
     def test_orphan_flag_against_recovered_durable_truth_is_realigned(self):
@@ -167,6 +168,7 @@ class TestPin1AmbientRollback:
         assert _events(CustomerStopped.EVENT_TYPE).count() == 1  # no re-emission
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin2EmitFailureCompletes:
     @patch("apps.platform.events.tasks.process_single_event")
@@ -205,6 +207,7 @@ class TestPin2EmitFailureCompletes:
         assert fired.get().payload["re_announcement"] is False  # a fresh drive
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin3RemintUnannounced:
     def test_dead_lettered_stop_fired_is_reminted_with_the_same_episode(self):
@@ -293,6 +296,7 @@ class TestPin3RemintUnannounced:
         assert _events(CustomerStopped.EVENT_TYPE).count() == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin4BottomLineOnly:
     def test_recovery_delivers_the_current_bottom_line_only(self):
@@ -320,6 +324,7 @@ class TestPin4BottomLineOnly:
         assert fresh.payload["episode_seq"] == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin5SoftFamilyRidesTheSameRails:
     def test_dead_lettered_soft_crossed_remints(self):
@@ -353,6 +358,7 @@ class TestPin5SoftFamilyRidesTheSameRails:
         assert _events(WalletPolicySoftFloorCrossed.EVENT_TYPE).count() == 2
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin6TaskSweep:
     def test_crashed_kill_is_swept_and_announced_within_one_interval(self):
@@ -551,6 +557,7 @@ class TestPin6TaskSweep:
         assert not _events(TaskKilled.EVENT_TYPE).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTheRemintNamesTheStateTheRowCarries:
     """⚠ THE ONE PLACE *THE NAME IS THE STATE ENTERED* IS FALSIFIABLE (#420).
@@ -892,6 +899,7 @@ class TestTheRemintNamesTheStateTheRowCarries:
             assert the_name_already_sent not in names, name
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPatrolBeatAndCounters:
     def test_patrol_rides_the_hourly_reconcile_and_records_outcomes(self):

@@ -10,9 +10,10 @@ from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.tenant_billing.models import BillingTenantConfig
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class RiskServiceTest(TestCase):
+class RiskServiceTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
@@ -197,6 +198,7 @@ from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import LiveCounter
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRiskServiceCustomerSpendPool:
     def setup_method(self):

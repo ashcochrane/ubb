@@ -11,6 +11,7 @@ from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestBillingOutboxHandler:
     def test_wallet_deduction_handler(self):

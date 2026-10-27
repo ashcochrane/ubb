@@ -37,6 +37,7 @@ def _invoice_create_kwargs(mock_sc, rec):
     raise AssertionError("Invoice.create call not found")
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPostpaidAutomaticTax:
     def test_invoice_create_carries_automatic_tax_when_enabled(self):

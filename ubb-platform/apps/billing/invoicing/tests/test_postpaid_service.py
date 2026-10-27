@@ -65,6 +65,7 @@ class TestAggregate:
         assert dict(lines)["openai"] == 500_000 and dict(lines)["(other)"] == 300_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPush:
     def _setup(self, with_sub=False):

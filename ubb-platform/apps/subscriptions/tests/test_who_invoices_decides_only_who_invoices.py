@@ -47,6 +47,7 @@ from apps.subscriptions.tests._helpers import (
     MONTH_CLOSES, MONTH_OPENS, a_supplied_figure,
     a_tenant_billing_its_customers_elsewhere, a_tenant_ubb_invoices)
 from core.vocabulary import PRICING_STATUS_UNKNOWN
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: The whole of April, half-open — the fixture's own month, BOUND rather
 #: than restated, so a supplied figure written by its builder lands inside
@@ -79,7 +80,7 @@ def an_event_ubb_could_not_price(tenant, customer, *, provider, key="e1"):
         pricing_status=PRICING_STATUS_UNKNOWN, effective_at=MID)
 
 
-class WhoInvoicesDecidesOnlyWhoInvoicesTest(TestCase):
+class WhoInvoicesDecidesOnlyWhoInvoicesTest(RailActivated, TestCase):
     """The headline: two postures, one set of facts, one answer."""
 
     def test_the_same_postings_earn_the_same_margin_whoever_sends_the_invoice(self):

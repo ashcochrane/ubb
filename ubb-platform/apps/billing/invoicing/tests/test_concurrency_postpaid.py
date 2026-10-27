@@ -27,6 +27,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.billing.invoicing.models import CustomerUsageInvoice, PostpaidResidualLedger
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.platform.tenants.tests._rails import RailActivated
 
 SVC = "apps.billing.invoicing.services.postpaid_service.stripe"
 
@@ -136,7 +137,7 @@ def _run_workers(targets):
     return errors
 
 
-class ConcurrentSamePeriodPush(TransactionTestCase):
+class ConcurrentSamePeriodPush(RailActivated, TransactionTestCase):
     """Two workers push the SAME (owner, period): the F0.1 'pushing' claim makes
     the loser early-return — one row, one Stripe invoice, one set of line items,
     and a consistent ledger (one reservation, one deposit)."""
@@ -167,7 +168,7 @@ class ConcurrentSamePeriodPush(TransactionTestCase):
         self.assertEqual(ledger.balance_micros, 4_567)
 
 
-class ConcurrentAdjacentPeriodCarry(TransactionTestCase):
+class ConcurrentAdjacentPeriodCarry(RailActivated, TransactionTestCase):
     """Race B: two workers push ADJACENT periods of the same owner. The old
     chain read let both consume the same prior residual (9_000 twice -> 2 cents
     billed from 13_000 of value). The ledger's take-and-zero reservation makes
@@ -206,6 +207,7 @@ class ConcurrentAdjacentPeriodCarry(TransactionTestCase):
         self.assertIn(carries[0], (0, 1_000))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestOutOfOrderCarry:
     """Race A (sequential): P2 pushes BEFORE P1. The chain read would feed
@@ -253,6 +255,7 @@ class TestOutOfOrderCarry:
         assert cents * 10_000 + ledger().balance_micros == usage_in
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestCarrySurvivesRetryAcrossFetch:
     """The pin must survive a DB round-trip: a Phase-2 failure leaves the row
@@ -298,6 +301,7 @@ class TestCarrySurvivesRetryAcrossFetch:
         assert ledger.balance_micros == 7_777 + 2_567
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSkipPathsReserveNoCarry:
     """The reservation sits AFTER every skip check: a row that never pushes
@@ -383,6 +387,7 @@ class TestSkipPathsReserveNoCarry:
         assert PostpaidResidualLedger.objects.filter(customer=biz).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestMigrationBackfill:
     """0006 seeds each customer's ledger with the residual of their LATEST
@@ -424,7 +429,7 @@ class TestMigrationBackfill:
         assert PostpaidResidualLedger.objects.get(customer=pushed).balance_micros == 5_555
 
 
-class ConcurrentUnseededLedgerCreation(TransactionTestCase):
+class ConcurrentUnseededLedgerCreation(RailActivated, TransactionTestCase):
     """Race C: two workers push ADJACENT periods of the SAME customer with NO
     pre-seeded ledger (first-ever pushes). Both race to Phase-1 get_or_create
     on the PostpaidResidualLedger. The rendezvous is forced inside Phase 1 by

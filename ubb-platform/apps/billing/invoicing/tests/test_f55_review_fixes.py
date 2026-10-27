@@ -109,6 +109,7 @@ def _agg(total=1_005_000, lines=None):
 # Fix 1 — Phase-2a claim-loss abort
 # ===========================================================================
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 class TestPhase2aClaimLossAbort:
     """A stale worker whose Phase-2a guarded update matches 0 rows (another
@@ -291,6 +292,7 @@ class PostpaidConfigPartialUpdateTest(TestCase):
 # Fix 3 — --rebill-void refused for consolidated recs
 # ===========================================================================
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRebillVoidRefusedForConsolidated:
     """--rebill-void on a consolidated rec must raise CommandError with a clear

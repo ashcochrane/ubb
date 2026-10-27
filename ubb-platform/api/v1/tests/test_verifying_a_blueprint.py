@@ -40,6 +40,7 @@ from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
 from ._helpers import (
     A_JSON_SHAPE, EVENT, INPUT_TOKENS, KIND, PROVIDER, SEARCHES, SUBTASK_KIND,
     BlueprintRoutes)
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 #: A second published Event Type, declared and never selected.
 OTHER_EVENT = "image.render"
@@ -76,6 +77,9 @@ class VerifyRoutes(BlueprintRoutes):
     shared fixture's."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"],
             billing_mode="postpaid")

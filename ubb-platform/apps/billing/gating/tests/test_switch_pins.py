@@ -60,6 +60,7 @@ from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import drive_a_stop, stop_line
 from apps.platform.tenants.flags import live_counter_maintenance_on
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", maintenance=True, enf="enforcing"):
@@ -107,6 +108,7 @@ def _events(event_type):
     return OutboxEvent.objects.filter(event_type=event_type).order_by("created_at")
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestDefaultAndAccessor:
     def test_default_is_on_including_a_plain_new_tenant(self):
@@ -130,6 +132,9 @@ class TestPin9RecordingWritesNoRedisKeys:
     plumbing, not counter maintenance, and are out of scope.)"""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_prepaid_recording_writes_no_counter_and_no_flag(self):
@@ -178,6 +183,9 @@ class TestPin9AckContractIdentical:
     latency profile changes."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_ack_verdict_identical_on_vs_off(self):
@@ -225,6 +233,9 @@ class TestPin9AckContractIdentical:
 @pytest.mark.django_db
 class TestPin9CrossingSignalsAtDurableLaneLatency:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_durable_lane_detects_the_crossing_and_next_ack_shows_it(self):
@@ -250,6 +261,9 @@ class TestPin9CrossingSignalsAtDurableLaneLatency:
 @pytest.mark.django_db
 class TestPin9ToggleChoreography:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def _patch(self, t, value, django_capture_on_commit_callbacks):
@@ -304,6 +318,7 @@ class TestPin9ToggleChoreography:
         assert LiveCounter.read(c.id, t)["stop"] is True
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRepairInertWithLaneOff:
     def test_injected_deficit_never_candidates_with_maintenance_off(self):
@@ -324,6 +339,7 @@ class TestRepairInertWithLaneOff:
             owner_id=c.id, status=repair.STATUS_CANDIDATE).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPatrolUnaffectedByTheSwitch:
     """Patrol jobs 1–4 are the durable lane: with maintenance off they run
@@ -369,6 +385,9 @@ class TestOnToOffNeedsNoDrain:
     gap that can no longer open."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_counter_agrees_with_durable_truth_across_the_flip(self):
@@ -405,6 +424,9 @@ class TestLaneOffWritesNoCounterOnTheRecordingPath:
     rather than debiting it."""
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_postpaid_recording_births_no_livespend(self):

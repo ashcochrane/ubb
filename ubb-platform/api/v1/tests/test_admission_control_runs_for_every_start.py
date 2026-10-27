@@ -58,6 +58,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_STOPPED,
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     TASK_OUTCOME_DELIVERED)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: Two: enough that "the window is full" and "the first start" are
 #: different moments, small enough that a case fills it in two calls.
@@ -242,7 +243,7 @@ class ATenantThatDoesNotBillThroughUbbTest(AdmissionRouteCases, TestCase):
     — and, until #462, no bound and no standing check at the start."""
 
 
-class ATenantWithAWalletRegimeTest(AdmissionRouteCases, TestCase):
+class ATenantWithAWalletRegimeTest(RailActivated, AdmissionRouteCases, TestCase):
     """The same refusals at the same point for a tenant the money verdict
     also runs for. A suspension here is refused in the line's word — the
     wallet's, since no pool holds this customer — which is #459's answer
@@ -255,7 +256,7 @@ class ATenantWithAWalletRegimeTest(AdmissionRouteCases, TestCase):
     STANDING_WORD_FOR_A_SUSPENSION = AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
 
 
-class ATenantDeclaringNoBoundTest(TestCase):
+class ATenantDeclaringNoBoundTest(RailActivated, TestCase):
     """The default posture: NULL is no bound, so the bound is the tenant's
     declaration and a tenant that never made one is throttled by nothing —
     exactly as a tenant with no risk row was."""

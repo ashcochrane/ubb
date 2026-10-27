@@ -24,6 +24,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="postpaid", enf="enforcing"):
@@ -45,6 +46,9 @@ def _suspend_events(cid):
 @pytest.mark.django_db
 class TestPostpaidDurableSuspend:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_durable_suspend_at_the_crossing(self):
@@ -76,6 +80,9 @@ class TestPostpaidDurableSuspend:
 @pytest.mark.django_db
 class TestPrepaidSuspendReason:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_prepaid_floor_suspend_records_reason(self):
@@ -91,6 +98,9 @@ class TestPrepaidSuspendReason:
 @pytest.mark.django_db
 class TestUnsuspendOnRecovery:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_credit_recovery_unsuspends_money_reason(self):
@@ -122,6 +132,9 @@ class TestUnsuspendOnRecovery:
 @pytest.mark.django_db
 class TestP6bReviewFixes:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_postpaid_suspended_idle_owner_unsuspended_by_reconcile(self):

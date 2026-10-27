@@ -43,6 +43,7 @@ from apps.platform.grouping_fields.services import DimensionService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import Task, TaskType
 from core.vocabulary import TASK_STATUS_ACTIVE, TASK_TYPE_KIND_TASK
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 #: The two kinds of work this module declares, so a start may name one and a
 #: repeat may name the other.
@@ -106,6 +107,7 @@ class StartTestBase:
             content_type="application/json", **self._auth())
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAStartRegistersAUnitOfWork(StartTestBase):
     """The route exists, at the root, and answers with the thing it made."""
@@ -266,6 +268,9 @@ class TestABillingTenantRegistersOneToo(StartTestBase):
     BILLING_MODE = "prepaid"
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         super().setup_method()
         Wallet.objects.create(customer=self.customer,
                               balance_micros=100_000_000)
@@ -317,6 +322,9 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
     BILLING_MODE = "prepaid"
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         super().setup_method()
         self.wallet = Wallet.objects.create(customer=self.customer,
                                             balance_micros=100_000_000)
@@ -559,6 +567,7 @@ class TestARepeatThatContradictsIsRefused(StartTestBase):
                 "value", flat=True)) == recorded
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTheMoneyShapedHalfIsConditionedOnAWallet(StartTestBase):
     """Refused at once where there is a wallet to test; not run where there
@@ -641,6 +650,9 @@ class TestTodaysCreationPathIsGone(StartTestBase):
     BILLING_MODE = "prepaid"
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         super().setup_method()
         Wallet.objects.create(customer=self.customer,
                               balance_micros=100_000_000)

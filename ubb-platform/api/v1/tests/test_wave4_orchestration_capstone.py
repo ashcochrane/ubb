@@ -109,6 +109,7 @@ def _no_outbox_dispatch():
         yield
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_wave4_multi_axis_orchestration_one_bill_and_margin(
     live_server, _no_outbox_dispatch, settings

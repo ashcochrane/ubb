@@ -34,6 +34,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -49,6 +50,9 @@ def _stop_events(task_id):
 @pytest.mark.django_db
 class TestTaskLimitFanout:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_task_limit_crossing_emits_task_event_exactly_once(
@@ -124,6 +128,9 @@ class TestTaskLimitFanout:
 @pytest.mark.django_db
 class TestStartGateHonorsStopFlag:
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         cache.clear()
 
     def test_blocks_new_task_when_flag_set_enforcing(self):

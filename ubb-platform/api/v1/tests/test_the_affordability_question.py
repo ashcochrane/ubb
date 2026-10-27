@@ -41,6 +41,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     AFFORDABILITY_REASON_SOFT_FLOOR_REACHED,
     SPEND_POOL_ENFORCE_MODE_BLOCKING)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: A balance that affords a few whole-work starts with room to spare.
 BALANCE = 3 * THE_AGREED_PRICE
@@ -56,7 +57,7 @@ THE_ANSWER = {"allowed", "reason", "balance_micros", "available_micros",
               "min_balance_micros", "soft_min_balance_micros"}
 
 
-class TheAffordabilityQuestionTest(TestCase):
+class TheAffordabilityQuestionTest(RailActivated, TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()

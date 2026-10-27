@@ -10,6 +10,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.subscriptions.economics.services import MarginService
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.platform.tenants.tests._rails import RailActivated
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -17,6 +18,7 @@ PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_compute_business_sums_seats():
     t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="postpaid")
@@ -35,6 +37,7 @@ def test_compute_business_sums_seats():
     assert len(d["seats"]) == 2
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_compute_business_includes_business_own_subscription():
     # The Wave-4 subscription lives on the business itself (seats have no sub).
@@ -59,7 +62,7 @@ def test_compute_business_includes_business_own_subscription():
     assert d["totals"]["subscription_revenue_micros"] == 130_000_000
 
 
-class BusinessMarginEndpointTest(TestCase):
+class BusinessMarginEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http = Client()
         self.tenant = Tenant.objects.create(name="BizCo", products=["metering", "billing"],

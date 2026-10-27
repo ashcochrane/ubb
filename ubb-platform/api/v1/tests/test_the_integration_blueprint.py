@@ -2091,6 +2091,7 @@ class TestTheBuilderChangesNoConfiguration(_Routes):
 # Remediation
 # ---------------------------------------------------------------------------
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestARemediationRequestNamesTheFixAndCarriesNothingElse(_Routes):
     #: The kinds of object the console has no screen for, which is where a

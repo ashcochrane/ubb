@@ -63,6 +63,7 @@ def _no_outbox_dispatch():
         yield
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db(transaction=True)
 def test_wave3_selfserve_config_and_connect_via_sdk(live_server, _no_outbox_dispatch, settings):
     # Process-wide -> applies to the live-server thread too (same process).

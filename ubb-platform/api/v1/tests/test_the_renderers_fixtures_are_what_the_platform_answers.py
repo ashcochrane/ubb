@@ -515,6 +515,7 @@ READINESS = {
 _SHELL_PREFIX = "shell-"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 @pytest.mark.parametrize("name", sorted(BLUEPRINT_FIXTURES))
 def test_a_committed_blueprint_is_what_the_route_answers(name):
@@ -552,6 +553,7 @@ def test_every_branch_is_committed_for_both_targets():
     assert shell == sorted(python + ["unreadable-shape"])
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 def test_the_fixtures_cover_what_they_are_named_for():
     """Each fixture is committed for a branch, and this is the branch being
@@ -873,6 +875,7 @@ def _held_still(answer):
     return still(answer)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 @pytest.mark.parametrize("name", sorted(VERIFIED))
 def test_a_committed_verification_is_what_the_route_answers(name):

@@ -2,7 +2,11 @@ from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.models import (
+    PaymentRailNotActivated,
+    Tenant,
+    TenantApiKey,
+)
 from apps.platform.customers.models import Customer
 
 
@@ -32,12 +36,14 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--billing-mode",
-            default="postpaid",
+            default="external",
             choices=["external", "prepaid", "postpaid"],
             help=(
-                "Tenant billing mode (default: postpaid). "
-                "Use 'postpaid' or 'prepaid' to enable J2 subscription billing. "
-                "'external' = J1 cost-attribution only."
+                "Tenant billing mode (default: external = J1 cost-attribution "
+                "only). 'postpaid' or 'prepaid' enable J2 subscription billing, "
+                "and need the Stripe payment rail activated for the environment "
+                "first (ADR-0008 §6, recorded in the admin by its approver): "
+                "this command records no activation evidence of its own."
             ),
         )
         parser.add_argument(
@@ -56,6 +62,14 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        try:
+            self._seed(options)
+        except PaymentRailNotActivated as refused:
+            # G27: a seed is a door like any other, and it fabricates no
+            # activation to get through it (the owner's §0.4 E).
+            raise CommandError(refused.explanation)
+
+    def _seed(self, options):
         billing_mode = options["billing_mode"]
         # Products required for J2 (billing, incl. subscriptions as a billing
         # capability) when not external.

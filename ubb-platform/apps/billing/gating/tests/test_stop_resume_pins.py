@@ -78,6 +78,7 @@ def _break_redis(monkeypatch):
         "apps.billing.gating.services.live_counter._client", _boom)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin4DurableLane:
     def setup_method(self):
@@ -127,6 +128,7 @@ class TestPin4DurableLane:
         assert StopSignalState.objects.get(owner=c, reason=stop_line(t)).episode_seq == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin5ReconcileSetsAMissedStop:
     def setup_method(self):
@@ -160,6 +162,7 @@ class TestPin5ReconcileSetsAMissedStop:
         assert _fired().count() == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin6ResumeOncePerEpisode:
     def setup_method(self):
@@ -238,6 +241,7 @@ class TestPin6ResumeOncePerEpisode:
         assert [e.payload["episode_seq"] for e in _cleared()] == [1]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPin11EarlyWarningUnaffected:
     def setup_method(self):

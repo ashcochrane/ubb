@@ -342,13 +342,13 @@
     },
     "payment_rail": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "1 of 1 values",
       "kind": "closed",
       "representation": "none"
     },
     "payment_rail_environment": {
       "advertised": false,
-      "backend_serves": null,
+      "backend_serves": "2 of 2 values",
       "kind": "closed",
       "representation": "none"
     },

@@ -37,6 +37,7 @@ M = 1_000_000
 OPS = 200
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestGrantLedgerInvariantFuzz:
     def _check(self, w, i, ops_log):

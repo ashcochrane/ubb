@@ -51,6 +51,7 @@ from core.vocabulary import (
     PRICING_MODE_FIXED, SPEND_POOL_ENFORCE_MODE_BLOCKING,
     TASK_OUTCOME_DELIVERED, TASK_STATUS_KILLED, TASK_TYPE_KIND_TASK,
     TRIGGER_SOURCE_USAGE_INGEST)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: The ceiling assessment beside the stop facts — also the original's on a
 #: replay (ADR-0019 §5).
@@ -280,17 +281,17 @@ class AReplayAnswersWhatTheAcknowledgementSaid(MovesTheLiveFactsOn):
                               original)
 
 
-class AReplayOnTheSingleRouteTest(AReplayAnswersWhatTheAcknowledgementSaid,
+class AReplayOnTheSingleRouteTest(RailActivated, AReplayAnswersWhatTheAcknowledgementSaid,
                                   ThroughTheSingleRoute, PoolTestBase):
     pass
 
 
-class AReplayOnABatchItemTest(AReplayAnswersWhatTheAcknowledgementSaid,
+class AReplayOnABatchItemTest(RailActivated, AReplayAnswersWhatTheAcknowledgementSaid,
                               ThroughABatchItem, PoolTestBase):
     pass
 
 
-class AKeyReplaysAcrossTheTwoRoutesTest(MovesTheLiveFactsOn, PoolTestBase):
+class AKeyReplaysAcrossTheTwoRoutesTest(RailActivated, MovesTheLiveFactsOn, PoolTestBase):
     """4. A key first recorded on one route replays identically on the other.
     The single route's answer and a batch item's are one acknowledgement, so
     each case names both routes rather than binding one."""
@@ -319,7 +320,7 @@ class AKeyReplaysAcrossTheTwoRoutesTest(MovesTheLiveFactsOn, PoolTestBase):
         self._pins(self._record, self._one_batch_item)
 
 
-class TheStopAcknowledgementIsKeptOnceTest(PoolTestBase):
+class TheStopAcknowledgementIsKeptOnceTest(RailActivated, PoolTestBase):
     """The record's own rules: one per recorded result, written with its
     posting, insert-only at the database, and never reconstructed."""
 

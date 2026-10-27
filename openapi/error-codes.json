@@ -100,6 +100,10 @@
       "status": 404,
       "title": "Not found"
     },
+    "payment_rail_not_activated": {
+      "status": 409,
+      "title": "The payment rail is not activated for this environment"
+    },
     "pricing_mode_frozen": {
       "status": 409,
       "title": "How a kind of work is sold cannot change"

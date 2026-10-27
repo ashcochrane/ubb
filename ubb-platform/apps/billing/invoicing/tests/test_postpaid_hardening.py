@@ -50,6 +50,7 @@ def _stripe_mocks(invoice_id="inv_1"):
     )
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestStandaloneAlways:
     def test_usage_always_standalone_even_with_subscription(self):
@@ -81,6 +82,7 @@ class TestStandaloneAlways:
         assert rec.stripe_invoice_id == "inv_1"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestItemsPinnedToDraft:
     def test_usage_items_pinned_to_the_draft_invoice(self):
@@ -132,6 +134,7 @@ class TestItemsPinnedToDraft:
         assert rec.residual_micros == 5_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSubcentResidual:
     def test_subcent_floors_and_carries_residual(self):

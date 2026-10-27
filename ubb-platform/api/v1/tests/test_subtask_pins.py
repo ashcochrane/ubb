@@ -40,6 +40,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
     TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED, TASK_STATUS_COMPLETED,
     TASK_STATUS_KILLED)
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class SubtaskPinMixin:
@@ -123,7 +124,7 @@ class SubtaskPinTestBase(SubtaskPinMixin, TestCase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
+class Pin1SubtaskTippingEventTest(RailActivated, SubtaskPinTestBase):
     def test_subtask_tipping_event_lands_bills_and_kills_alone(self, _mock):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
@@ -190,7 +191,7 @@ class Pin1SubtaskTippingEventTest(SubtaskPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin13ContainmentTest(SubtaskPinTestBase):
+class Pin13ContainmentTest(RailActivated, SubtaskPinTestBase):
     def test_subtask_killed_alone_parent_keeps_running_and_counting(self, _mock):
         parent = self._task(limit=100_000_000)
         sub = self._task(limit=5_000_000, parent=parent)
@@ -272,7 +273,7 @@ class Pin13ContainmentTest(SubtaskPinTestBase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
+class Pin13BatchParityTest(RailActivated, SubtaskPinMixin, TransactionTestCase):
     """TransactionTestCase (#112): the mid-batch semantics under test — the
     tipping item's kill LANDS before the next item runs, so that item gets
     task_not_active — exist only when each item's transaction really commits
@@ -308,7 +309,7 @@ class Pin13BatchParityTest(SubtaskPinMixin, TransactionTestCase):
 
 
 @patch("apps.platform.events.tasks.process_single_event")
-class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
+class Pin14SubtaskDenominationTest(RailActivated, SubtaskPinTestBase):
     def test_only_the_provider_total_races_a_subtask_limit(self, _mock):
         parent = self._task()
         sub = self._task(limit=5_000_000, parent=parent)
@@ -340,7 +341,7 @@ class Pin14SubtaskDenominationTest(SubtaskPinTestBase):
         self.assertEqual(sub.status, TASK_STATUS_KILLED)
 
 
-class StartGateSubtaskTest(SubtaskPinTestBase):
+class StartGateSubtaskTest(RailActivated, SubtaskPinTestBase):
     def test_register_subtask_under_active_parent(self):
         parent = self._task()
         body = self._started(parent_task_id=str(parent.id))
@@ -418,7 +419,7 @@ class StartGateSubtaskTest(SubtaskPinTestBase):
         self.assertEqual(sub.task_cogs_ceiling_micros, 2_000_000)
 
 
-class CloseCascadeTest(SubtaskPinTestBase):
+class CloseCascadeTest(RailActivated, SubtaskPinTestBase):
     def test_closing_a_parent_withdraws_active_subtasks(self):
         # One call still cleans the tree up; what changed is what the tree
         # then SAYS (#408). The close declared the delivery of the parent, so

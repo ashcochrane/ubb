@@ -105,6 +105,7 @@ def _ev(t, c, key, billed, **kw):
         provider_cost_micros=1, billed_cost_micros=billed, **kw)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestBusinessBranchParity:
     def test_business_three_seats_byte_identical(self):
@@ -140,6 +141,7 @@ class TestBusinessBranchParity:
         assert PostpaidUsageService.aggregate_lines(t, biz, PS, PE) == (0, [])
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestGroupByBranchParity:
     def test_a_declared_fields_many_values_are_byte_identical(self):
@@ -195,6 +197,7 @@ class TestGroupByBranchParity:
         assert sum(a for _, a in new_lines) == new_total == 1_200_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestResidualCarryAcrossPeriods:
     def test_subcent_residual_carries_unchanged(self):

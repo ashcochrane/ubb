@@ -111,6 +111,8 @@ const CODE_MESSAGES: Record<string, string> = {
   validation_error: "Some fields are invalid.",
   invalid_config: "This configuration is invalid.",
   unsupported_currency: "UBB accepts US dollars only.",
+  payment_rail_not_activated:
+    "Billing through UBB isn't activated for this environment yet — bill your customers elsewhere until it is.",
   stripe_tax_not_active:
     "Stripe Tax isn't active on the connected Stripe account.",
   insufficient_balance: "The balance is too low for this operation.",

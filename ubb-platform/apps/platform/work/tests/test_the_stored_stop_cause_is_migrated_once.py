@@ -33,6 +33,7 @@ from apps.platform.work.models import Task
 from apps.platform.work.services import STOP_CAUSE_KEY, TaskService
 from core.vocabulary import (
     CUSTOMER_BILLING_MODE_POSTPAID, CUSTOMER_BILLING_MODE_PREPAID)
+from apps.platform.tenants.tests._rails import RailActivated
 
 MIGRATION = importlib.import_module(
     "apps.platform.work.migrations.0026_a_stop_says_which_bound_was_reached")
@@ -164,7 +165,7 @@ class MigrationTestBase(TestCase):
         MIGRATION._put_the_stored_cause_back(global_apps, None)
 
 
-class AUnitRowsCauseMovesKeyAndValueTest(MigrationTestBase):
+class AUnitRowsCauseMovesKeyAndValueTest(RailActivated, MigrationTestBase):
     def test_the_customer_wide_word_splits_by_the_owners_tenant_mode(self):
         """The acceptance criterion, on real rows: one prepaid-owned and one
         postpaid-owned row under the retired word read `hard_floor` and
@@ -243,7 +244,7 @@ class AUnitRowsCauseMovesKeyAndValueTest(MigrationTestBase):
 # 3. Outbox payloads, under both keys
 # ---------------------------------------------------------------------------
 
-class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
+class AnOutboxPayloadsCauseIsRewrittenTest(RailActivated, MigrationTestBase):
     def _row(self, tenant, event_type, **payload):
         return OutboxEvent.objects.create(
             event_type=event_type, tenant_id=tenant.id,
@@ -355,7 +356,7 @@ class AnOutboxPayloadsCauseIsRewrittenTest(MigrationTestBase):
 # 4. The suspension column
 # ---------------------------------------------------------------------------
 
-class TheSuspensionColumnTakesTheStopWordTest(MigrationTestBase):
+class TheSuspensionColumnTakesTheStopWordTest(RailActivated, MigrationTestBase):
     def test_both_monetary_words_become_the_stop_that_opened_the_episode(self):
         self.prepaid_customer.status = "suspended"
         self.prepaid_customer.suspension_reason = a_retired_spelling_of(
@@ -386,7 +387,7 @@ class TheSuspensionColumnTakesTheStopWordTest(MigrationTestBase):
 # 5. After it, no retired spelling anywhere (TD claim 11)
 # ---------------------------------------------------------------------------
 
-class NoStoredRowHoldsARetiredSpellingTest(MigrationTestBase):
+class NoStoredRowHoldsARetiredSpellingTest(RailActivated, MigrationTestBase):
     def test_a_query_for_any_retired_spelling_over_every_store_returns_nothing(
             self):
         retired = sorted(MIGRATION.RETIRED)
@@ -426,7 +427,7 @@ class NoStoredRowHoldsARetiredSpellingTest(MigrationTestBase):
 # 6. The reverse, exact where it can be and lossy where it says
 # ---------------------------------------------------------------------------
 
-class TheReverseTest(MigrationTestBase):
+class TheReverseTest(RailActivated, MigrationTestBase):
     def test_a_unit_row_round_trips_at_either_altitude(self):
         whole_spelling, contained_spelling = ceiling_spellings()
         whole = self._unit(self.prepaid, self.prepaid_customer,

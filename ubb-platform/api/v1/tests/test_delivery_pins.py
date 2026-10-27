@@ -21,9 +21,10 @@ from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import RailActivated
 
 
-class BrokerDownAtAcceptTest(TestCase):
+class BrokerDownAtAcceptTest(RailActivated, TestCase):
     """Prepaid + enforcing tenant, one customer with a funded wallet, Redis
     DB-15 wiped between tests (``cache.clear()`` FLUSHDBs the dedicated test
     db — the idiom in apps/billing/gating/tests/test_live_counter.py).

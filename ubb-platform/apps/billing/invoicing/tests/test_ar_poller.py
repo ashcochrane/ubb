@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 def _stripe_invoice(id, status, *, hosted=None, pdf=None, subscription=None):
@@ -40,6 +41,7 @@ def _invoice_list(*invoices):
     return listing
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestArPoller:
     PS = datetime.date(2026, 6, 1)
@@ -139,7 +141,7 @@ class TestArPoller:
         mock_list.assert_not_called()
 
 
-class RepairTransitionParityTest(TestCase):
+class RepairTransitionParityTest(RailActivated, TestCase):
     """The backstop repairs along the SAME Stripe-legal transition table as the
     webhook fast path: uncollectible -> paid is a legal repair (with money
     fields); a genuinely illegal move (paid -> open) is loud-logged, never

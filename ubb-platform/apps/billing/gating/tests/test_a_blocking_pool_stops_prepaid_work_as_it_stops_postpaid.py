@@ -70,6 +70,7 @@ from core.vocabulary import (
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_BLOCKING,
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_KILLED,
     TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_POOL_CROSSING)
+from apps.platform.tenants.tests._rails import RailActivated
 
 #: Where the outbox doorbell rings; patched so executed on-commit callbacks
 #: never reach Celery (the seam test's own arrangement).
@@ -309,11 +310,11 @@ class ABlockingPoolStopsWorkMidFlight:
         self.assertEqual(self._start().status_code, 200)
 
 
-class ABlockingPoolStopsPrepaidWorkTest(ABlockingPoolStopsWorkMidFlight, PoolTestBase):
+class ABlockingPoolStopsPrepaidWorkTest(RailActivated, ABlockingPoolStopsWorkMidFlight, PoolTestBase):
     MODE = CUSTOMER_BILLING_MODE_PREPAID
 
 
-class ABlockingPoolStopsPostpaidWorkTest(ABlockingPoolStopsWorkMidFlight, PoolTestBase):
+class ABlockingPoolStopsPostpaidWorkTest(RailActivated, ABlockingPoolStopsWorkMidFlight, PoolTestBase):
     """The other posture, owed by name: the shape above, for the lane the old
     code already served."""
     MODE = CUSTOMER_BILLING_MODE_POSTPAID
@@ -323,7 +324,7 @@ class ABlockingPoolStopsPostpaidWorkTest(ABlockingPoolStopsWorkMidFlight, PoolTe
 # Claim 5 — two declared levels
 # ---------------------------------------------------------------------------
 
-class TwoDeclaredLevelsTest(PoolTestBase):
+class TwoDeclaredLevelsTest(RailActivated, PoolTestBase):
     """A pooled business and its seats: a seat's charge counts toward the
     seat's pool and the business's; the tenant default is a seat's."""
 
@@ -467,7 +468,7 @@ class TwoDeclaredLevelsTest(PoolTestBase):
 # Claim 4 — the Charge is counted exactly once; unknown revenue is excluded
 # ---------------------------------------------------------------------------
 
-class TheChargeIsCountedOnceTest(PoolTestBase):
+class TheChargeIsCountedOnceTest(RailActivated, PoolTestBase):
     def setUp(self):
         super().setUp()
         TaskType.objects.create(tenant=self.tenant, key=SOLD_WHOLE,
@@ -550,7 +551,7 @@ class TheChargeIsCountedOnceTest(PoolTestBase):
 # Claim 6 — the pool and the floor at once, end to end
 # ---------------------------------------------------------------------------
 
-class TwoLinesAtOnceTest(PoolTestBase):
+class TwoLinesAtOnceTest(RailActivated, PoolTestBase):
     """A prepaid customer whose one report crosses both its pool and its
     wallet floor. The wallet holds less than the pool allows, so the same
     charge tips both lines."""

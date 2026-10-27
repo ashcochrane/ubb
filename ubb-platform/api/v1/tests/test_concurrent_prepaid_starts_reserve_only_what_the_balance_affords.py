@@ -28,11 +28,12 @@ from api.v1.tests._helpers import THE_AGREED_PRICE, a_tenant_selling_whole_work
 from apps.billing.wallets.models import Wallet, WalletReservation
 from apps.platform.work.models import Task
 from core.vocabulary import AFFORDABILITY_REASON_INSUFFICIENT_FUNDS
+from apps.platform.tenants.tests._rails import RailActivated
 
 WORKERS = 3
 
 
-class ConcurrentPrepaidStartsTest(TransactionTestCase):
+class ConcurrentPrepaidStartsTest(RailActivated, TransactionTestCase):
 
     def _a_customer_whose_balance_affords(self, how_many):
         # The floor is zero, so "affords N" is N prices exactly: the N+1th

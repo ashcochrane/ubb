@@ -67,6 +67,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.reasons import HARD_FLOOR
+from apps.platform.tenants.tests._rails import RailActivated
 
 WALLET_MICROS = 100_000_000  # $100 of real, unspent money
 BILLED_MICROS = 30_000_000  # $30 the tenant is charged for the failed request
@@ -90,7 +91,7 @@ def _correlation_values():
             if field.is_required() and field.annotation is str}
 
 
-class RecordingDriftPinTest(TestCase):
+class RecordingDriftPinTest(RailActivated, TestCase):
     """The tenant is prepaid and enforcing, so the fast lane is on and the
     live balance counter is the thing a stop verdict is read from."""
 

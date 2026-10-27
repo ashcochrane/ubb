@@ -59,12 +59,14 @@ def owner(tenant):
     return c
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_prepaid_balance_key_format(tenant, owner):
     LiveCounter.debit(owner.id, tenant, 3_000_000)
     assert _raw().get(f"ubb:livebal:{owner.id}") == b"17000000"
     assert Door.balance(owner.id) == 17_000_000  # the door reads the same key
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_postpaid_livespend_key_format():
     t = Tenant.objects.create(name="TP", products=["metering", "billing"],
                               billing_mode="postpaid",
@@ -75,6 +77,7 @@ def test_postpaid_livespend_key_format():
     assert Door.spend(c.id) == 4_000_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_stop_flag_key_format(tenant, owner):
     """The key, and since #569 the value: the stop's word AND its episode's
     opening facts, as one compact JSON document — so a reader can never see
@@ -92,11 +95,13 @@ def test_stop_flag_key_format(tenant, owner):
         "stop_measured_micros": None}
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_stop_channel_format(owner):
     # The one PUBLIC key-shaped name — subscribers live outside the module.
     assert stop_channel(owner.id) == f"ubb:stopchan:{owner.id}"
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_spend_pool_key_format(tenant):
     c = Customer.objects.create(tenant=tenant, external_id="pin-seat")
     Door.set_spend_pool(c.id, 111)
@@ -105,6 +110,7 @@ def test_spend_pool_key_format(tenant):
     assert Door.spend_pool(c.id) == 120
 
 
+@pytest.mark.usefixtures("rail_activated")
 def test_counter_keys_carry_the_module_ttl(tenant, owner):
     # TTL discipline: every write refreshes the ~62-day expiry (a plain
     # positive TTL is asserted, not the exact constant — the pin is that keys

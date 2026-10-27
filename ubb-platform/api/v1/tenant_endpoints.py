@@ -110,7 +110,7 @@ def list_api_keys(request, cursor: str = None, limit: int = 50):
                 cursor, limit, serialize=_api_key_out)
 
 
-@tenant_router.post("/api-keys", response={201: dict, 422: ProblemOut})
+@tenant_router.post("/api-keys", response={201: dict, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("api_key.created")
 def create_api_key(request, payload: ApiKeyCreateIn):
@@ -121,6 +121,9 @@ def create_api_key(request, payload: ApiKeyCreateIn):
     ubb_test_ key lives ON the sandbox tenant, so it appears in the sandbox's
     key list and is managed with a sandbox key; response tenant_id tells you
     where it landed. is_test=False on a sandbox key is a mode mismatch (422).
+    A test key that would provision the sandbox of a `prepaid`/`postpaid`
+    tenant needs the payment rail activated in the `test` environment, or is
+    refused 409 `payment_rail_not_activated` (G27).
     """
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import TenantApiKeyCreated
@@ -407,7 +410,7 @@ def remove_member(request, member_id: UUID):
 # ---- Sandbox self-serve (F4.4) ----
 
 
-@tenant_router.post("/sandbox", response={200: dict, 403: ProblemOut})
+@tenant_router.post("/sandbox", response={200: dict, 403: ProblemOut, 409: ProblemOut})
 @role_floor(ADMIN)
 @records_audit("sandbox.created")
 def create_sandbox(request):
@@ -415,7 +418,10 @@ def create_sandbox(request):
 
     The RAW key is returned exactly once per call (each POST mints a fresh
     key — that is also the rotation path). 403 from a sandbox key: sandboxes
-    cannot nest.
+    cannot nest. 409 `payment_rail_not_activated` when the tenant is
+    `prepaid`/`postpaid` and the payment rail has no enabled activation in
+    the `test` environment a sandbox runs in: the sandbox is not created,
+    and never created `external` instead (G27).
     """
     tenant = request.auth.tenant
     if tenant.is_sandbox:
@@ -495,6 +501,7 @@ def get_tenant_config(request):
 @records_audit("tenant.config_changed")
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
+    from apps.platform.tenants.models import PaymentRailNotActivated
     from core.currency_policy import UnsupportedCurrency, admit_currency
     t = request.auth.tenant
     new_currency = None
@@ -606,6 +613,11 @@ def update_tenant_config(request, payload: TenantConfigIn):
         t.live_counter_maintenance_enabled = payload.live_counter_maintenance_enabled
     try:
         t.save()
+    except PaymentRailNotActivated:
+        # G27 is answered by name (`problems.py`), never folded into
+        # `invalid_config`: the request was well formed, and the mode is
+        # not open yet.
+        raise
     except ValidationError as e:
         msg = "; ".join(
             f"{k}: {' '.join(str(x) for x in v)}" for k, v in e.message_dict.items()

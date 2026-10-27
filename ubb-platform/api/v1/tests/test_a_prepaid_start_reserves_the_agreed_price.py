@@ -54,6 +54,7 @@ from apps.platform.work.models import Task
 from core.vocabulary import (
     AFFORDABILITY_REASON_INSUFFICIENT_FUNDS,
     AFFORDABILITY_REASON_SOFT_FLOOR_REACHED, TASK_OUTCOME_DELIVERED)
+from apps.platform.tenants.tests._rails import activate_the_rail
 
 #: A balance that affords exactly two of the agreed price with something left
 #: over — so a third start is the one that would leave the available amount
@@ -70,6 +71,9 @@ class ReservationTestBase:
     ENFORCEMENT_MODE = None
 
     def setup_method(self):
+        # A money-mode tenant needs the payment rail activated first (G27);
+        # asked for here, by name, before the tenant is built.
+        activate_the_rail()
         self.fixture = a_tenant_selling_whole_work(
             products=self.PRODUCTS, billing_mode=self.BILLING_MODE,
             enforcement_mode=self.ENFORCEMENT_MODE,

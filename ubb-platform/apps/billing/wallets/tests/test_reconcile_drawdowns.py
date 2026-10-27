@@ -19,6 +19,7 @@ def _old_event(t, c, owner_id, billed, key_suffix, *, effective_at=None):
     return e
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestReconcileDrawdowns:
     def test_repairs_missing_debit_exactly_once(self):

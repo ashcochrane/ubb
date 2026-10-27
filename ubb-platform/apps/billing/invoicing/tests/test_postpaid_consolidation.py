@@ -156,6 +156,7 @@ def _subscription_targets(mock_list):
     return [call for call in mock_list.call_args_list if "subscription" in call.kwargs]
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestHappyPath:
     def test_usage_rides_the_renewal_draft(self):
@@ -191,6 +192,7 @@ class TestHappyPath:
         assert rec.line_items.count() == 2
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestStandaloneFallback:
     def test_window_missed_old_draft_falls_back_with_log(self, caplog):
@@ -271,6 +273,7 @@ class TestStandaloneFallback:
         assert m.create.call_count == 0
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestEligibilityPort:
     def test_no_subscription_returns_none(self):
@@ -309,6 +312,7 @@ class TestEligibilityPort:
         assert get_active_subscription_for_consolidation(t, c2) is None
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestSafetyAddendumResume:
     def test_resume_draft_still_open_creates_only_missing_items_no_finalize(self):
@@ -452,6 +456,7 @@ class TestSafetyAddendumResume:
         assert m.finalize.call_args.kwargs["invoice"] == "in_rem"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestRebillVoidInterplay:
     def test_rebill_void_refused_for_consolidated_rec(self):
@@ -492,6 +497,7 @@ class TestRebillVoidInterplay:
         assert rec.rebill_generation == 0  # unchanged
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestConsolidatedAr:
     """invoice.paid for the SUBSCRIPTION invoice must mark BOTH the
@@ -578,6 +584,7 @@ class TestConsolidatedAr:
         assert rec.hosted_invoice_url == "https://pay/r"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestGen1ConsolidatedComposedKey:
     def test_gen1_consolidated_push_key_namespace(self):
@@ -644,6 +651,7 @@ def test_close_beat_lands_inside_the_renewal_draft_window():
     assert sched == crontab(minute=5, hour=0, day_of_month=1)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestTheUsageInvoiceRowIsTheCurrencysRecord:
     """#565: the push takes its currency from the usage invoice row and refuses
