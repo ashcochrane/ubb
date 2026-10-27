@@ -114,7 +114,7 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_end: "2026-07-31",
     status: "open",
     total_billed_cost_micros: 1_412_380_000,
-    event_count: 918_240,
+    recorded_events: 918_240,
     platform_fee_micros: 70_620_000,
   },
   {
@@ -123,7 +123,7 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_end: "2026-06-30",
     status: "invoiced",
     total_billed_cost_micros: 1_842_550_000,
-    event_count: 1_204_118,
+    recorded_events: 1_204_118,
     platform_fee_micros: 92_130_000,
   },
   {
@@ -132,7 +132,7 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_end: "2026-05-31",
     status: "invoiced",
     total_billed_cost_micros: 1_260_040_000,
-    event_count: 861_772,
+    recorded_events: 861_772,
     platform_fee_micros: 63_000_000,
   },
   {
@@ -141,7 +141,7 @@ export const BILLING_PERIODS: BillingPeriod[] = [
     period_end: "2026-04-30",
     status: "closed",
     total_billed_cost_micros: 604_910_000,
-    event_count: 402_331,
+    recorded_events: 402_331,
     platform_fee_micros: 30_250_000,
   },
 ];

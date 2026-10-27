@@ -22,6 +22,7 @@ The owner's rulings are the shape:
   the API answers by name, never with a raw database error.
 """
 import json
+from unittest.mock import patch
 
 from django import forms
 from django.contrib.auth import get_user_model
@@ -31,9 +32,13 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.billing.topups.models import TopUpAttempt
+from apps.billing.wallets.models import Wallet
+from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import (
     MONEY_MODES,
     PaymentRailActivation,
+    PaymentRailClosed,
     Tenant,
     TenantApiKey,
 )
@@ -323,6 +328,142 @@ class ATenantAlreadyInAMoneyModeIsLeftAloneTest(_TenantsTestCase):
                                {"billing_mode": CUSTOMER_BILLING_MODE_EXTERNAL})
 
         self.assertEqual(answered.status_code, 200, answered.content)
+
+
+class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
+    """The flag's ONE operational meaning (ADR-0008 §6: it "technically prevents
+    premature use"; the owner's ruling 2: disabling it "may stop new activation
+    or use of the rail"; the owner's review of #619).
+
+    A tenant already in a money mode, on an activated rail, and then the
+    operator turns the flag off: the tenant keeps its mode — nothing scans it —
+    but every NEW customer-money operation is refused by name, before anything
+    reaches Stripe. Turning the flag back on is the control.
+    """
+
+    STRIPE_CALL = "apps.billing.connectors.stripe.stripe_api.stripe_call"
+
+    def setUp(self):
+        super().setUp()
+        self.activation = _activate(PAYMENT_RAIL_ENVIRONMENT_LIVE)
+        self.tenant, self.raw_key = self._a_money_tenant()
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            stripe_connected_account_id="acct_rail", charges_enabled=True)
+        self.tenant.refresh_from_db()
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c-rail", stripe_customer_id="cus_rail")
+        Wallet.objects.create(customer=self.customer, balance_micros=0)
+        self._close_the_rail()
+
+    def _close_the_rail(self):
+        self.activation.enabled = False
+        self.activation.save()
+
+    def _top_up(self, key="tp-rail-1"):
+        return self._post(self.raw_key,
+                          f"/api/v1/billing/customers/{self.customer.id}/top-up",
+                          {"amount_micros": 20_000_000, "idempotency_key": key,
+                           "success_url": "https://example.com/ok",
+                           "cancel_url": "https://example.com/no"})
+
+    def test_the_tenant_keeps_its_mode(self):
+        """Nothing scans a dependent tenant: closing the rail moves no mode."""
+        self.tenant.refresh_from_db()
+        self.assertEqual(self.tenant.billing_mode, CUSTOMER_BILLING_MODE_PREPAID)
+
+    def test_a_top_up_checkout_is_refused_by_name_before_stripe(self):
+        with patch(self.STRIPE_CALL) as stripe_call:
+            answered = self._top_up()
+
+        self.assertRefusedByName(answered, PAYMENT_RAIL_ENVIRONMENT_LIVE)
+        stripe_call.assert_not_called()
+
+    def test_an_auto_top_up_charge_is_refused_before_stripe(self):
+        from apps.billing.connectors.stripe.stripe_api import (
+            charge_saved_payment_method)
+        attempt = TopUpAttempt.objects.create(
+            customer=self.customer, billing_owner_id=self.customer.id,
+            amount_micros=20_000_000, trigger="auto_topup", status="pending")
+
+        with patch(self.STRIPE_CALL) as stripe_call:
+            with self.assertRaisesRegex(PaymentRailClosed, "'live' environment"):
+                charge_saved_payment_method(self.customer, 20_000_000, attempt)
+
+        stripe_call.assert_not_called()
+
+    def test_a_usage_invoice_is_held_recoverably_and_pushes_once_the_rail_reopens(self):
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.billing.invoicing.services.postpaid_service import (
+            PostpaidUsageService)
+        from apps.billing.invoicing.tasks import _recover_skipped_usage_invoices
+        _activate_postpaid = self._patch(
+            self.raw_key, {"billing_mode": CUSTOMER_BILLING_MODE_POSTPAID})
+        # Postpaid is ENTERED here, so the rail must be open for it; then closed.
+        self.assertRefusedByName(_activate_postpaid, PAYMENT_RAIL_ENVIRONMENT_LIVE)
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            billing_mode=CUSTOMER_BILLING_MODE_EXTERNAL)
+        self.activation.enabled = True
+        self.activation.save()
+        Tenant.objects.filter(pk=self.tenant.pk).update(
+            billing_mode=CUSTOMER_BILLING_MODE_POSTPAID)
+        self._close_the_rail()
+        self.tenant.refresh_from_db()
+        period = (timezone.now().date().replace(day=1),
+                  timezone.now().date().replace(day=28))
+
+        with patch.object(PostpaidUsageService, "aggregate_lines",
+                          return_value=(5_000_000, [("Usage", 5_000_000)])), \
+                patch("apps.billing.invoicing.services.postpaid_service.stripe_call") \
+                as stripe_call:
+            row = PostpaidUsageService.push_customer_period(
+                self.tenant, self.customer, *period)
+
+        self.assertEqual((row.status, row.skip_reason), ("skipped", "payment_rail_closed"))
+        stripe_call.assert_not_called()
+
+        _recover_skipped_usage_invoices(CustomerUsageInvoice)
+        row.refresh_from_db()
+        self.assertEqual(row.status, "skipped")  # still closed: stays held
+
+        self.activation.enabled = True
+        self.activation.save()
+        _recover_skipped_usage_invoices(CustomerUsageInvoice)
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.skip_reason), ("pending", ""))
+
+    def test_resuming_a_subscription_is_refused_by_name(self):
+        with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
+            answered = self._post(
+                self.raw_key,
+                f"/api/v1/subscriptions/customers/{self.customer.external_id}"
+                f"/subscription/resume")
+
+        self.assertRefusedByName(answered, PAYMENT_RAIL_ENVIRONMENT_LIVE)
+        stripe_call.assert_not_called()
+
+    def test_starting_a_subscription_is_refused_before_stripe(self):
+        from apps.platform.plans.tests._helpers import a_plan
+        from apps.subscriptions.orchestration.service import SubscriptionOrchestrator
+        plan = a_plan(tenant=self.tenant, key="pro", access_fee_micros=20_000_000)
+
+        with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:
+            with self.assertRaises(PaymentRailClosed):
+                SubscriptionOrchestrator.subscribe(self.customer, plan, 1)
+
+        stripe_call.assert_not_called()
+
+    def test_reopening_the_rail_lets_new_money_start_again(self):
+        """THE CONTROL: the same top-up, the flag back on."""
+        self.activation.enabled = True
+        self.activation.save()
+
+        with patch(self.STRIPE_CALL) as stripe_call:
+            stripe_call.return_value.url = "https://checkout.example/s"
+            stripe_call.return_value.id = "cs_rail"
+            answered = self._top_up(key="tp-rail-2")
+
+        self.assertEqual(answered.status_code, 200, answered.content)
+        self.assertTrue(stripe_call.called)
 
 
 def _renamed_by_save(tenant):

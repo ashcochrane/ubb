@@ -1260,6 +1260,17 @@ gates:
       there is no delete or revoke path — the table refuses every DELETE
       (`trg_payment_rail_activation_is_kept`) — and disabling the flag stops new
       use without scanning a tenant already in a money mode (ruling 2).
+      THE FLAG HAS ONE OPERATIONAL MEANING — "may this rail be used now" —
+      (the owner's review of #619): for a tenant already in a money mode, a
+      closed rail refuses every NEW customer-money operation by name before
+      Stripe (`PaymentRailClosed`, `refuse_a_rail_operation_while_it_is_closed`):
+      the top-up checkout and the auto top-up charge, a subscription started,
+      resumed or re-priced and a seat quantity pushed, and a usage invoice,
+      which is held as a recoverable skip and pushed once the rail reopens.
+      Money that already moved still lands, and pause/cancel are never
+      refused. Exactly one activation per rail and environment
+      (`uq_payment_rail_activation_once_per_environment`), so no decision
+      rests on which of two rows a query returns.
       Fixtures are rail-ready only by asking (`RailActivated`,
       `rail_activated`), and the nodes below build their own activations or
       none (the owner's §0.4 E). Shown red on a planted violation: with the
@@ -1314,6 +1325,27 @@ gates:
       - suite: platform
         node: >-
           ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::NoDoorDeletesAnActivationTest::test_the_evidence_survives_every_door_that_deletes
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_a_top_up_checkout_is_refused_by_name_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_an_auto_top_up_charge_is_refused_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_a_usage_invoice_is_held_recoverably_and_pushes_once_the_rail_reopens
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_resuming_a_subscription_is_refused_by_name
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_starting_a_subscription_is_refused_before_stripe
+      - suite: platform
+        node: >-
+          ubb-platform/api/v1/tests/test_a_money_mode_needs_its_payment_rail.py::AClosedRailStartsNoNewMoneyTest::test_reopening_the_rail_lets_new_money_start_again
+      - suite: platform
+        node: >-
+          ubb-platform/apps/platform/tenants/tests/test_a_payment_rail_activation_is_evidence.py::AnActivationIsEvidenceWhenRecordedTest::test_one_activation_per_rail_and_environment
 
 # --- Obligations that are not gates -----------------------------------------
 #

@@ -1407,3 +1407,18 @@ PATCH /api/v1/tenant/config request property `billing_mode/anyOf[subschema #1]/`
 # deliberate, pasted from `--emit`. The response's new property is additive and
 # not a finding either way.
 GET /api/v1/tenant/billing-periods removed the required property `data/items/total_usage_cost_micros` from the response with the `200` status
+
+# 2026-10-27 - R10-W3 (#563, the owner's review of #619): a billing period's
+# count takes the registry's canonical name. `TenantBillingPeriodOut.event_count`
+# counted exactly the registry's `recorded_events` measure (`analytics_measure`)
+# - every metered usage event in the period, priced or not, never a Task Charge
+# - and #563 asked for its name to be assessed under ADR-0006. The owner ruled a
+# public field takes the canonical name before the baseline: it is
+# `recorded_events`. The database column keeps its internal name, documented on
+# the model. The other schemas that publish an `event_count` count other things
+# at other scopes and are recorded for the owner on #190, not renamed here.
+#
+# LICENCE: ADR-0007 §5 - pre-live, owned by #190. `GET /tenant/billing-periods`
+# predates `api-v1-launch`, so the authoring comparison and the cumulative gate
+# report the same finding, reviewed and deliberate, pasted from `--emit`.
+GET /api/v1/tenant/billing-periods removed the required property `data/items/event_count` from the response with the `200` status

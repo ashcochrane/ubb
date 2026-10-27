@@ -1000,23 +1000,29 @@ Setting `billing_mode` to `prepaid` or `postpaid` — and creating the sandbox o
 tenant in one, including by minting a test key — is refused **409**
 `payment_rail_not_activated` (`PaymentRailNotActivatedError`) until the Stripe rail
 has an enabled activation for the environment: `test` for a sandbox, `live`
-otherwise. An activation is recorded by its approver, not through the API. A tenant
-already in a money mode is unaffected.
+otherwise. An activation is recorded by its approver, not through the API.
+
+While a rail is closed (its flag off), a tenant already in a money mode keeps its
+mode but starts no new money on it: a top-up, a subscription started, resumed or
+re-priced, and a seat-quantity change are refused **409**
+`payment_rail_not_activated` (`PaymentRailNotActivatedError`), before anything
+reaches Stripe. Pausing or cancelling is never refused.
 
 ### A wallet movement's reason is `movement_reason`
 
 `BillingClient.credit` and `BillingClient.debit` take `movement_reason=` (one of
 `ubb.vocabulary.MOVEMENT_REASON_VALUES`, or `None` for none) in place of
-`reason_code=`. **A raw-HTTP caller must send `movement_reason`**: the route drops
-an undeclared key rather than refusing it, so a body still sending `reason_code`
-gets 200 and the movement is recorded with no reason. `reason_code` elsewhere — on
-a stop — is a different concept and is unchanged.
+`reason_code=`. **A raw-HTTP caller must send `movement_reason`**: a body still
+naming `reason_code` is refused 422 `validation_error`, naming the new field, and
+moves nothing — it is neither dropped nor read as an alias. `reason_code`
+elsewhere — on a stop — is a different concept and is unchanged.
 
 ### A billing period's money is `total_billed_cost_micros`, and its count is metered events
 
 The period's money, published under a "usage cost" name until #516, is
 `TenantBillingPeriodOut.total_billed_cost_micros`: the sum of `billed_cost_micros`
-over the period's postings, a fixed-price unit's charge included. `event_count` counts every metered usage event, priced or not,
+over the period's postings, a fixed-price unit's charge included. Its count is
+`recorded_events` (the registry's measure; it was `event_count`), every metered usage event, priced or not,
 and never that charge — so the money includes what the count excludes.
 
 ### Money is in US dollars

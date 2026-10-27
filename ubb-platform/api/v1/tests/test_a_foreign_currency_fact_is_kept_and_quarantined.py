@@ -269,6 +269,61 @@ def _mirrored(customer, stripe_id, currency, minor):
         current_period_end=stamp + timedelta(days=30), last_synced_at=stamp)
 
 
+class AMarginThatLeftForeignRevenueOutConcludesNothingTest(_ForeignCurrencyCase):
+    """No authoritative "unprofitable" over revenue UBB could not count (#564;
+    the owner's review of #619).
+
+    A known US-dollar cost, a margin that reads negative in dollars, and a
+    subscription Stripe holds in euros: the euro revenue is unknown in dollars,
+    not zero, so the margin is a subtotal and no alarm may be raised on it. The
+    control is the same customer with no euro subscription, which IS flagged —
+    so the fixture is unprofitable, and only the quarantine stops the verdict.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from apps.subscriptions.economics.models import CustomerCostAccumulator
+        CustomerCostAccumulator.objects.create(
+            tenant=self.tenant, customer=self.customer, period_start=OPENS,
+            period_end=CLOSES + timedelta(days=1),
+            total_provider_cost_micros=30_000_000, total_billed_cost_micros=5_000_000,
+            event_count=3)
+
+    def _evaluated(self):
+        from apps.subscriptions.economics.services import MarginService
+        econ = MarginService.snapshot_customer(
+            self.tenant.id, self.customer.id, OPENS, CLOSES + timedelta(days=1))
+        MarginService.evaluate_and_emit(econ)
+        econ.refresh_from_db()
+        return econ
+
+    def _alarms(self):
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import CustomerUnprofitable
+        return OutboxEvent.objects.filter(
+            event_type=CustomerUnprofitable.EVENT_TYPE, tenant_id=self.tenant.id)
+
+    def test_known_cost_negative_margin_and_euro_revenue_raise_no_alarm(self):
+        _mirrored(self.customer, "sub_eur", "eur", EUROS)
+
+        econ = self._evaluated()
+
+        self.assertLess(econ.margin_percentage, 0)  # the dollar subtotal is negative
+        self.assertEqual(econ.foreign_currency_subscription_count, 1)
+        self.assertFalse(econ.is_unprofitable)
+        self.assertFalse(self._alarms().exists())
+        self.assertEqual(
+            self._get(f"/api/v1/margin/unprofitable?period_start={OPENS}")["customers"], [])
+
+    def test_the_same_customer_with_nothing_left_out_is_flagged(self):
+        """THE CONTROL: the fixture is unprofitable, so the alarm fires when
+        nothing in the scope was quarantined."""
+        econ = self._evaluated()
+
+        self.assertTrue(econ.is_unprofitable)
+        self.assertEqual(self._alarms().count(), 1)
+
+
 class TheMarginReadsCountWhatTheyLeftOutTest(_ForeignCurrencyCase):
     """Every margin read whose revenue a foreign subscription would change
     says how many it left out — exact, scoped like its figures, 0 not null."""

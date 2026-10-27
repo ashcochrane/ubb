@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from apps.platform.membership.roles import ADMIN, ROLE_CHOICES
+from core.exceptions import StripeFatalError
 from core.currency_policy import (
     UnsupportedCurrency,
     admit_currency,
@@ -137,12 +138,75 @@ def refuse_a_money_mode_without_its_rail(*, billing_mode, is_sandbox):
     if billing_mode not in MONEY_MODES:
         return
     environment = rail_environment_of(is_sandbox=is_sandbox)
-    if not PaymentRailActivation.objects.filter(
-            rail=TENANT_MONEY_RAIL, environment=environment,
-            enabled=True).exists():
+    if not the_rail_is_open_in(environment):
         raise PaymentRailNotActivated(
             billing_mode=billing_mode, rail=TENANT_MONEY_RAIL,
             environment=environment)
+
+
+def the_rail_is_open_in(environment):
+    """Whether the tenant money rail may be used in ``environment`` now: an
+    activation exists AND its flag is on. The one read every G27 decision
+    takes — entering a money mode, and starting new money on the rail.
+
+    There is exactly one activation per rail and environment
+    (`uq_payment_rail_activation_once_per_environment`), so this asks one
+    row and never depends on which of two rows a query returns first.
+    """
+    return PaymentRailActivation.objects.filter(
+        rail=TENANT_MONEY_RAIL, environment=environment, enabled=True).exists()
+
+
+class PaymentRailClosed(StripeFatalError):
+    """G27's OPERATIONAL refusal: new customer money on a rail that is closed —
+    never activated, or its flag turned off — in the tenant's environment.
+
+    The flag's one meaning is "may this rail be used now": ADR-0008 §6's
+    flag "technically prevents premature use", and disabling it "may stop
+    new activation or use of the rail" (the owner's ruling 2). So a tenant
+    already in a money mode keeps its mode — nothing scans it — but no NEW
+    money moves on a closed rail: no top-up checkout, no auto top-up
+    charge, no usage invoice pushed, no subscription started, resumed or
+    re-priced. Money that already moved still lands (webhooks, receipts),
+    and stopping money (pause, cancel) is never refused.
+
+    A `StripeFatalError` — not retryable, and raised before anything is
+    sent — so every caller's non-retryable path takes it; the API answers it
+    by name, with the same code as the entry refusal.
+    """
+
+    code = "payment_rail_not_activated"
+
+    def __init__(self, *, tenant_id, rail, environment):
+        self.rail = rail
+        self.environment = environment
+        self.explanation = (
+            f"the '{rail}' payment rail is not open in its '{environment}' "
+            f"environment — no enabled activation — so UBB starts no new "
+            f"money movement on it for tenant {tenant_id}. Money already "
+            f"moved still lands; an approver reopens the rail with its flag.")
+        super().__init__(self.explanation)
+
+
+def refuse_a_rail_operation_while_it_is_closed(tenant):
+    """Refuse NEW customer money on ``tenant``'s rail unless it is open for
+    the tenant's environment (G27's flag, operationally). Called by each
+    outbound adapter before anything reaches Stripe.
+
+    It governs the MONEY MODES, the posture G27 is about ("`prepaid` and
+    `postpaid` may not be enabled without a matching activation"): a tenant in
+    one moves its customers' money on the rail, and a closed rail stops that.
+    An `external` tenant has entered no money mode, and UBB's subscription
+    control plane serves it on the billing product as before — whether that
+    use should need an activation too is the owner's question, recorded on
+    #619, not a reading taken here.
+    """
+    if tenant.billing_mode not in MONEY_MODES:
+        return
+    environment = rail_environment_of(is_sandbox=tenant.is_sandbox)
+    if not the_rail_is_open_in(environment):
+        raise PaymentRailClosed(tenant_id=tenant.id, rail=TENANT_MONEY_RAIL,
+                                environment=environment)
 
 
 class PaymentRailActivation(BaseModel):

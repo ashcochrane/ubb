@@ -21,7 +21,8 @@ from core.vocabulary import MOVEMENT_REASON_VALUES, REASON_CODE_KNOWN_VALUES
 ROUTES = {"credit": {"source": "manual"}, "debit": {"allow_negative": True}}
 
 
-class AMovementStatesItsReasonTest(TestCase):
+class _WalletRoutesTestCase(TestCase):
+    """A billing tenant, one customer's wallet, and the two routes."""
 
     def setUp(self):
         self.http = Client()
@@ -39,6 +40,9 @@ class AMovementStatesItsReasonTest(TestCase):
         return self.http.post(f"/api/v1/billing/{route}", data=json.dumps(body),
                               content_type="application/json",
                               HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+
+class AMovementStatesItsReasonTest(_WalletRoutesTestCase):
 
     def test_every_reason_is_stored_on_the_ledger_and_in_the_audit(self):
         for route in ROUTES:
@@ -81,6 +85,28 @@ class AMovementStatesItsReasonTest(TestCase):
 
                     self.assertEqual(answered.status_code, 422, answered.content)
                     self.assertEqual(answered.json()["code"], "validation_error")
+                    self.assertEqual(WalletTransaction.objects.count(), before)
+
+
+class TheRetiredFieldIsRefusedNotDroppedTest(_WalletRoutesTestCase):
+    """A raw-HTTP caller still sending `reason_code` is refused through the
+    normal validation path — never answered 200 with the reason lost, and
+    never read as an alias. Both routes, with and without the new field."""
+
+    def test_the_retired_field_is_refused_by_name_and_moves_nothing(self):
+        for route in ROUTES:
+            for sent in ({"reason_code": "goodwill"},
+                         {"reason_code": "goodwill", "movement_reason": "goodwill"},
+                         {"reason_code": None}):
+                with self.subTest(route=route, sent=sent):
+                    before = WalletTransaction.objects.count()
+
+                    answered = self._move(route, **sent)
+
+                    self.assertEqual(answered.status_code, 422, answered.content)
+                    body = answered.json()
+                    self.assertEqual(body["code"], "validation_error")
+                    self.assertIn("movement_reason", json.dumps(body["errors"]))
                     self.assertEqual(WalletTransaction.objects.count(), before)
 
 

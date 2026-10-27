@@ -1371,6 +1371,31 @@ _MOVEMENT_REASON_DESCRIPTION = (
     "transaction for the audit trail.")
 
 
+#: The wallet field's RETIRED name (#479). Refused by name, never dropped: a
+#: caller who sent a reason and got a 200 with none recorded has lost it in
+#: silence, which is the one outcome a rename may not have. No alias either —
+#: `movement_reason` is the only accepted spelling, and `reason_code` is the
+#: stop cause's published name, a different concept.
+RETIRED_MOVEMENT_REASON_FIELD = "reason_code"
+
+
+def _refuse_the_retired_reason_field(body):
+    """Refuse a body that names the wallet field's retired spelling.
+
+    A ninja `Schema`'s before-validators are handed a `DjangoGetter`, not a
+    dict (see `RecordUsageRequest.refuse_a_caller_supplied_customer_price`):
+    unwrap `_obj` first, or the check never fires.
+    """
+    body = getattr(body, "_obj", body)
+    if isinstance(body, dict) and RETIRED_MOVEMENT_REASON_FIELD in body:
+        raise ValueError(
+            f"{RETIRED_MOVEMENT_REASON_FIELD} is not accepted on a wallet credit "
+            f"or debit: why money moved is movement_reason, one of "
+            f"{sorted(MOVEMENT_REASON_VALUES)} or null. It is refused rather "
+            f"than ignored, so a reason you sent is never dropped in silence.")
+    return body
+
+
 def _a_known_movement_reason(value):
     if value is not None and value not in MOVEMENT_REASON_VALUES:
         raise ValueError(
@@ -1401,6 +1426,11 @@ class DebitRequest(Schema):
     def movement_reason_known(cls, v):
         return _a_known_movement_reason(v)
 
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_the_retired_reason_field(cls, body):
+        return _refuse_the_retired_reason_field(body)
+
 
 class CreditRequest(Schema):
     customer_id: str = Field(min_length=1, max_length=255)
@@ -1418,6 +1448,11 @@ class CreditRequest(Schema):
     @classmethod
     def movement_reason_known(cls, v):
         return _a_known_movement_reason(v)
+
+    @model_validator(mode="before")
+    @classmethod
+    def refuse_the_retired_reason_field(cls, body):
+        return _refuse_the_retired_reason_field(body)
 
 
 class DebitCreditResponse(Schema):
@@ -4256,10 +4291,13 @@ class TenantBillingPeriodOut(Schema):
         "`billed_cost_micros` over the period's postings, placed by when UBB "
         "received them. It INCLUDES the charge for a unit of work sold at one "
         "agreed price, which is revenue, so it can include money that "
-        "`event_count` does not count an event for. The same name and "
+        "`recorded_events` does not count an event for. The same name and "
         "meaning as the stop payload's sum over one unit of work. UBB's "
         "platform fee is a percentage of it."))
-    event_count: int = Field(description=(
+    #: The registry's measure, by its canonical name (`analytics_measure`'s
+    #: `recorded_events`; the owner's review of #619): the column behind it
+    #: keeps the internal name `event_count`.
+    recorded_events: int = Field(description=(
         "Every metered usage event recorded in this period, whatever it was "
         "priced at — unpriced and zero-priced events included. It EXCLUDES "
         "the synthetic charge for a unit of work sold at one agreed price, "
@@ -4275,7 +4313,7 @@ def tenant_billing_period_out(p):
         "period_end": p.period_end.isoformat(),
         "status": p.status,
         "total_billed_cost_micros": p.total_billed_cost_micros,
-        "event_count": p.event_count,
+        "recorded_events": p.event_count,
         "platform_fee_micros": p.platform_fee_micros,
     }
 

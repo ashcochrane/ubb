@@ -22,26 +22,26 @@ T = TypeVar("T", bound="TenantBillingPeriodOut")
 class TenantBillingPeriodOut:
     """ 
         Attributes:
-            event_count (int): Every metered usage event recorded in this period, whatever it was priced at — unpriced and
-                zero-priced events included. It EXCLUDES the synthetic charge for a unit of work sold at one agreed price, whose
-                money `total_billed_cost_micros` includes.
             id (str):
             period_end (str):
             period_start (str):
             platform_fee_micros (int):
+            recorded_events (int): Every metered usage event recorded in this period, whatever it was priced at — unpriced
+                and zero-priced events included. It EXCLUDES the synthetic charge for a unit of work sold at one agreed price,
+                whose money `total_billed_cost_micros` includes.
             status (str):
             total_billed_cost_micros (int): What the tenant's customers were billed in this period: the sum of
                 `billed_cost_micros` over the period's postings, placed by when UBB received them. It INCLUDES the charge for a
-                unit of work sold at one agreed price, which is revenue, so it can include money that `event_count` does not
+                unit of work sold at one agreed price, which is revenue, so it can include money that `recorded_events` does not
                 count an event for. The same name and meaning as the stop payload's sum over one unit of work. UBB's platform
                 fee is a percentage of it.
      """
 
-    event_count: int
     id: str
     period_end: str
     period_start: str
     platform_fee_micros: int
+    recorded_events: int
     status: str
     total_billed_cost_micros: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -51,8 +51,6 @@ class TenantBillingPeriodOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        event_count = self.event_count
-
         id = self.id
 
         period_end = self.period_end
@@ -60,6 +58,8 @@ class TenantBillingPeriodOut:
         period_start = self.period_start
 
         platform_fee_micros = self.platform_fee_micros
+
+        recorded_events = self.recorded_events
 
         status = self.status
 
@@ -69,11 +69,11 @@ class TenantBillingPeriodOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "event_count": event_count,
             "id": id,
             "period_end": period_end,
             "period_start": period_start,
             "platform_fee_micros": platform_fee_micros,
+            "recorded_events": recorded_events,
             "status": status,
             "total_billed_cost_micros": total_billed_cost_micros,
         })
@@ -85,8 +85,6 @@ class TenantBillingPeriodOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        event_count = d.pop("event_count")
-
         id = d.pop("id")
 
         period_end = d.pop("period_end")
@@ -95,16 +93,18 @@ class TenantBillingPeriodOut:
 
         platform_fee_micros = d.pop("platform_fee_micros")
 
+        recorded_events = d.pop("recorded_events")
+
         status = d.pop("status")
 
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
 
         tenant_billing_period_out = cls(
-            event_count=event_count,
             id=id,
             period_end=period_end,
             period_start=period_start,
             platform_fee_micros=platform_fee_micros,
+            recorded_events=recorded_events,
             status=status,
             total_billed_cost_micros=total_billed_cost_micros,
         )

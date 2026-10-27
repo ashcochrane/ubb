@@ -29,6 +29,7 @@ from apps.billing.stripe.services.stripe_service import (
 )
 from apps.platform.plans.models import Plan
 from apps.platform.queries import get_tenant_stripe_account
+from apps.platform.tenants.models import refuse_a_rail_operation_while_it_is_closed
 from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
@@ -199,6 +200,7 @@ class SubscriptionOrchestrator:
 
         tenant = plan.tenant
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
 
         owner = customer.resolve_billing_owner()
         connected = get_tenant_stripe_account(tenant.id)
@@ -255,6 +257,7 @@ class SubscriptionOrchestrator:
         """Push a new seat quantity to Stripe with proration + update the mirror row."""
         tenant = plan.tenant
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         connected = get_tenant_stripe_account(tenant.id)
 
         item = (
@@ -377,6 +380,7 @@ class SubscriptionOrchestrator:
         bills normally again whichever state it was in.
         """
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         owner = customer.resolve_billing_owner()
         mirror = cls._find_active_mirror(owner)
         connected = get_tenant_stripe_account(tenant.id)
@@ -448,6 +452,7 @@ class SubscriptionOrchestrator:
             return plan
 
         _require_charge_ready(tenant)
+        refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
         connected = get_tenant_stripe_account(tenant.id)
         api_key = api_key_for_tenant(tenant)
 

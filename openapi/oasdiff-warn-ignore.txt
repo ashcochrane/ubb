@@ -658,12 +658,11 @@ PUT /api/v1/billing/postpaid-config removed the request property `usage_line_ite
 # `api-v1-launch`, so each is a reviewed entry pasted from `--emit`. WARN is
 # oasdiff's classification: the property was never required.
 #
-# ⚠ AND, AS THE POSTPAID-CONFIG BLOCK ABOVE SAYS OF ITS OWN RENAME, "CANNOT
-# HURT A CALLER" WOULD BE FALSE. django-ninja drops an undeclared body key
-# rather than refusing it, so a raw-HTTP caller still sending `reason_code`
-# gets 200 and the movement is recorded with NO reason - the money moves, only
-# the attribution is lost. The SDK's keyword was renamed in the same commit, so
-# a stale SDK caller gets a TypeError naming it, and `ubb-sdk/MIGRATION.md` §21
-# tells raw-HTTP callers to send the new name.
+# ⚠ django-ninja drops an undeclared body key rather than refusing it, which
+# would have answered a stale raw-HTTP caller 200 with its reason silently lost.
+# So both bodies REFUSE `reason_code` by name (422 `validation_error`, naming
+# `movement_reason`; nothing moves) - no alias, and no silent drop (the
+# owner's review of #619). The SDK's keyword was renamed in the same commit, so
+# a stale SDK caller gets a TypeError naming it; `ubb-sdk/MIGRATION.md` §21.
 POST /api/v1/billing/credit removed the request property `reason_code`
 POST /api/v1/billing/debit removed the request property `reason_code`

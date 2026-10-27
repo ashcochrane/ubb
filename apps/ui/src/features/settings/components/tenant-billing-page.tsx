@@ -108,7 +108,7 @@ export function TenantBillingPage() {
                           {formatMicros(period.total_billed_cost_micros, currency)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEventCount(period.event_count)}
+                          {formatEventCount(period.recorded_events)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatMicros(period.platform_fee_micros, currency)}

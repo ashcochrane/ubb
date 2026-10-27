@@ -50,6 +50,13 @@ _Avoid_: deleting or revoking an activation — it records an approval that happ
 flag instead. Reading a `live` activation as readiness for a sandbox, whose money moves in
 `test`; or one rail's activation as readiness for another.
 
+**A closed rail starts no new money.** The flag means one thing — may this rail be used now. With
+it off, a tenant already in a money mode keeps its mode, but no NEW customer money moves on the
+rail: no top-up, no subscription started or resumed, no usage invoice pushed (held, and pushed
+once the rail reopens). Money already moved still lands, and stopping money is never refused.
+There is exactly one activation per rail and environment.
+(`apps/platform/tenants/models.py:refuse_a_rail_operation_while_it_is_closed`)
+
 **A money mode needs its rail activated first (G27).** A tenant may not ENTER `prepaid` or
 `postpaid` — be created in one, or move into one, or change environment while in one — without an
 enabled activation of its rail for its environment: a sandbox's is `test`, every other tenant's

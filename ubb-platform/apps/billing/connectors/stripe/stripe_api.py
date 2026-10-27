@@ -16,6 +16,7 @@ from apps.billing.locking import the_currency_a_top_up_credits
 from core.currency_policy import the_rails_currency
 from core.exceptions import StripeFatalError
 from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
+from apps.platform.tenants.models import refuse_a_rail_operation_while_it_is_closed
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -42,6 +43,8 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
     only where Stripe bills for consumption (subscriptions, usage invoices).
     """
     validate_amount_micros(amount_micros)
+    # G27's flag, operationally: no new money on a closed rail.
+    refuse_a_rail_operation_while_it_is_closed(customer.tenant)
     # The currency is the wallet's this top-up credits, never a literal
     # (#565): refused here, before anything is sent, if that record is not
     # in UBB's one currency.
@@ -86,6 +89,8 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     credit must equal the charged amount exactly (see create_checkout_session).
     """
     validate_amount_micros(amount_micros)
+    # G27's flag, operationally — as for the Checkout above.
+    refuse_a_rail_operation_while_it_is_closed(customer.tenant)
     # The wallet's currency, as for the Checkout above (#565).
     currency = the_rails_currency(*the_currency_a_top_up_credits(top_up_attempt))
     amount_cents = micros_to_cents(amount_micros, currency)

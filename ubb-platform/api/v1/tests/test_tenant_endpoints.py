@@ -36,6 +36,10 @@ class TenantBillingPeriodsEndpointTest(TestCase):
         body = response.json()
         self.assertEqual(len(body["data"]), 1)
         self.assertEqual(body["data"][0]["total_billed_cost_micros"], 50_000_000_000)
+        # The count by the registry's canonical name, and by no other
+        # (`analytics_measure`'s `recorded_events`; the review of #619).
+        self.assertEqual(body["data"][0]["recorded_events"], 1000)
+        self.assertNotIn("event_count", body["data"][0])
 
     def test_unauthenticated_returns_401(self):
         response = self.http_client.get("/api/v1/tenant/billing-periods")

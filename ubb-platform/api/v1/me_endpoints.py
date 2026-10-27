@@ -9,6 +9,7 @@ from apps.platform.audit.marker import records_audit
 from api.v1.schemas import whole_minor_units
 from core.auth import ProductAccess
 from core.money import DEFAULT_CURRENCY, minor_units
+from core.problems import ProblemOut
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
@@ -287,7 +288,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     return page(wallet.transactions.all(), cursor, limit, serialize=_transaction_out)
 
 
-@me_router.post("/top-up", response=TopUpResponse)
+@me_router.post("/top-up", response={200: TopUpResponse, 409: ProblemOut})
 @records_audit("top_up.requested")
 def create_top_up(request, payload: TopUpRequest):
     """Widget twin of the tenant top-up. Replay-safe: idempotency_key is

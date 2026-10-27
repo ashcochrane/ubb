@@ -77,6 +77,7 @@ def sync_seat_quantity_on_commit(business, *, change_event_id=None):
 
     def _push():
         from apps.platform.customers.models import Customer
+        from apps.platform.tenants.models import PaymentRailClosed
         from apps.subscriptions.orchestration.service import (
             OrchestrationError,
             SubscriptionOrchestrator,
@@ -97,5 +98,11 @@ def sync_seat_quantity_on_commit(business, *, change_event_id=None):
             logger.exception(
                 "seat.qty_push_failed", extra={"data": {"business_id": str(business_id)}}
             )
+        except PaymentRailClosed:
+            # G27: the rail is closed, so the quantity is not pushed — a
+            # deliberate refusal, logged rather than raised after commit.
+            logger.warning(
+                "seat.qty_push_refused_rail_closed",
+                extra={"data": {"business_id": str(business_id)}})
 
     transaction.on_commit(_push)

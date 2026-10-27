@@ -12,6 +12,7 @@ from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.exceptions import StripeFatalError
 from core.currency_policy import the_rails_currency
 from core.money import minor_units, to_minor
+from apps.platform.tenants.models import rail_environment_of, the_rail_is_open_in
 
 logger = logging.getLogger("ubb.billing")
 
@@ -256,6 +257,13 @@ class PostpaidUsageService:
             if not tenant.stripe_connected_account_id or not tenant.charges_enabled:
                 # Connected account not charge-ready -- never push an invoice to it.
                 rec.status, rec.skip_reason = "skipped", "not_charge_ready"
+                rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
+                return rec
+            if not the_rail_is_open_in(rail_environment_of(is_sandbox=tenant.is_sandbox)):
+                # G27's flag, operationally: no new invoice on a closed rail.
+                # RECOVERABLE — the reconcile re-queues it once the rail
+                # reopens — never parked as a failure nobody repushes.
+                rec.status, rec.skip_reason = "skipped", "payment_rail_closed"
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             # F1.1 carry reservation: take-and-zero the owner's residual ledger

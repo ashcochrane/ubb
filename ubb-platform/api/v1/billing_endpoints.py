@@ -225,7 +225,8 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
     return {"status": "ok"}
 
 
-@billing_router.post("/customers/{customer_id}/top-up", response=TopUpCheckoutResponse)
+@billing_router.post("/customers/{customer_id}/top-up",
+                     response={200: TopUpCheckoutResponse, 409: ProblemOut})
 @role_floor(WRITE)
 @records_audit("top_up.requested")
 def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequest):

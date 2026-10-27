@@ -332,7 +332,18 @@ class MarginService:
         recent = alerting.look_back(
             econ.tenant_id, econ.customer_id, econ.period_start,
             periods=consecutive)
-        below = len(recent) >= consecutive and all(
+        # A MARGIN THAT LEFT FOREIGN REVENUE OUT CONCLUDES NOTHING (#564; the
+        # owner's review of #619). A subscription Stripe holds in a currency
+        # UBB does not admit is excluded because there is no FX: its revenue
+        # is UNKNOWN in dollars, not zero, so the margin over that scope is a
+        # subtotal, and "unprofitable" read off it would be a false alarm
+        # about somebody's money. Unlike an unresolved cost it never resolves,
+        # so the alarm is not raised on the partial figure: the scope is left
+        # unflagged — which says nothing, not "profitable" — and every margin
+        # read beside it states the count that says why.
+        comparable = not any(
+            state[FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY] for state in recent)
+        below = comparable and len(recent) >= consecutive and all(
             state["margin_pct"] < min_pct for state in recent)
 
         if below != prev_flag:

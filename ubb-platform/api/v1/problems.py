@@ -160,7 +160,8 @@ def install_problem_handlers(api):
         )
         return problem_response("validation_error", DATA_ERROR_DETAIL)
 
-    from apps.platform.tenants.models import PaymentRailNotActivated
+    from apps.platform.tenants.models import (
+        PaymentRailClosed, PaymentRailNotActivated)
 
     @api.exception_handler(PaymentRailNotActivated)
     def _payment_rail_not_activated(request, exc):
@@ -168,6 +169,12 @@ def install_problem_handlers(api):
         # activated, refused by the one domain rule wherever a route reaches
         # it — the config PATCH, sandbox creation, a test key that provisions
         # a sandbox. Answered by name, never as a database error.
+        return problem_response(exc.code, exc.explanation)
+
+    @api.exception_handler(PaymentRailClosed)
+    def _payment_rail_closed(request, exc):
+        # G27's flag, operationally: new money on a closed rail — a top-up,
+        # a subscription started, resumed or re-priced — refused by name.
         return problem_response(exc.code, exc.explanation)
 
     @api.exception_handler(Http404)
