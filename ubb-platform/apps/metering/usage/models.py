@@ -5,7 +5,7 @@ from django.utils import timezone
 from apps.platform.event_types.exact_decimals import canonical_quantities
 from core.currency_policy import usd_only_check
 from core.models import BaseModel
-from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE
+from core.transitions import FROZEN, RECORD_RULE, RESOLVE_ONCE, SET_ONCE
 from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_NOT_APPLICABLE,
@@ -744,7 +744,8 @@ class PostingMeasurement(BaseModel):
     it has no per-column lifecycle to describe. The record's rule is::
 
         INSERT   once, in the same transaction as its posting
-        UPDATE   never — no column of a measurement record is ever rewritten
+        UPDATE   never — no column of a measurement record is ever rewritten,
+                 except `prunable_at`, written once by the prune (W5)
         DELETE   permitted only at or after prunable_at, and only while the
                  parent posting is not unresolved
 
@@ -771,14 +772,18 @@ class PostingMeasurement(BaseModel):
     and ``tests/test_a_measurement_is_pruned_only_when_it_may_be.py`` proves the
     whole rule through three doors with its admitted move.
 
-    ⚠ **The ``INSERT`` and ``UPDATE`` lines are still declared and unenforced**,
-    and saying so is the point: a record whose docstring claimed the whole rule
-    was held would be claiming two thirds more than the database does. In
-    particular ``prunable_at`` can still be written after the fact, which is the
-    one thing that would let a caller talk its way past the ``DELETE`` rule —
-    ``tests/_helpers.release_and_prune`` is the single place in the tree that
-    walks through it, and it is where a later slice enforcing the ``UPDATE``
-    line will land.
+    **``prunable_at`` IS THE RELEASE FACT, SET_ONCE SINCE W5** (ruling 8). The
+    daily prune (``pruning.py``) releases a record — writes ``prunable_at``,
+    with the database's clock — and deletes it in the same transaction, and
+    ``migrations/0052_a_measurement_is_released_once_by_the_prune.py`` holds the
+    column to NULL → a past instant, once, through every door. It is when a
+    record was let go, never a retention deadline: recording leaves it NULL.
+
+    ⚠ **The ``INSERT`` line and the rest of the ``UPDATE`` line are still
+    declared and unenforced**, and saying so is the point: a record whose
+    docstring claimed the whole rule was held would be claiming more than the
+    database does. The other columns are ``RECORD_RULE``: nothing rewrites them
+    and nothing at the database stops a writer that tried.
 
     ⚠ **Nothing counts any of this.** The rule has no migration-ledger entry and
     no gate-manifest row, so no board goes red if it disappears. G19's ``notes``
@@ -813,17 +818,17 @@ class PostingMeasurement(BaseModel):
     # arrived, long before the fold ran. ``created_at`` answers the other
     # question and the two are different facts.
     recorded_at = models.DateTimeField()
-    # The retention horizon — a column, and nothing else. There is no prune job,
-    # no schedule, no owner and no default value anywhere in this repository,
-    # because no document states the short clock: shipping a column is not the
-    # same as starting one, and a clock nobody has decided must not be started
-    # by accident. It stays NULL until someone decides what it means.
+    # WHEN THIS RECORD WAS RELEASED (W5 ruling 8) — NULL until the daily prune
+    # lets it go, then the instant it did, once. Not a deadline: recording
+    # leaves it NULL, and the horizon the prune reads is the CURRENT one
+    # (`core/retention.py`), so a configuration change moves which records
+    # are released next rather than rewriting a date stamped on each one.
     prunable_at = models.DateTimeField(null=True, blank=True)
 
     #: Every column of this record and the class it is declared into (ADR-0007
-    #: §2). All of them point at the record rule in the docstring above rather
-    #: than at a class of their own, and none of them is a class the database
-    #: defends.
+    #: §2). Every column but one points at the record rule in the docstring
+    #: above; `prunable_at` is SET_ONCE, the release fact the database defends
+    #: since W5 (`migrations/0052`).
     transition_classes = {
         "id": RECORD_RULE,
         "created_at": RECORD_RULE,
@@ -831,11 +836,17 @@ class PostingMeasurement(BaseModel):
         "posting": RECORD_RULE,
         "measurements": RECORD_RULE,
         "recorded_at": RECORD_RULE,
-        "prunable_at": RECORD_RULE,
+        "prunable_at": SET_ONCE,
     }
 
     class Meta:
         db_table = "ubb_posting_measurement"
+        indexes = [
+            # The prune's walk: the oldest records under the horizon, in
+            # `(recorded_at, id)` order, a batch at a time (`pruning.py`).
+            models.Index(fields=["recorded_at", "id"],
+                         name="ix_measurement_recorded_at"),
+        ]
 
     def __str__(self):
         return f"PostingMeasurement({self.posting_id})"

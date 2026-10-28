@@ -21,17 +21,21 @@ two pressures reconcile only if the money and the bulk are on different clocks.
                    drill-down · the measurement-concept rollup · fine-grained
                    quantity series
 
-⚠ **THE MEASUREMENT HORIZON HAS NO NUMBER AND THIS MODULE DOES NOT CHOOSE ONE.**
-#190 owns the number and owns whatever runs to enforce it. What exists today is
-a column (`PostingMeasurement.prunable_at`) and a database trigger defending the
-exemption; what does not exist is a number, a schedule or an owner — the
-migration that shipped the column says so in terms, the recording path leaves
-the column NULL, and the trigger's message for the NULL case reads *not released
-by any clock*. Composed, those say the shorter clock is **effectively infinite
-today**, which is the safe direction and a promise the API could not previously
-make. So what this module does is make the horizon a **published, configurable
-value**, so that setting it later is a configuration change and not a contract
-change.
+⚠ **THE MEASUREMENT HORIZON IS 400 DAYS BY DEFAULT, AND IT IS A SETTING** (#190
+comment 5785029955; W5 ruling 7). About thirteen months of fine measurement
+detail, deliberately conservative for launch — and NOT a claim that arbitrary
+year-over-year detailed comparisons are supported: comparing a trailing year
+with the year before it needs closer to two years of detail. `config.settings`
+gives the default and the environment may override it; a change is a
+configuration change and not a contract change. The daily prune
+(`apps/metering/usage/pruning.py`) enforces it, releasing and deleting the
+measurement records older than the CURRENT horizon whose postings are resolved.
+
+⚠ **AND WHAT THE PUBLISHED HORIZON PROMISES** (ruling 11): detail from the
+horizon onwards is guaranteed to be there. It is not a claim that nothing older
+is physically present — a run cap can leave a backlog the prune catches up over
+the following days — so read it as the guaranteed edge, not the literal oldest
+row.
 
 ⚠ **AND THE ECONOMIC HORIZON IS THE OPPOSITE — A PLATFORM CONSTANT, DELIBERATELY
 NOT CONFIGURABLE.** `core.scheduling`'s forward horizon carries the argument in
@@ -53,6 +57,7 @@ from datetime import date, timedelta
 from typing import NamedTuple
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 #: THE ECONOMIC HORIZON, IN CALENDAR YEARS. Six, matching the receipt floor
 #: already published (#148 §10.1, §16) rather than a second number beside it.
@@ -62,17 +67,10 @@ from django.conf import settings
 #: against the sentence a tenant read.
 ECONOMIC_RETENTION_YEARS = 6
 
-#: The setting an operator sets to start the shorter clock. A name rather than a
-#: direct attribute read, so the one place that reads it and the tests that move
-#: it agree by construction.
+#: The setting that sets the shorter clock. A name rather than a direct
+#: attribute read, so the one place that reads it and the tests that move it
+#: agree by construction.
 MEASUREMENT_RETENTION_DAYS_SETTING = "UBB_MEASUREMENT_RETENTION_DAYS"
-
-#: WHAT "NOBODY HAS SET IT" IS SPELLED AS, and it is not a number.
-#:
-#: Zero would mean *prune everything immediately* and any positive number would
-#: be a clock somebody started by accident, which is exactly what #153 §12.2,
-#: #153 §19 and #165 §13 each declined to do. Absent means absent.
-NO_MEASUREMENT_CLOCK = None
 
 #: The two names the horizons ship under, #153 §12.3's own (spec §4 keeps them).
 #: ADR-0007 §3 makes a name final the moment it reaches `openapi/v1.json`, so
@@ -112,16 +110,17 @@ def retention_horizons(as_of: date) -> RetentionHorizons:
     without a query.
     """
     economic = _years_before(as_of, ECONOMIC_RETENTION_YEARS)
-    days = getattr(settings, MEASUREMENT_RETENTION_DAYS_SETTING,
-                   NO_MEASUREMENT_CLOCK)
-    if days is NO_MEASUREMENT_CLOCK:
-        # ⚠ THE ANSWER IS THE ECONOMIC HORIZON, NOT "UNKNOWN". A measurement
-        # record is a child row of its posting and cascades with it, and nothing
-        # prunes one on its own — so with no clock running, measurement detail
-        # is available exactly as far back as the economics are. Saying so is
-        # the whole difference between an API that knows what it holds and one
-        # that declines to say.
-        return RetentionHorizons(economic=economic, measurement=economic)
+    days = getattr(settings, MEASUREMENT_RETENTION_DAYS_SETTING, None)
+    if days is None:
+        # ⚠ NEVER A SILENT SIX YEARS (W5 ruling 7). Until W5 a missing number
+        # answered the economic horizon, which was true while nothing pruned a
+        # measurement; a daily prune now enforces this clock, so a settings
+        # module that does not state it is misconfigured, and saying so is
+        # safer than publishing six years of detail the prune does not keep.
+        raise ImproperlyConfigured(
+            f"{MEASUREMENT_RETENTION_DAYS_SETTING} must be set: the measurement "
+            f"horizon is published on every economic answer and the daily prune "
+            f"enforces it")
     # ⚠ BOUNDED AT BOTH ENDS, AND EACH END IS A REAL MISCONFIGURATION RATHER
     # THAN DEFENSIVE DECORATION.
     #

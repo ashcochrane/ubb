@@ -884,8 +884,13 @@ class TheRebuildReadsNoKeyOutOfTheOpenBagTest(TestCase):
         assert Posting._meta.get_field(THE_OPEN_BAG).name == THE_OPEN_BAG
 
 
+@override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: 400})
 class WhichClockGovernsARowTest(TestCase):
     """§13: two horizons, and the grouping decides which one binds a row.
+
+    The shorter clock is STATED on the class (400 days, the shipped default,
+    #190) rather than read from the environment, so no case depends on how the
+    process was started; the cases that move it say so on themselves.
 
     ⚠ **HERE RATHER THAN AT THE ROUTE BECAUSE THE FIXTURE NEEDS A PINNED DAY.**
     Both horizons are measured back from the day the question is asked, so a
@@ -935,18 +940,21 @@ class WhichClockGovernsARowTest(TestCase):
                                       covered_periods=(), contributed_revenue=())
 
         assert answer["economic_data_available_from"] == "2020-09-16"
-        assert answer["measurement_data_available_from"] == "2020-09-16"
+        assert answer["measurement_data_available_from"] == "2025-08-12"
         assert measure_of(answer, ANALYTICS_MEASURE_SUPPLIER_COGS
                           )["status"] == MEASURE_STATUS_KNOWN
 
-    def test_with_no_shorter_clock_the_two_horizons_are_the_same_day(self):
-        """The composition #500 publishes: nothing prunes a measurement record
-        on its own, so it lives as long as the posting it hangs off."""
+    def test_the_shipped_shorter_clock_is_400_days_before_the_day_asked(self):
+        """Inverted by W5 at its own address: it pinned the composition #500
+        published while nothing pruned a measurement — the two horizons were
+        the same day. #190 ruled the clock (400 days) and a daily prune now
+        enforces it, so the shorter horizon is its own day. The setting is
+        stated here rather than read from the environment."""
         answer = self.a_question_from(date(2026, 9, 1), measures=MONEY,
                                       covered_periods=(), contributed_revenue=())
 
-        assert (answer["measurement_data_available_from"]
-                == answer["economic_data_available_from"])
+        assert answer["measurement_data_available_from"] == "2025-08-12"
+        assert answer["economic_data_available_from"] == "2020-09-16"
 
     @override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: 90})
     def test_a_configured_shorter_clock_never_truncates_a_money_question(self):
@@ -1074,7 +1082,7 @@ class WhichClockGovernsARowTest(TestCase):
 
         assert answer["rows"] == []
         assert answer["economic_data_available_from"] == "2020-09-16"
-        assert answer["measurement_data_available_from"] == "2020-09-16"
+        assert answer["measurement_data_available_from"] == "2025-08-12"
 
     def test_a_released_period_is_offered_no_remedy_it_cannot_honour(self):
         """⚠ **`context` IS A REMEDY, AND THERE IS NONE HERE.**

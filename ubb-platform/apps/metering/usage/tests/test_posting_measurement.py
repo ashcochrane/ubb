@@ -19,11 +19,12 @@ Three things are worth proving here and they are not the same thing.
    forward and reverse callables are therefore run against a real database with
    real rows, rather than being asserted to exist.
 
-**The retention horizon ships with no clock behind it.** `prunable_at` is a
-column and nothing else: no prune job, no schedule, no owner, no default. Two
-merged decisions independently record that no document anywhere states the short
-clock, and shipping a column is not the same as starting one. `TheHorizonHasNoClockBehindItTest`
-is what stops one being started by accident.
+**The retention horizon has exactly one clock, started on purpose (W5).**
+`prunable_at` was a column with no clock behind it until #190 ruled the number
+(400 days) and the job (a daily prune). It is now the release fact that prune
+writes, SET_ONCE (`pruning.py`, `migrations/0052`); recording still leaves it
+NULL, and nothing else writes it. `TheHorizonHasExactlyOneClockTest` holds
+that: one scheduled prune, and no deadline stamped at recording.
 
 **And #271 makes the difference sayable.** Point 2 above pins that a pruned
 payload and a never-measured one are two different facts in the table; on their
@@ -61,7 +62,7 @@ from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_n
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
-from core.transitions import DATABASE_DEFENDED, RECORD_RULE
+from core.transitions import DATABASE_DEFENDED, RECORD_RULE, SET_ONCE
 from core.vocabulary import (
     MEASUREMENTS_STATUS_AVAILABLE,
     MEASUREMENTS_STATUS_NOT_APPLICABLE,
@@ -464,8 +465,10 @@ class EachAmountWentNullableInTheSliceThatOwnedItsMeaningTest(TestCase):
             self.assertFalse(status.null, pair.status_column)
 
 
-class TheHorizonHasNoClockBehindItTest(TestCase):
-    """`prunable_at` is a column. There is no policy anywhere behind it."""
+class TheHorizonHasExactlyOneClockTest(TestCase):
+    """`prunable_at` is the release fact, and exactly one scheduled job writes
+    it: the daily prune (#190 comment 5785029955, W5 ruling 8). Recording
+    never stamps a deadline on it."""
 
     def test_it_is_nullable_and_has_no_default(self):
         field = PostingMeasurement._meta.get_field("prunable_at")
@@ -480,11 +483,13 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
             PostingMeasurement.objects.get(
                 posting_id=result["event_id"]).prunable_at)
 
-    def test_no_scheduled_task_prunes_a_measurement(self):
-        """The vacuity guard is the length assertion, not the loop.
+    def test_exactly_one_scheduled_task_prunes_a_measurement(self):
+        """Inverted at its own address by W5: it guarded against a clock being
+        started by accident, and the clock is now started on purpose — so it
+        holds that the daily prune is the ONE scheduled measurement prune.
 
-        A schedule read as empty — a settings import that resolved to nothing —
-        would satisfy "no prune entry" and say nothing at all.
+        The vacuity guard is the length assertion, not the loop: a schedule
+        read as empty would satisfy any count of prune entries below one.
         """
         from django.conf import settings
 
@@ -501,25 +506,30 @@ class TheHorizonHasNoClockBehindItTest(TestCase):
             not_a_measurement,
             {entry["task"] for entry in schedule.values()},
             "an exemption names a task the schedule no longer runs")
-        offenders = [name for name, entry in schedule.items()
-                     if entry["task"] not in not_a_measurement
-                     and ("prune" in name.lower()
-                          or "prune" in entry["task"].lower()
-                          or "measurement" in entry["task"].lower())]
-        self.assertEqual(offenders, [])
+        prunes = [entry["task"] for name, entry in schedule.items()
+                  if entry["task"] not in not_a_measurement
+                  and ("prune" in name.lower()
+                       or "prune" in entry["task"].lower()
+                       or "measurement" in entry["task"].lower())]
+        self.assertEqual(
+            prunes, ["apps.metering.usage.tasks.prune_measurement_detail"])
 
 
 class TransitionClassesAreDeclaredTest(TestCase):
-    """Every column states what may happen to it; none states a defended class."""
+    """Every column states what may happen to it; exactly one — the release
+    fact — states a class the database defends (W5)."""
 
     def test_every_column_of_the_child_is_declared(self):
         self.assertEqual(
             set(PostingMeasurement.transition_classes),
             {f.name for f in PostingMeasurement._meta.fields})
 
-    def test_they_are_declared_into_the_record_rule(self):
+    def test_every_column_but_the_release_declares_the_record_rule(self):
         self.assertEqual(
-            set(PostingMeasurement.transition_classes.values()), {RECORD_RULE})
+            {column: declared for column, declared
+             in PostingMeasurement.transition_classes.items()
+             if declared != RECORD_RULE},
+            {"prunable_at": SET_ONCE})
 
     def test_the_record_rule_is_not_a_class_the_database_defends(self):
         self.assertNotIn(RECORD_RULE, DATABASE_DEFENDED)

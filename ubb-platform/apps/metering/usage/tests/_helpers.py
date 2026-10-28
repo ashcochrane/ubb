@@ -157,16 +157,13 @@ def settle_the_supplier_cost(posting, micros):
 
 
 def release_the_horizon(posting):
-    """Put a posting's measurement record past its `prunable_at`.
+    """Release a posting's measurement record: write its `prunable_at`.
 
-    ⚠ **THE ONLY PLACE IN THE TREE THAT WRITES THIS COLUMN AFTER INSERT**, and
-    it walks through a hole #354 does not close. The record's declared lifecycle
-    says *no column is ever rewritten*, and that line has no enforcement behind
-    it; `prunable_at` meanwhile has no clock, no job and no owner, so nothing in
-    production ever sets it and a test standing a row up as *released* has no
-    other way in. Confining it to one function is what makes that sentence
-    checkable — and the day a later slice enforces the `UPDATE` line, this is
-    the single thing that has to change.
+    The one test writer of the release fact besides the prune itself
+    (`pruning.py`). Since W5 the column is SET_ONCE and never a future instant
+    (`migrations/0052`), so this writes it once, from NULL, a day in the past —
+    the legal move — and a second call on the same record is refused by the
+    database, as the prune's own would be.
 
     Separate from `release_and_prune` because a caller sweeping two records in
     one `DELETE` needs the release without the removal, and inlining the

@@ -4000,6 +4000,21 @@ ECONOMIC_AMOUNT_MEANING = (
     "priced usage there — the two are never added together. Never a zero "
     "standing in for any of these."
 )
+#: WHAT THE SHORTER HORIZON PROMISES, published on the field (W5 ruling 11).
+#: The guaranteed, current edge of fine detail — never the literal oldest row,
+#: because a run-capped prune can be catching up on a backlog, and never a
+#: claim that detailed year-over-year comparison is supported.
+MEASUREMENT_HORIZON_MEANING = (
+    "The earliest day from which UBB guarantees fine measurement detail — raw "
+    "measurement records, quantities, component drill-down and the "
+    "measurement-concept rollup — as of today. It is a shorter platform clock "
+    "than the economic one: 400 days by default, about thirteen months, and a "
+    "configuration rather than a contract. Detail on or after this day is held. "
+    "Detail before it is released by a daily prune and is never promised, even "
+    "where some of it is still present while the prune catches up. It is not a "
+    "promise that a detailed year-over-year comparison is possible: comparing "
+    "a trailing year with the one before it needs about two years of detail."
+)
 UNPRICED_COUNT_MEANING = (
     "How many of this row's postings carry a customer price UBB could not "
     "resolve, on the revenue measure only. Outside any period a "
@@ -4187,11 +4202,12 @@ class EconomicsOut(Schema):
     #: field nobody builds against.
     #:
     #: ⚠ AND READ THEM BESIDE THE PER-REQUEST WINDOW BOUND, which is the other
-    #: number and a different one: six years is what is reachable, 366 days
-    #: (92 hourly) is what one request may span. Six years therefore takes
-    #: successive windows rather than one call.
+    #: number and a different one: six years is what is reachable, 366
+    #: calendar dates (92 hourly) is what one request may span. Six years
+    #: therefore takes consecutive windows rather than one call.
     economic_data_available_from: str
-    measurement_data_available_from: str
+    measurement_data_available_from: str = Field(
+        description=MEASUREMENT_HORIZON_MEANING)
     rows: list[EconomicRowOut]
     context: list[RevenueContextOut]
     #: WHAT THE REVENUE IN THIS ANSWER LEFT OUT (#564, the owner's ruling 5):
