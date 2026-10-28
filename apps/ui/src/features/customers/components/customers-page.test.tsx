@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MONEY_MEASURES } from "@/lib/economic-query";
 import { measuresOutsideRetentionHorizon } from "@/lib/economic-scenarios";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import { mockCustomerList } from "../api/mock-data";
 import { customersApi } from "../api/provider";
@@ -82,6 +84,25 @@ describe("CustomersPage", () => {
     expect(screen.getAllByText("Outside retention horizon")).toHaveLength(20);
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
     expect(screen.queryByText(/^0(\.0)?%$/)).not.toBeInTheDocument();
+  });
+
+  // ⚠ #548: every row's revenue and margin is stated under the one basis the
+  // list's answer names, and the table says which. The mock answers
+  // `recorded`; the answer is re-stated under each value here, through the real
+  // narrowing, so a table that wrote either word itself fails the other.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis the list's answer names", async (basis) => {
+    vi.spyOn(customersApi, "listCustomerMargins").mockResolvedValueOnce({
+      ...mockCustomerList({ start_date: "2026-07-01", end_date: "2026-07-31" }),
+      basis,
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("1f0c9c4e…", undefined, { timeout: 5000 })).toBeInTheDocument();
+    const notes = document.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 
   it("shows the filtered empty state when no customer ID matches", async () => {

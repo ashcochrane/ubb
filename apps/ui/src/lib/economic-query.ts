@@ -296,6 +296,31 @@ export function figuresOn(row: EconomicRow | undefined): EconomicFigures {
   };
 }
 
+/** Which of the two revenue views an answer's figures were stated under. */
+export type AnswerBasis = EconomicsAnswer["basis"];
+
+/**
+ * The figures of a window's totals, and the revenue view the answer stated
+ * them under.
+ *
+ * ⚠ **THE BASIS RIDES WITH THE FIGURES BECAUSE A NARROWING TO FIGURES ALONE
+ * DROPPED IT (#548).** A revenue — and every margin taken from one — may hold
+ * an amount the tenant supplied, which `recorded` places whole on the day its
+ * period opens and `recognised` spreads across the period. Every stat card
+ * built from bare figures stated that revenue without saying which, so the
+ * reader could not tell a figure earned in the window from a slice of one
+ * earned across a quarter. The answer states the basis; this keeps it.
+ */
+export interface StatedFigures extends EconomicFigures {
+  readonly basis: AnswerBasis;
+}
+
+/** The single row of an ungrouped, unbucketed answer, with the basis it was
+ *  stated under. */
+export function statedTotalsOf(answer: EconomicsAnswer): StatedFigures {
+  return { ...figuresOn(onlyRow(answer)), basis: answer.basis };
+}
+
 /**
  * Which measure a GROUPED chart can draw truthfully: revenue where every row
  * states one, the supplier cost where the revenue could not be placed at this
@@ -471,6 +496,13 @@ export function reachesPastHorizon(answer: EconomicsAnswer): boolean {
  * subscription becomes a breakdown that never mentions it.
  */
 export interface AnswerCaveats {
+  /**
+   * The revenue view the answer's figures were stated under (#548). A series,
+   * a list or a breakdown carries supplied revenue as surely as a total does,
+   * and a surface rendering one owes the reader the view it was drawn under —
+   * the one the ANSWER names, never a word the console supplies.
+   */
+  readonly basis: AnswerBasis;
   readonly context: EconomicsAnswer["context"];
   /** The governing horizon, where the window starts before it; else null. */
   readonly held_from: string | null;
@@ -486,6 +518,7 @@ export interface AnswerCaveats {
 
 export function caveatsOf(answer: EconomicsAnswer): AnswerCaveats {
   return {
+    basis: answer.basis,
     context: answer.context,
     held_from: reachesPastHorizon(answer) ? governingHorizon(answer) : null,
     measurement_horizon: answer.group_by.includes(MEASUREMENT_CONCEPT_AXIS),

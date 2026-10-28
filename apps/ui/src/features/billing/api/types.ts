@@ -70,19 +70,16 @@ export interface RevenueDailyRow {
  * a zero and the window read as a smaller whole. `combineFigures` lets the worst
  * day's state win, exactly as the query ranks a margin's two sides, and states
  * no figure under a state that states none.
+ *
+ * ⚠ `basis` — the revenue view the server drew these figures under (#508;
+ * slice 7 §5) — arrives through `AnswerCaveats` since #548, which every view of
+ * the one query now carries. A chart summing supplied amounts owes it and can
+ * owe nothing else: the per-record panels on a customer's page show a source
+ * reference and a recognition method per row, and a window adding three revenue
+ * sources together has neither to show, so the one honest thing it can say is
+ * which of the two views it was drawn under — as the answer states it.
  */
 export interface RevenueWindow extends AnswerCaveats {
-  /**
-   * The revenue view the server drew these figures under (#508; slice 7 §5).
-   *
-   * ⚠ **A CHART SUMMING SUPPLIED AMOUNTS OWES THIS AND CAN OWE NOTHING ELSE.**
-   * The per-record panels on a customer's page show a source reference and a
-   * recognition method per row; a window adding three revenue sources together
-   * has neither to show, so the one honest thing it can say is which of the two
-   * views it was drawn under — and the answer states it rather than the console
-   * assuming.
-   */
-  basis: string;
   daily: RevenueDailyRow[];
   revenue: MeasureFigure;
   cost: MeasureFigure;
@@ -110,7 +107,6 @@ export function toRevenueWindow(answer: Economics): RevenueWindow {
     combineFigures(measure, answer.rows.map((row) => figureOn(row, measure)));
   return {
     ...caveatsOf(answer),
-    basis: answer.basis,
     daily,
     revenue: across(CUSTOMER_REVENUE),
     cost: across(SUPPLIER_COGS),

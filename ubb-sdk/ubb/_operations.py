@@ -326,6 +326,8 @@ API_V1_ME_ENDPOINTS_GET_BALANCE = Operation(
     'api_v1_me_endpoints_get_balance', 'get', '/api/v1/me/balance')
 API_V1_ME_ENDPOINTS_GET_INVOICES = Operation(
     'api_v1_me_endpoints_get_invoices', 'get', '/api/v1/me/invoices')
+API_V1_ME_ENDPOINTS_GET_MY_ECONOMICS = Operation(
+    'api_v1_me_endpoints_get_my_economics', 'get', '/api/v1/me/economics')
 API_V1_ME_ENDPOINTS_GET_TRANSACTIONS = Operation(
     'api_v1_me_endpoints_get_transactions', 'get', '/api/v1/me/transactions')
 API_V1_ME_ENDPOINTS_LIST_GRANTS = Operation(

@@ -22,8 +22,8 @@ T = TypeVar("T", bound="PeriodWindow")
 class PeriodWindow:
     """ 
         Attributes:
-            end (str):
-            start (str):
+            end (str): The last calendar date (UTC) in the window, inclusive.
+            start (str): The first calendar date (UTC) in the window, inclusive.
      """
 
     end: str

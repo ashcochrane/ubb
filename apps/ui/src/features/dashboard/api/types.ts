@@ -27,8 +27,8 @@ import {
   figureOn,
   figuresOn,
   GROSS_MARGIN,
-  onlyRow,
   RECORDED_EVENTS,
+  statedTotalsOf,
   statedValue,
   SUPPLIER_COGS,
   type AnswerCaveats,
@@ -36,6 +36,7 @@ import {
   type EconomicsAnswer,
   type MeasureFigure,
   type PlottedFigures,
+  type StatedFigures,
 } from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
 import type { GroupingFieldValueStatus } from "@/lib/vocabulary";
@@ -91,13 +92,25 @@ export type BreakdownAxis = (typeof BREAKDOWN_AXES)[number];
  * as `$0.00` — the state was on the wire and the narrowing threw it away.
  * `@/components/shared/measure-value` draws each one as its state allows; the
  * counts an incomplete figure leaves out ride inside it.
+ *
+ * ⚠ AND THE BASIS RIDES WITH THEM (#548): the revenue and the margin taken from
+ * it are stated under the view the answer names, and the stat row says which.
  */
-export type TenantEconomics = EconomicFigures;
+export type TenantEconomics = StatedFigures;
 
 /** One customer's row of the same answer, grouped by the customer axis. */
-export interface CustomerEconomicsRow extends TenantEconomics {
+export interface CustomerEconomicsRow extends EconomicFigures {
   /** The customer's identity, which is what that axis groups. */
   customer_id: string;
+}
+
+/**
+ * The per-customer rows, and what the answer said beside them — including the
+ * revenue view every row was stated under (#548). One question, so one basis:
+ * it sits beside the rows rather than on each.
+ */
+export interface CustomerEconomicsList extends AnswerCaveats {
+  rows: CustomerEconomicsRow[];
 }
 
 /**
@@ -161,18 +174,21 @@ export interface ConnectStatus {
   onboarded: boolean;
 }
 
-/** The workspace's totals for the window. */
+/** The workspace's totals for the window, with the basis they were stated under. */
 export function toTenantEconomics(answer: Economics): TenantEconomics {
-  return figuresOn(onlyRow(answer));
+  return statedTotalsOf(answer);
 }
 
 /** One row per customer, from an answer grouped by the customer axis. The
  *  count is null on each, because a grouped question cannot ask for it. */
-export function toCustomerRows(answer: Economics): CustomerEconomicsRow[] {
-  return answer.rows.map((row) => ({
-    customer_id: axisValueOn(row) ?? "",
-    ...figuresOn(row),
-  }));
+export function toCustomerRows(answer: Economics): CustomerEconomicsList {
+  return {
+    ...caveatsOf(answer),
+    rows: answer.rows.map((row) => ({
+      customer_id: axisValueOn(row) ?? "",
+      ...figuresOn(row),
+    })),
+  };
 }
 
 /**

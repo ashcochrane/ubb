@@ -20,6 +20,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { measuresOutsideRetentionHorizon } from "@/lib/economic-scenarios";
 import { ABSENT_LABEL } from "@/lib/localisation";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import {
   mockCustomerEconomics,
@@ -133,5 +135,20 @@ describe("StatRow", () => {
       expect(within(drawn).queryByText("0")).not.toBeInTheDocument();
     }
     expect(within(card("Total revenue")).getByText(/from Sep 18, 2020/)).toBeInTheDocument();
+  });
+
+  // ⚠ #548: THE REVENUE AND THE MARGIN ARE STATED UNDER THE BASIS THE ANSWER
+  // NAMES. The mock answers `recorded`; the totals here are re-stated under
+  // each value, so a row that wrote either word itself fails the other.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its totals were answered under", async (basis) => {
+    answerTotals = async () => ({ ...mockTenantEconomics(WINDOW), basis });
+
+    const { container } = renderRow(<StatRow window={WINDOW} currency="usd" />);
+
+    expect(await screen.findByText("$852.90")).toBeInTheDocument();
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 });

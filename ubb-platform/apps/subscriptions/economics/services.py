@@ -216,8 +216,11 @@ class MarginService:
         totals["supplied_revenue_micros"] += business_supplied
         totals["total_revenue_micros"] += business_sub + business_supplied
         totals["gross_margin_micros"] += business_sub + business_supplied
+        # THE BASIS EVERY SUPPLIED FIGURE IN THE TREE WAS PLACED UNDER (#548):
+        # stated on the answer, so a reader never has to know this module's
+        # constant to read a revenue figure off it.
         return {"business_id": str(business.id), "external_id": business.external_id,
-                "totals": totals, "seats": per_seat}
+                "basis": MARGIN_REVENUE_BASIS, "totals": totals, "seats": per_seat}
 
     @staticmethod
     def snapshot_customer(tenant_id, customer_id, period_start, period_end) -> CustomerEconomics:

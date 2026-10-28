@@ -437,7 +437,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 303 -> 306 in the owner's review of #620: the automatic top-up's
         # one spelling (`topups/0006`) and two withheld statuses no longer
         # offered (`tenant_billing/0016`, `referrals/0009`).
-        "historical-migrations": (UNTIL_SLICE_8, 306, 19),
+        # 306 -> 307 in R10-W5: the measurement's release, once
+        # (`usage/0052`).
+        "historical-migrations": (UNTIL_SLICE_8, 307, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

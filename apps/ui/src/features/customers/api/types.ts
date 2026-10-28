@@ -15,8 +15,8 @@ import {
   figureOn,
   figuresOn,
   GROSS_MARGIN,
-  onlyRow,
   RECORDED_EVENTS,
+  statedTotalsOf,
   statedValue,
   SUPPLIER_COGS,
   type AnswerCaveats,
@@ -25,6 +25,7 @@ import {
   type EconomicsAnswer,
   type MeasureFigure,
   type PlottedFigures,
+  type StatedFigures,
 } from "@/lib/economic-query";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,25 @@ export interface TrendPoint {
   [FIGURES_KEY]: PlottedFigures;
 }
 
+/**
+ * The customer list: one row per customer, and what the answer said beside
+ * them — including the revenue view every row was stated under (#548).
+ *
+ * ⚠ **THE BASIS IS THE ANSWER'S, SO IT SITS BESIDE THE ROWS RATHER THAN ON
+ * EACH.** It is a property of the question the list asked, the same for every
+ * row, and a bare array of rows had nowhere to keep it — which is how the list
+ * came to state each customer's revenue without saying which view it was.
+ */
+export interface CustomerMarginList extends AnswerCaveats {
+  rows: CustomerEconomics[];
+}
+
+/**
+ * One customer's own figures, and the revenue view the answer stated them
+ * under (#548) — the Overview and Usage tabs' cards.
+ */
+export type OneCustomerEconomics = CustomerEconomics & StatedFigures;
+
 function economicsOf(row: EconomicRow | undefined, customerId: string): CustomerEconomics {
   return { customer_id: customerId, ...figuresOn(row) };
 }
@@ -91,13 +111,16 @@ function moneyFigures(row: EconomicRow): {
 }
 
 /** One row per customer, from an answer grouped by the customer axis. */
-export function toCustomerRows(answer: Economics): CustomerEconomics[] {
-  return answer.rows.map((row) => economicsOf(row, axisValueOn(row) ?? ""));
+export function toCustomerRows(answer: Economics): CustomerMarginList {
+  return {
+    ...caveatsOf(answer),
+    rows: answer.rows.map((row) => economicsOf(row, axisValueOn(row) ?? "")),
+  };
 }
 
 /** One customer's own figures, from an answer filtered to them. */
-export function toOneCustomer(answer: Economics): CustomerEconomics {
-  return economicsOf(onlyRow(answer), "");
+export function toOneCustomer(answer: Economics): OneCustomerEconomics {
+  return { customer_id: "", ...statedTotalsOf(answer) };
 }
 
 /**
@@ -110,11 +133,11 @@ export function toOneCustomer(answer: Economics): CustomerEconomics {
  * are looking at smoothing they did not ask for". The answer states which; a
  * narrowing that returned bare points would let every caller drop it silently,
  * which is what every caller did until this ticket. Now a surface cannot get
- * the figures without being handed the sentence that qualifies them.
+ * the figures without being handed the sentence that qualifies them — and
+ * since #548 the basis is one of the `AnswerCaveats` every view of the one
+ * query carries, so this is no longer the only narrowing that keeps it.
  */
 export interface MarginTrend extends AnswerCaveats {
-  /** The revenue view the server drew these figures under. */
-  basis: string;
   points: TrendPoint[];
 }
 
@@ -122,7 +145,6 @@ export interface MarginTrend extends AnswerCaveats {
 export function toTrendPoints(answer: Economics): MarginTrend {
   return {
     ...caveatsOf(answer),
-    basis: answer.basis,
     points: answer.rows.map((row) => {
       const figures = moneyFigures(row);
       return {

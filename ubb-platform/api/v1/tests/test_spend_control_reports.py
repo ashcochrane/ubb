@@ -529,7 +529,12 @@ class TheTaskAnalyticsRowLostItsReachedCountTest(RailActivated, SpendControlRepo
     def test_claim_14_in_both_directions(self):
         unit = self._unit(ceiling=1_000_000, task_type="a")
         self._record(bills=1_000_000, task_id=unit.id, provider_cost_micros=2_000_000)
-        rows = self._report("/api/v1/metering/analytics/tasks", "?group_by=task_type")["rows"]
+        # The analytics read defaults to the UTC month to date (W5 ruling 4), so
+        # it is asked about the day the unit was created, not left to the clock.
+        created = unit.created_at.date().isoformat()
+        rows = self._report("/api/v1/metering/analytics/tasks",
+                            f"?group_by=task_type&start_date={created}"
+                            f"&end_date={created}")["rows"]
         self.assertEqual(len(rows), 1)
         self.assertNotIn("limit_hit_count", rows[0])
         self.assertEqual(self._report(UTILISATION)["ceiling_reached_count"], 1)

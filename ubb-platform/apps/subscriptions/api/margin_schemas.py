@@ -3,7 +3,10 @@ from ninja import Schema, Field
 
 from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, supplier_cost_total_meaning)
+from apps.subscriptions.economics.services import MARGIN_REVENUE_BASIS
 from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING
+from core.field_values import a_field_of
+from core.report_windows import END_DATE_DESCRIPTION, START_DATE_DESCRIPTION
 
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
@@ -30,6 +33,14 @@ RecognitionMethod = Annotated[
 #: would be exactly that.
 RevenueBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "revenue_basis"})]
+
+#: THE ONE BASIS EVERY MARGIN THIS PRODUCT COMPUTES PLACES SUPPLIED REVENUE
+#: UNDER (`economics/services.py:MARGIN_REVENUE_BASIS`). The answers that
+#: state it can return that value of `revenue_basis` and no other, so they
+#: advertise that one alone (the owner's review of #621): the concept marker
+#: stays, the export writes the `enum` from the registry, and the `Literal`
+#: refuses any other value at the response.
+MarginRevenueBasis = a_field_of("revenue_basis", MARGIN_REVENUE_BASIS)
 
 #: WHETHER CUSTOMER REVENUE FOR THE WINDOW IS SETTLED, AND IF NOT, WHY NOT.
 #: The same four states the posting carries (#153 §3.4 rules this slice adds no
@@ -143,9 +154,10 @@ class MarginThresholdOut(Schema):
 
 
 class PeriodWindow(Schema):
-    # ISO dates; end is exclusive (month-to-date windows end at tomorrow).
-    start: str
-    end: str
+    # The window the answer applied, as the caller's inclusive dates (#543):
+    # it said `end` was exclusive until W5, and it no longer is anywhere.
+    start: str = Field(description=START_DATE_DESCRIPTION)
+    end: str = Field(description=END_DATE_DESCRIPTION)
 
 
 class SuppliedRevenueWindowOut(Schema):
@@ -262,6 +274,12 @@ class UnprofitableCustomerRow(Schema):
 
 class UnprofitableOut(Schema):
     period_start: str
+    #: WHICH VIEW THE SUPPLIED REVENUE INSIDE EVERY FLAGGED MARGIN WAS PLACED
+    #: UNDER (#548, W5 ruling 15). The flags are raised on margins computed
+    #: under the recognised basis (`economics/services.py:MARGIN_REVENUE_BASIS`),
+    #: one basis for the whole list; required and never null, so a console
+    #: states the basis this answer names rather than a constant of its own.
+    basis: MarginRevenueBasis
     customers: list[UnprofitableCustomerRow]
 
 
@@ -308,5 +326,13 @@ class BusinessMarginTotals(Schema):
 class BusinessMarginOut(Schema):
     business_id: str
     external_id: str
+    #: WHICH VIEW EVERY SUPPLIED REVENUE FIGURE IN THIS ANSWER IS STATED UNDER
+    #: (#548, W5 ruling 15) — the totals and every seat alike, one basis for
+    #: the whole tree. Required and never null: the rollup always places
+    #: supplied revenue under the recognised basis
+    #: (`economics/services.py:MARGIN_REVENUE_BASIS`), and a console reading a
+    #: figure off it shows the basis the answer states rather than a constant
+    #: of its own.
+    basis: MarginRevenueBasis
     totals: BusinessMarginTotals
     seats: list[SeatMarginOut]

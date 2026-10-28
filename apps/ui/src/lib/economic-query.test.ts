@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  caveatsOf,
   combineFigures,
   CUSTOMER_REVENUE,
   figureOn,
@@ -8,12 +9,15 @@ import {
   GROSS_MARGIN,
   RECORDED_EVENTS,
   reachesPastHorizon,
+  statedTotalsOf,
   statedValue,
   SUPPLIER_COGS,
+  type AnswerBasis,
   type EconomicRow,
   type EconomicsAnswer,
   type MeasureFigure,
 } from "./economic-query";
+import { REVENUE_BASIS_VALUES } from "./vocabulary";
 
 function row(measures: EconomicRow["measures"]): EconomicRow {
   return { grouping_field_value: [], grouping_field_value_status: [], measures };
@@ -212,5 +216,31 @@ describe("the horizon that governs an answer", () => {
     expect(governingHorizon(answer({ group_by: ["rollup:event_category"] }))).toBe(
       "2020-09-18",
     );
+  });
+});
+
+// ⚠ #548: every view of the one query keeps the revenue view its answer was
+// stated under. Both values, so a narrowing that wrote either word in place of
+// the answer's would fail one of them.
+describe("the basis an answer states, kept by every narrowing of it", () => {
+  const answer = (basis: AnswerBasis): EconomicsAnswer => ({
+    period_start: "2026-07-01",
+    period_end: "2026-07-31",
+    group_by: [],
+    bucket: null,
+    basis,
+    economic_data_available_from: "2020-09-18",
+    measurement_data_available_from: "2026-06-01",
+    foreign_currency_subscription_count: 0,
+    rows: [row([])],
+    context: [],
+  });
+
+  it.each(REVENUE_BASIS_VALUES)("keeps %s beside a series, a list or a breakdown", (basis) => {
+    expect(caveatsOf(answer(basis)).basis).toBe(basis);
+  });
+
+  it.each(REVENUE_BASIS_VALUES)("keeps %s on a window's totals", (basis) => {
+    expect(statedTotalsOf(answer(basis)).basis).toBe(basis);
   });
 });

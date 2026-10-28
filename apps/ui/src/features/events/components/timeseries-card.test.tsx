@@ -15,8 +15,11 @@ import type { GroupingOption } from "@/lib/grouping-axis";
 import {
   completePriceTotal,
   completeTotal,
+  knownMeasures,
   revenueUnavailableAtThisGrain,
 } from "@/lib/economic-scenarios";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import { MEASUREMENT_HORIZON } from "../api/mock-data";
 import { eventsApi } from "../api/provider";
@@ -263,6 +266,49 @@ describe("a series whose measurement records were pruned", () => {
     expect(container.querySelector("[data-plotted-measure]")).toHaveTextContent(
       "Lines: Recorded events by group, per day. This axis answers no money.",
     );
+    // ⚠ #548's other half: an axis that answers no money draws a count, and a
+    // count states no revenue basis — a note here would qualify nothing.
+    expect(container.querySelector("[data-revenue-basis]")).toBeNull();
+  });
+});
+
+// ⚠ #548: wherever the chart carries revenue it states the basis its answer
+// names. The mock answers `recorded`; the answer here is re-stated under each
+// value and reaches the card through the real narrowing, so a card that wrote
+// either word itself fails the other.
+describe("the revenue view a chart was drawn under", () => {
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+    vi.spyOn(eventsApi, "getUsageTimeseries").mockResolvedValueOnce({
+      period_start: WINDOW.start_date,
+      period_end: WINDOW.end_date,
+      group_by: [],
+      bucket: "day",
+      basis,
+      economic_data_available_from: "2020-07-01",
+      measurement_data_available_from: MEASUREMENT_HORIZON,
+      foreign_currency_subscription_count: 0,
+      rows: [{
+        bucket_start: "2026-07-01T00:00:00Z",
+        grouping_field_value: [],
+        grouping_field_value_status: [],
+        measures: knownMeasures({ cost_micros: 3_000_000, revenue_micros: 8_000_000, events: 2 }),
+      }],
+      context: [],
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(groupingOptionsQueryOptions.queryKey, ACME);
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <TimeseriesCard window={WINDOW} onGroupByChange={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("chart", undefined, { timeout: 5000 })).toBeInTheDocument();
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 });
 

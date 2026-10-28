@@ -15,6 +15,7 @@ import {
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { figureNote, isNegative, noFigureNote } from "@/lib/measure-state";
 import { cn } from "@/lib/utils";
 
@@ -72,36 +73,41 @@ export function UsageTab({
         // the figure as its state allows. The labels are the events strip's —
         // #501 retired "Markup margin" there as naming neither thing, and the
         // same measure on this tab kept the retired name.
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatCard
-            label="Events"
-            value={<MeasureValue figure={analytics.data.events} currency={currency} />}
-            variant="raised"
-          />
-          <StatCard
-            label="Revenue"
-            value={<MeasureValue figure={analytics.data.revenue} currency={currency} />}
-            variant="raised"
-            subtitle={figureNote(analytics.data.revenue, currency)}
-          />
-          <StatCard
-            label="Provider cost"
-            value={<MeasureValue figure={analytics.data.cost} currency={currency} />}
-            variant="raised"
-            subtitle={figureNote(analytics.data.cost, currency)}
-          />
-          <StatCard
-            label="Gross margin"
-            value={
-              <span className={cn(isNegative(analytics.data.margin) && "text-danger-dark")}>
-                <MeasureValue figure={analytics.data.margin} currency={currency} />
-              </span>
-            }
-            variant="raised"
-            subtitle={
-              noFigureNote(analytics.data.margin, currency) ?? "Revenue minus provider cost"
-            }
-          />
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard
+              label="Events"
+              value={<MeasureValue figure={analytics.data.events} currency={currency} />}
+              variant="raised"
+            />
+            <StatCard
+              label="Revenue"
+              value={<MeasureValue figure={analytics.data.revenue} currency={currency} />}
+              variant="raised"
+              subtitle={figureNote(analytics.data.revenue, currency)}
+            />
+            <StatCard
+              label="Provider cost"
+              value={<MeasureValue figure={analytics.data.cost} currency={currency} />}
+              variant="raised"
+              subtitle={figureNote(analytics.data.cost, currency)}
+            />
+            <StatCard
+              label="Gross margin"
+              value={
+                <span className={cn(isNegative(analytics.data.margin) && "text-danger-dark")}>
+                  <MeasureValue figure={analytics.data.margin} currency={currency} />
+                </span>
+              }
+              variant="raised"
+              subtitle={
+                noFigureNote(analytics.data.margin, currency) ?? "Revenue minus provider cost"
+              }
+            />
+          </div>
+          {/* The four cards are one answer, so they share one note: the
+              basis IT states (#548), never one the console assumed. */}
+          <RevenueBasisNote basis={analytics.data.basis} />
         </div>
       ) : null}
 
@@ -127,6 +133,9 @@ export function UsageTab({
                 currency={currency}
               />
             </React.Suspense>
+            {/* The chart is a SECOND answer from the cards above, so it states
+                its own basis rather than borrowing theirs (#548). */}
+            <RevenueBasisNote basis={timeseries.data.basis} />
             <RevenueContext context={timeseries.data.context} currency={currency} />
             <RetentionHorizonNote caveats={timeseries.data} />
           </>

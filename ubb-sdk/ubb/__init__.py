@@ -66,6 +66,12 @@ from ubb.exceptions import (
 from ubb import _exceptions_generated as _exc
 from ubb._exceptions_generated import *  # noqa: F401,F403
 from ubb.webhooks import verify_webhook, verify_webhook_legacy
+# OMITTED, NULL AND FALSY ARE THREE FACTS (#596). A field a response left out
+# reads `None` where its type admits null, and stays the core's `UNSET` where it
+# does not — test that one with `is UNSET` or `is_unset(...)`, never `not x`,
+# which a stated `0`, `False`, `""` or `[]` would satisfy too.
+from ubb._core.types import UNSET
+from ubb._models import is_unset
 
 # The SDK's own semver. v3.0 is the coordinated breaking cut (#85): the
 # generated core (#84) and the problem+json error model (#78) migrate the one
@@ -108,5 +114,7 @@ __all__ = [
     "UBBStopRequested", "UBBWebhookVerificationError", "TaskOutcomeRequired",
     # webhooks + release identity (SDK version + spec stamp)
     "verify_webhook", "verify_webhook_legacy",
+    # a field the response left out, told apart from null and from falsy
+    "UNSET", "is_unset",
     "__version__", "__spec_revision__", "__spec_version__",
 ] + list(_exc.__all__)

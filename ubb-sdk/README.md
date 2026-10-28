@@ -670,7 +670,20 @@ only for the authenticated customer (billing-owner only for consolidated invoice
 GET /api/v1/me/usage-invoices         # usage line items billed to this customer
 GET /api/v1/me/subscription-invoices  # subscription invoices (access fee + seats)
 GET /api/v1/me/balance                # wallet balance (prepaid customers)
+GET /api/v1/me/economics              # this customer's own usage: revenue and recorded events
 ```
+
+`GET /api/v1/me/economics` is the end customer's own usage summary (#561). It answers
+two figures and nothing else: `customer_revenue` — what the customer's usage earned, with
+the basis and the currency it is stated in, and `null` (never `0`) where no figure can be
+stated, `status` saying why — and `recorded_events`, how many metered events it recorded.
+Supplier cost, margin and your own grouping fields are not on this route. **The token is the
+only scope**: the route takes no customer parameter, so a widget holder cannot ask about
+another customer, and a business reads its own usage without its seats'. It is gated on the
+`metering` product (the other widget routes need `billing`). The window is every report's:
+`start_date` and `end_date` are inclusive UTC dates, a lone one is honoured, none is the
+month to date, and one request spans at most 366 calendar dates — `validation_error`
+otherwise.
 
 ### J2 verified method signatures
 
@@ -725,7 +738,7 @@ never hand-maintained (#204, ADR-0007 §4):
 | `generated_only` | no ergonomic method; reach it through `ubb._core` |
 | `not_yet_wrapped` | not reachable through this SDK at all |
 
-Today that is 78 wrapped and 56 `generated_only`, and the gap is deliberate
+Today that is 75 wrapped and 85 `generated_only`, and the gap is deliberate
 rather than a backlog: the eight `/api/v1/me/*` operations are the end-customer
 widget surface and need a widget token rather than a tenant key, and the health
 and readiness probes are for an orchestrator. A rise in the unwrapped count

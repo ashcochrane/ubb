@@ -47,7 +47,7 @@ from typing import Optional
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from ninja import Router
+from ninja import Query, Router
 
 from api.v1.schemas import (
     CeilingEpisodeRow, CeilingUtilisationRow, ControlFamily,
@@ -93,6 +93,17 @@ def _aware(instant):
     if instant is not None and timezone.is_naive(instant):
         return timezone.make_aware(instant, dt_timezone.utc)
     return instant
+
+
+#: What the two instants mean, published on each parameter. ⚠ **THESE ARE
+#: INSTANTS, NOT CALENDAR DATES, AND THE CALENDAR-DATE RULE DOES NOT REACH
+#: THEM** (W5 ruling 5): the calendar-date reports read an inclusive
+#: `end_date` (`core/report_windows.py`), while this pair is a half-open
+#: datetime window and says so, rather than being bent to match.
+SINCE_DESCRIPTION = ("An instant (ISO 8601 datetime; a naive one is read as "
+                     "UTC), inclusive. Defaults to 366 days before `until`.")
+UNTIL_DESCRIPTION = ("An instant (ISO 8601 datetime; a naive one is read as "
+                     "UTC), exclusive. Defaults to now.")
 
 
 def _window(since, until):
@@ -405,8 +416,9 @@ def build_utilisation_and_headroom(tenant, *, since, until, customer=None,
 @spend_control_router.get("/stops-and-breaches", response=StopsAndBreachesResponse)
 @role_floor(READ)
 def stops_and_breaches(request, customer_id: UUIDIdentifier = None,
-                       task_type: str = None, since: datetime = None,
-                       until: datetime = None,
+                       task_type: str = None,
+                       since: Optional[datetime] = Query(None, description=SINCE_DESCRIPTION),
+                       until: Optional[datetime] = Query(None, description=UNTIL_DESCRIPTION),
                        control_family: Optional[ControlFamily] = None):
     """What was spent past a stop, and why: every spend control that fired
     and had an enforcement consequence, in the window, as typed rows — a
@@ -419,8 +431,11 @@ def stops_and_breaches(request, customer_id: UUIDIdentifier = None,
     (ISO datetimes; naive = UTC) to the instant each episode opened, and
     `control_family` to one family — a family this workspace lacks answers
     no rows, never an error. Expiries and admission control appear in
-    neither report. A window left open covers the 366 days ending now; the
-    response echoes the window applied."""
+    neither report. `since`/`until` are a half-open window of INSTANTS:
+    `since` inclusive, `until` exclusive — not the calendar-date reports'
+    inclusive end date. A window left open covers the 366 days ending now, a
+    lone `until` the 366 days before it, and a stated window may span at
+    most 366 days; the response echoes the window applied."""
     tenant = request.auth.tenant
     since, until = _window(since, until)
     return build_stops_and_breaches(
@@ -432,8 +447,9 @@ def stops_and_breaches(request, customer_id: UUIDIdentifier = None,
                           response=UtilisationAndHeadroomResponse)
 @role_floor(READ)
 def utilisation_and_headroom(request, customer_id: UUIDIdentifier = None,
-                             task_type: str = None, since: datetime = None,
-                             until: datetime = None):
+                             task_type: str = None,
+                             since: Optional[datetime] = Query(None, description=SINCE_DESCRIPTION),
+                             until: Optional[datetime] = Query(None, description=UNTIL_DESCRIPTION)):
     """How much of each ceiling was used, and how often it could not be
     evaluated: one row per unit of work that completed in the window (at
     either altitude) with its ceiling status, utilisation and headroom as

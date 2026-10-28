@@ -1173,6 +1173,10 @@ MEASURE_STATUS_VALUES = frozenset({
     MEASURE_STATUS_NOT_APPLICABLE,
 })
 
+MEASURE_STATUS_WITHHELD_VALUES = frozenset({
+    MEASURE_STATUS_NOT_APPLICABLE,
+})
+
 
 # --- measurement_key ---------------------------------------------------------
 #

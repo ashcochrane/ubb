@@ -6,6 +6,7 @@
 
 import { ErrorCard } from "@/components/shared/error-card";
 import { MeasureValue } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { figureNote, isNegative, noFigureNote } from "@/lib/measure-state";
@@ -86,6 +87,9 @@ export function AnalyticsStrip({
           subtitle={noFigureNote(data.margin, currency) ?? "Revenue minus provider cost"}
         />
       </div>
+      {/* The revenue and the margin above are stated under the basis this
+          answer names (#548), never one the console assumes. */}
+      <RevenueBasisNote basis={data.basis} />
       {metadataFilterActive && (
         <p className="text-[11px] text-text-muted">
           Totals cover the window and stop filters — the metadata filter applies

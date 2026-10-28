@@ -125,8 +125,10 @@ def sync_detailed(
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -177,8 +179,10 @@ def sync(
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -224,8 +228,10 @@ async def asyncio_detailed(
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -276,8 +282,10 @@ async def asyncio(
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

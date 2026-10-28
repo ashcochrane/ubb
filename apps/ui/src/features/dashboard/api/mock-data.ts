@@ -268,6 +268,10 @@ export function mockTenantEconomics(window: Window): Economics {
 }
 
 export const MOCK_UNPROFITABLE: Unprofitable = {
+  // The alerting record's margins are taken over supplied revenue spread under
+  // `recognised`, and the server states so on the answer (#548) — so the mock
+  // says what a server says.
+  basis: "recognised",
   period_start: "2026-07-01",
   customers: [
     {

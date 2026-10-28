@@ -21,6 +21,7 @@ import type { InheritedPricingRule, InheritedRuleParams } from "../api/types";
 import { pricingMethodLabel } from "@/lib/customer-price";
 import { microsToUnitString, toMicros, unitChoiceFor } from "../lib/pricing-math";
 import {
+  NAMED_SELECTORS,
   pinnableGroupingFields,
   rateStructureLabel,
   ruleAmount,
@@ -72,7 +73,11 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
     measurement_key: "",
     provider: "",
     event_type: "",
+    task_type: "",
+    subtask_type: "",
   });
+  /** The `as_of` instant the route publishes, as the local value typed. */
+  const [asOfLocal, setAsOfLocal] = React.useState("");
   const [editing, setEditing] = React.useState(false);
   const [effectiveLocal, setEffectiveLocal] = React.useState("");
 
@@ -85,8 +90,12 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
    * would churn the query key on every keystroke into an empty field.
    */
   const question: InheritedRuleParams = React.useMemo(
-    () => ({ ...lookup, grouping_fields: statedGroupingFields(lookup.grouping_fields ?? {}) }),
-    [lookup],
+    () => ({
+      ...lookup,
+      grouping_fields: statedGroupingFields(lookup.grouping_fields ?? {}),
+      as_of: effectiveInstant(asOfLocal),
+    }),
+    [lookup, asOfLocal],
   );
 
   const inherited = useInheritedRule(customerId, question);
@@ -177,38 +186,28 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
                 />
               )}
             </FormField>
-            <FormField label={selectorTitle("provider")}>
-              {(id) => (
-                <Input
-                  id={id}
-                  className="font-mono"
-                  placeholder={SELECTOR_EXAMPLES.provider}
-                  value={lookup.provider ?? ""}
-                  onChange={(event) =>
-                    setLookup((current) => ({
-                      ...current,
-                      provider: event.target.value,
-                    }))
-                  }
-                />
-              )}
-            </FormField>
-            <FormField label={selectorTitle("event_type")}>
-              {(id) => (
-                <Input
-                  id={id}
-                  className="font-mono"
-                  placeholder={SELECTOR_EXAMPLES.event_type}
-                  value={lookup.event_type ?? ""}
-                  onChange={(event) =>
-                    setLookup((current) => ({
-                      ...current,
-                      event_type: event.target.value,
-                    }))
-                  }
-                />
-              )}
-            </FormField>
+            {/* EVERY NAMED SELECTOR THE ROUTE TAKES (#546), off the one
+                inventory the rule editor iterates — so a selector the server
+                gains is one this question can ask, not a box someone has to
+                remember to copy here. */}
+            {NAMED_SELECTORS.map((selector) => (
+              <FormField key={selector} label={selectorTitle(selector)}>
+                {(id) => (
+                  <Input
+                    id={id}
+                    className="font-mono"
+                    placeholder={SELECTOR_EXAMPLES[selector]}
+                    value={lookup[selector] ?? ""}
+                    onChange={(event) =>
+                      setLookup((current) => ({
+                        ...current,
+                        [selector]: event.target.value,
+                      }))
+                    }
+                  />
+                )}
+              </FormField>
+            ))}
           </div>
 
           {/* ⚠ THE GROUPING VALUES ARE PART OF THE QUESTION, NOT AN EXTRA.
@@ -247,6 +246,23 @@ export function CustomerPricingTab({ customerId }: { customerId: string }) {
               </div>
             </details>
           )}
+
+          {/* THE LAST PARAMETER THE ROUTE PUBLISHES: the instant to ask
+              about. Left empty, the answer is what they inherit now. */}
+          <FormField
+            label="As of"
+            hint="Ask what they inherited, or will inherit, at another instant. Empty is now."
+          >
+            {(id) => (
+              <Input
+                id={id}
+                type="datetime-local"
+                className="w-[240px]"
+                value={asOfLocal}
+                onChange={(event) => setAsOfLocal(event.target.value)}
+              />
+            )}
+          </FormField>
 
           {lookup.measurement_key === "" ? (
             <p className="text-[12px] text-text-muted">

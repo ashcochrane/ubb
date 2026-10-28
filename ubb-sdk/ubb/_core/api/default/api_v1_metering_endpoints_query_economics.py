@@ -258,11 +258,12 @@ def sync_detailed(
     economics for six years and detailed measurement on a shorter platform
     clock, and this answer publishes both start dates in
     `economic_data_available_from` and `measurement_data_available_from` —
-    always, whether or not anything was truncated. One request, meanwhile, may
-    span 366 days, or 92 for an hourly question, because that ceiling is about
-    how many buckets one answer may carry. So six years of history is reachable
-    in successive windows, not in one call, and the response states each
-    number rather than leaving you to discover the second by being refused.
+    always, whether or not anything was truncated. One request, meanwhile, spans
+    at most 366 calendar dates, or 92 for an hourly question, because that
+    ceiling is about how many buckets one answer may carry. So six years of
+    history is read as consecutive windows (below), not in one call, and the
+    response states each number rather than leaving you to discover the second
+    by being refused.
 
     A measure whose stretch reaches back past the horizon governing it reads
     `unavailable_outside_retention_horizon` and carries `available_from`: never
@@ -277,9 +278,19 @@ def sync_detailed(
     surface declines to answer subtly wrongly, whose message says what to ask
     instead.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         measures (list[str] | Unset):
         group_by (list[str] | Unset):
         bucket (None | str | Unset):
@@ -396,11 +407,12 @@ def sync(
     economics for six years and detailed measurement on a shorter platform
     clock, and this answer publishes both start dates in
     `economic_data_available_from` and `measurement_data_available_from` —
-    always, whether or not anything was truncated. One request, meanwhile, may
-    span 366 days, or 92 for an hourly question, because that ceiling is about
-    how many buckets one answer may carry. So six years of history is reachable
-    in successive windows, not in one call, and the response states each
-    number rather than leaving you to discover the second by being refused.
+    always, whether or not anything was truncated. One request, meanwhile, spans
+    at most 366 calendar dates, or 92 for an hourly question, because that
+    ceiling is about how many buckets one answer may carry. So six years of
+    history is read as consecutive windows (below), not in one call, and the
+    response states each number rather than leaving you to discover the second
+    by being refused.
 
     A measure whose stretch reaches back past the horizon governing it reads
     `unavailable_outside_retention_horizon` and carries `available_from`: never
@@ -415,9 +427,19 @@ def sync(
     surface declines to answer subtly wrongly, whose message says what to ask
     instead.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         measures (list[str] | Unset):
         group_by (list[str] | Unset):
         bucket (None | str | Unset):
@@ -529,11 +551,12 @@ async def asyncio_detailed(
     economics for six years and detailed measurement on a shorter platform
     clock, and this answer publishes both start dates in
     `economic_data_available_from` and `measurement_data_available_from` —
-    always, whether or not anything was truncated. One request, meanwhile, may
-    span 366 days, or 92 for an hourly question, because that ceiling is about
-    how many buckets one answer may carry. So six years of history is reachable
-    in successive windows, not in one call, and the response states each
-    number rather than leaving you to discover the second by being refused.
+    always, whether or not anything was truncated. One request, meanwhile, spans
+    at most 366 calendar dates, or 92 for an hourly question, because that
+    ceiling is about how many buckets one answer may carry. So six years of
+    history is read as consecutive windows (below), not in one call, and the
+    response states each number rather than leaving you to discover the second
+    by being refused.
 
     A measure whose stretch reaches back past the horizon governing it reads
     `unavailable_outside_retention_horizon` and carries `available_from`: never
@@ -548,9 +571,19 @@ async def asyncio_detailed(
     surface declines to answer subtly wrongly, whose message says what to ask
     instead.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         measures (list[str] | Unset):
         group_by (list[str] | Unset):
         bucket (None | str | Unset):
@@ -667,11 +700,12 @@ async def asyncio(
     economics for six years and detailed measurement on a shorter platform
     clock, and this answer publishes both start dates in
     `economic_data_available_from` and `measurement_data_available_from` —
-    always, whether or not anything was truncated. One request, meanwhile, may
-    span 366 days, or 92 for an hourly question, because that ceiling is about
-    how many buckets one answer may carry. So six years of history is reachable
-    in successive windows, not in one call, and the response states each
-    number rather than leaving you to discover the second by being refused.
+    always, whether or not anything was truncated. One request, meanwhile, spans
+    at most 366 calendar dates, or 92 for an hourly question, because that
+    ceiling is about how many buckets one answer may carry. So six years of
+    history is read as consecutive windows (below), not in one call, and the
+    response states each number rather than leaving you to discover the second
+    by being refused.
 
     A measure whose stretch reaches back past the horizon governing it reads
     `unavailable_outside_retention_horizon` and carries `available_from`: never
@@ -686,9 +720,19 @@ async def asyncio(
     surface declines to answer subtly wrongly, whose message says what to ask
     instead.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         measures (list[str] | Unset):
         group_by (list[str] | Unset):
         bucket (None | str | Unset):

@@ -62,6 +62,7 @@ from tools.known_values import (
     CONTRACT,
     ENUM,
     EXTENSIONS,
+    FIELD_VALUES_KEY,
     KNOWN_VALUES,
     KNOWN_VALUES_KEY,
     MARKER,
@@ -435,9 +436,17 @@ def test_g4_no_open_concept_is_a_closed_enum_in_the_contract(spec, registry,
                 f"{pointer}: {name!r} is closed, so its values are the schema's "
                 f"`enum` and not documentation beside it")
             # What can OCCUR: the declared set less what the registry
-            # withholds (R10-W4, `withheld_values`; §0.4 C).
-            assert node.get("enum") == \
-                list(registry.concepts[name].occurring_values), pointer
+            # withholds (R10-W4, `withheld_values`; §0.4 C) — and on a
+            # field that names its own values (R10-W5, the owner's review
+            # of #621), the part of that set the field can return, in the
+            # registry's order. Never the whole set, never more.
+            occurring = list(registry.concepts[name].occurring_values)
+            named = node.get(FIELD_VALUES_KEY)
+            if named is not None:
+                assert set(named) < set(occurring), (pointer, named)
+            assert node.get("enum") == [
+                value for value in occurring
+                if named is None or value in named], pointer
 
 
 def test_g4_every_enum_in_the_contract_is_accounted_for(spec, decisions):
@@ -1260,7 +1269,12 @@ CONCEPTS_IN_THE_CONTRACT = {
     # every answer, which is the same rule one surface over — a figure whose
     # basis is unstated is the unlabelled proration slice 7 §5 exists to end, so
     # the field is required rather than optional and the marker is plain.
-    "revenue_basis": Published(3, ENUM),
+    # ⚠ 3 -> 5 IN W5: the business rollup states the basis it placed supplied
+    # revenue under (#548, required), and the end customer's own usage summary
+    # states the basis its revenue was served on (#561, `MeEconomicsOut`) —
+    # and 5 -> 6: the unprofitable list states the basis its flagged margins
+    # were computed under (#548).
+    "revenue_basis": Published(6, ENUM),
     # #498 (slice 7 §6/§7) — THE FIRST PAIR THE CONTRACT ADVERTISES FROM ONE
     # SCHEMA NODE'S WORTH OF ROW, and the first whose backend G2 twins were paid
     # by COMPUTATION rather than by re-sourcing a list. The discovery contract
@@ -1304,7 +1318,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # concept as a SET, and marked the field; the `description` moved up onto
     # the schema, whose subject it was. One node, because a state sits on each
     # measure and each measure on a row resolves independently.
-    "measure_status": Published(1, ENUM),  # EconomicMeasureOut.status
+    # ⚠ 1 -> 3 IN W5 (#561): the widget's two measures, each its own schema
+    # (`MeCustomerRevenueOut`, `MeRecordedEventsOut`), carry the same state.
+    "measure_status": Published(3, ENUM),
     # #575 (the Code Builder's registry prefactor) — THREE VALUE SETS DECLARED
     # ON THE CONTRACT BEFORE THE BLUEPRINT THAT READS THEM IS BUILT, so that a
     # review of vocabulary and a review of that contract can fail separately.
@@ -1932,7 +1948,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # end, wearing a label.
     placed("revenue_basis",
            {"EconomicsOut", "SuppliedRevenueWindowOut",
-            "/api/v1/margin/customers/{customer_id}/supplied-revenue"})
+            "/api/v1/margin/customers/{customer_id}/supplied-revenue",
+            # W5: the business rollup's answer and the unprofitable list
+            # (#548), and the end customer's own usage summary (#561), each
+            # state the basis they applied.
+            "BusinessMarginOut", "UnprofitableOut", "MeEconomicsOut"})
 
     # WHICH OF THE FOUR A ROW MEASURES, on the measure row and on nothing else.
     # The answer's own schema does NOT carry it: an answer is a set of measures
@@ -1946,7 +1966,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # LATER one than its sibling above — #499 marked the name and #500 the
     # state, once the concept's fifth value existed and the read contract held
     # the set rather than three of its members.
-    placed("measure_status", {"EconomicMeasureOut"})
+    placed("measure_status", {"EconomicMeasureOut",
+                              # W5 (#561): the widget's two measures.
+                              "MeCustomerRevenueOut", "MeRecordedEventsOut"})
 
     # #575's three. The lifecycle is OUT only on both responses: a declaration
     # is published by an act, never by a caller stating that it is. The other
@@ -2481,6 +2503,105 @@ def test_stripping_undoes_applying_and_touches_nothing_else():
 
     hand_written = _document({"type": "string", "enum": ["a", "b"]})
     assert strip_known_values(hand_written) == hand_written
+
+
+# A FIELD THAT RETURNS ONLY PART OF ITS CONCEPT (R10-W5, the owner's review of
+# #621). The registry owns the tokens and the field owns where it sits among
+# them: `x-ubb-field-values` beside the marker, written by
+# `core/field_values.py` from the registry's constants.
+
+def _three():
+    return {"synthetic_concept": _decision(
+        representation=ENUM, values=("alpha", "beta", "gamma"))}
+
+
+def test_a_field_that_names_its_values_publishes_that_part_in_registry_order():
+    node = _applied(
+        _document(_string_property("synthetic_concept",
+                                   **{FIELD_VALUES_KEY: ["gamma", "alpha"]})),
+        _three())
+
+    assert node["enum"] == ["alpha", "gamma"]
+    assert node[MARKER] == "synthetic_concept", "the concept was lost"
+    assert node[FIELD_VALUES_KEY] == ["gamma", "alpha"]
+
+
+def test_stripping_keeps_a_fields_own_values_so_applying_again_agrees():
+    original = _document(_string_property(
+        "synthetic_concept", **{FIELD_VALUES_KEY: ["beta"]}))
+    applied = apply_known_values(original, _three())
+
+    assert applied != original
+    assert strip_known_values(applied) == original
+    assert apply_known_values(strip_known_values(applied), _three()) == applied
+
+
+@pytest.mark.parametrize("named, decisions, code", [
+    ([], _three(), codes.MALFORMED_FIELD_VALUES),
+    ("alpha", _three(), codes.MALFORMED_FIELD_VALUES),
+    (["alpha", "alpha"], _three(), codes.MALFORMED_FIELD_VALUES),
+    ([1], _three(), codes.MALFORMED_FIELD_VALUES),
+    (["alpha"], {"synthetic_concept": _decision(
+        representation=KNOWN_VALUES, kind="open")},
+     codes.FIELD_VALUES_ON_AN_OPEN_CONCEPT),
+    # A token the registry never declared, or one it withholds — either way
+    # not among the values the concept occurs with, which is all a
+    # decision carries.
+    (["alpha", "delta"], _three(), codes.FIELD_VALUE_NOT_OCCURRING),
+    (["gamma", "beta", "alpha"], _three(),
+     codes.FIELD_VALUES_ARE_THE_WHOLE_SET),
+], ids=["empty", "not-a-list", "repeated", "not-strings", "open",
+        "not-occurring", "whole-set"])
+def test_a_fields_own_values_are_refused_unless_they_narrow_the_set(
+        named, decisions, code):
+    refusal = _refusal(_document(_string_property(
+        "synthetic_concept", **{FIELD_VALUES_KEY: named})), decisions)
+
+    assert refusal.code == code
+
+
+#: WHAT EACH FIELD THAT RETURNS LESS THAN ITS CONCEPT PUBLISHES, read off the
+#: committed contract (the owner's review of #621, point 1: pin the OpenAPI
+#: output, not only what a response happens to serialise). The first five
+#: name their own values; the last is narrowed by the registry, which
+#: withholds `not_applicable` from every field because nothing writes it.
+FIELD_ENUMS = {
+    ("BusinessMarginOut", "basis"): ["recognised"],
+    ("UnprofitableOut", "basis"): ["recognised"],
+    ("MeEconomicsOut", "basis"): ["recorded"],
+    ("MeCustomerRevenueOut", "status"): [
+        "known", "incomplete", "unavailable_outside_retention_horizon"],
+    ("MeRecordedEventsOut", "status"): [
+        "known", "unavailable_outside_retention_horizon"],
+    ("EconomicMeasureOut", "status"): [
+        "known", "incomplete", "unavailable_at_requested_grain",
+        "unavailable_outside_retention_horizon"],
+}
+
+#: The fields above that say so themselves.
+NAMES_ITS_OWN_VALUES = set(FIELD_ENUMS) - {("EconomicMeasureOut", "status")}
+
+
+def test_each_narrowed_field_publishes_exactly_what_it_can_return(spec):
+    schemas = spec["components"]["schemas"]
+    for (schema, field), values in FIELD_ENUMS.items():
+        node = schemas[schema]["properties"][field]
+        assert node["enum"] == values, (schema, field)
+        assert node[MARKER] == ("revenue_basis" if field == "basis"
+                                else "measure_status"), (schema, field)
+        assert schemas[schema]["required"].count(field) == 1
+
+
+def test_only_these_fields_name_their_own_values(spec):
+    """Both directions: a new narrowing is a deliberate line above."""
+    found = set()
+    for pointer, node in marked_nodes(spec):
+        if FIELD_VALUES_KEY in node:
+            parts = pointer.split("/")
+            assert parts[1:3] == ["components", "schemas"], pointer
+            found.add((parts[3], parts[5]))
+
+    assert found == NAMES_ITS_OWN_VALUES
 
 
 def test_negative_control_an_unserved_concept_is_refused_not_advertised():

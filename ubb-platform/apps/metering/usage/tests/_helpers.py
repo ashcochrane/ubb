@@ -18,12 +18,12 @@ something a reader of each module has to agree to.
 **It also carries the one way a test may now remove a measurement record**
 (#354). That is a rule of the CHILD table rather than of this one, and its doors
 are `delete()`, `QuerySet.delete()` and raw SQL rather than the three below —
-its own module owns those. What is here is `release_the_horizon`, which is the
-**only** write of `prunable_at` after insert anywhere in the tree, and
+its own module owns those. What is here is `release_the_horizon` — the one TEST
+writer of `prunable_at`; the other writer is the daily prune itself
+(`usage/pruning.py`, W5), and the column is SET_ONCE since `usage/0052` — and
 `release_and_prune` over it. Three modules prune and a fourth releases without
 pruning; each one inventing that for itself is four chances to invent a
-different prune, and one of them would have been a second writer of a column
-this record's declared rule says is never rewritten.
+different prune.
 
 **The two catalogue queries take a table** for the same reason: the child's rule
 has to ask the same questions of `ubb_posting_measurement` that the three trios
@@ -157,16 +157,13 @@ def settle_the_supplier_cost(posting, micros):
 
 
 def release_the_horizon(posting):
-    """Put a posting's measurement record past its `prunable_at`.
+    """Release a posting's measurement record: write its `prunable_at`.
 
-    ⚠ **THE ONLY PLACE IN THE TREE THAT WRITES THIS COLUMN AFTER INSERT**, and
-    it walks through a hole #354 does not close. The record's declared lifecycle
-    says *no column is ever rewritten*, and that line has no enforcement behind
-    it; `prunable_at` meanwhile has no clock, no job and no owner, so nothing in
-    production ever sets it and a test standing a row up as *released* has no
-    other way in. Confining it to one function is what makes that sentence
-    checkable — and the day a later slice enforces the `UPDATE` line, this is
-    the single thing that has to change.
+    The one test writer of the release fact besides the prune itself
+    (`pruning.py`). Since W5 the column is SET_ONCE and never a future instant
+    (`migrations/0052`), so this writes it once, from NULL, a day in the past —
+    the legal move — and a second call on the same record is refused by the
+    database, as the prune's own would be.
 
     Separate from `release_and_prune` because a caller sweeping two records in
     one `DELETE` needs the release without the removal, and inlining the

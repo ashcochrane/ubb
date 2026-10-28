@@ -121,6 +121,11 @@ answer's `context` and its horizons are the rest of the answer: `caveatsOf` keep
 answer whose window reaches past its governing horizon renders `RetentionHorizonNote`, not "no
 usage". A measure named by value (which one a chart drew) takes its catalogue word, `measureLabel`.
 
+**A surface showing revenue, or a margin over it, states the basis ITS answer names** (#548): render
+`<RevenueBasisNote basis={…}>` (`components/shared/revenue-basis-note.tsx`) from the response's own
+`basis` — `caveatsOf` carries it for the one economic query — and never from a constant. One note per
+section only where every figure in it comes from one answer; where a tab mixes answers, each states its own.
+
 **A fixture is not complete until a mock or a component test consumes it**, and
 `economic-scenarios.reachability.test.ts` is what says so rather than a reviewer (#371). A scenario
 reaching only `economic-scenarios.test.ts` proves the scenario is well-formed and nothing about the

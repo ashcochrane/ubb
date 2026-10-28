@@ -1,4 +1,4 @@
-﻿"""A measurement record may only be pruned when both its conditions hold (#354).
+"""A measurement record may only be pruned when both its conditions hold (#354).
 
 The posting / measurement split (2026-08-03) gave the child record a
 **whole-record rule** rather than per-column transition classes, because it has
@@ -23,11 +23,13 @@ between it and quiet non-existence is this module. Deleting this file would be
 noticed by nothing.
 
 **Why it is not part of gate G19, and why G19 is nonetheless what it extends.**
-G19's statement is about *field* transition classes, and every column of this
-record is declared `RECORD_RULE`, which `core/transitions.py` places outside
-`DATABASE_DEFENDED`. So no amount of column-declaration work reaches this rule
-and no declaration here would be honest — `ThisRuleDeclaresNoColumnIntoADefendedClassTest`
-below is that sentence held to. What G19's own notes did carry was the deferral,
+G19's statement is about *field* transition classes, and this rule is about
+whether a row may cease to exist, which no column class states. Every column of
+this record is declared `RECORD_RULE` — outside `DATABASE_DEFENDED` — except
+`prunable_at`, which W5 made a SET_ONCE release fact held by a second trigger
+(`migrations/0052`). That declaration is true of the column's WRITE and says
+nothing about this DELETE rule; `TheReleaseIsTheOnlyDefendedColumnTest` below
+holds the line between them. What G19's own notes did carry was the deferral,
 by name, and this is the ticket that pays it: an **extension** of the installed
 gate rather than a re-owning of its row.
 
@@ -64,14 +66,13 @@ it has no positive reason to; this one asks whether anything still needs the
 record, and a decision already taken is not a need. `ThePredicateIsNotUnresolvedRatherThanIsResolvedTest`
 is that distinction, over all three decided statuses.
 
-**Where a NULL `prunable_at` lands, which is the live case today.** The column
-ships with no clock behind it — no job, no schedule, no owner, no default — and
-`TheHorizonHasNoClockBehindItTest` in `test_posting_measurement.py` exists to
-stop one being started by accident. So **every** measurement record in the tree
-has a NULL horizon, and this rule refuses every one of them: an instant nobody
-has named is not an instant that has passed. That is the conservative reading
-and it is the only one the column's own meaning supports — `prunable_at` names
-*"the moment a permission begins"*, so no value is no permission.
+**Where a NULL `prunable_at` lands.** Recording leaves it NULL, and only the
+daily prune (W5, `pruning.py`) writes it — releasing a record and deleting it
+in one transaction. So every record nothing has released has a NULL horizon,
+and this rule refuses every one of them: an instant nobody has named is not an
+instant that has passed. That is the conservative reading and it is the only
+one the column's own meaning supports — `prunable_at` names *"the moment a
+permission begins"*, so no value is no permission.
 
 **The mechanism is a `BEFORE DELETE` trigger on the child's own table.** A
 `CHECK` cannot see a `DELETE` at all, a model-level `delete()` override is not
@@ -103,13 +104,14 @@ turned on for a live tenant; the migration's docstring carries the two
 mechanisms that would have expressed *the posting is going too* without a proxy,
 and why each is a larger decision than this rule.
 
-**What this ticket does NOT enforce, said out loud.** The record rule's `UPDATE`
-line is still declared and unenforced, so a writer can set `prunable_at` to the
-past and then prune. That hole is not opened by this rule and not closed by it:
-this ticket's subject is the `DELETE` condition, and claiming the whole record
-rule was enforced would be the shape of defect where a docstring asserts an
-obligation that only half holds. `release_and_prune` in `tests/_helpers.py` is
-the one place in the tree that walks through it, and it says so.
+**What this ticket did NOT enforce, and what W5 closed.** The record rule's
+`UPDATE` line was declared and unenforced here, so a writer could set
+`prunable_at` to the past and then prune. W5 closed the part of that hole that
+matters to this rule: `prunable_at` is SET_ONCE and never a future instant
+(`migrations/0052`, proved in `test_the_measurement_horizon_is_enforced_daily.py`),
+so a release cannot be moved or withdrawn once written. Writing it once, from
+NULL to a past instant, stays legal — that is what the prune does, and
+`release_and_prune` in `tests/_helpers.py` does it for a test.
 """
 import re
 
@@ -128,7 +130,8 @@ from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.transitions import (
-    DATABASE_DEFENDED, RECORD_RULE, columns_declared_into_defended_classes)
+    DATABASE_DEFENDED, RECORD_RULE, SET_ONCE,
+    columns_declared_into_defended_classes)
 from core.vocabulary import (
     COSTING_STATUS_NOT_APPLICABLE, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING,
     PRICING_STATUS_NOT_APPLICABLE, PRICING_STATUS_WAIVED,
@@ -136,6 +139,8 @@ from core.vocabulary import (
 
 TABLE = PostingMeasurement._meta.db_table
 TRIGGER = "trg_posting_measurement_pruning"
+#: W5's second rule on this table: the release fact is written once.
+RELEASE_TRIGGER = "trg_posting_measurement_released_once"
 FUNCTION = "ubb_posting_measurement_pruning"
 MIGRATION = "0041_a_measurement_is_pruned_only_when_it_may_be"
 
@@ -424,30 +429,35 @@ class ThePredicateIsNotUnresolvedRatherThanIsResolvedTest(TestCase):
             costing_status=COSTING_STATUS_NOT_APPLICABLE)))
 
 
-class ThisRuleDeclaresNoColumnIntoADefendedClassTest(TestCase):
-    """The rule adds a database defence and no declaration, which is the point.
+class TheReleaseIsTheOnlyDefendedColumnTest(TestCase):
+    """This DELETE rule adds no declaration; W5's release fact added one.
 
-    G19's statement is about field transition classes. This record has none —
-    every column of it declares `RECORD_RULE`, which sits outside
-    `DATABASE_DEFENDED` — so declaring one here to make the walk notice this
-    rule would be a false statement about a column, in the gate whose whole
-    subject is that declarations are true.
+    Inverted at its own address by W5: until then no column of this record
+    declared a defended class. `prunable_at` is now SET_ONCE — a true statement
+    about its WRITE, held by its own trigger (`migrations/0052`) — and every
+    other column still declares `RECORD_RULE`. Declaring a column to make the
+    walk notice THIS delete rule would still be a false statement.
     """
 
-    def test_every_column_of_the_child_still_declares_the_record_rule(self):
+    def test_every_column_but_the_release_still_declares_the_record_rule(self):
         self.assertEqual(
-            set(PostingMeasurement.transition_classes.values()), {RECORD_RULE})
+            {column: declared for column, declared
+             in PostingMeasurement.transition_classes.items()
+             if declared != RECORD_RULE},
+            {"prunable_at": SET_ONCE})
         self.assertNotIn(RECORD_RULE, DATABASE_DEFENDED)
 
-    def test_the_child_contributes_no_column_to_the_defended_walk(self):
+    def test_the_child_contributes_only_the_release_to_the_defended_walk(self):
         declared = columns_declared_into_defended_classes(apps.get_models())
 
         self.assertEqual(
             [triple for triple in declared
-             if triple[0] == PostingMeasurement.__name__], [])
+             if triple[0] == PostingMeasurement.__name__],
+            [(PostingMeasurement.__name__, "prunable_at", SET_ONCE)])
         self.assertGreaterEqual(
-            len(declared), 1,
-            "the walk found nothing at all, so it says nothing about this record")
+            len(declared), 2,
+            "the walk found nothing else at all, so it says nothing about this "
+            "record")
 
     def test_the_declaration_check_still_reports_a_clean_board(self):
         """Through the gate's own entry point, not a copy of its search.
@@ -522,10 +532,12 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
     evidence that a file executed.
     """
 
-    def test_the_child_table_carries_exactly_this_one_rule(self):
-        """An exact set, so a second rule arriving here is something a reader
-        of this module has to agree to rather than something a count absorbs."""
-        self.assertEqual(_rules_on_the_child_table(), {TRIGGER})
+    def test_the_child_table_carries_exactly_this_rule_and_the_release(self):
+        """An exact set, so a rule arriving here is something a reader of this
+        module has to agree to rather than something a count absorbs. The
+        second is W5's: the release fact, SET_ONCE (`migrations/0052`)."""
+        self.assertEqual(_rules_on_the_child_table(),
+                         {TRIGGER, RELEASE_TRIGGER})
 
     def test_it_fires_before_each_deleted_row_and_on_nothing_else(self):
         """`BEFORE DELETE ... FOR EACH ROW`, read out of `tgtype`'s bits.
@@ -630,7 +642,8 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.reverse_code(None, editor)
-        self.assertEqual(_rules_on_the_child_table(), set())
+        # W5's release rule is its own migration's, and stays.
+        self.assertEqual(_rules_on_the_child_table(), {RELEASE_TRIGGER})
         released = _measurement(_resolved_posting(), None)
         _through_the_queryset(released)
         self.assertFalse(
@@ -638,7 +651,8 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
 
         with connection.schema_editor() as editor:
             run_python.code(None, editor)
-        self.assertEqual(_rules_on_the_child_table(), {TRIGGER})
+        self.assertEqual(_rules_on_the_child_table(),
+                         {TRIGGER, RELEASE_TRIGGER})
         held = _measurement(_resolved_posting(), None)
         with self.assertRaises(IntegrityError):
             with transaction.atomic():

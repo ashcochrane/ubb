@@ -478,7 +478,9 @@ exclusions:
     # trigger takes the canonical spelling (`topups/0006`, which must spell
     # the run-together form it moves away from), and two statuses stop
     # offering a withheld value (`tenant_billing/0016`, `referrals/0009`).
-    files: 306
+    # 306 → 307 in R10-W5: a measurement is released once by the daily prune
+    # (`usage/0052`, which spells the record's whole lifecycle in its trigger).
+    files: 307
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

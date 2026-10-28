@@ -4,8 +4,13 @@
 database, no request. What the one economic query DOES with these two dates is
 proved at its own two seams.
 """
+import os
+import runpy
 from datetime import date
+from pathlib import Path
+from unittest import mock
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
 
 from core.retention import (
@@ -13,9 +18,10 @@ from core.retention import (
     ECONOMIC_RETENTION_YEARS,
     MEASUREMENT_HORIZON_FIELD,
     MEASUREMENT_RETENTION_DAYS_SETTING,
-    NO_MEASUREMENT_CLOCK,
     retention_horizons,
 )
+
+SETTINGS_FILE = Path(__file__).resolve().parents[2] / "config" / "settings.py"
 
 
 class TestTheEconomicHorizon(SimpleTestCase):
@@ -63,30 +69,19 @@ class TestTheEconomicHorizon(SimpleTestCase):
 
 
 class TestTheMeasurementHorizon(SimpleTestCase):
-    """The shorter clock — which has no number, and whose number is #190's.
-
-    ⚠ **NOTHING HERE STARTS A CLOCK.** The column exists, a trigger defends the
-    exemption, and no schedule, owner or default writes it. What this module
-    does is make the horizon a value the API reports, so that setting it is a
-    configuration change rather than a contract change.
+    """The shorter clock: 400 days by default (#190 comment 5785029955, W5
+    ruling 7), a setting the environment may override, and enforced by the
+    daily prune (`apps/metering/usage/pruning.py`).
     """
 
-    def test_with_no_clock_configured_it_is_the_economic_horizon(self):
-        """⚠ THE COMPOSITION OF FOUR FACTS, AND THE ANSWER IS NOT `None`.
-
-        The migration ships the column with no clock behind it, the recording
-        path leaves it NULL, the only post-insert write in the tree is a test
-        helper, and the trigger's message for the NULL case reads *not released
-        by any clock*. Composed: a measurement record lives exactly as long as
-        the posting it hangs off, which is the economic horizon. Publishing the
-        shorter date as absent would have made the API say *we do not know*
-        about the one thing it does know.
-        """
-        with override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING:
-                                  NO_MEASUREMENT_CLOCK}):
-            horizons = retention_horizons(date(2026, 9, 16))
-
-        assert horizons.measurement == horizons.economic == date(2020, 9, 16)
+    def test_a_cleared_setting_is_refused_rather_than_answered_six_years(self):
+        """⚠ NEVER A SILENT SIX YEARS (ruling 7). Until W5 a missing number
+        answered the economic horizon, which was true while nothing pruned a
+        measurement. The daily prune now enforces this clock, so publishing six
+        years of detail it does not keep would be a false promise."""
+        with override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: None}):
+            with self.assertRaises(ImproperlyConfigured):
+                retention_horizons(date(2026, 9, 16))
 
     def test_a_configured_number_of_days_moves_it_forward(self):
         with override_settings(**{MEASUREMENT_RETENTION_DAYS_SETTING: 90}):
@@ -128,23 +123,40 @@ class TestTheMeasurementHorizon(SimpleTestCase):
             assert retention_horizons(date(2026, 9, 16)).measurement == (
                 horizons.measurement)
 
-    def test_a_settings_module_that_never_declared_it_still_answers(self):
-        """⚠ REMOVE THE SETTING ENTIRELY AND THE ANSWER IS STILL THE ECONOMIC
-        HORIZON.
-
-        The read is a `getattr` with a default rather than an attribute access.
-        `config.settings` does declare the knob, so that an operator can find
-        it and #190 can set it — but a deployment whose settings module has
-        never heard of it gets the safe direction rather than an
-        `AttributeError` mid-request.
-        """
+    def test_a_settings_module_that_never_declared_it_is_refused(self):
+        """Inverted by W5 at its own address: it held that a settings module
+        that had never heard of the knob still answered the economic horizon.
+        That answer is now the false promise ruling 7 forbids, so the read says
+        what is wrong instead of publishing it."""
         from django.conf import settings
 
         with override_settings():
             delattr(settings._wrapped, MEASUREMENT_RETENTION_DAYS_SETTING)
-            horizons = retention_horizons(date(2026, 9, 16))
+            with self.assertRaises(ImproperlyConfigured):
+                retention_horizons(date(2026, 9, 16))
 
-        assert horizons.measurement == horizons.economic
+
+class TestTheShippedSetting(SimpleTestCase):
+    """What `config/settings.py` makes of the environment (ruling 7): 400 when
+    the variable is absent, the environment's number when it is set, and a
+    refusal to start — never six years — when it is not a number."""
+
+    def _evaluated(self, **environment):
+        with mock.patch.dict(os.environ, environment):
+            if MEASUREMENT_RETENTION_DAYS_SETTING not in environment:
+                os.environ.pop(MEASUREMENT_RETENTION_DAYS_SETTING, None)
+            return runpy.run_path(str(SETTINGS_FILE))[
+                MEASUREMENT_RETENTION_DAYS_SETTING]
+
+    def test_absent_from_the_environment_it_is_400_days(self):
+        assert self._evaluated() == 400
+
+    def test_the_environment_overrides_it(self):
+        assert self._evaluated(**{MEASUREMENT_RETENTION_DAYS_SETTING: "90"}) == 90
+
+    def test_an_empty_value_stops_the_process_rather_than_defaulting(self):
+        with self.assertRaises(ValueError):
+            self._evaluated(**{MEASUREMENT_RETENTION_DAYS_SETTING: ""})
 
 
 class TestTheNamesOnTheWire(SimpleTestCase):

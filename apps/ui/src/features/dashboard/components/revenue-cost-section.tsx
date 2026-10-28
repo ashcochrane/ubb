@@ -7,6 +7,7 @@ import {
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -93,6 +94,10 @@ export function RevenueCostSection({
               revenueLabel={revenueLabel}
             />
           </React.Suspense>
+          {/* The revenue and margin lines are stated under the basis this
+              answer names (#548) — a day of supplied revenue is a whole
+              figure under one view and a slice of a period under the other. */}
+          <RevenueBasisNote basis={chart.data.basis} />
           <RevenueContext context={chart.data.context} currency={currency} />
           <RetentionHorizonNote caveats={chart.data} />
         </>

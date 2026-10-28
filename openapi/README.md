@@ -49,6 +49,14 @@ spelling (#191 decision 3).
 the concept-to-schema mapping G4 walks, and a mapping the gate had to infer by
 comparing spellings would be one a coincidence could satisfy.
 
+**A `closed` field that can return only part of its concept** carries
+`x-ubb-field-values` beside the marker (`core/field_values.py`'s `a_field_of`,
+R10-W5), and its `enum` is that part, in the registry's order — so the business
+rollup's `basis` publishes `recognised` alone. The export refuses a value the
+concept does not occur with (including a withheld one), a list that is the
+whole set, and the extension on an `open` concept. Both extensions survive, so
+G4 checks each field's `enum` against the registry and its own list.
+
 ### The rule, and the order it forces
 
 **The contract advertises a value only where the backend already serves it** —

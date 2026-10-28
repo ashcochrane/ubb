@@ -7,6 +7,7 @@ import { Link } from "@tanstack/react-router";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { ErrorCard } from "@/components/shared/error-card";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -123,8 +124,11 @@ export function BusinessRollup({
                 </TableRow>
               ))}
               <TableRow className="font-medium">
+                {/* ONE CELL PER HEADER, IN THE HEADER'S ORDER. An empty cell
+                    after the label shifted every total one column right, so
+                    the revenue total sat under COGS and the margin under
+                    Margin % — a totals row read against the wrong headers. */}
                 <TableCell>Totals</TableCell>
-                <TableCell />
                 <TableCell className="text-right tabular-nums">
                   {formatCount(totals.posting_count)}
                 </TableCell>
@@ -152,6 +156,12 @@ export function BusinessRollup({
             </TableBody>
           </Table>
         </div>
+        {/* ⚠ EVERY SEAT AND THE TOTALS ARE ONE ANSWER UNDER ONE BASIS, AND IT
+            IS THE ROLLUP'S OWN (#548). The server states it — supplied revenue
+            here is spread under `recognised` — and it can differ from the
+            economic query's answer on the cards above it, so this card says
+            its own rather than leaving the tab's to stand for it. */}
+        <RevenueBasisNote basis={query.data.basis} className="mt-2" />
       </CardContent>
     </Card>
   );

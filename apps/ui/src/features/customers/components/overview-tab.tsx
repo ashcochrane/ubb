@@ -20,6 +20,7 @@ import {
   MeasureValue,
   RetentionHorizonNote,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { statedValue } from "@/lib/economic-query";
 import { formatCalendarDate } from "@/lib/format";
 import {
@@ -29,11 +30,10 @@ import {
   readingText,
   readMeasure,
 } from "@/lib/measure-state";
-import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
 
 import { useMarginTrend } from "../api/queries";
-import type { CustomerEconomics } from "../api/types";
+import type { OneCustomerEconomics } from "../api/types";
 import { BusinessRollup } from "./business-rollup";
 import { RevenuePanels } from "./revenue-panels";
 
@@ -46,7 +46,8 @@ export function OverviewTab({
   range,
 }: {
   customerId: string;
-  margin: CustomerEconomics;
+  /** The customer's figures, with the basis their answer stated them under. */
+  margin: OneCustomerEconomics;
   /** The tenant's own id for this customer, from the identity read —
    *  the margin no longer carries one (#501). */
   externalId: string;
@@ -61,62 +62,71 @@ export function OverviewTab({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="Total revenue"
-          value={<MeasureValue figure={margin.revenue} currency={currency} />}
-          variant="raised"
-          // THE SUBTITLE NAMED THE DELETED SWITCH UNTIL #497 — "Resolved
-          // revenue mode: …" — which told a reader which rule had been applied
-          // to their own usage rather than what the number was made of. The
-          // three sources are the honest answer, and they are the row below.
-          subtitle={
-            figureNote(margin.revenue, currency) ??
-            "Subscriptions, supplied figures and billed usage"
-          }
-          // ⚠ THE SUPPLIED SHARE IS NOT SPLIT OUT HERE AND IS NOT MEANT TO BE.
-          // The one economic query answers `customer_revenue` from ONE
-          // definition (#501) and publishes no split; what the panels below
-          // show is the supplied RECORD's own figures, read from the record
-          // that owns them, which is a different question from "how much of
-          // this total was supplied".
-        />
-        {/* The cost card's subtitle already carries a count — the events in
-            the window — so the one that says how many of them went uncosted
-            replaces it while it has something to say. Two counts on one card
-            is where a reader stops reading either. */}
-        <StatCard
-          label="Provider cost (COGS)"
-          value={<MeasureValue figure={margin.cost} currency={currency} />}
-          variant="raised"
-          subtitle={
-            figureNote(margin.cost, currency) ??
-            (statedValue(margin.events) === null
-              ? undefined
-              : `${readingText(readMeasure(margin.events, currency))} events in window`)
-          }
-        />
-        <StatCard
-          label="Gross margin"
-          value={
-            <span className={cn(negative && "text-danger-dark")}>
-              <MeasureValue figure={margin.margin} currency={currency} />
-            </span>
-          }
-          variant="raised"
-          subtitle={noFigureNote(margin.margin, currency) ?? "Revenue minus provider cost"}
-        />
-        <StatCard
-          label="Margin %"
-          value={
-            <span className={cn(negative && "text-danger-dark")}>
-              <MarginShare margin={margin.margin} revenue={margin.revenue} />
-            </span>
-          }
-          variant="raised"
-          // Period bounds are calendar dates — UTC-safe formatting, no raw ISO.
-          subtitle={`${formatCalendarDate(range.start_date ?? "")} → ${formatCalendarDate(range.end_date ?? "")}`}
-        />
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Total revenue"
+            value={<MeasureValue figure={margin.revenue} currency={currency} />}
+            variant="raised"
+            // THE SUBTITLE NAMED THE DELETED SWITCH UNTIL #497 — "Resolved
+            // revenue mode: …" — which told a reader which rule had been applied
+            // to their own usage rather than what the number was made of. The
+            // three sources are the honest answer, and they are the row below.
+            subtitle={
+              figureNote(margin.revenue, currency) ??
+              "Subscriptions, supplied figures and billed usage"
+            }
+            // ⚠ THE SUPPLIED SHARE IS NOT SPLIT OUT HERE AND IS NOT MEANT TO BE.
+            // The one economic query answers `customer_revenue` from ONE
+            // definition (#501) and publishes no split; what the panels below
+            // show is the supplied RECORD's own figures, read from the record
+            // that owns them, which is a different question from "how much of
+            // this total was supplied".
+          />
+          {/* The cost card's subtitle already carries a count — the events in
+              the window — so the one that says how many of them went uncosted
+              replaces it while it has something to say. Two counts on one card
+              is where a reader stops reading either. */}
+          <StatCard
+            label="Provider cost (COGS)"
+            value={<MeasureValue figure={margin.cost} currency={currency} />}
+            variant="raised"
+            subtitle={
+              figureNote(margin.cost, currency) ??
+              (statedValue(margin.events) === null
+                ? undefined
+                : `${readingText(readMeasure(margin.events, currency))} events in window`)
+            }
+          />
+          <StatCard
+            label="Gross margin"
+            value={
+              <span className={cn(negative && "text-danger-dark")}>
+                <MeasureValue figure={margin.margin} currency={currency} />
+              </span>
+            }
+            variant="raised"
+            subtitle={noFigureNote(margin.margin, currency) ?? "Revenue minus provider cost"}
+          />
+          <StatCard
+            label="Margin %"
+            value={
+              <span className={cn(negative && "text-danger-dark")}>
+                <MarginShare margin={margin.margin} revenue={margin.revenue} />
+              </span>
+            }
+            variant="raised"
+            // Period bounds are calendar dates — UTC-safe formatting, no raw ISO.
+            subtitle={`${formatCalendarDate(range.start_date ?? "")} → ${formatCalendarDate(range.end_date ?? "")}`}
+          />
+        </div>
+        {/* ⚠ THIS TAB COMPOSES FOUR ANSWERS AND THEY NEED NOT AGREE (#548). The
+            cards above, the trend, the supplied-revenue panels and the business
+            rollup each read their own response, and the rollup's is always
+            `recognised` while the economic query's is whatever it was asked
+            for — so each section states its OWN basis, never one note for the
+            tab. These four cards are one answer, so they share one. */}
+        <RevenueBasisNote basis={margin.basis} />
       </div>
 
       {/* ⚠ THE THREE REVENUE-SOURCE CARDS ARE GONE (#501), AND THE REASON IS
@@ -180,9 +190,7 @@ export function OverviewTab({
                 the kind "they did not ask for". The answer names the view it
                 served; this is the console repeating it rather than assuming
                 one. */}
-            <p data-revenue-basis={trend.data.basis} className="mt-2 text-[11px] text-text-muted">
-              {revenueBasisNote(trend.data.basis)}
-            </p>
+            <RevenueBasisNote basis={trend.data.basis} className="mt-2" />
           </>
         )}
       </ChartCard>

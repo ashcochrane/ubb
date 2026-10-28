@@ -1,5 +1,6 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
+from typing import Optional
 from uuid import UUID
 
 from django.db import IntegrityError, transaction
@@ -24,9 +25,11 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from core.responses import StatusResponse
 from core.scheduling import validate_scheduled_instant
-from core.time_windows import (
-    HOURLY_REPORT_WINDOW_MAX_DAYS, REPORT_WINDOW_MAX_DAYS, utc_day_start,
-    utc_next_day_start)
+from api.v1.economic_question import ask_the_economic_query
+from core.report_windows import (
+    END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, resolve_report_window,
+    states_its_report_window)
+from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from django.utils import timezone
 
 from api.v1.schemas import (
@@ -51,8 +54,6 @@ from api.v1.schemas import (
     GroupingOptionsOut, EconomicsOut,
 )
 from core.vocabulary import (
-    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
-    ANALYTICS_MEASURE_GROSS_MARGIN,
     AUDIT_ACTION_COST_BOOK_DECLARED,
     AUDIT_ACTION_COST_BOOK_WITHDRAWN,
     AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_DECLARED,
@@ -860,10 +861,13 @@ def get_usage_event(request, event_id: UUID):
 
 @metering_router.get("/analytics/tasks", response={200: TaskAnalyticsOut,
                                                   422: ProblemOut})
+@states_its_report_window()
 @role_floor(READ)
-def task_analytics(request, group_by: str = "task_type", start_date: date = None,
-                   end_date: date = None):
-    """Cost per KIND of work: run count, mean and p95.
+def task_analytics(request, group_by: str = "task_type",
+                   start_date: Optional[date] = Query(None, description=START_DATE_DESCRIPTION),
+                   end_date: Optional[date] = Query(None, description=END_DATE_DESCRIPTION)):
+    """Cost per KIND of work: run count, mean and p95, over the work created in
+    the window.
 
     A p95 approaching the kind's ceiling is the signal that the ceiling is
     about to start biting real customers; how much work reached it is
@@ -871,17 +875,15 @@ def task_analytics(request, group_by: str = "task_type", start_date: date = None
     _product_check(request)
     from apps.platform.work.queries import task_rollup_by_type
 
-    if start_date and end_date:
-        if end_date < start_date:
-            raise Problem("validation_error",
-                          "end_date must not precede start_date")
-        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
-            raise Problem("validation_error", "date window must not exceed 366 days")
+    # ⚠ THE WINDOW IS RESOLVED BEFORE ANYTHING IS READ, WHATEVER WAS SENT
+    # (#542). This route used to bound only a supplied PAIR, so a lone
+    # `start_date` was an unbounded rollup and no date at all was the whole of
+    # history; it now answers the month to date like every other report.
+    window = resolve_report_window(start_date, end_date)
     try:
         rows = task_rollup_by_type(
             request.auth.tenant.id, group_by=group_by,
-            start_date=utc_day_start(start_date) if start_date else None,
-            end_date=utc_next_day_start(end_date) if end_date else None)
+            start_date=window.opens_at, end_date=window.closes_at)
     except ValueError as exc:
         raise Problem("validation_error", str(exc))
     return 200, {"group_by": group_by, "rows": rows}
@@ -2296,67 +2298,6 @@ def list_grouping_options(request):
 UNANSWERABLE_COMBINATION = "unanswerable_combination"
 
 
-def _economic_window(start_date, end_date, bucket):
-    """The window one economic question is asked about, bounded and inclusive,
-    AND the day it was resolved against.
-
-    `docs/conventions/api-contract.md`: a computed report is cursor-exempt and
-    PARAMETER-BOUNDED. This one runs a `GROUP BY` per requested axis over the
-    largest table in the system, so the bound is what keeps it safe at the Read
-    floor rather than an inherited formality. The default is the current month
-    to date, which is what every surface this query replaces defaults to.
-
-    ⚠ **AN HOURLY QUESTION KEEPS THE TIGHTER CEILING, AND INHERITING IT IS NOT
-    OPTIONAL.** The timeseries route this query replaces has always refused an
-    hourly window past the shorter bound, because the ceiling is really about
-    how many BUCKETS a report may produce and an hour is twenty-four times a
-    day. Taking that route's job without taking its bound would publish a
-    surface that answers, over the widest window, the report its predecessor
-    refused.
-
-    ⚠⚠ **THE BOUND IS APPLIED TO THE RESOLVED SPAN, NOT TO THE REQUEST, AND
-    THAT IS THE WHOLE OF IT.** The surfaces this replaces bound the window only
-    when the caller supplied BOTH dates — so an open end escapes the ceiling
-    entirely, and `?start_date=2000-01-01&bucket=hour` is a twenty-six-year
-    hourly report at the Read floor. This one defaults first and bounds second,
-    so there is no shape of request that reaches the query unbounded. It matters
-    more here than it did there: the measurement fold is Python-side and rests
-    on this bound by name.
-
-    ⚠ **IT HANDS BACK THE DAY IT READ, AND THAT IS WHY.** The default window and
-    the two retention horizons beside it must come from ONE reading of the
-    clock — two readings a microsecond apart answer differently across midnight,
-    and the surface would then publish a period its own horizon disagreed with.
-    Returning the day makes that structural: the caller has nothing else it
-    could pass on, so the obligation is not left to a docstring for somebody to
-    honour.
-    """
-    today = timezone.now().date()
-    start = start_date or today.replace(day=1)
-    end = end_date or today
-    _refuse_an_unbounded_window(start, end, hourly=bucket == "hour")
-    return start, end, today
-
-
-def _refuse_an_unbounded_window(start, end, *, hourly):
-    """The #78 ceilings, decided in ONE place for every report that has them.
-
-    An hourly report keeps the tighter one because the bound is really about how
-    many BUCKETS an answer may carry, and an hour is twenty-four times a day.
-    """
-    if end < start:
-        raise Problem("validation_error",
-                      "end_date must not precede start_date")
-    span = (end - start).days
-    if hourly and span > HOURLY_REPORT_WINDOW_MAX_DAYS:
-        raise Problem(
-            "validation_error",
-            f"hourly window too large (max {HOURLY_REPORT_WINDOW_MAX_DAYS} days)")
-    if span > REPORT_WINDOW_MAX_DAYS:
-        raise Problem("validation_error",
-                      f"date window must not exceed {REPORT_WINDOW_MAX_DAYS} days")
-
-
 def _equality_filters(wanted):
     """The declared grouping fields a caller pinned to a value.
 
@@ -2383,8 +2324,11 @@ def _equality_filters(wanted):
 
 @metering_router.get("/analytics/economics",
                      response={200: EconomicsOut, 422: ProblemOut})
+@states_its_report_window()
 @role_floor(READ)
-def query_economics(request, start_date: date = None, end_date: date = None,
+def query_economics(request,
+                    start_date: Optional[date] = Query(None, description=START_DATE_DESCRIPTION),
+                    end_date: Optional[date] = Query(None, description=END_DATE_DESCRIPTION),
                     measures: list[str] = Query(None),
                     group_by: list[str] = Query(None),
                     bucket: str = None,
@@ -2442,11 +2386,12 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     economics for six years and detailed measurement on a shorter platform
     clock, and this answer publishes both start dates in
     `economic_data_available_from` and `measurement_data_available_from` —
-    always, whether or not anything was truncated. One request, meanwhile, may
-    span 366 days, or 92 for an hourly question, because that ceiling is about
-    how many buckets one answer may carry. So six years of history is reachable
-    in successive windows, not in one call, and the response states each
-    number rather than leaving you to discover the second by being refused.
+    always, whether or not anything was truncated. One request, meanwhile, spans
+    at most 366 calendar dates, or 92 for an hourly question, because that
+    ceiling is about how many buckets one answer may carry. So six years of
+    history is read as consecutive windows (below), not in one call, and the
+    response states each number rather than leaving you to discover the second
+    by being refused.
 
     A measure whose stretch reaches back past the horizon governing it reads
     `unavailable_outside_retention_horizon` and carries `available_from`: never
@@ -2464,11 +2409,8 @@ def query_economics(request, start_date: date = None, end_date: date = None,
     _product_check(request)
     from apps.metering.queries import (
         ECONOMIC_BUCKETS, ECONOMIC_MEASURES, EconomicFilters,
-        EconomicQuestionRefused, economic_refusal, economics, grouping_options)
+        EconomicQuestionRefused, economic_refusal, grouping_options)
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
-    from apps.subscriptions.queries import (
-        foreign_currency_subscription_count, revenue_contributions,
-        supplied_revenue_covered_periods)
 
     measures = list(measures or [])
     axes = list(group_by or [])
@@ -2483,9 +2425,17 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         raise Problem("validation_error",
                       f"unknown bucket {bucket!r}; allowed: "
                       f"{', '.join(ECONOMIC_BUCKETS)}")
-    start, end, asked_on = _economic_window(start_date, end_date, bucket)
+    # ⚠ ONE WINDOW, RESOLVED ONCE, AND EVERYTHING BELOW READS IT: the postings,
+    # the revenue windows, the covered periods and the two horizons, which read
+    # the clock through `window.today` rather than again — two readings a
+    # microsecond apart answer differently across midnight, and the surface
+    # would then publish a period its own horizon disagreed with. An hourly
+    # question keeps the tighter ceiling, because the measurement fold is
+    # Python-side and rests on that bound by name.
+    window = resolve_report_window(start_date, end_date,
+                                   hourly=bucket == "hour")
     filters = EconomicFilters(
-        start_date=start, end_date=end, customer_id=customer_id,
+        window=window, customer_id=customer_id,
         event_type=event_type, task_type=task_type, task_id=task_id,
         include_subtasks=include_subtasks, past_limit=past_limit,
         stop_scope=stop_scope, episode_seq=episode_seq,
@@ -2514,54 +2464,10 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         raise Problem("validation_error" if unreadable else
                       UNANSWERABLE_COMBINATION, refusal)
 
-    # ⚠ THE REVENUE THIS PRODUCT DOES NOT HOLD IS READ FROM THE PRODUCT THAT
-    # DOES, HERE, WHICH IS THE COMPOSITION LAYER'S JOB AND NOT THE READ
-    # CONTRACT'S. Metering owns the postings a price was resolved on;
-    # subscriptions owns a tenant's Stripe accruals and the figures it supplied
-    # itself, and ADR-001 forbids either product reaching into the other — on a
-    # service split metering would not have them. So they are fetched from that
-    # product's own read contract and handed over as plain data, each row saying
-    # whose it is, which window it lands in and what it can be attributed at.
-    # `economics` REFUSES to answer a revenue measure without them, so this
-    # wiring cannot be forgotten into a margin that is short by a subscription.
-    #
-    # ⚠ **AND IT IS NOT FETCHED WHERE NO MEASURE WOULD USE IT**, which is two
-    # fewer queries on a cost-only question and, more than that, a different
-    # ANSWER: the money a grouping cannot place is reported as context, and
-    # context on a question that asked nothing about revenue is noise about a
-    # number the caller did not request. The argument is absent exactly when it
-    # is irrelevant, which is the one case the read contract's refusal is not
-    # about.
-    #
-    # ⚠ **AND THE PERIODS A SUPPLIED FIGURE COVERS COME WITH THEM, READ FOR THE
-    # WHOLE WINDOW AND NOT PER BUCKET** (#537). A supplied figure is the whole
-    # revenue for the customer and period it covers, so the query supersedes
-    # the priced usage inside that period — and which period that is belongs to
-    # the record, not to the basis that decides where its amount lands.
-    revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
-                           ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
-    supplied = {}
-    # What this answer's revenue LEFT OUT (#564): subscriptions Stripe holds
-    # in a currency UBB does not admit. Counted over exactly the scope the
-    # revenue is fetched for, and 0 on a question that asked for no revenue,
-    # because such an answer left nothing out.
-    foreign = 0
-    if revenue_wanted:
-        customer_ids = [customer_id] if customer_id else None
-        foreign = foreign_currency_subscription_count(
-            request.auth.tenant.id, customer_ids=customer_ids)
-        supplied["contributed_revenue"] = revenue_contributions(
-            request.auth.tenant.id,
-            windows=_economic_buckets(start, end, bucket), basis=chosen,
-            customer_ids=customer_ids)
-        supplied["covered_periods"] = supplied_revenue_covered_periods(
-            request.auth.tenant.id, opens=start,
-            closes=end + timedelta(days=1), customer_ids=customer_ids)
-
     try:
-        answer = economics(request.auth.tenant.id, measures=measures,
-                           group_by=axes, bucket=bucket, filters=filters,
-                           basis=chosen, as_of=asked_on, **supplied)
+        answer, foreign = ask_the_economic_query(
+            request.auth.tenant.id, measures=measures, group_by=axes,
+            bucket=bucket, basis=chosen, window=window, filters=filters)
     except EconomicQuestionRefused as refused:
         # The read contract answers a refusal as a sentence, because a read
         # contract returns plain data and the caller decides what an
@@ -2576,43 +2482,6 @@ def query_economics(request, start_date: date = None, end_date: date = None,
         # — the caller forgot the revenue rows — is a bug and reaches the
         # handler as one.
         raise Problem(UNANSWERABLE_COMBINATION, str(refused))
-    return 200, {"period_start": start.isoformat(),
-                 "period_end": end.isoformat(), **answer,
+    return 200, {"period_start": window.start_date.isoformat(),
+                 "period_end": window.end_date.isoformat(), **answer,
                  FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY: foreign}
-
-
-def _economic_buckets(start, end, bucket):
-    """The half-open windows the contributed revenue is attributed to.
-
-    One window per bucket the answer will have, so a figure a tenant supplied
-    for a month lands in the months, days or hours of that month exactly as the
-    postings beside it do — and one window for the whole period where the caller
-    asked for no bucket.
-
-    ⚠ **THE END DATE IS INCLUSIVE ON THE WIRE AND HALF-OPEN HERE**, which is
-    what every window in this system means by an end date; getting that wrong
-    would drop the last day's revenue while keeping its cost.
-
-    ⚠ **EVERY WINDOW IS CLAMPED TO THE PERIOD ASKED ABOUT.** A month bucket
-    starting mid-month opens on the first of that month, and an unclamped window
-    would attribute revenue from days the postings beside it exclude — a total
-    that is right about the cost and wrong about the money, which is the exact
-    disagreement the collapse exists to remove.
-
-    An hour bucket asks for DAY windows, and the query then declines to place
-    the money at all: a supplied record declares a span in whole days, so hour
-    precision is not a narrower answer, it is an invented one.
-    """
-    closes = end + timedelta(days=1)
-    if bucket is None:
-        return [(start, closes)]
-    windows, opens = [], (start.replace(day=1) if bucket == "month" else start)
-    while opens < closes:
-        if bucket == "month":
-            nxt = (opens.replace(year=opens.year + 1, month=1, day=1)
-                   if opens.month == 12 else opens.replace(month=opens.month + 1))
-        else:
-            nxt = opens + timedelta(days=1)
-        windows.append((max(opens, start), min(nxt, closes)))
-        opens = nxt
-    return windows

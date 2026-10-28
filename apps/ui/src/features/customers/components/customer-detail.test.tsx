@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { readMockTenantConfig, writeMockTenantConfig } from "@/hooks/use-tenant-config";
@@ -10,12 +10,17 @@ import {
   measuresOutsideRetentionHorizon,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
+import { formatCount, formatMicros } from "@/lib/format";
+import { marginOver, supplierCostTotal } from "@/lib/supplier-cost";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES, type RevenueBasis } from "@/lib/vocabulary";
 
-import { CUS_ACME, CUS_SEAT_ENG } from "../api/mock-data";
+import { CUS_ACME, CUS_SEAT_ENG, MOCK_BUSINESS_MARGIN } from "../api/mock-data";
 import { customersApi } from "../api/provider";
-import { toOneCustomer, type CustomerEconomics, type Economics } from "../api/types";
+import { toOneCustomer, type Economics, type OneCustomerEconomics } from "../api/types";
 import { renderWithProviders } from "../test-utils";
 import { BillingTab } from "./billing-tab";
+import { BusinessRollup } from "./business-rollup";
 import { CustomerDetailPage } from "./customer-detail-page";
 import { OverviewTab } from "./overview-tab";
 import { UsageTab } from "./usage-tab";
@@ -27,18 +32,52 @@ const SLOW = { timeout: 5000 };
  * narrowing — so a fixture reaches the tab by the path a real answer takes,
  * and a narrowing that dropped a state would drop it here too.
  */
-function oneCustomer(measures: EconomicMeasureScenario[]): CustomerEconomics {
-  return toOneCustomer(oneCustomerAnswer(measures));
+function oneCustomer(
+  measures: EconomicMeasureScenario[],
+  basis: RevenueBasis = "recorded",
+): OneCustomerEconomics {
+  return toOneCustomer(oneCustomerAnswer(measures, basis));
+}
+
+/** A ChartCard by its title — the title's own row sits directly inside it. */
+function chartCard(title: string): HTMLElement {
+  const card = screen.getByText(title).parentElement?.parentElement;
+  if (!card) throw new Error(`no chart card titled ${title}`);
+  return card;
+}
+
+/** The basis note a row of stat cards carries, found from one card's label:
+ *  the card's grid and the note are siblings inside one wrapper. */
+function statCardsNote(label: string): Element {
+  const wrapper = screen.getByText(label).closest("[data-variant]")?.parentElement?.parentElement;
+  const note = Array.from(wrapper?.children ?? []).find((child) =>
+    child.hasAttribute("data-revenue-basis"),
+  );
+  if (!note) throw new Error(`no basis note beside the card labelled ${label}`);
+  return note;
+}
+
+/** The margin trend's own basis note, once its answer has arrived. */
+function trendNote(): Promise<Element> {
+  return waitFor(() => {
+    const note = chartCard("Margin trend (closed monthly periods)")
+      .querySelector("[data-revenue-basis]");
+    if (note === null) throw new Error("the trend has stated no basis yet");
+    return note;
+  }, SLOW);
 }
 
 /** The answer filtered to one customer, carrying the composed measures. */
-function oneCustomerAnswer(measures: EconomicMeasureScenario[]): Economics {
+function oneCustomerAnswer(
+  measures: EconomicMeasureScenario[],
+  basis: RevenueBasis = "recorded",
+): Economics {
   return {
     period_start: "2026-07-01",
     period_end: "2026-07-24",
     group_by: [],
     bucket: null,
-    basis: "recorded",
+    basis,
     economic_data_available_from: "2020-07-01",
     measurement_data_available_from: "2026-01-01",
     foreign_currency_subscription_count: 0,
@@ -144,9 +183,46 @@ describe("CustomerDetailPage — overview", () => {
       />,
     );
 
-    const note = await screen.findByText(/Revenue stated as/, undefined, SLOW);
+    // Scoped to the trend's own card: the cards above it state their own
+    // answer's basis too (#548), so the tab holds more than one note.
+    const note = await trendNote();
     expect(note.getAttribute("data-revenue-basis")).toBe("recorded");
     expect(note).toHaveTextContent("Nothing is divided");
+  });
+
+  // ⚠ #548: THE TAB COMPOSES SEVERAL ANSWERS AND EACH SECTION STATES ITS OWN
+  // BASIS. The cards' answer and the trend's are served OPPOSITE bases here,
+  // so the tab holds two different bases at once and only a note per section
+  // can say so. One umbrella note, a section borrowing the other's word, or a
+  // section writing its own word fails a case.
+  it.each(REVENUE_BASIS_VALUES)("states %s on the cards and the other basis on the trend, each as its answer names it", async (basis) => {
+    const trendBasis = REVENUE_BASIS_VALUES.find((value) => value !== basis) ?? basis;
+    const served = await customersApi.getMarginTrend(CUS_ACME, 6);
+    vi.spyOn(customersApi, "getMarginTrend").mockResolvedValueOnce({
+      ...served,
+      basis: trendBasis,
+    });
+
+    renderWithProviders(
+      <OverviewTab
+        customerId={CUS_ACME}
+        margin={oneCustomer(
+          knownMeasures({ cost_micros: 90_000_000, revenue_micros: 390_000_000, events: 12 }),
+          basis,
+        )}
+        externalId="not-a-business"
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
+    const note = statCardsNote("Total revenue");
+    expect(note).toHaveAttribute("data-revenue-basis", basis);
+    expect(note).toHaveTextContent(revenueBasisNote(basis));
+    // The trend is a different answer, and says ITS basis, not the cards'.
+    const trend = await trendNote();
+    expect(trend).toHaveAttribute("data-revenue-basis", trendBasis);
+    expect(trend).toHaveTextContent(revenueBasisNote(trendBasis));
   });
 
   // ⚠ A WINDOW PAST THE HORIZON RENDERS AS ITS STATE, NEVER AS $0.00 (#510).
@@ -234,6 +310,119 @@ describe("UsageTab", () => {
     expect(screen.getAllByText("Outside retention horizon")).toHaveLength(4);
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  // ⚠ #548: THE CARDS AND THE CHART ARE TWO ANSWERS, AND EACH STATES ITS OWN
+  // BASIS. They are served OPPOSITE bases here, so a tab that drew one note
+  // for both — or a section that borrowed the other's word, or wrote its own —
+  // fails a case.
+  it.each(REVENUE_BASIS_VALUES)("states %s on the cards and the other basis on the chart, each as its answer names it", async (cardsBasis) => {
+    const chartBasis = REVENUE_BASIS_VALUES.find((value) => value !== cardsBasis) ?? cardsBasis;
+    vi.spyOn(customersApi, "getCustomerMargin").mockResolvedValueOnce(
+      oneCustomerAnswer(
+        knownMeasures({ cost_micros: 90_000_000, revenue_micros: 390_000_000, events: 12 }),
+        cardsBasis,
+      ),
+    );
+    vi.spyOn(customersApi, "getUsageTimeseries").mockResolvedValueOnce({
+      ...oneCustomerAnswer(
+        knownMeasures({ cost_micros: 9_000_000, revenue_micros: 39_000_000, events: 3 }),
+        chartBasis,
+      ),
+      bucket: "day",
+      rows: [{
+        bucket_start: "2026-07-01T00:00:00Z",
+        grouping_field_value: [],
+        grouping_field_value_status: [],
+        measures: knownMeasures({ cost_micros: 9_000_000, revenue_micros: 39_000_000, events: 3 }),
+      }],
+    });
+
+    renderWithProviders(
+      <UsageTab customerId={CUS_ACME} range={{ start_date: "2026-07-01", end_date: "2026-07-24" }} />,
+    );
+
+    expect(await screen.findByText("$390.00", undefined, SLOW)).toBeInTheDocument();
+    // By the margin card: the chart's legend repeats "Revenue".
+    const cards = statCardsNote("Gross margin");
+    expect(cards).toHaveAttribute("data-revenue-basis", cardsBasis);
+    expect(cards).toHaveTextContent(revenueBasisNote(cardsBasis));
+    const chart = await waitFor(() => {
+      const note = chartCard("Daily spend").querySelector("[data-revenue-basis]");
+      if (note === null) throw new Error("the chart has stated no basis yet");
+      return note;
+    }, SLOW);
+    expect(chart).toHaveAttribute("data-revenue-basis", chartBasis);
+    expect(chart).toHaveTextContent(revenueBasisNote(chartBasis));
+  });
+});
+
+// ⚠ #548: THE ROLLUP STATES THE BASIS ITS OWN RESPONSE NAMES. The server always
+// places supplied revenue here under `recognised`, and since the owner's
+// review of #621 the contract publishes that value alone on this answer, so
+// it is the one the answer can name and the note states.
+describe("BusinessRollup", () => {
+  it("states the basis its answer names", async () => {
+    const basis = "recognised";
+    vi.spyOn(customersApi, "getBusinessMargin").mockResolvedValueOnce({
+      ...MOCK_BUSINESS_MARGIN,
+      basis,
+    });
+
+    renderWithProviders(
+      <BusinessRollup
+        externalId={MOCK_BUSINESS_MARGIN.external_id}
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    const title = await screen.findByText("Business rollup — seats", undefined, SLOW);
+    const notes = title.closest('[data-slot="card"]')?.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes?.[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes?.[0]).toHaveTextContent(revenueBasisNote(basis));
+  });
+
+  // ⚠ THE TOTALS ROW SAT ONE COLUMN TO THE RIGHT OF ITS HEADERS: an empty cell
+  // after "Totals" put the posting count under Revenue, the revenue total
+  // under COGS and the margin under Margin %. Each total is read here by the
+  // INDEX of its own header, so a row that drifts by a cell fails by name.
+  it("puts each total under its own column header", async () => {
+    renderWithProviders(
+      <BusinessRollup
+        externalId={MOCK_BUSINESS_MARGIN.external_id}
+        range={{ start_date: "2026-07-01", end_date: "2026-07-24" }}
+      />,
+    );
+
+    const title = await screen.findByText("Business rollup — seats", undefined, SLOW);
+    const table = title.closest('[data-slot="card"]')?.querySelector("table");
+    if (!table) throw new Error("the rollup rendered no table");
+    const headers = Array.from(table.querySelectorAll("thead th")).map(
+      (cell) => cell.textContent?.trim() ?? "",
+    );
+    const totalsRow = Array.from(table.querySelectorAll("tbody tr")).find(
+      (row) => row.querySelector("td")?.textContent?.trim() === "Totals",
+    );
+    if (!totalsRow) throw new Error("the rollup rendered no totals row");
+    const cells = Array.from(totalsRow.querySelectorAll("td")).map(
+      (cell) => cell.textContent?.trim() ?? "",
+    );
+    const under = (header: string) => cells[headers.indexOf(header)];
+
+    const { totals } = MOCK_BUSINESS_MARGIN;
+    expect(cells).toHaveLength(headers.length);
+    expect(under("Seat")).toBe("Totals");
+    expect(under("Postings")).toBe(formatCount(totals.posting_count));
+    expect(under("Revenue")).toBe(formatMicros(totals.total_revenue_micros, "usd"));
+    expect(under("COGS")).toBe(
+      supplierCostTotal(totals.provider_cost_micros, totals, "usd"),
+    );
+    expect(under("Gross margin")).toBe(
+      marginOver(totals.gross_margin_micros, totals, "usd"),
+    );
+    // The totals shape carries no margin percentage, and says so.
+    expect(under("Margin %")).toBe("—");
   });
 });
 

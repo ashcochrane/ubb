@@ -37,6 +37,7 @@ import {
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import {
   CUSTOMER_REVENUE,
   RECORDED_EVENTS,
@@ -217,6 +218,13 @@ export function TimeseriesCard({
           </Suspense>
           {groupBy !== undefined && (
             <PlottedCaption plotted={pivot.plotted} points={points} currency={currency} />
+          )}
+          {/* Wherever the chart carries revenue — its own line, the state
+              beside the cost or the context below — it states the basis this
+              answer names (#548). An axis that answers no money draws a count
+              and owes none. */}
+          {caveats && pivot.plotted !== RECORDED_EVENTS && (
+            <RevenueBasisNote basis={caveats.basis} />
           )}
           {caveats && <RevenueContext context={caveats.context} currency={currency} />}
           {caveats && <RetentionHorizonNote caveats={caveats} />}

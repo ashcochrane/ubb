@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { TrendingDown } from "lucide-react";
 
 import { ErrorCard } from "@/components/shared/error-card";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { formatSignedMicros } from "@/lib/format";
 import { marginOver, marginPercentOver } from "@/lib/supplier-cost";
 
@@ -99,6 +100,12 @@ export function UnprofitableAlert({ currency }: { currency: string }) {
               and {rows.length - MAX_LISTED} more — review them on the customers page.
             </p>
           )}
+          {/* ⚠ THE MARGINS ABOVE WERE TAKEN OVER A REVENUE THAT MAY HOLD A
+              SUPPLIED AMOUNT, under the basis the alerting answer states
+              (#548). It is this answer's own word — the reports on the same
+              page may state a different one, so the alert never borrows
+              theirs. */}
+          <RevenueBasisNote basis={query.data.basis} className="mt-1.5" />
         </div>
       </div>
     </div>

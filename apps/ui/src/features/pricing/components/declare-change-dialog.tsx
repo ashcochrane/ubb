@@ -18,14 +18,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toastSuccess } from "@/lib/mutations";
 import { useDeclareBookPublish, useGroupingFields } from "../api/queries";
-import { isCostBook, type AnyBook, type BookChangeIn, type BookRateChangeIn } from "../api/types";
+import {
+  isCostBook,
+  type AnyBook,
+  type BookChangeIn,
+  type BookRateChangeIn,
+  type GroupingField,
+} from "../api/types";
 import { agreedPriceChange } from "../lib/agreed-prices";
 import { toMicros } from "../lib/pricing-math";
 import {
   AGREED_PRICE_CHANGE_KINDS,
   CHANGE_KINDS,
   pinnableGroupingFields,
-  selectorTitle,
   type ChangeKind,
 } from "../lib/rules";
 import {
@@ -40,7 +45,7 @@ import {
 } from "../lib/schemas";
 import { effectiveInstant, scheduleRefusal } from "../lib/schedule";
 import { EffectiveInstant } from "./effective-instant";
-import { RuleEditor } from "./rule-editor";
+import { RuleEditor, RuleIdentityFields } from "./rule-editor";
 
 /** The three acts, in the order a tenant meets them. Wording is the lib's. */
 const KINDS = Object.entries(CHANGE_KINDS).map(([value, words]) => ({
@@ -312,7 +317,7 @@ export function DeclareChangeDialog({
           >
             {kindChoice}
             {kind === "retire" ? (
-              <RetireFields form={form} />
+              <RetireFields form={form} groupingFields={declared} />
             ) : (
               <RuleEditor
                 form={form}
@@ -430,29 +435,30 @@ function AgreedPriceFields({
  * The terms are deliberately absent rather than disabled: a retire opens no
  * rule, so an amount beside it would be a number the record will never carry
  * and a tenant would reasonably expect to mean something.
+ *
+ * ⚠ **WHICH RULE IS EVERY SELECTOR, NOT THREE OF THEM (#545).** The server
+ * finds the rule to retire by its measurement plus the exact value of all of
+ * its selectors, and `stage()` already sends them all — so the form renders
+ * the editor's own identity fields, the one inventory, rather than a short
+ * hand-picked list that could not reach a rule pinned on a kind of work or a
+ * grouping field.
  */
-function RetireFields({ form }: { form: ReturnType<typeof useForm<RuleFormValues>> }) {
+function RetireFields({
+  form,
+  groupingFields,
+}: {
+  form: ReturnType<typeof useForm<RuleFormValues>>;
+  groupingFields: readonly GroupingField[];
+}) {
   return (
     <div className="space-y-3">
-      <FormField
-        label="Measurement"
-        error={form.formState.errors.measurement_key?.message}
-        hint="The rule to stop pricing, identified by the quantity it prices plus what it pins."
-      >
-        {(id) => (
-          <Input id={id} className="font-mono" {...form.register("measurement_key")} />
-        )}
-      </FormField>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <FormField label={selectorTitle("provider")}>
-          {(id) => <Input id={id} className="font-mono" {...form.register("provider")} />}
-        </FormField>
-        <FormField label={selectorTitle("event_type")}>
-          {(id) => (
-            <Input id={id} className="font-mono" {...form.register("event_type")} />
-          )}
-        </FormField>
-      </div>
+      <RuleIdentityFields
+        form={form}
+        groupingFields={groupingFields}
+        measurementHint="The rule to stop pricing, identified by the quantity it prices plus what it pins."
+        legend="What the rule pins"
+        selectorHint="State every selector exactly as the rule pins it, and leave empty what it leaves open: a retire names one rule, not a pattern."
+      />
       <Label className="text-xs text-muted-foreground">
         Retiring reopens nothing and revives nothing. Whatever the customer
         would otherwise have matched was there all along, out-ranked, and starts

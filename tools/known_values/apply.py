@@ -18,7 +18,8 @@ expressed as code:
               schema enumerating the set would make UBB learning a new one a
               breaking change to the published contract.
     closed    a real `enum`. UBB owns the whole value set, so the schema may
-              say so.
+              say so — or, on a field that names `x-ubb-field-values`, the
+              part of it that field can return (R10-W5).
     otherwise refused — see below.
 
 **Five refusals, and none of them is a fallback.** The generator's rule
@@ -51,10 +52,20 @@ MARKER = "x-ubb-concept"
 #: `enum`.
 KNOWN_VALUES_KEY = "x-ubb-known-values"
 
+#: The vendor extension a field uses to say which of its `closed` concept's
+#: values it can return, where that is fewer than all of them (R10-W5, the
+#: owner's review of #621). The registry still owns the tokens; the field owns
+#: where it sits among them. Written by the platform (`core/field_values.py`)
+#: from the registry's generated constants, kept in the published document so
+#: the gate can read it, and checked here: each value must be one the concept
+#: occurs with, and the list may not be the whole set. The field's `enum` is
+#: then written from the registry, in the registry's order.
+FIELD_VALUES_KEY = "x-ubb-field-values"
+
 #: Every extension this applier owns. The gate asserts the committed document
 #: carries no other `x-ubb-` key, so a hand-written vendor extension cannot
 #: pass itself off as generated metadata.
-EXTENSIONS = (MARKER, KNOWN_VALUES_KEY)
+EXTENSIONS = (MARKER, KNOWN_VALUES_KEY, FIELD_VALUES_KEY)
 
 #: Where a marked node may declare its string-ness. A plain `str` field renders
 #: `type: "string"`; an optional one renders `anyOf`, and refusing that would
@@ -182,8 +193,40 @@ def _annotate(node, decisions, pointer):
                f"`{concept}` is a set of string values and this node is not "
                f"string-shaped, so nothing could travel through it")
 
+    if FIELD_VALUES_KEY in node:
+        return {**node, "enum": _field_values(node, decision, refuse)}
     key = "enum" if decision.representation == ENUM else KNOWN_VALUES_KEY
     return {**node, key: list(decision.values)}
+
+
+def _field_values(node, decision, refuse):
+    """The `enum` of a field that returns only some of its concept's values:
+    the registry's occurring values this field names, in the registry's order.
+    """
+    concept = node[MARKER]
+    named = node[FIELD_VALUES_KEY]
+    if (not isinstance(named, list) or not named
+            or not all(isinstance(value, str) for value in named)
+            or len(set(named)) != len(named)):
+        refuse(codes.MALFORMED_FIELD_VALUES,
+               f"`{FIELD_VALUES_KEY}` lists the distinct values this field "
+               f"can return, not {named!r}")
+    if decision.representation != ENUM:
+        refuse(codes.FIELD_VALUES_ON_AN_OPEN_CONCEPT,
+               f"`{concept}` is open: its recognised values are documentation "
+               f"beside a plain string, so there is no `enum` for a field to "
+               f"narrow")
+    stray = [value for value in named if value not in decision.values]
+    if stray:
+        refuse(codes.FIELD_VALUE_NOT_OCCURRING,
+               f"{stray!r} is not a value `{concept}` occurs with "
+               f"({list(decision.values)}). A field narrows its concept's set "
+               f"and never extends it; a new value is the registry's")
+    if set(named) == set(decision.values):
+        refuse(codes.FIELD_VALUES_ARE_THE_WHOLE_SET,
+               f"this field returns every value `{concept}` occurs with, which "
+               f"the plain marker already says. Drop `{FIELD_VALUES_KEY}`")
+    return [value for value in decision.values if value in named]
 
 
 def _is_string_shaped(node):

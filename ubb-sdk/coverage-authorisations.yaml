@@ -544,3 +544,16 @@ authorisations:
       An integrator checking configuration in code (the spec's story 26)
       gets the read typed from the generated core: `AgreedPriceOut` and
       `PaginatedAgreedPrices`.
+  - id: widget-561-an-end-customers-own-usage
+    issue: 561
+    operations_added: 1
+    reason: >-
+      ONE NEW OPERATION, `generated_only`: an end customer's own usage
+      summary on the widget mount (`GET /me/economics`, R10-W5 ruling 17),
+      restoring what #501's collapse took from widget holders.
+
+      NOT WRAPPED FOR THE REASON THE OTHER SEVEN `/me` OPERATIONS ARE NOT:
+      it is authenticated by an end customer's widget token rather than a
+      tenant API key, so a method on a tenant-keyed client would be reachable
+      only with credentials that client does not hold. The generated core
+      carries the request and the answer typed (`MeEconomicsOut`).

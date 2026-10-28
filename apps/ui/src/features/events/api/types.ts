@@ -14,10 +14,11 @@ import {
   axisValueOn,
   caveatsOf,
   figuresOn,
-  onlyRow,
+  statedTotalsOf,
   type AnswerCaveats,
   type EconomicFigures,
   type EconomicsAnswer,
+  type StatedFigures,
 } from "@/lib/economic-query";
 import type {
   AnalyticsMeasure,
@@ -39,12 +40,13 @@ export type Economics = EconomicsAnswer;
  * The window's totals, from the ungrouped answer's single row — each measure a
  * figure with its state (#510). This carried four numbers coalesced to zero,
  * so a window reaching back past the economic horizon printed "$0.00" and
- * "0 events" on the strip.
+ * "0 events" on the strip. They carry the basis the answer stated them under
+ * since #548, which the strip says beside its revenue and margin.
  */
-export type WindowTotals = EconomicFigures;
+export type WindowTotals = StatedFigures;
 
 export function toWindowTotals(answer: Economics): WindowTotals {
-  return figuresOn(onlyRow(answer));
+  return statedTotalsOf(answer);
 }
 // A unit of work is a KERNEL concept and its lifecycle sits at the root prefix
 // (#409), so this comes from the root schemas rather than from metering's.

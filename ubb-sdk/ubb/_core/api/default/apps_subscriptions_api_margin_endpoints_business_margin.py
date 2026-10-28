@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.business_margin_out import BusinessMarginOut
+from ...models.problem_out import ProblemOut
 from ...types import UNSET, Unset
 from typing import cast
 import datetime
@@ -61,7 +62,7 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> BusinessMarginOut | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> BusinessMarginOut | ProblemOut | None:
     if response.status_code == 200:
         response_200 = BusinessMarginOut.from_dict(response.json())
 
@@ -69,13 +70,27 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_200
 
+    if response.status_code == 404:
+        response_404 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_404
+
+    if response.status_code == 422:
+        response_422 = ProblemOut.from_dict(response.json())
+
+
+
+        return response_422
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[BusinessMarginOut]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[BusinessMarginOut | ProblemOut]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -91,20 +106,33 @@ def sync_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[BusinessMarginOut]:
+) -> Response[BusinessMarginOut | ProblemOut]:
     """ Business Margin
+
+     A business customer's margin over the window: each seat's own, and the
+    total with the business's own revenue on top of its seats'.
+
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
 
     Args:
         external_id (str):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BusinessMarginOut]
+        Response[BusinessMarginOut | ProblemOut]
      """
 
 
@@ -128,20 +156,33 @@ def sync(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> BusinessMarginOut | None:
+) -> BusinessMarginOut | ProblemOut | None:
     """ Business Margin
+
+     A business customer's margin over the window: each seat's own, and the
+    total with the business's own revenue on top of its seats'.
+
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
 
     Args:
         external_id (str):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BusinessMarginOut
+        BusinessMarginOut | ProblemOut
      """
 
 
@@ -160,20 +201,33 @@ async def asyncio_detailed(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> Response[BusinessMarginOut]:
+) -> Response[BusinessMarginOut | ProblemOut]:
     """ Business Margin
+
+     A business customer's margin over the window: each seat's own, and the
+    total with the business's own revenue on top of its seats'.
+
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
 
     Args:
         external_id (str):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[BusinessMarginOut]
+        Response[BusinessMarginOut | ProblemOut]
      """
 
 
@@ -197,20 +251,33 @@ async def asyncio(
     start_date: datetime.date | None | Unset = UNSET,
     end_date: datetime.date | None | Unset = UNSET,
 
-) -> BusinessMarginOut | None:
+) -> BusinessMarginOut | ProblemOut | None:
     """ Business Margin
+
+     A business customer's margin over the window: each seat's own, and the
+    total with the business's own revenue on top of its seats'.
+
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
 
     Args:
         external_id (str):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        BusinessMarginOut
+        BusinessMarginOut | ProblemOut
      """
 
 

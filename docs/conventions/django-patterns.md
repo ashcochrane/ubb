@@ -147,12 +147,14 @@ wire and validate.
   "what is allowed to happen to this?" before the column ships.
 - **A record whose whole lifecycle is one rule declares `RECORD_RULE` instead**, which is *not* a
   fifth class — it is the absence of a per-column one, said out loud, with the rule itself written in
-  the model's docstring. `PostingMeasurement` is the first (insert once, never update, delete only at
-  or after its horizon and only while its posting is not unresolved).
-- ⚠ **A `RECORD_RULE` record is outside G19's statement, so nothing walks it and its rule owes its
+  the model's docstring. `PostingMeasurement` is the first (insert once, never update — except its
+  release, below — delete only at or after its horizon and only while its posting is not unresolved).
+  Since W5 one of its columns does have a class: `prunable_at` is `SET_ONCE`, the release fact the
+  daily prune writes in the transaction that deletes the record (`usage/0052`, ADR-0025).
+- ⚠ **A `RECORD_RULE` column is outside G19's statement, so nothing walks it and its rule owes its
   own tests.** G19 walks *field* transition classes; `RECORD_RULE` sits outside `DATABASE_DEFENDED`
-  by construction, so no declaration on such a record is ever judged and a green board says nothing
-  about whether its rule exists at all. `PostingMeasurement`'s `DELETE` condition (#354) is enforced
+  by construction, so no `RECORD_RULE` declaration is ever judged and a green board says nothing
+  about whether the record's rule exists at all. `PostingMeasurement`'s `DELETE` condition (#354) is enforced
   by a **`BEFORE DELETE`** trigger in
   `usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`, and its three doors are
   `delete()`, `QuerySet.delete()` and raw SQL rather than the `save()` / `QuerySet.update()` / raw

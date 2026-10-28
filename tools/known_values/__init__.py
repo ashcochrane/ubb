@@ -35,6 +35,7 @@ from pathlib import Path
 
 from .apply import (
     EXTENSIONS,
+    FIELD_VALUES_KEY,
     KNOWN_VALUES_KEY,
     MARKER,
     apply_known_values,
@@ -73,6 +74,7 @@ __all__ = [
     "CONTRACT",
     "ENUM",
     "EXTENSIONS",
+    "FIELD_VALUES_KEY",
     "KNOWN_VALUES",
     "KNOWN_VALUES_KEY",
     "MARKER",

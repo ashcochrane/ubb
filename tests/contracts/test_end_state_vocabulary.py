@@ -1109,6 +1109,10 @@ WITHHELD = {
     ("referral_program_status", "paused"):
         "no writer: no route pauses a programme and the update body carries "
         "no status",
+    ("measure_status", "not_applicable"):
+        "no writer (the owner's review of #621): the one economic query is "
+        "the only producer of a measure's state and refuses a measure that "
+        "does not apply before it builds a row",
 }
 
 #: Where a withheld value's generated constant may be named in production
@@ -1119,6 +1123,9 @@ WITHHELD_NAMED_ONLY_IN = {
         "the status choices, filtered through the withheld set",
     "ubb-platform/apps/referrals/models.py":
         "the programme status choices, filtered through the withheld set",
+    "ubb-platform/apps/metering/queries.py":
+        "the measure-state precedence guard, which names the one state the "
+        "query never reaches so that a new registry value fails there",
 }
 
 PRODUCTION = REPO_ROOT / "ubb-platform"

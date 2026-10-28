@@ -187,10 +187,14 @@ class UBBClientTest(unittest.TestCase):
         self.client.billing.configure_auto_top_up = MagicMock(
             return_value={"status": "enabled"}
         )
-        result = self.client.configure_auto_top_up(customer_id="c1", threshold=0,
-                                                   amount=100_000)
+        result = self.client.configure_auto_top_up(
+            customer_id="c1", is_enabled=True, trigger_threshold_micros=0,
+            top_up_amount_micros=100_000)
         self.assertIsInstance(result, StatusResponse)
         self.assertEqual(result.status, "enabled")
+        self.client.billing.configure_auto_top_up.assert_called_once_with(
+            "c1", is_enabled=True, trigger_threshold_micros=0,
+            top_up_amount_micros=100_000)
 
     # --- withdraw (delegates to the guarded billing.withdraw) ---
 

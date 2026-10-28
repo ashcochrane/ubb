@@ -3988,8 +3988,8 @@ ECONOMIC_BUCKET_MEANING = (
 ECONOMIC_AMOUNT_MEANING = (
     "The figure of a money measure, in micros; null on the count measure, "
     "which is not money. Where it is null on a money measure, no figure can "
-    "be stated: under 'unavailable_outside_retention_horizon', under "
-    "'not_applicable', on a margin under 'unavailable_at_requested_grain', and "
+    "be stated: under 'unavailable_outside_retention_horizon', on a margin "
+    "under 'unavailable_at_requested_grain', and "
     "under 'incomplete' where no piece of the row's revenue resolved — on the "
     "revenue and on the margin over it. An amount under 'incomplete' is the "
     "sum of what resolved, never the whole: what it leaves out may move it "
@@ -3999,6 +3999,21 @@ ECONOMIC_AMOUNT_MEANING = (
     "customer and period it covers and supersedes the revenue derived from "
     "priced usage there — the two are never added together. Never a zero "
     "standing in for any of these."
+)
+#: WHAT THE SHORTER HORIZON PROMISES, published on the field (W5 ruling 11).
+#: The guaranteed, current edge of fine detail — never the literal oldest row,
+#: because a run-capped prune can be catching up on a backlog, and never a
+#: claim that detailed year-over-year comparison is supported.
+MEASUREMENT_HORIZON_MEANING = (
+    "The earliest day from which UBB guarantees fine measurement detail — raw "
+    "measurement records, quantities, component drill-down and the "
+    "measurement-concept rollup — as of today. It is a shorter platform clock "
+    "than the economic one: 400 days by default, about thirteen months, and a "
+    "configuration rather than a contract. Detail on or after this day is held. "
+    "Detail before it is released by a daily prune and is never promised, even "
+    "where some of it is still present while the prune catches up. It is not a "
+    "promise that a detailed year-over-year comparison is possible: comparing "
+    "a trailing year with the one before it needs about two years of detail."
 )
 UNPRICED_COUNT_MEANING = (
     "How many of this row's postings carry a customer price UBB could not "
@@ -4042,10 +4057,10 @@ class EconomicMeasureOut(Schema):
       says the day this measure's series can start. The two unavailable states
       are separate because their remedies are: ask a coarser question, against
       that data is gone.
-    * `not_applicable` — the measure does not apply. This surface refuses such a
-      combination against `/metering/analytics/grouping-options` before building
-      a row, so an answer from THIS query never carries it; the value is the
-      concept's and a later surface may.
+
+    A measure that does not apply is never answered: this surface refuses the
+    combination against `/metering/analytics/grouping-options` before building
+    a row, so `status` is one of these four (the owner's review of #621).
 
     ⚠ **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured
     zero, and where UBB has no figure at all the field is null.
@@ -4187,11 +4202,12 @@ class EconomicsOut(Schema):
     #: field nobody builds against.
     #:
     #: ⚠ AND READ THEM BESIDE THE PER-REQUEST WINDOW BOUND, which is the other
-    #: number and a different one: six years is what is reachable, 366 days
-    #: (92 hourly) is what one request may span. Six years therefore takes
-    #: successive windows rather than one call.
+    #: number and a different one: six years is what is reachable, 366
+    #: calendar dates (92 hourly) is what one request may span. Six years
+    #: therefore takes consecutive windows rather than one call.
     economic_data_available_from: str
-    measurement_data_available_from: str
+    measurement_data_available_from: str = Field(
+        description=MEASUREMENT_HORIZON_MEANING)
     rows: list[EconomicRowOut]
     context: list[RevenueContextOut]
     #: WHAT THE REVENUE IN THIS ANSWER LEFT OUT (#564, the owner's ruling 5):

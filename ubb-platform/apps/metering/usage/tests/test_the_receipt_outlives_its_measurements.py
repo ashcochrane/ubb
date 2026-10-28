@@ -45,12 +45,11 @@ retention job would meet are indistinguishable while both are still there.
    columns, same null horizon, created by the same unconditional statement.
    What holds it is a fact about its **parent**, not a property of the row.
 
-⚠ **THERE IS NO PRUNE JOB IN THIS REPOSITORY AND THIS COMMIT DOES NOT ADD ONE.**
-`prunable_at` is a column with no clock behind it, and
-`test_posting_measurement.py`'s own `TheHorizonHasNoClockBehindItTest` is what
-stops one being started by accident. So "pruned" here means the state a prune
-would leave, reached by removing the record — which is what any such job would
-eventually issue — and claim 3 is a statement about what such a job would SEE.
+⚠ **THIS COMMIT ADDED NO PRUNE JOB; W5 ADDED THE DAILY ONE** (`pruning.py`,
+which releases and deletes exactly as `release_and_prune` does). "Pruned" here
+means the state a prune leaves, reached by removing the record — which is what
+the job issues — and claim 3 is a statement about what the job's result looks
+like to a reader.
 
 ⚠ **THE WHOLE-RECORD `DELETE` RULE HAS SINCE LANDED (#354), AND THIS IS WHAT IT
 CHANGED HERE.** This module said the deletions below would stop being

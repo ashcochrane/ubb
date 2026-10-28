@@ -196,15 +196,14 @@ class MarginEndpointsTest(TestCase):
         r = self.http.get("/api/v1/margin/unprofitable", **self._auth())
         assert r.status_code == 200 and r.json()["customers"] == []
 
-    #: The read this module still owns that resolves a window, so the bound the
-    #: collapsed reports shared is still asserted here. ⚠ The one query has its
-    #: OWN case for the same ceiling, and the two differ: this one bounds only
-    #: where both dates were sent, and that one bounds the RESOLVED span, which
-    #: is the escape #499 closed and #501 took away with the routes that had it.
+    #: A read this module owns that resolves a window. Since W5 it resolves
+    #: through the one calendar-date report window, like every other report
+    #: (`api/v1/tests/test_a_report_window_means_one_thing.py` pins all five
+    #: routes); this keeps the problem+json shape of the refusal asserted here.
     A_WINDOWED_READ = "/api/v1/margin/customers/{}/supplied-revenue"
 
     def test_window_over_366_days_refused(self):
-        """An explicit report window longer than 366 days → 422 problem+json."""
+        """A window of more than 366 calendar dates → 422 problem+json."""
         r = self.http.get(
             self.A_WINDOWED_READ.format(self.customer.id)
             + "?start_date=2024-01-01&end_date=2025-06-01",
@@ -213,12 +212,71 @@ class MarginEndpointsTest(TestCase):
         assert r["Content-Type"] == "application/problem+json"
         body = r.json()
         assert body["code"] == "validation_error", body
-        assert body["detail"] == "date window must not exceed 366 days", body
+        assert body["detail"].startswith(
+            "a report window spans at most 366 calendar dates"), body
 
     def test_window_exactly_366_days_allowed(self):
-        """The boundary itself (one leap year, 366 days) is accepted."""
+        """The boundary itself (one leap year, 366 calendar dates, both ends
+        inclusive) is accepted."""
         r = self.http.get(
             self.A_WINDOWED_READ.format(self.customer.id)
-            + "?start_date=2024-01-01&end_date=2025-01-01",
+            + "?start_date=2024-01-01&end_date=2024-12-31",
             **self._auth())
         assert r.status_code == 200, r.content
+
+
+class TheBusinessRollupStatesItsBasisTest(TestCase):
+    """#548, W5 ruling 15: the rollup places supplied revenue under the
+    recognised basis and says so on the answer — required and never null —
+    so a console renders the basis the response states, not a constant."""
+
+    def test_the_answer_names_the_basis_it_placed_supplied_revenue_under(self):
+        tenant = Tenant.objects.create(name="T", products=["metering"])
+        _, key = TenantApiKey.create_key(tenant, label="test")
+        business = Customer.objects.create(
+            tenant=tenant, external_id="biz", account_type="business")
+        Customer.objects.create(tenant=tenant, external_id="seat",
+                                account_type="seat", parent=business)
+
+        response = Client().get("/api/v1/margin/business/biz",
+                                HTTP_AUTHORIZATION=f"Bearer {key}")
+
+        assert response.status_code == 200, response.content
+        assert response.json()["basis"] == REVENUE_BASIS_RECOGNISED
+
+    def test_the_contract_publishes_it_required(self):
+        from api.v1.api import api
+
+        schema = api.get_openapi_schema()["components"]["schemas"][
+            "BusinessMarginOut"]
+        assert "basis" in schema["required"]
+        assert schema["properties"]["basis"]["x-ubb-concept"] == "revenue_basis"
+        # The one value this answer can return, and so the only one it
+        # advertises (the owner's review of #621).
+        assert schema["properties"]["basis"]["x-ubb-field-values"] == [
+            REVENUE_BASIS_RECOGNISED]
+
+
+class TheUnprofitableListStatesItsBasisTest(TestCase):
+    """#548, W5 ruling 15: a flagged margin includes supplied revenue placed
+    under the recognised basis, and the list says so — required, never null."""
+
+    def test_the_answer_names_the_basis_its_margins_were_computed_under(self):
+        tenant = Tenant.objects.create(name="T", products=["metering"])
+        _, key = TenantApiKey.create_key(tenant, label="test")
+
+        response = Client().get("/api/v1/margin/unprofitable",
+                                HTTP_AUTHORIZATION=f"Bearer {key}")
+
+        assert response.status_code == 200, response.content
+        assert response.json()["basis"] == REVENUE_BASIS_RECOGNISED
+
+    def test_the_contract_publishes_it_required(self):
+        from api.v1.api import api
+
+        schema = api.get_openapi_schema()["components"]["schemas"][
+            "UnprofitableOut"]
+        assert "basis" in schema["required"]
+        assert schema["properties"]["basis"]["x-ubb-concept"] == "revenue_basis"
+        assert schema["properties"]["basis"]["x-ubb-field-values"] == [
+            REVENUE_BASIS_RECOGNISED]

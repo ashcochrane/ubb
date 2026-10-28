@@ -6,6 +6,9 @@ its parent. GET /metering/analytics/tasks reports run count, mean and p95 per KI
 work. The count of work that reached its ceiling LEFT this row in #465
 (Testing Decisions claim 14): it is Utilisation and headroom's figure now.
 """
+from datetime import datetime, timezone as dt_timezone
+from unittest import mock
+
 import pytest
 from django.test import Client
 
@@ -14,8 +17,19 @@ from apps.platform.work.models import Task
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 
+#: The report reads the UTC month to date when no window is sent (W5 ruling 4),
+#: so every case here runs on a frozen clock mid-month: a dateless read that
+#: could fail on the first of a month or near UTC midnight is a defect.
+FROZEN_NOW = datetime(2026, 3, 18, 15, 30, tzinfo=dt_timezone.utc)
+
+
 @pytest.mark.django_db
 class TestTaskAnalytics:
+    @pytest.fixture(autouse=True)
+    def _frozen_clock(self):
+        with mock.patch("django.utils.timezone.now", return_value=FROZEN_NOW):
+            yield
+
     def setup_method(self):
         # products=[...] is REQUIRED — routes are gated by _product_check.
         self.tenant = Tenant.objects.create(name="T", products=["metering"])

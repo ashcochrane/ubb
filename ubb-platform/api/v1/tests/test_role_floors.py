@@ -345,8 +345,13 @@ _WRITE_ROUTES = {
 #
 # 149 + 1 = 150 (#553): a Pricing Book's agreed prices, read at Read like its
 # rates — a GET, on the carve's default.
+#
+# 9 + 1 = 10 exempt (#561, W5): the end customer's own usage summary returns to
+# the widget mount (`GET /me/economics`), which `_EXEMPT_PREFIXES` exempts
+# wholesale — a widget token is not a role this carve has floors for — so it
+# moves the exempt count alone, undoing #501's `10 - 1 = 9` with a narrower route.
 _EXPECTED_FLOORED = 150
-_EXPECTED_EXEMPT = 9
+_EXPECTED_EXEMPT = 10
 
 
 def _iter_ops():

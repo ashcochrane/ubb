@@ -69,11 +69,12 @@ def tenant_wide_money(tenant_id, *, start_date, end_date):
     the same statement about the periods a supplied figure covers (#537).
     """
     from apps.metering.queries import EconomicFilters, economics
+    from core.report_windows import ReportWindow
 
     answer = economics(
         str(tenant_id), measures=MONEY_MEASURES,
         covered_periods=(), contributed_revenue=(),
-        filters=EconomicFilters(start_date=start_date, end_date=end_date))
+        filters=EconomicFilters(window=ReportWindow.between(start_date, end_date)))
     assert len(answer["rows"]) == 1, answer["rows"]
     return {entry["measure"]: entry for entry in answer["rows"][0]["measures"]}
 
