@@ -2363,13 +2363,11 @@ class TestASandboxResetWipesTheSnapshots(_Routes):
              "required_grouping_fields": ["environment"]},
             {"key": SUBTASK_KIND, "kind": "subtask", "uncapped": True,
              "required_grouping_fields": ["phase"]})
-        # ⚠ NO SUPPLIER ON THE EVENT TYPE, AND THAT IS A WORKAROUND. A reset
-        # that wipes configuration is refused outright for any Event Type that
-        # names one — the generic sweep reaches the supplier first and the
-        # Event Type holds it with PROTECT (#593). That break is the reset's,
-        # predates this module and is not about a snapshot, so the fixture
-        # steps round it rather than assert through it.
+        # A supplier on the Event Type, as a tenant's would have: the reset
+        # that wipes configuration used to be refused for one (#593), and this
+        # fixture stepped round it until W5 fixed the order.
         self._event_type(
+            provider=PROVIDER,
             measurements={"input_tokens": INPUT_TOKENS, "searches": SEARCHES})
         fingerprint = self._complete(
             subtask_types=[SUBTASK_KIND])["configuration_fingerprint"]

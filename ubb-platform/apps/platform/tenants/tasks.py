@@ -31,6 +31,13 @@ _SKIP_LABELS = frozenset({
     "tenants.Tenant",
     "tenants.TenantApiKey",
     "customers.Customer",
+    # THE TEAM — ACCESS STATE, KEPT BY EVERY RESET (W5 ruling 14). A sandbox's
+    # members and the invitations that bring them are who may sign in to it,
+    # like the keys above, not configuration a tenant declared or data its
+    # traffic produced. A reset that wiped them would lock the tenant's own
+    # people out of the sandbox they asked to reset, whichever kind it was.
+    "membership.Member",
+    "membership.Invitation",
 })
 
 # Tenant-level CONFIG rows preserved when keep_config=True (the default).
@@ -108,6 +115,14 @@ CONFIG_MODEL_LABELS = frozenset({
     "event_types.EventCategory",
     "event_types.EventType",
     "event_types.MeasurementConcept",
+    # THE KINDS OF WORK AND THE GROUPING FIELDS THEY REQUIRE (#595). Both are
+    # declared by the tenant on exactly the reading the catalogue above is —
+    # and a kept Event Type whose kind of work was wiped refuses every start
+    # naming that kind, while a kept rule pinned on a kind or a field slot pins
+    # something nothing declares. What traffic produced under them (the units
+    # of work, the grouping values) is still wiped.
+    "work.TaskType",
+    "grouping_fields.GroupingField",
     "plans.Plan",
     "subscriptions.MarginThresholdConfig",
     "gating.CustomerSpendPool",
@@ -238,9 +253,22 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    first is only the order the rule needs. Not insurance like the two
     #    above: dropping it turns `test_a_full_reset_takes_the_held_names_first`
     #    red.
+    #
+    #    ⚠ AND THE CATALOGUE LAST, IN THE ORDER ITS OWN `PROTECT`S NEED (#593).
+    #    An Event Type holds its supplier and its category with `PROTECT`, and
+    #    a declared quantity holds the Measurement Concept it is filed under —
+    #    and the generic sweep walks the models in definition order, which
+    #    reaches the supplier and the category BEFORE the Event Type: the reset
+    #    was refused for every Event Type naming a supplier and left the
+    #    sandbox inactive. So the Event Type goes after everything pointing at
+    #    it (the held names and the rules above), taking its quantities with it,
+    #    and then the three it held. Not insurance:
+    #    `test_a_reset_keeps_what_it_promises.py` is red without it.
     if not keep_config:
         for label in ("event_types.QuarantinedKey", "pricing.TaskPrice",
-                      "pricing.Rate", "plans.Plan"):
+                      "pricing.Rate", "plans.Plan", "event_types.EventType",
+                      "event_types.Provider", "event_types.EventCategory",
+                      "event_types.MeasurementConcept"):
             model = django_apps.get_model(*label.split("."))
             manager = _wipe_manager(model)
             _wipe(label, lambda m=manager: m.filter(tenant=tenant).delete())
