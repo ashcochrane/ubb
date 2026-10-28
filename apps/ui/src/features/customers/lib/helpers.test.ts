@@ -42,7 +42,7 @@ describe("money conversion", () => {
 //: fixture here cannot describe a row no server produces.
 const ROWS = toCustomerRows(
   mockCustomerList({ start_date: "2026-07-01", end_date: "2026-07-31" }),
-);
+).rows;
 
 describe("margin list sorting and filtering", () => {
   // ⚠ `listRowRevenueMicros` AND ITS TWO CASES ARE GONE (#501). They asserted

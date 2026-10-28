@@ -16,6 +16,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { MONEY_MEASURES } from "@/lib/economic-query";
 import { measuresOutsideRetentionHorizon } from "@/lib/economic-scenarios";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import { mockCustomerEconomics } from "../api/mock-data";
 import { dashboardApi } from "../api/provider";
@@ -61,5 +63,28 @@ describe("CustomerEconomicsTable — the measure states", () => {
     expect(screen.getAllByText("Outside retention horizon")).toHaveLength(20);
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
     expect(screen.queryByText(/^0(\.0)?%$/)).not.toBeInTheDocument();
+  });
+
+  // ⚠ #548: every row's revenue and margin is stated under the ONE basis the
+  // answer names, and the table says which. The mock answers `recorded`; the
+  // answer here is re-stated under each value, through the real narrowing.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+    vi.spyOn(dashboardApi, "getCustomerEconomics").mockResolvedValueOnce({
+      ...mockCustomerEconomics(WINDOW),
+      basis,
+    });
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <CustomerEconomicsTable window={WINDOW} currency="usd" />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("1f0c9c4e…")).toBeInTheDocument();
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 });

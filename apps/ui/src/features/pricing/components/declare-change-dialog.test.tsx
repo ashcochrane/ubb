@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import * as React from "react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
+import { pricingApi } from "../api/provider";
 import { MOCK_COST_BOOKS, MOCK_GROUPING_FIELDS, MOCK_PRICING_BOOKS } from "../api/mock-data";
 import type { AnyBook } from "../api/types";
 import { BookChangesPanel } from "./book-changes-panel";
@@ -322,13 +323,13 @@ describe("what a rule may select on", () => {
     expect(inputLabels(selectors)).toEqual([...NAMED, ...DECLARED]);
   });
 
-  // ⚠ TWO SELECTORS AND NOT FOURTEEN, AND THAT IS PINNED RATHER THAN FIXED.
-  // The server finds a retirement's target by the measurement and the exact
-  // value of every selector, so this form cannot name a rule pinned on a kind
-  // of work or on one of the tenant's own fields. Widening it would be a
-  // change to what a tenant can do, and this is a change to what things are
-  // called — so the pin holds today's list, and the gap is recorded on #509.
-  it("names a rule to retire by the same selectors it always did", async () => {
+  // ⚠ FLIPPED BY #545. This pin held the retire form at two selectors while
+  // the server finds a retirement's target by the measurement and the exact
+  // value of EVERY selector, so a rule pinned on a kind of work or on one of
+  // the tenant's own fields could be created here and never retired. The form
+  // now renders the editor's own identity fields — one inventory, so a
+  // selector the editor gains is a selector the retire form offers.
+  it("names a rule to retire by every selector the server matches on", async () => {
     renderDialog(OPENAI_COSTS);
     await screen.findByLabelText("model");
     fireEvent.click(
@@ -337,9 +338,47 @@ describe("what a rule may select on", () => {
 
     expect(inputLabels(screen.getByRole("dialog"))).toEqual([
       "Measurement",
-      "Provider",
-      "Event type",
+      ...NAMED,
+      ...DECLARED,
     ]);
+  });
+
+  it("sends exactly the rule it names, every selector and nothing else", async () => {
+    // The payload, pinned whole: a selector the form stopped sending would
+    // vanish from the request rather than fail anything a tenant can see.
+    const declare = vi.spyOn(pricingApi, "declareBookPublish");
+    renderDialog(OPENAI_COSTS);
+    await screen.findByLabelText("model");
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.click(dialog.getByRole("radio", { name: /Retire a rule/ }));
+    for (const [label, value] of [
+      ["Measurement", "gpt4o_input_tokens"],
+      ["Event type", "chat.completion"],
+      ["Kind of work", "report_generation"],
+      ["Kind of subtask", "summarise"],
+      ["model", "gpt-4o"],
+    ] as const) {
+      fireEvent.change(dialog.getByLabelText(label), { target: { value } });
+    }
+    fireEvent.click(dialog.getByRole("button", { name: "Add to this draft" }));
+    await dialog.findByText("gpt4o_input_tokens");
+    fireEvent.click(dialog.getByRole("button", { name: "Declare 1 change" }));
+
+    await waitFor(() => expect(declare).toHaveBeenCalledTimes(1));
+    const [, body] = declare.mock.calls[0]!;
+    expect(body.changes).toEqual([
+      {
+        line: "rate",
+        kind: "retire",
+        measurement_key: "gpt4o_input_tokens",
+        provider: "",
+        event_type: "chat.completion",
+        task_type: "report_generation",
+        subtask_type: "summarise",
+        grouping_fields: { model: "gpt-4o" },
+      },
+    ]);
+    declare.mockRestore();
   });
 });
 

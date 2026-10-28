@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
+import { pricingApi } from "../api/provider";
 import { MOCK_GROUPING_FIELDS, MOCK_OVERRIDE_CUSTOMER_ID } from "../api/mock-data";
 import { CustomerPricingTab } from "./customer-pricing-tab";
 
@@ -201,21 +202,52 @@ describe("what a customer's rule may select on", () => {
   const NAMED = ["Provider", "Event type", "Kind of work", "Kind of subtask"];
   const DECLARED = MOCK_GROUPING_FIELDS.map((field) => field.key);
 
-  // ⚠ TWO NAMED SELECTORS AND NOT FOUR, PINNED RATHER THAN FIXED. The route
-  // takes all four, so this lookup cannot ask what a customer inherits for a
-  // rule pinned on a kind of work. Offering them would change what a tenant can
-  // ask, and this is a change to what things are called — the gap is recorded
-  // on #509 instead.
-  it("asks what they inherit on the same selectors it always did", async () => {
+  // ⚠ FLIPPED BY #546. This pin held the lookup at two named selectors while
+  // the route takes all four, so the console could not ask what a customer
+  // inherits for a rule pinned on a kind of work. The lookup now offers every
+  // parameter the route publishes — the four named selectors off the editor's
+  // own inventory, the tenant's fields, and the instant to ask about.
+  it("asks what they inherit on every parameter the route publishes", async () => {
     const { container } = renderTab();
     await screen.findByLabelText("model");
 
     expect(inputLabels(container)).toEqual([
       "Measurement",
-      "Provider",
-      "Event type",
+      ...NAMED,
       ...DECLARED,
     ]);
+    expect(screen.getByLabelText("As of")).toHaveAttribute("type", "datetime-local");
+  });
+
+  it("sends exactly the question it shows, every parameter and nothing else", async () => {
+    // The request, pinned whole: a parameter the form stopped sending would
+    // vanish from the question rather than fail anything a tenant can see.
+    const ask = vi.spyOn(pricingApi, "getInheritedRule");
+    renderTab();
+    await screen.findByLabelText("model");
+    for (const [label, value] of [
+      ["Kind of work", "report_generation"],
+      ["Kind of subtask", "summarise"],
+      ["model", "gpt-4o"],
+      ["As of", "2026-03-01T09:30"],
+      ["Measurement", "gpt4o_input_tokens"],
+    ] as const) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+
+    await waitFor(() => expect(ask).toHaveBeenCalled());
+    const [customer, params] = ask.mock.calls.at(-1)!;
+    expect(customer).toBe(MOCK_OVERRIDE_CUSTOMER_ID);
+    expect(params).toEqual({
+      measurement_key: "gpt4o_input_tokens",
+      provider: "",
+      event_type: "",
+      task_type: "report_generation",
+      subtask_type: "summarise",
+      grouping_fields: { model: "gpt-4o" },
+      as_of: new Date("2026-03-01T09:30").toISOString(),
+    });
+    ask.mockRestore();
   });
 
   it("writes their rule on the four named selectors and the tenant's own fields, and nothing else", async () => {

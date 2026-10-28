@@ -223,3 +223,53 @@ class MarginEndpointsTest(TestCase):
             + "?start_date=2024-01-01&end_date=2024-12-31",
             **self._auth())
         assert r.status_code == 200, r.content
+
+
+class TheBusinessRollupStatesItsBasisTest(TestCase):
+    """#548, W5 ruling 15: the rollup places supplied revenue under the
+    recognised basis and says so on the answer — required and never null —
+    so a console renders the basis the response states, not a constant."""
+
+    def test_the_answer_names_the_basis_it_placed_supplied_revenue_under(self):
+        tenant = Tenant.objects.create(name="T", products=["metering"])
+        _, key = TenantApiKey.create_key(tenant, label="test")
+        business = Customer.objects.create(
+            tenant=tenant, external_id="biz", account_type="business")
+        Customer.objects.create(tenant=tenant, external_id="seat",
+                                account_type="seat", parent=business)
+
+        response = Client().get("/api/v1/margin/business/biz",
+                                HTTP_AUTHORIZATION=f"Bearer {key}")
+
+        assert response.status_code == 200, response.content
+        assert response.json()["basis"] == REVENUE_BASIS_RECOGNISED
+
+    def test_the_contract_publishes_it_required(self):
+        from api.v1.api import api
+
+        schema = api.get_openapi_schema()["components"]["schemas"][
+            "BusinessMarginOut"]
+        assert "basis" in schema["required"]
+        assert schema["properties"]["basis"]["x-ubb-concept"] == "revenue_basis"
+
+
+class TheUnprofitableListStatesItsBasisTest(TestCase):
+    """#548, W5 ruling 15: a flagged margin includes supplied revenue placed
+    under the recognised basis, and the list says so — required, never null."""
+
+    def test_the_answer_names_the_basis_its_margins_were_computed_under(self):
+        tenant = Tenant.objects.create(name="T", products=["metering"])
+        _, key = TenantApiKey.create_key(tenant, label="test")
+
+        response = Client().get("/api/v1/margin/unprofitable",
+                                HTTP_AUTHORIZATION=f"Bearer {key}")
+
+        assert response.status_code == 200, response.content
+        assert response.json()["basis"] == REVENUE_BASIS_RECOGNISED
+
+    def test_the_contract_publishes_it_required(self):
+        from api.v1.api import api
+
+        schema = api.get_openapi_schema()["components"]["schemas"][
+            "UnprofitableOut"]
+        assert "basis" in schema["required"]

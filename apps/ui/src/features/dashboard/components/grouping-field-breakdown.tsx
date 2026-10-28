@@ -5,6 +5,7 @@ import {
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CUSTOMER_REVENUE, drawableMeasure, statedValue } from "@/lib/economic-query";
 import { ubbAxisTitle } from "@/lib/grouping-axis";
@@ -174,6 +175,10 @@ function BreakdownBody({
           </>
         )}
       </p>
+      {/* Whether the bars are the revenue or the cost, the revenue is on this
+          card — as bars, as the state beside them, or as the context below —
+          so the basis its answer names is too (#548). */}
+      <RevenueBasisNote basis={query.data.basis} />
       <RevenueContext context={query.data.context} currency={currency} />
       <RetentionHorizonNote caveats={query.data} />
     </div>

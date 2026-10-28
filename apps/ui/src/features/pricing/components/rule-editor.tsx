@@ -81,31 +81,40 @@ const STRUCTURE_CONSEQUENCES = {
  * because picking "per 1M" instead of "per 1K" is an arithmetic detail, not a
  * change to what kind of agreement this is.
  */
-export function RuleEditor({
+/**
+ * WHICH RULE: the quantity it prices and every selector it pins (#545).
+ *
+ * The one inventory of a rule's identity in the console — the named selectors
+ * and the tenant's own grouping fields — rendered by the editor that declares
+ * a rule AND by the form that retires one. The server finds a retirement's
+ * target by the measurement plus the exact value of every selector, so a
+ * retire form showing fewer than these could not reach a rule pinned on the
+ * rest; a second, hand-copied list would be how that came back.
+ */
+export function RuleIdentityFields({
   form,
   groupingFields,
-  currency,
-  /** Whether the quantity and selectors may still be edited. */
   identityEditable = true,
-  /** Shown above the terms where the caller has something to say about them. */
-  inheritedNote,
+  measurementHint = "The quantity this rule prices, e.g. gpt4o_input_tokens.",
+  legend = "What this rule applies to",
+  selectorHint = "Leave a field empty to match anything. The more a rule pins, the higher it ranks — specificity decides before the book it sits in does.",
 }: {
   form: UseFormReturn<RuleFormValues>;
   groupingFields: readonly GroupingField[];
-  currency: string;
   identityEditable?: boolean;
-  inheritedNote?: React.ReactNode;
+  measurementHint?: string;
+  legend?: string;
+  selectorHint?: string;
 }) {
   const values = form.watch();
   const errors = form.formState.errors;
-  const isFixed = values.rate_structure === "fixed_component";
 
   return (
-    <div className="space-y-4">
+    <>
       <FormField
         label="Measurement"
         error={errors.measurement_key?.message}
-        hint="The quantity this rule prices, e.g. gpt4o_input_tokens."
+        hint={measurementHint}
       >
         {(id) => (
           <Input
@@ -120,12 +129,9 @@ export function RuleEditor({
 
       <fieldset className="space-y-3" disabled={!identityEditable}>
         <legend className="text-[13px] font-medium text-text-primary">
-          What this rule applies to
+          {legend}
         </legend>
-        <p className="text-xs text-muted-foreground">
-          Leave a field empty to match anything. The more a rule pins, the
-          higher it ranks — specificity decides before the book it sits in does.
-        </p>
+        <p className="text-xs text-muted-foreground">{selectorHint}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {NAMED_SELECTORS.map((selector) => (
             <FormField
@@ -175,6 +181,36 @@ export function RuleEditor({
           </div>
         )}
       </fieldset>
+    </>
+  );
+}
+
+export function RuleEditor({
+  form,
+  groupingFields,
+  currency,
+  /** Whether the quantity and selectors may still be edited. */
+  identityEditable = true,
+  /** Shown above the terms where the caller has something to say about them. */
+  inheritedNote,
+}: {
+  form: UseFormReturn<RuleFormValues>;
+  groupingFields: readonly GroupingField[];
+  currency: string;
+  identityEditable?: boolean;
+  inheritedNote?: React.ReactNode;
+}) {
+  const values = form.watch();
+  const errors = form.formState.errors;
+  const isFixed = values.rate_structure === "fixed_component";
+
+  return (
+    <div className="space-y-4">
+      <RuleIdentityFields
+        form={form}
+        groupingFields={groupingFields}
+        identityEditable={identityEditable}
+      />
 
       <div className="space-y-4 border-t border-border pt-3">
         <p className="text-[13px] font-medium text-text-primary">What it charges</p>

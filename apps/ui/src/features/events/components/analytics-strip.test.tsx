@@ -21,6 +21,8 @@ import {
   measuresOutsideRetentionHorizon,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES, type RevenueBasis } from "@/lib/vocabulary";
 
 import type { Economics } from "../api/types";
 import { AnalyticsStrip } from "./analytics-strip";
@@ -28,6 +30,7 @@ import { AnalyticsStrip } from "./analytics-strip";
 const PARAMS = { start_date: "2014-07-01", end_date: "2014-07-31" };
 
 let measures: EconomicMeasureScenario[] = [];
+let basis: RevenueBasis = "recorded";
 
 vi.mock("../api/provider", () => ({
   eventsApi: {
@@ -36,7 +39,7 @@ vi.mock("../api/provider", () => ({
       period_end: PARAMS.end_date,
       group_by: [],
       bucket: null,
-      basis: "recorded",
+      basis,
       economic_data_available_from: "2020-09-18",
       measurement_data_available_from: "2026-06-01",
       foreign_currency_subscription_count: 0,
@@ -48,6 +51,7 @@ vi.mock("../api/provider", () => ({
 
 afterEach(() => {
   measures = [];
+  basis = "recorded";
 });
 
 function renderStrip(ui: ReactElement) {
@@ -105,5 +109,22 @@ describe("AnalyticsStrip", () => {
     expect(within(card("Provider cost")).getByText("$3.00 (Incomplete)")).toBeInTheDocument();
     expect(within(card("Gross margin")).getByText("$5.00 (Incomplete)")).toBeInTheDocument();
     expect(screen.queryByText("$5.00")).not.toBeInTheDocument();
+  });
+
+  // ⚠ #548: the revenue and the margin are stated under the basis the answer
+  // names, and the strip says which — the answer's word under each value, so a
+  // strip that wrote either word itself fails the other.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (stated) => {
+    basis = stated;
+    measures = knownMeasures({ cost_micros: 3_000_000, revenue_micros: 8_000_000, events: 2 });
+    const { container } = renderStrip(
+      <AnalyticsStrip params={PARAMS} metadataFilterActive={false} />,
+    );
+
+    expect(await screen.findByText("$8.00")).toBeInTheDocument();
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", stated);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(stated));
   });
 });

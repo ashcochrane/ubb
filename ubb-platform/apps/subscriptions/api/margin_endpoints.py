@@ -39,7 +39,8 @@ from apps.subscriptions.economics.models import (
     MarginThresholdConfig, TenantSuppliedRevenue)
 from apps.subscriptions.economics.revenue import (
     DEFAULT_REVENUE_BASIS, SuppliedRevenueService)
-from apps.subscriptions.economics.services import MarginService
+from apps.subscriptions.economics.services import (
+    MARGIN_REVENUE_BASIS, MarginService)
 from apps.subscriptions.api.margin_schemas import (
     MarginThresholdIn, MarginThresholdOut, UnprofitableOut, BusinessMarginOut,
     RevenueBasis, SuppliedRevenueWindowOut, TenantSuppliedRevenueIn,
@@ -113,7 +114,8 @@ def margin_unprofitable(request, period_start: date = None):
     _product_check(request)
     ps = period_start or _current_month()[0]
     rows = flagged_in(request.auth.tenant.id, ps)
-    return {"period_start": ps.isoformat(), "customers": [{
+    return {"period_start": ps.isoformat(), "basis": MARGIN_REVENUE_BASIS,
+            "customers": [{
         "customer_id": r["customer_id"], "external_id": r["external_id"],
         "gross_margin_micros": r["gross_margin_micros"],
         # A CEILING ON A MARGIN CAN ONLY GET WORSE, WHICH IS WHY THIS LIST OF
@@ -361,8 +363,8 @@ def _the_period_it_states_is_stale(record):
 @states_its_report_window()
 @role_floor(READ)
 def get_supplied_revenue(request, customer_id: UUID,
-                         start_date: date = Query(None, description=START_DATE_DESCRIPTION),
-                         end_date: date = Query(None, description=END_DATE_DESCRIPTION),
+                         start_date: Optional[date] = Query(None, description=START_DATE_DESCRIPTION),
+                         end_date: Optional[date] = Query(None, description=END_DATE_DESCRIPTION),
                          basis: Optional[RevenueBasis] = None):
     """The window's supplied revenue, under a basis the response names.
 
@@ -447,8 +449,8 @@ def get_supplied_revenue(request, customer_id: UUID,
 @states_its_report_window()
 @role_floor(READ)
 def business_margin(request, external_id: str,
-                    start_date: date = Query(None, description=START_DATE_DESCRIPTION),
-                    end_date: date = Query(None, description=END_DATE_DESCRIPTION)):
+                    start_date: Optional[date] = Query(None, description=START_DATE_DESCRIPTION),
+                    end_date: Optional[date] = Query(None, description=END_DATE_DESCRIPTION)):
     """A business customer's margin over the window: each seat's own, and the
     total with the business's own revenue on top of its seats'."""
     _product_check(request)

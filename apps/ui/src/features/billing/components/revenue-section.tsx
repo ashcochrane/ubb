@@ -11,6 +11,7 @@ import {
   RetentionHorizonNote,
   RevenueContext,
 } from "@/components/shared/measure-value";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { StatCard } from "@/components/shared/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
@@ -23,7 +24,6 @@ import {
   readingText,
   readMeasure,
 } from "@/lib/measure-state";
-import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
 
 import { SectionCard } from "./section-card";
@@ -140,12 +140,7 @@ export function RevenueSection({
                   states on every answer. Without it a tenant reading a day's
                   revenue cannot tell a figure earned that day from a slice of
                   one earned across a quarter. */}
-              <p
-                data-revenue-basis={query.data.basis}
-                className="text-[11px] text-text-muted"
-              >
-                {revenueBasisNote(query.data.basis)}
-              </p>
+              <RevenueBasisNote basis={query.data.basis} />
               <RevenueContext context={query.data.context} currency={currency} />
               <ForeignCurrencyNote caveats={query.data} />
               <RetentionHorizonNote caveats={query.data} />

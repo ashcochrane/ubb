@@ -1260,7 +1260,12 @@ CONCEPTS_IN_THE_CONTRACT = {
     # every answer, which is the same rule one surface over — a figure whose
     # basis is unstated is the unlabelled proration slice 7 §5 exists to end, so
     # the field is required rather than optional and the marker is plain.
-    "revenue_basis": Published(3, ENUM),
+    # ⚠ 3 -> 5 IN W5: the business rollup states the basis it placed supplied
+    # revenue under (#548, required), and the end customer's own usage summary
+    # states the basis its revenue was served on (#561, `MeEconomicsOut`) —
+    # and 5 -> 6: the unprofitable list states the basis its flagged margins
+    # were computed under (#548).
+    "revenue_basis": Published(6, ENUM),
     # #498 (slice 7 §6/§7) — THE FIRST PAIR THE CONTRACT ADVERTISES FROM ONE
     # SCHEMA NODE'S WORTH OF ROW, and the first whose backend G2 twins were paid
     # by COMPUTATION rather than by re-sourcing a list. The discovery contract
@@ -1304,7 +1309,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # concept as a SET, and marked the field; the `description` moved up onto
     # the schema, whose subject it was. One node, because a state sits on each
     # measure and each measure on a row resolves independently.
-    "measure_status": Published(1, ENUM),  # EconomicMeasureOut.status
+    # ⚠ 1 -> 3 IN W5 (#561): the widget's two measures, each its own schema
+    # (`MeCustomerRevenueOut`, `MeRecordedEventsOut`), carry the same state.
+    "measure_status": Published(3, ENUM),
     # #575 (the Code Builder's registry prefactor) — THREE VALUE SETS DECLARED
     # ON THE CONTRACT BEFORE THE BLUEPRINT THAT READS THEM IS BUILT, so that a
     # review of vocabulary and a review of that contract can fail separately.
@@ -1932,7 +1939,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # end, wearing a label.
     placed("revenue_basis",
            {"EconomicsOut", "SuppliedRevenueWindowOut",
-            "/api/v1/margin/customers/{customer_id}/supplied-revenue"})
+            "/api/v1/margin/customers/{customer_id}/supplied-revenue",
+            # W5: the business rollup's answer and the unprofitable list
+            # (#548), and the end customer's own usage summary (#561), each
+            # state the basis they applied.
+            "BusinessMarginOut", "UnprofitableOut", "MeEconomicsOut"})
 
     # WHICH OF THE FOUR A ROW MEASURES, on the measure row and on nothing else.
     # The answer's own schema does NOT carry it: an answer is a set of measures
@@ -1946,7 +1957,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # LATER one than its sibling above — #499 marked the name and #500 the
     # state, once the concept's fifth value existed and the read contract held
     # the set rather than three of its members.
-    placed("measure_status", {"EconomicMeasureOut"})
+    placed("measure_status", {"EconomicMeasureOut",
+                              # W5 (#561): the widget's two measures.
+                              "MeCustomerRevenueOut", "MeRecordedEventsOut"})
 
     # #575's three. The lifecycle is OUT only on both responses: a declaration
     # is published by an act, never by a caller stating that it is. The other

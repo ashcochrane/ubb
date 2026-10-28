@@ -211,6 +211,9 @@ export const MOCK_SUPPLIED_REVENUE: Record<string, SuppliedRevenueRecord[]> = {
 };
 
 export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
+  // The server places supplied revenue in a rollup under `recognised` and
+  // states so on every answer (#548), so the mock says what a server says.
+  basis: "recognised",
   business_id: CUS_ACME,
   external_id: "acme-corp",
   seats: [

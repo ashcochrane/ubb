@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { ChartCard } from "@/components/shared/chart-card";
 import { CopyButton } from "@/components/shared/copy-button";
 import { ErrorCard } from "@/components/shared/error-card";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -74,20 +75,25 @@ export function CustomerEconomicsTable({
           title="Couldn't load customer economics"
           onRetry={() => void query.refetch()}
         />
-      ) : query.data.length === 0 ? (
+      ) : query.data.rows.length === 0 ? (
         <SectionEmpty
           title="No customer usage in this window"
           description="Customer revenue, cost, and margin appear once usage is recorded."
           cta={{ label: "Go to customers", to: "/customers" }}
         />
       ) : (
-        <EconomicsRows
-          rows={sortCustomers(query.data, sort)}
-          total={query.data.length}
-          sort={sort}
-          onSortChange={setSort}
-          currency={currency}
-        />
+        <>
+          <EconomicsRows
+            rows={sortCustomers(query.data.rows, sort)}
+            total={query.data.rows.length}
+            sort={sort}
+            onSortChange={setSort}
+            currency={currency}
+          />
+          {/* ⚠ ONE ANSWER, SO ONE BASIS FOR EVERY ROW (#548) — the one it
+              names, beside the revenue and margin columns it qualifies. */}
+          <RevenueBasisNote basis={query.data.basis} className="mt-2" />
+        </>
       )}
     </ChartCard>
   );

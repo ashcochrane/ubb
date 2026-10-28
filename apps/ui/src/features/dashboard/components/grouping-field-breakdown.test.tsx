@@ -4,6 +4,11 @@ import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactElement, ReactNode } from "react";
 
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
+
+import { mockGroupedEconomics } from "../api/mock-data";
+import { dashboardApi } from "../api/provider";
 import { useGroupedEconomics } from "../api/queries";
 import type { BreakdownAxis } from "../api/types";
 import { GroupingFieldBreakdown } from "./grouping-field-breakdown";
@@ -76,7 +81,7 @@ describe("GroupingFieldBreakdown", () => {
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: { rows: [], context: [], held_from: null, measurement_horizon: false, foreign_currency_subscription_count: 0 },
+          data: { basis: "recorded", rows: [], context: [], held_from: null, measurement_horizon: false, foreign_currency_subscription_count: 0 },
           isPending: false,
           isError: false,
           error: null,
@@ -99,7 +104,7 @@ describe("GroupingFieldBreakdown", () => {
     renderWithClient(
       <GroupingFieldBreakdown
         query={{
-          data: { rows: [], context: [], held_from: "2020-09-18", measurement_horizon: false, foreign_currency_subscription_count: 0 },
+          data: { basis: "recorded", rows: [], context: [], held_from: "2020-09-18", measurement_horizon: false, foreign_currency_subscription_count: 0 },
           isPending: false,
           isError: false,
           error: null,
@@ -137,5 +142,24 @@ describe("GroupingFieldBreakdown", () => {
       "$199.00 of revenue from subscriptions can only be placed by customer, per day",
     );
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+  });
+
+  // ⚠ #548: the revenue is on this card whichever measure the bars draw — as
+  // bars, as the state beside the cost, or as the context — so the card states
+  // the basis its answer names. The mock answers `recorded`; the answer here is
+  // re-stated under each value and reaches the card through the real narrowing.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+    vi.spyOn(dashboardApi, "getGroupedEconomics").mockResolvedValueOnce({
+      ...mockGroupedEconomics(WINDOW, "provider"),
+      basis,
+    });
+
+    const { container } = renderWithClient(<Harness />);
+
+    expect(await screen.findByText("openai")).toBeInTheDocument();
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 });

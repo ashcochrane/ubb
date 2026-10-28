@@ -12,13 +12,15 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   knownMeasures,
   measuresOutsideRetentionHorizon,
   type EconomicMeasureScenario,
 } from "@/lib/economic-scenarios";
+import { revenueBasisNote } from "@/lib/supplied-revenue";
+import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import type { Economics } from "../api/types";
 import { RevenueSection } from "./revenue-section";
@@ -52,9 +54,16 @@ const ANSWER: Economics = {
   context: [],
 };
 
+/** What the provider serves — the answer above unless a case re-states it. */
+let served: Economics = ANSWER;
+
 vi.mock("../api/provider", () => ({
-  billingFeatureApi: { getRevenueWindow: async () => ANSWER },
+  billingFeatureApi: { getRevenueWindow: async () => served },
 }));
+
+afterEach(() => {
+  served = ANSWER;
+});
 
 function renderSection(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -88,5 +97,22 @@ describe("RevenueSection", () => {
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
     // And the section says where the records start.
     expect(screen.getByText(/UBB holds economic records from Sep 18, 2020/)).toBeInTheDocument();
+  });
+
+  // ⚠ #548: the window's revenue is stated under the basis its answer names.
+  // The mock answers `recorded`, and the page test reads that default; here
+  // the answer is re-stated under each value, so a section that wrote either
+  // word itself fails the other.
+  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+    served = { ...ANSWER, basis };
+    const { container } = renderSection(
+      <RevenueSection range={RANGE} onRangeChange={vi.fn()} />,
+    );
+
+    expect((await screen.findAllByText("Provider cost")).length).toBeGreaterThan(0);
+    const notes = container.querySelectorAll("[data-revenue-basis]");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toHaveAttribute("data-revenue-basis", basis);
+    expect(notes[0]).toHaveTextContent(revenueBasisNote(basis));
   });
 });

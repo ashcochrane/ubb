@@ -7,6 +7,7 @@ import { DateRangePicker } from "@/components/shared/date-range-picker";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { PageHeader } from "@/components/shared/page-header";
+import { RevenueBasisNote } from "@/components/shared/revenue-basis-note";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -59,7 +60,7 @@ export function CustomersPage({
   const [sort, setSort] = React.useState<CustomerSort>("revenue");
   const [createOpen, setCreateOpen] = React.useState(false);
 
-  const rows = query.data ?? [];
+  const rows = query.data?.rows ?? [];
   const visible = filterMarginRows(sortMarginRows(rows, sort), filter);
 
   return (
@@ -197,6 +198,15 @@ export function CustomersPage({
               ))}
             </TableBody>
           </Table>
+          {/* ⚠ EVERY REVENUE AND MARGIN ABOVE IS STATED UNDER ONE BASIS, THE
+              ANSWER'S (#548) — one question, one view, so one note for the
+              table rather than one per row. */}
+          {query.data && (
+            <RevenueBasisNote
+              basis={query.data.basis}
+              className="border-t border-border px-3 py-1.5"
+            />
+          )}
           {query.isFetching && (
             <div className="border-t border-border px-3 py-1.5 text-[11px] text-text-muted">
               Refreshing…

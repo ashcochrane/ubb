@@ -8,16 +8,18 @@ import {
   SUPPLIER_COGS,
   type MeasureFigure,
 } from "@/lib/economic-query";
-import type { AnalyticsMeasure } from "@/lib/vocabulary";
+import { REVENUE_BASIS_VALUES, type AnalyticsMeasure } from "@/lib/vocabulary";
 
 import {
   mockCustomerEconomics,
+  mockDailyEconomics,
   mockGroupedEconomics,
   mockTenantEconomics,
 } from "../api/mock-data";
 import {
   toBreakdown,
   toCustomerRows,
+  toRevenueCostSeries,
   toTenantEconomics,
   type BreakdownRow,
   type CustomerEconomicsRow,
@@ -188,7 +190,7 @@ describe("toBreakdown", () => {
 
 describe("toCustomerRows", () => {
   it("reads one row per customer, keyed by the identity the axis groups", () => {
-    const rows = toCustomerRows(mockCustomerEconomics(WINDOW));
+    const { rows } = toCustomerRows(mockCustomerEconomics(WINDOW));
     expect(rows).toHaveLength(5);
     expect(rows[0]?.revenue).toMatchObject({ status: "known", value: 541_500_000 });
     expect(rows[0]?.customer_id).toMatch(/^[0-9a-f-]{36}$/);
@@ -196,7 +198,7 @@ describe("toCustomerRows", () => {
 
   // ⚠ EACH ROW'S OWN COMPLETENESS, NOT THE WINDOW'S.
   it("carries each row's own completeness", () => {
-    const rows = toCustomerRows(mockCustomerEconomics(WINDOW));
+    const { rows } = toCustomerRows(mockCustomerEconomics(WINDOW));
     const partial = rows.filter((row) => row.cost?.status === "incomplete");
     expect(partial).toHaveLength(1);
     expect(partial[0]?.cost?.unresolved_event_count).toBe(4);
@@ -222,6 +224,20 @@ describe("toTenantEconomics", () => {
       value: 289_300_000,
       unresolved_event_count: 4,
     });
+  });
+});
+
+// ⚠ #548: each of the overview's four views keeps the basis its answer states.
+// The mock answers `recorded`, so the answer is re-stated under each value —
+// a narrowing that wrote either word itself would fail the other.
+describe("the overview's narrowings keep the answer's basis", () => {
+  it.each(REVENUE_BASIS_VALUES)("keeps %s", (basis) => {
+    expect(toTenantEconomics({ ...mockTenantEconomics(WINDOW), basis }).basis).toBe(basis);
+    expect(toCustomerRows({ ...mockCustomerEconomics(WINDOW), basis }).basis).toBe(basis);
+    expect(toRevenueCostSeries({ ...mockDailyEconomics(WINDOW), basis }).basis).toBe(basis);
+    expect(
+      toBreakdown({ ...mockGroupedEconomics(WINDOW, "provider"), basis }).basis,
+    ).toBe(basis);
   });
 });
 

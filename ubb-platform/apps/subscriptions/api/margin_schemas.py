@@ -264,6 +264,12 @@ class UnprofitableCustomerRow(Schema):
 
 class UnprofitableOut(Schema):
     period_start: str
+    #: WHICH VIEW THE SUPPLIED REVENUE INSIDE EVERY FLAGGED MARGIN WAS PLACED
+    #: UNDER (#548, W5 ruling 15). The flags are raised on margins computed
+    #: under the recognised basis (`economics/services.py:MARGIN_REVENUE_BASIS`),
+    #: one basis for the whole list; required and never null, so a console
+    #: states the basis this answer names rather than a constant of its own.
+    basis: RevenueBasis
     customers: list[UnprofitableCustomerRow]
 
 
@@ -310,5 +316,13 @@ class BusinessMarginTotals(Schema):
 class BusinessMarginOut(Schema):
     business_id: str
     external_id: str
+    #: WHICH VIEW EVERY SUPPLIED REVENUE FIGURE IN THIS ANSWER IS STATED UNDER
+    #: (#548, W5 ruling 15) — the totals and every seat alike, one basis for
+    #: the whole tree. Required and never null: the rollup always places
+    #: supplied revenue under the recognised basis
+    #: (`economics/services.py:MARGIN_REVENUE_BASIS`), and a console reading a
+    #: figure off it shows the basis the answer states rather than a constant
+    #: of its own.
+    basis: RevenueBasis
     totals: BusinessMarginTotals
     seats: list[SeatMarginOut]

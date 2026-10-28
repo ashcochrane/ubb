@@ -25,7 +25,7 @@ import {
   type BreakdownAxis,
   type Breakdown,
   type ConnectStatus,
-  type CustomerEconomicsRow,
+  type CustomerEconomicsList,
   type Economics,
   type PricingBookList,
   type RevenueCostSeries,
@@ -98,7 +98,7 @@ export function useRevenueVsCost(
 
 export function useCustomerEconomics(
   window: Window,
-): UseQueryResult<CustomerEconomicsRow[]> {
+): UseQueryResult<CustomerEconomicsList> {
   return useQuery({
     queryKey: [
       "metering", "analytics", "economics", "by-customer", window,
