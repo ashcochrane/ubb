@@ -338,9 +338,10 @@ class TheMarginReadsCountWhatTheyLeftOutTest(_ForeignCurrencyCase):
             parent=self.business)
 
     def _business_margin(self):
-        # This route reads its end date as exclusive: the day after April.
+        # Its end date is inclusive (#543), like every calendar-date report's:
+        # April is the first to the thirtieth.
         return self._get(f"/api/v1/margin/business/biz"
-                         f"?start_date={OPENS}&end_date={date(2026, 5, 1)}")
+                         f"?start_date={OPENS}&end_date={CLOSES}")
 
     def test_the_business_rollup_counts_its_seats_and_its_own(self):
         _mirrored(self.seat, "sub_seat_usd", "usd", DOLLARS)

@@ -4,6 +4,7 @@ from ninja import Schema, Field
 from core.amount_status_pairs import (
     PRICING_STATUS_REASON_MEANING, supplier_cost_total_meaning)
 from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING
+from core.report_windows import END_DATE_DESCRIPTION, START_DATE_DESCRIPTION
 
 
 # --- Tenant-supplied revenue (#495, slice 7 §9) -----------------------------
@@ -143,9 +144,10 @@ class MarginThresholdOut(Schema):
 
 
 class PeriodWindow(Schema):
-    # ISO dates; end is exclusive (month-to-date windows end at tomorrow).
-    start: str
-    end: str
+    # The window the answer applied, as the caller's inclusive dates (#543):
+    # it said `end` was exclusive until W5, and it no longer is anywhere.
+    start: str = Field(description=START_DATE_DESCRIPTION)
+    end: str = Field(description=END_DATE_DESCRIPTION)
 
 
 class SuppliedRevenueWindowOut(Schema):

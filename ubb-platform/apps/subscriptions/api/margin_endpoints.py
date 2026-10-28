@@ -1,11 +1,11 @@
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 from uuid import UUID
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import Router
+from ninja import Query, Router
 
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY, UNRESOLVED_EVENT_COUNT_KEY
@@ -17,7 +17,10 @@ from core.currency_policy import (
 )
 from core.money import assert_aligned
 from core.problems import Problem, ProblemOut
-from core.time_windows import REPORT_WINDOW_MAX_DAYS, closed_months
+from core.report_windows import (
+    END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, resolve_report_window,
+    states_its_report_window)
+from core.time_windows import closed_months
 from core.vocabulary import (
     AUDIT_ACTION_MARGIN_THRESHOLD_SET,
     AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED,
@@ -54,20 +57,13 @@ def _current_month():
     return start, end
 
 
-def _window(start_date, end_date):
-    if start_date and end_date:
-        if end_date < start_date:
-            raise Problem(
-                "validation_error", "end_date must not precede start_date"
-            )
-        if (end_date - start_date).days > REPORT_WINDOW_MAX_DAYS:
-            raise Problem(
-                "validation_error", "date window must not exceed 366 days"
-            )
-        return start_date, end_date
-    s, _ = _current_month()
-    today = timezone.now().date()
-    return s, today + timedelta(days=1)  # month-to-date (inclusive of today)
+# THE MARGIN ROUTES' OWN WINDOW WAS HERE AND IS GONE (#542, #543). It bounded a
+# window only when BOTH dates were sent, silently dropped a lone one, and read
+# a supplied `end_date` as EXCLUSIVE while its own default ran to tomorrow — so
+# the same literal dates gave a day less here than on the economic query. Both
+# routes below resolve through `core/report_windows.py` like every other
+# calendar-date report, hand the services its half-open interval as two days
+# (`opens`, `closes`), and echo the INCLUSIVE dates the caller asked about.
 
 
 # THE TENANT-WIDE MARGIN TOTAL AND THE GROUPED MARGIN BREAKDOWN WERE HERE AND
@@ -362,9 +358,11 @@ def _the_period_it_states_is_stale(record):
     SUPPLIED_REVENUE_PATH,
     response={200: SuppliedRevenueWindowOut, 404: ProblemOut, 422: ProblemOut},
 )
+@states_its_report_window()
 @role_floor(READ)
-def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
-                         end_date: date = None,
+def get_supplied_revenue(request, customer_id: UUID,
+                         start_date: date = Query(None, description=START_DATE_DESCRIPTION),
+                         end_date: date = Query(None, description=END_DATE_DESCRIPTION),
                          basis: Optional[RevenueBasis] = None):
     """The window's supplied revenue, under a basis the response names.
 
@@ -404,14 +402,14 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
             "validation_error",
             f"unknown basis {chosen!r}; allowed: "
             f"{', '.join(sorted(REVENUE_BASIS_VALUES))}")
-    start, end = _window(start_date, end_date)
+    window = resolve_report_window(start_date, end_date)
     records = SuppliedRevenueService.in_window(
-        request.auth.tenant.id, customer.id, start, end, chosen)
+        request.auth.tenant.id, customer.id, window.opens, window.closes, chosen)
 
     rows, per_currency = [], {}
     for record in records:
         attributed = SuppliedRevenueService.attributed_micros(
-            record, start, end, chosen)
+            record, window.opens, window.closes, chosen)
         rows.append({**_supplied_record_body(record),
                      "attributed_amount_micros": attributed})
         per_currency[record.currency] = per_currency.get(record.currency, 0) + attributed
@@ -420,7 +418,8 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
     # so margin is unavailable here rather than nil (#153 §3.4).
     return {
         "basis": chosen,
-        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "window": {"start": window.start_date.isoformat(),
+                   "end": window.end_date.isoformat()},
         "pricing_status": PRICING_STATUS_KNOWN if records else PRICING_STATUS_UNKNOWN,
         # No published reason names either answer at this scope (#603).
         "pricing_status_reason": None,
@@ -442,14 +441,22 @@ def get_supplied_revenue(request, customer_id: UUID, start_date: date = None,
 # swept backend file may not spell the word afterwards.
 
 
-@margin_router.get("/business/{external_id}", response=BusinessMarginOut)
+@margin_router.get("/business/{external_id}",
+                   response={200: BusinessMarginOut, 404: ProblemOut,
+                             422: ProblemOut})
+@states_its_report_window()
 @role_floor(READ)
-def business_margin(request, external_id: str, start_date: date = None, end_date: date = None):
+def business_margin(request, external_id: str,
+                    start_date: date = Query(None, description=START_DATE_DESCRIPTION),
+                    end_date: date = Query(None, description=END_DATE_DESCRIPTION)):
+    """A business customer's margin over the window: each seat's own, and the
+    total with the business's own revenue on top of its seats'."""
     _product_check(request)
     biz = get_object_or_404(Customer, tenant=request.auth.tenant,
                             external_id=external_id, account_type="business")
-    s, e = _window(start_date, end_date)
-    return MarginService.compute_business(request.auth.tenant.id, biz, s, e)
+    window = resolve_report_window(start_date, end_date)
+    return MarginService.compute_business(request.auth.tenant.id, biz,
+                                          window.opens, window.closes)
 
 
 # THE PER-CUSTOMER MARGIN LIST, ONE CUSTOMER'S MARGIN AND ONE CUSTOMER'S

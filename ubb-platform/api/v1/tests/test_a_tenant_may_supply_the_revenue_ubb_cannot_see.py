@@ -230,8 +230,9 @@ class BothViewsAreOfferedAndBothAreLabelledTest(
     def setUp(self):
         super().setUp()
         self.supply()
+        # Seven calendar dates, both ends inclusive (#543).
         self.first_week = {"start_date": MONTH_OPENS.isoformat(),
-                           "end_date": (MONTH_OPENS + timedelta(days=7)).isoformat()}
+                           "end_date": (MONTH_OPENS + timedelta(days=6)).isoformat()}
 
     def test_every_response_names_the_basis_it_served(self):
         for basis in (REVENUE_BASIS_RECORDED, REVENUE_BASIS_RECOGNISED):

@@ -485,7 +485,8 @@ class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
         assert_problem(resp, "validation_error", 422)
 
     def test_window_of_exactly_366_days_allowed(self):
-        start = self.today - timedelta(days=366)
+        # 366 calendar dates, both ends inclusive.
+        start = self.today - timedelta(days=365)
         resp = self._get(
             f"?period_start={start.isoformat()}"
             f"&period_end={self.today.isoformat()}"

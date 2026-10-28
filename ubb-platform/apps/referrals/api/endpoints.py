@@ -5,12 +5,14 @@ from django.db import transaction
 from django.db.models import Sum, Count, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from ninja import Router
+from ninja import Query, Router
 
 from core.identifiers import UUIDIdentifier
 from core.pagination import paginate
 from core.responses import StatusResponse
-from core.time_windows import REPORT_WINDOW_MAX_DAYS
+from core.report_windows import (
+    END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, resolve_report_window,
+    states_its_report_window)
 from core.problems import Problem
 from apps.platform.customers.models import Customer
 from apps.referrals.api.schemas import (
@@ -638,13 +640,12 @@ def analytics_summary(request):
 
 
 def _parse_earnings_window(period_start, period_end):
-    """Resolve the requested earnings window to a (start, end) date pair.
+    """Resolve the requested earnings window through the one calendar-date
+    report window (`core/report_windows.py`), under this route's own names.
 
-    Defaults to UTC month-to-date. Unparseable dates are malformed syntax
-    (400); an inverted or over-long window is semantically invalid (422).
+    Unparseable dates are malformed syntax (400); an inverted or over-long
+    window is semantically invalid (422), refused by the shared rule.
     """
-    today = timezone.now().date()  # timezone.now() is UTC — UTC today.
-
     def _parse(value, param_name):
         if value is None:
             return None
@@ -656,27 +657,23 @@ def _parse_earnings_window(period_start, period_end):
                 f"{param_name} must be an ISO 8601 date (YYYY-MM-DD)",
             )
 
-    start = _parse(period_start, "period_start") or today.replace(day=1)
-    end = _parse(period_end, "period_end") or today
-
-    if start > end:
-        raise Problem(
-            "validation_error", "period_start must be on or before period_end"
-        )
-    if (end - start).days > REPORT_WINDOW_MAX_DAYS:
-        raise Problem(
-            "validation_error", "Earnings window must not exceed 366 days"
-        )
-    return start, end
+    return resolve_report_window(
+        _parse(period_start, "period_start"), _parse(period_end, "period_end"),
+        start_name="period_start", end_name="period_end")
 
 
 @referrals_router.get("/analytics/earnings", response=AnalyticsEarningsOut)
+@states_its_report_window("period_start", "period_end")
 @role_floor(READ)
-def analytics_earnings(request, period_start: str = None, period_end: str = None):
+def analytics_earnings(request,
+                       period_start: str = Query(None, description=START_DATE_DESCRIPTION),
+                       period_end: str = Query(None, description=END_DATE_DESCRIPTION)):
+    """What each referrer earned in the window, from the reconciliation ledger:
+    a ledger period counts where it overlaps the window."""
     _product_check(request)
     tenant = request.auth.tenant
 
-    window_start, window_end = _parse_earnings_window(period_start, period_end)
+    window = _parse_earnings_window(period_start, period_end)
 
     referrers = Referrer.objects.filter(
         tenant=tenant,
@@ -691,8 +688,8 @@ def analytics_earnings(request, period_start: str = None, period_end: str = None
         # windowed). A ledger period counts if it overlaps the window.
         ledger_totals = ReferralRewardLedger.objects.filter(
             referral__referrer=referrer,
-            period_start__lte=window_end,
-            period_end__gte=window_start,
+            period_start__lt=window.closes,
+            period_end__gte=window.opens,
         ).aggregate(
             earned=Sum("reward_micros"),
         )
@@ -710,8 +707,8 @@ def analytics_earnings(request, period_start: str = None, period_end: str = None
             total_earned += earned
 
     return {
-        "period_start": window_start.isoformat(),
-        "period_end": window_end.isoformat(),
+        "period_start": window.start_date.isoformat(),
+        "period_end": window.end_date.isoformat(),
         "referrers": referrer_data,
         "total_earned_micros": total_earned,
     }

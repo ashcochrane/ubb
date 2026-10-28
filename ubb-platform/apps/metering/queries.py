@@ -61,7 +61,7 @@ from core.cost_totals import (
 from core.retention import (
     AVAILABLE_FROM_FIELD, ECONOMIC_HORIZON_FIELD, MEASUREMENT_HORIZON_FIELD,
     retention_horizons)
-from core.time_windows import month_bounds, utc_day_start, utc_next_day_start
+from core.time_windows import month_bounds, utc_day_start
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD,
     ANALYTICS_GROUPING_KIND_ROLLUP,
@@ -1997,10 +1997,11 @@ class EconomicFilters(NamedTuple):
     ordinary tenant-wide one rather than a special case.
     """
 
-    #: The window, inclusive of its end date — the reading every analytics
-    #: surface in this module takes, and a strict bound at the NEXT midnight.
-    start_date: object = None
-    end_date: object = None
+    #: The window, a `core.report_windows.ReportWindow`: the inclusive dates the
+    #: caller asked about AND the one half-open UTC interval they were converted
+    #: to. Read the interval; never redo the conversion here (W5 amendment A).
+    #: ``None`` is a question with no window, which reads from the horizon on.
+    window: object = None
     customer_id: object = None
     event_type: str = None
     task_type: str = None
@@ -2450,12 +2451,12 @@ def _series_start_if_released(bucket_start, filters, holds_from):
     period: a month bucket opening before the day the caller asked from was only
     ever summed from that day, so it is not truncated for opening early.
 
-    ⚠ **AN ABSENT START DATE IS THE HORIZON, NOT THE BEGINNING OF TIME.** The
-    platform holds nothing before it, so a question with no lower bound is a
+    ⚠ **AN ABSENT WINDOW STARTS AT THE HORIZON, NOT THE BEGINNING OF TIME.**
+    The platform holds nothing before it, so a question with no lower bound is a
     question from the horizon onwards and none of its rows is truncated. A
     caller only meets the fifth state by naming a day.
     """
-    opens = filters.start_date or holds_from
+    opens = filters.window.start_date if filters.window else holds_from
     if bucket_start is not None:
         opens = max(bucket_start.date(), opens)
     return holds_from if opens < holds_from else None
@@ -2473,12 +2474,11 @@ def _economic_postings(tenant_id, filters):
     from apps.metering.usage.models import Posting
 
     qs = Posting.objects.filter(tenant_id=tenant_id)
-    if filters.start_date:
-        qs = qs.filter(effective_at__gte=utc_day_start(filters.start_date))
-    if filters.end_date:
-        # Inclusive date end == strict bound at the NEXT UTC midnight, which is
-        # what every window in this module means by an end date.
-        qs = qs.filter(effective_at__lt=utc_next_day_start(filters.end_date))
+    if filters.window:
+        # The window's own half-open interval: the day after the inclusive end
+        # date was computed once, when the window was (`core/report_windows`).
+        qs = qs.filter(effective_at__gte=filters.window.opens_at,
+                       effective_at__lt=filters.window.closes_at)
     if filters.customer_id:
         qs = qs.filter(customer_id=filters.customer_id)
     if filters.event_type:

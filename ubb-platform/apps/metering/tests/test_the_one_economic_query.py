@@ -55,6 +55,7 @@ from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
+from core.report_windows import ReportWindow
 from core.retention import MEASUREMENT_RETENTION_DAYS_SETTING
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
@@ -139,7 +140,7 @@ class EachMeasureComesFromItsOwnSourceTest(TestCase):
 
     def _answer(self):
         return economics(self.tenant.id, measures=ALL_FOUR,
-                         filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                         filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                          covered_periods=(), contributed_revenue=())
 
     def test_the_count_excludes_the_charge_posting_kind(self):
@@ -170,7 +171,7 @@ class EachMeasureComesFromItsOwnSourceTest(TestCase):
     def test_only_the_requested_measures_are_answered(self):
         answer = economics(self.tenant.id,
                            measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])))
         assert [entry["measure"] for entry in answer["rows"][0]["measures"]] == [
             ANALYTICS_MEASURE_SUPPLIER_COGS]
 
@@ -229,8 +230,7 @@ class AnAbsentValueSaysWhichOfTwoThingsItMeansTest(TestCase):
 
     def test_the_two_absences_are_two_rows_with_two_statuses(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         seen = {(row[GROUPED_VALUE_KEY][0], row[GROUPED_VALUE_STATUS_KEY][0])
                 for row in answer["rows"]}
@@ -243,14 +243,13 @@ class AnAbsentValueSaysWhichOfTwoThingsItMeansTest(TestCase):
         excluded a blank axis from the grouped query altogether, so the money on
         those rows left the answer without saying so."""
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         grouped = sum(measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                                  row=index)["amount_micros"]
                       for index in range(len(answer["rows"])))
         whole = economics(self.tenant.id, measures=MONEY,
-                          filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                          filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                           covered_periods=(), contributed_revenue=())
         assert grouped == measure_of(
             whole, ANALYTICS_MEASURE_CUSTOMER_REVENUE)["amount_micros"]
@@ -278,7 +277,7 @@ class TheMarginIsSubtractedAtTheBucketTest(TestCase):
 
     def test_the_bucket_states_one_difference_between_two_totals(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
                           )["amount_micros"] == 1_000_000 - 700_000
@@ -293,7 +292,7 @@ class TheMarginIsSubtractedAtTheBucketTest(TestCase):
         bucket ever carries a margin at all, and nothing here does.
         """
         answer = economics(self.tenant.id, measures=MONEY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         assert Posting.objects.filter(tenant=self.tenant).count() == 2
         assert len(answer["rows"]) == 1
@@ -329,14 +328,14 @@ class AMarginIsOnlyAsCompleteAsBothItsInputsTest(TestCase):
         """The premise, asserted rather than assumed: without it the test below
         would pass over a margin that was incomplete for the other reason."""
         answer = economics(self.tenant.id, measures=MONEY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE
                           )["status"] == MEASURE_STATUS_KNOWN
 
     def test_the_margin_reads_incomplete_anyway_with_the_unresolved_count(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
                           )["status"] == MEASURE_STATUS_INCOMPLETE
@@ -371,7 +370,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
         whose record declares a span in whole days cannot be placed inside an
         hour, so the margin is withheld exactly as at an operational axis."""
         answer = economics(self.tenant.id, measures=MONEY, bucket="hour",
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
                           )["amount_micros"] is None
@@ -381,7 +380,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
         """The guard on the case above: a day bucket is exactly as fine as the
         record's span, so it places and produces a margin."""
         answer = economics(self.tenant.id, measures=MONEY, bucket=BUCKET_DAY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         assert answer["context"] == []
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
@@ -389,8 +388,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
 
     def test_grouped_by_customer_the_coarse_revenue_is_part_of_the_margin(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         assert measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE
                           )["amount_micros"] == 1_000_000 + 9_000_000
@@ -400,8 +398,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
 
     def test_grouped_by_provider_it_is_neither_distributed_nor_bucketed(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         revenue = measure_of(answer, ANALYTICS_MEASURE_CUSTOMER_REVENUE)
         assert revenue["status"] == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
@@ -413,8 +410,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
 
     def test_grouped_by_provider_no_margin_is_published_at_all(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         margin = measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN)
         assert margin["status"] == MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN
@@ -423,8 +419,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
 
     def test_the_money_it_could_not_place_is_named_rather_than_dropped(self):
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         assert [row["amount_micros"] for row in answer["context"]] == [9_000_000]
         assert answer["context"][0]["attributable_axes"] == [CUSTOMER_AXIS]
@@ -434,12 +429,11 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
         not answer a margin that is the coarser one MINUS the money it could not
         place — which is the shape a silent drop produces."""
         coarse = economics(self.tenant.id, measures=MONEY,
-                           filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]),
+                           filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=self._contributed())
         fine = economics(self.tenant.id, measures=MONEY,
                          group_by=[PROVIDER_AXIS],
-                         filters=EconomicFilters(start_date=WINDOW[0],
-                                                 end_date=WINDOW[1]),
+                         filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                          covered_periods=(), contributed_revenue=self._contributed())
         coarse_margin = measure_of(coarse, ANALYTICS_MEASURE_GROSS_MARGIN)
         fine_margin = measure_of(fine, ANALYTICS_MEASURE_GROSS_MARGIN)
@@ -466,8 +460,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
              "amount_micros": 4_000_000, "attributable_axes": ("customer",),
              "finest_bucket": BUCKET_DAY}]
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[CUSTOMER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=contributed)
         rows = {row[GROUPED_VALUE_KEY][0]: index
                 for index, row in enumerate(answer["rows"])}
@@ -482,8 +475,7 @@ class TheScopeRuleWithholdsRatherThanInventsTest(TestCase):
         """The guard that stops the rule reading as *no margin when grouped*.
         A tenant with no revenue outside its postings gets one at every grain."""
         answer = economics(self.tenant.id, measures=MONEY,
-                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(start_date=WINDOW[0],
-                                                   end_date=WINDOW[1]),
+                           group_by=[PROVIDER_AXIS], filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])),
                            covered_periods=(), contributed_revenue=())
         assert measure_of(answer, ANALYTICS_MEASURE_GROSS_MARGIN
                           )["status"] == MEASURE_STATUS_KNOWN
@@ -646,8 +638,7 @@ class TheBucketBoundaryIsTheOneThingARouteCannotShowTest(TestCase):
                            effective_at=datetime(2026, 3, 4, 23, 59,
                                                  tzinfo=dt_timezone.utc))
         answer = economics(self.tenant.id, measures=MONEY, bucket=BUCKET_DAY,
-                           filters=EconomicFilters(start_date=date(2026, 3, 4),
-                                                   end_date=date(2026, 3, 5)),
+                           filters=EconomicFilters(window=ReportWindow.between(date(2026, 3, 4), date(2026, 3, 5))),
                            covered_periods=(), contributed_revenue=())
         # Two postings a minute apart land in two buckets, which they only do
         # if the boundary is UTC midnight: the pair straddles it by 60 seconds,
@@ -704,7 +695,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
             self.tenant.id,
             measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
             group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
-            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+            filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])))
         assert len(answer["rows"]) == 1
         assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
                                                         "chat.completion"]
@@ -717,7 +708,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
             self.tenant.id,
             measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
             group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
-            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+            filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])))
         # Only the posting carrying the still-filed quantity is left, and the
         # unfiled one produced no heading of its own.
         assert [row[GROUPED_VALUE_KEY][0] for row in answer["rows"]] == [
@@ -749,7 +740,7 @@ class TheMeasurementHeadingAnswersACountAndRefusesMoneyTest(TestCase):
             self.tenant.id,
             measures=[ANALYTICS_MEASURE_RECORDED_EVENTS],
             group_by=[MEASUREMENT_ROLLUP, EVENT_TYPE_AXIS],
-            filters=EconomicFilters(start_date=WINDOW[0], end_date=WINDOW[1]))
+            filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])))
         assert len(answer["rows"]) == 1
         assert answer["rows"][0][GROUPED_VALUE_KEY] == ["input_size",
                                                         "chat.completion"]
@@ -936,8 +927,7 @@ class WhichClockGovernsARowTest(TestCase):
     def a_question_from(self, opens, **kwargs):
         return economics(
             self.tenant.id, as_of=self.ASKED_ON,
-            filters=EconomicFilters(start_date=opens,
-                                    end_date=date(2026, 9, 16)),
+            filters=EconomicFilters(window=ReportWindow.between(opens, date(2026, 9, 16))),
             **kwargs)
 
     def test_both_horizons_are_on_the_answer_with_nothing_truncated(self):
@@ -1052,8 +1042,7 @@ class WhichClockGovernsARowTest(TestCase):
                            measures=ALL_FOUR,
                            covered_periods=(), contributed_revenue=(),
                            filters=EconomicFilters(
-                               start_date=date(2015, 1, 1),
-                               end_date=date(2015, 6, 1)))
+                               window=ReportWindow.between(date(2015, 1, 1), date(2015, 6, 1))))
 
         assert len(answer["rows"]) == 1
         for measure in ALL_FOUR:
@@ -1081,8 +1070,7 @@ class WhichClockGovernsARowTest(TestCase):
                            measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
                            group_by=[PROVIDER_AXIS],
                            filters=EconomicFilters(
-                               start_date=date(2015, 1, 1),
-                               end_date=date(2015, 6, 1)))
+                               window=ReportWindow.between(date(2015, 1, 1), date(2015, 6, 1))))
 
         assert answer["rows"] == []
         assert answer["economic_data_available_from"] == "2020-09-16"
@@ -1113,8 +1101,7 @@ class WhichClockGovernsARowTest(TestCase):
         answer = economics(self.tenant.id, as_of=self.ASKED_ON,
                            measures=MONEY, group_by=[PROVIDER_AXIS],
                            filters=EconomicFilters(
-                               start_date=date(2015, 1, 1),
-                               end_date=date(2015, 6, 1)),
+                               window=ReportWindow.between(date(2015, 1, 1), date(2015, 6, 1))),
                            covered_periods=(), contributed_revenue=contributed)
 
         assert answer["context"] == []
@@ -1123,8 +1110,7 @@ class WhichClockGovernsARowTest(TestCase):
         # the remedy.
         inside = economics(self.tenant.id, as_of=self.ASKED_ON,
                            measures=MONEY, group_by=[PROVIDER_AXIS],
-                           filters=EconomicFilters(start_date=date(2026, 9, 1),
-                                                   end_date=date(2026, 9, 16)),
+                           filters=EconomicFilters(window=ReportWindow.between(date(2026, 9, 1), date(2026, 9, 16))),
                            covered_periods=(), contributed_revenue=[
                                {**contributed[0],
                                 "window_start": date(2026, 9, 1),
@@ -1149,8 +1135,7 @@ class WhichClockGovernsARowTest(TestCase):
             self.tenant.id, as_of=self.ASKED_ON, measures=MONEY,
             group_by=[PROVIDER_AXIS], bucket=BUCKET_DAY,
             filters=EconomicFilters(
-                start_date=self.HOLDS_FROM - timedelta(days=1),
-                end_date=after),
+                window=ReportWindow.between(self.HOLDS_FROM - timedelta(days=1), after)),
             covered_periods=(), contributed_revenue=[{
                 "window_start": self.HOLDS_FROM - timedelta(days=1),
                 "window_end": after,
@@ -1184,12 +1169,10 @@ class TheAnswerKeepsOneShapeWithOrWithoutAFigureTest(TestCase):
     def test_every_measure_nulls_exactly_the_slots_it_otherwise_fills(self):
         known = economics(self.tenant.id, as_of=date(2026, 9, 16),
                           measures=ALL_FOUR, covered_periods=(), contributed_revenue=(),
-                          filters=EconomicFilters(start_date=WINDOW[0],
-                                                  end_date=WINDOW[1]))
+                          filters=EconomicFilters(window=ReportWindow.between(WINDOW[0], WINDOW[1])))
         gone = economics(self.tenant.id, as_of=date(2026, 9, 16),
                          measures=ALL_FOUR, covered_periods=(), contributed_revenue=(),
-                         filters=EconomicFilters(start_date=date(2015, 1, 1),
-                                                 end_date=date(2015, 6, 1)))
+                         filters=EconomicFilters(window=ReportWindow.between(date(2015, 1, 1), date(2015, 6, 1))))
 
         for measure in ALL_FOUR:
             filled = measure_of(known, measure)

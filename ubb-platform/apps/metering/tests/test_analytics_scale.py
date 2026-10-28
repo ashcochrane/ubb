@@ -24,6 +24,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.metering import queries
+from core.report_windows import ReportWindow
 from core.time_windows import utc_day_start
 from core.vocabulary import ANALYTICS_MEASURE_SUPPLIER_COGS
 
@@ -107,7 +108,7 @@ class BoundaryEquivalenceTest(TestCase):
         return queries.economics(
             self.tenant.id, measures=[ANALYTICS_MEASURE_SUPPLIER_COGS],
             bucket=bucket,
-            filters=queries.EconomicFilters(start_date=start, end_date=end))
+            filters=queries.EconomicFilters(window=ReportWindow.between(start, end)))
 
     def _cost(self, answer, row=0):
         return next(entry["amount_micros"]
@@ -168,7 +169,7 @@ class SqlShapeRegressionTest(TestCase):
         tenant = Tenant.objects.create(name="F21 Shape", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="c_f21_shape")
         s, e = date(2026, 6, 1), date(2026, 7, 1)
-        window = queries.EconomicFilters(start_date=s, end_date=e)
+        window = queries.EconomicFilters(window=ReportWindow.between(s, e))
         with CaptureQueriesContext(connection) as ctx:
             queries.get_period_totals(tenant.id, s, e)
             queries.get_customer_cost_totals(tenant.id, customer.id, s, e)
