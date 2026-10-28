@@ -62,7 +62,7 @@ from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import publishes_what_it_names
 from apps.platform.grouping_fields.models import GroupingFieldValue
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import Task, TaskType
 from core.vocabulary import (
@@ -301,8 +301,8 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
         when the start succeeds, so the absence is this refusal's doing rather
         than a bag that never reached the registry.
         """
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
 
         refused = self._start(task_type=SOLD_WHOLE,
                               **declared_grouping_values({A_GROUPING_KEY: "eu"}))
@@ -316,8 +316,8 @@ class TestAKindOfWorkSoldWholeWithNoPriceRefusesStarts(AgreedPriceTestBase):
         """THE PAIRED CONTROL for the case above, and without it the assertion
         that nothing was recorded is a claim about a code path nobody proved
         runs at all."""
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
         self._price_is(THE_AGREED_PRICE)
 
         allowed = self._start(task_type=SOLD_WHOLE,

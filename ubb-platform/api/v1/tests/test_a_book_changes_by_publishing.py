@@ -43,7 +43,7 @@ from apps.platform.audit.actions import is_registered_action
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.models import AuditRecord
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.scheduling import MAX_FORWARD_SCHEDULING_DAYS
 from core.vocabulary import (
@@ -322,8 +322,8 @@ class EverySlotIsReachableThroughAChangeBodyTest(_APublishingTenantMixin,
     """
 
     def test_a_rule_pinned_on_the_seventh_slot_can_be_repriced(self):
-        DimensionService.declare(self.tenant, key=TIER,
-                                 slot=UNREACHABLE_SLOT, scope="event")
+        GroupingFieldService.declare(self.tenant, key=TIER,
+                                     slot=UNREACHABLE_SLOT, scope="event")
         pinned = rate_in_default_book(
             self.tenant, provider=PROVIDER, event_type=EVENT_TYPE,
             measurement_key=QUANTITY, rate_per_unit_micros=BEFORE,

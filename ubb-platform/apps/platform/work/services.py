@@ -509,9 +509,9 @@ class StartDeclaration:
         Resolved rather than admitted, so a repeat that is about to be refused
         cannot permanently burn a key's cardinality for work that never began.
         """
-        from apps.platform.grouping_fields.services import DimensionService
-        return DimensionService.resolve(tenant, self.grouping_values,
-                                        self.scope())
+        from apps.platform.grouping_fields.services import GroupingFieldService
+        return GroupingFieldService.resolve(tenant, self.grouping_values,
+                                            self.scope())
 
     def conflicting_field_on(self, task, tenant):
         """The first PINNED field this declaration states differently from
@@ -539,7 +539,7 @@ class StartDeclaration:
 
         ⚠ THE ONE THING IT DOES READ BACK IS THE SLOT A GROUPING KEY BINDS TO,
         and that is safe for a stated reason rather than by luck:
-        `DimensionService.declare` makes a key's slot and its scope IMMUTABLE
+        `GroupingFieldService.declare` makes a key's slot and its scope IMMUTABLE
         once declared, refusing a rebind in either — so the mapping this reads
         cannot move under a retry the way a ceiling or a retirement can. It is
         also read LAST, below every comparison that needs no database at all,
@@ -661,7 +661,7 @@ class TaskService:
     def create_task(tenant, customer, balance_snapshot_micros,
                     task_cogs_ceiling_micros=None,
                     metadata=None, external_task_id="", billing_owner_id=None,
-                    parent=None, task_type="", dimension_slots=None,
+                    parent=None, task_type="", grouping_slots=None,
                     idempotency_key=None,
                     pricing_mode=PRICING_MODE_EVENT_PRICED,
                     agreed_price_micros=None, agreed_price_line_id=None,
@@ -685,7 +685,7 @@ class TaskService:
         that stands a unit of work up directly are not callers making a claim,
         and a synthesised key would be a fabricated declaration.
 
-        ``task_type`` and ``dimension_slots`` (design D7/D6) are pure
+        ``task_type`` and ``grouping_slots`` (design D7/D6) are pure
         pass-through: the caller (billing's start-gate) already resolved the
         declared kind of work and admitted the grouping field values —
         TaskService only writes what it is given. ``task_type`` is the whole
@@ -751,7 +751,7 @@ class TaskService:
             agreed_price_micros=agreed_price_micros,
             agreed_price_line_id=agreed_price_line_id,
             agreed_price_book_version=agreed_price_book_version,
-            **(dimension_slots or {}),
+            **(grouping_slots or {}),
         )
 
     @staticmethod

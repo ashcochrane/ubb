@@ -31,7 +31,7 @@ from django.test import TestCase
 from apps.billing.invoicing.models import PostpaidUsageConfig
 from apps.metering.queries import grouping_axis
 from apps.platform.grouping_fields.models import GroupingField
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import ANALYTICS_GROUPING_KIND_FIELD
 from apps.platform.tenants.tests._rails import RailActivated
@@ -95,8 +95,8 @@ class TheCarryReadsWhatEachValueDidTest(RailActivated, TestCase):
     def test_a_bag_key_the_tenant_has_since_declared_becomes_that_axis(self):
         """The one case where the tenant's intent survives intact: they were
         labelling by a key they have since made a real axis."""
-        DimensionService.declare(self.tenant, key="region",
-                                 slot="grouping_field_2", scope="event")
+        GroupingFieldService.declare(self.tenant, key="region",
+                                     slot="grouping_field_2", scope="event")
         assert self._stored("tag:region") == "field:region"
 
     def test_a_bag_key_with_no_declaration_behind_it_is_cleared(self):
@@ -111,8 +111,8 @@ class TheCarryReadsWhatEachValueDidTest(RailActivated, TestCase):
         """The silent fall-through, carried to what it DID rather than to what
         it said. `product_id` never meant a field called `product_id` — it meant
         `grouping_field_1`, whatever the tenant had bound to it."""
-        DimensionService.declare(self.tenant, key="region",
-                                 slot="grouping_field_1", scope="event")
+        GroupingFieldService.declare(self.tenant, key="region",
+                                     slot="grouping_field_1", scope="event")
         assert self._stored("product_id") == "field:region"
 
     def test_anything_else_with_nothing_bound_to_the_first_slot_is_cleared(self):
@@ -134,8 +134,8 @@ class TheCarryReadsWhatEachValueDidTest(RailActivated, TestCase):
         did with anything it did not recognise, and lands on the axis really
         bound there.
         """
-        DimensionService.declare(self.tenant, key="zone",
-                                 slot="grouping_field_1", scope="event")
+        GroupingFieldService.declare(self.tenant, key="zone",
+                                     slot="grouping_field_1", scope="event")
         assert self._stored("field:region") == "field:zone"
 
     def test_one_tenants_declaration_does_not_carry_anothers_config(self):
@@ -144,6 +144,6 @@ class TheCarryReadsWhatEachValueDidTest(RailActivated, TestCase):
         direction, by finding SOMEBODY's axis and billing against it."""
         other = Tenant.objects.create(name="Other", billing_mode="postpaid",
                                       products=["metering", "billing"])
-        DimensionService.declare(other, key="region", slot="grouping_field_1",
-                                 scope="event")
+        GroupingFieldService.declare(other, key="region", slot="grouping_field_1",
+                                     scope="event")
         assert self._stored("tag:region") == ""

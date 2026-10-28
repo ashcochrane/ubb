@@ -11,24 +11,24 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.dimension_def_in import DimensionDefIn
+  from ..models.grouping_field_in import GroupingFieldIn
 
 
 
 
 
-T = TypeVar("T", bound="DimensionRegistryIn")
+T = TypeVar("T", bound="GroupingFieldRegistryIn")
 
 
 
 @_attrs_define
-class DimensionRegistryIn:
+class GroupingFieldRegistryIn:
     """ 
         Attributes:
-            grouping_fields (list[DimensionDefIn]):
+            grouping_fields (list[GroupingFieldIn]):
      """
 
-    grouping_fields: list[DimensionDefIn]
+    grouping_fields: list[GroupingFieldIn]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -36,7 +36,7 @@ class DimensionRegistryIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.dimension_def_in import DimensionDefIn
+        from ..models.grouping_field_in import GroupingFieldIn
         grouping_fields = []
         for grouping_fields_item_data in self.grouping_fields:
             grouping_fields_item = grouping_fields_item_data.to_dict()
@@ -57,25 +57,25 @@ class DimensionRegistryIn:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.dimension_def_in import DimensionDefIn
+        from ..models.grouping_field_in import GroupingFieldIn
         d = dict(src_dict)
         grouping_fields = []
         _grouping_fields = d.pop("grouping_fields")
         for grouping_fields_item_data in (_grouping_fields):
-            grouping_fields_item = DimensionDefIn.from_dict(grouping_fields_item_data)
+            grouping_fields_item = GroupingFieldIn.from_dict(grouping_fields_item_data)
 
 
 
             grouping_fields.append(grouping_fields_item)
 
 
-        dimension_registry_in = cls(
+        grouping_field_registry_in = cls(
             grouping_fields=grouping_fields,
         )
 
 
-        dimension_registry_in.additional_properties = d
-        return dimension_registry_in
+        grouping_field_registry_in.additional_properties = d
+        return grouping_field_registry_in
 
     @property
     def additional_keys(self) -> list[str]:

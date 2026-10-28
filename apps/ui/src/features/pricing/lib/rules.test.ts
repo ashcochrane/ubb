@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GroupingFieldDef, Rule } from "../api/types";
+import type { GroupingField, Rule } from "../api/types";
 import { pinnableGroupingFields, pinnedSelectors, rateStructureLabel } from "./rules";
 
 /**
@@ -12,7 +12,7 @@ import { pinnableGroupingFields, pinnedSelectors, rateStructureLabel } from "./r
  * writable server-side and unreachable through the API. A console test whose
  * fixture stopped at six would be testing the world as it was before the fix.
  */
-const DECLARED: GroupingFieldDef[] = [
+const DECLARED: GroupingField[] = [
   "model",
   "region",
   "environment",
@@ -129,7 +129,7 @@ describe("what a rule pins", () => {
   // against it, and must still be able to read the rules they wrote when they
   // did — so the two questions get two functions rather than one filter.
   it("keeps a retired field readable while refusing it to the editor", () => {
-    const withRetired: GroupingFieldDef[] = DECLARED.map((field) =>
+    const withRetired: GroupingField[] = DECLARED.map((field) =>
       field.key === "tier" ? { ...field, retired: true } : field,
     );
     const rule = ruleWith({ grouping_field_7: "premium" });

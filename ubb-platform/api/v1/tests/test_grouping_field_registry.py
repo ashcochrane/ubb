@@ -1,6 +1,7 @@
 import pytest
 from django.test import Client
 
+from apps.platform.audit.models import AuditRecord
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.grouping_fields.models import GroupingField, GroupingFieldValue
 from core.vocabulary import (
@@ -29,7 +30,7 @@ class TestGroupingFieldRegistry:
         return self.client.put(path, data=data, content_type="application/json",
                                **self._auth())
 
-    def test_put_declares_dimensions(self):
+    def test_put_declares_grouping_fields(self):
         r = self._put("/api/v1/metering/grouping-fields",
                        {"grouping_fields": [
                            {"key": "region", "slot": "grouping_field_1", "scope": "task",
@@ -37,6 +38,21 @@ class TestGroupingFieldRegistry:
                            {"key": "model", "slot": "grouping_field_2", "scope": "event"}]})
         assert r.status_code == 200
         assert GroupingField.objects.filter(tenant=self.tenant).count() == 2
+
+    def test_the_audit_record_names_the_grouping_field_registry(self):
+        """The audit feed is tenant-readable, so a record's `resource_type` is
+        a published name like a response field. It spelled the retired noun
+        for the Grouping Field until #541; the stored row is what is read here,
+        because the response says nothing about it."""
+        r = self._put("/api/v1/metering/grouping-fields",
+                      {"grouping_fields": [
+                          {"key": "region", "slot": "grouping_field_1",
+                           "scope": GROUPING_FIELD_SCOPE_EVENT}]})
+        assert r.status_code == 200
+        (record,) = AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="grouping_field.declared")
+        assert record.resource_type == "grouping_field_registry"
+        assert record.resource_id == str(self.tenant.id)
 
     def test_get_lists_declared_grouping_fields(self):
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
@@ -54,7 +70,7 @@ class TestGroupingFieldRegistry:
         assert r.status_code == 422
         assert "reserved" in r.json()["detail"]
 
-    def test_task_id_as_dimension_is_422(self):
+    def test_task_id_as_a_grouping_field_is_422(self):
         r = self._put("/api/v1/metering/grouping-fields",
                        {"grouping_fields": [
                            {"key": "task_id", "slot": "grouping_field_1", "scope": "event"}]})
@@ -118,10 +134,10 @@ class TestGroupingFieldRegistry:
     def test_slot_collision_on_a_new_key_is_422_not_500(self):
         """Important 4 (final-fixes wave): declaring a second key on a slot
         already bound to a DIFFERENT key used to hit uq_dimension_def_slot's
-        IntegrityError uncaught (500) — DimensionService.declare only ever
+        IntegrityError uncaught (500) — GroupingFieldService.declare only ever
         looked an existing def up by `key`, never by `slot`. An admin's
         copy-paste mistake (reusing one slot for a second axis) must be a 422
-        DimensionError instead."""
+        GroupingFieldError instead."""
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",
                                     scope="task")
         r = self._put("/api/v1/metering/grouping-fields",

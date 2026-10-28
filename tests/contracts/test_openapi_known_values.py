@@ -1942,7 +1942,7 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # row in `CONCEPTS_IN_THE_CONTRACT`.
     placed("declaration_status", {"EventTypeOut", "BookPublishOut"})
     placed("measurement_value_type", {"MeasurementIn", "MeasurementOut"})
-    placed("grouping_field_scope", {"DimensionDefIn", "DimensionDefOut"})
+    placed("grouping_field_scope", {"GroupingFieldIn", "GroupingFieldOut"})
 
     # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
     # ONE. Both on the discovery contract's row and on nothing else, which is

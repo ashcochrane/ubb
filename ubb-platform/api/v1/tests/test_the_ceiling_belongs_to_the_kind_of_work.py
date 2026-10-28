@@ -92,7 +92,7 @@ class TestTheCeilingBelongsToTheKindOfWork:
         assert "not declared" in r.json()["detail"]
         assert Task.objects.count() == 0
 
-    def test_missing_required_dimension_is_422(self):
+    def test_missing_required_grouping_field_is_422(self):
         TaskType.objects.create(tenant=self.tenant, key="invoice_batch", kind="task",
                                 required_dimensions=["region"], uncapped=True)
         GroupingField.objects.create(tenant=self.tenant, key="region", slot="grouping_field_1",

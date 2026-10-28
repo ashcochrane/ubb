@@ -42,7 +42,7 @@ from django.test import Client, TestCase
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.tests._helpers import cost_book
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 #: The slot the old contract could not name. `Rate.SELECTORS` carries all ten;
@@ -73,8 +73,8 @@ class ARulePinnedOnAnySlotIsReachableTest(TestCase):
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
         declares_a_quantity(self.tenant, QUANTITY)
         for slot, key in DECLARED_KEY_OF.items():
-            DimensionService.declare(self.tenant, key=key, slot=slot,
-                                     scope="event")
+            GroupingFieldService.declare(self.tenant, key=key, slot=slot,
+                                         scope="event")
         self.book = cost_book(self.tenant, key="openai", provider="openai")
 
     def _auth(self):

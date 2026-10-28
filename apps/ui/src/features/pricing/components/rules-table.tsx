@@ -23,7 +23,7 @@ import { formatDate, formatMicros, formatShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useGroupingFields, useRules } from "../api/queries";
 import { pinnedSelectors, rateStructureLabel, ruleAmount } from "../lib/rules";
-import type { AnyBook, GroupingFieldDef, Rule } from "../api/types";
+import type { AnyBook, GroupingField, Rule } from "../api/types";
 
 /**
  * A book's rules: active by default, optional full history, optional
@@ -172,7 +172,7 @@ function RuleRow({
 }: {
   rule: Rule;
   currency: string;
-  declared: readonly GroupingFieldDef[];
+  declared: readonly GroupingField[];
 }) {
   const superseded = rule.valid_to != null;
   // ⚠ THE TENANT'S OWN KEYS, ALL TEN SLOTS, AND NEVER A SLOT NUMBER (#277,

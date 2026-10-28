@@ -3706,7 +3706,7 @@ class PaginatedRates(Paginated[RateOut]):
 #: request field is a promise that the server refuses anything else, and until
 #: this marker arrived a declaration stored whatever scope it was sent — which
 #: would have let the representation answer a value its own `enum` refuses.
-#: `DimensionService.declare` is where the refusal lives.
+#: `GroupingFieldService.declare` is where the refusal lives.
 #:
 #: ⚠ `GroupingOptionOut.source_grain` BELOW IS NOT THIS CONCEPT AND IS
 #: DELIBERATELY UNMARKED. It answers these three plus a fourth that no declared
@@ -3716,7 +3716,7 @@ GroupingFieldScope = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "grouping_field_scope"})]
 
 
-class DimensionDefIn(Schema):
+class GroupingFieldIn(Schema):
     key: str = Field(max_length=64)
     # Both bounds are read off the registry's own vocabulary rather than typed,
     # so a future widening cannot ship a contract that refuses the slots it just
@@ -3729,12 +3729,12 @@ class DimensionDefIn(Schema):
     max_cardinality: int = Field(default=100, ge=1, le=100_000)
 
 
-class DimensionRegistryIn(Schema):
-    grouping_fields: list[DimensionDefIn] = Field(
+class GroupingFieldRegistryIn(Schema):
+    grouping_fields: list[GroupingFieldIn] = Field(
         min_length=1, max_length=len(SLOT_CHOICES))
 
 
-class DimensionDefOut(Schema):
+class GroupingFieldOut(Schema):
     key: str
     slot: str
     scope: GroupingFieldScope
@@ -3742,8 +3742,8 @@ class DimensionDefOut(Schema):
     retired: bool
 
 
-class DimensionRegistryOut(Schema):
-    grouping_fields: list[DimensionDefOut]
+class GroupingFieldRegistryOut(Schema):
+    grouping_fields: list[GroupingFieldOut]
 
 
 class GroupingFieldValuesOut(Schema):

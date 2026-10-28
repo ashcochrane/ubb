@@ -2720,117 +2720,6 @@
         "title": "DebitRequest",
         "type": "object"
       },
-      "DimensionDefIn": {
-        "properties": {
-          "key": {
-            "maxLength": 64,
-            "title": "Key",
-            "type": "string"
-          },
-          "max_cardinality": {
-            "default": 100,
-            "maximum": 100000,
-            "minimum": 1,
-            "title": "Max Cardinality",
-            "type": "integer"
-          },
-          "scope": {
-            "default": "event",
-            "enum": [
-              "task",
-              "subtask",
-              "event"
-            ],
-            "title": "Scope",
-            "type": "string",
-            "x-ubb-concept": "grouping_field_scope"
-          },
-          "slot": {
-            "maxLength": 17,
-            "title": "Slot",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "slot"
-        ],
-        "title": "DimensionDefIn",
-        "type": "object"
-      },
-      "DimensionDefOut": {
-        "properties": {
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "max_cardinality": {
-            "title": "Max Cardinality",
-            "type": "integer"
-          },
-          "retired": {
-            "title": "Retired",
-            "type": "boolean"
-          },
-          "scope": {
-            "enum": [
-              "task",
-              "subtask",
-              "event"
-            ],
-            "title": "Scope",
-            "type": "string",
-            "x-ubb-concept": "grouping_field_scope"
-          },
-          "slot": {
-            "title": "Slot",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "slot",
-          "scope",
-          "max_cardinality",
-          "retired"
-        ],
-        "title": "DimensionDefOut",
-        "type": "object"
-      },
-      "DimensionRegistryIn": {
-        "properties": {
-          "grouping_fields": {
-            "items": {
-              "$ref": "#/components/schemas/DimensionDefIn"
-            },
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Grouping Fields",
-            "type": "array"
-          }
-        },
-        "required": [
-          "grouping_fields"
-        ],
-        "title": "DimensionRegistryIn",
-        "type": "object"
-      },
-      "DimensionRegistryOut": {
-        "properties": {
-          "grouping_fields": {
-            "items": {
-              "$ref": "#/components/schemas/DimensionDefOut"
-            },
-            "title": "Grouping Fields",
-            "type": "array"
-          }
-        },
-        "required": [
-          "grouping_fields"
-        ],
-        "title": "DimensionRegistryOut",
-        "type": "object"
-      },
       "EarningsOut": {
         "properties": {
           "active_referrals": {
@@ -3571,6 +3460,117 @@
           "remaining_micros"
         ],
         "title": "GrantSummaryOut",
+        "type": "object"
+      },
+      "GroupingFieldIn": {
+        "properties": {
+          "key": {
+            "maxLength": 64,
+            "title": "Key",
+            "type": "string"
+          },
+          "max_cardinality": {
+            "default": 100,
+            "maximum": 100000,
+            "minimum": 1,
+            "title": "Max Cardinality",
+            "type": "integer"
+          },
+          "scope": {
+            "default": "event",
+            "enum": [
+              "task",
+              "subtask",
+              "event"
+            ],
+            "title": "Scope",
+            "type": "string",
+            "x-ubb-concept": "grouping_field_scope"
+          },
+          "slot": {
+            "maxLength": 17,
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "slot"
+        ],
+        "title": "GroupingFieldIn",
+        "type": "object"
+      },
+      "GroupingFieldOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "max_cardinality": {
+            "title": "Max Cardinality",
+            "type": "integer"
+          },
+          "retired": {
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "task",
+              "subtask",
+              "event"
+            ],
+            "title": "Scope",
+            "type": "string",
+            "x-ubb-concept": "grouping_field_scope"
+          },
+          "slot": {
+            "title": "Slot",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "slot",
+          "scope",
+          "max_cardinality",
+          "retired"
+        ],
+        "title": "GroupingFieldOut",
+        "type": "object"
+      },
+      "GroupingFieldRegistryIn": {
+        "properties": {
+          "grouping_fields": {
+            "items": {
+              "$ref": "#/components/schemas/GroupingFieldIn"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Grouping Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grouping_fields"
+        ],
+        "title": "GroupingFieldRegistryIn",
+        "type": "object"
+      },
+      "GroupingFieldRegistryOut": {
+        "properties": {
+          "grouping_fields": {
+            "items": {
+              "$ref": "#/components/schemas/GroupingFieldOut"
+            },
+            "title": "Grouping Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "grouping_fields"
+        ],
+        "title": "GroupingFieldRegistryOut",
         "type": "object"
       },
       "GroupingFieldValuesOut": {
@@ -6890,10 +6890,10 @@
           "cost_rate_ids": {
             "anyOf": [
               {
-                "items": {
+                "additionalProperties": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": "object"
               },
               {
                 "type": "null"
@@ -6925,10 +6925,10 @@
           "price_rate_ids": {
             "anyOf": [
               {
-                "items": {
+                "additionalProperties": {
                   "type": "string"
                 },
-                "type": "array"
+                "type": "object"
               },
               {
                 "type": "null"
@@ -7576,6 +7576,23 @@
             "title": "Measurement Key",
             "type": "string"
           },
+          "pricing_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin_over_cost",
+                  "direct_event_price"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How this rule derives a customer price: 'margin_over_cost' (a percentage over what the call cost; its own terms are zero) or 'direct_event_price' (it charges its own terms). Null only on a cost book's rate, which prices no customer.",
+            "title": "Pricing Method"
+          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -7640,6 +7657,7 @@
           "grouping_field_8",
           "grouping_field_9",
           "grouping_field_10",
+          "pricing_method",
           "rate_structure",
           "rate_per_unit_micros",
           "unit_quantity",
@@ -16828,7 +16846,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DimensionRegistryOut"
+                  "$ref": "#/components/schemas/GroupingFieldRegistryOut"
                 }
               }
             },
@@ -16850,7 +16868,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DimensionRegistryIn"
+                "$ref": "#/components/schemas/GroupingFieldRegistryIn"
               }
             }
           },
@@ -16861,7 +16879,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DimensionRegistryOut"
+                  "$ref": "#/components/schemas/GroupingFieldRegistryOut"
                 }
               }
             },

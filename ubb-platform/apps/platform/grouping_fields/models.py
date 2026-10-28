@@ -31,7 +31,7 @@ SLOT_CHOICES = [(f"grouping_field_{i}", f"grouping_field_{i}") for i in range(1,
 #: this is worth naming rather than restating as a `range` at each use: a slot
 #: outside this tuple is not a bad label, it is a declaration bound to a column
 #: that does not exist, and every event recorded against it would fail at insert.
-#: `DimensionService.admit` returns `{slot: value}` and the recording path hands
+#: `GroupingFieldService.admit` returns `{slot: value}` and the recording path hands
 #: that map straight to `create()` as keyword arguments.
 SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
@@ -46,7 +46,7 @@ SLOT_MAX_LENGTH = max(len(slot) for slot, _ in SLOT_CHOICES)
 #
 # The three are the registry's `grouping_field_scope` (#575), read off the
 # generated set rather than typed, so this column, the refusal at declaration
-# (`services.DimensionService.declare`) and the contract's `enum` cannot name
+# (`services.GroupingFieldService.declare`) and the contract's `enum` cannot name
 # different scopes. Both halves of each pair are the identity: ADR-0008 §4 puts
 # every human-facing word in the console's locale catalogue, keyed off the
 # concept's label keys, and English authored here would be wording nothing can

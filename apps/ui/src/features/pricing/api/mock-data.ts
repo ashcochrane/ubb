@@ -27,7 +27,7 @@ import type {
   AgreedPrice,
   BookPublish,
   CostBook,
-  GroupingFieldDef,
+  GroupingField,
   PricingBook,
   Rule,
   TenantDefaultMarkup,
@@ -55,7 +55,7 @@ export function daysFromNow(days: number): string {
  * That is not hypothetical: it is exactly what let the picker offer slot names
  * for years. One list, and the rows each surface needs are built from it.
  */
-export const MOCK_GROUPING_FIELDS: GroupingFieldDef[] =
+export const MOCK_GROUPING_FIELDS: GroupingField[] =
   MOCK_DECLARED_AXIS_KEYS.map((key, index) => ({
     key,
     slot: `grouping_field_${index + 1}`,

@@ -11,24 +11,24 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
-  from ..models.dimension_def_out import DimensionDefOut
+  from ..models.grouping_field_out import GroupingFieldOut
 
 
 
 
 
-T = TypeVar("T", bound="DimensionRegistryOut")
+T = TypeVar("T", bound="GroupingFieldRegistryOut")
 
 
 
 @_attrs_define
-class DimensionRegistryOut:
+class GroupingFieldRegistryOut:
     """ 
         Attributes:
-            grouping_fields (list[DimensionDefOut]):
+            grouping_fields (list[GroupingFieldOut]):
      """
 
-    grouping_fields: list[DimensionDefOut]
+    grouping_fields: list[GroupingFieldOut]
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -36,7 +36,7 @@ class DimensionRegistryOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.dimension_def_out import DimensionDefOut
+        from ..models.grouping_field_out import GroupingFieldOut
         grouping_fields = []
         for grouping_fields_item_data in self.grouping_fields:
             grouping_fields_item = grouping_fields_item_data.to_dict()
@@ -57,25 +57,25 @@ class DimensionRegistryOut:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.dimension_def_out import DimensionDefOut
+        from ..models.grouping_field_out import GroupingFieldOut
         d = dict(src_dict)
         grouping_fields = []
         _grouping_fields = d.pop("grouping_fields")
         for grouping_fields_item_data in (_grouping_fields):
-            grouping_fields_item = DimensionDefOut.from_dict(grouping_fields_item_data)
+            grouping_fields_item = GroupingFieldOut.from_dict(grouping_fields_item_data)
 
 
 
             grouping_fields.append(grouping_fields_item)
 
 
-        dimension_registry_out = cls(
+        grouping_field_registry_out = cls(
             grouping_fields=grouping_fields,
         )
 
 
-        dimension_registry_out.additional_properties = d
-        return dimension_registry_out
+        grouping_field_registry_out.additional_properties = d
+        return grouping_field_registry_out
 
     @property
     def additional_keys(self) -> list[str]:

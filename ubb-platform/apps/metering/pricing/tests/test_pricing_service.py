@@ -101,7 +101,7 @@ class TestPricing:
         assert (costing.pricing_receipt["pricing"]["method"]
                 == PRICING_METHOD_DIRECT_EVENT_PRICE)
 
-    def test_most_specific_dimension_wins_and_wildcard_fallback(self):
+    def test_most_specific_grouping_field_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         cost_rate_in_default_book(t, provider="o", event_type="e",
             measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)

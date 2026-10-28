@@ -75,7 +75,7 @@ from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.events.dispatch import dispatch_to_handlers
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.work.models import Task
 from core.exceptions import NegativeKnownPriceRefused
 from core.vocabulary import (
@@ -244,8 +244,8 @@ class TestAChargeProjectsOntoExactlyOnePosting(ProjectionTestBase):
         identical to the ones the metered postings beside it carry, because
         landing in the same bucket is the whole claim.
         """
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
                                agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(**declared_grouping_values(

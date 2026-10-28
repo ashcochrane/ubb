@@ -124,7 +124,7 @@ from apps.platform.code_builder import snapshots
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import (
     EventType, Measurement, Provider, ReportedCostMapping)
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant
 from core.problems import PROBLEM_TYPE_BASE, Problem
 from core.vocabulary import (
@@ -348,7 +348,7 @@ class _Run:
         tenant = Tenant.objects.create(name="Code Builder verification",
                                        **held["tenant"])
         for field in held["grouping_fields"]:
-            DimensionService.declare(
+            GroupingFieldService.declare(
                 tenant, key=field["key"], slot=field["slot"],
                 scope=field["scope"],
                 max_cardinality=field["max_cardinality"])

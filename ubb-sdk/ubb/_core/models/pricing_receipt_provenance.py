@@ -12,7 +12,9 @@ from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.pricing_receipt_provenance_cost_rate_ids_type_0 import PricingReceiptProvenanceCostRateIdsType0
   from ..models.pricing_receipt_provenance_markup import PricingReceiptProvenanceMarkup
+  from ..models.pricing_receipt_provenance_price_rate_ids_type_0 import PricingReceiptProvenancePriceRateIdsType0
 
 
 
@@ -32,19 +34,19 @@ class PricingReceiptProvenance:
         Attributes:
             agreed_price_line_id (None | str | Unset):
             book_version (None | str | Unset):
-            cost_rate_ids (list[str] | None | Unset):
+            cost_rate_ids (None | PricingReceiptProvenanceCostRateIdsType0 | Unset):
             held_name_id (None | str | Unset):
             markup (None | PricingReceiptProvenanceMarkup | Unset):
-            price_rate_ids (list[str] | None | Unset):
+            price_rate_ids (None | PricingReceiptProvenancePriceRateIdsType0 | Unset):
             resolution_run_id (None | str | Unset):
      """
 
     agreed_price_line_id: None | str | Unset = UNSET
     book_version: None | str | Unset = UNSET
-    cost_rate_ids: list[str] | None | Unset = UNSET
+    cost_rate_ids: None | PricingReceiptProvenanceCostRateIdsType0 | Unset = UNSET
     held_name_id: None | str | Unset = UNSET
     markup: None | PricingReceiptProvenanceMarkup | Unset = UNSET
-    price_rate_ids: list[str] | None | Unset = UNSET
+    price_rate_ids: None | PricingReceiptProvenancePriceRateIdsType0 | Unset = UNSET
     resolution_run_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -53,7 +55,9 @@ class PricingReceiptProvenance:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.pricing_receipt_provenance_cost_rate_ids_type_0 import PricingReceiptProvenanceCostRateIdsType0
         from ..models.pricing_receipt_provenance_markup import PricingReceiptProvenanceMarkup
+        from ..models.pricing_receipt_provenance_price_rate_ids_type_0 import PricingReceiptProvenancePriceRateIdsType0
         agreed_price_line_id: None | str | Unset
         if isinstance(self.agreed_price_line_id, Unset):
             agreed_price_line_id = UNSET
@@ -66,13 +70,11 @@ class PricingReceiptProvenance:
         else:
             book_version = self.book_version
 
-        cost_rate_ids: list[str] | None | Unset
+        cost_rate_ids: dict[str, Any] | None | Unset
         if isinstance(self.cost_rate_ids, Unset):
             cost_rate_ids = UNSET
-        elif isinstance(self.cost_rate_ids, list):
-            cost_rate_ids = self.cost_rate_ids
-
-
+        elif isinstance(self.cost_rate_ids, PricingReceiptProvenanceCostRateIdsType0):
+            cost_rate_ids = self.cost_rate_ids.to_dict()
         else:
             cost_rate_ids = self.cost_rate_ids
 
@@ -90,13 +92,11 @@ class PricingReceiptProvenance:
         else:
             markup = self.markup
 
-        price_rate_ids: list[str] | None | Unset
+        price_rate_ids: dict[str, Any] | None | Unset
         if isinstance(self.price_rate_ids, Unset):
             price_rate_ids = UNSET
-        elif isinstance(self.price_rate_ids, list):
-            price_rate_ids = self.price_rate_ids
-
-
+        elif isinstance(self.price_rate_ids, PricingReceiptProvenancePriceRateIdsType0):
+            price_rate_ids = self.price_rate_ids.to_dict()
         else:
             price_rate_ids = self.price_rate_ids
 
@@ -132,7 +132,9 @@ class PricingReceiptProvenance:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.pricing_receipt_provenance_cost_rate_ids_type_0 import PricingReceiptProvenanceCostRateIdsType0
         from ..models.pricing_receipt_provenance_markup import PricingReceiptProvenanceMarkup
+        from ..models.pricing_receipt_provenance_price_rate_ids_type_0 import PricingReceiptProvenancePriceRateIdsType0
         d = dict(src_dict)
         def _parse_agreed_price_line_id(data: object) -> None | str | Unset:
             if data is None:
@@ -154,20 +156,22 @@ class PricingReceiptProvenance:
         book_version = _parse_book_version(d.pop("book_version", UNSET))
 
 
-        def _parse_cost_rate_ids(data: object) -> list[str] | None | Unset:
+        def _parse_cost_rate_ids(data: object) -> None | PricingReceiptProvenanceCostRateIdsType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             try:
-                if not isinstance(data, list):
+                if not isinstance(data, dict):
                     raise TypeError()
-                cost_rate_ids_type_0 = cast(list[str], data)
+                cost_rate_ids_type_0 = PricingReceiptProvenanceCostRateIdsType0.from_dict(data)
+
+
 
                 return cost_rate_ids_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(list[str] | None | Unset, data)
+            return cast(None | PricingReceiptProvenanceCostRateIdsType0 | Unset, data)
 
         cost_rate_ids = _parse_cost_rate_ids(d.pop("cost_rate_ids", UNSET))
 
@@ -202,20 +206,22 @@ class PricingReceiptProvenance:
         markup = _parse_markup(d.pop("markup", UNSET))
 
 
-        def _parse_price_rate_ids(data: object) -> list[str] | None | Unset:
+        def _parse_price_rate_ids(data: object) -> None | PricingReceiptProvenancePriceRateIdsType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
             try:
-                if not isinstance(data, list):
+                if not isinstance(data, dict):
                     raise TypeError()
-                price_rate_ids_type_0 = cast(list[str], data)
+                price_rate_ids_type_0 = PricingReceiptProvenancePriceRateIdsType0.from_dict(data)
+
+
 
                 return price_rate_ids_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(list[str] | None | Unset, data)
+            return cast(None | PricingReceiptProvenancePriceRateIdsType0 | Unset, data)
 
         price_rate_ids = _parse_price_rate_ids(d.pop("price_rate_ids", UNSET))
 

@@ -1,6 +1,6 @@
 from enum import Enum
 
-class DimensionDefOutScope(str, Enum):
+class GroupingFieldOutScope(str, Enum):
     EVENT = "event"
     SUBTASK = "subtask"
     TASK = "task"
