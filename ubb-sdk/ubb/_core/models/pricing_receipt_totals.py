@@ -24,8 +24,10 @@ class PricingReceiptTotals:
     """ The amount each section resolved; null where it is not settled.
 
         Attributes:
-            billed_cost_micros (int | None):
-            provider_cost_micros (int | None):
+            billed_cost_micros (int | None): The customer price the pricing section resolved for this receipt's subject, in
+                micros: present exactly when `pricing.status` is `known`, and null otherwise.
+            provider_cost_micros (int | None): The supplier cost (COGS) the costing section resolved for this receipt's
+                subject, in micros: present exactly when `costing.status` is `known`, and null otherwise.
      """
 
     billed_cost_micros: int | None

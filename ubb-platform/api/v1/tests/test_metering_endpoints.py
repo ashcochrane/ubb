@@ -179,51 +179,41 @@ class UsageEventDetailEndpointTest(TestCase):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.key}"}
 
     def _event(self, tenant=None, customer=None):
+        from apps.metering.pricing.tests._helpers import (
+            a_receipt_agreeing_with)
         from apps.metering.usage.models import Posting
         t = tenant or self.tenant
         c = customer or self.customer
+        # A VERSION-2 RECEIPT SINCE R10-W4. This fixture used to seed the
+        # unversioned older shape on purpose, as a live read over the shape a
+        # reader was most likely to break. The owner's ruling 3 (2026-10-27)
+        # made the public read version 2 only: an older record exists only on
+        # a development database, is not product history, and fails the typed
+        # response rather than widening it. What the older shape answers is
+        # the reader's own question, held by its unit tests
+        # (`apps/metering/pricing/tests/test_the_pricing_receipt_explains_an_amount.py`).
         return Posting.objects.create(
             tenant=t, customer=c,
             idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
             event_type="chat", provider="openai", currency="usd",
-            # A RECEIPT IN THE OLDER SHAPE, WRITTEN ON PURPOSE. Every key here
-            # is one this system has stopped writing: the unversioned record
-            # itself, the container word `metrics`, the rule's retired name and
-            # the quantity key. Rows on disk are in this shape and #148 §4.6
-            # governs them — old receipts are READ, never rewritten — so what
-            # this fixture buys is a live read over the shape a reader is most
-            # likely to break.
-            #
-            # ⚠ THE QUANTITY KEY IS THE ONE WORD HERE THAT IS NOT SLICE 4's,
-            # and an earlier version of this comment said it was. It is a
-            # retired SENSE rather than a retired term: not sweep input, no
-            # ledger seat, and no slice-4 entry counts it. #366 ruled it stays
-            # and wrote the argument at `pricing_service._component`.
-            **{Posting.RECEIPT_COLUMN: {
-                "engine_version": "2.1.0",
-                "metrics": [{"measurement_key": "input_tokens",
-                             "price_card_id": "abc",
-                             "units": 35_000, "micros": 450_000}]}})
+            **{Posting.RECEIPT_COLUMN: a_receipt_agreeing_with(
+                provider_cost_micros=300_000, billed_cost_micros=450_000)})
 
-    def test_a_receipt_in_the_older_shape_is_served_whole_and_not_rewritten(
-            self):
-        """AC (#370): a receipt written in the older shape reads back through
-        the endpoint, unchanged, and the read writes nothing.
+    def test_a_receipt_is_served_whole_and_not_rewritten(self):
+        """AC (#370): a stored receipt reads back through the endpoint,
+        unchanged, and the read writes nothing.
 
-        THE COLUMN RENAME IS NOT A CONVERSION, AND THIS IS WHERE THAT IS
-        PROVED. #370 moved the column and the wire key to the receipt's
-        ratified name with a `RenameField`, which carries every row across as
-        it stands — so the record on disk after the rename is still in whatever
-        shape its writer used, and there is no data migration in this slice
-        that touches one. #148 §4.6 is the governing rule: a receipt records
-        what the engine did on a day, and back-dating one into a shape that did
-        not exist then makes it a worse record. #155 §11's cutover squash is
-        what eventually removes these.
+        #148 §4.6 is the governing rule: a receipt records what the engine did
+        on a day. Since R10-W4 (#558) the record is published TYPED, version 2
+        only, and this is where the typed serializer is held to publishing
+        exactly what was stored: a typed key the record does not hold stays
+        absent rather than arriving as null, and an open section's keys pass
+        through as written (ADR-0024 §4).
 
         ⚠ **ASSERTED AS AN EQUALITY, NOT KEY BY KEY.** A per-key check passes
-        while the serialiser quietly drops or adds a key the older shape did
-        not have — which is exactly what a conversion would look like from
+        while the serialiser quietly drops or adds a key — which is exactly
+        what a typed model defaulting its optional fields would look like from
         outside. The whole record is compared against the row, and the row is
         re-read afterwards to show the response path wrote nothing.
         """
@@ -239,10 +229,10 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertEqual(body["id"], str(ev.id))
         self.assertEqual(body["billed_cost_micros"], 450_000)
         self.assertEqual(body["pricing_receipt"], stored)
-        # The typed reads over the record answer "this record does not say"
-        # rather than inventing a value the older shape never carried.
-        self.assertIsNone(body["pricing_method"])
-        self.assertIsNone(body["pricing_receipt_subject_type"])
+        # The typed reads over the record answer what the record says.
+        self.assertEqual(body["pricing_method"], stored["pricing"]["method"])
+        self.assertEqual(body["pricing_receipt_subject_type"],
+                         stored["subject_type"])
 
         ev.refresh_from_db()
         self.assertEqual(getattr(ev, Posting.RECEIPT_COLUMN), stored)
@@ -454,20 +444,13 @@ class UsageEventDetailEndpointTest(TestCase):
         self.assertEqual(body["not_applicable_reason"],
                          NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
 
-    def test_a_receipt_in_the_older_shape_names_no_method_rather_than_one(self):
-        """The read-path half, and the direction that actually happens.
-
-        Rows on disk predate the sectioned record, and what the older shape
-        wrote beside its price is the SOURCE that supplied it — a different
-        question from how the amount was derived, since a markup and a rule
-        declaring a margin are one method at two sources. Translating that
-        field would put a value on the published contract that no writer ever
-        recorded, so the response says nothing, which is what the record says.
-        """
-        body = self.http.get(f"/api/v1/metering/usage/{self._event().id}",
-                             **self._auth()).json()
-        self.assertIn("pricing_method", body)
-        self.assertIsNone(body["pricing_method"])
+    # ⚠ THE OLDER SHAPE'S "NAMES NO METHOD RATHER THAN ONE" LEFT THIS CLASS IN
+    # R10-W4, because ruling 3 made the public read version 2 only and an
+    # older record no longer validates there. The question it asked — what
+    # the reader answers for a record that predates the sectioned shape — is
+    # the reader's, and `pricing_method_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is
+    # None` in `test_the_pricing_receipt_explains_an_amount.py` holds it
+    # until W6 removes the older readers at the cutover.
 
 
 class MeteringTaskEndpointTest(TestCase):

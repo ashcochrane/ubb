@@ -2,6 +2,6 @@
 """The committed-spec revision this SDK core was generated from (issue #84)."""
 
 SPEC_VERSION = 'v1'
-SPEC_SHA256 = '8576867bbfd4493f0f38a0654e048f0f0660a067960ac15c4ab5a65760811ee0'
+SPEC_SHA256 = '4953a824634a88d79ebb88f6f100275b8077b5d9eae745087d3ee088a53e99cd'
 GENERATOR = 'openapi-python-client'
 GENERATOR_VERSION = '0.29.0'

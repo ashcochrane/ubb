@@ -1006,7 +1006,8 @@ class TheOneEconomicQueryTest(unittest.TestCase):
         row = {
             "bucket_start": None,
             "grouping_field_value": ["gpt-4"],
-            "grouping_field_value_status": ["known"],
+            "grouping_field_value_status": [
+                vocabulary.GROUPING_FIELD_VALUE_STATUS_RECORDED],
             "measures": [
                 {"measure": "gross_margin", "amount_micros": None,
                  "status": vocabulary.MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN},

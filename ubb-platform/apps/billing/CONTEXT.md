@@ -13,8 +13,13 @@ customer. (`apps/billing/wallets/models.py:Wallet`)
 
 **Ledger entry**:
 An append-only row recording one balance movement (its signed amount and resulting balance), made
-exactly-once per idempotency key. (`apps/billing/wallets/models.py:WalletTransaction`)
-_Avoid_: mutating a balance without writing a ledger entry.
+exactly-once per idempotency key. Its **transaction type** is the registry's closed
+`wallet_transaction_type`, in lowercase since R10-W4 (ruling 7): `wallets/0014` moved every stored
+row, `ck_wallet_transaction_type_known` admits only the registry's set, and no other spelling is
+accepted anywhere — no per-concept exception, no dual acceptance.
+(`apps/billing/wallets/models.py:WalletTransaction`)
+_Avoid_: mutating a balance without writing a ledger entry; the upper-case spellings the column held
+until R10-W4.
 
 **Movement reason**:
 Why money moved through a wallet BY HAND — the registry's closed `movement_reason`: `correction`,
@@ -55,7 +60,14 @@ base money is the non-grant remainder, derived not stored.
 
 **Grant kind**:
 Whether a lot is `paid` (from a top-up, withdrawable) or `promo` (never withdrawable); promo is
-consumed before paid.
+consumed before paid. The registry's closed `grant_kind`.
+
+**Grant source**:
+Where a lot came from — `checkout`, `auto_top_up`, `api` or `other` — the registry's closed
+`grant_source` (R10-W4). `ck_credit_grant_source_known` refuses any other value.
+(`apps/billing/wallets/models.py:CreditGrant.source`)
+_Avoid_: `auto_topup`, the run-together spelling the column held until `wallets/0014` moved it — one
+concept, one spelling (ADR-0006 §2).
 
 **Consumption order**:
 The deterministic order lots are drawn down — soonest expiry first, promo before paid — with the
@@ -490,6 +502,15 @@ The monthly job pushing each postpaid customer's prior-month usage to Stripe as 
 A postpaid customer's usage for one calendar month, pushed to Stripe as line items; one per
 (customer, month). (`apps/billing/invoicing/models.py:CustomerUsageInvoice`)
 _Avoid_: confusing it with a Stripe invoice — UBB pushes the lines; Stripe owns the invoice.
+
+**Skip reason**:
+Why a usage invoice was skipped rather than pushed — the registry's closed `skip_reason`: two
+terminal truths about the period (`no_usage`, `nothing_to_bill`), one supersession
+(`seat_superseded`), and three recoverable states (`no_stripe_customer`, `not_charge_ready`,
+`payment_rail_closed`). Present only on a skipped invoice: the column's `choices=` are the registry's
+since R10-W4 (`invoicing/0011`), a row that was not skipped holds it blank, and every published read
+answers that blank as null — never as an empty-string reason.
+(`apps/billing/invoicing/models.py:CustomerUsageInvoice.skip_reason`)
 
 **Line-item push**:
 The claim → Stripe → record flow that aggregates usage into lines and finalizes the Stripe invoice.

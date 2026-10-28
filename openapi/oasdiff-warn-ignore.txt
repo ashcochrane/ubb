@@ -666,3 +666,11 @@ PUT /api/v1/billing/postpaid-config removed the request property `usage_line_ite
 # a stale SDK caller gets a TypeError naming it; `ubb-sdk/MIGRATION.md` §21.
 POST /api/v1/billing/credit removed the request property `reason_code`
 POST /api/v1/billing/debit removed the request property `reason_code`
+
+# 2026-10-28 - R10-W4 (ruling 1): an economic measure's figure slot is `count`,
+# where it shared the generic count name. NOT AN ENTRY: `GET /api/v1/metering/
+# analytics/economics` was added after `api-v1-launch`, so the cumulative gate
+# reports nothing and an entry would be inert. The authoring comparison against
+# `origin/main` reports it as `removed the optional property `rows/items/
+# measures/items/event_count` from the response with the `200` status`,
+# reviewed and deliberate (ADR-0007 §5; ADR-0024 §7).

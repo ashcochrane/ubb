@@ -378,6 +378,17 @@ backs the cardinality cap and what the values route serves into a filter dropdow
 never sweeps it, so a historical row stays groupable *and* still resolves.
 (`apps/platform/grouping_fields/models.py:GroupingFieldValue`)
 
+**Grouping field value status**:
+What an economic row says about its value on each grouping axis, one entry per axis: `recorded`
+(the value beside it is the axis's), `not_recorded` (these events could have carried one and did
+not) or `not_applicable` (this kind of row never carries one — a Task Charge names no supplier and
+no Event Type). Both absences leave the value null, so the status is what tells them apart, and the
+console heads each by which absence it is rather than one shared placeholder. A closed registry
+concept since R10-W4 (#550); before it, the query published the three as a bare list of strings.
+(`apps/metering/queries.py`; `grouping_field_value_status` in `concepts/economics.yaml`)
+_Avoid_: reading a null value as "no value" without its status — that conflates the two absences
+the field exists to separate.
+
 **Slot**:
 The physical column (`grouping_field_1`..`grouping_field_10`) a declared key is bound to on
 `Posting`, `Task` and `Rate` — immutable once set, since re-slotting would silently change the
@@ -1042,8 +1053,16 @@ only curated per-action metadata is kept, so secrets structurally cannot reach t
 The named, `noun.verb` vocabulary of recordable actions (`api_key.created`, …) — a contractual
 registry: additive-only, a rename is breaking (ADR-003 algebra). Deliberately decoupled from
 routes (a route rename must never rewrite history's vocabulary) AND from the webhook catalog (an
-audit action and a webhook event are independent names in independent contracts). `record()`
-refuses an unregistered name. (`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
+audit action and a webhook event are independent names in independent contracts). **The registry
+is its one authority** (`domain-vocabulary/concepts/governance.yaml`, `audit_action`, R10-W4):
+`actions.py` derives the recordable set from the generated constants and every production writer
+names an action by reference. `record()` refuses an unregistered name, and a **withheld** one.
+(`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
+**Withheld action**: a value the registry keeps declared while nothing may write it and the contract
+does not advertise it (`withheld_values`, ADR-0024 §2). Its one use is
+`system.preproduction_model_cutover`: no opening row is ever written (#190 `6354381879`), so
+`record()` refuses it by name and `AuditRecordOut.action` leaves it out, until W6 deletes the
+registration and the exclusion together.
 **⚠ Additive-only governs RENAMES, and deleting an action whose ACT has ceased to exist is not one.**
 Slice 4 removed seven names on that distinction, and it is worth stating because "additive-only"
 reads as forbidding it: a rename carries an act forward under a new spelling and breaks a reader
@@ -1053,7 +1072,9 @@ reprice that became a publish. **None of it drew on the one-time pre-production 
 which #154 §4.2 defines and #155 §14 allocates to slice 8 for the actions that genuinely are renamed.
 What makes the deletion safe is a mechanism rather than care: `record()` refuses an unregistered name,
 so a route still writing a deleted action fails loudly, which forces the route and the registry into
-one commit and leaves no window in which a dead action is written.
+one commit and leaves no window in which a dead action is written. **R10-W4 deleted eight more on the
+same distinction** — registrations nothing ever wrote, none with a same-concept successor, so none is
+a retired alias (ADR-0024 §3).
 _Avoid_: reusing a webhook `event_type` as the action name; renaming a shipped action; **and reading
 the paragraph above as a licence to delete an action whose act continues under another name** — that
 is the rename, and it is breaking.
@@ -1069,6 +1090,14 @@ nouns, even where the acts are the same pair, because a shared noun sends a read
 split happens on the commit that creates the record.
 (#358, #368; `apps/platform/audit/actions.py`, the rule stated above the registry)
 
+**Audit resource type**:
+What kind of record an audit entry is about (`tenant`, `pricing_book`, `grouping_field_registry`, …)
+— a closed registry concept (`audit_resource_type`, R10-W4) beside the action, never inferred from
+it. `record()` refuses an undeclared one, so a writer and the registry move in one commit, exactly as
+for actions. The Grouping Field registry's value took the concept's own name in #541, and the
+pre-#155 spelling is a retired alias the sweep refuses. (`apps/platform/audit/actions.py:AUDIT_RESOURCE_TYPES`)
+_Avoid_: a free-text resource type; a second word for the same record.
+
 **record()**:
 The one surface for writing an audit entry — the `write_event` calling pattern: call it at the
 mutation site inside the change's `@transaction.atomic`; the actor is read from the request-scoped
@@ -1083,7 +1112,9 @@ is an OPEN enum — four live from day one (`member`, `api_key`, `operator`, `en
 a display snapshot taken at action time**, so a later rename or deletion never corrupts history; an
 `operator` always renders **"UBB operator"** (that staff acted, never which staffer). The
 `RequestActorMiddleware` resets the contextvar at request end so a pooled thread never leaks one
-request's principal into the next. (`apps/platform/audit/actors.py`)
+request's principal into the next. The registry declares it (`actor_kind`, kind `open`, R10-W4), so
+the console renders an unfamiliar kind through `open-set-value.tsx` — its token, marked — never a
+guessed word. (`apps/platform/audit/actors.py`)
 _Avoid_: passing "who" from the mutation site; storing a live FK to the principal instead of the
 snapshot; auditing reads or usage ingestion (telemetry, not governance).
 

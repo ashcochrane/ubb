@@ -903,10 +903,26 @@ class PricingReceiptPricing(Schema):
     detail: PricingReceiptPricingDetail
 
 
+#: What each receipt total is, on the field itself rather than only on the
+#: container (the owner's review of #607: no public money field is left
+#: undescribed). `receipts._validate_section` holds the rule: an amount is
+#: present exactly when its section's status is the settled one.
+RECEIPT_COST_TOTAL_MEANING = (
+    "The supplier cost (COGS) the costing section resolved for this "
+    "receipt's subject, in micros: present exactly when `costing.status` is "
+    "`known`, and null otherwise.")
+RECEIPT_PRICE_TOTAL_MEANING = (
+    "The customer price the pricing section resolved for this receipt's "
+    "subject, in micros: present exactly when `pricing.status` is `known`, "
+    "and null otherwise.")
+
+
 class PricingReceiptTotals(Schema):
     """The amount each section resolved; null where it is not settled."""
-    provider_cost_micros: Optional[int]
-    billed_cost_micros: Optional[int]
+    provider_cost_micros: Optional[int] = Field(
+        description=RECEIPT_COST_TOTAL_MEANING)
+    billed_cost_micros: Optional[int] = Field(
+        description=RECEIPT_PRICE_TOTAL_MEANING)
 
 
 class PricingReceiptProvenanceMarkup(Schema):

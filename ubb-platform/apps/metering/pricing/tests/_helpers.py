@@ -13,10 +13,11 @@ from apps.metering.pricing.models import (
     CHANGE_REPRICE, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook,
     Rate,
     TaskPrice, TenantDefaultMarkup)
-from apps.metering.pricing.receipts import ReceiptSubject
+from apps.metering.pricing.receipts import (
+    ReceiptSubject, Resolution, build_receipt)
 from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import (
-    PricingSubject, resolve_price)
+    PRICING_ENGINE_VERSION, PricingSubject, resolve_price)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import Measurement
@@ -27,8 +28,11 @@ from apps.platform.plans.services import PlanService
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
+    COSTING_METHOD_CALCULATED,
+    COSTING_STATUS_KNOWN,
     PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+    PRICING_STATUS_KNOWN,
 )
 
 #: The migration that split the container, and therefore the one operation that
@@ -235,7 +239,8 @@ def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):
     _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, pricing_book=book,
-        book_version_from=book.version, **fields)
+        book_version_from=book.version,
+        **_a_selling_rule_states_its_method(book, fields))
 
 
 def a_price_for_whole_work(tenant, *, task_type, agreed_price_micros,
@@ -718,7 +723,8 @@ def rate_in_a_book_nothing_selects(tenant, *, key="unselected", provider="",
     _the_quantity_it_prices(tenant, fields, provider=provider)
     return Rate.objects.create(
         tenant=tenant, provider=provider, currency=currency,
-        pricing_book=book, book_version_from=book.version, **fields)
+        pricing_book=book, book_version_from=book.version,
+        **_a_selling_rule_states_its_method(book, fields))
 
 
 def a_usage_event_subject(subject_id=None):
@@ -734,6 +740,36 @@ def a_usage_event_subject(subject_id=None):
     return ReceiptSubject(
         subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
         subject_id=str(subject_id or uuid4()))
+
+
+def a_receipt_agreeing_with(*, provider_cost_micros, billed_cost_micros,
+                            costing_status=COSTING_STATUS_KNOWN,
+                            pricing_status=PRICING_STATUS_KNOWN):
+    """A version-2 receipt for a posting a test ASSEMBLES (R10-W4, #558).
+
+    Every public read publishes the receipt typed, version 2 only, and every
+    recording path writes one — so a posting built with `objects.create` and
+    read through a route needs one too: the column's `{}` default is not a
+    receipt, and no production path leaves it. Built through `build_receipt`,
+    the one construction boundary, with each section's method stated exactly
+    when its status is settled (the boundary's own rule), so a combination
+    the boundary would refuse is refused here rather than seeded.
+
+    The defaults are the posting's own: both statuses `known`.
+    """
+    costing = Resolution(
+        method=(COSTING_METHOD_CALCULATED
+                if costing_status == COSTING_STATUS_KNOWN else None),
+        status=costing_status, amount_micros=provider_cost_micros, detail={})
+    pricing = Resolution(
+        method=(PRICING_METHOD_DIRECT_EVENT_PRICE
+                if pricing_status == PRICING_STATUS_KNOWN else None),
+        status=pricing_status, amount_micros=billed_cost_micros, detail={})
+    return build_receipt(
+        subject=a_usage_event_subject(),
+        effective_at=timezone.now().isoformat(), currency="usd",
+        pricing_engine_version=PRICING_ENGINE_VERSION,
+        costing=costing, pricing=pricing)
 
 
 def receipt_without_its_per_event_facts(body):

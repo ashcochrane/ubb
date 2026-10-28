@@ -6986,6 +6986,7 @@
                 "type": "null"
               }
             ],
+            "description": "The customer price the pricing section resolved for this receipt's subject, in micros: present exactly when `pricing.status` is `known`, and null otherwise.",
             "title": "Billed Cost Micros"
           },
           "provider_cost_micros": {
@@ -6997,6 +6998,7 @@
                 "type": "null"
               }
             ],
+            "description": "The supplier cost (COGS) the costing section resolved for this receipt's subject, in micros: present exactly when `costing.status` is `known`, and null otherwise.",
             "title": "Provider Cost Micros"
           }
         },

@@ -243,7 +243,8 @@ class SandboxResetTest(RailActivated, TestCase):
         from apps.metering.pricing.models import (
             CostBook, PricingBook, PricingBookPublish, Rate,
             TenantDefaultMarkup)
-        from core.vocabulary import DECLARATION_STATUS_PUBLISHED
+        from core.vocabulary import (
+            DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_DIRECT_EVENT_PRICE)
 
         Rate.objects.create(
             tenant=tenant,
@@ -269,10 +270,13 @@ class SandboxResetTest(RailActivated, TestCase):
         # label of its own would have protected nothing.
         book = PricingBook.objects.create(
             tenant=tenant, key="sandbox", is_default=True)
+        # A rule in a Pricing Book states its method (R10-W4 ruling 4,
+        # `ck_rate_a_selling_rule_states_its_method`).
         book.rates.create(
             tenant=tenant,
             measurement=declares_a_quantity(tenant, "book_tokens"),
-            rate_per_unit_micros=20)
+            rate_per_unit_micros=20,
+            pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
         PricingBookPublish.objects.create(
             tenant=tenant, pricing_book=book, effective_at=timezone.now(),
             changes=[], declaration_status=DECLARATION_STATUS_PUBLISHED,

@@ -14,6 +14,7 @@ introspected for absence.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import TypeVar
 
 from attrs import fields as _attrs_fields
@@ -28,6 +29,17 @@ def _normalize_unset(obj: T) -> T:
         if isinstance(getattr(obj, f.name), Unset):
             setattr(obj, f.name, None)
     return obj
+
+
+def token(value):
+    """A closed value as its registry token, for a shell surface typed ``str``.
+
+    The core holds a field whose concept is closed as a ``str``-``Enum``
+    member, which compares equal to its token but REPRS as the class — so a
+    hand-written surface that promises ``str`` (and code that logs it with
+    ``%r``) answers the token itself. ``None`` stays ``None``.
+    """
+    return value.value if isinstance(value, Enum) else value
 
 
 def from_wire(model_cls: type[T], data: dict) -> T:

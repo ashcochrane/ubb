@@ -40,6 +40,7 @@ from apps.metering.pricing.tests._helpers import retired_kind_column
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import PRICING_METHOD_DIRECT_EVENT_PRICE
 
 pytestmark = pytest.mark.django_db
 
@@ -209,7 +210,10 @@ def test_a_rule_cannot_sit_in_a_book_of_costs_and_a_book_of_prices_at_once():
         Rate.objects.create(
             tenant=t, measurement=declares_a_quantity(t, "tokens"),
             currency="usd", rate_per_unit_micros=1,
-            pricing_book=prices, cost_book=costs)
+            pricing_book=prices, cost_book=costs,
+            # Stated, so the refusal is the one this case is about rather than
+            # the selling-rule invariant (R10-W4 ruling 4).
+            pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
 
     assert SITS_IN_AT_MOST_ONE_BOOK_CHECK in str(caught.value)
 
@@ -241,7 +245,8 @@ def test_a_rule_answers_with_the_book_it_is_in_whichever_kind_that_is():
 
     priced = Rate.objects.create(
         tenant=t, measurement=declares_a_quantity(t, "tokens"),
-        currency="usd", rate_per_unit_micros=1, pricing_book=prices)
+        currency="usd", rate_per_unit_micros=1, pricing_book=prices,
+        pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
     cost = Rate.objects.create(
         tenant=t, measurement=declares_a_quantity(t, "other_tokens"),
         currency="usd", rate_per_unit_micros=1, cost_book=costs)

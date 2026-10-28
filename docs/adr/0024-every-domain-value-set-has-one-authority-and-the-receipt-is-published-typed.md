@@ -81,7 +81,11 @@ recording path and the Charge projection both write one, so every posting has a 
 level is closed except `detail` and `provenance`, which ADR-0020 §3's additive rule keeps open: each
 types the keys UBB writes and admits another, and each publishes exactly what was stored — a typed
 key the record does not hold stays absent rather than arriving as null. The eleven closed concepts
-inside carry their markers. There is no legacy branch.
+inside carry their markers. There is no legacy branch. A component's per-key quantity is published
+under the key it is stored under — the rate-arithmetic sense `measurement_key.retired_senses` keeps
+alive and #366 ruled stays, not the inline total #272 retired — and the gate that proves that total
+gone admits exactly that one schema and pointer. Each total carries its own description: present
+exactly when its section's status is `known`.
 
 ### 5. A selling rule states its method; nothing else states one
 
@@ -123,6 +127,8 @@ models and audit resource types; it is not a ban on the English word. The databa
 | §2 — the generated exclusion | `tests/contracts/test_generated_vocabulary.py` — `test_a_withheld_value_is_bound_in_its_own_set_and_kept_in_the_whole` |
 | §2, §3 — the ledger refuses the withheld action and an undeclared resource type; writers by reference | `ubb-platform/api/v1/tests/test_the_audit_catalogue_is_the_registrys.py` — `TheLedgerRecordsOnlyWhatTheRegistryDeclaresTest`, `EveryWriterNamesTheCatalogueByReferenceTest`, `TheFeedPublishesTheCatalogueTest` |
 | §4 — the typed receipt, published as stored, null only when rejected, v2 only | `ubb-platform/api/v1/tests/test_the_pricing_receipt_is_typed.py` — `EveryRouteCarryingTheRecordPublishesItTypedTest`, `TheTypeIsVersionTwoAndOpenOnlyWhereTheRuleSaysTest` |
+| §4 — the whole stored record, served unchanged by the typed serializer | `ubb-platform/api/v1/tests/test_metering_endpoints.py` — `test_a_receipt_is_served_whole_and_not_rewritten` |
+| §4 — the component's stored quantity is the one admission the inline-total gate makes | `tests/contracts/test_the_inline_unit_total_is_gone.py` — `test_the_admission_is_used_exactly_where_it_says` |
 | §4 — every closed concept inside is marked | `tests/contracts/test_openapi_known_values.py` — `test_the_pricing_receipt_marks_every_closed_concept_inside_it`, `test_negative_control_an_unmarked_closed_value_in_the_receipt_is_found` |
 | §5 | `ubb-platform/api/v1/tests/test_a_selling_rule_states_its_method.py` — `TheRatesRouteSaysEachRulesMethodTest`, `APublishStatesTheMethodTest`, `TheTableHoldsTheRuleTest`, `TheResolverRefusesARuleWithNoMethodTest`, `TheBackfillStatesTheMethodTest` |
 | §6 | `ubb-platform/api/v1/tests/test_the_wallets_vocabulary_is_the_registrys.py` — `TheLedgerSpeaksLowercaseTest`, `TheTableRefusesAnotherSpellingTest`, `TheMigrationMovesEveryStoredRowTest` |

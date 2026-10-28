@@ -1058,6 +1058,70 @@ Charge's projected posting**; `recorded_events` never does. Read
 `recorded_events` for "how many events were reported", and a `posting_count` only
 as the size of the set its own totals add up.
 
+## 23. One vocabulary authority, a typed Pricing Receipt, and a rule's method (R10-W4 — pre-live)
+
+Pre-live changes from #190's W4, each recorded in the contract's suppression
+files as reviewed (ADR-0024). No amount, posting selection or report arithmetic
+changes; `PRICING_ENGINE_VERSION` stays 3.0.0.
+
+### Twenty more value sets arrive as enums
+
+Fields that carried a fixed set of values as a bare string are now the
+registry's enums, and the regenerated core gives each its own enum class — an
+audit record's `action`, `resource_type` and `actor_kind` (open: an unfamiliar
+kind still parses), a member's and an invitation's `role` and `status`,
+`enforcement_mode`, a stop's `stop_scope`, a wallet movement's
+`transaction_type`, a grant's `kind`, `status` and `source`, a usage invoice's
+`status` and `skip_reason`, a tenant invoice's and billing period's `status`,
+a referral programme's `reward_type` and `status`, a referral's `status`, a
+reward ledger entry's `calculation_method`, and an economic row's
+`grouping_field_value_status`. Compare against `ubb.vocabulary`'s constants
+rather than spelling a value. A `stop_scope` read off `RecordUsageResponse` is
+now such an enum member (it compares equal to its token); `UBBStopRequested.stop_scope`
+and a batch item's `stop_scope` still answer the plain token, as they are typed.
+
+### Wallet transaction types are lowercase, and the automatic top-up source is `auto_top_up`
+
+`WalletTransactionOut.transaction_type` answers `top_up`, `usage_deduction`,
+`debit`, … — never the upper-case spellings it used before. A grant's `source`
+answers `auto_top_up` where it answered the run-together form. No other
+spelling is accepted on any route.
+
+### A skipped usage invoice says why; any other says null
+
+`TenantUsageInvoiceOut.skip_reason` is `None` on an invoice that was not
+skipped, where it was the empty string.
+
+### The Pricing Receipt is a typed model, version 2 only
+
+`RecordUsageResponse.pricing_receipt` and `UsageEventDetailOut.pricing_receipt`
+are a `PricingReceipt` and never `None`; `UsageBatchItemResponse.pricing_receipt`
+is `None` only on a rejected item. Its `costing`, `pricing`, `totals` and
+`provenance` are typed models; `detail` and `provenance` keep any key UBB adds
+later in `additional_properties`. A receipt older than version 2 does not
+parse — none exists outside a development database.
+
+### A rate says its rule's method
+
+`RateOut.pricing_method` is `margin_over_cost` or `direct_event_price` on every
+Pricing Book rule and `None` on a cost book's rate. A margin rule stores zero
+terms, so read the method before reading `rate_per_unit_micros` as a price.
+
+### The Grouping Field's models take its own name (#541)
+
+| Before | Now |
+|---|---|
+| `DimensionDefIn`, `DimensionDefOut` | `GroupingFieldIn`, `GroupingFieldOut` |
+| `DimensionRegistryIn`, `DimensionRegistryOut` | `GroupingFieldRegistryIn`, `GroupingFieldRegistryOut` |
+
+The audit `resource_type` for the registry is `grouping_field_registry`.
+
+### Webhook payloads state what they always carried
+
+`credit_grant.expiring` and `credit_grant.expired` always carry the grant's
+`kind`, and `invitation.created` and `member.activated` the `role`: each is now
+a required field.
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

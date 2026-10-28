@@ -51,6 +51,7 @@ function ruleWith(pins: Partial<Rule>): Rule {
     grouping_field_8: "",
     grouping_field_9: "",
     grouping_field_10: "",
+    pricing_method: "direct_event_price",
     rate_structure: "per_unit",
     rate_per_unit_micros: 1_000_000,
     unit_quantity: 1_000_000,

@@ -41,7 +41,8 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import QuarantinedKey
 from apps.platform.event_types.tests._helpers import declares_an_event_type
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.metering.pricing.tests._helpers import cost_rate_in_default_book
+from apps.metering.pricing.tests._helpers import (
+    a_receipt_agreeing_with, cost_rate_in_default_book)
 from apps.metering.usage.models import Posting
 from core.vocabulary import (COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED,
                              UNRESOLVED_REASON_COST_RATE_MISSING,
@@ -279,9 +280,15 @@ class TheClaimedFigureIsPublishedApartFromCOGSTest(_WireCase):
                   "costing_status": COSTING_STATUS_UNRESOLVED,
                   "unresolved_reason": UNRESOLVED_REASON_COST_RATE_MISSING}
         fields.update(overrides)
+        # Its receipt agrees with it: every public read publishes one, typed
+        # and version 2 only, since R10-W4 (#558).
+        receipt = a_receipt_agreeing_with(
+            provider_cost_micros=fields["provider_cost_micros"],
+            billed_cost_micros=fields["billed_cost_micros"],
+            costing_status=fields["costing_status"])
         return Posting.objects.create(
             tenant=self.tenant, customer=self.customer,
-            idempotency_key="claim",
+            idempotency_key="claim", pricing_receipt=receipt,
             claimed_provider_cost_micros=self.CLAIMED, **fields)
 
     def test_the_claim_is_published_on_every_response_carrying_the_cost(self):

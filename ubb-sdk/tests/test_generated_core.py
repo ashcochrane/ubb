@@ -126,20 +126,24 @@ class TestRequiredWhereTrueTyping:
                 model.from_dict(without)
 
     @pytest.mark.parametrize("model, body", [
+        # Each body carries its receipt (#558), so the one key missing below
+        # is the reason's: the acknowledgement's v2 record, and the rejected
+        # item's null.
         (RecordUsageResponse,
          {"event_id": "evt_1", "suspended": False, "costing_status": "known",
-          "pricing_status": "known"}),
+          "pricing_status": "known", "pricing_receipt": A_RECEIPT}),
         # A rejected batch item states no price at all, and still carries the
         # reason's key, as null.
         (UsageBatchItemResponse,
-         {"accepted": False, "code": "validation_error", "detail": "refused", "stop": False}),
+         {"accepted": False, "code": "validation_error", "detail": "refused", "stop": False,
+          "pricing_receipt": None}),
     ])
     def test_the_price_status_reason_is_a_required_key_whose_value_may_be_null(
             self, model, body):
         # #603: pricing_status_reason is REQUIRED AND NULLABLE wherever
         # pricing_status is published. Null says no reason applies; a body
         # without the key is the server not sending what it promised.
-        parsed = model.from_dict({**body, **NOTHING_STOPPED, "pricing_status_reason": None, "pricing_receipt": A_RECEIPT})
+        parsed = model.from_dict({**body, **NOTHING_STOPPED, "pricing_status_reason": None})
         assert parsed.pricing_status_reason is None
         with pytest.raises(KeyError, match="pricing_status_reason"):
             model.from_dict({**body, **NOTHING_STOPPED})

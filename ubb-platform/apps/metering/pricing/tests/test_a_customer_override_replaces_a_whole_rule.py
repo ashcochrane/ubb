@@ -345,7 +345,11 @@ class NoPartialOverrideIsExpressibleTest(_ACustomerWithADealMixin, TestCase):
 
     def test_a_value_with_no_method_stated_takes_the_rules_own_default(self):
         """The sharp case: the rule it out-ranks declares a margin, and the
-        override that states only a price does NOT come out declaring one."""
+        override that states only a price does NOT come out declaring one.
+
+        Since R10-W4 (ruling 4) it comes out STATING the direct price its body
+        describes — a selling rule always states its method — where it used to
+        come out declaring none and be read as that at resolution."""
         record = BookService.declare(
             self.book,
             [self._an_added_override(rate_per_unit_micros=WHAT_THE_DEAL_CHARGES)],
@@ -353,9 +357,9 @@ class NoPartialOverrideIsExpressibleTest(_ACustomerWithADealMixin, TestCase):
         BookService.publish_declared(record)
 
         answered = self.the_rule_that_answered()
-        self.assertIsNone(answered.pricing_method)
-        # And it prices the event by its own terms, which is what a rule
-        # declaring no method means at resolution — not the margin it would
+        self.assertEqual(answered.pricing_method,
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
+        # And it prices the event by its own terms — not the margin it would
         # have inherited under a partial override.
         receipt = self.resolved()
         self.assertEqual(receipt["pricing"]["method"],

@@ -304,7 +304,10 @@ class AnOverrideStatesAWholeRuleTest(_ATenantWithACustomerMixin, TestCase):
     The body carries the method, and it carries no field naming a rule to
     inherit from. The discriminating case is the second: an override that
     states a price and no method over an inherited rule that declares a margin
-    comes out declaring none, rather than the margin it would have inherited.
+    comes out stating the direct price its body describes, rather than the
+    margin it would have inherited. (Until R10-W4 it came out declaring none,
+    which resolution read as a direct price; ruling 4 stores that explicitly —
+    a selling rule always states its method.)
     """
 
     def test_the_body_names_every_field_of_a_rule_and_no_rule_to_inherit_from(self):
@@ -329,7 +332,8 @@ class AnOverrideStatesAWholeRuleTest(_ATenantWithACustomerMixin, TestCase):
         published = self.declare_and_publish()
 
         opened = Rate.objects.get(pk=published["opened_rule_ids"][0])
-        self.assertIsNone(opened.pricing_method)
+        self.assertEqual(opened.pricing_method,
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
         self.assertEqual(opened.rate_per_unit_micros, WHAT_THE_DEAL_CHARGES)
 
     def test_the_method_can_be_changed_and_the_rule_carries_it(self):
@@ -461,7 +465,10 @@ class TheInheritedRuleIsReadableTest(_ATenantWithACustomerMixin, TestCase):
         self.assertEqual(rule["book_id"], str(self.catalogue.id))
         self.assertEqual(rule["rate_per_unit_micros"],
                          WHAT_THE_CATALOGUE_CHARGES)
-        self.assertIsNone(rule["pricing_method"])
+        # A catalogue rule states its method (R10-W4 ruling 4), so the
+        # starting point a client copies states it too.
+        self.assertEqual(rule["pricing_method"],
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
 
     def test_it_keeps_answering_the_inherited_rule_once_an_override_exists(self):
         """The point of the read: a client showing *what you are replacing*

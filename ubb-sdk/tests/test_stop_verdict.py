@@ -96,6 +96,10 @@ class TheStopRaisesByDefaultTest(_ClientCase):
             self.client.record_usage(customer_id="c1", idempotency_key="i1")
         stop = cm.exception
         self.assertEqual(stop.stop_scope, "customer")
+        # The TOKEN, not the core's enum member (R10-W4 made the scope a closed
+        # concept): a member compares equal to "customer" and reprs as its
+        # class, which is what a `%r` in a tenant's log would print.
+        self.assertIs(type(stop.stop_scope), str)
         self.assertEqual(stop.stop_reason, REASON_CODE_HARD_FLOOR)
         self.assertIsNone(stop.task_id)
         self.assertEqual(stop.event_id, "e1")
@@ -492,6 +496,7 @@ class ABatchReportNeverRaisesTest(_ClientCase):
         stopped = result.results[1]
         self.assertEqual(stopped.stop_reason, REASON_CODE_TASK_COGS_CEILING)
         self.assertEqual(stopped.stop_scope, "task")
+        self.assertIs(type(stopped.stop_scope), str)  # the token (R10-W4)
         self.assertEqual(stopped.data["task_id"], "task_1")
         self.assertTrue(result.stop)
         self.assertEqual(result.first_stop_index, 1)
