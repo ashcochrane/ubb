@@ -192,8 +192,11 @@ class BillingClient:
         return r.json()
 
     def get_transactions(self, customer_id: str, cursor: str | None = None,
-                         limit: int = 20) -> PaginatedResponse[WalletTransactionOut]:
-        """Get transactions via GET /api/v1/billing/customers/{customer_id}/transactions."""
+                         limit: int = 50) -> PaginatedResponse[WalletTransactionOut]:
+        """Get transactions via GET /api/v1/billing/customers/{customer_id}/transactions.
+
+        Fifty to a page by default — the route's own default and the facade's
+        (#547: this layer said 20, so one call answered two ways)."""
         params: dict = {"limit": limit}
         if cursor is not None:
             params["cursor"] = cursor

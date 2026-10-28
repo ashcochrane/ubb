@@ -696,7 +696,7 @@ saying what may be asked of it.
 | `GET /api/v1/margin/customers/{customer_id}` | one customer's totals |
 | `GET /api/v1/margin/customers/{customer_id}/trend` | one customer's margin by month |
 | `GET /api/v1/margin/by-grouping-field` | margin grouped by one declared field |
-| `GET /api/v1/me/usage-summary` | an end customer's own usage, on the widget mount |
+| `GET /api/v1/me/usage-summary` | an end customer's own usage, on the widget mount — restored, narrower, as `GET /api/v1/me/economics` (§24) |
 
 **Five hand-written calls go with them**, and nothing in this release replaces them:
 `MeteringClient.usage_analytics`, `.usage_timeseries`, `.get_customer_margin`,
@@ -1142,6 +1142,85 @@ with no alias. The `usage.recorded` payload field is `auto_top_up_attempt_id`.
   a referral programme's `status` no longer advertises `paused`. Nothing
   creates those states today; they return to the enum with the first writer
   that does.
+
+## 24. One report window, an end customer's own usage, and the SDK settled for v4 (R10-W5 — pre-live)
+
+### Every calendar-date report window is inclusive, and a lone date is honoured
+
+The five reports that take a pair of calendar dates — `query_economics`,
+`get_business_margin`, the supplied-revenue read, the task analytics and
+`get_analytics_earnings` — read their window one way now:
+
+- both dates are inclusive, in UTC;
+- a lone start runs to today, a lone end starts on the first day of its own
+  month, and no date at all is the current UTC month to date — a date you send
+  is never dropped;
+- one request spans at most 366 calendar dates (92 for an hourly economic
+  question), and a start after the end is refused with `validation_error`;
+- longer history is read through consecutive, non-overlapping windows: the next
+  window starts on the calendar day after the previous one's end date.
+
+What moves for a caller: **the business margin and the supplied-revenue read
+take their `end_date` as the LAST day of the window now, not the day after it**
+— pass `2026-04-30` for April, where you passed `2026-05-01` — and the
+supplied-revenue answer's `window.end` echoes that inclusive date. The task
+analytics with no dates answers the month to date rather than all of history,
+and a window of 367 calendar dates is refused where it was admitted. The
+spend-control reports' `since`/`until` are instants, not calendar dates, and
+keep their half-open reading.
+
+### `get_transactions` pages fifty on both clients
+
+`BillingClient.get_transactions` defaulted `limit` to 20 while `UBBClient` and
+the route defaulted to 50, so one call answered two ways depending on which
+object you held (#547). Both default to 50 now. **If you call
+`BillingClient.get_transactions` without `limit`, you get 50 rows rather than
+20**; pass `limit=20` to keep the old page.
+
+### `UBBClient.configure_auto_top_up` takes the billing client's own parameters
+
+The facade spelled them `threshold`, `amount` and `enabled=True`; it now takes
+exactly what `BillingClient.configure_auto_top_up` does, under the same names:
+
+```python
+# before
+client.configure_auto_top_up(customer_id, threshold=1_000_000, amount=5_000_000)
+# now
+client.configure_auto_top_up(customer_id, is_enabled=True,
+                             trigger_threshold_micros=1_000_000,
+                             top_up_amount_micros=5_000_000)
+```
+
+`is_enabled` is required, as it is on the billing client. There is no alias for
+the old names.
+
+### A field the response left out: `None` where it can be null, `UNSET` where it cannot
+
+Every model the SDK hands back now turns back into a dictionary: `to_dict()`
+raised on an acknowledgement whose response left out an optional object field
+(#596). A field a response leaves out reads:
+
+- **`None`, where its type admits null** — test it with `is None`, as before;
+- **`ubb.UNSET`, where its type does not** — `grouping_fields`,
+  `uncosted_measurement_keys` and a task detail's `subtasks`, for example.
+  Test it with `is UNSET` or `ubb.is_unset(value)`.
+
+⚠ **Never test for absence with `not value`.** A response can state `0`,
+`False`, `""` or `[]`, and each of those is a fact the SDK keeps exactly as
+stated; `not value` would read every one of them as missing. The rule holds at
+every depth: the work inside a task detail is parsed the same way.
+
+### An end customer reads its own usage again: `GET /api/v1/me/economics`
+
+The widget route `/me/usage-summary` went with #501's collapse (§16). Its
+capability is back, narrower and on purpose: with a widget token, an end
+customer reads what its own usage earned (`customer_revenue`, with the basis
+and currency it is stated in, and null — never zero — where no figure can be
+stated) and how many metered events it recorded (`recorded_events`), over the
+same calendar-date window as every report. There is no customer parameter: the
+token's customer is the only scope, and a business reads its own usage without
+its seats'. It is reachable through the generated core
+(`api_v1_me_endpoints_get_my_economics`), like the other widget routes.
 
 ## Release checklist (operator)
 

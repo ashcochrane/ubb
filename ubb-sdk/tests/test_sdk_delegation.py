@@ -67,7 +67,9 @@ class TestBillingDelegationRequiresBilling:
 
     def test_configure_auto_top_up_requires_billing(self):
         with pytest.raises(UBBError, match="billing"):
-            self.client.configure_auto_top_up("cust1", threshold=0, amount=100_000)
+            self.client.configure_auto_top_up(
+                "cust1", is_enabled=True, trigger_threshold_micros=0,
+                top_up_amount_micros=100_000)
 
     def test_withdraw_requires_billing(self):
         with pytest.raises(UBBError, match="billing"):
@@ -314,15 +316,27 @@ class TestFacadeSignatureParity:
     classes declare. The old list survives as the vacuity floor below, because
     a derivation that quietly returns nothing passes every assertion in this
     class.
+
+    ⚠ **AND IT WALKS BOTH LOWER CLIENTS, NOT ONE (#547).** It walked
+    `MeteringClient` alone, so `get_transactions` paged 50 on the facade and
+    20 on `BillingClient` with this class green. The walk covers the methods
+    the facade SHARES with each lower client — it does not ask the facade to
+    expose every specialist billing method, only to pass through faithfully
+    the ones it does.
     """
 
-    #: The floor the derivation must clear. These are the methods the guard
-    #: was written for, and naming them is what makes an empty or broken walk
+    #: The floor each derivation must clear: the methods the guard was written
+    #: for, per lower client. Naming them is what makes an empty or broken walk
     #: fail loudly instead of passing in silence.
-    NAMED_IN_ADVANCE = frozenset({"record_usage", "close_task", "start_task",
-                                  "get_task", "list_tasks", "list_subtasks",
-                                  "get_usage", "query_economics",
-                                  "grouping_options"})
+    NAMED_IN_ADVANCE = {
+        MeteringClient: frozenset({"record_usage", "close_task", "start_task",
+                                   "get_task", "list_tasks", "list_subtasks",
+                                   "get_usage", "query_economics",
+                                   "grouping_options"}),
+        BillingClient: frozenset({"affordability", "get_transactions",
+                                  "configure_auto_top_up", "create_top_up",
+                                  "withdraw"}),
+    }
 
     #: `(method, parameter)` pairs the facade deliberately does not mirror.
     #: Empty, and it should stay that way: a facade that narrows its lower
@@ -330,30 +344,36 @@ class TestFacadeSignatureParity:
     KNOWN_DIVERGENCES: frozenset = frozenset()
 
     @staticmethod
-    def passthroughs():
-        """Every public method BOTH clients declare."""
+    def passthroughs(lower=MeteringClient):
+        """Every public method the facade and ``lower`` both declare."""
         return sorted(
-            name for name in vars(MeteringClient)
+            name for name in vars(lower)
             if not name.startswith("_")
-            and callable(getattr(MeteringClient, name))
+            and callable(getattr(lower, name))
             and hasattr(UBBClient, name))
+
+    def _pairs(self):
+        for lower in self.NAMED_IN_ADVANCE:
+            for method in self.passthroughs(lower):
+                yield lower, method
 
     def test_the_derivation_reaches_every_method_it_was_written_for(self):
         """The vacuity guard. A walk over an empty set proves nothing, and a
         walk that silently stopped reaching a method is the exact failure this
         class exists to prevent."""
-        assert self.NAMED_IN_ADVANCE <= set(self.passthroughs())
+        for lower, named in self.NAMED_IN_ADVANCE.items():
+            assert named <= set(self.passthroughs(lower)), lower.__name__
 
     def test_every_facade_passthrough_accepts_every_lower_param(self):
-        for method in self.passthroughs():
+        for lower, method in self._pairs():
             facade = inspect.signature(getattr(UBBClient, method)).parameters
-            lower = inspect.signature(getattr(MeteringClient, method)).parameters
-            for name in lower:
+            below = inspect.signature(getattr(lower, method)).parameters
+            for name in below:
                 if name == "self" or (method, name) in self.KNOWN_DIVERGENCES:
                     continue
                 assert name in facade, (
                     f"UBBClient.{method} is missing '{name}', which "
-                    f"MeteringClient.{method} accepts"
+                    f"{lower.__name__}.{method} accepts"
                 )
 
     def test_every_facade_passthrough_keeps_every_lower_default(self):
@@ -362,22 +382,31 @@ class TestFacadeSignatureParity:
         depending which layer you hold. That is what `get_usage` was doing
         with its page size."""
         empty = inspect.Parameter.empty
-        compared = 0
-        for method in self.passthroughs():
+        compared = set()
+        for lower, method in self._pairs():
             facade = inspect.signature(getattr(UBBClient, method)).parameters
-            lower = inspect.signature(getattr(MeteringClient, method)).parameters
-            for name, param in lower.items():
+            below = inspect.signature(getattr(lower, method)).parameters
+            for name, param in below.items():
                 if name == "self" or (method, name) in self.KNOWN_DIVERGENCES:
                     continue
-                if param.default is empty or name not in facade:
+                if name not in facade:
                     continue
                 assert facade[name].default == param.default, (
                     f"UBBClient.{method} defaults '{name}' to "
-                    f"{facade[name].default!r}, but MeteringClient.{method} "
+                    f"{facade[name].default!r}, but {lower.__name__}.{method} "
                     f"defaults it to {param.default!r}"
                 )
-                compared += 1
-        assert compared > 0
+                if param.default is not empty:
+                    compared.add(lower)
+        # Both walks compared a default, so neither is vacuous.
+        assert compared == set(self.NAMED_IN_ADVANCE)
+
+    def test_one_transactions_page_size_everywhere(self):
+        """#547's own case: the server, the facade and the billing client all
+        page fifty transactions by default."""
+        for owner in (UBBClient, BillingClient):
+            limit = inspect.signature(owner.get_transactions).parameters["limit"]
+            assert limit.default == 50, owner.__name__
 
     def test_the_facade_close_actually_forwards_the_declaration(self):
         """A signature can match while the body drops an argument, which is a
@@ -565,28 +594,12 @@ class TestCloseNoHTTP:
 
 
 class TestBillingPassthroughSignatureParity:
-    """`UBBClient.affordability` must be a non-lossy passthrough to
-    `BillingClient.affordability` (#463) — the guard the metering passthroughs
-    above already have, for the one facade method that delegates to billing
-    by signature. A facade that dropped the parent would silently answer the
-    top-level soft floor for contained work.
+    """`UBBClient.affordability` must forward what it is given to
+    `BillingClient.affordability` (#463). Its SIGNATURE is held with every other
+    shared passthrough's by `TestFacadeSignatureParity`, which walks the billing
+    client since #547 and replaced the hand-written list this class kept; what
+    stays here is the body, which a matching signature cannot vouch for.
     """
-
-    PASSTHROUGHS = ("affordability",)
-
-    def test_every_billing_passthrough_accepts_every_lower_param(self):
-        for method in self.PASSTHROUGHS:
-            facade = inspect.signature(getattr(UBBClient, method)).parameters
-            lower = inspect.signature(getattr(BillingClient, method)).parameters
-            for name in lower:
-                if name == "self":
-                    continue
-                assert name in facade, (
-                    f"UBBClient.{method} is missing '{name}', which "
-                    f"BillingClient.{method} accepts"
-                )
-                assert facade[name].default == lower[name].default, (
-                    f"UBBClient.{method}'s '{name}' defaults differently")
 
     def test_the_facade_forwards_the_parent_and_hands_back_the_answer(self):
         """A signature can match while the body drops an argument, which is a

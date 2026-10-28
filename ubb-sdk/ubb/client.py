@@ -630,14 +630,19 @@ class UBBClient:
             idempotency_key,
         )
 
-    def configure_auto_top_up(self, customer_id: str, threshold: int,
-                              amount: int, enabled: bool = True) -> StatusResponse:
-        """Configure auto top-up. Requires billing product."""
+    def configure_auto_top_up(self, customer_id: str, is_enabled: bool,
+                              trigger_threshold_micros: int | None = None,
+                              top_up_amount_micros: int | None = None
+                              ) -> StatusResponse:
+        """Configure auto top-up. Requires billing product.
+
+        The billing client's own parameters, under its names (#547): the
+        facade spelled them `threshold`, `amount` and `enabled` until W5."""
         billing = self._require_billing()
         result = billing.configure_auto_top_up(
-            customer_id, is_enabled=enabled,
-            trigger_threshold_micros=threshold,
-            top_up_amount_micros=amount,
+            customer_id, is_enabled=is_enabled,
+            trigger_threshold_micros=trigger_threshold_micros,
+            top_up_amount_micros=top_up_amount_micros,
         )
         return from_wire(StatusResponse, result)
 
