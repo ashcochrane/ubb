@@ -2409,11 +2409,8 @@ def query_economics(request,
     _product_check(request)
     from apps.metering.queries import (
         ECONOMIC_BUCKETS, ECONOMIC_MEASURES, EconomicFilters,
-        EconomicQuestionRefused, economic_refusal, economics, grouping_options)
+        EconomicQuestionRefused, economic_refusal, grouping_options)
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
-    from apps.subscriptions.queries import (
-        foreign_currency_subscription_count, revenue_contributions,
-        supplied_revenue_covered_periods)
 
     measures = list(measures or [])
     axes = list(group_by or [])
@@ -2467,54 +2464,10 @@ def query_economics(request,
         raise Problem("validation_error" if unreadable else
                       UNANSWERABLE_COMBINATION, refusal)
 
-    # ⚠ THE REVENUE THIS PRODUCT DOES NOT HOLD IS READ FROM THE PRODUCT THAT
-    # DOES, HERE, WHICH IS THE COMPOSITION LAYER'S JOB AND NOT THE READ
-    # CONTRACT'S. Metering owns the postings a price was resolved on;
-    # subscriptions owns a tenant's Stripe accruals and the figures it supplied
-    # itself, and ADR-001 forbids either product reaching into the other — on a
-    # service split metering would not have them. So they are fetched from that
-    # product's own read contract and handed over as plain data, each row saying
-    # whose it is, which window it lands in and what it can be attributed at.
-    # `economics` REFUSES to answer a revenue measure without them, so this
-    # wiring cannot be forgotten into a margin that is short by a subscription.
-    #
-    # ⚠ **AND IT IS NOT FETCHED WHERE NO MEASURE WOULD USE IT**, which is two
-    # fewer queries on a cost-only question and, more than that, a different
-    # ANSWER: the money a grouping cannot place is reported as context, and
-    # context on a question that asked nothing about revenue is noise about a
-    # number the caller did not request. The argument is absent exactly when it
-    # is irrelevant, which is the one case the read contract's refusal is not
-    # about.
-    #
-    # ⚠ **AND THE PERIODS A SUPPLIED FIGURE COVERS COME WITH THEM, READ FOR THE
-    # WHOLE WINDOW AND NOT PER BUCKET** (#537). A supplied figure is the whole
-    # revenue for the customer and period it covers, so the query supersedes
-    # the priced usage inside that period — and which period that is belongs to
-    # the record, not to the basis that decides where its amount lands.
-    revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
-                           ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
-    supplied = {}
-    # What this answer's revenue LEFT OUT (#564): subscriptions Stripe holds
-    # in a currency UBB does not admit. Counted over exactly the scope the
-    # revenue is fetched for, and 0 on a question that asked for no revenue,
-    # because such an answer left nothing out.
-    foreign = 0
-    if revenue_wanted:
-        customer_ids = [customer_id] if customer_id else None
-        foreign = foreign_currency_subscription_count(
-            request.auth.tenant.id, customer_ids=customer_ids)
-        supplied["contributed_revenue"] = revenue_contributions(
-            request.auth.tenant.id,
-            windows=_economic_buckets(window, bucket), basis=chosen,
-            customer_ids=customer_ids)
-        supplied["covered_periods"] = supplied_revenue_covered_periods(
-            request.auth.tenant.id, opens=window.opens, closes=window.closes,
-            customer_ids=customer_ids)
-
     try:
-        answer = economics(request.auth.tenant.id, measures=measures,
-                           group_by=axes, bucket=bucket, filters=filters,
-                           basis=chosen, as_of=window.today, **supplied)
+        answer, foreign = ask_the_economic_query(
+            request.auth.tenant.id, measures=measures, group_by=axes,
+            bucket=bucket, basis=chosen, window=window, filters=filters)
     except EconomicQuestionRefused as refused:
         # The read contract answers a refusal as a sentence, because a read
         # contract returns plain data and the caller decides what an
@@ -2532,6 +2485,66 @@ def query_economics(request,
     return 200, {"period_start": window.start_date.isoformat(),
                  "period_end": window.end_date.isoformat(), **answer,
                  FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY: foreign}
+
+
+def ask_the_economic_query(tenant_id, *, measures, group_by, bucket, basis,
+                           window, filters):
+    """The one economic query, with the revenue only subscriptions holds wired
+    in — for every route that asks it (the tenant's and, since #561, the
+    widget's). Answers the read contract's plain data and how many foreign-
+    currency subscriptions its revenue left out.
+
+    ⚠ THE REVENUE THIS PRODUCT DOES NOT HOLD IS READ FROM THE PRODUCT THAT
+    DOES, HERE, WHICH IS THE COMPOSITION LAYER'S JOB AND NOT THE READ
+    CONTRACT'S. Metering owns the postings a price was resolved on;
+    subscriptions owns a tenant's Stripe accruals and the figures it supplied
+    itself, and ADR-001 forbids either product reaching into the other — on a
+    service split metering would not have them. So they are fetched from that
+    product's own read contract and handed over as plain data, each row saying
+    whose it is, which window it lands in and what it can be attributed at.
+    `economics` REFUSES to answer a revenue measure without them, so this
+    wiring cannot be forgotten into a margin that is short by a subscription.
+
+    ⚠ **AND IT IS NOT FETCHED WHERE NO MEASURE WOULD USE IT**, which is two
+    fewer queries on a cost-only question and, more than that, a different
+    ANSWER: the money a grouping cannot place is reported as context, and
+    context on a question that asked nothing about revenue is noise about a
+    number the caller did not request.
+
+    ⚠ **AND THE PERIODS A SUPPLIED FIGURE COVERS COME WITH THEM, READ FOR THE
+    WHOLE WINDOW AND NOT PER BUCKET** (#537). A supplied figure is the whole
+    revenue for the customer and period it covers, so the query supersedes
+    the priced usage inside that period — and which period that is belongs to
+    the record, not to the basis that decides where its amount lands.
+
+    The foreign count (#564) is what this answer's revenue LEFT OUT:
+    subscriptions Stripe holds in a currency UBB does not admit, counted over
+    exactly the scope the revenue is fetched for, and 0 on a question that
+    asked for no revenue, because such an answer left nothing out.
+    """
+    from apps.metering.queries import economics
+    from apps.subscriptions.queries import (
+        foreign_currency_subscription_count, revenue_contributions,
+        supplied_revenue_covered_periods)
+
+    revenue_wanted = bool({ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+                           ANALYTICS_MEASURE_GROSS_MARGIN} & set(measures))
+    supplied = {}
+    foreign = 0
+    if revenue_wanted:
+        customer_ids = [filters.customer_id] if filters.customer_id else None
+        foreign = foreign_currency_subscription_count(
+            tenant_id, customer_ids=customer_ids)
+        supplied["contributed_revenue"] = revenue_contributions(
+            tenant_id, windows=_economic_buckets(window, bucket), basis=basis,
+            customer_ids=customer_ids)
+        supplied["covered_periods"] = supplied_revenue_covered_periods(
+            tenant_id, opens=window.opens, closes=window.closes,
+            customer_ids=customer_ids)
+    answer = economics(tenant_id, measures=measures, group_by=group_by,
+                       bucket=bucket, filters=filters, basis=basis,
+                       as_of=window.today, **supplied)
+    return answer, foreign
 
 
 def _economic_buckets(window, bucket):

@@ -622,9 +622,14 @@ class TestTheCustomerScopedSummaryIsTheSameQuestionFiltered:
     the WIDGET mount: its caller was an end customer with a widget token, not
     the tenant. The one query is on the tenant mount at the Read floor, so every
     question below is answerable — by the tenant. A widget holder cannot ask
-    it. `me_endpoints.py` carries the same statement where the route used to be;
-    restoring a customer-facing rollup is a widget-surface ticket's, and #501
-    neither does it nor pretends the collapse did.
+    it. Restoring a customer-facing rollup was a widget-surface ticket's, and #501
+    neither did it nor pretended the collapse did.
+
+    **W5 RESTORED IT (#561), AS ITS OWN NARROWER ROUTE.** `GET /me/economics`
+    answers a widget holder over this same query, scoped by the token alone,
+    with the revenue and the recorded events and nothing else
+    (`test_an_end_customer_reads_its_own_usage.py`). The deleted path stays
+    deleted; the cases below still ask the tenant's mount.
     """
 
     @pytest.fixture(autouse=True)
