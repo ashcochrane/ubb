@@ -36,17 +36,19 @@ class TaskOut:
                 sends. Null where UBB did not stop this unit of work, or where its stop recorded no cause (the hourly safety
                 net's silent expiry).
             created_at (str):
-            event_count (int):
             reason_code (None | str): Why UBB stopped this unit of work: which bound was reached. UBB's own record of the
                 stop — nothing a caller sends, its `metadata` included, is read here. Null where UBB did not stop it — it is
                 still running, or its caller ended it (see `outcome_reason`) — and where UBB's stop recorded no cause: the
                 hourly safety net expires work nobody reported on silently.
+            recorded_events (int): How many metered usage events were recorded under this unit of work, its contained work's
+                included, whatever each was priced at. It never counts the Charge of a unit sold at one agreed price: that
+                Charge is revenue, in `total_billed_cost_micros`, not an event anybody reported.
             status (TaskOutStatus):
             task_id (str):
             total_billed_cost_micros (int): What this unit billed, in micros: the sum of the customer prices UBB has
                 resolved for its events and, for a unit sold at one agreed price that delivered, its Charge — included from the
                 close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in
-                `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.
+                `total_provider_cost_micros`, `recorded_events` or `unpriced_event_count`.
             total_provider_cost_micros (int):
             trigger_source (None | str): The mechanism that applied UBB's stop to this unit of work, as UBB recorded it —
                 never read from anything a caller sends. Null where UBB did not stop it, or where its stop recorded no mechanism
@@ -68,8 +70,8 @@ class TaskOut:
     ceiling_status: TaskOutCeilingStatus
     control_family: None | TaskOutControlFamilyType0
     created_at: str
-    event_count: int
     reason_code: None | str
+    recorded_events: int
     status: TaskOutStatus
     task_id: str
     total_billed_cost_micros: int
@@ -105,10 +107,10 @@ class TaskOut:
 
         created_at = self.created_at
 
-        event_count = self.event_count
-
         reason_code: None | str
         reason_code = self.reason_code
+
+        recorded_events = self.recorded_events
 
         status = self.status.value
 
@@ -188,8 +190,8 @@ class TaskOut:
             "ceiling_status": ceiling_status,
             "control_family": control_family,
             "created_at": created_at,
-            "event_count": event_count,
             "reason_code": reason_code,
+            "recorded_events": recorded_events,
             "status": status,
             "task_id": task_id,
             "total_billed_cost_micros": total_billed_cost_micros,
@@ -252,8 +254,6 @@ class TaskOut:
 
         created_at = d.pop("created_at")
 
-        event_count = d.pop("event_count")
-
         def _parse_reason_code(data: object) -> None | str:
             if data is None:
                 return data
@@ -261,6 +261,8 @@ class TaskOut:
 
         reason_code = _parse_reason_code(d.pop("reason_code"))
 
+
+        recorded_events = d.pop("recorded_events")
 
         status = TaskOutStatus(d.pop("status"))
 
@@ -391,8 +393,8 @@ class TaskOut:
             ceiling_status=ceiling_status,
             control_family=control_family,
             created_at=created_at,
-            event_count=event_count,
             reason_code=reason_code,
+            recorded_events=recorded_events,
             status=status,
             task_id=task_id,
             total_billed_cost_micros=total_billed_cost_micros,

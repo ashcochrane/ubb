@@ -429,13 +429,19 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 293 -> 294 in R10-W3 (G27): one migration — a money mode needs its
         # payment rail activated first.
         # 294 -> 296 in R10-W3 (#479, #516): two column renames.
-        "historical-migrations": (UNTIL_SLICE_8, 296, 19),
+        # 296 -> 300 in R10-W4 (ruling 1): four column renames, each away
+        # from the word that ruling retires.
+        # 300 -> 303 in R10-W4: the wallet's vocabulary lowercased, a usage
+        # invoice's skip reason given its choices, and a selling rule's
+        # method stated on every row.
+        "historical-migrations": (UNTIL_SLICE_8, 303, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT
         # move for that ticket's one migration: it belongs to a twentieth app
         # the rule does not name, it spells no retired word, and it is swept.
-        "the-vocabulary-registry": ("permanent", 11, 1),
+        # 11 -> 14 in R10-W4: the billing, referrals and team domain files.
+        "the-vocabulary-registry": ("permanent", 14, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
         "checks-whose-subject-is-a-retired-word": ("permanent", 14, 14),
         "the-workflows-foreign-input-names": ("permanent", 1, 1),

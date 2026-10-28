@@ -103,10 +103,10 @@ def handle_usage_recorded_referrals(event_id, payload):
 
             acc.total_earned_micros += reward_micros
             acc.total_referred_spend_micros += cost_micros
-            acc.event_count += 1
+            acc.rewarded_posting_count += 1
             acc.save(update_fields=[
                 "total_earned_micros", "total_referred_spend_micros",
-                "event_count", "updated_at",
+                "rewarded_posting_count", "updated_at",
             ])
     else:
         # No cap — use atomic F() increment (no lock needed)
@@ -115,7 +115,7 @@ def handle_usage_recorded_referrals(event_id, payload):
         ).update(
             total_earned_micros=F("total_earned_micros") + reward_micros,
             total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
-            event_count=F("event_count") + 1,
+            rewarded_posting_count=F("rewarded_posting_count") + 1,
         )
 
         if rows == 0:
@@ -124,7 +124,7 @@ def handle_usage_recorded_referrals(event_id, payload):
                     referral=referral,
                     total_earned_micros=reward_micros,
                     total_referred_spend_micros=cost_micros,
-                    event_count=1,
+                    rewarded_posting_count=1,
                 )
             except IntegrityError:
                 ReferralRewardAccumulator.objects.filter(
@@ -132,7 +132,7 @@ def handle_usage_recorded_referrals(event_id, payload):
                 ).update(
                     total_earned_micros=F("total_earned_micros") + reward_micros,
                     total_referred_spend_micros=F("total_referred_spend_micros") + cost_micros,
-                    event_count=F("event_count") + 1,
+                    rewarded_posting_count=F("rewarded_posting_count") + 1,
                 )
 
     # Mark flat fee as paid

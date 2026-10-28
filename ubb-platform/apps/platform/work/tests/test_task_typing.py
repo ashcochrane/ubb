@@ -91,10 +91,10 @@ class TestTaskTyping:
     def test_unrelated_field_still_saves(self):
         t, c = self._tc()
         unit = self._unit(t, c, "invoice_batch")
-        unit.event_count = 5
+        unit.recorded_events = 5
         unit.save()
         unit.refresh_from_db()
-        assert unit.event_count == 5
+        assert unit.recorded_events == 5
 
     # --- two altitudes, and no third --------------------------------------
 

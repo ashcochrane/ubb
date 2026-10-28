@@ -392,7 +392,15 @@ def test_the_adapter_is_imported_one_way(legacy):
         f"the adapter must be imported as `{ADAPTER_SPECIFIER}`, so that the "
         f"allowlist can see every site that reaches it:\n  "
         + "\n  ".join(offenders))
-    assert scanned.humanisers, "no humanising site found — the import scan is blind"
+    # ⚠ R10-W4 PAID THE LAST HUMANISING DEBT, so the real tree has no
+    # humanising site left for this guard to find, and requiring one would ask
+    # for the debt back. The scan that would have found one is the same import
+    # scan that finds the adapter's importers, so the guard asks it for those —
+    # the readers of the two Stripe maps the adapter keeps as permanent
+    # exceptions. That the same scan turns a humaniser import into a site is
+    # proven on a synthetic console by
+    # `test_a_file_importing_the_humaniser_becomes_a_site`.
+    assert scanned.importers, "no importer of the adapter found — the import scan is blind"
 
 
 def test_every_adapter_export_is_classified(legacy):
@@ -599,8 +607,10 @@ def test_a_paid_humanising_debt_names_a_file_that_still_exists(legacy):
             f"`{path}` no longer exists, so the absence below is vacuous. If the "
             f"component was genuinely removed, delete its line here and say so")
     # And the scan that reports the absence is not itself blind — section 3 asserts
-    # this too, for the other half of the same reason.
-    assert scanned.humanisers, "no humanising site found anywhere — the scan is blind"
+    # this too, for the other half of the same reason. Since R10-W4 paid the
+    # last debt there is no humanising site left to find, so the scan is asked
+    # for the importers it still has (see `test_the_adapter_is_imported_one_way`).
+    assert scanned.importers, "no importer of the adapter found anywhere — the scan is blind"
 
 
 def test_every_humanising_debt_is_either_outstanding_or_paid(programme):
@@ -1005,7 +1015,7 @@ function {MAP_CONSTRUCTOR}(map: Record<string, string>) {{ return map; }}
 
 export const widgetStateLabel = {MAP_CONSTRUCTOR}({{ idle: "Idle" }});
 
-export function roleRank(role: string): number {{ return role.length; }}
+export const TASK_STATUSES = ["queued"];
 """
 
 
@@ -1045,7 +1055,7 @@ def test_negative_control_a_privately_built_map_is_a_fault(tmp_path):
 
 def test_negative_control_an_export_clause_is_a_fault(tmp_path):
     _, faults = write_console(
-        tmp_path, adapter=ADAPTER_SOURCE + "\nexport { roleRank as rank };\n")
+        tmp_path, adapter=ADAPTER_SOURCE + "\nexport { TASK_STATUSES as statuses };\n")
     assert only(faults) == codes.ADAPTER_ESCAPED
 
 

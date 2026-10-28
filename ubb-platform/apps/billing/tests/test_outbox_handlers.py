@@ -638,7 +638,7 @@ class TestAKnownZeroPriceIsAPrice:
         self._handle(tenant, customer, cost_micros=0, billed_cost_micros=0)
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
-        assert period.event_count == 1
+        assert period.recorded_events == 1
         assert period.total_billed_cost_micros == 0
         wallet.refresh_from_db()
         assert wallet.balance_micros == 10_000_000
@@ -651,7 +651,7 @@ class TestAKnownZeroPriceIsAPrice:
                      billed_cost_micros=None, pricing_status="unknown")
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
-        assert (period.event_count, period.total_billed_cost_micros) == (1, 0)
+        assert (period.recorded_events, period.total_billed_cost_micros) == (1, 0)
         assert not WalletTransaction.objects.filter(wallet=wallet).exists()
 
     def test_a_negative_known_price_is_refused_by_name_and_moves_nothing(self):

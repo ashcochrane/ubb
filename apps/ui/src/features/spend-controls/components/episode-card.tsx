@@ -239,7 +239,7 @@ export function EpisodeCard({ row, currency }: { row: EpisodeRow; currency: stri
         ) : (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-text-secondary">
             <span>
-              {eventCount(row.itemised.event_count)} landed past the stop · billed{" "}
+              {eventCount(row.itemised.posting_count)} landed past the stop · billed{" "}
               <Reading reading={readItemisedPrice(row.itemised)} currency={currency} /> · provider
               cost <Reading reading={readItemisedCost(row.itemised)} currency={currency} />
             </span>

@@ -41,7 +41,7 @@ class GetPeriodTotalsTest(TestCase):
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_billed_cost_micros"], 3_000_000)
-        self.assertEqual(totals["event_count"], 2)
+        self.assertEqual(totals["recorded_events"], 2)
 
     def test_sums_billed_cost(self):
         Posting.objects.create(
@@ -55,7 +55,7 @@ class GetPeriodTotalsTest(TestCase):
     def test_returns_zeros_for_empty_period(self):
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_billed_cost_micros"], 0)
-        self.assertEqual(totals["event_count"], 0)
+        self.assertEqual(totals["recorded_events"], 0)
 
     def test_filters_by_tenant(self):
         other_tenant = Tenant.objects.create(name="Other")
@@ -66,7 +66,7 @@ class GetPeriodTotalsTest(TestCase):
         )
         totals = get_period_totals(self.tenant.id, self.start, self.end)
         self.assertEqual(totals["total_billed_cost_micros"], 0)
-        self.assertEqual(totals["event_count"], 0)
+        self.assertEqual(totals["recorded_events"], 0)
 
     def test_arrival_basis_windows_on_created_at(self):
         """basis="arrival" counts a backdated event by WHEN IT ARRIVED;
@@ -80,9 +80,9 @@ class GetPeriodTotalsTest(TestCase):
         Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=90))
         effective = get_period_totals(self.tenant.id, self.start, self.end)
-        self.assertEqual(effective["event_count"], 0)
+        self.assertEqual(effective["recorded_events"], 0)
         arrival = get_period_totals(self.tenant.id, self.start, self.end, basis="arrival")
-        self.assertEqual(arrival["event_count"], 1)
+        self.assertEqual(arrival["recorded_events"], 1)
         self.assertEqual(arrival["total_billed_cost_micros"], 1_000_000)
 
     def test_invalid_basis_raises(self):
@@ -120,7 +120,7 @@ class GetPeriodTotalsTest(TestCase):
         # count excludes — a reader taking the count as a caveat on this figure
         # would report a period partial in the one number that never is.
         assert totals["total_billed_cost_micros"] == 3_000_000
-        assert totals["event_count"] == 2
+        assert totals["recorded_events"] == 2
 
     def test_a_cost_that_does_not_exist_is_not_a_cost_that_is_missing(self):
         """`not_applicable` carries a NULL amount and SQL skips it identically,
@@ -258,7 +258,7 @@ class GetCostTotalsTest(TestCase):
         t = get_customer_cost_totals(self.tenant.id, self.customer.id, self.start, self.end)
         assert t["provider_cost_micros"] == 1_000_000
         assert t["billed_cost_micros"] == 1_300_000
-        assert t["event_count"] == 2
+        assert t["posting_count"] == 2
 
     def test_per_customer_cost_totals(self):
         from apps.metering.queries import get_per_customer_cost_totals

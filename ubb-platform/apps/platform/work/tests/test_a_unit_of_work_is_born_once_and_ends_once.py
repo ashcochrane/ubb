@@ -393,7 +393,7 @@ class EverythingElseStillMovesTest(UnitOfWorkTransitionTestBase):
             self._killed,
             total_provider_cost_micros=9_000_000,
             total_billed_cost_micros=12_000_000,
-            event_count=7, unresolved_event_count=1,
+            recorded_events=7, unresolved_event_count=1,
             metadata={"kept": "the caller's own key"})
 
     def test_re_sending_what_the_row_holds_is_not_a_move(self):
@@ -494,15 +494,23 @@ class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
     transactionally, so it leaves with the test (`SET CONSTRAINTS ALL
     IMMEDIATE` first, for the reason `usage`'s #553 module gives). Rows are
     written as the code before it wrote them: UBB's stop facts as keys of
-    `metadata`, beside the caller's own."""
+    `metadata`, beside the caller's own.
+
+    ⚠ ROWS ARE READ BACK AS `0029` LEFT THEM, through that state's own model
+    rather than the live one. The live `Task` is the LATEST schema, and once a
+    later migration changes the table (`0030` renames the count column, R10-W4)
+    the live model asks for a column `0029` does not have."""
 
     CALLERS = {"kept": "the caller's own key"}
 
     def setUp(self):
         super().setUp()
         _migrate_to(INSTALLED_BY)
-        self.before = (MigrationExecutor(connection).loader
-                       .project_state(INSTALLED_BY).apps.get_model("work", "Task"))
+        loader = MigrationExecutor(connection).loader
+        self.before = loader.project_state(INSTALLED_BY).apps.get_model(
+            "work", "Task")
+        self.after = loader.project_state(WIDENED_BY).apps.get_model(
+            "work", "Task")
 
     def _row(self, status, metadata, **more):
         return self.before.objects.create(
@@ -511,7 +519,7 @@ class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
             **more).id
 
     def _recorded(self, unit_id):
-        unit = Task.objects.get(id=unit_id)
+        unit = self.after.objects.get(id=unit_id)
         return {column: getattr(unit, column) for column in STOP_FACTS}
 
     def test_ubbs_stops_move_and_the_callers_keys_stay(self):
@@ -545,12 +553,13 @@ class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
             **dict.fromkeys(STOP_FACTS),
             STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE})
         for moved in (killed, expired, withdrawn):
-            self.assertEqual(Task.objects.get(id=moved).metadata, self.CALLERS)
+            self.assertEqual(self.after.objects.get(id=moved).metadata,
+                             self.CALLERS)
         for untouched in (running, cancelled):
             with self.subTest(untouched=untouched):
                 self.assertEqual(self._recorded(untouched),
                                  dict.fromkeys(STOP_FACTS))
-                self.assertEqual(Task.objects.get(id=untouched).metadata,
+                self.assertEqual(self.after.objects.get(id=untouched).metadata,
                                  {**recorded, **self.CALLERS})
 
     def test_the_reverse_puts_every_moved_fact_back(self):
@@ -592,7 +601,7 @@ class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
         }
         ladder = work_queries.expiry_windows(self.tenant.id)
         for unit_id, windows in expected.items():
-            unit = Task.objects.get(id=unit_id)
+            unit = self.after.objects.get(id=unit_id)
             live = work_queries.windows_of_a_unit(
                 ladder, parent_id=unit.parent_id, task_type=unit.task_type)
             with self.subTest(task_type=unit.task_type):

@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,504 of 2,969 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,580 of 3,055 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    42 files, 120 occurrences
+    #     units    47 files, 138 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -2993,6 +2993,36 @@ measurement_key:
     # Field's retired noun. The six are the generated SDK models of the four
     # renamed components (two of them the inline scope sets), regenerated
     # under the new names and swept where they landed.
+    #
+    # 2026-10-27, R10-W4 (ruling 1): 2,503 of 2,968 -> 2,503 of
+    # 2,972 tracked files (`units` UNMOVED). Four files arrived, all
+    # migrations excluded under `historical-migrations` (296 -> 300): the
+    # count columns renamed away from the word the ruling retires
+    # (`tenant_billing/0015`, `work/0030`, `subscriptions/0019`,
+    # `referrals/0008`), so the exclusions stand at 469 and nothing swept
+    # moved.
+    #
+    # 2026-10-28, R10-W4 (the vocabulary): 2,504 of 2,972 -> 2,580 of 3,055
+    # tracked files, and `units` ROSE, 42 -> 47 files and 120 -> 138
+    # occurrences — the counts above re-taken over the merged window. Every
+    # one of the eighteen was found and read, and every one is the
+    # rate-arithmetic sense: #558 published the Pricing Receipt as a typed
+    # schema, so a receipt component's stored per-key quantity — the key
+    # #366 ruled stays — reached the contract. One declaration on
+    # `PricingReceiptComponent` in `api/v1/schemas.py`, one property in each
+    # published document (`openapi/v1.json` and the console's snapshot, two
+    # occurrences apiece), ten in the SDK's generated model of that
+    # component, and three in the typed receipt's route test, one of them
+    # quoting a version-1 record in order to prove it is refused. None is
+    # the retired inline total, and `test_the_inline_unit_total_is_gone.py`
+    # admits the published one at exactly that schema and pointer, with a
+    # control that fails the day the admission stops being used. Three migrations arrived, excluded under
+    # `historical-migrations` (300 -> 303: `wallets/0014`, `invoicing/0011`,
+    # `pricing/0034`), and three domain files under `the-vocabulary-registry`
+    # (11 -> 14: billing, referrals, team). The rest is swept: the console's
+    # binding modules for the twenty concepts the window declared, its new
+    # tests on every surface, ADR-0024, and the generated SDK models of the
+    # concepts the contract now advertises as enums.
 
     - term: units
       retired_as: >-
@@ -3142,7 +3172,7 @@ total_billed_cost_micros:
     `billed_cost_micros` over its postings. On a billing period it is placed
     by arrival and INCLUDES a fixed-price unit of work's charge, which is
     revenue and which UBB's platform fee is a percentage of — while the
-    period's `event_count` beside it counts metered events only (#563). The
+    period's `recorded_events` beside it counts metered events only (#563). The
     stop payload gives the same sum over one unit of work the same name.
   # A column name rather than a value set, filed here for the reason
   # `live_counter_maintenance_enabled` is: the retired spelling needs an alias

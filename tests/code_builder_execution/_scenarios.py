@@ -341,10 +341,10 @@ def _a_delivered_lifecycle(outcome: Outcome) -> None:
         assert answered["outcome_reason"] is None, answered
         assert answered["unresolved_event_count"] == 0, answered
         assert answered["unpriced_event_count"] == 0, answered
-    assert (subtask["event_count"], subtask["total_provider_cost_micros"],
+    assert (subtask["recorded_events"], subtask["total_provider_cost_micros"],
             subtask["total_billed_cost_micros"]) == (
         1, REPORTED_MICROS, _marked_up(REPORTED_MICROS))
-    assert (task["event_count"], task["total_provider_cost_micros"],
+    assert (task["recorded_events"], task["total_provider_cost_micros"],
             task["total_billed_cost_micros"]) == (
         2, chat_cost + REPORTED_MICROS,
         _marked_up(chat_cost) + _marked_up(REPORTED_MICROS))
@@ -494,7 +494,7 @@ def _stopped_by_its_ceiling(outcome: Outcome) -> None:
     task = outcome.tenant.task(ran.said["task_id"])
     assert task["status"] == TASK_STATUS_KILLED, task
     assert task["outcome_reason"] is None, task
-    assert (task["event_count"], task["total_provider_cost_micros"]) == (
+    assert (task["recorded_events"], task["total_provider_cost_micros"]) == (
         2, 2 * STOP_RATES.cost(searches=2)), task
 
 
@@ -845,7 +845,7 @@ def _the_cost_read_off_the_response(outcome: Outcome) -> None:
         SOURCE_KIND_PROVIDER_RESPONSE), receipt
     task = outcome.tenant.task(ran.said["task_id"])
     assert task["status"] == TASK_STATUS_COMPLETED, task
-    assert (task["event_count"], task["total_provider_cost_micros"]) == (
+    assert (task["recorded_events"], task["total_provider_cost_micros"]) == (
         1, expected), task
 
 
@@ -1120,7 +1120,7 @@ def _charged_its_agreed_price(outcome: Outcome) -> None:
     # A delivered close is `completed`, with no reason (scenario 1).
     assert (task["status"], task["outcome_reason"]) == (
         TASK_STATUS_COMPLETED, None), task
-    assert (task["event_count"], task["total_provider_cost_micros"],
+    assert (task["recorded_events"], task["total_provider_cost_micros"],
             task["total_billed_cost_micros"]) == (1, cost, AGREED_PRICE), task
 
 

@@ -895,7 +895,7 @@ class TaskService:
                 unit.total_provider_cost_micros += int(provider_cost_micros)
             elif counts_as_unresolved(SUPPLIER_COST, costing_status):
                 unit.unresolved_event_count += 1
-            unit.event_count += 1
+            unit.recorded_events += 1
             # Tier-2 (D10): stamp the heartbeat in the SAME write so the
             # stale-task reaper can tell a live task from a crashed one. A
             # subtask event stamps its parent too — a tree whose children
@@ -905,7 +905,7 @@ class TaskService:
                                      "unpriced_event_count",
                                      "total_provider_cost_micros",
                                      "unresolved_event_count",
-                                     "event_count", "last_event_at",
+                                     "recorded_events", "last_event_at",
                                      "updated_at"])
 
         def _crossed_limit(unit):
@@ -1024,7 +1024,7 @@ class TaskService:
         provider-cost total must not.
 
         So it moves `total_billed_cost_micros` alone: never the provider-cost
-        total (the Charge is revenue, not supplier work), never `event_count`
+        total (the Charge is revenue, not supplier work), never `recorded_events`
         (the Charge is not an event anybody reported) and never the unpriced
         count (its price is `known`). A Charge's unit is always whole work —
         `ck_task_agreed_price_only_on_a_whole_fixed_unit` admits a pinned

@@ -58,7 +58,7 @@ class FeeCarryTestBase(TestCase):
             status="open", total_billed_cost_micros=usage_micros,
             # Non-zero so reconcile_period does not zero the cost: this test DB
             # holds no Postings to recompute from.
-            event_count=1)
+            recorded_events=1)
         TenantBillingService.close_period(period)
         period.refresh_from_db()
         return period

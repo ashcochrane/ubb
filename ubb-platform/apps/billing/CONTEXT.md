@@ -548,10 +548,11 @@ Every metered usage event recorded in the period, whatever it was priced at — 
 zero-priced included — and never a Task Charge, which is synthetic revenue rather than an event
 the tenant recorded (#563). So the period's money INCLUDES what its count EXCLUDES. Both writers —
 the live accumulator and the close's reconcile — decide it from the posting's kind and nothing
-else. Published as `recorded_events`, the registry's measure; `event_count` is only the column's
-internal name. (`TenantBillingPeriod.event_count`)
+else. Published as `recorded_events`, the registry's measure, and the column carries the same
+name since R10-W4 (ruling 1). (`TenantBillingPeriod.recorded_events`)
 _Avoid_: deciding what counts from a price, a pricing status or a Task link — metered usage under
-a running unit of work carries a Task too.
+a running unit of work carries a Task too; and a second, generic name for the count — the one it
+had before R10-W4 is a retired alias of the measure in `economics.yaml`.
 
 **Platform fee**:
 UBB's own charge to the tenant, computed per-product at the tenant's own period close. The

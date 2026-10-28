@@ -865,7 +865,9 @@ CONCEPTS_IN_THE_CONTRACT = {
     # inherits the acknowledgement's field and its marker.
     # +1 in #558 (R10-W4): the typed receipt's price section — the value the
     # lifted fields above were lifted OUT of is now marked where it lives too.
-    "pricing_method": Published(8, ENUM),
+    # 8 -> 9 in R10-W4: `RateOut` publishes a rule's method (#190 comment
+    # 5831552855), required and null only on a cost book's rate.
+    "pricing_method": Published(9, ENUM),
     # WHICH ARITHMETIC A RULE RUNS (#366) — seven nodes, which is every schema
     # that carries a rule in either direction rather than a subset of them.
     # Three are the immediate rate routes: the body that opens a rule, the body
@@ -1681,11 +1683,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # that shows one changing, and the inherited rule a client copies from.
     # ⚠ SEVEN SINCE #569: the receipt now goes on the typed batch item too (it
     # inherits the acknowledgement), so by the rule the method does.
+    # ⚠ AND `RateOut` SINCE R10-W4: the rate a read answers with had hidden
+    # its rule's method, so a margin rule (stored with zero terms) read as a
+    # price of zero (#190 comment 5831552855). By the rule — every schema
+    # carrying a rule in either direction — it was owed.
     placed("pricing_method", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventDetailOut",
                               "BookRateChangeIn", "CustomerOverrideIn",
                               "RuleTermsOut", "InheritedPricingRule",
-                              "PricingReceiptPricing"})
+                              "PricingReceiptPricing", "RateOut"})
     # The rate's arithmetic shape (#366), on every schema carrying a rule in
     # either direction. The two `Rate*` schemas are the immediate reprice and
     # the row a read answers with; `BookRateChangeIn` and `RuleTermsOut` are the

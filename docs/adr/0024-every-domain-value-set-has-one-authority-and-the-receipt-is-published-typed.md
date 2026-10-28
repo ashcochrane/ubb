@@ -99,13 +99,13 @@ held in storage rather than a departure from it.
 source `auto_topup` to `auto_top_up` (ADR-0006 §2); two `CHECK`s admit only the registry's sets. No
 form other than the registry's is accepted afterwards.
 
-### 7. One name per counted concept; `event_count` is retired
+### 7. One name per counted concept, and the shared count name is retired
 
-The eight public fields that spelled `event_count` take the name of what each counts:
+The eight public fields that shared one count name take the name of what each counts:
 `recorded_events` on a unit of work (and the billing period's column), `count` on an economic
 measure's figure slot, `posting_count` on the four posting-count reads and the cost accumulator,
-`rewarded_posting_count` on the referral reward accumulator. `event_count` is a retired alias of
-`analytics_measure`, so the sweep refuses it on every living surface.
+`rewarded_posting_count` on the referral reward accumulator. The shared name is a retired alias
+of `analytics_measure`, so the sweep refuses it on every living surface.
 
 ### 8. The grouping field's names carry no retired word (#541)
 

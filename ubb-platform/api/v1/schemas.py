@@ -1833,14 +1833,24 @@ class CloseTaskRequest(Schema):
 #: carry it (#553 A9, ADR-0021 §3). A unit sold at one agreed price earns its
 #: revenue as ONE Charge when it delivers, projected onto one posting under
 #: the unit; that posting reaches this total and nothing else — never the
-#: provider-cost total, the event count or the unpriced count.
+#: provider-cost total, `recorded_events` or the unpriced count.
 TASK_BILLED_TOTAL_MEANING = (
     "What this unit billed, in micros: the sum of the customer prices UBB "
     "has resolved for its events and, for a unit sold at one agreed price "
     "that delivered, its Charge — included from the close that created it. "
     "`unpriced_event_count` says how many events it does not include. The "
-    "Charge is never in `total_provider_cost_micros`, `event_count` or "
+    "Charge is never in `total_provider_cost_micros`, `recorded_events` or "
     "`unpriced_event_count`.")
+
+#: WHAT A UNIT'S COUNT HOLDS, published once for the two schemas that carry it
+#: (R10-W4 ruling 1: the registry's measure, under its canonical name). The
+#: column behind it is `Task.recorded_events`, which the metered recording
+#: path increments and the Charge's projection never does (G14 pin 2).
+TASK_RECORDED_EVENTS_MEANING = (
+    "How many metered usage events were recorded under this unit of work, "
+    "its contained work's included, whatever each was priced at. It never "
+    "counts the Charge of a unit sold at one agreed price: that Charge is "
+    "revenue, in `total_billed_cost_micros`, not an event anybody reported.")
 
 
 class CloseTaskResponse(Schema):
@@ -1880,7 +1890,7 @@ class CloseTaskResponse(Schema):
     #: And the price half (#351), on the same terms; closing a unit prices
     #: nothing that was never resolved.
     unpriced_event_count: int
-    event_count: int
+    recorded_events: int = Field(description=TASK_RECORDED_EVENTS_MEANING)
 
 
 class TaskOut(Schema):
@@ -1968,7 +1978,7 @@ class TaskOut(Schema):
     #: A `waived` price and a `not_applicable` one are not counted: neither is
     #: missing information, and a caveat that is always on is one nobody reads.
     unpriced_event_count: int
-    event_count: int
+    recorded_events: int = Field(description=TASK_RECORDED_EVENTS_MEANING)
     task_cogs_ceiling_micros: Optional[int] = None
     #: THE AGREED PRICE THIS UNIT OF WORK PINNED WHEN IT STARTED, where its
     #: kind of work is sold at one agreed price rather than per event (#415).
@@ -2037,7 +2047,7 @@ def task_out(t, keys):
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
         "unpriced_event_count": t.unpriced_event_count,
-        "event_count": t.event_count,
+        "recorded_events": t.recorded_events,
         "task_cogs_ceiling_micros": t.task_cogs_ceiling_micros,
         "agreed_price_micros": t.agreed_price_micros,
         # Derived on the row, read here — one derivation, not a second.
@@ -4022,8 +4032,13 @@ class EconomicMeasureOut(Schema):
     #:
     #: ⚠ A SEPARATE FIELD RATHER THAN A SHARED ONE, because a count carried in a
     #: field whose name ends `_micros` would read as a hundredth of a cent. The
-    #: measure's own name says which of the two is filled.
-    event_count: Optional[int] = None
+    #: measure's own name says which of the two is filled — which is why this
+    #: slot is plain `count` (R10-W4 ruling 1): `measure` beside it already
+    #: says what is being counted.
+    count: Optional[int] = Field(None, description=(
+        "The count measure's figure: under `recorded_events`, how many metered "
+        "usage events this row covers, never a Task Charge. Null on the three "
+        "measures denominated in money, and wherever no figure can be stated."))
     status: MeasureStatus
     #: How many postings the supplier-cost total could not include. Present on
     #: the cost measure and on nothing else, because the two counts in this
@@ -4509,8 +4524,8 @@ class TenantBillingPeriodOut(Schema):
         "meaning as the stop payload's sum over one unit of work. UBB's "
         "platform fee is a percentage of it."))
     #: The registry's measure, by its canonical name (`analytics_measure`'s
-    #: `recorded_events`; the owner's review of #619): the column behind it
-    #: keeps the internal name `event_count`.
+    #: `recorded_events`; the owner's review of #619). The column behind it
+    #: took the same name in R10-W4 (ruling 1).
     recorded_events: int = Field(description=(
         "Every metered usage event recorded in this period, whatever it was "
         "priced at — unpriced and zero-priced events included. It EXCLUDES "
@@ -4527,7 +4542,7 @@ def tenant_billing_period_out(p):
         "period_end": p.period_end.isoformat(),
         "status": p.status,
         "total_billed_cost_micros": p.total_billed_cost_micros,
-        "recorded_events": p.event_count,
+        "recorded_events": p.recorded_events,
         "platform_fee_micros": p.platform_fee_micros,
     }
 
@@ -4991,7 +5006,10 @@ class ItemisedEventsOut(Schema):
     — each total adding what is resolved and counting what is not, so a row
     can never read complete while its own events read partial."""
     events: list[ItemisedEventRow]
-    event_count: int
+    posting_count: int = Field(description=(
+        "How many postings `events` lists — the rows the totals beside it add "
+        "up. A delivered fixed-price unit's Charge projects onto one posting, "
+        "and the set can include it."))
     billed_cost_micros: int
     unpriced_event_count: int
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
@@ -5088,7 +5106,9 @@ class SpendControlFamilyTotalsRow(Schema):
     """One family's totals over exactly the itemised events of the episodes
     shown, each event counted once per family, both denominations."""
     control_family: ControlFamily
-    event_count: int
+    posting_count: int = Field(description=(
+        "How many distinct postings this family's episodes itemise, each "
+        "counted once. The set can include a Task Charge's projected posting."))
     billed_cost_micros: int
     unpriced_event_count: int
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(

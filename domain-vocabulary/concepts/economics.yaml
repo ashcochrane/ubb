@@ -737,6 +737,18 @@ analytics_measure:
     # event is one provider call, so a second noun for it would create a second
     # public name for one concept (ADR-0006 §2).
     - recorded_operations
+    # One generic name for three living senses, so a reader could not tell
+    # from the name which rows were counted. R10-W4 ruling 1 gave each sense
+    # its own: `recorded_events` on a Task and on a billing period (this
+    # measure, at those scopes); `posting_count` on the posting-count reads —
+    # an episode's itemised events, a family's totals, a seat's and a
+    # business's margin — and on the monthly cost accumulator, each of which
+    # can include a Task Charge's projected posting; and `count` on an
+    # economic measure's figure slot, where `measure` beside it says what is
+    # counted. The referral accumulator's, which counts only the postings that
+    # earned a reward, is `rewarded_posting_count`. The old spelling survives
+    # only in historical migrations, which must name the column they rename.
+    - event_count
   retired_senses:
     - term: operation
       retired_as: >-

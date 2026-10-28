@@ -849,7 +849,7 @@ describe("measure-state scenarios (#510)", () => {
     for (const entry of measuresOutsideRetentionHorizon("2020-09-18")) {
       expect(entry.status).toBe("unavailable_outside_retention_horizon");
       expect(entry.available_from).toBe("2020-09-18");
-      expect(entry.amount_micros ?? entry.event_count ?? null).toBeNull();
+      expect(entry.amount_micros ?? entry.count ?? null).toBeNull();
     }
   });
 

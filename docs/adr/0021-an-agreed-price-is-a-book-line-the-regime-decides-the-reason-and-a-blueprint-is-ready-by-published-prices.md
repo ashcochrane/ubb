@@ -84,8 +84,9 @@ Charge carries the line and the version.
 ### 3. The totals rule: the Charge is in what its unit of work billed (A9)
 
 A Charge's projection adds its posting's amount to the top-level Task's **billed** total, and to
-nothing else: never `total_provider_cost_micros`, never `event_count`, never the unpriced count. The
-close response carries it when that close created the Charge.
+nothing else: never `total_provider_cost_micros`, never `recorded_events` (the unit's count, so
+named since R10-W4), never the unpriced count. The close response carries it when that close
+created the Charge.
 
 The posting and the total are ONE FACT, by ADR-0020 §7's standard: the projection takes the amount
 into the Task (`TaskService.take_up_a_charge`) and writes the posting inside one transaction of its

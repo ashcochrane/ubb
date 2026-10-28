@@ -746,7 +746,7 @@ export interface EconomicMeasureScenario {
   readonly measure: AnalyticsMeasure;
   readonly status: MeasureStatus;
   readonly amount_micros?: number | null;
-  readonly event_count?: number | null;
+  readonly count?: number | null;
   readonly unresolved_event_count?: number | null;
   readonly unpriced_event_count?: number | null;
   readonly available_from?: string | null;
@@ -809,7 +809,7 @@ function measuresFrom(
       amount_micros: noMargin ? null : terms.revenue.micros - terms.cost.micros,
       status: marginStatus,
     },
-    { measure: "recorded_events", event_count: terms.events, status: "known" },
+    { measure: "recorded_events", count: terms.events, status: "known" },
   ];
 }
 
@@ -1054,7 +1054,7 @@ export function measuresOutsideRetentionHorizon(
     measure,
     status: "unavailable_outside_retention_horizon",
     ...(measure === "recorded_events"
-      ? { event_count: null }
+      ? { count: null }
       : { amount_micros: null }),
     ...(measure === "supplier_cogs" ? { unresolved_event_count: null } : {}),
     ...(measure === "customer_revenue" ? { unpriced_event_count: null } : {}),
@@ -1077,7 +1077,7 @@ export function measureNotApplicable(
   measure: AnalyticsMeasure,
 ): EconomicMeasureScenario {
   return measure === "recorded_events"
-    ? { measure, status: "not_applicable", event_count: null }
+    ? { measure, status: "not_applicable", count: null }
     : { measure, status: "not_applicable", amount_micros: null };
 }
 

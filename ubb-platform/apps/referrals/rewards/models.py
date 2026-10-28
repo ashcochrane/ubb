@@ -19,7 +19,11 @@ class ReferralRewardAccumulator(BaseModel):
     )
     total_earned_micros = models.BigIntegerField(default=0)
     total_referred_spend_micros = models.BigIntegerField(default=0)
-    event_count = models.IntegerField(default=0)
+    #: HOW MANY POSTINGS EARNED A REWARD — one per `usage.recorded` posting the
+    #: handler actually paid on (`apps/referrals/handlers.py`), never one that
+    #: earned nothing, hit the cap or was skipped. Not a count of the referred
+    #: customer's events, and named for what it counts (R10-W4 ruling 1).
+    rewarded_posting_count = models.IntegerField(default=0)
     last_payout_at = models.DateTimeField(null=True, blank=True)
     last_payout_amount_micros = models.BigIntegerField(default=0)
 

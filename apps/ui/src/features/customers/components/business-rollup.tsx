@@ -99,7 +99,7 @@ export function BusinessRollup({
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatEventCount(seat.event_count)}
+                    {formatEventCount(seat.posting_count)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatMicros(seat.total_revenue_micros, currency)}
@@ -124,7 +124,7 @@ export function BusinessRollup({
                 <TableCell>Totals</TableCell>
                 <TableCell />
                 <TableCell className="text-right tabular-nums">
-                  {formatEventCount(totals.event_count)}
+                  {formatEventCount(totals.posting_count)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatMicros(totals.total_revenue_micros, currency)}

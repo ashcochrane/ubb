@@ -428,7 +428,7 @@ class TestTerminalityNeverTouchesTheUsageRail(LifecycleEndpointTestBase):
         assert unit.status == TASK_STATUS_COMPLETED
         assert unit.total_billed_cost_micros == 7_000
         assert unit.total_provider_cost_micros == 3_000
-        assert unit.event_count == 1
+        assert unit.recorded_events == 1
 
         body = self._get(f"/api/v1/tasks/{unit.id}").json()
         assert body["total_provider_cost_micros"] == 3_000

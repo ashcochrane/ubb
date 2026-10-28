@@ -219,7 +219,10 @@ class SeatMarginOut(Schema):
     total_revenue_micros: int
     gross_margin_micros: int
     margin_percentage: float
-    event_count: int
+    posting_count: int = Field(description=(
+        "How many postings this customer has in the window the margin "
+        "covers — every posting, whatever its kind, so it can include a Task "
+        "Charge's projected posting. It is not the `recorded_events` measure."))
 
 
 # FIVE MARGIN BODIES WERE HERE AND ARE GONE (#501, slice 7 §1): one customer's
@@ -297,7 +300,9 @@ class BusinessMarginTotals(Schema):
         description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
     total_revenue_micros: int
     gross_margin_micros: int
-    event_count: int
+    posting_count: int = Field(description=(
+        "The seats' posting counts added up. Each counts every posting in the "
+        "window, so it can include a Task Charge's projected posting."))
 
 
 class BusinessMarginOut(Schema):

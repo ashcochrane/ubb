@@ -595,7 +595,7 @@ class MeteringTaskEndpointTest(TestCase):
         self.assertEqual(task.status, "killed")
         self.assertEqual(task.total_billed_cost_micros, 1_000_000)
         self.assertEqual(task.total_provider_cost_micros, 1_000_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
 
     # THE CLOSE'S OWN TESTS MOVED WITH THE ROUTE (#409), to
     # `test_task_lifecycle_endpoints.py`. It is no longer a metering endpoint:
@@ -615,7 +615,7 @@ class MeteringTaskEndpointTest(TestCase):
         victim_task.refresh_from_db()
         self.assertEqual(victim_task.total_billed_cost_micros, 0)
         self.assertEqual(victim_task.total_provider_cost_micros, 0)
-        self.assertEqual(victim_task.event_count, 0)
+        self.assertEqual(victim_task.recorded_events, 0)
         self.assertEqual(victim_task.status, "active")
 
     @patch("apps.platform.events.tasks.process_single_event")
@@ -627,7 +627,7 @@ class MeteringTaskEndpointTest(TestCase):
         task_b.refresh_from_db()
         self.assertEqual(task_b.total_billed_cost_micros, 0)
         self.assertEqual(task_b.total_provider_cost_micros, 0)
-        self.assertEqual(task_b.event_count, 0)
+        self.assertEqual(task_b.recorded_events, 0)
         self.assertEqual(task_b.status, "active")
 
     # ---- what the recording path publishes about completeness (#328) -------

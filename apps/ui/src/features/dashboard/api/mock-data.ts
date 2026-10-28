@@ -433,7 +433,7 @@ export interface MockDailyPoint {
   day: string;
   revenue_micros: number;
   provider_cost_micros: number;
-  event_count: number;
+  recorded_events: number;
 }
 
 /**
@@ -445,7 +445,7 @@ export function mockDailySeries(window: Window): MockDailyPoint[] {
     day,
     revenue_micros: (24 + ((i * 37) % 13)) * 1_000_000,
     provider_cost_micros: (20 + ((i * 23) % 8)) * 1_000_000,
-    event_count: 3_700 + ((i * 53) % 800),
+    recorded_events: 3_700 + ((i * 53) % 800),
   }));
 }
 
@@ -460,7 +460,7 @@ export function mockDailyEconomics(window: Window): Economics {
         measures: knownMeasures({
           cost_micros: point.provider_cost_micros,
           revenue_micros: point.revenue_micros,
-          events: point.event_count,
+          events: point.recorded_events,
         }),
       }),
     ),

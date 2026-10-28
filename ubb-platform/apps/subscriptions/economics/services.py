@@ -181,7 +181,7 @@ class MarginService:
             "total_revenue_micros": total_revenue,
             "gross_margin_micros": margin,
             "margin_percentage": float(pct),
-            "event_count": costs["event_count"],
+            "posting_count": costs["posting_count"],
         }
 
     @staticmethod
@@ -195,7 +195,7 @@ class MarginService:
                 "usage_revenue_micros", "provider_cost_micros",
                 UNRESOLVED_EVENT_COUNT_KEY, UNPRICED_EVENT_COUNT_KEY,
                 FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
-                "total_revenue_micros", "gross_margin_micros", "event_count"]
+                "total_revenue_micros", "gross_margin_micros", "posting_count"]
         totals = {k: 0 for k in keys}
         for d in per_seat:
             for k in keys:

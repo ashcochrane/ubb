@@ -216,7 +216,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
   seats: [
     {
       customer_id: CUS_SEAT_ENG,
-      event_count: 17_502,
+      posting_count: 17_502,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 0,
       usage_billed_micros: 120_400_000,
@@ -231,7 +231,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
     },
     {
       customer_id: CUS_SEAT_RES,
-      event_count: 8_907,
+      posting_count: 8_907,
       subscription_revenue_micros: 0,
       supplied_revenue_micros: 0,
       usage_billed_micros: 61_800_000,
@@ -246,7 +246,7 @@ export const MOCK_BUSINESS_MARGIN: BusinessMarginOut = {
     },
   ],
   totals: {
-    event_count: 26_409,
+    posting_count: 26_409,
     subscription_revenue_micros: 0,
     supplied_revenue_micros: 0,
     usage_revenue_micros: 182_200_000,

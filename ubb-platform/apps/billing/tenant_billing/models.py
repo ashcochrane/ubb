@@ -53,10 +53,11 @@ class TenantBillingPeriod(BaseModel):
     #: Every real `metered_usage` event recorded in the period, priced or
     #: not — and never a Task Charge, which is synthetic revenue rather
     #: than an event the tenant recorded (#563). So the money above
-    #: includes what this count excludes, deliberately. PUBLISHED as
-    #: `recorded_events`, the registry's measure; `event_count` is the
-    #: column's internal name only.
-    event_count = models.BigIntegerField(default=0)
+    #: includes what this count excludes, deliberately. Published under
+    #: this same name, the registry's measure (`analytics_measure`); the
+    #: column took it by `RenameField` in R10-W4 (ruling 1), so the stored
+    #: name and the published one are one name.
+    recorded_events = models.BigIntegerField(default=0)
     platform_fee_micros = models.BigIntegerField(default=0)
     #: THE CURRENCY THIS PERIOD'S MONEY IS IN, stamped from the tenant when
     #: the period opens. A fact about money names its currency (#145 §7.2),

@@ -291,7 +291,7 @@ class ALateReportOnATerminalUnitStillLandsTest(LifecycleTestBase):
                 self.assertFalse(verdicts["crossed_task_limit"])
                 self.assertEqual(unit.total_billed_cost_micros, 3_000_000)
                 self.assertEqual(unit.total_provider_cost_micros, 2_000_000)
-                self.assertEqual(unit.event_count, 1)
+                self.assertEqual(unit.recorded_events, 1)
 
     def test_a_late_report_on_terminal_contained_work_rolls_up(self):
         for terminal in sorted(TERMINAL_TASK_STATUSES):
@@ -304,7 +304,7 @@ class ALateReportOnATerminalUnitStillLandsTest(LifecycleTestBase):
                 parent.refresh_from_db()
                 self.assertEqual(parent.total_billed_cost_micros, 1_000_000)
                 self.assertEqual(parent.total_provider_cost_micros, 500_000)
-                self.assertEqual(parent.event_count, 1)
+                self.assertEqual(parent.recorded_events, 1)
 
     def test_a_terminal_state_does_not_become_a_refusal(self):
         task = self._force(self._task(), TASK_STATUS_EXPIRED)
@@ -312,4 +312,4 @@ class ALateReportOnATerminalUnitStillLandsTest(LifecycleTestBase):
             task.id, billed_cost_micros=1, provider_cost_micros=1)
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_EXPIRED)
-        self.assertEqual(unit.event_count, 1)
+        self.assertEqual(unit.recorded_events, 1)

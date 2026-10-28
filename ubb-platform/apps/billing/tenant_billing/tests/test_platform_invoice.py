@@ -25,7 +25,7 @@ class PlatformInvoiceStripeTest(TestCase):
             period_end=date(2026, 2, 1),
             status="closed",
             total_billed_cost_micros=100_000_000_000,
-            event_count=5000,
+            recorded_events=5000,
             platform_fee_micros=1_000_000_000,
         )
 

@@ -36,7 +36,7 @@ class TaskServiceCreateTest(TestCase):
         self.assertEqual(task.task_cogs_ceiling_micros, 10_000_000)
         self.assertEqual(task.total_billed_cost_micros, 0)
         self.assertEqual(task.total_provider_cost_micros, 0)
-        self.assertEqual(task.event_count, 0)
+        self.assertEqual(task.recorded_events, 0)
         self.assertEqual(task.tenant_id, self.tenant.id)
         self.assertEqual(task.customer_id, self.customer.id)
 
@@ -78,7 +78,7 @@ class TaskServiceAccumulateTest(TestCase):
             task.id, billed_cost_micros=3_000_000, provider_cost_micros=2_000_000)
         self.assertEqual(result.total_billed_cost_micros, 3_000_000)
         self.assertEqual(result.total_provider_cost_micros, 2_000_000)
-        self.assertEqual(result.event_count, 1)
+        self.assertEqual(result.recorded_events, 1)
         self.assertIsNotNone(result.last_event_at)
         self.assertEqual(verdicts, {"crossed_task_limit": False,
                                     "crossed_subtask_limit": False,
@@ -90,7 +90,7 @@ class TaskServiceAccumulateTest(TestCase):
             task.id, billed_cost_micros=2_000_000, provider_cost_micros=1_000_000)
         self.assertEqual(result.total_billed_cost_micros, 5_000_000)
         self.assertEqual(result.total_provider_cost_micros, 3_000_000)
-        self.assertEqual(result.event_count, 2)
+        self.assertEqual(result.recorded_events, 2)
         self.assertFalse(any(verdicts.values()))
 
     def test_crossing_provider_limit_returns_verdict_and_persists(self):
@@ -112,7 +112,7 @@ class TaskServiceAccumulateTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
         self.assertEqual(task.total_billed_cost_micros, 2_000_000)
-        self.assertEqual(task.event_count, 2)
+        self.assertEqual(task.recorded_events, 2)
         # accumulate_cost never kills — the caller owns the kill flow.
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
 
@@ -176,7 +176,7 @@ class TaskServiceAccumulateTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 1_000)
         self.assertEqual(task.total_provider_cost_micros, 5_000_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
 
     def test_accumulate_cost_on_completed_task_returns_not_active_and_persists(self):
         task = self._task(limit=self.limit)
@@ -189,7 +189,7 @@ class TaskServiceAccumulateTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 1_000)
         self.assertEqual(task.total_provider_cost_micros, 2_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
 
 
 class TaskServiceKillTest(TestCase):

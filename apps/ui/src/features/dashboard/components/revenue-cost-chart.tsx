@@ -31,8 +31,8 @@ function dayLabel(label: string | number | undefined): string {
     : String(label ?? "");
 }
 
-function eventCountLine(row: Record<string, unknown>): string | null {
-  const count = row["event_count"];
+function recordedEventsLine(row: Record<string, unknown>): string | null {
+  const count = row["recorded_events"];
   return typeof count === "number" ? `${formatEventCount(count)} events` : null;
 }
 
@@ -83,7 +83,7 @@ export default function RevenueCostChart({
                 series={series}
                 currency={currency}
                 labelFormatter={dayLabel}
-                footer={eventCountLine}
+                footer={recordedEventsLine}
               />
             }
             cursor={{ stroke: "var(--chart-grid)" }}

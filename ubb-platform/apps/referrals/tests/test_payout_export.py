@@ -25,7 +25,7 @@ class TestPayoutExport:
             snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
         )
         ReferralRewardAccumulator.objects.create(
-            referral=referral, total_earned_micros=500_000, total_referred_spend_micros=5_000_000, event_count=10,
+            referral=referral, total_earned_micros=500_000, total_referred_spend_micros=5_000_000, rewarded_posting_count=10,
         )
 
         resp = self.client.get(
@@ -83,11 +83,11 @@ class TestPayoutExport:
 
         ReferralRewardAccumulator.objects.create(
             referral=referral1, total_earned_micros=300_000,
-            total_referred_spend_micros=3_000_000, event_count=5,
+            total_referred_spend_micros=3_000_000, rewarded_posting_count=5,
         )
         ReferralRewardAccumulator.objects.create(
             referral=referral2, total_earned_micros=700_000,
-            total_referred_spend_micros=7_000_000, event_count=15,
+            total_referred_spend_micros=7_000_000, rewarded_posting_count=15,
         )
 
         resp = self.client.get(
@@ -115,7 +115,7 @@ class TestPayoutExport:
         )
         ReferralRewardAccumulator.objects.create(
             referral=other_referral, total_earned_micros=999_000,
-            total_referred_spend_micros=9_990_000, event_count=50,
+            total_referred_spend_micros=9_990_000, rewarded_posting_count=50,
         )
 
         resp = self.client.get(

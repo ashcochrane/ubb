@@ -117,7 +117,7 @@ class _TheSeam(BlueprintRoutes):
         assert closed["total_billed_cost_micros"] == PRICE
         # And the totals the Charge never reaches.
         assert closed["total_provider_cost_micros"] == SUPPLIER_COST
-        assert closed["event_count"] == 1
+        assert closed["recorded_events"] == 1
         assert closed["unpriced_event_count"] == 0
         # Exactly one Charge, as exactly one posting of the charge kind.
         charges = [posting for posting in self._postings_of(started["task_id"])
@@ -127,7 +127,7 @@ class _TheSeam(BlueprintRoutes):
         run = self._call("get", f"/api/v1/tasks/{started['task_id']}")
         assert run["total_billed_cost_micros"] == PRICE
         assert run["total_provider_cost_micros"] == SUPPLIER_COST
-        assert run["event_count"] == 1
+        assert run["recorded_events"] == 1
 
     def test_a_replayed_close_adds_nothing_to_the_billed_total(self):
         self._publish_agreed_price(SOLD_WHOLE, PRICE)

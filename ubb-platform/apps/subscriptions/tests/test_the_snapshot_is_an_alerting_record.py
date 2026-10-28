@@ -260,7 +260,7 @@ class TestTheAlertingReadsRemain:
             tenant=self.tenant, customer=self.customer,
             period_start=period_start, period_end=self.period_end,
             total_provider_cost_micros=cost, total_billed_cost_micros=billed,
-            event_count=1)
+            posting_count=1)
         return MarginService.snapshot_customer(
             self.tenant.id, self.customer.id, period_start, self.period_end)
 
@@ -428,7 +428,7 @@ class TestTheCacheIsInvalidatableAtAnyAge:
             tenant=self.tenant, customer=self.customer,
             period_start=self.closed_period, period_end=self.closes,
             total_provider_cost_micros=cost, total_billed_cost_micros=billed,
-            unresolved_event_count=unresolved, event_count=1)
+            unresolved_event_count=unresolved, posting_count=1)
         return MarginService.snapshot_customer(
             self.tenant.id, self.customer.id, self.closed_period, self.closes)
 

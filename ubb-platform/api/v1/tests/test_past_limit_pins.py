@@ -400,6 +400,6 @@ class PastLimitQueryFiltersTest(RailActivated, PastLimitPinTestBase):
         self.assertEqual(resp.status_code, 200, resp.content)
         measures = {entry["measure"]: entry
                     for entry in resp.json()["rows"][0]["measures"]}
-        self.assertEqual(measures["recorded_events"]["event_count"], 2)
+        self.assertEqual(measures["recorded_events"]["count"], 2)
         self.assertEqual(measures["customer_revenue"]["amount_micros"],
                          26_000_000)

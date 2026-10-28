@@ -173,8 +173,9 @@ class PeriodTotals(TypedDict):
     total_billed_cost_micros: int
     unpriced_event_count: int
     #: Every `metered_usage` posting, priced or not, and never a Task
-    #: Charge (#563) — decided by `Posting.kind` and nothing else.
-    event_count: int
+    #: Charge (#563) — decided by `Posting.kind` and nothing else. The
+    #: registry's `recorded_events` measure, under its own name.
+    recorded_events: int
     #: What the SUPPLIER charged, and how much of it UBB has learned. The pair
     #: travels together for the reason `core.cost_totals` states: a bare sum
     #: over a nullable column answers a number that looks complete and is not.
@@ -248,7 +249,8 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
 
     Returns BOTH pairs — the resolved customer-price total with
     `unpriced_event_count`, and the resolved supplier-cost total with
-    `unresolved_event_count` — plus the event count.
+    `unresolved_event_count` — plus `recorded_events`, the count of the
+    period's metered usage events.
     basis="effective" windows on effective_at (when the usage happened);
     basis="arrival" windows on created_at (when it was recorded) — used by
     tenant platform-fee reconciliation, which accrues fees in the ARRIVAL
@@ -283,7 +285,7 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
         # The canonical kind, and only it (#563; §0.4 D): a metered event
         # counts whatever it was priced at, and a Task Charge never does —
         # its money stays in the total beside this count.
-        event_count=Count("id", filter=Q(kind=USAGE_EVENT_KIND_METERED_USAGE)),
+        recorded_events=Count("id", filter=Q(kind=USAGE_EVENT_KIND_METERED_USAGE)),
         **cost_total_annotations(CUSTOMER_PRICE, key="total_billed_cost"),
         **cost_total_annotations(SUPPLIER_COST, key="total_provider_cost_micros"),
     )
@@ -296,7 +298,7 @@ def get_period_totals(tenant_id: str, period_start: date, period_end: date,
     return {
         "total_billed_cost_micros": totals["total_billed_cost"],
         UNPRICED_EVENT_COUNT_KEY: totals[UNPRICED_EVENT_COUNT_KEY],
-        "event_count": totals["event_count"] or 0,
+        "recorded_events": totals["recorded_events"] or 0,
         "total_provider_cost_micros": totals["total_provider_cost_micros"],
         UNRESOLVED_EVENT_COUNT_KEY: totals[UNRESOLVED_EVENT_COUNT_KEY],
     }
@@ -404,6 +406,10 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
     many of those events carry a supplier cost UBB has not resolved,
     `unpriced_event_count` how many carry a customer price it could not resolve.
     Different events, so different numbers.
+
+    `posting_count` is how many postings the totals add up — EVERY posting in
+    the window, whatever its kind, so a Task Charge's projected posting counts
+    here as its money does in the billed total. It is not `recorded_events`.
     """
     from apps.metering.usage.models import Posting
     agg = Posting.objects.filter(
@@ -422,7 +428,7 @@ def get_customer_cost_totals(tenant_id, customer_id, start_date, end_date) -> di
         UNRESOLVED_EVENT_COUNT_KEY: agg[UNRESOLVED_EVENT_COUNT_KEY],
         "billed_cost_micros": agg["billed"],
         UNPRICED_EVENT_COUNT_KEY: agg[UNPRICED_EVENT_COUNT_KEY],
-        "event_count": agg["count"] or 0,
+        "posting_count": agg["count"] or 0,
     }
 
 
@@ -500,7 +506,7 @@ def get_per_customer_cost_totals(tenant_id, start_date, end_date) -> list[dict]:
     ).values("customer_id").annotate(
         **cost_total_annotations(SUPPLIER_COST, key="provider_cost_micros"),
         **cost_total_annotations(CUSTOMER_PRICE, key="billed_cost_micros"),
-        event_count=Count("id"),
+        posting_count=Count("id"),
     ).order_by("-billed_cost_micros"))
     return [carry_cost_total(
         CUSTOMER_PRICE,
@@ -2580,7 +2586,7 @@ def _posting_grouped(tenant_id, postings, plans, bucket, *, covered) -> dict:
                            output_field=BooleanField())}
                           if inside is not None else {}))
                .annotate(
-                   event_count=Count("id"),
+                   posting_count=Count("id"),
                    **cost_total_annotations(SUPPLIER_COST,
                                             key="provider_cost_micros"),
                    **cost_total_annotations(CUSTOMER_PRICE,
@@ -2792,17 +2798,17 @@ def _accumulate(groups, key, row) -> None:
     """
     group = groups.setdefault(key, _empty_group())
     if row["kind"] != USAGE_EVENT_KIND_TASK_CHARGE:
-        group[ANALYTICS_MEASURE_RECORDED_EVENTS] += row["event_count"]
+        group[ANALYTICS_MEASURE_RECORDED_EVENTS] += row["posting_count"]
     group["provider_cost_micros"] += row["provider_cost_micros"]
     group[UNRESOLVED_EVENT_COUNT_KEY] += row[UNRESOLVED_EVENT_COUNT_KEY]
     unpriced = row[UNPRICED_EVENT_COUNT_KEY]
     group[UNPRICED_EVENT_COUNT_KEY] += unpriced
     if row.get(_COVERED_KEY):
-        group["resolved_revenue_pieces"] += row["event_count"]
+        group["resolved_revenue_pieces"] += row["posting_count"]
         return
     group["posting_revenue_micros"] += row["billed_cost_micros"]
     group["unpriced_outside_cover"] += unpriced
-    group["resolved_revenue_pieces"] += row["event_count"] - unpriced
+    group["resolved_revenue_pieces"] += row["posting_count"] - unpriced
 
 
 def _contributions_are_attributable(axes, contributions, bucket) -> bool:
@@ -2966,7 +2972,7 @@ def _economic_row(key, group, *, measures, attributable,
                 "amount_micros": NO_FIGURE,
                 UNPRICED_EVENT_COUNT_KEY: NO_FIGURE, **gone},
             ANALYTICS_MEASURE_RECORDED_EVENTS: {
-                "event_count": NO_FIGURE, **gone},
+                "count": NO_FIGURE, **gone},
             ANALYTICS_MEASURE_GROSS_MARGIN: {
                 "amount_micros": NO_FIGURE, **gone},
         }
@@ -2994,7 +3000,7 @@ def _economic_row(key, group, *, measures, attributable,
                 "status": revenue_state,
                 UNPRICED_EVENT_COUNT_KEY: group[UNPRICED_EVENT_COUNT_KEY]},
             ANALYTICS_MEASURE_RECORDED_EVENTS: {
-                "event_count": group[ANALYTICS_MEASURE_RECORDED_EVENTS],
+                "count": group[ANALYTICS_MEASURE_RECORDED_EVENTS],
                 "status": MEASURE_STATUS_KNOWN},
             ANALYTICS_MEASURE_GROSS_MARGIN: _margin(
                 revenue, group["provider_cost_micros"],

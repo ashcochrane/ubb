@@ -63,7 +63,7 @@ def _closed(**overrides) -> dict:
         "task_id": "task_1", "parent_task_id": None, "status": "completed",
         "outcome": "delivered", "replayed": False, "charge_created": False,
         "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
-        "unresolved_event_count": 0, "unpriced_event_count": 0, "event_count": 0,
+        "unresolved_event_count": 0, "unpriced_event_count": 0, "recorded_events": 0,
     }
     body.update(overrides)
     return body

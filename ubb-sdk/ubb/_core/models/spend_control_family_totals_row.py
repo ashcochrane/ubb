@@ -27,7 +27,8 @@ class SpendControlFamilyTotalsRow:
         Attributes:
             billed_cost_micros (int):
             control_family (SpendControlFamilyTotalsRowControlFamily):
-            event_count (int):
+            posting_count (int): How many distinct postings this family's episodes itemise, each counted once. The set can
+                include a Task Charge's projected posting.
             provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over this family's itemised
                 events, each counted once: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An
                 event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the
@@ -39,7 +40,7 @@ class SpendControlFamilyTotalsRow:
 
     billed_cost_micros: int
     control_family: SpendControlFamilyTotalsRowControlFamily
-    event_count: int
+    posting_count: int
     provider_cost_micros: int
     unpriced_event_count: int
     unresolved_event_count: int
@@ -54,7 +55,7 @@ class SpendControlFamilyTotalsRow:
 
         control_family = self.control_family.value
 
-        event_count = self.event_count
+        posting_count = self.posting_count
 
         provider_cost_micros = self.provider_cost_micros
 
@@ -68,7 +69,7 @@ class SpendControlFamilyTotalsRow:
         field_dict.update({
             "billed_cost_micros": billed_cost_micros,
             "control_family": control_family,
-            "event_count": event_count,
+            "posting_count": posting_count,
             "provider_cost_micros": provider_cost_micros,
             "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
@@ -88,7 +89,7 @@ class SpendControlFamilyTotalsRow:
 
 
 
-        event_count = d.pop("event_count")
+        posting_count = d.pop("posting_count")
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
@@ -99,7 +100,7 @@ class SpendControlFamilyTotalsRow:
         spend_control_family_totals_row = cls(
             billed_cost_micros=billed_cost_micros,
             control_family=control_family,
-            event_count=event_count,
+            posting_count=posting_count,
             provider_cost_micros=provider_cost_micros,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,

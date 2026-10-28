@@ -29,8 +29,9 @@ class ItemisedEventsOut:
 
         Attributes:
             billed_cost_micros (int):
-            event_count (int):
             events (list[ItemisedEventRow]):
+            posting_count (int): How many postings `events` lists — the rows the totals beside it add up. A delivered fixed-
+                price unit's Charge projects onto one posting, and the set can include it.
             provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over the events this episode
                 itemises: each event's canonical `provider_cost_micros`, whichever valid source supplied it. An event whose
                 supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it: the total is the
@@ -41,8 +42,8 @@ class ItemisedEventsOut:
      """
 
     billed_cost_micros: int
-    event_count: int
     events: list[ItemisedEventRow]
+    posting_count: int
     provider_cost_micros: int
     unpriced_event_count: int
     unresolved_event_count: int
@@ -56,14 +57,14 @@ class ItemisedEventsOut:
         from ..models.itemised_event_row import ItemisedEventRow
         billed_cost_micros = self.billed_cost_micros
 
-        event_count = self.event_count
-
         events = []
         for events_item_data in self.events:
             events_item = events_item_data.to_dict()
             events.append(events_item)
 
 
+
+        posting_count = self.posting_count
 
         provider_cost_micros = self.provider_cost_micros
 
@@ -76,8 +77,8 @@ class ItemisedEventsOut:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "billed_cost_micros": billed_cost_micros,
-            "event_count": event_count,
             "events": events,
+            "posting_count": posting_count,
             "provider_cost_micros": provider_cost_micros,
             "unpriced_event_count": unpriced_event_count,
             "unresolved_event_count": unresolved_event_count,
@@ -93,8 +94,6 @@ class ItemisedEventsOut:
         d = dict(src_dict)
         billed_cost_micros = d.pop("billed_cost_micros")
 
-        event_count = d.pop("event_count")
-
         events = []
         _events = d.pop("events")
         for events_item_data in (_events):
@@ -105,6 +104,8 @@ class ItemisedEventsOut:
             events.append(events_item)
 
 
+        posting_count = d.pop("posting_count")
+
         provider_cost_micros = d.pop("provider_cost_micros")
 
         unpriced_event_count = d.pop("unpriced_event_count")
@@ -113,8 +114,8 @@ class ItemisedEventsOut:
 
         itemised_events_out = cls(
             billed_cost_micros=billed_cost_micros,
-            event_count=event_count,
             events=events,
+            posting_count=posting_count,
             provider_cost_micros=provider_cost_micros,
             unpriced_event_count=unpriced_event_count,
             unresolved_event_count=unresolved_event_count,

@@ -665,5 +665,5 @@ def close(tenant, task_id, payload):
         "total_provider_cost_micros": closed.total_provider_cost_micros,
         "unresolved_event_count": closed.unresolved_event_count,
         "unpriced_event_count": closed.unpriced_event_count,
-        "event_count": closed.event_count,
+        "recorded_events": closed.recorded_events,
     }

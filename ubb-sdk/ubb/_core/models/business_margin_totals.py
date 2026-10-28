@@ -22,13 +22,14 @@ T = TypeVar("T", bound="BusinessMarginTotals")
 class BusinessMarginTotals:
     """ 
         Attributes:
-            event_count (int):
             foreign_currency_subscription_count (int): How many Stripe subscriptions the subscription revenue in this answer
                 leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts
                 nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this
                 is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact,
                 scoped like the figures it qualifies, and 0 where nothing was left out.
             gross_margin_micros (int):
+            posting_count (int): The seats' posting counts added up. Each counts every posting in the window, so it can
+                include a Task Charge's projected posting.
             provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over every seat's events in the
                 window, the seats' own totals added up: each event's canonical `provider_cost_micros`, whichever valid source
                 supplied it. An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count`
@@ -42,9 +43,9 @@ class BusinessMarginTotals:
             usage_revenue_micros (int):
      """
 
-    event_count: int
     foreign_currency_subscription_count: int
     gross_margin_micros: int
+    posting_count: int
     provider_cost_micros: int
     subscription_revenue_micros: int
     supplied_revenue_micros: int
@@ -59,11 +60,11 @@ class BusinessMarginTotals:
 
 
     def to_dict(self) -> dict[str, Any]:
-        event_count = self.event_count
-
         foreign_currency_subscription_count = self.foreign_currency_subscription_count
 
         gross_margin_micros = self.gross_margin_micros
+
+        posting_count = self.posting_count
 
         provider_cost_micros = self.provider_cost_micros
 
@@ -83,9 +84,9 @@ class BusinessMarginTotals:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
-            "event_count": event_count,
             "foreign_currency_subscription_count": foreign_currency_subscription_count,
             "gross_margin_micros": gross_margin_micros,
+            "posting_count": posting_count,
             "provider_cost_micros": provider_cost_micros,
             "subscription_revenue_micros": subscription_revenue_micros,
             "supplied_revenue_micros": supplied_revenue_micros,
@@ -102,11 +103,11 @@ class BusinessMarginTotals:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        event_count = d.pop("event_count")
-
         foreign_currency_subscription_count = d.pop("foreign_currency_subscription_count")
 
         gross_margin_micros = d.pop("gross_margin_micros")
+
+        posting_count = d.pop("posting_count")
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
@@ -123,9 +124,9 @@ class BusinessMarginTotals:
         usage_revenue_micros = d.pop("usage_revenue_micros")
 
         business_margin_totals = cls(
-            event_count=event_count,
             foreign_currency_subscription_count=foreign_currency_subscription_count,
             gross_margin_micros=gross_margin_micros,
+            posting_count=posting_count,
             provider_cost_micros=provider_cost_micros,
             subscription_revenue_micros=subscription_revenue_micros,
             supplied_revenue_micros=supplied_revenue_micros,

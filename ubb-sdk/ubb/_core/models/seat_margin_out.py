@@ -25,7 +25,6 @@ class SeatMarginOut:
 
         Attributes:
             customer_id (str):
-            event_count (int):
             foreign_currency_subscription_count (int): How many Stripe subscriptions the subscription revenue in this answer
                 leaves out because Stripe holds them in a currency UBB does not admit. UBB v1 is US dollars only and converts
                 nothing, so each is kept as Stripe stated it and excluded from every revenue and margin figure here; where this
@@ -33,6 +32,8 @@ class SeatMarginOut:
                 scoped like the figures it qualifies, and 0 where nothing was left out.
             gross_margin_micros (int):
             margin_percentage (float):
+            posting_count (int): How many postings this customer has in the window the margin covers — every posting,
+                whatever its kind, so it can include a Task Charge's projected posting. It is not the `recorded_events` measure.
             provider_cost_micros (int): The total supplier cost (COGS) UBB resolved, summed over this customer's events in
                 the window the margin covers: each event's canonical `provider_cost_micros`, whichever valid source supplied it.
                 An event whose supplier cost is unresolved adds nothing and is counted in `unresolved_event_count` beside it:
@@ -48,10 +49,10 @@ class SeatMarginOut:
      """
 
     customer_id: str
-    event_count: int
     foreign_currency_subscription_count: int
     gross_margin_micros: int
     margin_percentage: float
+    posting_count: int
     provider_cost_micros: int
     subscription_revenue_micros: int
     supplied_revenue_micros: int
@@ -69,13 +70,13 @@ class SeatMarginOut:
     def to_dict(self) -> dict[str, Any]:
         customer_id = self.customer_id
 
-        event_count = self.event_count
-
         foreign_currency_subscription_count = self.foreign_currency_subscription_count
 
         gross_margin_micros = self.gross_margin_micros
 
         margin_percentage = self.margin_percentage
+
+        posting_count = self.posting_count
 
         provider_cost_micros = self.provider_cost_micros
 
@@ -98,10 +99,10 @@ class SeatMarginOut:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "customer_id": customer_id,
-            "event_count": event_count,
             "foreign_currency_subscription_count": foreign_currency_subscription_count,
             "gross_margin_micros": gross_margin_micros,
             "margin_percentage": margin_percentage,
+            "posting_count": posting_count,
             "provider_cost_micros": provider_cost_micros,
             "subscription_revenue_micros": subscription_revenue_micros,
             "supplied_revenue_micros": supplied_revenue_micros,
@@ -121,13 +122,13 @@ class SeatMarginOut:
         d = dict(src_dict)
         customer_id = d.pop("customer_id")
 
-        event_count = d.pop("event_count")
-
         foreign_currency_subscription_count = d.pop("foreign_currency_subscription_count")
 
         gross_margin_micros = d.pop("gross_margin_micros")
 
         margin_percentage = d.pop("margin_percentage")
+
+        posting_count = d.pop("posting_count")
 
         provider_cost_micros = d.pop("provider_cost_micros")
 
@@ -147,10 +148,10 @@ class SeatMarginOut:
 
         seat_margin_out = cls(
             customer_id=customer_id,
-            event_count=event_count,
             foreign_currency_subscription_count=foreign_currency_subscription_count,
             gross_margin_micros=gross_margin_micros,
             margin_percentage=margin_percentage,
+            posting_count=posting_count,
             provider_cost_micros=provider_cost_micros,
             subscription_revenue_micros=subscription_revenue_micros,
             supplied_revenue_micros=supplied_revenue_micros,

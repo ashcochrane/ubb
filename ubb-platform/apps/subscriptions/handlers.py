@@ -70,7 +70,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     # EVERY EVENT IS RECORDED HERE, AND THE EARLY RETURN THAT STOOD HERE IS GONE
     # (#603 ruling 9). It dropped an event that "moved no money" — billed and
     # cost both at or below zero, nothing unresolved — so a known zero was
-    # discarded (the period's event count missed it until the hourly
+    # discarded (the period's `posting_count` missed it until the hourly
     # reconcile repaired it from the ledger), and so was a known NEGATIVE
     # supplier cost, which the records hold faithfully and the period's COGS
     # total has to carry. Zero is a real known value and a negative cost is a
@@ -108,7 +108,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
         unresolved_event_count=F("unresolved_event_count") + unresolved,
         total_billed_cost_micros=F("total_billed_cost_micros") + billed,
         unpriced_event_count=F("unpriced_event_count") + unpriced,
-        event_count=F("event_count") + 1,
+        posting_count=F("posting_count") + 1,
     )
 
     if rows == 0:
@@ -123,7 +123,7 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 unresolved_event_count=unresolved,
                 total_billed_cost_micros=billed,
                 unpriced_event_count=unpriced,
-                event_count=1,
+                posting_count=1,
             )
         except IntegrityError:
             CustomerCostAccumulator.objects.filter(
@@ -134,5 +134,5 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 total_provider_cost_micros=F("total_provider_cost_micros") + provider,
                 unresolved_event_count=F("unresolved_event_count") + unresolved,
                 total_billed_cost_micros=F("total_billed_cost_micros") + billed,
-                event_count=F("event_count") + 1,
+                posting_count=F("posting_count") + 1,
             )

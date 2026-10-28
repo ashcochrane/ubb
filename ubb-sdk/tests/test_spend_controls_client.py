@@ -20,7 +20,7 @@ from ubb._core.models.wallet_policy_episode_row import WalletPolicyEpisodeRow
 STOPS = "/api/v1/spend-controls/stops-and-breaches"
 UTILISATION = "/api/v1/spend-controls/utilisation-and-headroom"
 WINDOW = {"since": "2026-09-01T00:00:00Z", "until": "2026-09-12T00:00:00Z"}
-ITEMISED = {"events": [], "event_count": 0, "billed_cost_micros": 0,
+ITEMISED = {"events": [], "posting_count": 0, "billed_cost_micros": 0,
             "unpriced_event_count": 0, "provider_cost_micros": 0,
             "unresolved_event_count": 0}
 
@@ -73,7 +73,7 @@ class SpendControlsClientTest(unittest.TestCase):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {
             **WINDOW, "rows": [_wallet_row(), _ceiling_row(), _pool_row()],
             "totals": [{"control_family": vocabulary.CONTROL_FAMILY_CEILING,
-                        "event_count": 0, "billed_cost_micros": 0,
+                        "posting_count": 0, "billed_cost_micros": 0,
                         "unpriced_event_count": 0, "provider_cost_micros": 0,
                         "unresolved_event_count": 0}]})
         result = self.client.stops_and_breaches()

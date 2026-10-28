@@ -373,7 +373,7 @@ class UsageServiceTaskTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 3_000_000)
         self.assertEqual(task.total_provider_cost_micros, 3_000_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_with_task_links_event(self, mock_process):
@@ -443,7 +443,7 @@ class UsageServiceTaskTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 11_000_000)
         self.assertEqual(task.total_provider_cost_micros, 11_000_000)
-        self.assertEqual(task.event_count, 2)
+        self.assertEqual(task.recorded_events, 2)
         # Still ACTIVE at the service seam — the kill fires only at commit.
         self.assertEqual(task.status, "active")
 
@@ -470,7 +470,7 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(task.status, "killed")
         self.assertEqual(task.total_billed_cost_micros, 1_000_000)
         self.assertEqual(task.total_provider_cost_micros, 1_000_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_record_usage_outbox_includes_task_id(self, mock_process):
@@ -537,7 +537,7 @@ class UsageServiceTaskTest(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.total_billed_cost_micros, 5_000_000)
         self.assertEqual(task.total_provider_cost_micros, 5_000_000)
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
         orig_filter = Posting.objects.filter
         class _MissingFirst:
             def first(self): return None
@@ -552,6 +552,6 @@ class UsageServiceTaskTest(TestCase):
         self.assertEqual(Posting.objects.filter(tenant=self.tenant, customer=self.customer,
             idempotency_key="idem_dup").count(), 1)
         task.refresh_from_db()
-        self.assertEqual(task.event_count, 1)
+        self.assertEqual(task.recorded_events, 1)
         self.assertEqual(task.total_billed_cost_micros, 5_000_000)
         self.assertEqual(task.total_provider_cost_micros, 5_000_000)

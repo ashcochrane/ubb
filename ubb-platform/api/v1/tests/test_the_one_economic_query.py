@@ -825,7 +825,7 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
                                            for p in postings),
             total_billed_cost_micros=sum(p.billed_cost_micros
                                          for p in postings),
-            event_count=len(postings))
+            posting_count=len(postings))
 
     def test_the_unprofitable_alert_states_the_same_revenue_as_the_query(self):
         """ONE ECONOMIC TRUTH PER CUSTOMER AND PERIOD (#537's review).
@@ -1030,7 +1030,7 @@ class TestTheCountAndTheChargeItMustNotCount:
         return {row["grouping_field_value"][0]: (
             row["grouping_field_value_status"][0],
             {entry["measure"]: (entry["amount_micros"] if entry["amount_micros"]
-                                is not None else entry["event_count"])
+                                is not None else entry["count"])
              for entry in row["measures"]})
             for row in body["rows"]}
 
@@ -1326,7 +1326,7 @@ class TestTheTwoHorizonsOnTheWire:
                 MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
             assert entry["available_from"] == self.horizon().isoformat()
             assert entry["amount_micros"] is None
-            assert entry["event_count"] is None
+            assert entry["count"] is None
 
     def test_the_state_is_published_as_one_of_the_registry_s_five(self):
         """The contract half of the same payment: the field carries the concept

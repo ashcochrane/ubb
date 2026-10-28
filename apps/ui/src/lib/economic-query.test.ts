@@ -36,7 +36,7 @@ describe("figureOn — one measure, with the state that says what it is worth", 
     { measure: "supplier_cogs", amount_micros: 4_000_000, status: "incomplete", unresolved_event_count: 3 },
     { measure: "customer_revenue", amount_micros: 9_000_000, status: "known", unpriced_event_count: 0 },
     { measure: "gross_margin", amount_micros: 5_000_000, status: "incomplete" },
-    { measure: "recorded_events", event_count: 42, status: "known" },
+    { measure: "recorded_events", count: 42, status: "known" },
   ]);
 
   it("carries each measure's own figure, state and count", () => {
