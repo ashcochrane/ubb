@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.pricing_receipt_subject_type import PricingReceiptSubjectType
 from typing import cast
+from typing import Literal, cast
 
 if TYPE_CHECKING:
   from ..models.pricing_receipt_costing import PricingReceiptCosting
@@ -40,7 +41,7 @@ class PricingReceipt:
                 refuses a figure here). Absent keys stay absent: a usage event names the
                 rules it read, a Charge names its agreed price line, and a completion names
                 the Resolution Run or the held name that completed it (#363, #568).
-            receipt_schema_version (int):
+            receipt_schema_version (Literal[2]):
             subject_id (str):
             subject_type (PricingReceiptSubjectType):
             totals (PricingReceiptTotals): The amount each section resolved; null where it is not settled.
@@ -52,7 +53,7 @@ class PricingReceipt:
     pricing: PricingReceiptPricing
     pricing_engine_version: str
     provenance: PricingReceiptProvenance
-    receipt_schema_version: int
+    receipt_schema_version: Literal[2]
     subject_id: str
     subject_type: PricingReceiptSubjectType
     totals: PricingReceiptTotals
@@ -135,7 +136,9 @@ class PricingReceipt:
 
 
 
-        receipt_schema_version = d.pop("receipt_schema_version")
+        receipt_schema_version = cast(Literal[2] , d.pop("receipt_schema_version"))
+        if receipt_schema_version != 2:
+            raise ValueError(f"receipt_schema_version must match const 2, got '{receipt_schema_version}'")
 
         subject_id = d.pop("subject_id")
 

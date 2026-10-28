@@ -9,6 +9,7 @@ from core.vocabulary import (
     SKIP_REASON_NO_USAGE,
     SKIP_REASON_PAYMENT_RAIL_CLOSED,
     SKIP_REASON_SEAT_SUPERSEDED,
+    SKIP_REASON_VALUES,
     USAGE_INVOICE_STATUS_FAILED,
     USAGE_INVOICE_STATUS_FAILED_PERMANENT,
     USAGE_INVOICE_STATUS_PENDING,
@@ -61,8 +62,8 @@ class Invoice(BaseModel):
 # A usage invoice's status and why one was skipped — the registry's closed
 # `usage_invoice_status` and `skip_reason` (R10-W4), by reference. The skip
 # reason was a bare string with no `choices=` until then, written as literals
-# by the postpaid service; `""` is what every invoice that was NOT skipped
-# holds, and the read serves it as null.
+# by the postpaid service, and an invoice that was NOT skipped held `""`; it
+# holds null now (`invoicing/0011`), and the table refuses anything else.
 USAGE_INVOICE_STATUS = [
     (USAGE_INVOICE_STATUS_PENDING, "Pending"),
     (USAGE_INVOICE_STATUS_PUSHING, "Pushing"),
@@ -99,9 +100,12 @@ class CustomerUsageInvoice(BaseModel):
     period_end = models.DateField()
     total_billed_micros = models.BigIntegerField(default=0)
     currency = models.CharField(max_length=3, default="usd")
-    status = models.CharField(max_length=20, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
+    status = models.CharField(max_length=20, choices=USAGE_INVOICE_STATUS,
+                              default=USAGE_INVOICE_STATUS_PENDING, db_index=True)
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
-    skip_reason = models.CharField(max_length=50, blank=True, default="",
+    #: Why the invoice was skipped, and null on every invoice that was not.
+    skip_reason = models.CharField(max_length=50, null=True, blank=True,
+                                   default=None,
                                    choices=USAGE_INVOICE_SKIP_REASONS)
     push_attempts = models.PositiveIntegerField(default=0)
     first_attempted_at = models.DateTimeField(null=True, blank=True)
@@ -143,6 +147,10 @@ class CustomerUsageInvoice(BaseModel):
                 name="uq_usage_invoice_customer_period"),
             # UBB v1 is USD-only (ADR-0023).
             usd_only_check("currency", "ck_usage_invoice_currency_usd"),
+            models.CheckConstraint(
+                condition=(models.Q(skip_reason__isnull=True)
+                           | models.Q(skip_reason__in=sorted(SKIP_REASON_VALUES))),
+                name="ck_usage_invoice_skip_reason_known"),
         ]
 
     def __str__(self):

@@ -5,7 +5,10 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
-from core.vocabulary import WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION
+from core.vocabulary import (
+    GRANT_STATUS_ACTIVE,
+    WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +67,7 @@ def reconcile_wallet_balances():
             )
 
         active_grant_sum = CreditGrant.objects.filter(
-            wallet=wallet, status="active",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE,
         ).aggregate(total=Sum("remaining_micros"))["total"] or 0
         if active_grant_sum > max(wallet.balance_micros, 0):
             drift_count += 1
@@ -214,7 +217,7 @@ def expire_credit_grants():
 
     # Pass 1 — expiry.
     customer_ids = list(CreditGrant.objects.filter(
-        status="active", expires_at__isnull=False, expires_at__lte=now, **_live,
+        status=GRANT_STATUS_ACTIVE, expires_at__isnull=False, expires_at__lte=now, **_live,
     ).values_list("wallet__customer_id", flat=True).distinct())
     expired_wallets = 0
     for customer_id in customer_ids:
@@ -231,7 +234,7 @@ def expire_credit_grants():
     # Pass 2 — expiring-soon warnings (same liveness policy as pass 1).
     warned = 0
     pending = CreditGrant.objects.filter(
-        status="active", warning_sent_at__isnull=True,
+        status=GRANT_STATUS_ACTIVE, warning_sent_at__isnull=True,
         expires_at__isnull=False, expires_at__lte=now + GRANT_WARNING_WINDOW,
         **_live,
     ).select_related("wallet")

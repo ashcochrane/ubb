@@ -2,7 +2,7 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ceilingAssessment, completeTotal } from "@/lib/economic-scenarios";
-import { formatEventCount } from "@/lib/format";
+import { formatCount } from "@/lib/format";
 
 import { containedId, RUN_ACTIVE_ID } from "../api/mock-data";
 import type { RunRow } from "../api/types";
@@ -116,7 +116,7 @@ describe("ContainedWorkTable", () => {
 
     // The label cell changes ("5 not shown" goes); the totals do not.
     expect(unfolded.slice(EVENTS)).toEqual(folded.slice(EVENTS));
-    expect(folded[EVENTS]).toBe(formatEventCount(EVENTS_OVER_THIRTY));
+    expect(folded[EVENTS]).toBe(formatCount(EVENTS_OVER_THIRTY));
     expect(folded[SUPPLIER_COST]).toBe(COST_OVER_THIRTY);
     // The discriminating half: a roll-up over only the visible rows would
     // answer a different number, and this is that number.

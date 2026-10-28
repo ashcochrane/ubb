@@ -148,7 +148,9 @@ export function episodeKey(row: EpisodeRow): string {
   return `${episode.row.customer_id}:${line}:${episode.row.episode_seq}`;
 }
 
-/** "3 events" / "1 event". */
-export function eventCount(count: number): string {
-  return `${count.toLocaleString()} ${count === 1 ? "event" : "events"}`;
+/** "3 postings" / "1 posting": what an episode itemises is postings, a
+ * Charge's projection among them, so it is never worded as events (R10-W4,
+ * ruling 1). */
+export function postingCount(count: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? "posting" : "postings"}`;
 }

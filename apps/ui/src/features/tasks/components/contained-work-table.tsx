@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatEventCount, shortId } from "@/lib/format";
+import { formatCount, shortId } from "@/lib/format";
 import { ABSENT_LABEL, tenantDefinedLabel } from "@/lib/localisation";
 
 import type { RunRow } from "../api/types";
@@ -105,7 +105,7 @@ export function ContainedWorkTable({
                 <RunStatusBadge status={row.status} />
               </TableCell>
               <TableCell className="text-right text-[12px]">
-                {formatEventCount(row.recorded_events)}
+                {formatCount(row.recorded_events)}
               </TableCell>
               <TableCell className="text-right text-[12px]">
                 <SupplierCostReadingView reading={readSupplierCost(row)} currency={currency} />
@@ -139,7 +139,7 @@ export function ContainedWorkTable({
               )}
             </TableCell>
             <TableCell className="text-right text-[12px]">
-              {formatEventCount(totals.recorded_events)}
+              {formatCount(totals.recorded_events)}
             </TableCell>
             <TableCell className="text-right text-[12px]">
               <SupplierCostReadingView reading={readSupplierCost(totals)} currency={currency} />

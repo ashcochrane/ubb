@@ -273,8 +273,9 @@ stop_scope:
   kind: closed
   # DECLARED IN R10-W4 (slice 8). The three were literals at every writer
   # (the stop-context tagging, the live counter, the unit read) with no
-  # constant behind them; the kernel's `work/reasons.py` now holds the set
-  # and every writer names a scope by reference to the generated constants.
+  # constant behind them; every writer now names a scope by reference to the
+  # generated constants. The declared backend consumer is the stop-context
+  # tagging, which writes the scope on every acknowledgement.
   summary: >-
     What a stop applies to: the Task the work runs under, the Subtask itself,
     or the whole customer. Read off the stopped row's altitude, never off
@@ -287,7 +288,7 @@ stop_scope:
   label_key_prefix: stop_scope
   consumers:
     - surface: backend
-      path: ubb-platform/apps/platform/work/reasons.py
+      path: ubb-platform/apps/metering/usage/services/stop_context.py
     - surface: openapi
       path: openapi/v1.json
     - surface: console

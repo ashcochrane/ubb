@@ -8,6 +8,7 @@ from pydantic import ConfigDict, field_validator, model_serializer, model_valida
 
 from api.v1.pagination import Paginated
 from apps.metering.pricing.models import LINE_AGREED_PRICE, LINE_RATE
+from apps.metering.pricing.receipts import RECEIPT_SCHEMA_VERSION
 from apps.platform.event_types.exact_decimals import (
     ACCEPTED, CANONICAL, anchored, canonical_quantities)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -948,8 +949,10 @@ class PricingReceiptProvenance(_StoredRecord):
 
 class PricingReceipt(Schema):
     """The Pricing Receipt, version 2 — see `RECEIPT_DESCRIPTION`."""
-    #: Always 2: the one shape this contract publishes (§0.3 ruling 3).
-    receipt_schema_version: int
+    #: The one shape this contract publishes (§0.3 ruling 3), held in the
+    #: type: a record declaring any other version does not validate, whatever
+    #: else it holds.
+    receipt_schema_version: Literal[RECEIPT_SCHEMA_VERSION]
     pricing_engine_version: str
     subject_type: PricingReceiptSubjectType
     subject_id: str
@@ -2507,7 +2510,7 @@ def usage_invoice_out(r):
         "currency": r.currency,
         "status": r.status,
         "stripe_invoice_id": r.stripe_invoice_id,
-        "skip_reason": r.skip_reason or None,
+        "skip_reason": r.skip_reason,
         "push_attempts": r.push_attempts,
         "last_attempt_error": r.last_attempt_error,
     }
@@ -2542,7 +2545,7 @@ def tenant_usage_invoice_out(r):
         "total_billed_micros": r.total_billed_micros,
         "status": r.status,
         "stripe_invoice_id": r.stripe_invoice_id,
-        "skip_reason": r.skip_reason or None,
+        "skip_reason": r.skip_reason,
         "push_attempts": r.push_attempts,
         "last_attempt_error": r.last_attempt_error,
     }

@@ -82,7 +82,7 @@ class Invitation(BaseModel):
             # so it is outside this partial index).
             models.UniqueConstraint(
                 fields=["tenant", "email"],
-                condition=models.Q(status="pending"),
+                condition=models.Q(status=INVITATION_STATUS_PENDING),
                 name="uq_one_pending_invite_per_tenant_email",
             ),
         ]

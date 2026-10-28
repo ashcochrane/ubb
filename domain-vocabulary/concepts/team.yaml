@@ -14,8 +14,10 @@ role:
     read) by every route that binds one. No owner tier and no fourth role
     (#62). Closed: a principal holding any other value meets no floor.
   # Declared lowest authority first, which is the rank a floor compares by
-  # and the order a picker offers them in; the backend's rank and the
-  # console's are both read off this one order.
+  # and the order a picker offers them in. The console reads its rank off
+  # this order (`ROLE_VALUES`, an ordered list there); the backend's own rank
+  # (`membership/roles.py`) is asserted against the same three, and
+  # `test_the_role_rank_is_the_registrys_order` holds the two orders equal.
   values:
     - read
     - write

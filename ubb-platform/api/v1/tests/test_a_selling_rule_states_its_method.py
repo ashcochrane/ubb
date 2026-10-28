@@ -14,14 +14,14 @@ from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, TestCase
 
+from api.v1.tests._helpers import a_tenant
 from apps.metering.pricing.models import (
-    STATES_ITS_SELLING_METHOD_CHECK, CostBook, PricingBook, Rate)
+    STATES_ITS_SELLING_METHOD_CHECK, Rate)
 from apps.metering.pricing.services.pricing_service import _priced_by_rules
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, database_rules_guarding, rate_in_default_book,
     the_book_holding)
 from apps.platform.event_types.tests._helpers import declares_a_quantity
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     COSTING_STATUS_KNOWN, PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST)
@@ -34,9 +34,8 @@ class _APricingTenantTestCase(TestCase):
 
     def setUp(self):
         self.http = Client()
-        self.tenant = Tenant.objects.create(
-            name="Selling", products=["metering", "billing"])
-        _, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
+        self.tenant, self.raw_key = a_tenant(
+            "Selling", products=("metering", "billing"))
         for code in (QUANTITY, ANOTHER_QUANTITY):
             declares_a_quantity(self.tenant, code)
 
@@ -138,7 +137,7 @@ class TheTableHoldsTheRuleTest(TestCase):
     """Every door: a row created, updated through the queryset, and by SQL."""
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Table", products=["metering"])
+        self.tenant, _ = a_tenant("Table")
         declares_a_quantity(self.tenant, QUANTITY)
         self.selling = rate_in_default_book(self.tenant, measurement_key=QUANTITY)
         self.cost = cost_rate_in_default_book(self.tenant, measurement_key=QUANTITY)
@@ -222,7 +221,7 @@ class TheBackfillStatesTheMethodTest(TestCase):
             return cursor.fetchone()[0]
 
     def test_a_null_on_a_selling_rule_becomes_a_stated_direct_price(self):
-        tenant = Tenant.objects.create(name="Old", products=["metering"])
+        tenant, _ = a_tenant("Old")
         declares_a_quantity(tenant, QUANTITY)
         selling = rate_in_default_book(tenant, measurement_key=QUANTITY)
         margin = rate_in_default_book(

@@ -14,9 +14,9 @@ from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, TestCase
 
+from api.v1.tests._helpers import a_tenant
 from apps.billing.wallets.models import CreditGrant, Wallet, WalletTransaction
 from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     GRANT_SOURCE_AUTO_TOP_UP, GRANT_SOURCE_VALUES,
     WALLET_TRANSACTION_TYPE_ADJUSTMENT, WALLET_TRANSACTION_TYPE_DEBIT,
@@ -33,9 +33,8 @@ OLD_AUTO_TOP_UP = GRANT_SOURCE_AUTO_TOP_UP.replace("top_up", "topup")
 class _AWalletTestCase(TestCase):
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Wallets",
-                                            products=["metering", "billing"])
-        _, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
+        self.tenant, self.raw_key = a_tenant(
+            "Wallets", products=("metering", "billing"))
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
         self.wallet = Wallet.objects.create(customer=self.customer,

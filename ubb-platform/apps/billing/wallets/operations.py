@@ -56,9 +56,12 @@ from django.db import IntegrityError, transaction
 
 from apps.platform.work import reasons
 from core.vocabulary import (
+    GRANT_KIND_PAID,
     GRANT_SOURCE_API,
     GRANT_SOURCE_AUTO_TOP_UP,
     GRANT_SOURCE_CHECKOUT,
+    GRANT_STATUS_ACTIVE,
+    GRANT_STATUS_VOIDED,
     WALLET_TRANSACTION_TYPE_ADJUSTMENT,
     WALLET_TRANSACTION_TYPE_DEBIT,
     WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION,
@@ -457,7 +460,7 @@ def void_grant(*, customer_id, tenant, grant_id):
     def prepare(wallet, owner):
         grant = state["grant"]
         grant.refresh_from_db()  # expire_due may have just retired it
-        if grant.status != "active":
+        if grant.status != GRANT_STATUS_ACTIVE:
             return OpResult(outcome="noop", balance_micros=wallet.balance_micros,
                             grant=grant)
         # Clamp like expiry (G3): voiding never drives the balance negative.
@@ -468,7 +471,7 @@ def void_grant(*, customer_id, tenant, grant_id):
             # this lot into voided_micros — voiding must accumulate.
             grant.voided_micros += grant.remaining_micros
             grant.remaining_micros = 0
-            grant.status = "voided"
+            grant.status = GRANT_STATUS_VOIDED
             grant.save(update_fields=[
                 "voided_micros", "remaining_micros", "status", "updated_at"])
 
@@ -660,7 +663,7 @@ def credit_top_up(*, customer_id, tenant, amount_micros, idempotency_key,
 
         def mint(wallet, txn):
             GrantLedger.create_grant(
-                wallet, tenant.id, kind="paid", amount_micros=amount_micros,
+                wallet, tenant.id, kind=GRANT_KIND_PAID, amount_micros=amount_micros,
                 expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
                 source=source, source_reference=source_reference, txn=txn)
 

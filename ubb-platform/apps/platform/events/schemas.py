@@ -584,8 +584,11 @@ class CreditGrantExpiring(EventSchema):
     tenant_id: str
     customer_id: str
     grant_id: str
-    #: Required since R10-W4: every producer passes the lot's kind, and a closed
-    #: set has no honest empty default.
+    #: Required since R10-W4 (`docs/conventions/django-patterns.md`, the
+    #: outbox's closed-field exception, unstamped): the one producer
+    #: (`wallets/tasks.py`) has always passed `grant.kind`, the lot's own
+    #: closed column, so no stored or queued payload lacks it and there is
+    #: nothing to stamp — and a closed set has no honest empty default.
     kind: GrantKind
     remaining_micros: int = 0
     expires_at: str = ""
@@ -632,7 +635,8 @@ class CreditGrantExpired(EventSchema):
     tenant_id: str
     customer_id: str
     grant_id: str
-    #: Required since R10-W4, on `CreditGrantExpiring`'s footing.
+    #: Required since R10-W4, on `CreditGrantExpiring`'s footing: the one
+    #: producer (`wallets/grants.py`) has always passed `grant.kind`.
     kind: GrantKind
     expired_micros: int = 0
     balance_micros: int = 0
@@ -1010,8 +1014,10 @@ class InvitationCreated(EventSchema):
     tenant_id: str
     invitation_id: str
     member_id: str
-    #: Required since R10-W4: every producer passes the invitee's role, and a
-    #: closed set has no honest empty default.
+    #: Required since R10-W4 (the outbox's closed-field exception, unstamped):
+    #: the one producer (`membership/services.py`) has always passed the role it
+    #: validated, so no stored or queued payload lacks it — and a closed set
+    #: has no honest empty default.
     role: Role
     email: str = ""
 
@@ -1033,7 +1039,9 @@ class MemberActivated(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_MEMBER_ACTIVATED
     tenant_id: str
     member_id: str
-    #: Required since R10-W4, on `InvitationCreated`'s footing.
+    #: Required since R10-W4, on `InvitationCreated`'s footing: the one
+    #: producer (`membership/services.py`) has always passed the member's own
+    #: closed `role` column.
     role: Role
     email: str = ""
     clerk_user_id: str = ""

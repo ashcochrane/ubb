@@ -67,10 +67,8 @@ from core.vocabulary import (
     REASON_CODE_PARENT_KILLED,
     REASON_CODE_SILENCE_WINDOW,
     REASON_CODE_TASK_COGS_CEILING,
-    STOP_SCOPE_CUSTOMER,
     STOP_SCOPE_SUBTASK,
     STOP_SCOPE_TASK,
-    STOP_SCOPE_VALUES,
     TRIGGER_SOURCE_CHARGE_PROJECTION,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL,
     TRIGGER_SOURCE_PARENT_CASCADE,
@@ -199,16 +197,6 @@ KNOWN_TRIGGER_SOURCES = frozenset({
 })
 
 
-# WHAT A STOP APPLIES TO — the registry's closed `stop_scope` (R10-W4), held
-# here by reference: this module is the concept's declared backend consumer,
-# and every writer of a scope (the stop-context tagging, the live counter's
-# customer stop, the unit read, the customer stop's payloads) takes one of
-# these three names rather than spelling it.
-SCOPE_TASK = STOP_SCOPE_TASK
-SCOPE_SUBTASK = STOP_SCOPE_SUBTASK
-SCOPE_CUSTOMER = STOP_SCOPE_CUSTOMER
-STOP_SCOPES = STOP_SCOPE_VALUES
-
 
 def unit_scope(*, is_subtask):
     """The ``stop_scope`` a unit-scoped stop names: the unit's OWN altitude.
@@ -221,7 +209,7 @@ def unit_scope(*, is_subtask):
     is the whole answer. Shared by the stop-context tagging and the retired
     report.
     """
-    return SCOPE_SUBTASK if is_subtask else SCOPE_TASK
+    return STOP_SCOPE_SUBTASK if is_subtask else STOP_SCOPE_TASK
 
 
 def kill_plan(unit_id, parent_id, verdicts):
@@ -264,9 +252,9 @@ def stop_fields(verdicts, *, is_subtask):
     unit-scoped verdict (not-active) the scope names the unit itself.
     """
     if verdicts.get("crossed_task_limit"):
-        return TASK_COGS_CEILING, SCOPE_TASK
+        return TASK_COGS_CEILING, STOP_SCOPE_TASK
     if verdicts.get("crossed_subtask_limit"):
-        return TASK_COGS_CEILING, SCOPE_SUBTASK
+        return TASK_COGS_CEILING, STOP_SCOPE_SUBTASK
     if verdicts.get("task_not_active"):
         return TASK_NOT_ACTIVE, unit_scope(is_subtask=is_subtask)
     return None, None
@@ -306,7 +294,7 @@ def unit_stop(verdicts, *, unit_id, is_subtask):
         return {"stop_reason": reason, "stop_scope": scope,
                 "stop_bound_micros": None, "stop_measured_micros": None,
                 "stop_task_id": unit_id}
-    crossing = verdicts["task_crossing" if scope == SCOPE_TASK
+    crossing = verdicts["task_crossing" if scope == STOP_SCOPE_TASK
                         else "subtask_crossing"]
     return {"stop_reason": reason, "stop_scope": scope,
             "stop_bound_micros": crossing.ceiling_micros,

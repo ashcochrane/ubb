@@ -13,6 +13,20 @@ from core.exceptions import StripeFatalError
 from core.currency_policy import the_rails_currency
 from core.money import minor_units, to_minor
 from apps.platform.tenants.models import rail_environment_of, the_rail_is_open_in
+from core.vocabulary import (
+    SKIP_REASON_NOTHING_TO_BILL,
+    SKIP_REASON_NOT_CHARGE_READY,
+    SKIP_REASON_NO_STRIPE_CUSTOMER,
+    SKIP_REASON_NO_USAGE,
+    SKIP_REASON_PAYMENT_RAIL_CLOSED,
+    SKIP_REASON_SEAT_SUPERSEDED,
+    USAGE_INVOICE_STATUS_FAILED,
+    USAGE_INVOICE_STATUS_FAILED_PERMANENT,
+    USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_STATUS_PUSHED,
+    USAGE_INVOICE_STATUS_PUSHING,
+    USAGE_INVOICE_STATUS_SKIPPED,
+)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -147,14 +161,14 @@ class PostpaidUsageService:
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import UsageInvoicePushFailedPermanent
 
-        fields = {"status": "failed_permanent", "updated_at": timezone.now()}
+        fields = {"status": USAGE_INVOICE_STATUS_FAILED_PERMANENT, "updated_at": timezone.now()}
         if last_error is not None:
             fields["last_attempt_error"] = last_error
         updated = CustomerUsageInvoice.objects.filter(
             id=rec.id, status__in=list(from_statuses)).update(**fields)
         if not updated:
             return False
-        rec.status = "failed_permanent"
+        rec.status = USAGE_INVOICE_STATUS_FAILED_PERMANENT
         if last_error is not None:
             rec.last_attempt_error = last_error
         write_event(UsageInvoicePushFailedPermanent(
@@ -192,20 +206,20 @@ class PostpaidUsageService:
                 # owner-first service — supersede it so reconcile stops retrying it.
                 CustomerUsageInvoice.objects.filter(
                     tenant=tenant, customer=passed_customer, period_start=period_start,
-                    status__in=["pending", "failed", "skipped"],
-                ).update(status="skipped", skip_reason="seat_superseded")
-            if rec.status in ("pushed", "pushing"):
+                    status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED, USAGE_INVOICE_STATUS_SKIPPED],
+                ).update(status=USAGE_INVOICE_STATUS_SKIPPED, skip_reason=SKIP_REASON_SEAT_SUPERSEDED)
+            if rec.status in (USAGE_INVOICE_STATUS_PUSHED, USAGE_INVOICE_STATUS_PUSHING):
                 return rec
-            if rec.status == "failed_permanent":
+            if rec.status == USAGE_INVOICE_STATUS_FAILED_PERMANENT:
                 return rec  # idempotent, no re-alert
-            if rec.status in ("pending", "failed") and (
+            if rec.status in (USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED) and (
                 rec.push_attempts >= settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS
                 or (rec.first_attempted_at
                     and timezone.now() - rec.first_attempted_at
                         > timedelta(hours=settings.UBB_POSTPAID_PUSH_MAX_AGE_HOURS))
             ):
                 PostpaidUsageService._park_failed_permanent(
-                    tenant, customer, rec, from_statuses=("pending", "failed"))
+                    tenant, customer, rec, from_statuses=(USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED))
                 return rec
             # Freeze-at-first-claim: line_index identity is positional over the
             # aggregation sort, so re-aggregating on a retry (after the tenant
@@ -246,24 +260,24 @@ class PostpaidUsageService:
                     billing_owner_recorded_anything)
                 recorded = billing_owner_recorded_anything(
                     tenant.id, customer.id, period_start, period_end)
-                rec.status, rec.skip_reason = "skipped", (
-                    "nothing_to_bill" if recorded else "no_usage")
+                rec.status, rec.skip_reason = USAGE_INVOICE_STATUS_SKIPPED, (
+                    SKIP_REASON_NOTHING_TO_BILL if recorded else SKIP_REASON_NO_USAGE)
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             if not customer.stripe_customer_id:
-                rec.status, rec.skip_reason = "skipped", "no_stripe_customer"
+                rec.status, rec.skip_reason = USAGE_INVOICE_STATUS_SKIPPED, SKIP_REASON_NO_STRIPE_CUSTOMER
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             if not tenant.stripe_connected_account_id or not tenant.charges_enabled:
                 # Connected account not charge-ready -- never push an invoice to it.
-                rec.status, rec.skip_reason = "skipped", "not_charge_ready"
+                rec.status, rec.skip_reason = USAGE_INVOICE_STATUS_SKIPPED, SKIP_REASON_NOT_CHARGE_READY
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             if not the_rail_is_open_in(rail_environment_of(is_sandbox=tenant.is_sandbox)):
                 # G27's flag, operationally: no new invoice on a closed rail.
                 # RECOVERABLE — the reconcile re-queues it once the rail
                 # reopens — never parked as a failure nobody repushes.
-                rec.status, rec.skip_reason = "skipped", "payment_rail_closed"
+                rec.status, rec.skip_reason = USAGE_INVOICE_STATUS_SKIPPED, SKIP_REASON_PAYMENT_RAIL_CLOSED
                 rec.save(update_fields=["total_billed_micros", "status", "skip_reason", "updated_at"])
                 return rec
             # F1.1 carry reservation: take-and-zero the owner's residual ledger
@@ -280,7 +294,7 @@ class PostpaidUsageService:
                 rec.carry_in_micros = ledger.balance_micros
                 ledger.balance_micros = 0
                 ledger.save(update_fields=["balance_micros", "updated_at"])
-            rec.status = "pushing"
+            rec.status = USAGE_INVOICE_STATUS_PUSHING
             rec.push_attempts += 1
             rec.first_attempted_at = rec.first_attempted_at or timezone.now()
             rec.save(update_fields=["total_billed_micros", "line_snapshot", "status",
@@ -303,14 +317,14 @@ class PostpaidUsageService:
             rec.refresh_from_db()  # pick up the pointer Phase 2a may have persisted
             with transaction.atomic():
                 PostpaidUsageService._park_failed_permanent(
-                    tenant, customer, rec, from_statuses=("pushing",),
+                    tenant, customer, rec, from_statuses=(USAGE_INVOICE_STATUS_PUSHING,),
                     last_error=repr(exc)[:500])
             return rec
         except Exception as exc:
             # Sticky transient failure: stays 'failed' (retried by reconcile) until
             # the attempts/wall-clock cap above flips it to failed_permanent.
-            CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
-                status="failed", last_attempt_error=repr(exc)[:500])
+            CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
+                status=USAGE_INVOICE_STATUS_FAILED, last_attempt_error=repr(exc)[:500])
             raise
 
         # Phase 3 — record
@@ -318,7 +332,7 @@ class PostpaidUsageService:
         from apps.platform.events.schemas import UsageInvoicePushed
         with transaction.atomic():
             rec = CustomerUsageInvoice.objects.select_for_update().get(id=rec.id)
-            if rec.status != "pushing":
+            if rec.status != USAGE_INVOICE_STATUS_PUSHING:
                 return rec
             # Belt-and-braces: a forced re-record (operator repush of a row that
             # already recorded once) must replace, never duplicate, line items.
@@ -328,7 +342,7 @@ class PostpaidUsageService:
                     usage_invoice=rec, grouping_field_value=label,
                     amount_micros=amount,
                     stripe_invoice_item_id=item_id)
-            rec.status = "pushed"
+            rec.status = USAGE_INVOICE_STATUS_PUSHED
             rec.stripe_invoice_id = invoice_id or ""
             rec.residual_micros = residual_out
             rec.pushed_at = timezone.now()
@@ -479,7 +493,7 @@ class PostpaidUsageService:
         # row), so there is zero state damage.  The new owner will resume from
         # its own fresh Phase-2a; double-billing is impossible.
         from apps.billing.invoicing.models import CustomerUsageInvoice as _CUI
-        _updated = _CUI.objects.filter(id=rec.id, status="pushing").update(
+        _updated = _CUI.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
             stripe_invoice_id=inv.id, push_phase="invoice_created",
             invoice_kind="consolidated" if consolidated else "standalone")
         if _updated == 0:
@@ -511,7 +525,7 @@ class PostpaidUsageService:
                 logger.error("postpaid.adopt_missing_lines", extra={"data": {
                     "usage_invoice_id": str(rec.id), "stripe_invoice_id": inv.id,
                     "missing_line_indexes": absent}})
-            CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+            CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
                 push_phase="finalized")
             return inv.id, items, residual
 
@@ -539,13 +553,13 @@ class PostpaidUsageService:
                 currency=currency, description=desc, stripe_account=connected,
                 metadata={"usage_invoice_id": str(rec.id), "line_index": str(i)})
             items.append((label, orig_micros, item.id))
-        CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+        CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
             push_phase="items_pinned")
         stripe_call(
             stripe.Invoice.finalize_invoice, api_key=api_key, retryable=True,
             idempotency_key=f"usage-finalize-{rec.id}{gen}", invoice=inv.id,
             auto_advance=True, stripe_account=connected)
-        CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+        CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
             push_phase="finalized")
         return inv.id, items, residual
 
@@ -665,7 +679,7 @@ class PostpaidUsageService:
                     break
                 items.append((label, orig_micros, item.id))
             if not finalized_under_us:
-                CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+                CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
                     push_phase="items_pinned")
                 # NO finalize: Stripe auto-finalizes the renewal (~1h after anchor).
                 return target.id, items, residual
@@ -689,7 +703,7 @@ class PostpaidUsageService:
             # Full adopt: every line landed before the auto-finalize.
             items = [(label, orig_micros, present[str(i)].id)
                      for i, label, cents, orig_micros in cent_lines]
-            CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+            CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
                 push_phase="finalized")
             return target.id, items, residual
 
@@ -712,7 +726,7 @@ class PostpaidUsageService:
             "remainder_invoice_id": remainder_id,
             "consolidated_line_indexes": sorted(present.keys()),
             "remainder_line_indexes": [str(i) for i, label, cents, orig_micros in missing]}})
-        CustomerUsageInvoice.objects.filter(id=rec.id, status="pushing").update(
+        CustomerUsageInvoice.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_PUSHING).update(
             push_phase="finalized")
         return remainder_id, items, residual
 

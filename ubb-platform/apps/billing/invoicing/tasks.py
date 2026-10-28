@@ -16,6 +16,17 @@ from apps.billing.connectors.stripe.invoice_routing import (
     _refresh_urls,
     ar_transition_allowed,
 )
+from core.vocabulary import (
+    SKIP_REASON_NOT_CHARGE_READY,
+    SKIP_REASON_NO_STRIPE_CUSTOMER,
+    SKIP_REASON_PAYMENT_RAIL_CLOSED,
+    SKIP_REASON_SEAT_SUPERSEDED,
+    USAGE_INVOICE_STATUS_FAILED,
+    USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_STATUS_PUSHED,
+    USAGE_INVOICE_STATUS_PUSHING,
+    USAGE_INVOICE_STATUS_SKIPPED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +119,10 @@ def reconcile_postpaid_usage():
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 
     stale = timezone.now() - timedelta(minutes=30)
-    CustomerUsageInvoice.objects.filter(status="pushing", updated_at__lt=stale).update(status="pending")
+    CustomerUsageInvoice.objects.filter(status=USAGE_INVOICE_STATUS_PUSHING, updated_at__lt=stale).update(status=USAGE_INVOICE_STATUS_PENDING)
     _recover_skipped_usage_invoices(CustomerUsageInvoice)
     for rec in CustomerUsageInvoice.objects.filter(
-            status__in=["pending", "failed"]).select_related("tenant", "customer"):
+            status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED]).select_related("tenant", "customer"):
         try:
             PostpaidUsageService.push_customer_period(
                 rec.tenant, rec.customer, rec.period_start, rec.period_end)
@@ -127,26 +138,26 @@ def _recover_skipped_usage_invoices(model):
     Guarded conditional updates: a row a concurrent push already transitioned
     out of 'skipped' is left alone (no read-modify-write clobber)."""
     qs = model.objects.filter(
-        status="skipped",
-        skip_reason__in=["not_charge_ready", "no_stripe_customer", "payment_rail_closed"],
+        status=USAGE_INVOICE_STATUS_SKIPPED,
+        skip_reason__in=[SKIP_REASON_NOT_CHARGE_READY, SKIP_REASON_NO_STRIPE_CUSTOMER, SKIP_REASON_PAYMENT_RAIL_CLOSED],
     ).select_related("tenant", "customer")
     for rec in qs:
         owner = rec.customer.resolve_billing_owner()
         if owner.id != rec.customer_id:
-            model.objects.filter(id=rec.id, status="skipped").update(
-                skip_reason="seat_superseded", updated_at=timezone.now())
+            model.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_SKIPPED).update(
+                skip_reason=SKIP_REASON_SEAT_SUPERSEDED, updated_at=timezone.now())
             continue
-        if rec.skip_reason == "not_charge_ready":
+        if rec.skip_reason == SKIP_REASON_NOT_CHARGE_READY:
             recovered = bool(rec.tenant.stripe_connected_account_id) and rec.tenant.charges_enabled
-        elif rec.skip_reason == "payment_rail_closed":
+        elif rec.skip_reason == SKIP_REASON_PAYMENT_RAIL_CLOSED:
             from apps.platform.tenants.models import the_rail_is_open_in, rail_environment_of
             recovered = the_rail_is_open_in(
                 rail_environment_of(is_sandbox=rec.tenant.is_sandbox))
         else:  # no_stripe_customer
             recovered = bool(owner.stripe_customer_id)
         if recovered:
-            model.objects.filter(id=rec.id, status="skipped").update(
-                status="pending", skip_reason="", updated_at=timezone.now())
+            model.objects.filter(id=rec.id, status=USAGE_INVOICE_STATUS_SKIPPED).update(
+                status=USAGE_INVOICE_STATUS_PENDING, skip_reason=None, updated_at=timezone.now())
 
 
 @shared_task(queue="ubb_billing")
@@ -220,7 +231,7 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     F5.5: invoice_kind="consolidated" narrows the match for the subscription
     branch — a consolidated rec's pointer IS a subscription invoice id."""
     qs = model.objects.filter(
-        tenant=tenant, status="pushed", stripe_invoice_id=stripe_invoice_id,
+        tenant=tenant, status=USAGE_INVOICE_STATUS_PUSHED, stripe_invoice_id=stripe_invoice_id,
     ).exclude(stripe_invoice_id="")
     if invoice_kind is not None:
         qs = qs.filter(invoice_kind=invoice_kind)

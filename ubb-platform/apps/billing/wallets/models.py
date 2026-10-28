@@ -223,8 +223,10 @@ class CreditGrant(BaseModel):
     currency = models.CharField(max_length=3, default="usd")  # CUR-1: lowercase
     expires_at = models.DateTimeField(null=True, blank=True)
     warning_sent_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=10, choices=GRANT_STATUSES, default="active")
-    source = models.CharField(max_length=20, choices=GRANT_SOURCES, default="other")
+    status = models.CharField(max_length=10, choices=GRANT_STATUSES,
+                              default=GRANT_STATUS_ACTIVE)
+    source = models.CharField(max_length=20, choices=GRANT_SOURCES,
+                              default=GRANT_SOURCE_OTHER)
     source_reference = models.CharField(max_length=255, blank=True, default="")
     source_transaction = models.OneToOneField(
         WalletTransaction, on_delete=models.SET_NULL, null=True, blank=True,

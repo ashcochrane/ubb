@@ -53,7 +53,7 @@ function FamilyTotalsTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="text-[11px] text-text-muted">Totals per family</TableHead>
-            <TableHead className="text-right text-[11px] text-text-muted">Events</TableHead>
+            <TableHead className="text-right text-[11px] text-text-muted">Postings</TableHead>
             <TableHead className="text-right text-[11px] text-text-muted">Billed</TableHead>
             <TableHead className="text-right text-[11px] text-text-muted">
               Provider cost

@@ -16,12 +16,11 @@ from django.test import Client, TestCase
 from pydantic import ValidationError
 
 from api.v1.schemas import PricingReceipt
-from api.v1.tests._helpers import usage_payload
+from api.v1.tests._helpers import a_tenant, usage_payload
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import PRICING_METHOD_MARGIN_OVER_COST
 
 VERSION = 2
@@ -31,8 +30,7 @@ class _ARecordingTenantTestCase(TestCase):
 
     def setUp(self):
         self.http = Client()
-        self.tenant = Tenant.objects.create(name="Typed", products=["metering"])
-        _, self.key = TenantApiKey.create_key(self.tenant, label="r")
+        self.tenant, self.key = a_tenant("Typed")
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
         declares_a_markup(self.tenant, percentage_micros=20_000_000)
@@ -123,3 +121,17 @@ class TheTypeIsVersionTwoAndOpenOnlyWhereTheRuleSaysTest(_ARecordingTenantTestCa
             with self.subTest(version=record.get("receipt_schema_version")):
                 with self.assertRaises(ValidationError):
                     PricingReceipt.model_validate(record)
+
+    def test_the_version_alone_refuses_an_older_record(self):
+        """A record that priced no quantity holds no component, so nothing but
+        its declared version tells version 1 from version 2 — and the type
+        refuses it on that alone. The same record at version 2 validates, so
+        the refusal is carried by the version and by nothing else."""
+        v2 = copy.deepcopy(self._record("typed-5")["pricing_receipt"])
+        for section in ("costing", "pricing"):
+            v2[section]["detail"].pop("components", None)
+        v1 = {**v2, "receipt_schema_version": 1}
+
+        PricingReceipt.model_validate(v2)
+        with self.assertRaises(ValidationError):
+            PricingReceipt.model_validate(v1)

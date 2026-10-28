@@ -470,6 +470,10 @@ exclusions:
     # `posting_count` (`subscriptions/0019`) and the reward accumulator's
     # `rewarded_posting_count` (`referrals/0008`). Each RENAMES a column away
     # from the word that ruling retires, so each must spell it.
+    # 300 → 303 in R10-W4: three more migrations — the wallet's vocabulary
+    # lowercased (`wallets/0014`), a usage invoice's skip reason stored as the
+    # registry's or null (`invoicing/0011`), and a selling rule's method
+    # stated on every row (`pricing/0034`).
     files: 303
     paths:
       - ubb-platform/apps/billing/gating/migrations/**

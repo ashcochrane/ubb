@@ -6495,6 +6495,7 @@
             "$ref": "#/components/schemas/PricingReceiptProvenance"
           },
           "receipt_schema_version": {
+            "const": 2,
             "title": "Receipt Schema Version",
             "type": "integer"
           },

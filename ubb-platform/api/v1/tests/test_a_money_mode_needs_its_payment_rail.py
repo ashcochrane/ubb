@@ -429,7 +429,7 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
         self.activation.save()
         _recover_skipped_usage_invoices(CustomerUsageInvoice)
         row.refresh_from_db()
-        self.assertEqual((row.status, row.skip_reason), ("pending", ""))
+        self.assertEqual((row.status, row.skip_reason), ("pending", None))
 
     def test_resuming_a_subscription_is_refused_by_name(self):
         with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:

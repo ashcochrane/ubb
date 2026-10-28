@@ -81,7 +81,9 @@ recording path and the Charge projection both write one, so every posting has a 
 level is closed except `detail` and `provenance`, which ADR-0020 §3's additive rule keeps open: each
 types the keys UBB writes and admits another, and each publishes exactly what was stored — a typed
 key the record does not hold stays absent rather than arriving as null. The eleven closed concepts
-inside carry their markers. There is no legacy branch. A component's per-key quantity is published
+inside carry their markers. There is no legacy branch, and the version is held in the type itself
+(`receipt_schema_version` is the constant 2), so a record declaring an older version is refused even
+where nothing else in it differs. A component's per-key quantity is published
 under the key it is stored under — the rate-arithmetic sense `measurement_key.retired_senses` keeps
 alive and #366 ruled stays, not the inline total #272 retired — and the gate that proves that total
 gone admits exactly that one schema and pointer. Each total carries its own description: present
@@ -101,7 +103,9 @@ held in storage rather than a departure from it.
 
 `wallets/0014` moves every stored transaction type to the registry's lowercase token and the grant
 source `auto_topup` to `auto_top_up` (ADR-0006 §2); two `CHECK`s admit only the registry's sets. No
-form other than the registry's is accepted afterwards.
+form other than the registry's is accepted afterwards. The same rule holds a usage invoice's skip reason
+(`invoicing/0011`): an invoice that was not skipped held `""` and the read translated it to null; it
+stores null now, and `ck_usage_invoice_skip_reason_known` admits null or the registry's six.
 
 ### 7. One name per counted concept, and the shared count name is retired
 
@@ -109,7 +113,9 @@ The eight public fields that shared one count name take the name of what each co
 `recorded_events` on a unit of work (and the billing period's column), `count` on an economic
 measure's figure slot, `posting_count` on the four posting-count reads and the cost accumulator,
 `rewarded_posting_count` on the referral reward accumulator. The shared name is a retired alias
-of `analytics_measure`, so the sweep refuses it on every living surface.
+of `analytics_measure`, so the sweep refuses it on every living surface — and the console words a
+posting count as postings (the business rollup, a stop episode's itemised set), never as events, the
+recorded-events measure's word.
 
 ### 8. The grouping field's names carry no retired word (#541)
 
@@ -133,6 +139,8 @@ models and audit resource types; it is not a ban on the English word. The databa
 | §5 | `ubb-platform/api/v1/tests/test_a_selling_rule_states_its_method.py` — `TheRatesRouteSaysEachRulesMethodTest`, `APublishStatesTheMethodTest`, `TheTableHoldsTheRuleTest`, `TheResolverRefusesARuleWithNoMethodTest`, `TheBackfillStatesTheMethodTest` |
 | §6 | `ubb-platform/api/v1/tests/test_the_wallets_vocabulary_is_the_registrys.py` — `TheLedgerSpeaksLowercaseTest`, `TheTableRefusesAnotherSpellingTest`, `TheMigrationMovesEveryStoredRowTest` |
 | §1 — a skip reason and a reward type at their doors | `ubb-platform/api/v1/tests/test_the_billing_and_referral_vocabulary_is_the_registrys.py` — `AUsageInvoiceSaysWhyItWasSkippedTest`, `AProgrammesRewardTypeIsTheRegistrysTest` |
+| §6 — a skip reason stored as null, and `invoicing/0011` run for real | `ubb-platform/api/v1/tests/test_the_billing_and_referral_vocabulary_is_the_registrys.py` — `TheSkipReasonMigrationStoresNoReasonAsNullTest` |
+| §1 — the role's rank is the registry's order | `tests/contracts/test_end_state_vocabulary.py` — `test_the_role_rank_is_the_registrys_order` |
 | §8 | `tests/contracts/test_no_published_name_spells_the_retired_grouping_word.py` — `test_no_component_name_spells_the_retired_grouping_word`, `test_no_generated_sdk_model_spells_the_retired_grouping_word`, `test_no_audit_resource_type_spells_the_retired_grouping_word` |
 
 ## Consequences

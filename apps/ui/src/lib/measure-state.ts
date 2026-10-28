@@ -51,7 +51,7 @@ import {
 } from "@/lib/economic-query";
 import {
   formatCalendarDate,
-  formatEventCount,
+  formatCount,
   formatMicros,
   formatPercent,
 } from "@/lib/format";
@@ -192,7 +192,7 @@ export function unpricedTotalNote(unpricedEventCount: number): string | null {
  *  for the other three. */
 function amountText(figure: MeasureFigure, value: number, currency: string): string {
   return figure.measure === RECORDED_EVENTS
-    ? formatEventCount(value)
+    ? formatCount(value)
     : formatMicros(value, currency);
 }
 

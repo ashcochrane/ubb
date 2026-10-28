@@ -87,7 +87,8 @@ class ReferralProgram(BaseModel):
         help_text="Minimum age of referred customer account in hours. Null = no minimum.",
     )
     status = models.CharField(
-        max_length=15, choices=PROGRAM_STATUS_CHOICES, default="active"
+        max_length=15, choices=PROGRAM_STATUS_CHOICES,
+        default=REFERRAL_PROGRAM_STATUS_ACTIVE
     )
 
     class Meta:
@@ -141,7 +142,8 @@ class Referral(BaseModel):
     attributed_at = models.DateTimeField(default=timezone.now)
     reward_window_ends_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
-        max_length=10, choices=REFERRAL_STATUS_CHOICES, default="active"
+        max_length=10, choices=REFERRAL_STATUS_CHOICES,
+        default=REFERRAL_STATUS_ACTIVE
     )
 
     # Snapshotted reward config from program at creation time

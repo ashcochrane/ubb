@@ -18,6 +18,7 @@ value here traces to a frozen decision record rather than to a judgement made
 in this file.
 """
 
+import ast
 import json
 import re
 
@@ -1043,3 +1044,44 @@ def test_the_close_reason_names_the_ticket_that_still_owes_it_a_surface(
             f"the close reason's own commentary does not name {ticket}, the "
             f"ticket that brings it to {surfaces}"
         )
+
+
+# ---------------------------------------------------------------------------
+# The role's rank is the registry's order (R10-W4)
+# ---------------------------------------------------------------------------
+
+#: Where the backend writes its rank — by hand, because the generated Python
+#: set has no order to read one off.
+ROLES_MODULE = (REPO_ROOT / "ubb-platform" / "apps" / "platform" / "membership"
+                / "roles.py")
+
+
+def _backend_role_rank(source, tokens):
+    """`_ROLE_RANK`'s roles in ascending rank, as tokens.
+
+    Each key is a module alias of a generated constant (`READ = ROLE_READ`),
+    and `tokens` maps the constant's name to its token.
+    """
+    tree = ast.parse(source)
+    aliases = {node.targets[0].id: node.value.id for node in tree.body
+               if isinstance(node, ast.Assign) and len(node.targets) == 1
+               and isinstance(node.targets[0], ast.Name)
+               and isinstance(node.value, ast.Name)}
+    (rank,) = [node.value for node in tree.body if isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == "_ROLE_RANK"
+                       for target in node.targets)]
+    ascending = sorted(zip(rank.keys, rank.values), key=lambda kv: kv[1].value)
+    return tuple(tokens[aliases[key.id]] for key, _ in ascending)
+
+
+def test_the_role_rank_is_the_registrys_order(registry):
+    """The registry declares the roles lowest authority first, and a floor
+    compares by that order. The console ranks by it (`lib/role.ts`, off the
+    generated ordered list); the backend writes its own rank, and its
+    `assert` compares the SETS only — so this is what holds the two orders
+    equal, and an inverted backend rank fails here rather than in a floor."""
+    declared = registry.concepts["role"].values
+    tokens = {f"ROLE_{value.upper()}": value for value in declared}
+
+    assert _backend_role_rank(ROLES_MODULE.read_text(encoding="utf-8"),
+                              tokens) == declared

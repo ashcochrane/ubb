@@ -10,7 +10,7 @@ import { DetailList } from "@/components/shared/detail-list";
 import { Button } from "@/components/ui/button";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { formatEventCount, formatMicros } from "@/lib/format";
+import { formatCount, formatMicros } from "@/lib/format";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 import { partialTotalNote, supplierCostTotal } from "@/lib/supplier-cost";
 import { taskStatusLabel } from "@/lib/task-status";
@@ -48,7 +48,7 @@ function ClosedTaskTotals({
         items={[
           {
             label: "Events",
-            value: formatEventCount(result.recorded_events),
+            value: formatCount(result.recorded_events),
           },
           {
             label: "Total billed",
@@ -136,7 +136,7 @@ export function TaskSection({ taskId }: { taskId: string }) {
               setConfirmOpen(false);
               toastSuccess(
                 "Task closed",
-                `${taskStatusLabel(res.status)} — ${formatEventCount(res.recorded_events)} events.`,
+                `${taskStatusLabel(res.status)} — ${formatCount(res.recorded_events)} events.`,
               );
             },
             onError: toastOnError("Couldn't close the task"),

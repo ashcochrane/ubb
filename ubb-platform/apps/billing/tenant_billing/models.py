@@ -42,7 +42,7 @@ class TenantBillingPeriod(BaseModel):
     status = models.CharField(
         max_length=20,
         choices=TENANT_BILLING_PERIOD_STATUS_CHOICES,
-        default="open",
+        default=BILLING_PERIOD_STATUS_OPEN,
         db_index=True,
     )
     #: Σ `billed_cost_micros` over the period's postings, placed by ARRIVAL
@@ -78,7 +78,7 @@ class TenantBillingPeriod(BaseModel):
             # Only one open period per tenant at a time
             models.UniqueConstraint(
                 fields=["tenant"],
-                condition=models.Q(status="open"),
+                condition=models.Q(status=BILLING_PERIOD_STATUS_OPEN),
                 name="uq_one_open_period_per_tenant",
             ),
         ]
@@ -102,7 +102,7 @@ class TenantInvoice(BaseModel):
     status = models.CharField(
         max_length=20,
         choices=TENANT_INVOICE_STATUS_CHOICES,
-        default="draft",
+        default=TENANT_INVOICE_STATUS_DRAFT,
         db_index=True,
     )
     finalized_at = models.DateTimeField(null=True, blank=True)

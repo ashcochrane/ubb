@@ -334,7 +334,8 @@ class Tenant(BaseModel):
     automatic_tax_enabled = models.BooleanField(default=False)
     # Tier-2 spend-control kill switch (D1). Default "off" = unchanged behavior.
     enforcement_mode = models.CharField(
-        max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
+        max_length=10, choices=ENFORCEMENT_MODE_CHOICES,
+        default=ENFORCEMENT_MODE_OFF, db_index=True
     )
     # The live-counter-maintenance switch (#46, delivery spec §E;
     # NARROWED by #149 §6.5; renamed by #246):

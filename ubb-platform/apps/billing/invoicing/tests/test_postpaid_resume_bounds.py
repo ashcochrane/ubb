@@ -475,7 +475,7 @@ class TestOwnerFirstKeying:
         assert rows.count() == 1 and rows.first().customer_id == biz.id
         # The seat has NO stripe_customer_id, but its pooled owner does: not skipped.
         rec.refresh_from_db()
-        assert rec.status == "pushed" and rec.skip_reason == ""
+        assert rec.status == "pushed" and rec.skip_reason is None
         assert m.create.call_args.kwargs["customer"] == "cus_biz"
 
     def test_seat_keyed_row_is_superseded_by_the_service_belt(self):
@@ -553,7 +553,7 @@ class TestSkippedRowRecovery:
         with _stripe(), _agg():
             reconcile_postpaid_usage()
         rec.refresh_from_db()
-        assert rec.status == "pushed" and rec.skip_reason == ""
+        assert rec.status == "pushed" and rec.skip_reason is None
 
     def test_no_stripe_customer_recovers_when_owner_gains_one(self):
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage
@@ -563,7 +563,7 @@ class TestSkippedRowRecovery:
         with _stripe(), _agg():
             reconcile_postpaid_usage()
         rec.refresh_from_db()
-        assert rec.status == "pushed" and rec.skip_reason == ""
+        assert rec.status == "pushed" and rec.skip_reason is None
 
     def test_seat_keyed_skipped_rows_flip_to_seat_superseded_not_pending(self):
         from apps.billing.invoicing.tasks import reconcile_postpaid_usage

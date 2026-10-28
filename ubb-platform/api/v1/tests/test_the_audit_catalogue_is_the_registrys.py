@@ -14,11 +14,11 @@ from pathlib import Path
 from django.conf import settings
 from django.test import Client, TestCase
 
+from api.v1.tests._helpers import a_tenant
 from apps.platform.audit.actions import AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES
 from apps.platform.audit.ledger import record
 from apps.platform.audit.marker import records_audit
 from apps.platform.audit.models import AuditRecord
-from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.vocabulary import (
     ACTOR_KIND_KNOWN_VALUES, AUDIT_ACTION_API_KEY_CREATED, AUDIT_ACTION_VALUES,
     AUDIT_ACTION_WITHHELD_VALUES, AUDIT_RESOURCE_TYPE_API_KEY,
@@ -31,7 +31,7 @@ PLATFORM = Path(settings.BASE_DIR)
 class TheLedgerRecordsOnlyWhatTheRegistryDeclaresTest(TestCase):
 
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Audited", products=["metering"])
+        self.tenant, _ = a_tenant("Audited")
 
     def test_the_recordable_set_is_the_registrys_less_what_it_withholds(self):
         self.assertEqual(AUDIT_ACTIONS,
@@ -109,8 +109,7 @@ class EveryWriterNamesTheCatalogueByReferenceTest(TestCase):
 class TheFeedPublishesTheCatalogueTest(TestCase):
 
     def test_a_written_entry_reads_back_in_the_registrys_words(self):
-        tenant = Tenant.objects.create(name="Feed", products=["metering"])
-        _, raw_key = TenantApiKey.create_key(tenant, label="k")
+        tenant, raw_key = a_tenant("Feed")
         auth = {"HTTP_AUTHORIZATION": f"Bearer {raw_key}"}
         http = Client()
         minted = http.post("/api/v1/tenant/api-keys", data=json.dumps(

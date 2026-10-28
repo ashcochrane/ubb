@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,580 of 3,055 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,582 of 3,057 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    47 files, 138 occurrences
+    #     units    46 files, 137 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -3016,13 +3016,25 @@ measurement_key:
     # quoting a version-1 record in order to prove it is refused. None is
     # the retired inline total, and `test_the_inline_unit_total_is_gone.py`
     # admits the published one at exactly that schema and pointer, with a
-    # control that fails the day the admission stops being used. Three migrations arrived, excluded under
+    # control that fails the day the admission stops being used. Three
+    # migrations arrived, excluded under
     # `historical-migrations` (300 -> 303: `wallets/0014`, `invoicing/0011`,
     # `pricing/0034`), and three domain files under `the-vocabulary-registry`
     # (11 -> 14: billing, referrals, team). The rest is swept: the console's
     # binding modules for the twenty concepts the window declared, its new
     # tests on every surface, ADR-0024, and the generated SDK models of the
     # concepts the contract now advertises as enums.
+    #
+    # 2026-10-28, R10-W4 (the window's review): 2,580 of 3,055 -> 2,582 of
+    # 3,057 tracked files, and `units` FELL, 47 -> 46 files and 138 -> 137
+    # occurrences, because AN OCCURRENCE LEFT THE TREE (no exclusion count
+    # moved). It was the receipt-quantity sense — rate arithmetic — inside
+    # the older-shape receipt `api/v1/tests/test_metering_endpoints.py`
+    # seeded on purpose: ruling 3 made the public receipt version 2 only, so
+    # that fixture now holds a version-2 record built through `build_receipt`
+    # and its file carries the word no more. The two files that arrived are
+    # swept: the console's rendering tests of a wallet movement's lowercase
+    # type and of a usage invoice's null skip reason.
 
     - term: units
       retired_as: >-

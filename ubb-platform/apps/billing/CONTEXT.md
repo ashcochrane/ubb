@@ -507,9 +507,9 @@ _Avoid_: confusing it with a Stripe invoice — UBB pushes the lines; Stripe own
 Why a usage invoice was skipped rather than pushed — the registry's closed `skip_reason`: two
 terminal truths about the period (`no_usage`, `nothing_to_bill`), one supersession
 (`seat_superseded`), and three recoverable states (`no_stripe_customer`, `not_charge_ready`,
-`payment_rail_closed`). Present only on a skipped invoice: the column's `choices=` are the registry's
-since R10-W4 (`invoicing/0011`), a row that was not skipped holds it blank, and every published read
-answers that blank as null — never as an empty-string reason.
+`payment_rail_closed`). Present only on a skipped invoice and STORED as null on every other — since
+R10-W4 (`invoicing/0011`) the column holds null or one of the six, `ck_usage_invoice_skip_reason_known`
+refuses anything else, and the read publishes what is stored rather than translating a blank.
 (`apps/billing/invoicing/models.py:CustomerUsageInvoice.skip_reason`)
 
 **Line-item push**:
